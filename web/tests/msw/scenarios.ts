@@ -1,5 +1,6 @@
 import {
   appStatusFixture,
+  notificationSummaryFixture,
   notificationFixture,
   recentReplayFixture,
   searchInspectFixture,
@@ -17,11 +18,12 @@ export function mockBootstrap(apiMock: ApiMock) {
 }
 
 export function mockLiveRadarRoute(apiMock: ApiMock) {
+  const summary = notificationSummaryFixture();
   apiMock.getApiImpl = async (path, requestOptions) => {
     if (path === "/api/status") return ok(appStatusFixture());
-    if (path === "/api/notification-summary") return ok(appStatusFixture().notifications?.summary);
+    if (path === "/api/notification-summary") return ok(summary);
     if (path === "/api/notifications") {
-      return ok({ items: [], summary: appStatusFixture().notifications?.summary });
+      return ok({ items: [], summary });
     }
     if (path === "/api/recent") return ok(recentReplayFixture());
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
@@ -40,7 +42,7 @@ export function mockLiveRadarRoute(apiMock: ApiMock) {
 
 export function mockNotificationRoute(apiMock: ApiMock) {
   const summary = {
-    ...appStatusFixture().notifications!.summary,
+    ...notificationSummaryFixture(),
     unread_count: 1,
     high_unread_count: 1,
     account_unread_counts: { traderpow: 1 },
@@ -48,15 +50,7 @@ export function mockNotificationRoute(apiMock: ApiMock) {
   const notification = notificationFixture();
   apiMock.getApiImpl = async (path) => {
     if (path === "/api/status") {
-      return ok(
-        appStatusFixture({
-          notifications: {
-            enabled: true,
-            worker_running: true,
-            summary,
-          },
-        }),
-      );
+      return ok(appStatusFixture());
     }
     if (path === "/api/notification-summary") return ok(summary);
     if (path === "/api/notifications") return ok({ items: [notification], summary });

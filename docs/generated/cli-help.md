@@ -60,10 +60,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -77,6 +77,7 @@ positional arguments:
     update-harness-weights
                         rebuild report-only harness weights
     projection-status   print projection offsets and latest runs
+    worker-status       print canonical worker runtime status
     validate-projections
                         validate projection read models against PostgreSQL
                         facts

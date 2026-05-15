@@ -321,27 +321,34 @@ class OpenAIPulseDecisionProvider:
         await self._client.aclose()
 
 
-def wire_providers(settings: Settings, *, start_collector: bool) -> WiredProviders:
+def wire_providers(settings: Settings, *, start_collector: bool, llm_gateway: object | None = None) -> WiredProviders:
     return WiredProviders(
         ingestion=IngestionProviders(
             upstream_client_factory=_gmgn_upstream_factory(settings) if start_collector else None,
         ),
-        asset_market=_wire_asset_market(settings, start_collector=start_collector),
+        asset_market=_wire_asset_market(settings),
         social_enrichment=SocialEnrichmentProviders(
-            event_enrichment=_openai_social_event_provider(settings) if settings.llm_configured else None,
+            event_enrichment=_openai_social_event_provider(settings, llm_gateway=llm_gateway)
+            if settings.llm_configured
+            else None,
         ),
         pulse_lab=PulseLabProviders(
-            decision_provider=_openai_pulse_decision_provider(settings)
-            if settings.pulse_agent_enabled and settings.pulse_agent_configured
+            decision_provider=_openai_pulse_decision_provider(settings, llm_gateway=llm_gateway)
+            if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
             else None,
         ),
         watchlist_intel=WatchlistIntelProviders(
-            summary_provider=_openai_watchlist_summary_provider(settings)
-            if settings.watchlist_handle_summary_enabled and settings.watchlist_handle_summary_configured
+            summary_provider=_openai_watchlist_summary_provider(settings, llm_gateway=llm_gateway)
+            if settings.workers.handle_summary.enabled and settings.watchlist_handle_summary_configured
             else None,
         ),
         marketlane=_wire_marketlane(settings),
     )
+
+
+def wire_asset_market_providers(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
+    _ = start_collector
+    return _wire_asset_market(settings)
 
 
 def okx_chain_indexes_to_chain_ids(chain_indexes: tuple[str, ...] | list[str]) -> tuple[str, ...]:
@@ -374,49 +381,79 @@ def okx_chain_index(chain_id: Any) -> str | None:
     return OKX_CHAIN_TO_CHAIN_INDEX.get(normalized)
 
 
-def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
-    if not start_collector:
-        return AssetMarketProviders()
-    okx_bundle = _wire_okx_provider_bundle(settings)
-    gmgn_dex_market = _gmgn_dex_market(settings) if settings.gmgn_configured else None
-    return AssetMarketProviders(
-        sync_cex_market=okx_bundle.sync_cex_market,
-        message_cex_market=okx_bundle.message_cex_market,
-        dex_discovery_market=okx_bundle.dex_discovery_market,
-        dex_quote_market=gmgn_dex_market,
-        dex_candle_market=gmgn_dex_market,
-        dex_profile_market=gmgn_dex_market,
-        stream_dex_market=okx_bundle.stream_dex_market,
-        discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
-        provider_health=(okx_bundle.health, _gmgn_provider_health(settings)),
-    )
+def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
+    okx_bundle: OkxProviderBundle | None = None
+    gmgn_dex_market: object | None = None
+    try:
+        okx_bundle = _wire_okx_provider_bundle(settings)
+        gmgn_dex_market = _gmgn_dex_market(settings) if settings.gmgn_configured else None
+        return AssetMarketProviders(
+            sync_cex_market=okx_bundle.sync_cex_market,
+            message_cex_market=okx_bundle.message_cex_market,
+            dex_discovery_market=okx_bundle.dex_discovery_market,
+            dex_quote_market=gmgn_dex_market,
+            dex_candle_market=gmgn_dex_market,
+            dex_profile_market=gmgn_dex_market,
+            stream_dex_market=okx_bundle.stream_dex_market,
+            discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
+            provider_health=(okx_bundle.health, _gmgn_provider_health(settings)),
+        )
+    except Exception as exc:
+        _close_partial_providers(
+            exc,
+            getattr(okx_bundle, "sync_cex_market", None),
+            getattr(okx_bundle, "message_cex_market", None),
+            getattr(okx_bundle, "dex_discovery_market", None),
+            getattr(okx_bundle, "stream_dex_market", None),
+            gmgn_dex_market,
+        )
+        raise
 
 
 def _wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
     capabilities: set[MarketCapability] = set()
     shared_cex_market: OkxCexMarketProvider | None = None
-    if settings.okx_cex_sync_enabled:
-        shared_cex_market = _okx_cex_market(settings)
-        capabilities.add(MarketCapability.QUOTE_CEX)
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
-    if settings.okx_dex_configured:
-        dex_discovery_market = _SerializedDiscoveryProvider(_okx_dex_discovery_market(settings))
-        capabilities.add(MarketCapability.SEARCH_DEX)
     stream_dex_market: DexMarketStreamProvider | None = None
-    if settings.okx_dex_ws_configured:
-        stream_dex_market = _okx_dex_ws_market(settings)
-        capabilities.add(MarketCapability.STREAM_DEX)
-    return OkxProviderBundle(
-        sync_cex_market=shared_cex_market,
-        message_cex_market=shared_cex_market,
-        dex_discovery_market=dex_discovery_market,
-        stream_dex_market=stream_dex_market,
-        health=ProviderHealth(
-            provider="okx",
-            capabilities=frozenset(capabilities),
-            configured=bool(capabilities),
-        ),
-    )
+    try:
+        if settings.okx_cex_sync_enabled:
+            shared_cex_market = _okx_cex_market(settings)
+            capabilities.add(MarketCapability.QUOTE_CEX)
+        if settings.okx_dex_configured:
+            dex_discovery_market = _SerializedDiscoveryProvider(_okx_dex_discovery_market(settings))
+            capabilities.add(MarketCapability.SEARCH_DEX)
+        if settings.okx_dex_ws_configured:
+            stream_dex_market = _okx_dex_ws_market(settings)
+            capabilities.add(MarketCapability.STREAM_DEX)
+        return OkxProviderBundle(
+            sync_cex_market=shared_cex_market,
+            message_cex_market=shared_cex_market,
+            dex_discovery_market=dex_discovery_market,
+            stream_dex_market=stream_dex_market,
+            health=ProviderHealth(
+                provider="okx",
+                capabilities=frozenset(capabilities),
+                configured=bool(capabilities),
+            ),
+        )
+    except Exception as exc:
+        _close_partial_providers(exc, shared_cex_market, dex_discovery_market, stream_dex_market)
+        raise
+
+
+def _close_partial_providers(error: BaseException, *providers: object | None) -> None:
+    seen: set[int] = set()
+    for provider in providers:
+        if provider is None or id(provider) in seen:
+            continue
+        seen.add(id(provider))
+        close = getattr(provider, "close", None)
+        if close is None:
+            continue
+        try:
+            close()
+        except Exception as exc:
+            error.add_note(f"partial provider cleanup failed: {type(exc).__name__}: {exc}")
 
 
 def _gmgn_provider_health(settings: Settings) -> ProviderHealth:
@@ -500,47 +537,58 @@ def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapt
             api_key=settings.okx_dex_api_key or "",
             secret_key=settings.okx_dex_secret_key or "",
             passphrase=settings.okx_dex_passphrase or "",
-            subscription_limit=settings.okx_dex_ws_subscription_limit,
+            subscription_limit=settings.workers.live_price_gateway.subscription_limit,
         )
     )
 
 
-def _openai_social_event_provider(settings: Settings) -> OpenAIAgentsSocialEventClient:
+def _openai_social_event_provider(settings: Settings, *, llm_gateway: object | None) -> OpenAIAgentsSocialEventClient:
+    gateway = _require_llm_gateway(llm_gateway)
     return OpenAIAgentsSocialEventClient(
         api_key=settings.llm_api_key or "",
         model=settings.llm_model or "",
+        llm_gateway=gateway,
         base_url=settings.llm_base_url,
         timeout_seconds=settings.llm_timeout_seconds,
         trace_enabled=settings.llm_trace_enabled,
-        trace_api_key=settings.llm_trace_api_key,
         trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
     )
 
 
-def _openai_pulse_decision_provider(settings: Settings) -> OpenAIPulseDecisionProvider:
+def _openai_pulse_decision_provider(settings: Settings, *, llm_gateway: object | None) -> OpenAIPulseDecisionProvider:
+    gateway = _require_llm_gateway(llm_gateway)
     return OpenAIPulseDecisionProvider(
         OpenAIAgentsPulseDecisionClient(
             api_key=settings.llm_api_key or "",
             model=settings.pulse_agent_model or "",
+            llm_gateway=gateway,
             base_url=settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             trace_enabled=settings.llm_trace_enabled,
-            trace_api_key=settings.llm_trace_api_key,
             trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
         )
     )
 
 
-def _openai_watchlist_summary_provider(settings: Settings) -> OpenAIAgentsWatchlistSummaryClient:
+def _openai_watchlist_summary_provider(
+    settings: Settings, *, llm_gateway: object | None
+) -> OpenAIAgentsWatchlistSummaryClient:
+    gateway = _require_llm_gateway(llm_gateway)
     return OpenAIAgentsWatchlistSummaryClient(
         api_key=settings.llm_api_key or "",
         model=settings.watchlist_handle_summary_model or "",
+        llm_gateway=gateway,
         base_url=settings.llm_base_url,
         timeout_seconds=settings.llm_timeout_seconds,
         trace_enabled=settings.llm_trace_enabled,
-        trace_api_key=settings.llm_trace_api_key,
         trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
     )
+
+
+def _require_llm_gateway(llm_gateway: object | None) -> object:
+    if llm_gateway is None:
+        raise RuntimeError("LLMGateway is required for configured OpenAI providers")
+    return llm_gateway
 
 
 def _cex_ticker(ticker: Any) -> CexTicker:
@@ -648,5 +696,6 @@ __all__ = [
     "SocialEnrichmentProviders",
     "WiredProviders",
     "okx_chain_indexes_to_chain_ids",
+    "wire_asset_market_providers",
     "wire_providers",
 ]

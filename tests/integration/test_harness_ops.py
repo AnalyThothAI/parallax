@@ -1,7 +1,15 @@
+import asyncio
+from contextlib import contextmanager
+from types import SimpleNamespace
+
 import pytest
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
+from gmgn_twitter_intel.domains.closed_loop_harness.runtime import harness_ops_worker as harness_ops_module
+from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
     attribute_harness_credits,
     materialize_market_ready_seeds,
@@ -9,11 +17,180 @@ from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import 
     update_harness_weights,
 )
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 from tests.integration.test_api_http import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
+
+
+class RecordingDB:
+    def __init__(self):
+        self.sessions: list[str] = []
+
+    @contextmanager
+    def worker_session(self, name, **_kwargs):
+        self.sessions.append(name)
+        yield SimpleNamespace(harness="harness", evidence="evidence", assets="assets")
+
+
+def test_harness_ops_worker_base_run_once_uses_short_stage_sessions(monkeypatch):
+    calls: list[tuple[str, str | None]] = []
+    db = RecordingDB()
+
+    monkeypatch.setattr(
+        harness_ops_module,
+        "materialize_market_ready_seeds",
+        lambda **_kwargs: calls.append(("materialize", None)) or {"snapshots_written": 2},
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "settle_harness_snapshots",
+        lambda **kwargs: calls.append(("settle", kwargs["horizon"])) or {"outcomes_written": 1},
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "attribute_harness_credits",
+        lambda **kwargs: calls.append(("credit", kwargs["horizon"])) or {"credits_written": 1},
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "update_harness_weights",
+        lambda **_kwargs: calls.append(("weights", None)) or {"weights_updated": 3},
+    )
+    worker = HarnessOpsWorker(
+        name="harness_ops",
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=60.0,
+            batch_size=200,
+            statement_timeout_seconds=30.0,
+        ),
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert isinstance(worker, WorkerBase)
+    assert isinstance(result, WorkerResult)
+    assert result.processed == 9
+    assert db.sessions == ["harness_ops"] * 6
+    assert calls == [
+        ("materialize", None),
+        ("settle", "6h"),
+        ("settle", "24h"),
+        ("credit", "6h"),
+        ("credit", "24h"),
+        ("weights", None),
+    ]
+
+
+def test_harness_ops_worker_uses_configured_horizons(monkeypatch):
+    calls: list[tuple[str, str | None]] = []
+    db = RecordingDB()
+
+    monkeypatch.setattr(
+        harness_ops_module,
+        "materialize_market_ready_seeds",
+        lambda **_kwargs: calls.append(("materialize", None)) or {"snapshots_written": 2},
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "settle_harness_snapshots",
+        lambda **kwargs: calls.append(("settle", kwargs["horizon"])) or {"outcomes_written": 1},
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "attribute_harness_credits",
+        lambda **kwargs: calls.append(("credit", kwargs["horizon"])) or {"credits_written": 1},
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "update_harness_weights",
+        lambda **_kwargs: calls.append(("weights", None)) or {"weights_updated": 3},
+    )
+    settings = WorkersSettings(harness_ops={"horizons": ["6h"]}).harness_ops
+    worker = HarnessOpsWorker(
+        name="harness_ops",
+        settings=settings,
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert result.processed == 7
+    assert db.sessions == ["harness_ops"] * 4
+    assert calls == [
+        ("materialize", None),
+        ("settle", "6h"),
+        ("credit", "6h"),
+        ("weights", None),
+    ]
+
+
+def test_harness_ops_worker_processed_counts_only_successful_writes(monkeypatch):
+    db = RecordingDB()
+
+    monkeypatch.setattr(
+        harness_ops_module,
+        "materialize_market_ready_seeds",
+        lambda **_kwargs: {
+            "seeds_scanned": 5,
+            "snapshots_written": 2,
+            "skipped_missing_market": 1,
+            "errors": 1,
+        },
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "settle_harness_snapshots",
+        lambda **_kwargs: {
+            "snapshots_scanned": 10,
+            "outcomes_written": 1,
+            "still_blocked": 2,
+            "skipped_insufficient_market_data": 3,
+            "errors": 1,
+        },
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "attribute_harness_credits",
+        lambda **_kwargs: {
+            "snapshots_scanned": 8,
+            "credits_written": 4,
+            "skipped_no_outcome": 1,
+        },
+    )
+    monkeypatch.setattr(
+        harness_ops_module,
+        "update_harness_weights",
+        lambda **_kwargs: {
+            "weights_scanned": 100,
+            "weights_updated": 3,
+            "skipped_low_confidence": 4,
+            "errors": 2,
+        },
+    )
+    worker = HarnessOpsWorker(
+        name="harness_ops",
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=60.0,
+            batch_size=200,
+            statement_timeout_seconds=30.0,
+            horizons=("6h",),
+        ),
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert result.processed == 10
+    assert result.failed == 4
 
 
 def test_harness_ops_settle_attribute_and_update_weights(tmp_path):

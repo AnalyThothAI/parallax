@@ -22,7 +22,21 @@ class FakeRunner:
         return SimpleNamespace(final_output=self.output)
 
 
+class FakeGateway:
+    def __init__(self, *, trace_export_enabled: bool = True):
+        self.trace_export_enabled = trace_export_enabled
+        self.calls = []
+
+    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
+        self.calls.append({"worker_name": worker_name, "stage": stage, "timeout_s": timeout_s})
+        return await coro_factory()
+
+    def openai_client(self, *, model, base_url, timeout_s):
+        return object()
+
+
 def test_openai_agents_client_uses_typed_agent_output_and_trace_metadata():
+    gateway = FakeGateway()
     runner = FakeRunner(
         SocialEventPayload.model_validate(
             {
@@ -60,6 +74,7 @@ def test_openai_agents_client_uses_typed_agent_output_and_trace_metadata():
     client = OpenAIAgentsSocialEventClient(
         api_key="sk-test",
         model="gpt-test",
+        llm_gateway=gateway,
         base_url="https://api.openai.com/v1",
         timeout_seconds=7,
         runner=runner,
@@ -82,6 +97,7 @@ def test_openai_agents_client_uses_typed_agent_output_and_trace_metadata():
     )
 
     call = runner.calls[0]
+    assert gateway.calls == [{"worker_name": "enrichment", "stage": "social_event", "timeout_s": 7}]
     assert call["agent"].tools == []
     assert call["agent"].output_type is SocialEventPayload
     assert call["agent"].model is None
@@ -101,16 +117,11 @@ def test_openai_agents_client_uses_typed_agent_output_and_trace_metadata():
     assert result.agent_run_audit["backend"] == "openai_agents_sdk"
 
 
-def test_openai_agents_client_sets_configured_trace_export_key(monkeypatch):
-    exported_keys = []
-    monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client.set_tracing_export_api_key",
-        exported_keys.append,
-    )
-
-    OpenAIAgentsSocialEventClient(
+def test_openai_agents_client_uses_gateway_trace_export_state():
+    client = OpenAIAgentsSocialEventClient(
         api_key="sk-configured",
         model="gpt-test",
+        llm_gateway=FakeGateway(trace_export_enabled=True),
         runner=FakeRunner(
             SocialEventPayload.model_validate(
                 {
@@ -133,19 +144,14 @@ def test_openai_agents_client_sets_configured_trace_export_key(monkeypatch):
         trace_enabled=True,
     )
 
-    assert exported_keys == ["sk-configured"]
+    assert client.trace_enabled is True
 
 
-def test_openai_agents_client_does_not_export_custom_provider_key(monkeypatch):
-    exported_keys = []
-    monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client.set_tracing_export_api_key",
-        exported_keys.append,
-    )
-
+def test_openai_agents_client_disables_tracing_when_gateway_has_no_export_key():
     client = OpenAIAgentsSocialEventClient(
         api_key="custom-provider-key",
         model="qwen3.6",
+        llm_gateway=FakeGateway(trace_export_enabled=False),
         base_url="https://big9er.com/v1",
         runner=FakeRunner(
             SocialEventPayload.model_validate(
@@ -169,7 +175,6 @@ def test_openai_agents_client_does_not_export_custom_provider_key(monkeypatch):
         trace_enabled=True,
     )
 
-    assert exported_keys == []
     assert client.trace_enabled is False
 
 
@@ -177,6 +182,7 @@ def test_openai_agents_client_can_build_failure_audit_before_model_returns():
     client = OpenAIAgentsSocialEventClient(
         api_key="sk-test",
         model="gpt-test",
+        llm_gateway=FakeGateway(),
         runner=FakeRunner(
             SocialEventPayload.model_validate(
                 {

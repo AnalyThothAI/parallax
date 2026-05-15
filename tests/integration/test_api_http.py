@@ -2,11 +2,13 @@ import json
 import time
 from dataclasses import replace
 from decimal import Decimal
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
+from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
 from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
     ApiUnauthorized,
@@ -304,8 +306,24 @@ class FakeRepositoryContext:
 class FakeRuntime:
     def __init__(self, pulse):
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
-        self.pulse_candidate_task = FakePulseTask()
         self.pulse = pulse
+        self.workers = {
+            "pulse_candidate": SimpleNamespace(
+                status_payload=lambda: {
+                    "enabled": True,
+                    "running": True,
+                    "last_started_at_ms": None,
+                    "last_finished_at_ms": None,
+                    "last_result": None,
+                    "last_error": None,
+                }
+            )
+        }
+        self.scheduler = SimpleNamespace(
+            tasks={},
+            status_payload=lambda: {"pulse_candidate": self.workers["pulse_candidate"].status_payload()},
+            unhealthy_reasons=lambda: [],
+        )
 
     def repositories(self):
         return FakeRepositoryContext(self.pulse)
@@ -376,7 +394,8 @@ def make_token_event(
 
 
 def rebuild_token_radar(client: TestClient, *, now_ms: int | None = None) -> None:
-    worker = client.app.state.service.token_radar_projection_worker
+    worker_entry = client.app.state.service.workers["token_radar_projection"]
+    worker = getattr(worker_entry, "worker", worker_entry)
     assert worker is not None
     worker.rebuild_once(now_ms=now_ms if now_ms is not None else int(time.time() * 1000))
 
@@ -479,14 +498,21 @@ def test_api_status_exposes_anchor_and_live_market_status(tmp_path):
         response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    anchor_price = response.json()["data"]["anchor_price"]
-    assert set(anchor_price) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
-    live_price_gateway = response.json()["data"]["live_price_gateway"]
-    assert set(live_price_gateway) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
-    resolution_refresh = response.json()["data"]["resolution_refresh"]
-    assert set(resolution_refresh) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
-    token_radar_projection = response.json()["data"]["token_radar_projection"]
-    assert set(token_radar_projection) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
+    data = response.json()["data"]
+    assert "anchor_price" not in data
+    assert "live_price_gateway" not in data
+    assert "resolution_refresh" not in data
+    assert "token_radar_projection" not in data
+    workers = data["workers"]
+    for name in ("anchor_price", "live_price_gateway", "resolution_refresh", "token_radar_projection"):
+        assert set(workers[name]) >= {
+            "enabled",
+            "running",
+            "last_started_at_ms",
+            "last_finished_at_ms",
+            "last_result",
+            "last_error",
+        }
 
 
 def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
@@ -659,7 +685,7 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
             ),
             is_watched=True,
         )
-        runtime.live_price_gateway = FakeLiveGateway()
+        runtime.workers["live_price_gateway"].worker = FakeLiveGateway()
         rebuild_token_radar(client, now_ms=now_ms + 1_000)
 
         response = client.get(
@@ -1243,7 +1269,9 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
 
 
 def test_api_live_market_returns_unsupported_without_live_gateway(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    settings = make_settings(tmp_path)
+    settings.workers.live_price_gateway.enabled = False
+    app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
@@ -1538,9 +1566,24 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["data"]["collector"]["frames_received"] == 0
-    assert body["data"]["handles"] == ["toly", "elonmusk"]
-    assert body["data"]["enrichment"]["llm_configured"] is False
+    data = body["data"]
+    assert data["handles"] == ["toly", "elonmusk"]
+    assert set(CANONICAL_WORKER_NAMES).issubset(data["workers"])
+    assert "collector" not in data
+    assert "enrichment" not in data
+    assert "notifications" not in data
+
+    collector = data["workers"]["collector"]
+    assert collector["enabled"] is False
+    assert collector["running"] is False
+    assert collector["queue_depth"] is None
+    assert collector["details"]["frames_received"] == 0
+    assert collector["details"]["matched_twitter_events"] == 0
+    assert collector["details"]["snapshot_gate_outcomes"] == data["snapshot_gate"]
+
+    enrichment = data["workers"]["enrichment"]
+    assert enrichment["enabled"] is False
+    assert enrichment["running"] is False
 
 
 def test_api_rejects_removed_narrative_product_surfaces(tmp_path):

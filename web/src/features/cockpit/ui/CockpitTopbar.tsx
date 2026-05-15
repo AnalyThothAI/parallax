@@ -45,6 +45,9 @@ export function CockpitTopbar({
 }: CockpitTopbarProps) {
   const navigate = useNavigate();
   const [searchDraft, setSearchDraft] = useState("");
+  const matchedTwitterEvents = numberDetail(
+    status.status?.workers.collector?.details?.matched_twitter_events,
+  );
 
   return (
     <header className="topbar">
@@ -99,7 +102,7 @@ export function CockpitTopbar({
 
       <div className="top-stats">
         <span>
-          matched <b>{compactNumber(status.status?.collector.matched_twitter_events)}</b>
+          matched <b>{compactNumber(matchedTwitterEvents)}</b>
         </span>
         <span>
           flow·{stats.windowKey} <b>{compactNumber(stats.tokenItemsCount)}</b>
@@ -131,6 +134,10 @@ export function CockpitTopbar({
       </IconButton>
     </header>
   );
+}
+
+function numberDetail(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function WsStatusBeacon({

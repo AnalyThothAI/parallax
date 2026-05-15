@@ -29,13 +29,23 @@ class StatusData(ApiSchema):
     reasons: list[str] = Field(default_factory=list)
     handles: list[str] = Field(default_factory=list)
     store: str | None = None
-    collector: JsonObject | None = None
-    enrichment: JsonObject | None = None
-    token_radar_projection: JsonObject | None = None
-    anchor_price: JsonObject | None = None
-    live_price_gateway: JsonObject | None = None
-    notifications: JsonObject | None = None
-    watchlist_handle_summary: JsonObject | None = None
+    snapshot_gate: JsonObject = Field(default_factory=dict)
+    db: JsonObject | None = None
+    provider_states: JsonObject = Field(default_factory=dict)
+    workers: dict[str, WorkerStatusData] = Field(default_factory=dict)
+
+
+class WorkerStatusData(ApiSchema):
+    enabled: bool
+    running: bool
+    last_started_at_ms: int | None = None
+    last_finished_at_ms: int | None = None
+    last_result: JsonObject | None = None
+    last_error: str | None = None
+    iteration_duration_p99_ms: float | None = None
+    queue_depth: int | None = None
+    pool_wait_ms_p99: float | None = None
+    details: JsonObject = Field(default_factory=dict)
 
 
 class RecentData(ApiSchema):

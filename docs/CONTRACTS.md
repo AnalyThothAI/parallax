@@ -4,35 +4,45 @@
 
 These surfaces change only with a versioned spec — refactors must preserve them.
 
-## Config (`~/.gmgn-twitter-intel/config.yaml`)
+## Config Files
 
-The only application config source.
+The service has two operator-owned YAML files in
+`~/.gmgn-twitter-intel/`.
+
+### Application Config (`config.yaml`)
+
+`config.yaml` owns application, provider, credential, and public-surface
+settings. It must not contain worker runtime knobs.
 
 - `handles` — watched Twitter handles.
 - `ws_token` — public WebSocket API token.
 - `api` — FastAPI bind address and replay settings.
 - `storage.postgres` — DSN, password file, pool, timeout.
-- `llm.api_key` / `llm.model` — optional, for watched-account social-event extraction.
-- `llm.pulse_agent_*` — optional Signal Pulse decision worker config. Current gate knobs are:
-  `pulse_agent_trigger_min_rank_score`, `pulse_agent_gate_trade_candidate_min`,
-  `pulse_agent_gate_token_watch_min`,
-  `pulse_agent_gate_high_info_rejection_min`, and
-  `pulse_agent_gate_high_conviction_min`. Older heat / quality / propagation /
-  tradeability / timing Pulse threshold keys are rejected.
-- `llm.watchlist_handle_summary_*` — optional Watchlist handle topic-summary
-  worker config. Current knobs are `watchlist_handle_summary_enabled`,
-  `watchlist_handle_summary_model`, `watchlist_handle_summary_signal_threshold`,
-  `watchlist_handle_summary_time_threshold_ms`,
-  `watchlist_handle_summary_min_interval_ms`,
-  `watchlist_handle_summary_poll_interval_seconds`,
-  `watchlist_handle_summary_concurrency`,
-  `watchlist_handle_summary_input_limit`,
-  `watchlist_handle_summary_window_days`,
-  `watchlist_handle_summary_lease_ms`, and
-  `watchlist_handle_summary_max_attempts`.
+- `llm` — optional LLM provider config: credentials, provider/base URL,
+  default model, Pulse model override, Watchlist handle-summary model
+  override, timeout, and tracing/export settings.
 - Optional market-related groups (OKX, GMGN OpenAPI, Marketlane) for identity
   discovery, route sync, anchor-price lookup, the process-local live price
   gateway, and request-time US equity quote snapshots.
+
+Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`,
+`lease_ms`, `max_attempts`, advisory-lock, timeout, wake-channel, Pulse
+trigger/gate, and Watchlist summary queue/gate settings are rejected from
+`config.yaml`.
+
+### Worker Runtime Config (`workers.yaml`)
+
+`workers.yaml` is the only source for worker runtime knobs. It contains
+`defaults` plus one block per canonical worker key:
+
+`collector`, `anchor_price`, `live_price_gateway`,
+`resolution_refresh`, `asset_profile_refresh`,
+`token_radar_projection`, `pulse_candidate`, `enrichment`,
+`handle_summary`, `harness_ops`, `notification_rule`, and
+`notification_delivery`.
+
+The schema is `WorkersSettings`; the canonical key list is guarded
+against `worker_registry.py` and `docs/WORKERS.md`.
 
 ## WebSocket at `/ws`
 
@@ -50,6 +60,21 @@ FastAPI response models are the source for generated frontend types:
 `web/src/lib/types/openapi.ts`. Frontend code consumes those generated types via
 `@lib/types`; do not reintroduce handwritten `web/src/api/types.ts` or
 `web/src/api/client.ts` contract surfaces.
+
+Runtime health/status contract:
+
+- `/readyz` and `/api/status` expose worker state only under
+  `data.workers` / `workers` as a map keyed by canonical worker key.
+  Old top-level worker sections such as `collector`,
+  `token_radar_projection`, or `pulse_candidate` are removed.
+- Each worker status contains common `WorkerBase` fields:
+  `enabled`, `running`, timestamps, `last_result`, `last_error`,
+  `iteration_duration_p99_ms`, `queue_depth`, and `pool_wait_ms_p99`.
+- `workers.collector.details` carries collector counters such as
+  `frames_received`, `matched_twitter_events`, parse/duplicate counts,
+  provider counters, and `snapshot_gate_outcomes`.
+- `snapshot_gate` is a global health field copied from collector
+  snapshot-gate counters; it is not a worker section.
 
 Token Radar market contract:
 
@@ -203,9 +228,14 @@ Search V2 contract:
 
 `gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The
 `--help` output is the source of truth — do not enumerate verbs in this
-document. `ops refresh-asset-profiles` is the one-shot operator path for due
-GMGN exact-token profile refreshes; it returns an explicit skipped result when
-the GMGN profile provider is not configured.
+document. `config` prints both `config_path` and `workers_config_path`
+and includes the effective `workers` settings loaded from `workers.yaml`.
+`ops worker-status` bootstraps the runtime without the upstream
+collector and returns the canonical worker map plus queue depths where
+queue tables exist. `ops refresh-asset-profiles` is the one-shot
+operator path for due GMGN exact-token profile refreshes; it returns an
+explicit skipped result when the GMGN profile provider is not
+configured.
 
 ## Token Radar Factor Snapshot Discipline
 

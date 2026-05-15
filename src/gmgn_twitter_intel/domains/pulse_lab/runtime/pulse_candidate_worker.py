@@ -4,13 +4,15 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager, nullcontext, suppress
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import Any, cast
 
 from loguru import logger
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     AGENT_NAME,
     BACKEND,
@@ -56,6 +58,7 @@ DEFAULT_WINDOWS = ("1h",)
 DEFAULT_SCOPES = ("all",)
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
 PULSE_EDGE_BUDGET_PER_HOUR = 3
+ADVISORY_LOCK_KEY = 2026051502
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 
@@ -109,71 +112,33 @@ class PulseTriggerThresholds:
     min_rank_score: int = 45
 
 
-class PulseCandidateWorker:
+class PulseCandidateWorker(WorkerBase):
+    SINGLE_WRITER_KEY = ADVISORY_LOCK_KEY
+
     def __init__(
         self,
         *,
-        repository_session: Callable[[], AbstractContextManager[Any]],
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         decision_client: PulseDecisionProvider,
         gate_func: Callable[..., PulseGateResult] = gate_pulse_candidate_from_factor_snapshot,
-        windows: tuple[str, ...] = DEFAULT_WINDOWS,
-        scopes: tuple[str, ...] = DEFAULT_SCOPES,
-        poll_interval: float = 60.0,
-        batch_size: int = 10,
-        max_attempts: int = 3,
         trigger_thresholds: PulseTriggerThresholds | None = None,
         gate_thresholds: PulseGateThresholds | None = None,
-        wake_listener: Any | None = None,
+        wake_waiter: Any | None = None,
     ) -> None:
-        self.repository_session = repository_session
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.decision_client = decision_client
         self.gate_func = gate_func
-        self.windows = tuple(windows)
-        self.scopes = tuple(scopes)
-        self.poll_interval = max(1.0, float(poll_interval))
-        self.batch_size = max(1, int(batch_size))
-        self.max_attempts = max(1, int(max_attempts))
-        self.trigger_thresholds = trigger_thresholds or PulseTriggerThresholds()
-        self.gate_thresholds = gate_thresholds or PulseGateThresholds()
-        self.wake_listener = wake_listener
-        self.last_started_at_ms: int | None = None
-        self.last_run_at_ms: int | None = None
-        self.last_result: dict[str, Any] | None = None
-        self.last_error: str | None = None
-        self._stopped: bool = False
-        self._wake_queue: asyncio.Queue[None] | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self.windows = tuple(getattr(settings, "windows", DEFAULT_WINDOWS) or DEFAULT_WINDOWS)
+        self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
+        self.batch_size = max(1, int(getattr(settings, "batch_size", 10) or 10))
+        self.max_attempts = max(1, int(getattr(settings, "max_attempts", 3) or 3))
+        self.trigger_thresholds = trigger_thresholds or _trigger_thresholds_from_settings(settings)
+        self.gate_thresholds = gate_thresholds or _gate_thresholds_from_settings(settings)
 
-    async def run(self) -> None:
-        self._loop = asyncio.get_running_loop()
-        self._wake_queue = asyncio.Queue(maxsize=1)
-        listener_task = asyncio.create_task(self._listen_for_wake_hints())
-        try:
-            while not self._stopped:
-                try:
-                    await self.run_once_async()
-                except asyncio.CancelledError:
-                    self._stopped = True
-                    raise
-                except Exception as exc:  # pragma: no cover - watchdog path
-                    self.last_error = str(exc)
-                    logger.exception(f"pulse candidate worker failed: {exc}")
-                if self._stopped:
-                    break
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(self._wake_queue.get(), timeout=self.poll_interval)
-        finally:
-            listener_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await listener_task
-            self._wake_queue = None
-            self._loop = None
-
-    def stop(self) -> None:
-        self._stopped = True
-        self._enqueue_wake()
-
-    async def aclose(self) -> None:
+    async def on_close(self) -> None:
         close = getattr(self.decision_client, "aclose", None)
         if close is not None:
             await close()
@@ -182,47 +147,24 @@ class PulseCandidateWorker:
         if close_sync is not None:
             close_sync()
 
-    async def _listen_for_wake_hints(self) -> None:
-        while not self._stopped:
-            if self.wake_listener is None:
-                await asyncio.sleep(self.poll_interval)
-                continue
-            try:
-                listen_pulse_wakes = cast(Callable[..., None], self.wake_listener.listen_pulse_wakes)
-                await asyncio.to_thread(
-                    listen_pulse_wakes,
-                    on_wake=self._enqueue_wake_threadsafe,
-                    should_stop=lambda: self._stopped,
-                    interval_seconds=self.poll_interval,
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # pragma: no cover - listener diagnostics
-                logger.debug(f"pulse candidate wake listener unavailable: {exc}")
-                await asyncio.sleep(self.poll_interval)
-
-    def _enqueue_wake_threadsafe(self) -> None:
-        loop = self._loop
-        if loop is None:
-            return
-        loop.call_soon_threadsafe(self._enqueue_wake)
-
-    def _enqueue_wake(self) -> None:
-        queue = self._wake_queue
-        if queue is None or queue.full():
-            return
-        queue.put_nowait(None)
+    async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
+        result = await self.run_once_async(now_ms=now_ms)
+        scan = result["scan"]
+        process = result["process"]
+        return WorkerResult(
+            processed=int(process.get("processed") or 0) + int(scan.get("asset_enqueued") or 0),
+            failed=int(process.get("failed") or 0),
+            skipped=int(scan.get("asset_skipped") or 0) + int(process.get("missing_context") or 0),
+            notes=result,
+        )
 
     async def run_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
         started_at_ms = int(now_ms if now_ms is not None else _now_ms())
-        self.last_started_at_ms = started_at_ms
         self.last_error = None
         scan = await asyncio.to_thread(self.scan_triggers_once, now_ms=started_at_ms)
         process_now_ms = started_at_ms if now_ms is not None else None
         process = await self.process_due_jobs_once_async(now_ms=process_now_ms)
         result = {"scan": scan, "process": process}
-        self.last_run_at_ms = _now_ms()
-        self.last_result = result
         return result
 
     def scan_triggers_once(self, *, now_ms: int | None = None) -> dict[str, int]:
@@ -235,7 +177,7 @@ class PulseCandidateWorker:
             "source_enqueued": 0,
             "source_skipped": 0,
         }
-        with self.repository_session() as repos:
+        with self._repository_session() as repos:
             for window in self.windows:
                 for scope in self.scopes:
                     rows = repos.token_radar.latest_rows(
@@ -263,14 +205,14 @@ class PulseCandidateWorker:
         result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0}
         for _ in range(self.batch_size):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-            with self.repository_session() as repos:
+            with self._repository_session() as repos:
                 job = repos.pulse.claim_due_job(now_ms=resolved_now_ms)
             if job is None:
                 break
             result["claimed"] += 1
             context = _context_from_job(job)
             if context is None:
-                with self.repository_session() as repos:
+                with self._repository_session() as repos:
                     repos.pulse.mark_job_failed(
                         job,
                         "pulse_candidate_context_missing",
@@ -477,7 +419,7 @@ class PulseCandidateWorker:
                 completeness=completeness_json,
                 harness=harness,
             )
-            with self.repository_session() as repos, _transaction(repos.conn):
+            with self._repository_session() as repos, _transaction(repos.conn):
                 repos.pulse.upsert_agent_harness_version(
                     harness_version=str(harness["harness_version"]),
                     harness_hash=harness_hash,
@@ -519,12 +461,14 @@ class PulseCandidateWorker:
                     commit=False,
                 )
             if completeness.hard_blocked:
+                gate_step_started_at_ms = _now_ms()
                 final_decision = _abstain_decision(
                     route=route,
                     reason=(completeness.blockers[0] if completeness.blockers else "data_completeness_blocked"),
                     summary_zh="数据完整度不足，未进入资产决策。",
                     residual_risks=list(completeness.blockers),
                 )
+                gate_step_finished_at_ms = _now_ms()
                 stage_audits: tuple[StageRunAudit, ...] = (
                     StageRunAudit(
                         stage="research_only_gate",
@@ -535,7 +479,9 @@ class PulseCandidateWorker:
                         response_json=final_decision.model_dump(mode="json"),
                         trace_metadata_json=audit.get("trace_metadata") or {},
                         usage_json={},
-                        latency_ms=0,
+                        latency_ms=max(0, gate_step_finished_at_ms - gate_step_started_at_ms),
+                        started_at_ms=gate_step_started_at_ms,
+                        finished_at_ms=gate_step_finished_at_ms,
                         status="skipped",
                         error=None,
                     ),
@@ -564,7 +510,7 @@ class PulseCandidateWorker:
             decision_fields = candidate_fields_from_decision(final_decision, stage_count=len(stage_audits))
             decision_fields.pop("score_band", None)
             outcome = _run_outcome(final_decision, completeness_blocked=completeness.hard_blocked)
-            with self.repository_session() as repos, _transaction(repos.conn):
+            with self._repository_session() as repos, _transaction(repos.conn):
                 for stage_audit in stage_audits:
                     repos.pulse.insert_agent_run_step(
                         step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
@@ -584,8 +530,8 @@ class PulseCandidateWorker:
                         latency_ms=stage_audit.latency_ms,
                         status=stage_audit.status,
                         error=stage_audit.error,
-                        started_at_ms=finished_at_ms,
-                        finished_at_ms=finished_at_ms,
+                        started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
+                        finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
                         created_at_ms=finished_at_ms,
                         commit=False,
                     )
@@ -594,7 +540,7 @@ class PulseCandidateWorker:
                     "done",
                     response_json=final_decision.model_dump(mode="json"),
                     output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
-                    usage_json=result_audit.get("usage") or {},
+                    usage_json=result_audit.get("usage") or _aggregate_stage_usage(stage_audits),
                     outcome=outcome,
                     decision_route=route,
                     decision_stage_count=len(stage_audits),
@@ -677,7 +623,7 @@ class PulseCandidateWorker:
             failed_audits: tuple[StageRunAudit, ...] = ()
             if isinstance(exc, PulseStageFailure):
                 failed_audits = exc.audits
-            with self.repository_session() as repos, _transaction(repos.conn):
+            with self._repository_session() as repos, _transaction(repos.conn):
                 for stage_audit in failed_audits:
                     repos.pulse.insert_agent_run_step(
                         step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
@@ -697,8 +643,8 @@ class PulseCandidateWorker:
                         latency_ms=stage_audit.latency_ms,
                         status=stage_audit.status,
                         error=stage_audit.error,
-                        started_at_ms=failed_at_ms,
-                        finished_at_ms=failed_at_ms,
+                        started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
+                        finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
                         created_at_ms=failed_at_ms,
                         commit=False,
                     )
@@ -714,6 +660,14 @@ class PulseCandidateWorker:
                 repos.pulse.mark_job_failed(job, str(exc), now_ms=failed_at_ms, commit=False)
             raise
 
+    @contextmanager
+    def _repository_session(self) -> Iterator[Any]:
+        with self.db.worker_session(
+            self.name,
+            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+        ) as repos:
+            yield repos
+
 
 def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds | None = None) -> bool:
     factor_snapshot = _factor_snapshot(row)
@@ -726,6 +680,46 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
     watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_heat", "facts", "watched_mentions"))
     return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score or watched_mentions > 0
+
+
+def _trigger_thresholds_from_settings(settings: Any) -> PulseTriggerThresholds:
+    config = getattr(settings, "trigger_thresholds", None)
+    return PulseTriggerThresholds(min_rank_score=int(getattr(config, "min_rank_score", 45) or 45))
+
+
+def _gate_thresholds_from_settings(settings: Any) -> PulseGateThresholds:
+    config = getattr(settings, "gate_thresholds", None)
+    return PulseGateThresholds(
+        trade_candidate_min=int(getattr(config, "trade_candidate_min", 72) or 72),
+        token_watch_min=int(getattr(config, "token_watch_min", 45) or 45),
+        high_info_rejection_min=int(getattr(config, "high_info_rejection_min", 30) or 30),
+        high_conviction_min=int(getattr(config, "high_conviction_min", 78) or 78),
+    )
+
+
+def _stage_finished_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
+    value = stage_audit.finished_at_ms
+    if value is not None:
+        return int(value)
+    return int(fallback_finished_at_ms)
+
+
+def _stage_started_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
+    value = stage_audit.started_at_ms
+    if value is not None:
+        return int(value)
+    finished_at_ms = _stage_finished_at_ms(stage_audit, fallback_finished_at_ms=fallback_finished_at_ms)
+    return max(0, finished_at_ms - int(stage_audit.latency_ms or 0))
+
+
+def _aggregate_stage_usage(stage_audits: tuple[StageRunAudit, ...]) -> dict[str, Any]:
+    totals: dict[str, int | float] = {}
+    for stage_audit in stage_audits:
+        for key, value in stage_audit.usage_json.items():
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                continue
+            totals[key] = totals.get(key, 0) + value
+    return totals
 
 
 def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:

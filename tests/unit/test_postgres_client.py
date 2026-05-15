@@ -119,6 +119,38 @@ def test_create_pool_uses_host_side_compose_dsn_mapping(monkeypatch):
     assert captured["conninfo"] == "postgresql://gmgn_app@127.0.0.1:56532/gmgn_twitter_intel"
 
 
+def test_create_pool_passes_application_timeouts_and_keepalives(monkeypatch):
+    captured = {}
+
+    class FakePool:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(postgres_client, "ConnectionPool", FakePool)
+
+    create_pool(
+        "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel",
+        min_size=1,
+        max_size=2,
+        connect_timeout_seconds=5,
+        application_name="gmgn_worker",
+        statement_timeout_seconds=30,
+        idle_in_transaction_session_timeout_seconds=15,
+        keepalives=True,
+        keepalives_idle=20,
+        keepalives_interval=5,
+        keepalives_count=3,
+    )
+
+    kwargs = captured["kwargs"]
+    assert kwargs["application_name"] == "gmgn_worker"
+    assert kwargs["options"] == "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=15000"
+    assert kwargs["keepalives"] == 1
+    assert kwargs["keepalives_idle"] == 20
+    assert kwargs["keepalives_interval"] == 5
+    assert kwargs["keepalives_count"] == 3
+
+
 def test_postgres_health_check_reports_liveness_and_migration_version():
     payload = postgres_health_check(FakeConn())
 

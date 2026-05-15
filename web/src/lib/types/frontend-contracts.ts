@@ -1362,61 +1362,28 @@ export type EnrichmentJobsData = {
   counts: Record<string, number>;
 };
 
+export type WorkerStatusData = {
+  enabled: boolean;
+  running: boolean;
+  last_started_at_ms?: number | null;
+  last_finished_at_ms?: number | null;
+  last_result?: Record<string, unknown> | null;
+  last_error?: string | null;
+  iteration_duration_p99_ms?: number | null;
+  queue_depth?: number | null;
+  pool_wait_ms_p99?: number | null;
+  details?: Record<string, unknown>;
+};
+
 export type StatusData = {
   ok: boolean;
   reasons: string[];
   handles: string[];
   store: string;
-  collector: {
-    started_at_ms: number;
-    frames_received: number;
-    twitter_events: number;
-    matched_twitter_events: number;
-    events_published: number;
-    duplicate_twitter_events: number;
-    duplicate_matched_twitter_events: number;
-    parse_errors: number;
-    last_frame_at_ms?: number | null;
-    last_event_at_ms?: number | null;
-    last_matched_event_at_ms?: number | null;
-  };
-  enrichment: {
-    llm_configured: boolean;
-    worker_running: boolean;
-    job_counts: Record<string, number>;
-  };
-  harness_ops?: {
-    worker_running: boolean;
-    last_run_at_ms?: number | null;
-    last_result?: Record<string, unknown> | null;
-  };
-  token_radar_projection?: {
-    worker_running: boolean;
-    last_started_at_ms?: number | null;
-    last_run_at_ms?: number | null;
-    last_result?: Record<string, unknown> | null;
-    last_error?: string | null;
-  };
-  anchor_price?: {
-    worker_running: boolean;
-    last_started_at_ms?: number | null;
-    last_run_at_ms?: number | null;
-    last_result?: Record<string, unknown> | null;
-    last_error?: string | null;
-  };
-  live_price_gateway?: {
-    configured?: boolean;
-    worker_running: boolean;
-    subscription_limit?: number | null;
-    last_started_at_ms?: number | null;
-    last_run_at_ms?: number | null;
-    last_result?: Record<string, unknown> | null;
-    last_error?: string | null;
-  };
-  notifications?: {
-    enabled: boolean;
-    worker_running: boolean;
-    delivery_worker_running?: boolean;
-    summary: NotificationSummary;
+  snapshot_gate?: Record<string, unknown>;
+  db?: Record<string, unknown> | null;
+  provider_states?: Record<string, unknown>;
+  workers: Record<string, WorkerStatusData> & {
+    collector: WorkerStatusData;
   };
 };

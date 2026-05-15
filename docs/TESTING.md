@@ -35,5 +35,19 @@ animations, real-network behaviour) must be exercised manually and recorded unde
 
 Cross-domain runtime worker inventory (fact writes, wake channels, catch-up
 cadence) lives in `docs/WORKERS.md`. A new worker must appear in that
-inventory, in `app/runtime/app.py`'s task list, and in the owning domain's
-`ARCHITECTURE.md` in the same change.
+inventory, in `app/runtime/worker_registry.py`, in `WorkersSettings` /
+the default `workers.yaml`, and in the owning domain's
+`ARCHITECTURE.md` in the same change. All long-running workers must
+inherit `WorkerBase`; `IngestService` is a transactional service, not a
+worker.
+
+Architecture guards enforce that `worker_registry.py`,
+`WorkersSettings`, `workers.yaml`, and the `docs/WORKERS.md`
+`worker-inventory-keys` marker stay in lockstep. They also guard that
+`/readyz` and `/api/status` expose worker state under the `workers` map
+instead of old top-level worker sections, and that worker runtime
+settings live in `workers.yaml` rather than application config models.
+
+Worker tests must keep external IO outside DB worker sessions. Provider
+clients, publishers, wake waits, and other network/process IO cannot run
+inside `DBPoolBundle.worker_session()` blocks.

@@ -1,5 +1,8 @@
 import asyncio
+from types import SimpleNamespace
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.platform.config.settings import NotificationChannelConfig
@@ -30,6 +33,38 @@ def open_repo(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     return conn, NotificationRepository(conn)
+
+
+class SingleConnectionDB:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def worker_session(self, *_args, **_kwargs):
+        return repository_session_for_connection(self.conn)
+
+
+def worker_settings(**overrides):
+    values = {
+        "enabled": True,
+        "interval_seconds": 0.2,
+        "batch_size": 1,
+        "max_attempts": 5,
+        "statement_timeout_seconds": 30.0,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def delivery_worker(conn, *, channels, adapter=None, pushdeer_adapter=None, settings=None):
+    return NotificationDeliveryWorker(
+        name="notification_delivery",
+        settings=settings or worker_settings(),
+        db=SingleConnectionDB(conn),
+        telemetry=SimpleNamespace(),
+        channels=channels,
+        adapter=adapter,
+        pushdeer_adapter=pushdeer_adapter,
+    )
 
 
 def seed_delivery(repo: NotificationRepository, *, max_attempts=3, provider="apprise"):
@@ -65,7 +100,8 @@ def test_delivery_worker_sends_pending_delivery_and_marks_delivered(tmp_path):
     adapter = RecordingAdapter()
     try:
         notification, delivery = seed_delivery(repo)
-        worker = NotificationDeliveryWorker(
+        worker = delivery_worker(
+            conn,
             channels={
                 "pushdeer": NotificationChannelConfig(
                     enabled=True,
@@ -75,8 +111,6 @@ def test_delivery_worker_sends_pending_delivery_and_marks_delivered(tmp_path):
                 )
             },
             adapter=adapter,
-            repository_session=lambda: repository_session_for_connection(conn),
-            poll_interval=0.2,
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
@@ -104,19 +138,17 @@ def test_delivery_worker_retries_and_then_marks_dead_after_max_attempts(tmp_path
     adapter = RecordingAdapter(fail=True)
     try:
         _, delivery = seed_delivery(repo, max_attempts=1)
-        worker = NotificationDeliveryWorker(
+        worker = delivery_worker(
+            conn,
             channels={
                 "pushdeer": NotificationChannelConfig(
                     enabled=True,
                     provider="apprise",
                     url="json://localhost",
                     min_severity="warning",
-                    max_attempts=1,
                 )
             },
             adapter=adapter,
-            repository_session=lambda: repository_session_for_connection(conn),
-            poll_interval=0.2,
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
@@ -146,7 +178,8 @@ def test_delivery_worker_completes_log_channel_without_url_or_adapter(tmp_path):
             (delivery["delivery_id"],),
         )
         conn.commit()
-        worker = NotificationDeliveryWorker(
+        worker = delivery_worker(
+            conn,
             channels={
                 "audit_log": NotificationChannelConfig(
                     enabled=True,
@@ -155,8 +188,6 @@ def test_delivery_worker_completes_log_channel_without_url_or_adapter(tmp_path):
                 )
             },
             adapter=adapter,
-            repository_session=lambda: repository_session_for_connection(conn),
-            poll_interval=0.2,
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
@@ -176,7 +207,8 @@ def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
     pushdeer_adapter = RecordingPushDeerAdapter()
     try:
         _, delivery = seed_delivery(repo, provider="pushdeer")
-        worker = NotificationDeliveryWorker(
+        worker = delivery_worker(
+            conn,
             channels={
                 "pushdeer": NotificationChannelConfig(
                     enabled=True,
@@ -186,8 +218,6 @@ def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
                 )
             },
             pushdeer_adapter=pushdeer_adapter,
-            repository_session=lambda: repository_session_for_connection(conn),
-            poll_interval=0.2,
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
@@ -205,3 +235,33 @@ def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
             "body": "Heat 88, quality 76",
         }
     ]
+
+
+def test_delivery_worker_is_worker_base_and_run_once_returns_result(tmp_path):
+    conn, repo = open_repo(tmp_path)
+    adapter = RecordingAdapter()
+    try:
+        _, delivery = seed_delivery(repo)
+        worker = delivery_worker(
+            conn,
+            channels={
+                "pushdeer": NotificationChannelConfig(
+                    enabled=True,
+                    provider="apprise",
+                    url="json://localhost",
+                    min_severity="warning",
+                )
+            },
+            adapter=adapter,
+        )
+
+        result = asyncio.run(worker.run_once(now_ms=1_700_000_000_100))
+        updated = repo.delivery_by_id(delivery["delivery_id"])
+    finally:
+        conn.close()
+
+    assert isinstance(worker, WorkerBase)
+    assert isinstance(result, WorkerResult)
+    assert result.processed == 1
+    assert updated is not None
+    assert updated["status"] == "delivered"

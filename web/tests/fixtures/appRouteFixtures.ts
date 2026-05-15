@@ -1,6 +1,7 @@
 import type {
   AssetFlowData,
   NotificationItem,
+  NotificationSummary,
   RecentData,
   SearchInspectData,
   SignalPulseData,
@@ -17,56 +18,90 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
     reasons: [],
     handles: ["toly", "traderpow"],
     store: "postgresql",
-    collector: {
-      started_at_ms: NOW,
-      frames_received: 88,
-      twitter_events: 44,
-      matched_twitter_events: 7,
-      events_published: 7,
-      duplicate_twitter_events: 2,
-      duplicate_matched_twitter_events: 0,
-      parse_errors: 0,
-      last_frame_at_ms: NOW,
-      last_event_at_ms: NOW,
-      last_matched_event_at_ms: NOW,
+    snapshot_gate: {},
+    db: { ok: true },
+    provider_states: {},
+    workers: {
+      collector: workerStatusFixture({
+        enabled: true,
+        running: true,
+        details: {
+          started_at_ms: NOW,
+          frames_received: 88,
+          twitter_events: 44,
+          matched_twitter_events: 7,
+          events_published: 7,
+          duplicate_twitter_events: 2,
+          duplicate_matched_twitter_events: 0,
+          parse_errors: 0,
+          last_frame_at_ms: NOW,
+          last_event_at_ms: NOW,
+          last_matched_event_at_ms: NOW,
+        },
+      }),
+      enrichment: workerStatusFixture({
+        enabled: true,
+        running: true,
+        queue_depth: 0,
+        details: { job_counts: { pending: 0, running: 0, failed: 0, dead: 0, done: 8 } },
+      }),
+      token_radar_projection: workerStatusFixture({
+        enabled: true,
+        running: true,
+        last_started_at_ms: NOW,
+        last_finished_at_ms: NOW,
+        last_result: {
+          processed: 0,
+          failed: 0,
+          dead: 0,
+          skipped: 0,
+          notes: { rows_written: 0, source_rows: 0 },
+        },
+      }),
+      anchor_price: workerStatusFixture({ enabled: true, running: true, last_started_at_ms: NOW }),
+      live_price_gateway: workerStatusFixture({
+        enabled: true,
+        running: true,
+        details: { configured: true, subscription_limit: 200 },
+      }),
+      pulse_candidate: workerStatusFixture(),
+      handle_summary: workerStatusFixture(),
+      harness_ops: workerStatusFixture(),
+      notification_rule: workerStatusFixture({ enabled: true, running: true }),
+      notification_delivery: workerStatusFixture({ enabled: true, running: true, queue_depth: 0 }),
+      asset_profile_refresh: workerStatusFixture(),
+      resolution_refresh: workerStatusFixture(),
     },
-    enrichment: {
-      llm_configured: true,
-      worker_running: true,
-      job_counts: { pending: 0, running: 0, failed: 0, dead: 0, done: 8 },
-    },
-    token_radar_projection: {
-      worker_running: true,
-      last_started_at_ms: NOW,
-      last_run_at_ms: NOW,
-      last_result: { rows_written: 0, source_rows: 0 },
-    },
-    anchor_price: {
-      worker_running: true,
-      last_started_at_ms: NOW,
-      last_run_at_ms: NOW,
-      last_result: { anchor_observations_written: 0 },
-    },
-    live_price_gateway: {
-      configured: true,
-      worker_running: true,
-      subscription_limit: 200,
-      last_started_at_ms: NOW,
-      last_run_at_ms: NOW,
-      last_result: { live_market_updates_published: 0 },
-    },
-    notifications: {
-      enabled: true,
-      worker_running: true,
-      summary: {
-        subscriber_key: "local",
-        unread_count: 0,
-        high_unread_count: 0,
-        critical_unread_count: 0,
-        highest_unread_severity: null,
-        account_unread_counts: {},
-      },
-    },
+    ...overrides,
+  };
+}
+
+function workerStatusFixture(overrides: Partial<StatusData["workers"]["collector"]> = {}) {
+  return {
+    enabled: false,
+    running: false,
+    last_started_at_ms: null,
+    last_finished_at_ms: null,
+    last_result: null,
+    last_error: null,
+    iteration_duration_p99_ms: null,
+    queue_depth: null,
+    pool_wait_ms_p99: null,
+    details: {},
+    ...overrides,
+  };
+}
+
+export function notificationSummaryFixture(
+  overrides: Partial<NotificationSummary> = {},
+): NotificationSummary {
+  return {
+    subscriber_key: "local",
+    unread_count: 0,
+    high_unread_count: 0,
+    critical_unread_count: 0,
+    highest_unread_severity: null,
+    account_unread_counts: {},
     ...overrides,
   };
 }

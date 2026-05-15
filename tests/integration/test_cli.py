@@ -12,6 +12,7 @@ from unittest.mock import patch
 import yaml
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
 from gmgn_twitter_intel.cli import build_parser, main
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
@@ -22,6 +23,7 @@ from gmgn_twitter_intel.domains.notifications.repositories.notification_reposito
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from gmgn_twitter_intel.platform.config.settings import default_workers_yaml
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
@@ -120,6 +122,7 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
         payload["llm"] = {"provider": "openai", "api_key": "sk-test", "model": "gpt-test"}
     path = app_home / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    (app_home / "workers.yaml").write_text(default_workers_yaml(), encoding="utf-8")
     return path
 
 
@@ -133,6 +136,7 @@ class CliTests(unittest.TestCase):
             ["db", "query-audit", "--analyze"],
             ["asset-flow", "--window", "1h", "--limit", "5", "--scope", "all"],
             ["ops", "projection-status"],
+            ["ops", "worker-status"],
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
@@ -168,26 +172,27 @@ class CliTests(unittest.TestCase):
         self.assertTrue(parsed[2].analyze)
         self.assertEqual(parsed[3].command, "asset-flow")
         self.assertEqual(parsed[4].ops_command, "projection-status")
-        self.assertEqual(parsed[5].ops_command, "validate-projections")
-        self.assertEqual(parsed[5].sample, 5)
-        self.assertEqual(parsed[6].ops_command, "sync-okx-cex-universe")
-        self.assertEqual(parsed[7].ops_command, "run-resolution-refresh")
-        self.assertEqual(parsed[7].limit, 5)
-        self.assertEqual(parsed[8].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[5].ops_command, "worker-status")
+        self.assertEqual(parsed[6].ops_command, "validate-projections")
+        self.assertEqual(parsed[6].sample, 5)
+        self.assertEqual(parsed[7].ops_command, "sync-okx-cex-universe")
+        self.assertEqual(parsed[8].ops_command, "run-resolution-refresh")
         self.assertEqual(parsed[8].limit, 5)
-        self.assertEqual(parsed[9].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[9].window, "24h")
-        self.assertEqual(parsed[9].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[10].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[10].window, "5m")
-        self.assertEqual(parsed[11].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[12].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[13].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[14].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[14].limit, 200)
-        self.assertEqual(parsed[15].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[15].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[16].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[9].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[9].limit, 5)
+        self.assertEqual(parsed[10].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[10].window, "24h")
+        self.assertEqual(parsed[10].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[11].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[11].window, "5m")
+        self.assertEqual(parsed[12].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[13].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[14].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[15].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[15].limit, 200)
+        self.assertEqual(parsed[16].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[16].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[17].ops_command, "sync-us-equity-symbols")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -204,12 +209,23 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["data"]["handles"], ["toly", "traderpow"])
         self.assertEqual(payload["data"]["handle_count"], 2)
         self.assertTrue(payload["data"]["api"]["ws_token_configured"])
+        self.assertEqual(
+            payload["data"]["config_path"],
+            str(home / ".gmgn-twitter-intel" / "config.yaml"),
+        )
         self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
         self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
         self.assertEqual(payload["data"]["enrichment"]["provider"], "openai")
         self.assertEqual(payload["data"]["store"]["engine"], "postgresql")
         self.assertIn("postgres_dsn", payload["data"]["store"])
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
+        self.assertEqual(
+            payload["data"]["workers_config_path"],
+            str(home / ".gmgn-twitter-intel" / "workers.yaml"),
+        )
+        self.assertEqual(payload["data"]["workers"]["collector"]["mode"], "continuous")
+        self.assertTrue(payload["data"]["workers"]["collector"]["enabled"])
+        self.assertEqual(payload["data"]["workers"]["pulse_candidate"]["batch_size"], 10)
 
     def test_config_redacts_notification_channel_urls(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -237,6 +253,7 @@ class CliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (app_home / "workers.yaml").write_text(default_workers_yaml(), encoding="utf-8")
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 exit_code = main(["config"], stdout=stdout)
@@ -408,6 +425,90 @@ def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, mo
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["data"]["events"][0]["event_id"] == "event-1"
+
+
+def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypatch):
+    from gmgn_twitter_intel.app.surfaces.cli import main as cli_module
+
+    events: list[tuple] = []
+    configured_lock_key = 909090
+
+    class FakeLock:
+        def release(self):
+            events.append(("release",))
+
+    class FakeDB:
+        api_pool = None
+        worker_pool = None
+        wake_pool = None
+
+        def wake_emitter(self):
+            return object()
+
+        def wake_listener(self, worker_name, wakes_on):
+            events.append(("wake_listener", worker_name, tuple(wakes_on)))
+            return object()
+
+        def acquire_advisory_lock_connection(self, worker_name, key):
+            events.append(("acquire", worker_name, key))
+            return FakeLock()
+
+    class FakeWorker:
+        SINGLE_WRITER_KEY = 2026051501
+
+        def __init__(self, **kwargs):
+            self.settings = kwargs["settings"]
+            events.append(("worker_init", kwargs["name"]))
+
+        def _advisory_lock_key(self):
+            settings_key = getattr(self.settings, "advisory_lock_key", None)
+            if settings_key is not None:
+                return int(settings_key)
+            return self.SINGLE_WRITER_KEY
+
+        def rebuild_once(self, **kwargs):
+            events.append(("rebuild", kwargs))
+            return {"rows_written": 1}
+
+        async def aclose(self):
+            events.append(("worker_close",))
+
+    db = FakeDB()
+    settings = SimpleNamespace(
+        workers=SimpleNamespace(
+            token_radar_projection=SimpleNamespace(
+                advisory_lock_key=configured_lock_key,
+                batch_size=100,
+                wakes_on=("market_observation_written",),
+            )
+        )
+    )
+    monkeypatch.setattr(cli_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
+    monkeypatch.setattr(cli_module, "TokenRadarProjectionWorker", FakeWorker)
+
+    result = cli_module._run_token_radar_projection_worker_once(
+        settings,
+        windows=("1h",),
+        scopes=("all",),
+        limit=5,
+        now_ms=1_700_000_000_000,
+    )
+
+    assert result == {"rows_written": 1}
+    assert ("acquire", "token_radar_projection", configured_lock_key) in events
+    assert ("acquire", "token_radar_projection", FakeWorker.SINGLE_WRITER_KEY) not in events
+    assert events.index(("acquire", "token_radar_projection", configured_lock_key)) < events.index(
+        (
+            "rebuild",
+            {
+                "now_ms": 1_700_000_000_000,
+                "windows": ("1h",),
+                "scopes": ("all",),
+                "limit": 5,
+            },
+        )
+    )
+    assert events.index(("release",)) < events.index(("worker_close",))
 
 
 def test_harness_cli_reports_empty_read_models_without_error(tmp_path, monkeypatch):
@@ -719,23 +820,28 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
 
     captured = {}
 
-    class FakeRepos:
-        pass
-
     @contextmanager
     def fake_repositories(_settings):
-        repos = FakeRepos()
-        captured["repos"] = repos
-        yield repos
+        raise AssertionError("refresh-asset-profiles must not hold an outer repository session")
 
-    def fake_wire_providers(settings, *, start_collector):
+    class FakeDB:
+        api_pool = SimpleNamespace(close=lambda: None)
+        worker_pool = SimpleNamespace(close=lambda: None)
+        wake_pool = SimpleNamespace(close=lambda: None)
+
+    def fake_wire_asset_market_providers(settings, *, start_collector):
         captured["start_collector"] = start_collector
-        return SimpleNamespace(asset_market=SimpleNamespace(dex_profile_market=None))
+        return SimpleNamespace(dex_profile_market=None)
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    def fail_full_wire_providers(*_args, **_kwargs):
+        raise AssertionError("refresh-asset-profiles must not wire LLM providers")
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
-    monkeypatch.setattr(cli_module, "wire_providers", fake_wire_providers, raising=False)
+    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(cli_module, "wire_providers", fail_full_wire_providers, raising=False)
+    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fake_wire_asset_market_providers, raising=False)
     monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
     stdout = io.StringIO()
 
@@ -746,7 +852,6 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert captured["repos"].__class__ is FakeRepos
     assert captured["start_collector"] is True
     assert payload == {
         "ok": True,
@@ -761,6 +866,106 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
             "finished_at_ms": 1_700_000_000_000,
         },
     }
+
+
+def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_session(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    captured = {}
+
+    @contextmanager
+    def fake_repositories(_settings):
+        raise AssertionError("run-resolution-refresh must not hold an outer repository session")
+
+    class FakeDB:
+        def __init__(self) -> None:
+            self.repos = SimpleNamespace(discovery=FakeDiscovery())
+            self.api_pool = SimpleNamespace(close=lambda: None)
+            self.worker_pool = SimpleNamespace(close=lambda: None)
+            self.wake_pool = SimpleNamespace(close=lambda: None)
+
+        def worker_session(self, name):
+            captured.setdefault("session_names", []).append(name)
+            return FakeSession(self.repos)
+
+    class FakeSession:
+        def __init__(self, repos):
+            self.repos = repos
+
+        def __enter__(self):
+            return self.repos
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeDiscovery:
+        def due_lookup_keys(self, **kwargs):
+            captured["due_lookup_kwargs"] = kwargs
+            return []
+
+        def counts(self):
+            return {"found": 0}
+
+    def fake_wire_asset_market_providers(settings, *, start_collector):
+        captured["start_collector"] = start_collector
+        return SimpleNamespace(
+            dex_discovery_market=object(),
+            dex_quote_market=None,
+            discovery_chain_ids=("solana",),
+        )
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fake_wire_asset_market_providers, raising=False)
+    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    stdout = io.StringIO()
+
+    code = cli_module.main(["ops", "run-resolution-refresh", "--limit", "3"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured["start_collector"] is True
+    assert captured["session_names"] == ["resolution_refresh", "resolution_refresh"]
+    assert captured["due_lookup_kwargs"]["limit"] == 3
+    assert payload["data"]["lookups_selected"] == 0
+
+
+def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    closed: list[str] = []
+
+    class FakePool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def close(self) -> None:
+            closed.append(self.name)
+
+    class FakeDB:
+        def __init__(self) -> None:
+            self.api_pool = FakePool("api")
+            self.worker_pool = FakePool("worker")
+            self.wake_pool = FakePool("wake")
+
+    def fake_wire_asset_market_providers(settings, *, start_collector):
+        raise RuntimeError("provider wiring failed")
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fake_wire_asset_market_providers, raising=False)
+
+    try:
+        cli_module.main(["ops", "refresh-asset-profiles"], stdout=io.StringIO())
+    except RuntimeError as exc:
+        assert str(exc) == "provider wiring failed"
+    else:
+        raise AssertionError("provider wiring failure should propagate")
+
+    assert closed == ["api", "worker", "wake"]
 
 
 def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch, tmp_path):
@@ -795,6 +1000,120 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
 
     assert code == 1
     assert json.loads(stdout.getvalue()) == {"ok": False, "error": "Cloudflare 403"}
+
+
+def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypatch):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    closed = {"value": False}
+    captured = {}
+    base_worker = {
+        "enabled": False,
+        "running": False,
+        "last_started_at_ms": None,
+        "last_finished_at_ms": None,
+        "last_result": None,
+        "last_error": None,
+        "iteration_duration_p99_ms": None,
+        "queue_depth": None,
+        "pool_wait_ms_p99": None,
+    }
+
+    class FakeRows:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def fetchall(self):
+            return self.rows
+
+    class FakeConn:
+        def execute(self, sql, params=()):
+            if "enrichment_jobs" in sql:
+                return FakeRows(
+                    [
+                        {"status": "pending", "count": 2},
+                        {"status": "failed", "count": 3},
+                        {"status": "running", "count": 1},
+                    ]
+                )
+            if "watchlist_handle_summary_jobs" in sql:
+                return FakeRows(
+                    [
+                        {"status": "pending", "count": 1},
+                        {"status": "running", "count": 2},
+                    ]
+                )
+            if "notification_deliveries" in sql:
+                return FakeRows(
+                    [
+                        {"status": "pending", "count": 4},
+                        {"status": "delivered", "count": 99},
+                    ]
+                )
+            return FakeRows([])
+
+    class FakeConnectionContext:
+        def __enter__(self):
+            return FakeConn()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakePool:
+        def connection(self):
+            return FakeConnectionContext()
+
+    class FakeRuntime:
+        def __init__(self):
+            self.db = SimpleNamespace(api_pool=FakePool())
+            self.collector = SimpleNamespace(
+                status=SimpleNamespace(
+                    to_dict=lambda: {
+                        "started_at_ms": 1_700_000_000_000,
+                        "frames_received": 88,
+                        "twitter_events": 44,
+                        "matched_twitter_events": 7,
+                        "events_published": 7,
+                        "duplicate_twitter_events": 0,
+                        "duplicate_matched_twitter_events": 0,
+                        "parse_errors": 0,
+                        "snapshot_gate_outcomes": {"immediate_complete": 3},
+                    }
+                ),
+                upstream_client=None,
+            )
+            self.scheduler = SimpleNamespace(
+                status_payload=lambda: {name: dict(base_worker) for name in CANONICAL_WORKER_NAMES}
+            )
+
+        async def aclose(self):
+            closed["value"] = True
+
+    def fake_bootstrap(settings, *, start_collector):
+        captured["settings"] = settings
+        captured["start_collector"] = start_collector
+        return FakeRuntime()
+
+    monkeypatch.setattr(cli_module, "load_settings", lambda require_ws_token=False: SimpleNamespace(ws_token="secret"))
+    monkeypatch.setattr(cli_module, "bootstrap", fake_bootstrap, raising=False)
+
+    stdout = io.StringIO()
+    code = cli_module.main(["ops", "worker-status"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["ok"] is True
+    assert captured["start_collector"] is False
+    assert closed["value"] is True
+    workers = payload["data"]["workers"]
+    assert set(CANONICAL_WORKER_NAMES).issubset(workers)
+    assert all("queue_depth" in workers[name] for name in CANONICAL_WORKER_NAMES)
+    assert workers["enrichment"]["queue_depth"] == 6
+    assert workers["handle_summary"]["queue_depth"] == 3
+    assert workers["notification_delivery"]["queue_depth"] == 4
+    assert workers["collector"]["details"]["frames_received"] == 88
+    assert workers["collector"]["details"]["matched_twitter_events"] == 7
+    assert workers["collector"]["details"]["snapshot_gate_outcomes"] == {"immediate_complete": 3}
 
 
 if __name__ == "__main__":

@@ -4,10 +4,8 @@ import hashlib
 import json
 from typing import Any
 
-import httpx
-from agents import Agent, RunConfig, Runner, set_tracing_export_api_key
+from agents import Agent, RunConfig, Runner
 from agents.models.openai_responses import OpenAIResponsesModel
-from openai import AsyncOpenAI
 
 from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
     AGENT_NAME,
@@ -31,11 +29,11 @@ class OpenAIAgentsSocialEventClient:
         *,
         api_key: str,
         model: str,
+        llm_gateway: Any,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
         runner: Any | None = None,
         trace_enabled: bool = True,
-        trace_api_key: str | None = None,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
         max_turns: int = 1,
@@ -44,16 +42,14 @@ class OpenAIAgentsSocialEventClient:
         self.model = str(model or "").strip()
         if not self.model:
             raise ValueError("llm.model is required")
+        if llm_gateway is None:
+            raise ValueError("llm_gateway is required")
+        self._llm_gateway = llm_gateway
         self.base_url = _api_base(base_url)
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        tracing_export_key = str(trace_api_key or "").strip()
-        if not tracing_export_key and _is_openai_base_url(self.base_url):
-            tracing_export_key = self.api_key
-        self.trace_enabled = bool(trace_enabled and tracing_export_key)
+        self.trace_enabled = bool(trace_enabled and getattr(self._llm_gateway, "trace_export_enabled", False))
         self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
-        if self.trace_enabled:
-            set_tracing_export_api_key(tracing_export_key)
         self.max_turns = max(1, min(2, int(max_turns)))
         self._runner = runner or Runner
         self._model = None if runner is not None else self._build_model()
@@ -75,17 +71,22 @@ class OpenAIAgentsSocialEventClient:
             tools=[],
             model=self._model,
         )
-        result = await self._runner.run(
-            agent,
-            input_payload,
-            max_turns=self.max_turns,
-            run_config=RunConfig(
-                workflow_name=self.workflow_name,
-                trace_id=audit["sdk_trace_id"],
-                group_id=str(event.get("event_id") or ""),
-                trace_include_sensitive_data=self.trace_include_sensitive_data,
-                tracing_disabled=not self.trace_enabled,
-                trace_metadata=audit["trace_metadata"],
+        result = await self._llm_gateway.run_with_limits(
+            "enrichment",
+            "social_event",
+            self.timeout_seconds,
+            lambda: self._runner.run(
+                agent,
+                input_payload,
+                max_turns=self.max_turns,
+                run_config=RunConfig(
+                    workflow_name=self.workflow_name,
+                    trace_id=audit["sdk_trace_id"],
+                    group_id=str(event.get("event_id") or ""),
+                    trace_include_sensitive_data=self.trace_include_sensitive_data,
+                    tracing_disabled=not self.trace_enabled,
+                    trace_metadata=audit["trace_metadata"],
+                ),
             ),
         )
         payload = payload_from_output(result.final_output)
@@ -136,13 +137,10 @@ class OpenAIAgentsSocialEventClient:
     def _build_model(self):
         return OpenAIResponsesModel(
             model=self.model,
-            openai_client=AsyncOpenAI(
-                api_key=str(self.api_key or ""),
+            openai_client=self._llm_gateway.openai_client(
+                model=self.model,
                 base_url=self.base_url,
-                timeout=self.timeout_seconds,
-                max_retries=0,
-                default_headers={"User-Agent": "gmgn-twitter-intel/0.1"},
-                http_client=httpx.AsyncClient(trust_env=False),
+                timeout_s=self.timeout_seconds,
             ),
         )
 
@@ -162,11 +160,6 @@ def _api_base(base_url: str) -> str:
     if not value:
         return "https://api.openai.com/v1"
     return value if value.endswith("/v1") else f"{value}/v1"
-
-
-def _is_openai_base_url(base_url: str) -> bool:
-    value = str(base_url or "").strip().lower()
-    return value.startswith("https://api.openai.com/")
 
 
 def _trace_id(run_id: str) -> str:

@@ -92,7 +92,7 @@ def reprocess_recent_token_intents(
     }
 
 
-def rebuild_token_radar_windows(
+def _rebuild_token_radar_windows(
     *,
     repos: Any,
     now_ms: int,

@@ -78,7 +78,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
     windowKey,
   });
   const notificationsController = useNotificationsController({
-    fallbackSummary: status?.notifications?.summary ?? null,
+    fallbackSummary: null,
     setMobileTask: selection.setMobileTask,
     socketNotifications: socketSnapshot.notificationItems,
     token,

@@ -1,7 +1,9 @@
 import asyncio
 import json
 import unittest
+from types import SimpleNamespace
 
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
 from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
 
@@ -36,6 +38,10 @@ class CollectorServiceTests(unittest.TestCase):
             store = MemoryStore()
             publisher = MemoryPublisher()
             service = CollectorService(
+                name="collector",
+                settings=worker_settings(),
+                db=object(),
+                telemetry=object(),
                 handles=("toly",),
                 store=store,
                 publisher=publisher,
@@ -82,11 +88,14 @@ class CollectorServiceTests(unittest.TestCase):
             store = MemoryStore()
             publisher = MemoryPublisher()
             service = CollectorService(
+                name="collector",
+                settings=worker_settings(snapshot_timeout_seconds=0.05),
+                db=object(),
+                telemetry=object(),
                 handles=("toly",),
                 store=store,
                 publisher=publisher,
                 upstream_client=None,
-                snapshot_timeout=0.05,
             )
             snapshot = json.dumps(
                 {
@@ -135,11 +144,14 @@ class CollectorServiceTests(unittest.TestCase):
             store = MemoryStore()
             publisher = MemoryPublisher()
             service = CollectorService(
+                name="collector",
+                settings=worker_settings(snapshot_timeout_seconds=0.01),
+                db=object(),
+                telemetry=object(),
                 handles=("toly",),
                 store=store,
                 publisher=publisher,
                 upstream_client=None,
-                snapshot_timeout=0.01,
             )
             non_tw = json.dumps({"channel": "public_broadcast", "data": [{"hello": "world"}]})
             snapshot = json.dumps(
@@ -166,6 +178,114 @@ class CollectorServiceTests(unittest.TestCase):
             self.assertEqual(service.status.snapshot_gate_outcomes["debounced_timeout"], 1)
 
         asyncio.run(scenario())
+
+    def test_run_once_delegates_to_upstream_client(self):
+        async def scenario():
+            upstream = FakeUpstreamClient()
+            service = CollectorService(
+                name="collector",
+                settings=worker_settings(),
+                db=object(),
+                telemetry=object(),
+                handles=("toly",),
+                store=MemoryStore(),
+                publisher=MemoryPublisher(),
+                upstream_client=upstream,
+            )
+
+            result = await service.run_once()
+
+            self.assertIsInstance(result, WorkerResult)
+            self.assertEqual(result.processed, 1)
+            self.assertEqual(upstream.run_calls, 1)
+
+        asyncio.run(scenario())
+
+    def test_stop_cancels_running_upstream_client_without_scheduler_timeout(self):
+        async def scenario():
+            upstream = BlockingUpstreamClient()
+            service = CollectorService(
+                name="collector",
+                settings=worker_settings(),
+                db=object(),
+                telemetry=object(),
+                handles=("toly",),
+                store=MemoryStore(),
+                publisher=MemoryPublisher(),
+                upstream_client=upstream,
+            )
+
+            task = asyncio.create_task(service.run_once())
+            await upstream.started.wait()
+            await service.stop()
+            result = await asyncio.wait_for(task, timeout=0.2)
+
+            self.assertIsInstance(result, WorkerResult)
+            self.assertEqual(result.notes["upstream_cancelled"], True)
+            self.assertEqual(upstream.cancelled, True)
+
+        asyncio.run(scenario())
+
+    def test_collector_close_closes_owned_upstream_client(self):
+        async def scenario():
+            upstream = ClosingUpstreamClient()
+            service = CollectorService(
+                name="collector",
+                settings=worker_settings(),
+                db=object(),
+                telemetry=object(),
+                handles=("toly",),
+                store=MemoryStore(),
+                publisher=MemoryPublisher(),
+                upstream_client=upstream,
+            )
+
+            await service.on_close()
+
+            self.assertEqual(upstream.closed, True)
+
+        asyncio.run(scenario())
+
+
+def worker_settings(**overrides):
+    values = {
+        "enabled": True,
+        "interval_seconds": 3.0,
+        "timeout_seconds": 0.0,
+        "snapshot_timeout_seconds": 0.5,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+class FakeUpstreamClient:
+    def __init__(self):
+        self.run_calls = 0
+
+    async def run(self):
+        self.run_calls += 1
+
+
+class BlockingUpstreamClient:
+    def __init__(self):
+        self.started = asyncio.Event()
+        self.cancelled = False
+
+    async def run(self):
+        self.started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+
+class ClosingUpstreamClient:
+    def __init__(self):
+        self.closed = False
+
+    async def close(self):
+        self.closed = True
 
 
 if __name__ == "__main__":

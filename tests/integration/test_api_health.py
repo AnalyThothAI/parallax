@@ -2,11 +2,14 @@ import asyncio
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 import gmgn_twitter_intel.app.runtime.app as app_module
-from gmgn_twitter_intel.app.runtime.app import _build_runtime, _readiness_payload, create_app
-from gmgn_twitter_intel.platform.config.settings import CollectorConfig, Settings
+import gmgn_twitter_intel.app.runtime.bootstrap as bootstrap_module
+from gmgn_twitter_intel.app.runtime.app import _readiness_payload, create_app
+from gmgn_twitter_intel.app.runtime.bootstrap import Runtime, bootstrap
+from gmgn_twitter_intel.platform.config.settings import Settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
@@ -24,115 +27,348 @@ def make_settings(tmp_path, **kwargs) -> Settings:
     return settings
 
 
-def stop_runtime(runtime) -> None:
-    asyncio.run(app_module._stop_runtime(runtime))
+def close_runtime(runtime: Runtime) -> None:
+    asyncio.run(runtime.aclose())
 
 
-def close_runtime_pools(runtime) -> None:
-    runtime.api_db_pool.close()
-    runtime.worker_db_pool.close()
-    runtime.wake_db_pool.close()
+class FakePool:
+    def __init__(self) -> None:
+        self.closed = False
+
+    @contextmanager
+    def connection(self):
+        yield object()
+
+    def close(self):
+        self.closed = True
 
 
-def test_healthz_and_readyz_return_status(tmp_path):
-    settings = make_settings(tmp_path)
-    app = create_app(
-        settings=settings,
-        start_collector=False,
+class FakeDB:
+    def __init__(self) -> None:
+        self.api_pool = FakePool()
+        self.worker_pool = FakePool()
+        self.wake_pool = FakePool()
+
+    @contextmanager
+    def api_session(self):
+        yield SimpleNamespace()
+
+    @contextmanager
+    def worker_session(self, _name):
+        yield SimpleNamespace()
+
+    def wake_emitter(self):
+        return None
+
+    def wake_listener(self, _name, _channels):
+        return None
+
+
+class FakePulseProvider:
+    provider = "fake"
+    timeout_seconds = 1.0
+    artifact_version_hash = "artifact:gpt-pulse"
+
+    def __init__(self, *, model):
+        self.model = model
+
+
+class FakeClosableProvider:
+    def __init__(self) -> None:
+        self.closed = 0
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+class FakeAsyncClosableProvider:
+    def __init__(self) -> None:
+        self.closed = 0
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
+class FakeFailingProvider:
+    def close(self) -> None:
+        raise RuntimeError("provider failed")
+
+
+class FakeProviderWrapper:
+    def __init__(self, inner) -> None:
+        self.inner = inner
+        self.closed = 0
+
+    def close(self) -> None:
+        self.closed += 1
+        self.inner.close()
+
+
+class FailingScheduler:
+    def status_payload(self):
+        return {}
+
+    def unhealthy_reasons(self):
+        return []
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        raise RuntimeError("scheduler failed")
+
+
+class NoopScheduler:
+    def status_payload(self):
+        return {}
+
+    def unhealthy_reasons(self):
+        return []
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+
+def fake_wired_providers(
+    settings,
+    *,
+    start_collector,
+    llm_gateway=None,
+    asset_market=None,
+    upstream_client_factory=None,
+):
+    return SimpleNamespace(
+        ingestion=SimpleNamespace(upstream_client_factory=upstream_client_factory),
+        asset_market=asset_market
+        or SimpleNamespace(
+            sync_cex_market=None,
+            message_cex_market=None,
+            dex_discovery_market=None,
+            dex_quote_market=None,
+            dex_candle_market=None,
+            dex_profile_market=None,
+            stream_dex_market=None,
+            discovery_chain_ids=(),
+        ),
+        social_enrichment=SimpleNamespace(event_enrichment=None),
+        pulse_lab=SimpleNamespace(decision_provider=FakePulseProvider(model=settings.pulse_agent_model)),
+        watchlist_intel=SimpleNamespace(summary_provider=None),
+        marketlane=SimpleNamespace(stock_quote_provider=None),
     )
+
+
+def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_client_factory=None):
+    monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
+    monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
+    monkeypatch.setattr(
+        bootstrap_module,
+        "wire_providers",
+        lambda settings, *, start_collector, llm_gateway=None: fake_wired_providers(
+            settings,
+            start_collector=start_collector,
+            llm_gateway=llm_gateway,
+            asset_market=asset_market,
+            upstream_client_factory=upstream_client_factory,
+        ),
+    )
+
+
+def test_healthz_readyz_and_metrics_return_status(tmp_path):
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
         health = client.get("/healthz")
         ready = client.get("/readyz")
+        metrics = client.get("/metrics")
 
+    payload = ready.json()
     assert health.status_code == 200
     assert health.text == "ok\n"
     assert ready.status_code == 200
-    assert ready.json()["collector"]["frames_received"] == 0
-    assert ready.json()["store"] == "postgresql"
-    assert ready.json()["db"]["ok"] is True
-    assert ready.json()["db"]["probe"] == "postgres_liveness"
-    assert ready.json()["enrichment"]["llm_configured"] is False
-    assert ready.json()["enrichment"]["worker_running"] is False
-    assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
-    assert ready.json()["harness_ops"]["worker_running"] is True
-    assert ready.json()["token_radar_projection"]["worker_running"] is True
-    # pulse_agent_enabled defaults to True in LlmConfig; configured stays False without api_key/model.
-    # tracked under docs/TECH_DEBT.md → "integration tests presume legacy defaults".
-    assert ready.json()["pulse_agent"]["enabled"] is True
-    assert ready.json()["pulse_agent"]["configured"] is False
-    assert ready.json()["pulse_agent"]["worker_running"] is False
-    assert ready.json()["anchor_price"]["worker_running"] is False
-    assert ready.json()["asset_profile_refresh"]["worker_running"] is False
-    assert ready.json()["live_price_gateway"]["worker_running"] is False
-    assert "token_resolution" not in ready.json()
-    assert "provider_status" not in ready.json()
+    assert payload["store"] == "postgresql"
+    assert payload["db"]["ok"] is True
+    assert payload["db"]["probe"] == "postgres_liveness"
+    legacy_worker_sections = {
+        "collector",
+        "enrichment",
+        "notifications",
+        "token_radar_projection",
+        "watchlist_handle_summary",
+        "anchor_price",
+        "asset_profile_refresh",
+        "resolution_refresh",
+        "live_price_gateway",
+        "harness_ops",
+        "pulse_agent",
+        "token_resolution",
+        "provider_status",
+    }
+    assert not (legacy_worker_sections & set(payload))
+    assert set(payload["workers"]) >= {
+        "collector",
+        "harness_ops",
+        "token_radar_projection",
+        "pulse_candidate",
+        "enrichment",
+    }
+    assert payload["workers"]["collector"]["enabled"] is False
+    assert payload["workers"]["collector"]["last_result"] is None
+    assert metrics.status_code == 200
+    assert metrics.headers["content-type"].startswith("text/plain")
+    assert "gmgn_db_pool_wait_ms" in metrics.text
+
+
+def test_runtime_aclose_closes_wired_providers_even_when_scheduler_stop_fails(monkeypatch, tmp_path):
+    sync_provider = FakeClosableProvider()
+    async_provider = FakeAsyncClosableProvider()
+    providers = fake_wired_providers(make_settings(tmp_path), start_collector=False)
+    providers = SimpleNamespace(
+        **{
+            **providers.__dict__,
+            "asset_market": SimpleNamespace(
+                message_cex_market=sync_provider,
+                dex_quote_market=sync_provider,
+                stream_dex_market=SimpleNamespace(inner=async_provider),
+                discovery_chain_ids=(),
+            ),
+            "marketlane": SimpleNamespace(stock_quote_provider=sync_provider),
+        }
+    )
+    monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
+    monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
+    monkeypatch.setattr(bootstrap_module, "wire_providers", lambda *_, **__: providers)
+
+    runtime = bootstrap(make_settings(tmp_path), start_collector=False)
+    runtime.scheduler = FailingScheduler()
+
+    try:
+        close_runtime(runtime)
+    except RuntimeError as exc:
+        assert str(exc) == "scheduler failed"
+    else:
+        raise AssertionError("expected scheduler failure")
+
+    assert sync_provider.closed == 1
+    assert async_provider.closed == 1
+
+
+def test_runtime_aclose_does_not_recurse_into_closable_provider_wrappers(monkeypatch, tmp_path):
+    inner = FakeClosableProvider()
+    wrapper = FakeProviderWrapper(inner)
+    providers = fake_wired_providers(make_settings(tmp_path), start_collector=False)
+    providers = SimpleNamespace(
+        **{
+            **providers.__dict__,
+            "asset_market": SimpleNamespace(stream_dex_market=wrapper, discovery_chain_ids=()),
+        }
+    )
+    monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
+    monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
+    monkeypatch.setattr(bootstrap_module, "wire_providers", lambda *_, **__: providers)
+
+    runtime = bootstrap(make_settings(tmp_path), start_collector=False)
+    runtime.scheduler = NoopScheduler()
+
+    close_runtime(runtime)
+
+    assert wrapper.closed == 1
+    assert inner.closed == 1
+
+
+def test_runtime_aclose_groups_scheduler_and_provider_cleanup_failures(monkeypatch, tmp_path):
+    providers = fake_wired_providers(make_settings(tmp_path), start_collector=False)
+    providers = SimpleNamespace(
+        **{
+            **providers.__dict__,
+            "asset_market": SimpleNamespace(stream_dex_market=FakeFailingProvider(), discovery_chain_ids=()),
+        }
+    )
+    monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: FakeDB())
+    monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
+    monkeypatch.setattr(bootstrap_module, "wire_providers", lambda *_, **__: providers)
+
+    runtime = bootstrap(make_settings(tmp_path), start_collector=False)
+    runtime.scheduler = FailingScheduler()
+
+    with pytest.raises(ExceptionGroup, match="runtime_close_failed") as excinfo:
+        close_runtime(runtime)
+
+    messages = {str(error) for error in excinfo.value.exceptions}
+    assert messages == {"scheduler failed", "provider failed"}
+
+
+def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, tmp_path):
+    sync_provider = FakeClosableProvider()
+    async_provider = FakeAsyncClosableProvider()
+    providers = SimpleNamespace(
+        asset_market=SimpleNamespace(message_cex_market=sync_provider, nested={"async": async_provider}),
+        marketlane=SimpleNamespace(stock_quote_provider=sync_provider),
+    )
+    db = FakeDB()
+    monkeypatch.setattr(bootstrap_module.DBPoolBundle, "create", lambda *_, **__: db)
+    monkeypatch.setattr(bootstrap_module, "postgres_health_check", lambda *_, **__: {"ok": True})
+    monkeypatch.setattr(bootstrap_module, "wire_providers", lambda *_, **__: providers)
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_assemble_runtime",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("assemble failed")),
+    )
+
+    try:
+        bootstrap(make_settings(tmp_path), start_collector=False)
+    except RuntimeError as exc:
+        assert str(exc) == "assemble failed"
+    else:
+        raise AssertionError("expected assemble failure")
+
+    assert sync_provider.closed == 1
+    assert async_provider.closed == 1
+    assert db.api_pool.closed is True
+    assert db.worker_pool.closed is True
+    assert db.wake_pool.closed is True
 
 
 def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
-    settings = make_settings(tmp_path)
-    runtime = _build_runtime(settings, start_collector=False)
+    runtime = bootstrap(make_settings(tmp_path), start_collector=False)
 
     try:
-        with runtime.api_db_pool.connection() as conn:
+        with runtime.db.api_pool.connection() as conn:
             status = postgres_health_check(conn)
     finally:
-        stop_runtime(runtime)
+        close_runtime(runtime)
 
     assert status["ok"] is True
     assert status["probe"] == "postgres_liveness"
     assert status["migration_version"] == latest_migration_version()
 
 
-def test_runtime_uses_pool_sessions_without_pinned_connections(tmp_path):
-    settings = make_settings(tmp_path)
-    runtime = _build_runtime(settings, start_collector=False)
+def test_runtime_uses_db_pool_bundle_sessions_without_pinned_connections(tmp_path):
+    runtime = bootstrap(make_settings(tmp_path), start_collector=False)
 
     try:
-        assert not hasattr(runtime, "write_conn")
-        assert not hasattr(runtime, "read_conn")
-        assert not hasattr(runtime, "write_lock")
+        assert not hasattr(runtime, "api_db_pool")
+        assert not hasattr(runtime, "worker_db_pool")
+        assert not hasattr(runtime, "wake_db_pool")
         with runtime.repositories() as repos:
             status = postgres_health_check(repos.conn)
     finally:
-        stop_runtime(runtime)
+        close_runtime(runtime)
 
     assert status["ok"] is True
 
 
-def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
-    class RunningTask:
-        def done(self):
-            return False
-
-        def cancel(self):
-            return None
-
-    settings = make_settings(tmp_path, collector=CollectorConfig(stale_timeout=10))
-    runtime = _build_runtime(settings, start_collector=False)
-    runtime.start_collector = True
-    runtime.collector_task = RunningTask()
-    runtime.collector.status.started_at_ms = 1_000
-
-    try:
-        payload, status_code = _readiness_payload(runtime, now_ms=12_001)
-    finally:
-        close_runtime_pools(runtime)
-
-    assert status_code == 503
-    assert payload["ok"] is False
-    assert "no_upstream_frames" in payload["reasons"]
-
-
 def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
-    settings = make_settings(tmp_path)
-    runtime = _build_runtime(settings, start_collector=False)
-    runtime.api_db_pool.close()
+    runtime = bootstrap(make_settings(tmp_path), start_collector=False)
+    runtime.db.api_pool.close()
 
     try:
         payload, status_code = _readiness_payload(runtime)
     finally:
-        stop_runtime(runtime)
+        close_runtime(runtime)
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -140,288 +376,196 @@ def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
     assert "database_unhealthy" in payload["reasons"]
 
 
-def test_watchdog_reasons_do_not_probe_database(tmp_path):
-    class RunningTask:
-        def done(self):
-            return False
-
-        def cancel(self):
-            return None
-
-    settings = make_settings(tmp_path, collector=CollectorConfig(stale_timeout=10))
-    runtime = _build_runtime(settings, start_collector=False)
-    runtime.start_collector = True
-    runtime.collector_task = RunningTask()
-    runtime.harness_ops_task = RunningTask()
-    runtime.notification_task = RunningTask()
-    runtime.token_radar_projection_task = RunningTask()
-    runtime.collector.status.started_at_ms = 1_000
-    runtime.api_db_pool.close()
-
-    try:
-        assert hasattr(app_module, "_watchdog_unhealthy_reasons")
-        reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
-    finally:
-        close_runtime_pools(runtime)
-
-    assert reasons == ["no_upstream_frames"]
-
-
-def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypatch, tmp_path):
-    class FakePool:
-        @contextmanager
-        def connection(self):
-            yield object()
-
-        def close(self):
-            return None
-
-    class FakePulseProvider:
-        provider = "fake"
-        timeout_seconds = 1.0
-        artifact_version_hash = "artifact:gpt-pulse"
-
-        def __init__(self, *, model):
-            self.model = model
-
+def test_bootstrap_creates_pulse_worker_when_enabled_and_configured(monkeypatch, tmp_path):
     settings = Settings(
         ws_token="secret",
         storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
         llm={
             "api_key": "test-key",
-            "pulse_agent_enabled": True,
             "pulse_agent_model": "gpt-pulse",
+        },
+        workers={"pulse_candidate": {"batch_size": 7}},
+        notifications={"enabled": False},
+    )
+    settings.set_config_dir(tmp_path / "app-home")
+    patch_runtime_dependencies(monkeypatch)
+
+    runtime = bootstrap(settings, start_collector=False)
+
+    try:
+        pulse = runtime.workers["pulse_candidate"]
+        assert pulse.status_payload()["enabled"] is True
+        assert pulse.decision_client.model == "gpt-pulse"
+        assert pulse.batch_size == settings.workers.pulse_candidate.batch_size
+    finally:
+        close_runtime(runtime)
+
+
+def test_disabled_workers_are_present_but_not_started(monkeypatch, tmp_path):
+    settings = Settings(
+        ws_token="secret",
+        storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
+        workers={
+            "harness_ops": {"enabled": False},
+            "token_radar_projection": {"enabled": False},
         },
         notifications={"enabled": False},
     )
     settings.set_config_dir(tmp_path / "app-home")
-    monkeypatch.setattr(app_module, "create_pool", lambda *_, **__: FakePool())
-    monkeypatch.setattr(app_module, "postgres_health_check", lambda *_, **__: {"ok": True})
-    monkeypatch.setattr(
-        app_module,
-        "wire_providers",
-        lambda settings, *, start_collector: SimpleNamespace(
-            ingestion=SimpleNamespace(upstream_client_factory=None),
-            asset_market=SimpleNamespace(
-                sync_cex_market=None,
-                message_cex_market=None,
-                dex_discovery_market=None,
-                dex_quote_market=None,
-                dex_candle_market=None,
-                dex_profile_market=None,
-                stream_dex_market=None,
-                discovery_chain_ids=(),
-            ),
-            social_enrichment=SimpleNamespace(event_enrichment=None),
-            pulse_lab=SimpleNamespace(decision_provider=FakePulseProvider(model=settings.pulse_agent_model)),
-            marketlane=SimpleNamespace(stock_quote_provider=None),
-        ),
-    )
+    patch_runtime_dependencies(monkeypatch)
 
-    runtime = _build_runtime(settings, start_collector=False)
+    runtime = bootstrap(settings, start_collector=False)
 
     try:
-        assert runtime.pulse_candidate_worker is not None
-        assert runtime.pulse_candidate_worker.decision_client.model == "gpt-pulse"
-        assert runtime.pulse_candidate_worker.batch_size == settings.pulse_agent_batch_size
+        assert runtime.workers["harness_ops"].status_payload()["enabled"] is False
+        assert runtime.workers["token_radar_projection"].status_payload()["enabled"] is False
+        asyncio.run(runtime.scheduler.start())
+        assert "harness_ops" not in runtime.scheduler.tasks
+        assert "token_radar_projection" not in runtime.scheduler.tasks
     finally:
-        stop_runtime(runtime)
+        close_runtime(runtime)
 
 
-def test_start_runtime_tasks_starts_pulse_worker_task():
-    async def scenario():
-        runtime = _minimal_runtime()
-        runtime.pulse_candidate_worker = FakePulseWorker()
+def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_path):
+    created_upstream_clients = []
 
-        app_module._start_runtime_tasks(runtime)
+    def upstream_client_factory(on_frame):
+        client = SimpleNamespace(on_frame=on_frame)
+        created_upstream_clients.append(client)
+        return client
 
-        try:
-            assert runtime.pulse_candidate_task is not None
-            assert not runtime.pulse_candidate_task.done()
-        finally:
-            runtime.pulse_candidate_worker.stop()
-            runtime.pulse_candidate_task.cancel()
-            await asyncio.gather(runtime.pulse_candidate_task, return_exceptions=True)
-
-    asyncio.run(scenario())
-
-
-def test_watchdog_reports_stopped_pulse_worker_when_created():
-    runtime = _minimal_runtime()
-    runtime.pulse_candidate_worker = FakePulseWorker()
-    runtime.pulse_candidate_task = DoneTask()
-
-    reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
-
-    assert "pulse_candidate_worker_stopped" in reasons
-
-
-def test_watchdog_flags_stopped_watchlist_handle_summary_worker():
-    runtime = _minimal_runtime()
-    runtime.watchlist_handle_summary_worker = FakePulseWorker()
-    runtime.watchlist_handle_summary_task = DoneTask()
-
-    reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
-
-    assert "watchlist_handle_summary_worker_stopped" in reasons
-
-
-def test_readiness_includes_pulse_agent_fields(monkeypatch):
-    runtime = _minimal_runtime()
-    runtime.pulse_candidate_worker = SimpleNamespace(
-        last_started_at_ms=1_000,
-        last_run_at_ms=2_000,
-        last_result={"processed": 1},
-        last_error=None,
+    asset_market = SimpleNamespace(
+        sync_cex_market=None,
+        message_cex_market=object(),
+        dex_discovery_market=None,
+        dex_quote_market=None,
+        dex_candle_market=None,
+        dex_profile_market=None,
+        stream_dex_market=object(),
+        discovery_chain_ids=(),
     )
-    runtime.pulse_candidate_task = RunningTask()
-    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
-    monkeypatch.setattr(app_module, "_enrichment_job_counts", lambda _: {})
-    monkeypatch.setattr(app_module, "_notification_summary", lambda _: {})
-
-    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
-
-    assert status_code == 200
-    assert payload["pulse_agent"]["enabled"] is True
-    assert payload["pulse_agent"]["configured"] is True
-    assert payload["pulse_agent"]["worker_running"] is True
-    assert payload["pulse_agent"]["model"] == "gpt-pulse"
-    assert payload["pulse_agent"]["last_result"] == {"processed": 1}
-
-
-def test_readiness_includes_asset_profile_refresh_fields(monkeypatch):
-    runtime = _minimal_runtime()
-    runtime.asset_profile_refresh_worker = SimpleNamespace(
-        last_started_at_ms=1_000,
-        last_run_at_ms=2_000,
-        last_result={"selected": 1, "ready": 1},
-        last_error=None,
+    settings = Settings(
+        ws_token="secret",
+        storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
+        workers={
+            "collector": {"enabled": False},
+            "harness_ops": {"enabled": False},
+            "live_price_gateway": {"enabled": False},
+            "token_radar_projection": {"enabled": False},
+        },
+        notifications={"enabled": False},
     )
-    runtime.asset_profile_refresh_task = RunningTask()
-    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
-    monkeypatch.setattr(app_module, "_enrichment_job_counts", lambda _: {})
-    monkeypatch.setattr(app_module, "_notification_summary", lambda _: {})
-
-    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
-
-    assert status_code == 200
-    assert payload["asset_profile_refresh"] == {
-        "worker_running": True,
-        "last_started_at_ms": 1_000,
-        "last_run_at_ms": 2_000,
-        "last_result": {"selected": 1, "ready": 1},
-        "last_error": None,
-    }
-
-
-def test_stop_runtime_closes_pulse_worker_client():
-    async def scenario():
-        runtime = _minimal_runtime()
-        runtime.collector = SimpleNamespace(stop=_noop_async)
-        runtime.pulse_candidate_worker = FakePulseWorker()
-
-        await app_module._stop_runtime(runtime)
-
-        assert runtime.pulse_candidate_worker.stopped is True
-        assert runtime.pulse_candidate_worker.closed is True
-
-    asyncio.run(scenario())
-
-
-class FakePulseWorker:
-    last_started_at_ms = None
-    last_run_at_ms = None
-    last_result = None
-    last_error = None
-
-    def __init__(self):
-        self.stopped = False
-        self.closed = False
-
-    async def run(self):
-        while not self.stopped:
-            await asyncio.sleep(0.01)
-
-    def stop(self):
-        self.stopped = True
-
-    async def aclose(self):
-        self.closed = True
-
-
-async def _noop_async():
-    return None
-
-
-class RunningTask:
-    def done(self):
-        return False
-
-    def cancel(self):
-        return None
-
-
-class DoneTask:
-    def done(self):
-        return True
-
-    def cancel(self):
-        return None
-
-
-def _minimal_runtime():
-    settings = SimpleNamespace(
-        handles=("toly",),
-        llm_configured=False,
-        llm_trace_enabled=False,
-        llm_trace_export_configured=False,
-        llm_trace_include_sensitive_data=False,
-        enrichment_concurrency=1,
-        notifications=SimpleNamespace(enabled=False),
-        pulse_agent_enabled=True,
-        pulse_agent_configured=True,
-        pulse_agent_model="gpt-pulse",
-        pulse_agent_batch_size=7,
-        pulse_agent_interval_seconds=11.0,
-        pulse_agent_max_attempts=4,
-        watchlist_handle_summary_enabled=True,
-        watchlist_handle_summary_configured=True,
-        watchlist_handle_summary_model="gpt-watchlist",
-        watchlist_handle_summary_concurrency=2,
-        watchlist_handle_summary_poll_interval_seconds=13.0,
-        watchlist_handle_summary_max_attempts=3,
-        okx_cex_sync_enabled=False,
+    settings.set_config_dir(tmp_path / "app-home")
+    patch_runtime_dependencies(
+        monkeypatch,
+        asset_market=asset_market,
+        upstream_client_factory=upstream_client_factory,
     )
-    return SimpleNamespace(
-        settings=settings,
-        start_collector=False,
+
+    runtime = bootstrap(settings, start_collector=True)
+
+    try:
+        assert runtime.start_collector is False
+        assert runtime.collector.upstream_client is None
+        assert created_upstream_clients == []
+        assert runtime.workers["collector"].status_payload()["enabled"] is False
+        assert runtime.workers["live_price_gateway"].status_payload()["enabled"] is False
+        assert runtime.providers.asset_market.stream_dex_market is asset_market.stream_dex_market
+    finally:
+        close_runtime(runtime)
+
+
+def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
+    asset_market = SimpleNamespace(
+        sync_cex_market=None,
+        message_cex_market=object(),
+        dex_discovery_market=object(),
+        dex_quote_market=object(),
+        dex_candle_market=None,
+        dex_profile_market=object(),
+        stream_dex_market=object(),
+        discovery_chain_ids=("solana",),
+    )
+    settings = Settings(
+        ws_token="secret",
+        storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
+        workers={
+            "anchor_price": {"enabled": True},
+            "asset_profile_refresh": {"enabled": True},
+            "resolution_refresh": {"enabled": True},
+            "live_price_gateway": {"enabled": True},
+            "token_radar_projection": {"enabled": False},
+        },
+        notifications={"enabled": False},
+    )
+    settings.set_config_dir(tmp_path / "app-home")
+    patch_runtime_dependencies(monkeypatch, asset_market=asset_market)
+
+    runtime = bootstrap(settings, start_collector=False)
+
+    try:
+        assert runtime.workers["collector"].status_payload()["enabled"] is False
+        for name in ("anchor_price", "asset_profile_refresh", "resolution_refresh", "live_price_gateway"):
+            assert runtime.workers[name].status_payload()["enabled"] is True
+    finally:
+        close_runtime(runtime)
+
+
+def test_notification_delivery_starts_when_rule_worker_disabled(monkeypatch, tmp_path):
+    settings = Settings(
+        ws_token="secret",
+        storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
+        notifications={
+            "enabled": True,
+            "channels": {
+                "audit_log": {
+                    "enabled": True,
+                    "provider": "log",
+                    "min_severity": "info",
+                }
+            },
+        },
+        workers={"notification_rule": {"enabled": False}, "notification_delivery": {"enabled": True}},
+    )
+    settings.set_config_dir(tmp_path / "app-home")
+    patch_runtime_dependencies(monkeypatch)
+
+    runtime = bootstrap(settings, start_collector=False)
+
+    try:
+        assert runtime.workers["notification_rule"].status_payload()["enabled"] is False
+        assert runtime.workers["notification_delivery"].status_payload()["enabled"] is True
+    finally:
+        close_runtime(runtime)
+
+
+def test_readiness_uses_scheduler_workers_payload(monkeypatch):
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
-        collector_task=None,
-        enrichment_worker=None,
-        enrichment_task=None,
-        harness_ops_worker=None,
-        harness_ops_task=None,
-        notification_worker=None,
-        notification_task=None,
-        notification_delivery_worker=None,
-        notification_delivery_task=None,
-        anchor_price_worker=None,
-        anchor_price_task=None,
-        asset_profile_refresh_worker=None,
-        asset_profile_refresh_task=None,
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        live_price_gateway=None,
-        live_price_gateway_task=None,
-        resolution_refresh_worker=None,
-        resolution_refresh_task=None,
-        token_radar_projection_worker=None,
-        token_radar_projection_task=None,
-        pulse_candidate_worker=None,
-        pulse_candidate_task=None,
-        watchlist_handle_summary_worker=None,
-        watchlist_handle_summary_task=None,
-        supervisor_task=None,
-        api_db_pool=SimpleNamespace(close=lambda: None),
-        worker_db_pool=SimpleNamespace(close=lambda: None),
-        wake_db_pool=SimpleNamespace(close=lambda: None),
+        scheduler=SimpleNamespace(
+            status_payload=lambda: {
+                "pulse_candidate": {
+                    "enabled": True,
+                    "running": True,
+                    "last_started_at_ms": 1_000,
+                    "last_finished_at_ms": 2_000,
+                    "last_result": {"processed": 1},
+                    "last_error": None,
+                    "iteration_duration_p99_ms": None,
+                    "queue_depth": None,
+                    "pool_wait_ms_p99": None,
+                }
+            },
+            unhealthy_reasons=lambda: [],
+        ),
     )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+
+    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    assert status_code == 200
+    assert payload["workers"]["pulse_candidate"]["running"] is True
+    assert payload["workers"]["pulse_candidate"]["last_result"] == {"processed": 1}
+    assert "pulse_agent" not in payload

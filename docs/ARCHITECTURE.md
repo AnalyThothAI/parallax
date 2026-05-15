@@ -82,13 +82,20 @@ Cross-cutting primitives that implement these invariants:
 - `MarketObservation`, `MarketContext`, `MarketReadiness` — value types in
   `domains/asset_market/types/market_observation.py`; the only market fact
   contract across domains.
-- `WakeBus`, `WakeListener` — composition-root primitives in
-  `app/runtime/wake_bus.py`; the only place that owns
-  `LISTEN/NOTIFY` mechanics. Domain workers receive these by injection.
-- `api_db_pool`, `worker_db_pool`, `wake_db_pool` — composition-root PostgreSQL
-  pools in `app/runtime/app.py`. HTTP/WebSocket reads use the API pool,
-  background workers use the worker pool, and `LISTEN/NOTIFY` uses the wake
-  pool so read traffic cannot be starved by projection or listener work.
+- `runtime.bootstrap()` — composition entry point that builds
+  `DBPoolBundle`, provider wiring, repositories, the canonical worker
+  map, `WorkerScheduler`, API/WebSocket surfaces, readiness dependencies,
+  and lifecycle ownership.
+- `DBPoolBundle` — owns `api_pool`, `worker_pool`, and `wake_pool`.
+  HTTP/WebSocket reads use the API pool, background workers use the
+  worker pool, and wake emit/listen traffic uses the wake pool so read
+  traffic cannot be starved by projection or listener work.
+- `worker_registry.py` and `WorkerScheduler` — declare the canonical
+  worker keys/classes and own worker start/stop/status semantics.
+- Wake emission/listening is composed via
+  `DBPoolBundle.wake_emitter()` and `DBPoolBundle.wake_listener()`.
+  Domain workers receive wake dependencies by injection and never call
+  `pg_notify` directly.
 - `should_persist_live_observation` — single decision function in
   `domains/asset_market/services/live_observation_policy.py`; the live
   write budget gate.
@@ -97,7 +104,7 @@ Cross-cutting primitives that implement these invariants:
 
 | Root | Responsibility |
 |------|----------------|
-| `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/` wires domains; `app/surfaces/{api,cli}/` translate public inputs and outputs. `app/runtime/wake_bus.py` owns the `WakeBus` / `WakeListener` `LISTEN`/`NOTIFY` mechanics injected into domain workers. |
+| `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/bootstrap.py` wires `DBPoolBundle`, providers, repositories, the canonical worker registry, `WorkerScheduler`, readiness, and lifecycle. `app/surfaces/{api,cli}/` translate public inputs and outputs. Wake mechanics flow through `DBPoolBundle.wake_emitter()` / `wake_listener()`. |
 | `domains/` | Product domains. Each domain owns its repositories, queries, services / scoring, read models, and runtime workers. |
 | `integrations/` | External adapters for GMGN, OKX, and OpenAI Agents. They translate third-party API shapes but do not own product decisions. |
 | `platform/` | Config, PostgreSQL infrastructure (client, migrations, audit, Alembic), logging, and runtime paths. Platform never imports product domains. |
@@ -171,7 +178,8 @@ types/config → repositories/queries → services/scoring → read_models/runti
 | `domains/<d>/read_models` | own domain's `types`, `repositories`, `queries`, plus other domains' `interfaces.py`. **No raw SQL** — query modules live in `repositories/` or `queries/`. |
 | `domains/<d>/runtime` | own domain's `services`, `providers.py`, `repositories`, `queries`, `scoring`, plus other domains' `interfaces.py`. **No `integrations/*`, `platform/db`, or `platform/paths`.** |
 | `app/runtime/providers_wiring.py` | Service-process composition module. The only service-runtime file that joins concrete `integrations/*` clients with domain Provider contracts. It may translate supplier shapes such as OKX chain indexes into domain values. |
-| `app/runtime/app.py` | Runtime orchestration: builds repositories, workers, surfaces, readiness, and lifecycle. Imports `wire_providers(...)` / `WiredProviders`; does not import concrete integrations or domain provider modules directly. |
+| `app/runtime/bootstrap.py` | Runtime orchestration: builds `DBPoolBundle`, repositories, workers, surfaces, readiness dependencies, and lifecycle. Imports `wire_providers(...)` / `WiredProviders`; does not import concrete integrations or domain provider modules directly. |
+| `app/runtime/worker_registry.py` and `app/runtime/worker_scheduler.py` | Canonical worker key/class inventory plus start, stop, close, status, and unhealthy-reason semantics. |
 | `app/runtime` | composition root: may import any domain runtime, repository, or interface to wire the process, subject to the dedicated Provider wiring rule above. |
 | `app/surfaces/api`, `app/surfaces/cli` | domain `interfaces.py` and read services. **No domain SQL, scoring, settlement, token resolution, or notification rules** — surfaces translate public inputs into domain calls. |
 | `platform/*` | stdlib, third-party. **Never** imports `domains/`, `integrations/`, or `app/`. |

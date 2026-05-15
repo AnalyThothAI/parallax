@@ -1,16 +1,34 @@
+from pathlib import Path
+
 import pytest
 import yaml
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import RUNNING_TIMEOUT_MS
-from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
-from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, config_path
+from gmgn_twitter_intel.platform.config.settings import (
+    Settings,
+    WorkersSettings,
+    default_workers_yaml,
+    load_settings,
+    write_default_config,
+)
+from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, config_path, workers_config_path
 
 
-def write_config(home, payload):
+def write_config(home, payload, *, write_workers=True):
     app_dir = home / ".gmgn-twitter-intel"
     app_dir.mkdir(parents=True, exist_ok=True)
     path = app_dir / "config.yaml"
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    if write_workers:
+        (app_dir / "workers.yaml").write_text(default_workers_yaml(), encoding="utf-8")
+    return path
+
+
+def write_workers_config(home, payload):
+    app_dir = home / ".gmgn-twitter-intel"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    path = app_dir / "workers.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
 
@@ -37,42 +55,36 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.llm_timeout_seconds * 1000 < RUNNING_TIMEOUT_MS
-    assert settings.pulse_agent_enabled is True
-    assert settings.pulse_agent_interval_seconds == 60
-    assert settings.pulse_agent_batch_size == 10
-    assert settings.pulse_agent_max_attempts == 3
     assert settings.pulse_agent_model is None
     assert settings.pulse_agent_configured is False
-    assert settings.pulse_agent_trigger_min_rank_score == 45
-    assert settings.pulse_agent_gate_trade_candidate_min == 72
-    assert settings.pulse_agent_gate_token_watch_min == 45
-    assert settings.pulse_agent_gate_high_info_rejection_min == 30
-    assert settings.pulse_agent_gate_high_conviction_min == 78
-    assert settings.watchlist_handle_summary_enabled is True
     assert settings.watchlist_handle_summary_model is None
     assert settings.watchlist_handle_summary_configured is False
-    assert settings.watchlist_handle_summary_signal_threshold == 10
-    assert settings.watchlist_handle_summary_time_threshold_ms == 1_800_000
-    assert settings.watchlist_handle_summary_min_interval_ms == 300_000
-    assert settings.watchlist_handle_summary_poll_interval_seconds == 2
-    assert settings.watchlist_handle_summary_concurrency == 1
-    assert settings.watchlist_handle_summary_input_limit == 80
-    assert settings.watchlist_handle_summary_window_days == 7
-    assert settings.watchlist_handle_summary_lease_ms == 120_000
-    assert settings.watchlist_handle_summary_max_attempts == 3
+    assert settings.workers.enrichment.interval_seconds == 2
+    assert settings.workers.enrichment.concurrency == 4
+    assert settings.workers.pulse_candidate.interval_seconds == 60
+    assert settings.workers.pulse_candidate.batch_size == 10
+    assert settings.workers.pulse_candidate.max_attempts == 3
+    assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
+    assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 72
+    assert settings.workers.handle_summary.enabled is True
+    assert settings.workers.handle_summary.signal_threshold == 10
+    assert settings.workers.handle_summary.time_threshold_ms == 1_800_000
+    assert settings.workers.handle_summary.min_interval_ms == 300_000
+    assert settings.workers.handle_summary.input_limit == 80
+    assert settings.workers.handle_summary.window_days == 7
+    assert settings.workers.handle_summary.lease_ms == 120_000
+    assert settings.workers.handle_summary.max_attempts == 3
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
-    assert settings.okx_dex_sync_interval_seconds == 30.0
-    assert settings.okx_dex_price_hot_stale_seconds == 90.0
-    assert settings.okx_dex_price_warm_stale_seconds == 300.0
-    assert settings.okx_dex_price_refresh_limit == 160
     assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
-    assert settings.okx_dex_ws_subscription_limit == 100
+    assert settings.workers.live_price_gateway.subscription_limit == 100
+    assert settings.workers.live_price_gateway.hot_target_ttl_seconds == 300
+    assert settings.workers.live_price_gateway.reconnect_delay_seconds == 3
     assert settings.okx_dex_ws_configured is False
-    assert settings.live_observation_heartbeat_seconds == 60
-    assert settings.live_observation_min_price_change_pct == 0.005
-    assert settings.live_observation_min_write_interval_seconds == 5
+    assert settings.workers.live_price_gateway.live_observation_heartbeat_seconds == 60
+    assert settings.workers.live_price_gateway.live_observation_min_price_change_pct == 0.005
+    assert settings.workers.live_price_gateway.live_observation_min_write_interval_seconds == 5
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):
@@ -120,32 +132,41 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 "model": "gpt-test",
                 "base_url": "https://example.test/v1/",
                 "timeout_seconds": 7,
-                "enrichment_poll_interval": 0.5,
-                "enrichment_concurrency": 3,
                 "trace_enabled": True,
                 "trace_api_key": "sk-trace",
                 "trace_include_sensitive_data": False,
-                "pulse_agent_enabled": True,
-                "pulse_agent_interval_seconds": 0,
-                "pulse_agent_batch_size": 999,
-                "pulse_agent_max_attempts": 0,
                 "pulse_agent_model": " ",
-                "pulse_agent_trigger_min_rank_score": 60,
-                "pulse_agent_gate_trade_candidate_min": 70,
-                "pulse_agent_gate_token_watch_min": 40,
-                "pulse_agent_gate_high_info_rejection_min": 25,
-                "pulse_agent_gate_high_conviction_min": 74,
-                "watchlist_handle_summary_enabled": True,
                 "watchlist_handle_summary_model": " ",
-                "watchlist_handle_summary_signal_threshold": 0,
-                "watchlist_handle_summary_time_threshold_ms": 1,
-                "watchlist_handle_summary_min_interval_ms": 1,
-                "watchlist_handle_summary_poll_interval_seconds": 0,
-                "watchlist_handle_summary_concurrency": 99,
-                "watchlist_handle_summary_input_limit": 9999,
-                "watchlist_handle_summary_window_days": 99,
-                "watchlist_handle_summary_lease_ms": 1,
-                "watchlist_handle_summary_max_attempts": 0,
+            },
+        },
+    )
+    write_workers_config(
+        tmp_path,
+        yaml.safe_load(default_workers_yaml())
+        | {
+            "enrichment": {"interval_seconds": 0.5, "concurrency": 3},
+            "pulse_candidate": {
+                "interval_seconds": 1,
+                "batch_size": 100,
+                "max_attempts": 1,
+                "trigger_thresholds": {"min_rank_score": 60},
+                "gate_thresholds": {
+                    "trade_candidate_min": 70,
+                    "token_watch_min": 40,
+                    "high_info_rejection_min": 25,
+                    "high_conviction_min": 74,
+                },
+            },
+            "handle_summary": {
+                "interval_seconds": 1,
+                "concurrency": 8,
+                "lease_ms": 10_000,
+                "max_attempts": 1,
+                "signal_threshold": 1,
+                "time_threshold_ms": 60_000,
+                "min_interval_ms": 60_000,
+                "input_limit": 500,
+                "window_days": 30,
             },
         },
     )
@@ -162,34 +183,33 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.llm_model == "gpt-test"
     assert settings.llm_base_url == "https://example.test/v1"
     assert settings.llm_timeout_seconds == 7
-    assert settings.enrichment_poll_interval == 0.5
-    assert settings.enrichment_concurrency == 3
     assert settings.llm_trace_enabled is True
     assert settings.llm_trace_api_key == "sk-trace"
     assert settings.llm_trace_export_configured is True
     assert settings.llm_trace_include_sensitive_data is False
-    assert settings.pulse_agent_enabled is True
-    assert settings.pulse_agent_interval_seconds == 1
-    assert settings.pulse_agent_batch_size == 100
-    assert settings.pulse_agent_max_attempts == 1
+    assert settings.workers.enrichment.interval_seconds == 0.5
+    assert settings.workers.enrichment.concurrency == 3
+    assert settings.workers.pulse_candidate.interval_seconds == 1
+    assert settings.workers.pulse_candidate.batch_size == 100
+    assert settings.workers.pulse_candidate.max_attempts == 1
     assert settings.pulse_agent_model == "gpt-test"
     assert settings.pulse_agent_configured is True
-    assert settings.pulse_agent_trigger_min_rank_score == 60
-    assert settings.pulse_agent_gate_trade_candidate_min == 70
-    assert settings.pulse_agent_gate_token_watch_min == 40
-    assert settings.pulse_agent_gate_high_info_rejection_min == 25
-    assert settings.pulse_agent_gate_high_conviction_min == 74
+    assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 60
+    assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 70
+    assert settings.workers.pulse_candidate.gate_thresholds.token_watch_min == 40
+    assert settings.workers.pulse_candidate.gate_thresholds.high_info_rejection_min == 25
+    assert settings.workers.pulse_candidate.gate_thresholds.high_conviction_min == 74
     assert settings.watchlist_handle_summary_model == "gpt-test"
     assert settings.watchlist_handle_summary_configured is True
-    assert settings.watchlist_handle_summary_signal_threshold == 1
-    assert settings.watchlist_handle_summary_time_threshold_ms == 60_000
-    assert settings.watchlist_handle_summary_min_interval_ms == 60_000
-    assert settings.watchlist_handle_summary_poll_interval_seconds == 1
-    assert settings.watchlist_handle_summary_concurrency == 8
-    assert settings.watchlist_handle_summary_input_limit == 500
-    assert settings.watchlist_handle_summary_window_days == 30
-    assert settings.watchlist_handle_summary_lease_ms == 10_000
-    assert settings.watchlist_handle_summary_max_attempts == 1
+    assert settings.workers.handle_summary.signal_threshold == 1
+    assert settings.workers.handle_summary.time_threshold_ms == 60_000
+    assert settings.workers.handle_summary.min_interval_ms == 60_000
+    assert settings.workers.handle_summary.interval_seconds == 1
+    assert settings.workers.handle_summary.concurrency == 8
+    assert settings.workers.handle_summary.input_limit == 500
+    assert settings.workers.handle_summary.window_days == 30
+    assert settings.workers.handle_summary.lease_ms == 10_000
+    assert settings.workers.handle_summary.max_attempts == 1
 
 
 def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
@@ -299,18 +319,10 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
                 "okx": {
                     "cex_base_url": "https://okx.example.test/",
                     "cex_sync_enabled": True,
-                    "cex_sync_interval_seconds": 120,
                     "cex_inst_types": ["SPOT"],
                     "dex_base_url": "https://web3-okx.example.test/",
                     "dex_chain_indexes": ["501", "1"],
-                    "dex_sync_interval_seconds": 12,
-                    "dex_price_hot_stale_seconds": 45,
-                    "dex_price_warm_stale_seconds": 180,
-                    "dex_price_refresh_limit": 25,
                     "dex_ws_url": "wss://okx-ws.example.test/ws/v6/dex",
-                    "dex_ws_subscription_limit": 20,
-                    "dex_ws_hot_target_ttl_seconds": 120,
-                    "dex_ws_reconnect_delay_seconds": 2,
                     "dex_api_key": "okx-key",
                     "dex_secret_key": "okx-secret",
                     "dex_passphrase": "okx-pass",
@@ -329,18 +341,10 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.gmgn_token_info_cache_ttl_seconds == 60
     assert settings.okx_cex_base_url == "https://okx.example.test"
     assert settings.okx_cex_sync_enabled is True
-    assert settings.okx_cex_sync_interval_seconds == 120
     assert settings.okx_cex_inst_types == ("SPOT",)
     assert settings.okx_dex_base_url == "https://web3-okx.example.test"
     assert settings.okx_dex_chain_indexes == ("501", "1")
-    assert settings.okx_dex_sync_interval_seconds == 12
-    assert settings.okx_dex_price_hot_stale_seconds == 45
-    assert settings.okx_dex_price_warm_stale_seconds == 180
-    assert settings.okx_dex_price_refresh_limit == 25
     assert settings.okx_dex_ws_url == "wss://okx-ws.example.test/ws/v6/dex"
-    assert settings.okx_dex_ws_subscription_limit == 20
-    assert settings.okx_dex_ws_hot_target_ttl_seconds == 120
-    assert settings.okx_dex_ws_reconnect_delay_seconds == 2
     assert settings.okx_dex_ws_configured is True
     assert settings.okx_timeout_seconds == 9
 
@@ -390,7 +394,6 @@ def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
             "handles": ["toly"],
             "providers": {
                 "okx": {
-                    "dex_price_refresh_limit": 160,
                     "dex_surprise_budget": 10,
                 }
             },
@@ -404,16 +407,14 @@ def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     ("key", "value"),
     [
+        ("cex_sync_interval_seconds", 300),
         ("dex_sync_interval_seconds", 0),
         ("dex_price_hot_stale_seconds", -1),
         ("dex_price_warm_stale_seconds", 0),
         ("dex_price_refresh_limit", -10),
-        ("dex_ws_subscription_limit", 0),
-        ("dex_ws_hot_target_ttl_seconds", 0),
-        ("dex_ws_reconnect_delay_seconds", -1),
     ],
 )
-def test_okx_provider_rejects_invalid_dex_refresh_knobs(tmp_path, monkeypatch, key, value):
+def test_okx_provider_rejects_removed_dex_refresh_knobs(tmp_path, monkeypatch, key, value):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -437,7 +438,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
             "handles": ["toly"],
             "notifications": {
                 "enabled": True,
-                "poll_interval_seconds": 3,
                 "token_flow_limit": 40,
                 "rules": {
                     "hot_quality_token_5m": {
@@ -471,7 +471,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     settings = load_settings()
 
     assert settings.notifications.enabled is True
-    assert settings.notifications.poll_interval_seconds == 3
     assert settings.notifications.token_flow_limit == 40
     activity_rule = settings.notifications.rules["watched_account_activity"]
     assert activity_rule.channels == ("in_app",)
@@ -544,7 +543,86 @@ def test_load_settings_accepts_config_without_ws_token(tmp_path, monkeypatch):
     assert settings.ws_token is None
 
 
-def test_init_creates_single_config_file_and_runtime_directories(tmp_path, monkeypatch):
+def test_load_settings_requires_workers_yaml(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(tmp_path, {"ws_token": "secret", "handles": ["toly"]}, write_workers=False)
+
+    with pytest.raises(FileNotFoundError, match=r"workers\.yaml not found"):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    "removed_payload",
+    [
+        {"llm": {"enrichment_poll_interval": 2}},
+        {"llm": {"enrichment_concurrency": 4}},
+        {"llm": {"pulse_agent_batch_size": 10}},
+        {"llm": {"watchlist_handle_summary_poll_interval_seconds": 2}},
+        {"notifications": {"poll_interval_seconds": 5}},
+        {"live_observation_heartbeat_seconds": 60},
+        {"providers": {"okx": {"dex_ws_subscription_limit": 100}}},
+    ],
+)
+def test_load_settings_rejects_old_config_worker_fields(tmp_path, monkeypatch, removed_payload):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    payload = {"ws_token": "secret", "handles": ["toly"]}
+    for key, value in removed_payload.items():
+        if isinstance(value, dict):
+            payload[key] = value
+        else:
+            payload[key] = value
+    write_config(tmp_path, payload)
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+def test_config_example_excludes_worker_runtime_knobs() -> None:
+    payload = yaml.safe_load(Path("config.example.yaml").read_text(encoding="utf-8"))
+    llm = payload["llm"]
+    forbidden_llm_keys = {
+        "enrichment_poll_interval",
+        "enrichment_concurrency",
+        "pulse_agent_enabled",
+        "pulse_agent_interval_seconds",
+        "pulse_agent_batch_size",
+        "pulse_agent_max_attempts",
+        "pulse_agent_trigger_min_rank_score",
+        "pulse_agent_gate_trade_candidate_min",
+        "pulse_agent_gate_token_watch_min",
+        "pulse_agent_gate_high_info_rejection_min",
+        "pulse_agent_gate_high_conviction_min",
+        "watchlist_handle_summary_enabled",
+        "watchlist_handle_summary_signal_threshold",
+        "watchlist_handle_summary_time_threshold_ms",
+        "watchlist_handle_summary_min_interval_ms",
+        "watchlist_handle_summary_poll_interval_seconds",
+        "watchlist_handle_summary_concurrency",
+        "watchlist_handle_summary_input_limit",
+        "watchlist_handle_summary_window_days",
+        "watchlist_handle_summary_lease_ms",
+        "watchlist_handle_summary_max_attempts",
+    }
+
+    assert forbidden_llm_keys.isdisjoint(llm)
+    assert "workers" not in payload
+    workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+    assert workers.enrichment.concurrency == 4
+    assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
+    assert workers.handle_summary.time_threshold_ms == 1_800_000
+    assert workers.harness_ops.horizons == ("6h", "24h")
+    Settings(**{**payload, "workers": workers})
+
+
+def test_harness_ops_horizons_parse_from_worker_settings() -> None:
+    list_settings = WorkersSettings(harness_ops={"horizons": ["6h"]})
+    comma_settings = WorkersSettings(harness_ops={"horizons": "6h,24h"})
+
+    assert list_settings.harness_ops.horizons == ("6h",)
+    assert comma_settings.harness_ops.horizons == ("6h", "24h")
+
+
+def test_init_creates_config_workers_file_and_runtime_directories(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
 
     path = write_default_config()
@@ -552,7 +630,11 @@ def test_init_creates_single_config_file_and_runtime_directories(tmp_path, monke
     assert path == tmp_path / ".gmgn-twitter-intel" / "config.yaml"
     assert app_home() == tmp_path / ".gmgn-twitter-intel"
     assert config_path() == path
+    assert workers_config_path() == tmp_path / ".gmgn-twitter-intel" / "workers.yaml"
+    assert workers_config_path().exists()
     assert (tmp_path / ".gmgn-twitter-intel" / "logs").is_dir()
     settings = load_settings()
     assert settings.ws_token
     assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
+    assert settings.workers.collector.mode == "continuous"
+    assert settings.workers.notification_delivery.max_attempts == 5

@@ -93,10 +93,11 @@ receive provider protocols by injection and may not import
 | `market_observation_written` | `AnchorPriceWorker`, `LivePriceGateway` (after persisted material observation only) | `TokenRadarProjectionWorker` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` |
 
-Wake mechanics live in `app/runtime/wake_bus.py` (`WakeBus` for emit,
-`WakeListener` for receive). Asset Market workers receive a `WakeBus`
-instance by injection; they never call `pg_notify` directly. See
-`../../../../docs/WORKERS.md` for the cross-domain inventory.
+Wake mechanics are composed in `app/runtime/bootstrap.py` through
+`DBPoolBundle.wake_emitter()` and `wake_listener()`. Asset Market
+workers receive wake dependencies by injection; they never call
+`pg_notify` directly. See `../../../../docs/WORKERS.md` for the
+cross-domain inventory.
 
 ## Hard Boundaries
 

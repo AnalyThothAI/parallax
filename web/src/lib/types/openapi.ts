@@ -565,6 +565,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metrics */
+        get: operations["metrics_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/readyz": {
         parameters: {
             query?: never;
@@ -1213,42 +1230,30 @@ export interface components {
         };
         /** StatusData */
         StatusData: {
-            /** Anchor Price */
-            anchor_price?: {
-                [key: string]: unknown;
-            } | null;
-            /** Collector */
-            collector?: {
-                [key: string]: unknown;
-            } | null;
-            /** Enrichment */
-            enrichment?: {
+            /** Db */
+            db?: {
                 [key: string]: unknown;
             } | null;
             /** Handles */
             handles?: string[];
-            /** Live Price Gateway */
-            live_price_gateway?: {
-                [key: string]: unknown;
-            } | null;
-            /** Notifications */
-            notifications?: {
-                [key: string]: unknown;
-            } | null;
             /** Ok */
             ok: boolean;
+            /** Provider States */
+            provider_states?: {
+                [key: string]: unknown;
+            };
             /** Reasons */
             reasons?: string[];
+            /** Snapshot Gate */
+            snapshot_gate?: {
+                [key: string]: unknown;
+            };
             /** Store */
             store?: string | null;
-            /** Token Radar Projection */
-            token_radar_projection?: {
-                [key: string]: unknown;
-            } | null;
-            /** Watchlist Handle Summary */
-            watchlist_handle_summary?: {
-                [key: string]: unknown;
-            } | null;
+            /** Workers */
+            workers?: {
+                [key: string]: components["schemas"]["WorkerStatusData"];
+            };
         } & {
             [key: string]: unknown;
         };
@@ -1470,6 +1475,35 @@ export interface components {
             query: {
                 [key: string]: unknown;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        /** WorkerStatusData */
+        WorkerStatusData: {
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Enabled */
+            enabled: boolean;
+            /** Iteration Duration P99 Ms */
+            iteration_duration_p99_ms?: number | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Finished At Ms */
+            last_finished_at_ms?: number | null;
+            /** Last Result */
+            last_result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Last Started At Ms */
+            last_started_at_ms?: number | null;
+            /** Pool Wait Ms P99 */
+            pool_wait_ms_p99?: number | null;
+            /** Queue Depth */
+            queue_depth?: number | null;
+            /** Running */
+            running: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -2500,6 +2534,26 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    metrics_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

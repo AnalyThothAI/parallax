@@ -6,12 +6,11 @@ import inspect
 import json
 import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any
 
-from loguru import logger
-
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.market_field_facts import PROVIDER_OKX_DEX_WS_PRICE_INFO
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexMarketFactUpdate, DexMarketStreamTarget
 from gmgn_twitter_intel.domains.asset_market.services.live_observation_policy import (
@@ -72,69 +71,101 @@ class LiveMarketEmit:
     persisted: bool
 
 
-class LivePriceGateway:
+class LivePriceGateway(WorkerBase):
     def __init__(
         self,
         *,
-        repository_session: Callable[[], AbstractContextManager[Any]],
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         projection_version: str,
-        subscription_limit: int,
-        hot_target_ttl_seconds: float,
         stream_provider: Any | None = None,
         cex_market: Any | None = None,
-        cex_poll_interval_seconds: float = 30.0,
-        reconnect_delay_seconds: float = 3.0,
         on_live_market_update: Callable[[dict[str, Any]], Any] | None = None,
         wake_bus: Any | None = None,
-        live_observation_heartbeat_seconds: float = 60.0,
-        live_observation_min_price_change_pct: float = 0.005,
-        live_observation_min_write_interval_seconds: float = 5.0,
     ) -> None:
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.stream_provider = stream_provider
         self.cex_market = cex_market
-        self.repository_session = repository_session
         self.projection_version = projection_version
-        self.subscription_limit = max(1, int(subscription_limit))
-        self.hot_target_ttl_seconds = max(1.0, float(hot_target_ttl_seconds))
+        self.subscription_limit = max(1, int(getattr(settings, "subscription_limit", 100)))
+        self.hot_target_ttl_seconds = max(1.0, float(getattr(settings, "hot_target_ttl_seconds", 300.0)))
         self.live_stale_after_ms = int(self.hot_target_ttl_seconds * 1000)
-        self.cex_poll_interval_seconds = max(1.0, float(cex_poll_interval_seconds))
-        self.reconnect_delay_seconds = max(0.1, float(reconnect_delay_seconds))
+        self.cex_poll_interval_seconds = max(0.001, float(getattr(settings, "cex_poll_interval_seconds", 30.0)))
+        self.reconnect_delay_seconds = max(0.001, float(getattr(settings, "reconnect_delay_seconds", 3.0)))
         self.on_live_market_update = on_live_market_update
         self.wake_bus = wake_bus
-        self.live_observation_heartbeat_ms = int(max(0.0, float(live_observation_heartbeat_seconds)) * 1000)
-        self.live_observation_min_price_change_pct = max(0.0, float(live_observation_min_price_change_pct))
-        self.live_observation_min_write_interval_ms = int(
-            max(0.0, float(live_observation_min_write_interval_seconds)) * 1000
+        self.live_observation_heartbeat_ms = int(
+            max(0.0, float(getattr(settings, "live_observation_heartbeat_seconds", 60.0))) * 1000
         )
-        self.last_started_at_ms: int | None = None
-        self.last_run_at_ms: int | None = None
-        self.last_result: dict[str, Any] | None = None
-        self.last_error: str | None = None
+        self.live_observation_min_price_change_pct = max(
+            0.0, float(getattr(settings, "live_observation_min_price_change_pct", 0.005))
+        )
+        self.live_observation_min_write_interval_ms = int(
+            max(0.0, float(getattr(settings, "live_observation_min_write_interval_seconds", 5.0))) * 1000
+        )
         self._cache: dict[tuple[str, str], LiveMarketSnapshot] = {}
-        self._stopped = False
+        self._live_observation_reason_counts: dict[str, int] = {}
+        self._stream_provider_state_epoch: tuple[str | None, int | None] | None = None
+        self._provider_state_changed_for_next_frame = False
 
     async def run(self) -> None:
-        while not self._stopped:
-            try:
-                result = await self.run_once()
-            except Exception as exc:  # pragma: no cover - watchdog path
-                self.last_error = str(exc)
-                logger.exception(f"live price gateway failed: {exc}")
-                await asyncio.sleep(self.reconnect_delay_seconds)
-                continue
-            if self._stopped:
-                break
-            delay_seconds = (
-                self.reconnect_delay_seconds
-                if self.stream_provider is not None and int(result.get("dex_targets_selected") or 0) > 0
-                else self.cex_poll_interval_seconds
-            )
-            await self._sleep(delay_seconds)
+        if not self.enabled:
+            return
+        run_once_task: asyncio.Task[WorkerResult | None] | None = None
+        self.running = True
+        try:
+            await self.on_start()
+            while not self._stop_event.is_set() or run_once_task is not None:
+                self.last_started_at_ms = _now_ms()
+                started = time.perf_counter()
+                if run_once_task is None:
+                    run_once_task = self._create_run_once_task()
+                try:
+                    result, run_once_task = await self._run_once_with_timeout(run_once_task)
+                except asyncio.CancelledError:
+                    await self._cancel_run_once_task(run_once_task)
+                    run_once_task = None
+                    raise
+                except Exception as exc:  # pragma: no cover - watchdog path
+                    if run_once_task is not None and run_once_task.done():
+                        self._discard_run_once_task(run_once_task)
+                        run_once_task = None
+                    self.last_error = str(exc)
+                    self._record_failed_iteration(started)
+                    await self._sleep(self.reconnect_delay_seconds)
+                    continue
+                self.last_error = None
+                self.last_result = result
+                self._record_successful_iteration(started, result)
+                if self._stop_event.is_set():
+                    break
+                delay_seconds = (
+                    self.reconnect_delay_seconds
+                    if self.stream_provider is not None
+                    and int(result.notes.get("result", {}).get("dex_targets_selected") or 0) > 0
+                    else self.cex_poll_interval_seconds
+                )
+                await self._sleep(delay_seconds)
+        finally:
+            await self._cancel_run_once_task(run_once_task)
+            self.running = False
+            await self.on_stop()
 
-    async def run_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
+    async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
+        result = await self._run_cycle(now_ms=now_ms)
+        return WorkerResult(
+            processed=int(result.get("observations_written") or 0),
+            notes={
+                "result": result,
+                "live_observation_reasons": dict(self._live_observation_reason_counts),
+            },
+        )
+
+    async def _run_cycle(self, *, now_ms: int | None = None) -> dict[str, Any]:
         received_at_ms = int(now_ms if now_ms is not None else _now_ms())
-        self.last_started_at_ms = received_at_ms
-        self.last_error = None
+        self._live_observation_reason_counts = {}
         result = {
             "targets_selected": 0,
             "dex_targets_selected": 0,
@@ -157,18 +188,14 @@ class LivePriceGateway:
                 result["observations_written"] += 1
                 await self._publish(payload.payload)
                 result["live_market_updates_published"] += 1
-        self.last_result = result
         async for payload in self._stream_dex(dex_targets, received_at_ms=received_at_ms):
             result["updates_received"] += 1
             if payload.persisted:
                 result["observations_written"] += 1
                 await self._publish(payload.payload)
                 result["live_market_updates_published"] += 1
-            self.last_result = result
-            if self._stopped:
+            if self._stop_event.is_set():
                 break
-        self.last_run_at_ms = _now_ms()
-        self.last_result = result
         return result
 
     def snapshot(self, *, target_type: str, target_id: str, now_ms: int | None = None) -> dict[str, Any]:
@@ -199,25 +226,16 @@ class LivePriceGateway:
             **snapshot.to_payload(now_ms=observed_now_ms, stale_after_ms=self.live_stale_after_ms),
         }
 
-    def stop(self) -> None:
-        self._stopped = True
-
     async def _sleep(self, delay_seconds: float) -> None:
         remaining = max(0.0, float(delay_seconds))
-        while remaining > 0 and not self._stopped:
+        while remaining > 0 and not self._stop_event.is_set():
             step = min(0.1, remaining)
             await asyncio.sleep(step)
             remaining -= step
 
-    def close(self) -> None:
-        for provider in (self.stream_provider, self.cex_market):
-            close = getattr(provider, "close", None)
-            if close:
-                close()
-
     def _active_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
         since_ms = int(now_ms) - int(self.hot_target_ttl_seconds * 1000)
-        with self.repository_session() as repos:
+        with self.db.worker_session(self.name) as repos:
             targets: Sequence[Mapping[str, Any]] = repos.registry.active_live_market_targets(
                 projection_version=self.projection_version,
                 since_ms=since_ms,
@@ -262,8 +280,9 @@ class LivePriceGateway:
         stream = self.stream_provider.stream_price_info(stream_targets)
         iterator = stream.__aiter__()
         deadline = time.monotonic() + self._dex_stream_cycle_seconds()
+        self._record_stream_provider_state()
         try:
-            while not self._stopped:
+            while not self._stop_event.is_set():
                 remaining_seconds = deadline - time.monotonic()
                 if remaining_seconds <= 0:
                     break
@@ -274,6 +293,7 @@ class LivePriceGateway:
                 target = target_by_key.get(_target_key(update.chain_id, update.address))
                 if target is None:
                     continue
+                self._record_stream_provider_state()
                 yield self._payload_from_dex(update, target=target, received_at_ms=received_at_ms)
         finally:
             close = getattr(iterator, "aclose", None)
@@ -364,7 +384,9 @@ class LivePriceGateway:
 
     def _persist_material_observation(self, observation: MarketObservation) -> bool:
         now_ms = int(observation.observed_at_ms)
-        with self.repository_session() as repos:
+        provider_state_changed = self._provider_state_changed_for_next_frame
+        self._provider_state_changed_for_next_frame = False
+        with self.db.worker_session(self.name) as repos:
             previous = repos.price_observations.latest_for_target(
                 target_type=observation.target.target_type,
                 target_id=observation.target.target_id,
@@ -378,7 +400,9 @@ class LivePriceGateway:
                 heartbeat_ms=self.live_observation_heartbeat_ms,
                 min_price_change_pct=self.live_observation_min_price_change_pct,
                 min_write_interval_ms=self.live_observation_min_write_interval_ms,
+                provider_state_changed=provider_state_changed,
             )
+            self._record_live_observation_reason(decision.reason)
             if not decision.should_persist:
                 return False
             repos.price_observations.insert_market_observation(
@@ -396,6 +420,30 @@ class LivePriceGateway:
                 target_id=observation.target.target_id,
             )
         return True
+
+    def _record_stream_provider_state(self) -> None:
+        payload_method = getattr(self.stream_provider, "connection_state_payload", None)
+        if payload_method is None:
+            return
+        try:
+            payload = payload_method()
+        except Exception:
+            return
+        if not isinstance(payload, dict):
+            return
+        epoch = (
+            str(payload.get("state")) if payload.get("state") is not None else None,
+            int(payload["last_state_change_at_ms"]) if payload.get("last_state_change_at_ms") is not None else None,
+        )
+        if self._stream_provider_state_epoch is None:
+            self._stream_provider_state_epoch = epoch
+            return
+        if epoch != self._stream_provider_state_epoch:
+            self._stream_provider_state_epoch = epoch
+            self._provider_state_changed_for_next_frame = True
+
+    def _record_live_observation_reason(self, reason: str) -> None:
+        self._live_observation_reason_counts[reason] = self._live_observation_reason_counts.get(reason, 0) + 1
 
     async def _publish(self, payload: dict[str, Any]) -> None:
         if self.on_live_market_update is None:

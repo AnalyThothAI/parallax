@@ -2,74 +2,79 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 from typing import Any
 
-from loguru import logger
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 
-from ..services.anchor_price_observation import observe_anchor_prices
+from ..services.anchor_price_observation import (
+    anchor_price_empty_result,
+    fetch_anchor_price_quotes,
+    select_pending_anchor_price_rows,
+    write_anchor_price_observations,
+)
 
 
-class AnchorPriceWorker:
+class AnchorPriceWorker(WorkerBase):
     def __init__(
         self,
         *,
-        repository_session: Callable[[], AbstractContextManager[Any]],
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         cex_market: Any = None,
         dex_quote_market: Any = None,
-        interval_seconds: float = 5.0,
-        limit: int = 100,
         wake_bus: Any | None = None,
     ) -> None:
-        self.repository_session = repository_session
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.cex_market = cex_market
         self.dex_quote_market = dex_quote_market
-        self.interval_seconds = max(1.0, float(interval_seconds))
-        self.limit = max(1, int(limit))
         self.wake_bus = wake_bus
-        self.last_started_at_ms: int | None = None
-        self.last_run_at_ms: int | None = None
-        self.last_result: dict[str, Any] | None = None
-        self.last_error: str | None = None
-        self._stopped = False
 
-    async def run(self) -> None:
-        while not self._stopped:
-            try:
-                await asyncio.to_thread(self.run_once)
-            except Exception as exc:  # pragma: no cover - watchdog path
-                self.last_error = str(exc)
-                logger.exception(f"anchor price worker failed: {exc}")
-            await asyncio.sleep(self.interval_seconds)
-
-    def run_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
+    async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else time.time() * 1000)
-        self.last_started_at_ms = observed_at_ms
-        self.last_error = None
-        with self.repository_session() as repos:
-            result = observe_anchor_prices(
-                repos=repos,
-                cex_market=self.cex_market,
-                dex_quote_market=self.dex_quote_market,
-                now_ms=observed_at_ms,
-                limit=self.limit,
-            )
+        result = await asyncio.to_thread(self._observe_once, observed_at_ms)
         if int(result.get("anchor_observations_written") or 0) > 0 and self.wake_bus is not None:
             for target in result.get("written_targets") or ():
                 self.wake_bus.notify_market_observation_written(
                     target_type=str(target.get("target_type") or ""),
                     target_id=str(target.get("target_id") or ""),
                 )
-        self.last_run_at_ms = int(time.time() * 1000)
-        self.last_result = result
-        return result
+        return WorkerResult(
+            processed=int(result.get("anchor_observations_written") or 0),
+            failed=int(result.get("provider_errors") or 0),
+            skipped=_anchor_skipped_count(result),
+            notes={"result": result},
+        )
 
-    def stop(self) -> None:
-        self._stopped = True
+    def _observe_once(self, now_ms: int) -> dict[str, Any]:
+        with self.db.worker_session(self.name) as repos:
+            rows = select_pending_anchor_price_rows(
+                repos=repos,
+                now_ms=now_ms,
+                limit=max(1, int(getattr(self.settings, "batch_size", 100))),
+            )
+        result = anchor_price_empty_result(rows_selected=len(rows))
+        cex_quotes, dex_quotes = fetch_anchor_price_quotes(
+            rows=rows,
+            cex_market=self.cex_market,
+            dex_quote_market=self.dex_quote_market,
+            result=result,
+        )
+        with self.db.worker_session(self.name) as repos:
+            return write_anchor_price_observations(
+                repos=repos,
+                rows=rows,
+                cex_quotes=cex_quotes,
+                dex_quotes=dex_quotes,
+                now_ms=now_ms,
+                result=result,
+            )
 
-    def close(self) -> None:
-        for provider in (self.cex_market, self.dex_quote_market):
-            close = getattr(provider, "close", None)
-            if close:
-                close()
+
+def _anchor_skipped_count(result: dict[str, Any]) -> int:
+    return sum(
+        int(result.get(key) or 0)
+        for key in ("skipped_missing_pricefeed", "skipped_missing_provider", "skipped_missing_market")
+    )

@@ -30,36 +30,16 @@ storage:
     connect_timeout_seconds: 5
 
 llm:
+  provider: "openai"
   api_key:
   model:
   base_url: "https://api.openai.com/v1"
   timeout_seconds: 120
-  enrichment_poll_interval: 2
-  enrichment_concurrency: 4
   trace_enabled: true
   trace_api_key:
   trace_include_sensitive_data: false
-  pulse_agent_enabled: true
-  pulse_agent_interval_seconds: 60
-  pulse_agent_batch_size: 10
-  pulse_agent_max_attempts: 3
   pulse_agent_model:
-  pulse_agent_trigger_min_rank_score: 45
-  pulse_agent_gate_trade_candidate_min: 72
-  pulse_agent_gate_token_watch_min: 45
-  pulse_agent_gate_high_info_rejection_min: 30
-  pulse_agent_gate_high_conviction_min: 78
-  watchlist_handle_summary_enabled: true
   watchlist_handle_summary_model:
-  watchlist_handle_summary_signal_threshold: 10
-  watchlist_handle_summary_time_threshold_ms: 1800000
-  watchlist_handle_summary_min_interval_ms: 300000
-  watchlist_handle_summary_poll_interval_seconds: 2
-  watchlist_handle_summary_concurrency: 1
-  watchlist_handle_summary_input_limit: 80
-  watchlist_handle_summary_window_days: 7
-  watchlist_handle_summary_lease_ms: 120000
-  watchlist_handle_summary_max_attempts: 3
 
 gmgn:
   api_key:
@@ -71,14 +51,13 @@ providers:
   okx:
     cex_base_url: "https://www.okx.com"
     cex_sync_enabled: true
-    cex_sync_interval_seconds: 300
     cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453", "607"]
-    dex_sync_interval_seconds: 30
-    dex_price_hot_stale_seconds: 90
-    dex_price_warm_stale_seconds: 300
-    dex_price_refresh_limit: 160
+    dex_ws_url: "wss://wsdex.okx.com/ws/v6/dex"
+    dex_api_key:
+    dex_secret_key:
+    dex_passphrase:
     timeout_seconds: 15
   marketlane:
     enabled: true
@@ -93,7 +72,3 @@ upstream:
   reconnect_delay: 3
   heartbeat_interval: 25
   idle_timeout: 90
-
-collector:
-  watchdog_interval: 30
-  stale_timeout: 180

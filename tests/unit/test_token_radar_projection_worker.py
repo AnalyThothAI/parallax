@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import contextmanager
+from types import SimpleNamespace
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projection_worker as module
 
 
@@ -34,6 +38,28 @@ class FakeSession:
         return False
 
 
+class FakeDB:
+    def __init__(self, coverage):
+        self.coverage = coverage
+        self.worker_sessions: list[dict[str, object]] = []
+        self.sessions: list[FakeSession] = []
+
+    @contextmanager
+    def worker_session(self, name, statement_timeout_seconds=None):
+        self.worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
+        session = FakeSession(self.coverage)
+        self.sessions.append(session)
+        yield session.repos
+
+    def acquire_advisory_lock_connection(self, worker_name, key):
+        return FakeAdvisoryLock()
+
+
+class FakeAdvisoryLock:
+    def release(self):
+        return None
+
+
 def test_projection_worker_refreshes_hot_windows_before_missing_current_version_windows(monkeypatch):
     calls: list[dict[str, object]] = []
     coverage = {
@@ -55,11 +81,12 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
             return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms, "status": "ready"}
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    db = FakeDB(coverage)
     worker = module.TokenRadarProjectionWorker(
-        repository_session=lambda: FakeSession(coverage),
-        windows=("5m", "1h", "4h"),
-        scopes=("all", "matched"),
-        limit=7,
+        name="token_radar_projection",
+        settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
+        db=db,
+        telemetry=object(),
         wake_bus=wake_bus,
     )
 
@@ -75,7 +102,6 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
     ]
     assert result["rows_written"] == 12
     assert result["windows"]["1h:all"]["status"] == "ready"
-    assert worker.last_result == result
     assert wake_bus.token_radar_notifications == [
         {"window": "5m", "scope": "all"},
         {"window": "5m", "scope": "matched"},
@@ -84,13 +110,42 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
         {"window": "4h", "scope": "all"},
         {"window": "4h", "scope": "matched"},
     ]
+    assert isinstance(worker, WorkerBase)
+    assert worker.SINGLE_WRITER_KEY == 2026051501
+    assert db.worker_sessions[0] == {"name": "token_radar_projection", "statement_timeout_seconds": 120.0}
+
+
+def test_projection_worker_run_once_returns_worker_result(monkeypatch):
+    class FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild(self, *, window, scope, now_ms=None, limit=100):
+            return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms, "status": "ready"}
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), batch_size=7),
+        db=FakeDB({}),
+        telemetry=object(),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert isinstance(result, WorkerResult)
+    assert result.processed == 1
+    assert result.notes["rows_written"] == 2
+    assert result.notes["source_rows"] == 3
+    assert result.notes["windows"]["5m:all"]["status"] == "ready"
 
 
 def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():
     worker = module.TokenRadarProjectionWorker(
-        repository_session=lambda: FakeSession({}),
-        windows=("5m", "1h"),
-        scopes=("all", "matched"),
+        name="token_radar_projection",
+        settings=_settings(windows=("5m", "1h"), scopes=("all", "matched")),
+        db=FakeDB({}),
+        telemetry=object(),
     )
 
     missing = worker._missing_work_items(
@@ -119,19 +174,20 @@ def test_projection_worker_records_partial_window_results_before_background_fail
                 raise RuntimeError("source query timeout")
             return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms, "status": "ready"}
 
-    def repository_session():
+    @contextmanager
+    def repository_session(name, statement_timeout_seconds=None):
         session = FakeSession({})
         sessions.append(session)
-        return session
+        yield session.repos
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     worker = module.TokenRadarProjectionWorker(
-        repository_session=repository_session,
-        windows=("1h",),
-        scopes=("all", "matched"),
-        hot_windows=(),
-        limit=7,
+        name="token_radar_projection",
+        settings=_settings(windows=("1h",), scopes=("all", "matched"), hot_windows=(), batch_size=7),
+        db=FakeDB({}),
+        telemetry=object(),
     )
+    worker.db.worker_session = repository_session
 
     result = worker.rebuild_once(now_ms=1_777_800_000_000)
 
@@ -140,31 +196,36 @@ def test_projection_worker_records_partial_window_results_before_background_fail
     assert result["windows"]["1h:matched"]["status"] == "failed"
     assert result["windows"]["1h:matched"]["error"] == "source query timeout"
     assert worker.last_error == "source query timeout"
-    assert worker.last_result == result
 
 
-def test_projection_worker_can_be_woken_by_listen_notify_before_interval():
-    wake_listener = FakeWakeListener()
+def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
+    wake_waiter = FakeWakeWaiter()
 
     async def scenario() -> None:
+        class FakeProjection:
+            def __init__(self, *, repos):
+                self.repos = repos
+
+            def rebuild(self, *, window, scope, now_ms=None, limit=100):
+                return {"rows_written": 0, "source_rows": 0, "computed_at_ms": now_ms, "status": "ready"}
+
+        monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
         worker = module.TokenRadarProjectionWorker(
-            repository_session=lambda: FakeSession({}),
-            windows=("5m",),
-            scopes=("all",),
-            interval_seconds=60.0,
-            wake_listener=wake_listener,
+            name="token_radar_projection",
+            settings=_settings(windows=("5m",), scopes=("all",), interval_seconds=60.0),
+            db=FakeDB({}),
+            telemetry=object(),
+            wake_waiter=wake_waiter,
         )
-        worker._loop = asyncio.get_running_loop()
-        worker._wake_queue = asyncio.Queue(maxsize=1)
-        task = asyncio.create_task(worker._listen_for_wake_hints())
+        task = asyncio.create_task(worker.run())
         try:
-            await asyncio.wait_for(worker._wake_queue.get(), timeout=1.0)
+            await _wait_until(lambda: wake_waiter.wait_calls >= 1)
         finally:
-            worker.stop()
+            await worker.stop()
             await task
 
     asyncio.run(scenario())
-    assert wake_listener.listen_calls >= 1
+    assert wake_waiter.wait_calls >= 1
 
 
 class FakeWakeListener:
@@ -178,6 +239,18 @@ class FakeWakeListener:
             self.emitted = True
             on_wake()
         time.sleep(0.05)
+
+
+class FakeWakeWaiter:
+    def __init__(self) -> None:
+        self.wait_calls = 0
+
+    async def async_wait(self, timeout: float) -> bool:
+        self.wait_calls += 1
+        return True
+
+    def wake(self) -> None:
+        return None
 
 
 class FakeWakeBus:
@@ -194,3 +267,20 @@ async def _wait_until(predicate, *, timeout_seconds: float = 5.0) -> None:
         if asyncio.get_running_loop().time() >= deadline:
             raise AssertionError("timed out waiting for condition")
         await asyncio.sleep(0.01)
+
+
+def _settings(**overrides):
+    values = {
+        "enabled": True,
+        "interval_seconds": 10.0,
+        "timeout_seconds": 120.0,
+        "batch_size": 100,
+        "statement_timeout_seconds": 120.0,
+        "advisory_lock_key": 2026051501,
+        "wakes_on": ("market_observation_written", "resolution_updated"),
+        "windows": ("5m", "1h", "4h", "24h"),
+        "scopes": ("all", "matched"),
+        "hot_windows": ("5m",),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)

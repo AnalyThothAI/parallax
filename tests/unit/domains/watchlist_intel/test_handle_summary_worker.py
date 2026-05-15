@@ -1,7 +1,10 @@
 import asyncio
+from contextlib import contextmanager
+from types import SimpleNamespace
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
-from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import HandleSummaryTriggerConfig
 
 
 def test_handle_summary_worker_processes_due_jobs_concurrently():
@@ -12,24 +15,37 @@ def test_handle_summary_worker_processes_due_jobs_concurrently():
                 {"handle": "traderpow", "attempt_count": 1, "max_attempts": 3, "lease_token": "lease-2"},
             ]
         )
-        provider = BarrierSummaryProvider()
+        db = FakeDB(repo)
+        provider = BarrierSummaryProvider(db)
         worker = HandleSummaryWorker(
-            repository_session=lambda: FakeRepositorySession(repo),
+            name="handle_summary",
+            settings=fake_settings(concurrency=2),
+            db=db,
+            telemetry=SimpleNamespace(),
             provider=provider,
             handles=("toly", "traderpow"),
-            config=HandleSummaryTriggerConfig(),
-            concurrency=2,
-            poll_interval=1,
         )
 
-        task = asyncio.create_task(worker.process_due_jobs_once_async(now_ms=1_000))
+        assert isinstance(worker, WorkerBase)
+        task = asyncio.create_task(worker.run_once(now_ms=1_000))
         await asyncio.sleep(0.05)
         started_before_release = provider.started
         provider.release.set()
         result = await asyncio.wait_for(task, timeout=1)
 
         assert started_before_release == 2
-        assert result == {"claimed": 2, "processed": 2, "failed": 0}
+        assert result == WorkerResult(
+            processed=2,
+            notes={
+                "reconcile_seen": 0,
+                "reconcile_enqueued": 0,
+                "reconcile_skipped": 0,
+                "claimed": 2,
+                "processed": 2,
+                "failed": 0,
+            },
+        )
+        assert provider.max_sessions_seen == 0
 
     asyncio.run(scenario())
 
@@ -39,24 +55,61 @@ def test_handle_summary_worker_records_failed_run_audit():
         repo = FakeWatchlistRepository(
             [{"handle": "toly", "attempt_count": 1, "max_attempts": 3, "lease_token": "lease-1"}]
         )
+        db = FakeDB(repo)
         worker = HandleSummaryWorker(
-            repository_session=lambda: FakeRepositorySession(repo),
+            name="handle_summary",
+            settings=fake_settings(concurrency=1),
+            db=db,
+            telemetry=SimpleNamespace(),
             provider=FailingSummaryProvider(),
             handles=("toly",),
-            config=HandleSummaryTriggerConfig(),
-            concurrency=1,
-            poll_interval=1,
         )
 
-        result = await worker.process_due_jobs_once_async(now_ms=1_000)
+        result = await worker.run_once(now_ms=1_000)
 
-        assert result == {"claimed": 1, "processed": 0, "failed": 1}
+        assert result.processed == 0
+        assert result.failed == 1
+        assert result.notes["claimed"] == 1
         assert repo.failed_runs[0]["status"] == "failed"
         assert repo.failed_runs[0]["handle"] == "toly"
         assert repo.failed_runs[0]["error"] == "provider exploded"
+        assert repo.failed_runs[0]["usage_json"] == {}
         assert repo.failed_jobs[0]["handle"] == "toly"
 
     asyncio.run(scenario())
+
+
+def fake_settings(*, concurrency=1):
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=1.0,
+        concurrency=concurrency,
+        lease_ms=120_000,
+        reconcile_limit=100,
+        signal_threshold=10,
+        time_threshold_ms=1_800_000,
+        min_interval_ms=300_000,
+        input_limit=80,
+        window_days=7,
+        max_attempts=3,
+        statement_timeout_seconds=9.0,
+    )
+
+
+class FakeDB:
+    def __init__(self, watchlist_repo):
+        self.watchlist_repo = watchlist_repo
+        self.active_sessions = 0
+        self.sessions = []
+
+    @contextmanager
+    def worker_session(self, name, statement_timeout_seconds=None):
+        self.sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
+        self.active_sessions += 1
+        try:
+            yield FakeRepositorySession(self.watchlist_repo)
+        finally:
+            self.active_sessions -= 1
 
 
 class FakeRepositorySession:
@@ -76,6 +129,9 @@ class FakeWatchlistRepository:
         self.completed = []
         self.failed_jobs = []
         self.failed_runs = []
+
+    def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
+        return []
 
     def claim_next_summary_job(self, *, now_ms, lease_ms):
         if not self.jobs:
@@ -104,14 +160,21 @@ class FakeWatchlistRepository:
 class BarrierSummaryProvider:
     model = "test-model"
 
-    def __init__(self):
+    def __init__(self, db):
+        self.db = db
         self.started = 0
+        self.max_sessions_seen = 0
+        self.closed = False
         self.release = asyncio.Event()
 
     async def summarize_handle(self, **kwargs):
         self.started += 1
+        self.max_sessions_seen = max(self.max_sessions_seen, self.db.active_sessions)
         await self.release.wait()
         return {"summary_zh": "账号主题摘要", "topics": [], "usage": {}}
+
+    async def aclose(self):
+        self.closed = True
 
 
 class FailingSummaryProvider:
@@ -119,3 +182,21 @@ class FailingSummaryProvider:
 
     async def summarize_handle(self, **kwargs):
         raise RuntimeError("provider exploded")
+
+
+def test_handle_summary_worker_aclose_does_not_close_runtime_owned_provider():
+    repo = FakeWatchlistRepository([])
+    db = FakeDB(repo)
+    provider = BarrierSummaryProvider(db)
+    worker = HandleSummaryWorker(
+        name="handle_summary",
+        settings=fake_settings(concurrency=1),
+        db=db,
+        telemetry=SimpleNamespace(),
+        provider=provider,
+        handles=("toly",),
+    )
+
+    asyncio.run(worker.aclose())
+
+    assert provider.closed is False

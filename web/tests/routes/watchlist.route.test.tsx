@@ -2,6 +2,7 @@ import { AppRoutes as App } from "@app/AppRoutes";
 import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { appStatusFixture } from "@tests/fixtures/appRouteFixtures";
 import { createApiMock, ok, resetApiMock } from "@tests/msw/fixtures";
 import { apiHandlers } from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
@@ -40,7 +41,7 @@ describe("watchlist sidebar", () => {
       ok({ ws_token: "test-token", handles: ["toly"], replay_limit: 25 });
     apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/status") {
-        return ok({ ok: true, handles: ["toly"], collector: {}, notifications: { summary: {} } });
+        return ok(appStatusFixture({ handles: ["toly"] }));
       }
       if (path === "/api/recent") {
         return ok({ items: [] });

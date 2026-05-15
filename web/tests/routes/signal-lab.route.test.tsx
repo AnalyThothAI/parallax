@@ -1,5 +1,6 @@
 import { tittyPulseFixture } from "@features/signal-lab/test/fixtures";
 import { screen, waitFor } from "@testing-library/react";
+import { appStatusFixture } from "@tests/fixtures/appRouteFixtures";
 import { ok } from "@tests/msw/fixtures";
 import { renderAppRoute } from "@tests/render/renderRoute";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -35,7 +36,7 @@ describe("signal lab route", () => {
 
   it("keeps direct pulse detail URLs addressable", async () => {
     apiMock.getApiImpl = async (path) => {
-      if (path === "/api/status") return ok({ handles: [], collector: {}, notifications: null });
+      if (path === "/api/status") return ok(appStatusFixture({ handles: [] }));
       if (path === "/api/notification-summary") return ok(null);
       if (path === "/api/notifications") return ok({ items: [], summary: null });
       if (path === "/api/recent") return ok({ items: [] });

@@ -1,31 +1,34 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import secrets
 import sys
 from contextlib import contextmanager
 from decimal import Decimal
-from typing import TextIO
+from types import SimpleNamespace
+from typing import Any, TextIO
 
 import uvicorn
 
 from gmgn_twitter_intel.app.runtime.app import create_app
+from gmgn_twitter_intel.app.runtime.bootstrap import bootstrap
+from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.providers_wiring import (
-    GmgnDexMarketProvider,
     OkxCexMarketProvider,
-    OkxDexDiscoveryProvider,
-    okx_chain_indexes_to_chain_ids,
-    wire_providers,
+    wire_asset_market_providers,
 )
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
+from gmgn_twitter_intel.app.runtime.worker_status import canonical_workers_status_payload
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import run_resolution_refresh_once
+from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
-from gmgn_twitter_intel.domains.asset_market.services.asset_profile_refresh import refresh_asset_profiles_once
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
@@ -48,17 +51,13 @@ from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service impor
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
-from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
-    rebuild_token_radar_windows,
-    reprocess_recent_token_intents,
-)
+from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
+from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import reprocess_recent_token_intents
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
-from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
 from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
 from gmgn_twitter_intel.platform.db.postgres_audit import (
     PostgresOperationalAudit,
@@ -73,7 +72,7 @@ from gmgn_twitter_intel.platform.db.postgres_client import (
 )
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version, upgrade_head
 from gmgn_twitter_intel.platform.logging.setup import setup_logging
-from gmgn_twitter_intel.platform.paths.runtime_paths import config_path
+from gmgn_twitter_intel.platform.paths.runtime_paths import config_path, workers_config_path
 
 LEGACY_FACTOR_GATE_KEY = "_".join(("hard", "gates"))
 LEGACY_FACTOR_GATE_PRESENT_CODE = f"{LEGACY_FACTOR_GATE_KEY}_present"
@@ -211,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_weights = ops_subcommands.add_parser("update-harness-weights", help="rebuild report-only harness weights")
     update_weights.add_argument("--limit", type=int, default=1000)
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
+    ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
     validate_projections = ops_subcommands.add_parser(
         "validate-projections",
         help="validate projection read models against PostgreSQL facts",
@@ -298,7 +298,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
     command = args.command or "serve"
 
     if command == "init":
-        existed = config_path().exists()
+        existed = config_path().exists() and workers_config_path().exists()
         path = write_default_config(force=args.force)
         password_path = _ensure_postgres_password_file(path.parent)
         _emit(
@@ -306,6 +306,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 "ok": True,
                 "data": {
                     "config_path": str(path),
+                    "workers_config_path": str(workers_config_path(path.parent)),
                     "app_home": str(path.parent),
                     "postgres_password_file": str(password_path),
                     "created": args.force or not existed,
@@ -337,6 +338,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     "handles": list(settings.handles),
                     "handle_count": len(settings.handles),
                     "config_path": str(settings.app_home / "config.yaml"),
+                    "workers_config_path": str(workers_config_path(settings.app_home)),
                     "api": {
                         "host": settings.api_host,
                         "port": settings.api_port,
@@ -363,8 +365,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "provider": settings.llm_provider,
                         "model": settings.llm_model,
                         "base_url": settings.llm_base_url,
-                        "poll_interval": settings.enrichment_poll_interval,
-                        "concurrency": settings.enrichment_concurrency,
                         "backend": "openai_agents_sdk",
                         "trace_enabled": settings.llm_trace_enabled,
                         "trace_export_configured": settings.llm_trace_export_configured,
@@ -374,7 +374,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "okx": {
                             "cex_base_url": settings.okx_cex_base_url,
                             "cex_sync_enabled": settings.okx_cex_sync_enabled,
-                            "cex_sync_interval_seconds": settings.okx_cex_sync_interval_seconds,
                             "cex_inst_types": list(settings.okx_cex_inst_types),
                             "dex_base_url": settings.okx_dex_base_url,
                             "dex_chain_indexes": list(settings.okx_dex_chain_indexes),
@@ -383,7 +382,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     },
                     "notifications": {
                         "enabled": settings.notifications.enabled,
-                        "poll_interval_seconds": settings.notifications.poll_interval_seconds,
                         "token_flow_limit": settings.notifications.token_flow_limit,
                         "retention_days": settings.notifications.retention_days,
                         "rules": {
@@ -396,11 +394,11 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                                 "provider": channel.provider,
                                 "url_configured": bool(channel.url),
                                 "min_severity": channel.min_severity,
-                                "max_attempts": channel.max_attempts,
                             }
                             for channel_id, channel in settings.notifications.channels.items()
                         },
                     },
+                    "workers": settings.workers.model_dump(mode="json"),
                 },
             },
             stdout,
@@ -433,6 +431,72 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         _emit({"ok": bool(audit.get("ok")), "data": audit}, stdout)
         return 0 if audit.get("ok") else 1
 
+    if command == "ops" and args.ops_command == "worker-status":
+        _emit({"ok": True, "data": _worker_status_payload(settings)}, stdout)
+        return 0
+
+    if command == "ops" and args.ops_command == "refresh-asset-profiles":
+        data = _run_asset_profile_refresh_worker_once(settings, limit=args.limit, now_ms=_now_ms())
+        _emit({"ok": True, "data": data}, stdout)
+        return 0
+
+    if command == "ops" and args.ops_command == "run-resolution-refresh":
+        data = _run_resolution_refresh_worker_once(
+            settings,
+            limit=args.limit,
+            reprocess_limit=args.reprocess_limit,
+            now_ms=_now_ms(),
+        )
+        _emit({"ok": True, "data": data}, stdout)
+        return 0
+
+    if command == "ops" and args.ops_command == "reprocess-token-intents":
+        now_ms = _now_ms()
+        with _repositories(settings) as repos:
+            reprocess = reprocess_recent_token_intents(
+                repos=repos,
+                now_ms=now_ms,
+                window=args.window,
+                limit=args.limit,
+                lookup_keys=args.lookup_key or None,
+            )
+        projection = _run_token_radar_projection_worker_once(
+            settings,
+            limit=args.projection_limit,
+            now_ms=now_ms,
+        )
+        _emit({"ok": True, "data": {"reprocess": reprocess, "projection": projection}}, stdout)
+        return 0
+
+    if command == "ops" and args.ops_command == "rebuild-token-intents":
+        now_ms = _now_ms()
+        with _repositories(settings) as repos:
+            data = rebuild_recent_token_intents(
+                repos=repos,
+                now_ms=now_ms,
+                window=args.window,
+                limit=args.limit,
+                projection_limit=args.projection_limit,
+            )
+        data["projection"] = _run_token_radar_projection_worker_once(
+            settings,
+            limit=args.projection_limit,
+            now_ms=now_ms,
+        )
+        _emit({"ok": True, "data": data}, stdout)
+        return 0
+
+    if command == "ops" and args.ops_command == "rebuild-token-radar":
+        data = _run_token_radar_projection_worker_once(
+            settings,
+            windows=(args.window,),
+            scopes=(args.scope,),
+            limit=args.limit,
+            now_ms=_now_ms(),
+        )
+        _emit({"ok": True, "data": data}, stdout)
+        return 0
+
     with _repositories(settings) as repos:
         if command == "ops" and args.ops_command == "factor-diagnostics":
             rows = repos.token_radar.latest_rows(
@@ -454,21 +518,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 generated_at_ms=args.now_ms if args.now_ms is not None else _now_ms(),
                 limit=args.limit,
             )
-            _emit({"ok": True, "data": data}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "refresh-asset-profiles":
-            providers = wire_providers(settings, start_collector=True)
-            dex_profile_market = providers.asset_market.dex_profile_market
-            try:
-                data = refresh_asset_profiles_once(
-                    repos=repos,
-                    dex_profile_market=dex_profile_market,
-                    now_ms=_now_ms(),
-                    limit=args.limit,
-                )
-            finally:
-                _close_asset_market_providers(providers.asset_market)
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
@@ -796,82 +845,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
-        if command == "ops" and args.ops_command == "run-resolution-refresh":
-            okx_client = OkxDexClient(
-                base_url=settings.okx_dex_base_url,
-                api_key=settings.okx_dex_api_key,
-                secret_key=settings.okx_dex_secret_key,
-                passphrase=settings.okx_dex_passphrase,
-                timeout_seconds=settings.okx_timeout_seconds,
-            )
-            gmgn_client = (
-                GmgnOpenApiClient(
-                    api_key=settings.gmgn_api_key or "",
-                    base_url=settings.gmgn_openapi_base_url,
-                    timeout_seconds=settings.gmgn_timeout_seconds,
-                    cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
-                )
-                if settings.gmgn_configured
-                else None
-            )
-            try:
-                data = run_resolution_refresh_once(
-                    repos=repos,
-                    dex_discovery_market=OkxDexDiscoveryProvider(okx_client),
-                    dex_quote_market=GmgnDexMarketProvider(gmgn_client) if gmgn_client is not None else None,
-                    chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
-                    now_ms=_now_ms(),
-                    lookup_limit=args.limit,
-                    reprocess_limit=args.reprocess_limit,
-                )
-            finally:
-                okx_client.close()
-                if gmgn_client is not None:
-                    gmgn_client.close()
-            _emit({"ok": True, "data": data}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "reprocess-token-intents":
-            now_ms = _now_ms()
-            reprocess = reprocess_recent_token_intents(
-                repos=repos,
-                now_ms=now_ms,
-                window=args.window,
-                limit=args.limit,
-                lookup_keys=args.lookup_key or None,
-            )
-            projection = rebuild_token_radar_windows(
-                repos=repos,
-                now_ms=now_ms,
-                limit=args.projection_limit,
-            )
-            _emit({"ok": True, "data": {"reprocess": reprocess, "projection": projection}}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "rebuild-token-intents":
-            data = rebuild_recent_token_intents(
-                repos=repos,
-                now_ms=_now_ms(),
-                window=args.window,
-                limit=args.limit,
-                projection_limit=args.projection_limit,
-            )
-            _emit({"ok": True, "data": data}, stdout)
-            return 0
-
         if command == "ops" and args.ops_command == "audit-token-intent":
             if not args.event_id and not args.intent_id:
                 parser.error("audit-token-intent requires --event-id or --intent-id")
             data = _audit_token_intent(repos, event_id=args.event_id or None, intent_id=args.intent_id or None)
-            _emit({"ok": True, "data": data}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "rebuild-token-radar":
-            data = TokenRadarProjection(repos=repos).rebuild(
-                window=args.window,
-                limit=args.limit,
-                scope=args.scope,
-            )
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
@@ -918,6 +895,151 @@ def _run_sync_gmgn_directory(
         "last_handles": handles[-5:],
         "observed_at_ms": now_ms,
     }
+
+
+def _worker_status_payload(settings: object) -> dict[str, Any]:
+    runtime = None
+    try:
+        runtime = bootstrap(settings, start_collector=False)
+        return {"workers": canonical_workers_status_payload(runtime)}
+    finally:
+        if runtime is not None:
+            asyncio.run(runtime.aclose())
+
+
+def _run_asset_profile_refresh_worker_once(settings: object, *, limit: int, now_ms: int) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    asset_market = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        asset_market = wire_asset_market_providers(settings, start_collector=True)
+        worker = AssetProfileRefreshWorker(
+            name="asset_profile_refresh",
+            settings=_worker_settings_with_overrides(settings.workers.asset_profile_refresh, batch_size=limit),
+            db=db,
+            telemetry=telemetry,
+            dex_profile_market=asset_market.dex_profile_market,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if asset_market is not None:
+            _close_asset_market_providers(asset_market)
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _run_resolution_refresh_worker_once(
+    settings: object,
+    *,
+    limit: int,
+    reprocess_limit: int,
+    now_ms: int,
+) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    asset_market = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        asset_market = wire_asset_market_providers(settings, start_collector=True)
+        worker = ResolutionRefreshWorker(
+            name="resolution_refresh",
+            settings=_worker_settings_with_overrides(
+                settings.workers.resolution_refresh,
+                batch_size=limit,
+                reprocess_limit=reprocess_limit,
+            ),
+            db=db,
+            telemetry=telemetry,
+            dex_discovery_market=asset_market.dex_discovery_market,
+            dex_quote_market=asset_market.dex_quote_market,
+            chain_ids=asset_market.discovery_chain_ids or settings.workers.resolution_refresh.chain_ids,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if asset_market is not None:
+            _close_asset_market_providers(asset_market)
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _run_token_radar_projection_worker_once(
+    settings: object,
+    *,
+    windows: tuple[str, ...] | None = None,
+    scopes: tuple[str, ...] | None = None,
+    limit: int,
+    now_ms: int,
+) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        worker_name = "token_radar_projection"
+        advisory_lock = None
+        worker = TokenRadarProjectionWorker(
+            name=worker_name,
+            settings=_worker_settings_with_overrides(settings.workers.token_radar_projection, batch_size=limit),
+            db=db,
+            telemetry=telemetry,
+            wake_bus=db.wake_emitter(),
+            wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
+        )
+        try:
+            lock_key = _effective_worker_advisory_lock_key(worker)
+            advisory_lock = db.acquire_advisory_lock_connection(
+                worker_name,
+                lock_key,
+            )
+            return worker.rebuild_once(now_ms=now_ms, windows=windows, scopes=scopes, limit=limit)
+        finally:
+            if advisory_lock is not None:
+                _release_advisory_lock_connection(advisory_lock)
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:
+    dump = getattr(config, "model_dump", None)
+    values = dict(dump()) if dump is not None else dict(vars(config))
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _close_db_bundle(db: object) -> None:
+    for name in ("api_pool", "worker_pool", "wake_pool"):
+        pool = getattr(db, name, None)
+        close = getattr(pool, "close", None)
+        if close:
+            close()
+
+
+def _release_advisory_lock_connection(connection: object) -> None:
+    release = getattr(connection, "release", None)
+    close = getattr(connection, "close", None)
+    releaser = release or close
+    if releaser is not None:
+        releaser()
+
+
+def _effective_worker_advisory_lock_key(worker: object) -> int:
+    resolve = getattr(worker, "_advisory_lock_key", None)
+    key = resolve() if callable(resolve) else getattr(worker, "SINGLE_WRITER_KEY", None)
+    if key is None:
+        raise RuntimeError("token_radar_projection advisory lock key is required")
+    return int(key)
 
 
 def _close_asset_market_providers(asset_market: object) -> None:

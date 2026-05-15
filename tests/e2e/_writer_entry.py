@@ -4,7 +4,7 @@ Run as:
   python -m tests.e2e._writer_entry --event-id <id> --text <text>
 
 Reads GMGN_POSTGRES_DSN (and optional GMGN_E2E_WS_TOKEN, defaults to
-"e2e-token") from env. Builds a CliRuntime via the same _build_runtime path
+"e2e-token") from env. Builds a Runtime via the same bootstrap path
 the production app uses (start_collector=False, no upstream WS), then calls
 runtime.ingest.ingest_event(event, is_watched=True) with a synthetic mention.
 
@@ -37,7 +37,9 @@ def main() -> int:
         return 1
     ws_token = os.environ.get("GMGN_E2E_WS_TOKEN", "e2e-token")
 
-    from gmgn_twitter_intel.app.runtime.app import _build_runtime
+    import asyncio
+
+    from gmgn_twitter_intel.app.runtime.bootstrap import bootstrap
     from gmgn_twitter_intel.domains.evidence.interfaces import (
         Author,
         Content,
@@ -51,7 +53,7 @@ def main() -> int:
         handles=(args.author,),
         storage={"postgres": {"dsn": dsn, "password_file": None}},
     )
-    runtime = _build_runtime(settings, start_collector=False)
+    runtime = bootstrap(settings, start_collector=False)
 
     received_at_ms = int(time.time() * 1000)
     event = TwitterEvent(
@@ -77,8 +79,11 @@ def main() -> int:
         matched_handles=[args.author],
         raw={"id": args.event_id},
     )
-    runtime.ingest.ingest_event(event, is_watched=True)
-    print(f"INGESTED {args.event_id}", flush=True)
+    try:
+        runtime.ingest.ingest_event(event, is_watched=True)
+        print(f"INGESTED {args.event_id}", flush=True)
+    finally:
+        asyncio.run(runtime.aclose())
     return 0
 
 

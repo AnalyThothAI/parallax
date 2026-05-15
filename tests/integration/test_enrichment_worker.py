@@ -1,5 +1,7 @@
 import asyncio
 import time
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 
@@ -85,27 +87,14 @@ class RecordingPublisher:
         self.messages.append(payload)
 
 
-class ConcurrentProbeWorker(EnrichmentWorker):
-    def __init__(self):
-        super().__init__(
-            client=FakeClient(),
-            repository_session=lambda: repository_session_for_connection(None),
-            poll_interval=0.01,
-            concurrency=3,
-        )
-        self.active = 0
-        self.max_active = 0
-        self.calls = 0
+class SingleConnectionWorkerDB:
+    def __init__(self, conn):
+        self.conn = conn
 
-    async def process_one(self, *, now_ms=None):
-        self.active += 1
-        self.max_active = max(self.max_active, self.active)
-        await asyncio.sleep(0.03)
-        self.calls += 1
-        self.active -= 1
-        if self.calls >= 6:
-            self.stop()
-        return True
+    @contextmanager
+    def worker_session(self, _name, statement_timeout_seconds=None):
+        with repository_session_for_connection(self.conn) as repos:
+            yield repos
 
 
 def open_runtime(tmp_path, *, client=None, publisher=None):
@@ -116,6 +105,7 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
     harness = HarnessRepository(conn)
+    db = SingleConnectionWorkerDB(conn)
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
@@ -123,19 +113,25 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
         enrichment=enrichment,
     )
     worker = EnrichmentWorker(
+        name="enrichment",
+        settings=SimpleNamespace(enabled=True, interval_seconds=2.0, statement_timeout_seconds=None),
+        db=db,
+        telemetry=SimpleNamespace(),
         client=client or FakeClient(),
         publisher=publisher,
-        repository_session=lambda: repository_session_for_connection(conn),
     )
     return conn, ingest, worker, enrichment, harness
 
 
-def test_enrichment_worker_run_can_process_jobs_concurrently():
-    worker = ConcurrentProbeWorker()
+def test_enrichment_worker_run_once_reports_no_job_without_private_concurrency_loop(tmp_path):
+    conn, _ingest, worker, _enrichment, _harness = open_runtime(tmp_path)
+    try:
+        result = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
+    finally:
+        conn.close()
 
-    asyncio.run(worker.run())
-
-    assert worker.max_active > 1
+    assert result.skipped == 1
+    assert result.notes == {"reason": "no_job"}
 
 
 def test_enrichment_worker_enqueues_watchlist_summary_job_in_completion_transaction(tmp_path):
@@ -152,7 +148,7 @@ def test_enrichment_worker_enqueues_watchlist_summary_job_in_completion_transact
         event = make_event("event-watchlist-summary", text="Solana XDP scaling is nearly ready")
         ingest.ingest_event(event, is_watched=True)
 
-        processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000)))
+        processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
         job = enrichment.list_jobs(limit=10)[0]
         summary_job = conn.execute(
             "SELECT * FROM watchlist_handle_summary_jobs WHERE handle = %s",
@@ -161,7 +157,7 @@ def test_enrichment_worker_enqueues_watchlist_summary_job_in_completion_transact
     finally:
         conn.close()
 
-    assert processed is True
+    assert processed.processed == 1
     assert job["status"] == "done"
     assert summary_job is not None
     assert summary_job["status"] == "pending"
@@ -180,7 +176,7 @@ def test_enrichment_worker_materializes_closed_loop_harness_and_publishes_update
         event = make_event("event-worker", text="Solana XDP scaling is nearly ready")
         ingest.ingest_event(event, is_watched=True)
 
-        processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000)))
+        processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
         jobs = enrichment.list_jobs(limit=10)
         social_events = harness.list_social_events(window_ms=86_400_000, limit=10)
         seeds = harness.list_attention_seeds(window_ms=86_400_000, limit=10)
@@ -189,7 +185,7 @@ def test_enrichment_worker_materializes_closed_loop_harness_and_publishes_update
     finally:
         conn.close()
 
-    assert processed is True
+    assert processed.processed == 1
     assert jobs[0]["status"] == "done"
     assert social_events[0]["summary_zh"] == "Toly 提到 Solana XDP，形成注意力种子。"
     assert seeds[0]["seed_status"] == "snapshot_ready"
@@ -227,36 +223,35 @@ def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_pat
         event = make_event("event-worker-non-signal", text="gm")
         ingest.ingest_event(event, is_watched=True)
 
-        processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000)))
+        processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
         social_events = harness.list_social_events(window_ms=86_400_000, limit=10)
         snapshots = harness.list_snapshots(window_ms=86_400_000, horizon="6h", limit=10)
         jobs = enrichment.list_jobs(limit=10)
     finally:
         conn.close()
 
-    assert processed is True
+    assert processed.processed == 1
     assert jobs[0]["status"] == "done"
     assert social_events[0]["is_signal_event"] is False
     assert snapshots == []
 
 
-@pytest.mark.skip(
-    reason="Asserts model_run rows after hung-job timeout; current pipeline does not "
-    "produce them in expected shape post hard-cut. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
 def test_enrichment_worker_times_out_hung_llm_job(tmp_path):
-    conn, ingest, worker, enrichment, _ = open_runtime(tmp_path, client=HangingClient())
+    conn, ingest, worker, _enrichment, _ = open_runtime(tmp_path, client=HangingClient())
     try:
-        ingest.ingest_event(make_event("event-worker-timeout", text="Solana XDP timeout test"), is_watched=True)
+        ingest.ingest_event(
+            make_event("event-worker-timeout", text="Solana XDP scaling is nearly ready for timeout test"),
+            is_watched=True,
+        )
 
-        processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000) + 1_000))
-        job = enrichment.list_jobs(limit=10)[0]
+        processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000) + 1_000))
+        job = conn.execute("SELECT * FROM enrichment_jobs WHERE event_id = %s", ("event-worker-timeout",)).fetchone()
         run = conn.execute("SELECT * FROM model_runs WHERE event_id = %s", ("event-worker-timeout",)).fetchone()
     finally:
         conn.close()
 
-    assert processed is True
+    assert processed.failed == 1
+    assert job is not None
     assert job["status"] == "failed"
     assert "timed out" in job["last_error"].lower()
     assert run["status"] == "model_error"

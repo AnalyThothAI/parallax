@@ -64,6 +64,35 @@ def test_okx_dex_ws_market_provider_is_wired_separately_from_discovery_and_gmgn(
     assert providers.stream_dex_market is not providers.dex_quote_market
 
 
+def test_okx_dex_ws_market_uses_worker_subscription_limit(monkeypatch) -> None:
+    created: list[FakeOkxDexWebSocketMarketProvider] = []
+
+    def fake_provider(**kwargs):
+        provider = FakeOkxDexWebSocketMarketProvider(**kwargs)
+        created.append(provider)
+        return provider
+
+    monkeypatch.setattr(providers_wiring, "OkxDexWebSocketMarketProvider", fake_provider)
+
+    provider = providers_wiring._okx_dex_ws_market(
+        Settings(
+            ws_token="secret",
+            providers={
+                "okx": {
+                    "cex_sync_enabled": False,
+                    "dex_api_key": "okx-key",
+                    "dex_secret_key": "okx-secret",
+                    "dex_passphrase": "okx-passphrase",
+                }
+            },
+            workers={"live_price_gateway": {"subscription_limit": 37}},
+        )
+    )
+
+    assert provider._provider is created[0]
+    assert created[0].subscription_limit == 37
+
+
 def test_discovery_provider_close_is_idempotent(monkeypatch) -> None:
     created: list[CloseCountingDexDiscoveryProvider] = []
 
@@ -85,6 +114,118 @@ def test_discovery_provider_close_is_idempotent(monkeypatch) -> None:
 
     assert len(created) == 1
     assert created[0].close_count == 1
+
+
+def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(monkeypatch) -> None:
+    okx_provider = CloseCountingDexDiscoveryProvider()
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: okx_provider)
+
+    def fail_gmgn(settings: Settings):
+        raise RuntimeError("gmgn failed")
+
+    monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", fail_gmgn)
+
+    with pytest.raises(RuntimeError, match="gmgn failed"):
+        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
+
+    assert okx_provider.close_count == 1
+
+
+def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(monkeypatch) -> None:
+    okx_provider = CloseFailingDexDiscoveryProvider()
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: okx_provider)
+
+    def fail_gmgn(settings: Settings):
+        raise RuntimeError("gmgn failed")
+
+    monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", fail_gmgn)
+
+    with pytest.raises(RuntimeError, match="gmgn failed") as exc_info:
+        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
+
+    assert "cleanup failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
+    assert "close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
+
+
+def test_okx_bundle_wiring_closes_cex_partial_provider_when_discovery_wiring_fails(monkeypatch) -> None:
+    cex_provider = CloseCountingCexProvider()
+
+    monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex_provider)
+
+    def fail_discovery(settings: Settings):
+        raise RuntimeError("discovery failed")
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", fail_discovery)
+
+    with pytest.raises(RuntimeError, match="discovery failed"):
+        providers_wiring._wire_okx_provider_bundle(_settings_with_okx_cex_and_dex_credentials())
+
+    assert cex_provider.close_count == 1
+
+
+def test_okx_bundle_wiring_closes_cex_and_discovery_when_stream_wiring_fails(monkeypatch) -> None:
+    cex_provider = CloseCountingCexProvider()
+    discovery_provider = CloseCountingDexDiscoveryProvider()
+
+    monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex_provider)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: discovery_provider)
+
+    def fail_stream(settings: Settings):
+        raise RuntimeError("stream failed")
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", fail_stream)
+
+    with pytest.raises(RuntimeError, match="stream failed"):
+        providers_wiring._wire_okx_provider_bundle(_settings_with_okx_cex_and_dex_credentials())
+
+    assert cex_provider.close_count == 1
+    assert discovery_provider.close_count == 1
+
+
+def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(monkeypatch) -> None:
+    cex_provider = CloseFailingCexProvider()
+
+    monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex_provider)
+
+    def fail_discovery(settings: Settings):
+        raise RuntimeError("discovery failed")
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", fail_discovery)
+
+    with pytest.raises(RuntimeError, match="discovery failed") as exc_info:
+        providers_wiring._wire_okx_provider_bundle(_settings_with_okx_cex_and_dex_credentials())
+
+    notes = "\n".join(getattr(exc_info.value, "__notes__", []))
+    assert "cleanup failed" in notes
+    assert "cex close failed" in notes
+
+
+def test_openai_providers_receive_llm_gateway() -> None:
+    gateway = FakeGateway()
+
+    providers = providers_wiring.wire_providers(
+        _settings_with_all_llm_models(),
+        start_collector=True,
+        llm_gateway=gateway,
+    )
+
+    assert providers.social_enrichment.event_enrichment is not None
+    assert providers.social_enrichment.event_enrichment._llm_gateway is gateway
+    assert providers.pulse_lab.decision_provider is not None
+    assert providers.pulse_lab.decision_provider._client._llm_gateway is gateway
+    assert providers.watchlist_intel.summary_provider is not None
+    assert providers.watchlist_intel.summary_provider._llm_gateway is gateway
+
+
+def test_openai_provider_wiring_requires_llm_gateway() -> None:
+    with pytest.raises(RuntimeError, match="LLMGateway is required"):
+        providers_wiring.wire_providers(
+            _settings_with_all_llm_models(),
+            start_collector=True,
+            llm_gateway=None,
+        )
 
 
 def test_unknown_numeric_okx_dex_chain_indexes_round_trip_through_discovery_provider() -> None:
@@ -199,12 +340,49 @@ class FakeDexStreamProvider:
             yield None
 
 
+class FakeOkxDexWebSocketMarketProvider:
+    def __init__(self, **kwargs) -> None:
+        self.subscription_limit = kwargs["subscription_limit"]
+
+    async def stream_price_info(self, targets):
+        if False:
+            yield None
+
+
 class CloseCountingDexDiscoveryProvider(FakeDexDiscoveryProvider):
     def __init__(self) -> None:
         self.close_count = 0
 
     def close(self) -> None:
         self.close_count += 1
+
+
+class CloseFailingDexDiscoveryProvider(FakeDexDiscoveryProvider):
+    def close(self) -> None:
+        raise RuntimeError("close failed")
+
+
+class CloseCountingCexProvider:
+    def __init__(self) -> None:
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class CloseFailingCexProvider:
+    def close(self) -> None:
+        raise RuntimeError("cex close failed")
+
+
+class FakeGateway:
+    trace_export_enabled = True
+
+    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
+        return await coro_factory()
+
+    def openai_client(self, *, model, base_url, timeout_s):
+        return object()
 
 
 def _settings_with_okx_dex_credentials() -> Settings:
@@ -217,6 +395,32 @@ def _settings_with_okx_dex_credentials() -> Settings:
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",
             }
+        },
+    )
+
+
+def _settings_with_okx_cex_and_dex_credentials() -> Settings:
+    return Settings(
+        ws_token="secret",
+        providers={
+            "okx": {
+                "cex_sync_enabled": True,
+                "dex_api_key": "okx-key",
+                "dex_secret_key": "okx-secret",
+                "dex_passphrase": "okx-passphrase",
+            }
+        },
+    )
+
+
+def _settings_with_all_llm_models() -> Settings:
+    return Settings(
+        ws_token="secret",
+        llm={
+            "api_key": "sk-test",
+            "model": "gpt-enrich",
+            "pulse_agent_model": "gpt-pulse",
+            "watchlist_handle_summary_model": "gpt-summary",
         },
     )
 

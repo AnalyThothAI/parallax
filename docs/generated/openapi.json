@@ -2027,7 +2027,7 @@
       "StatusData": {
         "additionalProperties": true,
         "properties": {
-          "anchor_price": {
+          "db": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -2037,31 +2037,7 @@
                 "type": "null"
               }
             ],
-            "title": "Anchor Price"
-          },
-          "collector": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Collector"
-          },
-          "enrichment": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enrichment"
+            "title": "Db"
           },
           "handles": {
             "items": {
@@ -2070,33 +2046,14 @@
             "title": "Handles",
             "type": "array"
           },
-          "live_price_gateway": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Live Price Gateway"
-          },
-          "notifications": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notifications"
-          },
           "ok": {
             "title": "Ok",
             "type": "boolean"
+          },
+          "provider_states": {
+            "additionalProperties": true,
+            "title": "Provider States",
+            "type": "object"
           },
           "reasons": {
             "items": {
@@ -2104,6 +2061,11 @@
             },
             "title": "Reasons",
             "type": "array"
+          },
+          "snapshot_gate": {
+            "additionalProperties": true,
+            "title": "Snapshot Gate",
+            "type": "object"
           },
           "store": {
             "anyOf": [
@@ -2116,29 +2078,12 @@
             ],
             "title": "Store"
           },
-          "token_radar_projection": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Token Radar Projection"
-          },
-          "watchlist_handle_summary": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Watchlist Handle Summary"
+          "workers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WorkerStatusData"
+            },
+            "title": "Workers",
+            "type": "object"
           }
         },
         "required": [
@@ -2657,6 +2602,108 @@
           "query"
         ],
         "title": "WatchlistHandleTimelineData",
+        "type": "object"
+      },
+      "WorkerStatusData": {
+        "additionalProperties": true,
+        "properties": {
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "iteration_duration_p99_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration Duration P99 Ms"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_finished_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Finished At Ms"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Result"
+          },
+          "last_started_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At Ms"
+          },
+          "pool_wait_ms_p99": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Wait Ms P99"
+          },
+          "queue_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Depth"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "running"
+        ],
+        "title": "WorkerStatusData",
         "type": "object"
       }
     }
@@ -4605,6 +4652,22 @@
           }
         },
         "summary": "Healthz"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics"
       }
     },
     "/readyz": {

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from loguru import logger
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.ingestion.providers import (
     EventPublisherProtocol,
     IngestStoreProtocol,
@@ -42,30 +45,72 @@ class CollectorStatus:
         return asdict(self)
 
 
-class CollectorService:
+class CollectorService(WorkerBase):
     def __init__(
         self,
         *,
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         handles: tuple[str, ...],
         store: IngestStoreProtocol,
         publisher: EventPublisherProtocol,
         upstream_client: UpstreamClientProtocol | None,
-        snapshot_timeout: float = 0.5,
     ):
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.handles = normalize_handles(handles)
         self.store = store
         self.publisher = publisher
         self.upstream_client = upstream_client
-        self.snapshot_timeout = snapshot_timeout
+        self.snapshot_timeout = float(getattr(settings, "snapshot_timeout_seconds", 0.5))
         self._pending_snapshots: dict[str, asyncio.Task[None]] = {}
+        self._upstream_task: asyncio.Task[None] | None = None
         self.status = CollectorStatus(started_at_ms=_now_ms())
 
-    async def run(self) -> None:
+    async def run_once(self) -> WorkerResult:
         if self.upstream_client is None:
             raise RuntimeError("upstream_client is required")
-        await self.upstream_client.run()
+        self._upstream_task = asyncio.create_task(self.upstream_client.run(), name="collector:upstream")
+        stop_task = asyncio.create_task(self._stop_event.wait(), name="collector:stop_wait")
+        try:
+            done, _ = await asyncio.wait(
+                {self._upstream_task, stop_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if self._upstream_task in done:
+                if self._upstream_task.cancelled() and self._stop_event.is_set():
+                    return WorkerResult(processed=1, notes={"upstream_cancelled": True})
+                await self._upstream_task
+                return WorkerResult(processed=1, notes={"upstream_cancelled": False})
+            self._upstream_task.cancel()
+            await asyncio.gather(self._upstream_task, return_exceptions=True)
+            return WorkerResult(processed=1, notes={"upstream_cancelled": True})
+        finally:
+            stop_task.cancel()
+            await asyncio.gather(stop_task, return_exceptions=True)
+            self._upstream_task = None
 
     async def stop(self) -> None:
+        await super().stop()
+        if self._upstream_task is not None and not self._upstream_task.done():
+            self._upstream_task.cancel()
+        await self._clear_pending_snapshots()
+
+    async def on_stop(self) -> None:
+        await self._clear_pending_snapshots()
+
+    async def on_close(self) -> None:
+        if self.upstream_client is None:
+            return
+        close = getattr(self.upstream_client, "aclose", None) or getattr(self.upstream_client, "close", None)
+        if close is None:
+            return
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+
+    async def _clear_pending_snapshots(self) -> None:
         tasks = list(self._pending_snapshots.values())
         self._pending_snapshots.clear()
         for task in tasks:

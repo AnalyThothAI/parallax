@@ -11,7 +11,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import WINDOW_MS
 from gmgn_twitter_intel.domains.token_intel.queries.event_rebuild_query import EventRebuildQuery
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
     DEFAULT_REPROCESS_WINDOW,
-    rebuild_token_radar_windows,
+    deferred_token_radar_projection,
 )
 from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
@@ -38,7 +38,6 @@ def rebuild_recent_token_intents(
         intents_written += result["intents_written"]
         resolved_intents += result["resolved_intents"]
     repos.conn.commit()
-    projection = rebuild_token_radar_windows(repos=repos, now_ms=now_ms, limit=projection_limit)
     return {
         "window": window,
         "since_ms": since_ms,
@@ -46,7 +45,8 @@ def rebuild_recent_token_intents(
         "events_rebuilt": rebuilt_events,
         "intents_written": intents_written,
         "resolved_intents": resolved_intents,
-        "projection": projection,
+        "projection": deferred_token_radar_projection(),
+        "projection_limit": projection_limit,
     }
 
 

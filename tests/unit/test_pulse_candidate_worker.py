@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
+from gmgn_twitter_intel.domains.pulse_lab.runtime import pulse_candidate_worker as module
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     _asset_candidate_id,
@@ -20,7 +24,7 @@ def test_missing_factor_snapshot_is_not_enqueued() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=None)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -36,7 +40,7 @@ def test_malformed_v3_factor_snapshot_is_not_enqueued() -> None:
     snapshot["families"]["market_quality"] = {"facts": {"market_status": "fresh"}}
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -58,7 +62,7 @@ def test_default_trigger_floor_enqueues_rank_45_without_decision_or_watched_shor
         )
     ]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -79,7 +83,7 @@ def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcu
         )
     ]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -94,7 +98,7 @@ def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> N
     snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -138,7 +142,10 @@ def test_worker_gates_before_agent_and_agent_cannot_upgrade_gate_status() -> Non
         )
 
     worker = PulseCandidateWorker(
-        repository_session=lambda: _session(repos),
+        name="pulse_candidate",
+        settings=_settings(),
+        db=FakeDB(repos),
+        telemetry=object(),
         decision_client=client,
         gate_func=gate_func,
     )
@@ -160,7 +167,7 @@ def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     worker.scan_triggers_once(now_ms=NOW_MS)
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -183,7 +190,7 @@ def test_worker_does_not_scan_unresolved_social_events() -> None:
     repos = FakeRepos()
     repos.harness.social_events = [_source_event()]
     client = FakeClient()
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=client)
+    worker = _worker(repos, client=client)
 
     scan = worker.scan_triggers_once(now_ms=NOW_MS)
     run = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -249,7 +256,7 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
             "timeline_signature": "ignored-by-edge",
         },
     }
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -262,12 +269,7 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
 def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
     repos = FakeRepos()
     wake_listener = FakeWakeListener()
-    worker = PulseCandidateWorker(
-        repository_session=lambda: _session(repos),
-        decision_client=FakeClient(),
-        poll_interval=60.0,
-        wake_listener=wake_listener,
-    )
+    worker = _worker(repos, wake_waiter=wake_listener, settings=_settings(interval_seconds=60.0))
 
     async def scenario() -> None:
         task = asyncio.create_task(worker.run())
@@ -275,7 +277,7 @@ def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
             await _wait_until(lambda: repos.token_radar.latest_calls >= 1)
             await _wait_until(lambda: repos.token_radar.latest_calls >= 2)
         finally:
-            worker.stop()
+            await worker.stop()
             await task
 
     asyncio.run(scenario())
@@ -295,7 +297,7 @@ def test_edge_budget_caps_candidate_enqueues_per_hour() -> None:
         target_id="asset-1",
     )
     repos.pulse.budget_claims[(candidate_id, NOW_MS // 3_600_000 * 3_600_000)] = 3
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -321,14 +323,16 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
                 prompt_text="fake analyst prompt",
                 response_json={"raw_output": "**Analyst Report:** prose only"},
                 trace_metadata_json={"stage": "analyst"},
-                usage_json={},
+                usage_json={"input_tokens": 11},
                 latency_ms=42,
+                started_at_ms=NOW_MS - 42,
+                finished_at_ms=NOW_MS,
                 status="failed",
                 error="ModelBehaviorError: invalid JSON",
             )
             raise PulseStageFailure("analyst stage failed", audits=(failed_audit,))
 
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FailingClient())
+    worker = _worker(repos, client=FailingClient())
 
     worker.scan_triggers_once(now_ms=NOW_MS)
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -341,13 +345,185 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
     assert step["status"] == "failed"
     assert step["error"] == "ModelBehaviorError: invalid JSON"
     assert step["response_json"] == {"raw_output": "**Analyst Report:** prose only"}
+    assert step["started_at_ms"] == NOW_MS - 42
+    assert step["finished_at_ms"] == NOW_MS
+    assert step["usage_json"] == {"input_tokens": 11}
     assert any(row["status"] == "failed" for row in repos.pulse.finished_runs)
     assert len(repos.pulse.failures) == 1
+
+
+def test_hard_blocked_research_only_gate_records_real_step_timing(monkeypatch) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    repos.pulse.enqueue_job(
+        candidate_id=context.candidate_id,
+        candidate_type=context.candidate_type,
+        subject_key=context.subject_key,
+        window=context.window,
+        scope=context.scope,
+        trigger_signature=context.trigger_signature,
+        timeline_signature=context.timeline_signature,
+        priority=context.priority,
+        target_type=context.target_type,
+        target_id=context.target_id,
+        context_json=context.agent_context(),
+        max_attempts=3,
+        next_run_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+    monkeypatch.setattr(module, "route_decision_context", lambda context: "research_only")
+    monkeypatch.setattr(
+        module,
+        "compute_completeness",
+        lambda factor_snapshot, route: SimpleNamespace(
+            route=route,
+            score=0.2,
+            hard_blocked=True,
+            missing_fields=("liquidity_usd",),
+            stale_fields=(),
+            blockers=("missing_liquidity",),
+        ),
+    )
+    now_values = iter([NOW_MS + 10, NOW_MS + 25, NOW_MS + 40])
+    monkeypatch.setattr(module, "_now_ms", lambda: next(now_values))
+    client = FakeClient()
+    worker = _worker(repos, client=client)
+
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    assert client.run_calls == 0
+    step = repos.pulse.agent_run_steps[0]
+    assert step["stage"] == "research_only_gate"
+    assert step["status"] == "skipped"
+    assert step["started_at_ms"] == NOW_MS + 10
+    assert step["finished_at_ms"] == NOW_MS + 25
+    assert step["started_at_ms"] != step["finished_at_ms"]
+
+
+def test_pulse_worker_run_once_returns_worker_result() -> None:
+    repos = FakeRepos()
+    worker = _worker(repos)
+
+    result = asyncio.run(worker.run_once(now_ms=NOW_MS))
+
+    assert isinstance(worker, WorkerBase)
+    assert worker.SINGLE_WRITER_KEY == 2026051502
+    assert isinstance(result, WorkerResult)
+    assert result.processed == 0
+    assert result.notes["scan"]["asset_seen"] == 0
+    assert result.notes["process"]["claimed"] == 0
+    assert repos.db_worker_sessions[0] == {"name": "pulse_candidate", "statement_timeout_seconds": 30.0}
+
+
+def test_pulse_worker_aclose_keeps_base_cleanup_owner() -> None:
+    repos = FakeRepos()
+    lock = TrackingAdvisoryLock()
+    client = ClosingFakeClient()
+    worker = _worker(repos, client=client)
+    worker._advisory_lock_connection = lock
+
+    asyncio.run(worker.aclose())
+
+    assert client.closed is True
+    assert lock.released is True
+    assert worker._advisory_lock_connection is None
+    assert worker._closed is True
+
+
+def _worker(
+    repos: FakeRepos,
+    *,
+    client: Any | None = None,
+    settings: Any | None = None,
+    wake_waiter: Any | None = None,
+) -> PulseCandidateWorker:
+    return PulseCandidateWorker(
+        name="pulse_candidate",
+        settings=settings or _settings(),
+        db=FakeDB(repos),
+        telemetry=object(),
+        decision_client=client or FakeClient(),
+        wake_waiter=wake_waiter,
+    )
+
+
+def _settings(**overrides: Any) -> SimpleNamespace:
+    values = {
+        "enabled": True,
+        "interval_seconds": 60.0,
+        "timeout_seconds": 120.0,
+        "batch_size": 10,
+        "max_attempts": 3,
+        "statement_timeout_seconds": 30.0,
+        "advisory_lock_key": 2026051502,
+        "wakes_on": ("token_radar_updated",),
+        "windows": ("1h",),
+        "scopes": ("all",),
+        "trigger_thresholds": SimpleNamespace(min_rank_score=45),
+        "gate_thresholds": SimpleNamespace(
+            trade_candidate_min=72,
+            token_watch_min=45,
+            high_info_rejection_min=30,
+            high_conviction_min=78,
+        ),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _pulse_context(*, factor_snapshot: dict[str, Any]) -> Any:
+    return module.PulseCandidateContext(
+        candidate_id="pulse-test-hard-blocked",
+        candidate_type="token_target",
+        subject_key="TEST",
+        window="1h",
+        scope="all",
+        trigger_signature="trigger-hard-blocked",
+        timeline_signature="timeline-hard-blocked",
+        priority=80,
+        target_type="Asset",
+        target_id="asset-1",
+        symbol="TEST",
+        factor_snapshot=factor_snapshot,
+        selected_posts=[_timeline_row("event-1", NOW_MS - 1_000)],
+        gate_result=None,
+        edge_state=None,
+        edge_events=("pulse_status_changed",),
+        source_event_ids=["event-1"],
+        evidence_event_ids=["event-1"],
+    )
 
 
 @contextmanager
 def _session(repos: FakeRepos):
     yield repos
+
+
+class FakeDB:
+    def __init__(self, repos: FakeRepos) -> None:
+        self.repos = repos
+
+    @contextmanager
+    def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
+        self.repos.db_worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
+        yield self.repos
+
+    def acquire_advisory_lock_connection(self, worker_name: str, key: int):
+        return FakeAdvisoryLock()
+
+
+class FakeAdvisoryLock:
+    def release(self) -> None:
+        return None
+
+
+class TrackingAdvisoryLock:
+    def __init__(self) -> None:
+        self.released = False
+
+    def release(self) -> None:
+        self.released = True
 
 
 class FakeRepos:
@@ -357,6 +533,7 @@ class FakeRepos:
         self.token_targets = FakeTokenTargets()
         self.harness = FakeHarness()
         self.pulse = FakePulse()
+        self.db_worker_sessions: list[dict[str, Any]] = []
 
 
 class FakeConn:
@@ -621,6 +798,15 @@ class FakeClient:
         )
 
 
+class ClosingFakeClient(FakeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 class FakeWakeListener:
     def __init__(self) -> None:
         self.listen_calls = 0
@@ -631,6 +817,13 @@ class FakeWakeListener:
         if not self.emitted:
             self.emitted = True
             on_wake()
+
+    async def async_wait(self, timeout: float) -> bool:
+        self.listen_calls += 1
+        return True
+
+    def wake(self) -> None:
+        return None
 
 
 async def _wait_until(predicate, *, timeout_seconds: float = 1.0) -> None:

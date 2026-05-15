@@ -19,6 +19,17 @@ class HandleSummaryTriggerConfig:
     max_attempts: int = 3
 
 
+@dataclass(frozen=True, slots=True)
+class HandleSummaryInputs:
+    handle: str
+    since_ms: int
+    now_ms: int
+    events: list[dict[str, Any]]
+    signal_count: int
+    run_id: str
+    context: dict[str, Any]
+
+
 class WatchlistHandleSummaryService:
     def __init__(
         self,
@@ -66,6 +77,31 @@ class WatchlistHandleSummaryService:
         )
 
     async def summarize_handle(self, job: dict[str, Any], *, now_ms: int | None = None) -> dict[str, Any]:
+        inputs = self.summary_inputs(job, now_ms=now_ms)
+        if not inputs.events:
+            response = not_enough_input_response()
+            model = "deterministic:not_enough_input"
+        else:
+            if self.provider is None:
+                raise RuntimeError("watchlist_handle_summary_provider_not_configured")
+            response = await self.provider.summarize_handle(
+                handle=inputs.handle,
+                events=inputs.events,
+                run_id=inputs.run_id,
+                job=job,
+                context=inputs.context,
+            )
+            model = str(getattr(self.provider, "model", "") or "")
+        return self.complete_summary(
+            job=job,
+            inputs=inputs,
+            response=response,
+            model=model,
+            started_at_ms=inputs.now_ms,
+            finished_at_ms=_now_ms(),
+        )
+
+    def summary_inputs(self, job: dict[str, Any], *, now_ms: int | None = None) -> HandleSummaryInputs:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         handle = normalize_watchlist_handle(str(job.get("handle") or ""))
         since_ms = resolved_now_ms - max(1, int(self.config.window_days)) * 24 * 60 * 60 * 1000
@@ -83,53 +119,54 @@ class WatchlistHandleSummaryService:
             "input_event_count": len(events),
             "signal_count_at_generation": signal_count,
         }
-        if not events:
-            response = {
-                "summary_zh": "近窗口内还没有足够的结构化信号，暂不生成账号主题判断。",
-                "topics": [],
-                "status": "not_enough_input",
-            }
-            model = "deterministic:not_enough_input"
-            usage: dict[str, Any] = {}
-        else:
-            if self.provider is None:
-                raise RuntimeError("watchlist_handle_summary_provider_not_configured")
-            response = await self.provider.summarize_handle(
-                handle=handle,
-                events=events,
-                run_id=run_id,
-                job=job,
-                context=context,
-            )
-            model = str(getattr(self.provider, "model", "") or "")
-            usage = _mapping(response.get("usage"))
+        return HandleSummaryInputs(
+            handle=handle,
+            since_ms=since_ms,
+            now_ms=resolved_now_ms,
+            events=events,
+            signal_count=signal_count,
+            run_id=run_id,
+            context=context,
+        )
+
+    def complete_summary(
+        self,
+        *,
+        job: dict[str, Any],
+        inputs: HandleSummaryInputs,
+        response: dict[str, Any],
+        model: str,
+        started_at_ms: int,
+        finished_at_ms: int,
+    ) -> dict[str, Any]:
+        usage = _mapping(response.get("usage"))
         summary = self.repository.complete_handle_summary(
             job=job,
-            handle=handle,
+            handle=inputs.handle,
             summary={
-                "handle": handle,
-                "generated_at_ms": resolved_now_ms,
-                "input_window_start_ms": since_ms,
-                "input_window_end_ms": resolved_now_ms,
-                "input_event_count": len(events),
-                "signal_count_at_generation": signal_count,
+                "handle": inputs.handle,
+                "generated_at_ms": inputs.now_ms,
+                "input_window_start_ms": inputs.since_ms,
+                "input_window_end_ms": inputs.now_ms,
+                "input_event_count": len(inputs.events),
+                "signal_count_at_generation": inputs.signal_count,
                 "model": model,
                 "summary_zh": str(response.get("summary_zh") or ""),
                 "topics": _topics(response.get("topics")),
                 "raw_response": _mapping(response),
             },
             run={
-                "run_id": run_id,
-                "handle": handle,
+                "run_id": inputs.run_id,
+                "handle": inputs.handle,
                 "status": "done",
                 "model": model,
-                "request_json": context,
+                "request_json": inputs.context,
                 "response_json": _mapping(response),
-                "input_event_count": len(events),
+                "input_event_count": len(inputs.events),
                 "usage_json": usage,
                 "error": None,
-                "started_at_ms": resolved_now_ms,
-                "finished_at_ms": _now_ms(),
+                "started_at_ms": started_at_ms,
+                "finished_at_ms": finished_at_ms,
             },
         )
         if summary is None:
@@ -239,12 +276,22 @@ def _run_id(*, handle: str, attempt: int, now_ms: int) -> str:
     return f"watchlist-summary-run-{digest}"
 
 
+def not_enough_input_response() -> dict[str, Any]:
+    return {
+        "summary_zh": "近窗口内还没有足够的结构化信号，暂不生成账号主题判断。",
+        "topics": [],
+        "status": "not_enough_input",
+    }
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
 __all__ = [
+    "HandleSummaryInputs",
     "HandleSummaryTriggerConfig",
     "WatchlistHandleReadService",
     "WatchlistHandleSummaryService",
+    "not_enough_input_response",
 ]

@@ -71,6 +71,75 @@ def observe_anchor_prices(
     return result
 
 
+def anchor_price_empty_result(*, rows_selected: int = 0) -> dict[str, Any]:
+    return {
+        "rows_selected": int(rows_selected),
+        "cex_ticker_requests": 0,
+        "dex_price_requests": 0,
+        "anchor_observations_written": 0,
+        "skipped_missing_pricefeed": 0,
+        "skipped_missing_provider": 0,
+        "skipped_missing_market": 0,
+        "provider_errors": 0,
+        "errors": [],
+        "written_targets": [],
+    }
+
+
+def select_pending_anchor_price_rows(*, repos: Any, now_ms: int, limit: int = 100) -> list[dict[str, Any]]:
+    return _select_pending_rows(repos.conn, now_ms=now_ms, limit=limit)
+
+
+def fetch_anchor_price_quotes(
+    *,
+    rows: list[dict[str, Any]],
+    cex_market: Any = None,
+    dex_quote_market: Any = None,
+    result: dict[str, Any],
+) -> tuple[dict[str, CexTicker | None], dict[tuple[str, str], DexTokenQuote]]:
+    return (
+        _fetch_cex_quotes(rows, cex_market=cex_market, result=result),
+        _fetch_dex_quotes(rows, dex_quote_market=dex_quote_market, result=result),
+    )
+
+
+def write_anchor_price_observations(
+    *,
+    repos: Any,
+    rows: list[dict[str, Any]],
+    cex_quotes: dict[str, CexTicker | None],
+    dex_quotes: dict[tuple[str, str], DexTokenQuote],
+    now_ms: int,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    for row in rows:
+        target_type = str(row.get("target_type") or "")
+        if target_type == "CexToken":
+            written = _write_cex_observation(
+                repos=repos,
+                row=row,
+                ticker=cex_quotes.get(str(row.get("pricefeed_id") or "")),
+                now_ms=now_ms,
+                result=result,
+            )
+        elif target_type == "Asset":
+            written = _write_dex_observation(
+                repos=repos,
+                row=row,
+                price=dex_quotes.get(_dex_key(row)),
+                now_ms=now_ms,
+                result=result,
+            )
+        else:
+            written = False
+        if written:
+            result["anchor_observations_written"] += 1
+            result["written_targets"].append({"target_type": target_type, "target_id": str(row.get("target_id"))})
+    if result["anchor_observations_written"]:
+        repos.conn.commit()
+    return result
+
+
 def _select_pending_rows(conn: Any, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
     return PendingAnchorPriceQuery(conn).pending_rows(now_ms=now_ms, limit=limit)
 

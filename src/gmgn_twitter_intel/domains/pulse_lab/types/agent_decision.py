@@ -105,6 +105,8 @@ class StageRunAudit(BaseModel):
     trace_metadata_json: dict[str, Any] = Field(default_factory=dict)
     usage_json: dict[str, Any] = Field(default_factory=dict)
     latency_ms: int = Field(ge=0)
+    started_at_ms: int | None = Field(default=None, ge=0)
+    finished_at_ms: int | None = Field(default=None, ge=0)
     status: StageStatus
     error: str | None = None
 

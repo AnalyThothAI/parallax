@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
@@ -73,7 +76,10 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp
         before = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
 
         worker = ResolutionRefreshWorker(
-            repository_session=lambda: repository_session_for_connection(conn),
+            name="resolution_refresh",
+            settings=resolution_worker_settings(interval_seconds=60),
+            db=FakeWorkerDB(conn),
+            telemetry=object(),
             dex_discovery_market=FakeDexMarket(
                 candidates=[
                     DexTokenCandidate(
@@ -91,10 +97,9 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp
                 ]
             ),
             chain_ids=("eip155:1",),
-            interval_seconds=60,
         )
 
-        result = worker.run_once(now_ms=now_ms + 60_000)
+        result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
         after = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
         rows = repos.token_radar.latest_rows(
             window="5m",
@@ -134,7 +139,10 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
             enrichment=FakeEnrichment(),
         )
         worker = ResolutionRefreshWorker(
-            repository_session=lambda: repository_session_for_connection(conn),
+            name="resolution_refresh",
+            settings=resolution_worker_settings(interval_seconds=60),
+            db=FakeWorkerDB(conn),
+            telemetry=object(),
             dex_discovery_market=FakeDexMarket(
                 candidates=[
                     DexTokenCandidate(
@@ -152,7 +160,6 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
                 ]
             ),
             chain_ids=("eip155:1",),
-            interval_seconds=60,
         )
 
         first_event = make_event(
@@ -162,7 +169,7 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
             is_watched=True,
         )
         ingest.ingest_event(first_event, is_watched=True)
-        worker.run_once(now_ms=now_ms + 60_000)
+        asyncio.run(worker.run_once(now_ms=now_ms + 60_000))
 
         second_event = make_event(
             "event-upeg-2",
@@ -174,7 +181,7 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
         repos = repositories_for_connection(conn)
         before = repos.intent_resolutions.active_resolution_for_intent(second_ingested.token_intents[0]["intent_id"])
 
-        result = worker.run_once(now_ms=second_event.received_at_ms + 1_000)
+        result = asyncio.run(worker.run_once(now_ms=second_event.received_at_ms + 1_000)).notes["result"]
         after = repos.intent_resolutions.active_resolution_for_intent(second_ingested.token_intents[0]["intent_id"])
     finally:
         conn.close()
@@ -201,11 +208,13 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
             enrichment=FakeEnrichment(),
         )
         worker = ResolutionRefreshWorker(
-            repository_session=lambda: repository_session_for_connection(conn),
+            name="resolution_refresh",
+            settings=resolution_worker_settings(interval_seconds=60),
+            db=FakeWorkerDB(conn),
+            telemetry=object(),
             dex_discovery_market=dex_market,
             dex_quote_market=dex_market,
             chain_ids=("eip155:1",),
-            interval_seconds=60,
         )
         ingested = ingest.ingest_event(
             make_event(
@@ -217,7 +226,7 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
             is_watched=True,
         )
 
-        first = worker.run_once(now_ms=now_ms + 60_000)
+        first = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
         before = repositories_for_connection(conn).intent_resolutions.active_resolution_for_intent(
             ingested.token_intents[0]["intent_id"]
         )
@@ -236,7 +245,7 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
             )
         ]
 
-        second = worker.run_once(now_ms=now_ms + 120_000)
+        second = asyncio.run(worker.run_once(now_ms=now_ms + 120_000)).notes["result"]
         repos = repositories_for_connection(conn)
         after = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
     finally:
@@ -276,7 +285,10 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
             is_watched=True,
         )
         worker = ResolutionRefreshWorker(
-            repository_session=lambda: repository_session_for_connection(conn),
+            name="resolution_refresh",
+            settings=resolution_worker_settings(interval_seconds=60),
+            db=FakeWorkerDB(conn),
+            telemetry=object(),
             dex_discovery_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(
@@ -352,10 +364,9 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
                 ]
             ),
             chain_ids=("solana", "eip155:56"),
-            interval_seconds=60,
         )
 
-        result = worker.run_once(now_ms=now_ms + 60_000)
+        result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
         rows = conn.execute(
             """
             SELECT chain_id, address, status
@@ -413,7 +424,10 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
             observed_at_ms=now_ms,
         )
         worker = ResolutionRefreshWorker(
-            repository_session=lambda: repository_session_for_connection(conn),
+            name="resolution_refresh",
+            settings=resolution_worker_settings(interval_seconds=60),
+            db=FakeWorkerDB(conn),
+            telemetry=object(),
             dex_discovery_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(
@@ -440,10 +454,9 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
                 ]
             ),
             chain_ids=("eip155:56",),
-            interval_seconds=60,
         )
 
-        worker.run_once(now_ms=now_ms + 60_000)
+        asyncio.run(worker.run_once(now_ms=now_ms + 60_000))
         row = conn.execute("SELECT status FROM registry_assets WHERE asset_id = %s", (old["asset_id"],)).fetchone()
     finally:
         conn.close()
@@ -481,6 +494,29 @@ def test_address_discovery_remains_uncapped(tmp_path):
     assert result["assets_written"] == 1
     assert row["address"] == address
     assert row["status"] == "candidate"
+
+
+def resolution_worker_settings(**overrides):
+    values = {
+        "enabled": True,
+        "interval_seconds": 30.0,
+        "timeout_seconds": 120.0,
+        "batch_size": 50,
+        "reprocess_limit": 500,
+        "chain_ids": ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton"),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+class FakeWorkerDB:
+    def __init__(self, conn):
+        self.conn = conn
+        self.session_names: list[str] = []
+
+    def worker_session(self, name: str):
+        self.session_names.append(name)
+        return repository_session_for_connection(self.conn)
 
 
 class FakeDexMarket:

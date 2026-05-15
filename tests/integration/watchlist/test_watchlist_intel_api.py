@@ -4,11 +4,13 @@ from fastapi.testclient import TestClient
 from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
     ApiUnauthorized,
+    _watchlist_handle_summary_config,
     api_bad_request_response,
     api_unauthorized_response,
     create_api_router,
 )
 from gmgn_twitter_intel.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
+from gmgn_twitter_intel.platform.config.settings import Settings
 
 DEFAULT_SUMMARY = object()
 
@@ -53,6 +55,37 @@ def test_watchlist_handle_summary_endpoint_marks_old_summary_stale():
     assert data["status"] == "ready"
     assert data["is_stale"] is True
     assert data["pending_recompute"] is False
+
+
+def test_watchlist_handle_summary_config_uses_worker_settings():
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "settings": Settings(
+                ws_token="secret",
+                workers={
+                    "handle_summary": {
+                        "signal_threshold": 17,
+                        "time_threshold_ms": 123_000,
+                        "min_interval_ms": 45_000,
+                        "input_limit": 9,
+                        "window_days": 3,
+                        "max_attempts": 6,
+                    }
+                },
+            )
+        },
+    )()
+
+    config = _watchlist_handle_summary_config(runtime)
+
+    assert config.signal_threshold == 17
+    assert config.time_threshold_ms == 123_000
+    assert config.min_interval_ms == 45_000
+    assert config.input_limit == 9
+    assert config.window_days == 3
+    assert config.max_attempts == 6
 
 
 def test_watchlist_handle_timeline_endpoint_validates_cursor_and_scope():
@@ -160,7 +193,7 @@ class FakeRepositoryContext:
 
 class FakeRuntime:
     def __init__(self, watchlist_intel):
-        self.settings = type("FakeSettings", (), {"ws_token": "secret", "handles": ("toly",)})()
+        self.settings = Settings(ws_token="secret", handles=("toly",))
         self._watchlist_intel = watchlist_intel
 
     def repositories(self):

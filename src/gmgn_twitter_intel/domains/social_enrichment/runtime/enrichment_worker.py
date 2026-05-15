@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, cast
 
 from loguru import logger
 
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 from gmgn_twitter_intel.domains.watchlist_intel.interfaces import (
@@ -17,59 +19,35 @@ from gmgn_twitter_intel.domains.watchlist_intel.interfaces import (
 )
 
 
-class EnrichmentWorker:
+class EnrichmentWorker(WorkerBase):
     def __init__(
         self,
         *,
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         client: SocialEventEnrichmentProvider,
         publisher: Any = None,
-        repository_session: Callable[[], AbstractContextManager[Any]],
-        poll_interval: float = 2.0,
-        concurrency: int = 1,
         watchlist_summary_config: HandleSummaryTriggerConfig | None = None,
     ) -> None:
-        self.repository_session = repository_session
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.client = client
         self.publisher = publisher
-        self.poll_interval = max(0.2, float(poll_interval))
-        self.concurrency = max(1, min(16, int(concurrency)))
         self.watchlist_summary_config = watchlist_summary_config
-        self._stopped = asyncio.Event()
 
-    async def run(self) -> None:
-        if self.concurrency == 1:
-            await self._run_loop()
-            return
-        tasks = [asyncio.create_task(self._run_loop()) for _ in range(self.concurrency)]
-        try:
-            await asyncio.gather(*tasks)
-        finally:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+    async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
+        return await self.process_one(now_ms=now_ms)
 
-    async def _run_loop(self) -> None:
-        while not self._stopped.is_set():
-            try:
-                processed = await self.process_one()
-            except Exception as exc:
-                logger.exception(f"enrichment worker loop failed: {exc}")
-                processed = False
-            if not processed:
-                await asyncio.sleep(self.poll_interval)
-
-    def stop(self) -> None:
-        self._stopped.set()
-
-    async def process_one(self, *, now_ms: int | None = None) -> bool:
+    async def process_one(self, *, now_ms: int | None = None) -> WorkerResult:
         job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=now_ms or _now_ms())
         if job is None:
-            return False
+            return WorkerResult(skipped=1, notes={"reason": "no_job"})
 
         event = await asyncio.to_thread(self._event_by_id_sync, event_id=str(job["event_id"]))
         if event is None:
             await asyncio.to_thread(self._fail_job_sync, job=job, error="event_not_found")
-            return True
+            return WorkerResult(failed=1, notes={"reason": "event_not_found", "job_id": job.get("job_id")})
 
         entities = await asyncio.to_thread(self._entities_for_event_sync, event_id=str(job["event_id"]))
         run_id = _run_id(job)
@@ -102,7 +80,7 @@ class EnrichmentWorker:
                 started_at_ms=started_at_ms,
                 finished_at_ms=_now_ms(),
             )
-            return True
+            return WorkerResult(failed=1, notes={"reason": "model_timeout", "job_id": job.get("job_id")})
         except Exception as exc:
             error = str(exc)
             await asyncio.to_thread(
@@ -115,7 +93,7 @@ class EnrichmentWorker:
                 started_at_ms=started_at_ms,
                 finished_at_ms=_now_ms(),
             )
-            return True
+            return WorkerResult(failed=1, notes={"reason": "model_error", "job_id": job.get("job_id")})
 
         try:
             materialized = await asyncio.to_thread(
@@ -131,7 +109,7 @@ class EnrichmentWorker:
         except Exception as exc:
             logger.exception(f"harness materialization failed event_id={event.get('event_id')}: {exc}")
             await asyncio.to_thread(self._fail_job_sync, job=job, error=str(exc))
-            return True
+            return WorkerResult(failed=1, notes={"reason": "materialization_error", "job_id": job.get("job_id")})
 
         if self.publisher is not None:
             await self.publisher.publish(
@@ -142,25 +120,25 @@ class EnrichmentWorker:
                     **materialized,
                 }
             )
-        return True
+        return WorkerResult(processed=1, notes={"job_id": job.get("job_id"), "event_id": job.get("event_id")})
 
     def _claim_next_job_sync(self, *, now_ms: int) -> dict[str, Any] | None:
-        with self.repository_session() as repos:
+        with self._repository_session() as repos:
             job = repos.enrichment.claim_next_job(now_ms=now_ms or _now_ms())
         return cast(dict[str, Any] | None, job)
 
     def _event_by_id_sync(self, *, event_id: str) -> dict[str, Any] | None:
-        with self.repository_session() as repos:
+        with self._repository_session() as repos:
             event = repos.evidence.events_by_ids([event_id]).get(event_id)
         return cast(dict[str, Any] | None, event)
 
     def _entities_for_event_sync(self, *, event_id: str) -> list[dict[str, Any]]:
-        with self.repository_session() as repos:
+        with self._repository_session() as repos:
             entities = repos.entities.entities_for_event(event_id)
         return cast(list[dict[str, Any]], entities)
 
     def _fail_job_sync(self, *, job: dict[str, Any], error: str) -> None:
-        with self.repository_session() as repos:
+        with self._repository_session() as repos:
             repos.enrichment.fail_job(job=job, error=error)
 
     def _record_model_run_failure_sync(
@@ -174,7 +152,7 @@ class EnrichmentWorker:
         started_at_ms: int,
         finished_at_ms: int,
     ) -> None:
-        with self.repository_session() as repos:
+        with self._repository_session() as repos:
             repos.enrichment.record_model_run_failure(
                 job=job,
                 run_id=run_id,
@@ -199,7 +177,7 @@ class EnrichmentWorker:
         started_at_ms: int,
         finished_at_ms: int,
     ) -> dict[str, Any]:
-        with self.repository_session() as repos, repos.unit_of_work():
+        with self._repository_session() as repos, repos.unit_of_work():
             run = repos.enrichment.complete_social_event_job(
                 job=job,
                 run_id=run_id,
@@ -227,6 +205,14 @@ class EnrichmentWorker:
                         config=self.watchlist_summary_config,
                     ).enqueue_handle_summary_if_due(handle=handle, now_ms=finished_at_ms, commit=False)
             return materialized
+
+    @contextmanager
+    def _repository_session(self) -> Iterator[Any]:
+        with self.db.worker_session(
+            self.name,
+            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+        ) as repos:
+            yield repos
 
 
 def _now_ms() -> int:

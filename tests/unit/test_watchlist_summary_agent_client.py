@@ -1,4 +1,76 @@
-from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import _coerce_summary_payload
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+
+from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
+    OpenAIAgentsWatchlistSummaryClient,
+    _coerce_summary_payload,
+)
+
+
+class FakeRunner:
+    def __init__(self, output):
+        self.output = output
+        self.calls = []
+
+    async def run(self, starting_agent, input, *, max_turns, run_config):
+        self.calls.append(
+            {
+                "agent": starting_agent,
+                "input": input,
+                "max_turns": max_turns,
+                "run_config": run_config,
+            }
+        )
+        return SimpleNamespace(final_output=self.output)
+
+
+class FakeGateway:
+    trace_export_enabled = True
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
+        self.calls.append({"worker_name": worker_name, "stage": stage, "timeout_s": timeout_s})
+        return await coro_factory()
+
+    def openai_client(self, *, model, base_url, timeout_s):
+        return object()
+
+
+def test_watchlist_summary_client_runs_summary_through_gateway():
+    gateway = FakeGateway()
+    runner = FakeRunner(
+        {
+            "summary_zh": "账户围绕 SOL 客户端进展反复发声。",
+            "topics": [],
+            "residual_risks": [],
+        }
+    )
+    client = OpenAIAgentsWatchlistSummaryClient(
+        api_key="sk-test",
+        model="gpt-test",
+        llm_gateway=gateway,
+        timeout_seconds=9,
+        runner=runner,
+    )
+
+    result = asyncio.run(
+        client.summarize_handle(
+            handle="watched",
+            events=[],
+            run_id="run-1",
+            job={"handle": "watched", "attempt_count": 1},
+            context={"window_days": 1},
+        )
+    )
+
+    assert gateway.calls == [{"worker_name": "handle_summary", "stage": "summary", "timeout_s": 9}]
+    assert runner.calls[0]["run_config"].group_id == "watched"
+    assert runner.calls[0]["run_config"].tracing_disabled is False
+    assert result["summary_zh"] == "账户围绕 SOL 客户端进展反复发声。"
 
 
 def test_watchlist_summary_client_parses_fenced_json_output():

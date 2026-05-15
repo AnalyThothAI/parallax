@@ -51,6 +51,40 @@ def refresh_asset_profiles_once(
     return result
 
 
+def select_due_asset_profile_rows(*, repos: Any, now_ms: int, limit: int = 50) -> list[dict[str, Any]]:
+    return list(
+        PendingAssetProfileQuery(repos.conn).pending_rows(
+            provider=GMGN_DEX_PROFILE_PROVIDER,
+            now_ms=now_ms,
+            limit=limit,
+        )
+    )
+
+
+def fetch_asset_profile(*, dex_profile_market: Any, row: dict[str, Any]) -> DexTokenProfile | None:
+    if dex_profile_market is None:
+        return None
+    profile: object = dex_profile_market.token_profile(
+        chain_id=str(row["chain_id"]),
+        address=str(row["address"]),
+    )
+    if isinstance(profile, DexTokenProfile):
+        return profile
+    return None
+
+
+def write_ready_asset_profile(*, repos: Any, row: dict[str, Any], profile: DexTokenProfile, now_ms: int) -> None:
+    _write_ready_profile(repos=repos, row=row, profile=profile, now_ms=now_ms)
+
+
+def write_missing_asset_profile(*, repos: Any, row: dict[str, Any], now_ms: int) -> None:
+    _write_missing_profile(repos=repos, row=row, now_ms=now_ms)
+
+
+def write_error_asset_profile(*, repos: Any, row: dict[str, Any], exc: Exception, now_ms: int) -> None:
+    _write_error_profile(repos=repos, row=row, exc=exc, now_ms=now_ms)
+
+
 def _empty_result(*, now_ms: int) -> dict[str, Any]:
     return {
         "provider": GMGN_DEX_PROFILE_PROVIDER,

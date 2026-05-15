@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdate
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 
 
 def test_live_price_gateway_persists_only_material_decision_latest_frames():
-    repos = FakeRepos()
+    db = FakeDB()
     stream_provider = FakeStreamProvider(
         [
             DexMarketFactUpdate(
@@ -28,26 +29,24 @@ def test_live_price_gateway_persists_only_material_decision_latest_frames():
     )
     published: list[dict] = []
     gateway = LivePriceGateway(
+        name="live_price_gateway",
+        settings=worker_settings(),
+        db=db,
+        telemetry=object(),
         stream_provider=stream_provider,
         cex_market=None,
-        repository_session=lambda: FakeSession(repos),
         projection_version="token-radar-v12-anchor-live-hard-cut",
-        subscription_limit=10,
-        hot_target_ttl_seconds=60,
-        cex_poll_interval_seconds=30,
-        reconnect_delay_seconds=0.1,
         on_live_market_update=published.append,
-        live_observation_heartbeat_seconds=60,
-        live_observation_min_price_change_pct=0.005,
-        live_observation_min_write_interval_seconds=5,
     )
 
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_000_000))
 
-    assert result["updates_received"] == 2
-    assert result["observations_written"] == 1
-    assert len(repos.price_observations.calls) == 1
-    assert repos.price_observations.calls[0]["observation_kind"] == "decision_latest"
+    assert result.notes["result"]["updates_received"] == 2
+    assert result.processed == 1
+    assert len(db.repos.price_observations.calls) == 1
+    assert db.repos.price_observations.calls[0]["observation_kind"] == "decision_latest"
+    assert result.notes["live_observation_reasons"]["first_seen"] == 1
+    assert result.notes["live_observation_reasons"]["debounced"] == 1
     assert published[0]["market"]["decision_latest"]["price_usd"] == 1.0
 
 
@@ -58,6 +57,31 @@ class FakeStreamProvider:
     async def stream_price_info(self, targets):
         for update in self.updates:
             yield update
+
+
+def worker_settings(**overrides):
+    values = {
+        "enabled": True,
+        "interval_seconds": 30.0,
+        "timeout_seconds": 120.0,
+        "subscription_limit": 10,
+        "hot_target_ttl_seconds": 60.0,
+        "reconnect_delay_seconds": 0.1,
+        "cex_poll_interval_seconds": 30.0,
+        "live_observation_heartbeat_seconds": 60.0,
+        "live_observation_min_price_change_pct": 0.005,
+        "live_observation_min_write_interval_seconds": 5.0,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+class FakeDB:
+    def __init__(self) -> None:
+        self.repos = FakeRepos()
+
+    def worker_session(self, name: str):
+        return FakeSession(self.repos)
 
 
 class FakeSession:

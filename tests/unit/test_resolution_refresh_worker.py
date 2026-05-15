@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate
 from gmgn_twitter_intel.domains.asset_market.runtime import resolution_refresh_worker as module
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
@@ -87,6 +90,60 @@ def test_resolution_refresh_notifies_without_inline_anchor_or_projection(monkeyp
     assert wake_bus.resolution_notifications == [["symbol:ABC"]]
 
 
+def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
+    repos = FakeRefreshRepos()
+    db = FakeDB(repos)
+    wake_bus = FakeWakeBus()
+
+    monkeypatch.setattr(
+        module,
+        "_fetch_lookup_provider_result",
+        lambda **_: {
+            **module._lookup_result(search_requests=1, search_hits=1),
+            "candidate_ids": ["asset-1"],
+            "affected_lookup_keys": ["symbol:ABC"],
+            "assets_written": 1,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "reprocess_recent_token_intents",
+        lambda **_: {"reprocessed_intents": 1, "resolved_intents": 1},
+    )
+
+    worker = module.ResolutionRefreshWorker(
+        name="resolution_refresh",
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=30,
+            timeout_seconds=120,
+            batch_size=50,
+            reprocess_limit=500,
+        ),
+        db=db,
+        telemetry=object(),
+        dex_discovery_market=object(),
+        dex_quote_market=object(),
+        chain_ids=("solana",),
+        wake_bus=wake_bus,
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000)).notes["result"]
+
+    assert result["reprocessed_intents"] == 1
+    assert result["affected_lookup_keys"] == ["symbol:ABC"]
+    assert result["anchor"] is None
+    assert result["projection"]["status"] == "deferred_to_worker"
+    assert wake_bus.resolution_notifications == [["symbol:ABC"]]
+    assert db.session_names == [
+        "resolution_refresh",
+        "resolution_refresh",
+        "resolution_refresh",
+        "resolution_refresh",
+        "resolution_refresh",
+    ]
+
+
 def _candidate(*, chain_id: str, address: str, symbol: str = "SPARSE") -> DexTokenCandidate:
     return DexTokenCandidate(
         chain_id=chain_id,
@@ -120,6 +177,27 @@ class FakeRefreshRepos:
     def __init__(self) -> None:
         self.conn = FakeRefreshConn()
         self.discovery = FakeRefreshDiscovery()
+
+
+class FakeDB:
+    def __init__(self, repos: FakeRefreshRepos) -> None:
+        self.repos = repos
+        self.session_names: list[str] = []
+
+    def worker_session(self, name: str):
+        self.session_names.append(name)
+        return FakeSession(self.repos)
+
+
+class FakeSession:
+    def __init__(self, repos: FakeRefreshRepos) -> None:
+        self.repos = repos
+
+    def __enter__(self):
+        return self.repos
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class FakeRefreshConn:

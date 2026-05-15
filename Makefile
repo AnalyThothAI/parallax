@@ -68,7 +68,7 @@ regen-contract: ## regenerate openapi.json + web/src/lib/types/openapi.ts
 install-hooks: ## install pre-commit hooks
 	@uv run pre-commit install
 
-init: ## create ~/.gmgn-twitter-intel/config.yaml
+init: ## create ~/.gmgn-twitter-intel/config.yaml + workers.yaml
 	@$(GMGN) init
 
 config: ## print effective runtime config

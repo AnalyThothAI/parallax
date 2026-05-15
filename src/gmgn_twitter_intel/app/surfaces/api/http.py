@@ -245,7 +245,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 token_radar=repos.token_radar,
                 targets=repos.token_targets,
                 profiles=profiles,
-                live_price_gateway=getattr(runtime, "live_price_gateway", None),
+                live_price_gateway=_worker_object(runtime, "live_price_gateway"),
             ).inspect(
                 q,
                 window=parsed_window,
@@ -280,7 +280,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 data = TokenCaseService(
                     targets=repos.token_targets,
                     profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
-                    live_price_gateway=getattr(runtime, "live_price_gateway", None),
+                    live_price_gateway=_worker_object(runtime, "live_price_gateway"),
                 ).dossier(
                     target_type=parsed_target_type,
                     target_id=target_id,
@@ -344,7 +344,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_target_type = _target_type(target_type)
         if not parsed_target_type or not target_id:
             raise ApiBadRequest("target_required", field="target_id")
-        gateway = getattr(runtime, "live_price_gateway", None)
+        gateway = _worker_object(runtime, "live_price_gateway")
         if gateway is None:
             snapshot = {"target_type": parsed_target_type, "target_id": target_id, "status": "unsupported"}
         else:
@@ -702,7 +702,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             q=q or None,
             limit=parsed_limit,
             cursor=cursor or None,
-            agent_worker_running=_task_running(getattr(runtime, "pulse_candidate_task", None)),
+            agent_worker_running=_worker_running(runtime, "pulse_candidate"),
         )
         return _json({"ok": True, "data": data})
 
@@ -753,13 +753,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             job_counts = repos.enrichment.job_counts()
             data = HarnessService(repos.harness).health(
                 llm_configured=bool(runtime.settings.llm_configured),
-                extractor_running=runtime.enrichment_task is not None and not runtime.enrichment_task.done(),
+                extractor_running=_worker_running(runtime, "enrichment"),
                 pending_jobs=int(job_counts.get("pending", 0)),
                 schema_success_rate=repos.enrichment.job_success_rate(),
             )
             data["dead_jobs"] = int(job_counts.get("dead", 0))
             data["failed_jobs"] = int(job_counts.get("failed", 0))
-            data["harness_ops_running"] = runtime.harness_ops_task is not None and not runtime.harness_ops_task.done()
+            data["harness_ops_running"] = _worker_running(runtime, "harness_ops")
         return _json({"ok": True, "data": data})
 
     @router.get(
@@ -838,15 +838,14 @@ def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _watchlist_handle_summary_config(runtime: Any) -> HandleSummaryTriggerConfig:
-    settings = runtime.settings
-    defaults = HandleSummaryTriggerConfig()
+    config = runtime.settings.workers.handle_summary
     return HandleSummaryTriggerConfig(
-        signal_threshold=getattr(settings, "watchlist_handle_summary_signal_threshold", defaults.signal_threshold),
-        time_threshold_ms=getattr(settings, "watchlist_handle_summary_time_threshold_ms", defaults.time_threshold_ms),
-        min_interval_ms=getattr(settings, "watchlist_handle_summary_min_interval_ms", defaults.min_interval_ms),
-        input_limit=getattr(settings, "watchlist_handle_summary_input_limit", defaults.input_limit),
-        window_days=getattr(settings, "watchlist_handle_summary_window_days", defaults.window_days),
-        max_attempts=getattr(settings, "watchlist_handle_summary_max_attempts", defaults.max_attempts),
+        signal_threshold=config.signal_threshold,
+        time_threshold_ms=config.time_threshold_ms,
+        min_interval_ms=config.min_interval_ms,
+        input_limit=config.input_limit,
+        window_days=config.window_days,
+        max_attempts=config.max_attempts,
     )
 
 
@@ -1045,8 +1044,36 @@ def _signal_pulse_status(value: str) -> str | None:
     raise ApiBadRequest("invalid_status", field="status")
 
 
-def _task_running(task: Any | None) -> bool:
-    return task is not None and not task.done()
+def _worker_running(runtime: Any, worker_name: str) -> bool:
+    scheduler = getattr(runtime, "scheduler", None)
+    if scheduler is None:
+        return False
+    task = getattr(scheduler, "tasks", {}).get(worker_name)
+    if task is not None:
+        return not task.done()
+    status_payload = getattr(scheduler, "status_payload", None)
+    if status_payload is None:
+        return False
+    try:
+        payload = status_payload()
+    except Exception:
+        return False
+    return bool(payload.get(worker_name, {}).get("running"))
+
+
+def _worker_object(runtime: Any, worker_name: str) -> Any | None:
+    workers = getattr(runtime, "workers", {})
+    worker = workers.get(worker_name)
+    if worker is None:
+        return None
+    status_payload = getattr(worker, "status_payload", None)
+    if status_payload is not None:
+        try:
+            if not status_payload().get("enabled", False):
+                return None
+        except Exception:
+            return None
+    return getattr(worker, "worker", worker)
 
 
 def _job_status(value: str | None) -> str | None:

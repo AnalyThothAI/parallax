@@ -46,19 +46,62 @@ def create_pool(
     min_size: int,
     max_size: int,
     connect_timeout_seconds: float,
+    application_name: str | None = None,
+    statement_timeout_seconds: float | None = None,
+    idle_in_transaction_session_timeout_seconds: float | None = None,
+    keepalives: bool | None = None,
+    keepalives_idle: int | None = None,
+    keepalives_interval: int | None = None,
+    keepalives_count: int | None = None,
 ) -> ConnectionPool:
     dsn = local_docker_host_dsn(dsn)
+    kwargs: dict[str, Any] = {
+        "autocommit": True,
+        "connect_timeout": int(connect_timeout_seconds),
+        "row_factory": dict_row,
+    }
+    if application_name is not None:
+        kwargs["application_name"] = application_name
+    options = _postgres_runtime_options(
+        statement_timeout_seconds=statement_timeout_seconds,
+        idle_in_transaction_session_timeout_seconds=idle_in_transaction_session_timeout_seconds,
+    )
+    if options:
+        kwargs["options"] = options
+    if keepalives is not None:
+        kwargs["keepalives"] = int(bool(keepalives))
+    if keepalives_idle is not None:
+        kwargs["keepalives_idle"] = int(keepalives_idle)
+    if keepalives_interval is not None:
+        kwargs["keepalives_interval"] = int(keepalives_interval)
+    if keepalives_count is not None:
+        kwargs["keepalives_count"] = int(keepalives_count)
     return ConnectionPool(
         conninfo=dsn,
         min_size=min_size,
         max_size=max_size,
-        kwargs={
-            "autocommit": True,
-            "connect_timeout": int(connect_timeout_seconds),
-            "row_factory": dict_row,
-        },
+        kwargs=kwargs,
         open=True,
     )
+
+
+def _postgres_runtime_options(
+    *,
+    statement_timeout_seconds: float | None,
+    idle_in_transaction_session_timeout_seconds: float | None,
+) -> str:
+    options: list[str] = []
+    if statement_timeout_seconds is not None:
+        options.append(f"-c statement_timeout={_seconds_to_ms(statement_timeout_seconds)}")
+    if idle_in_transaction_session_timeout_seconds is not None:
+        options.append(
+            f"-c idle_in_transaction_session_timeout={_seconds_to_ms(idle_in_transaction_session_timeout_seconds)}"
+        )
+    return " ".join(options)
+
+
+def _seconds_to_ms(seconds: float) -> int:
+    return max(0, int(float(seconds) * 1000))
 
 
 def _running_in_container() -> bool:

@@ -19,6 +19,24 @@ from tests.postgres_test_utils import repository_session_for_connection
 NOW_MS = 1_800_000_000_000
 
 
+class FakeGateway:
+    trace_export_enabled = True
+
+    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
+        return await coro_factory()
+
+    def openai_client(self, *, model, base_url, timeout_s):
+        return object()
+
+
+class FakeDB:
+    def __init__(self, conn: Any) -> None:
+        self.conn = conn
+
+    def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
+        return repository_session_for_connection(self.conn)
+
+
 def test_pulse_agent_runtime_flow_persists_stage_ledger_and_public_decision(e2e_postgres: str) -> None:
     conn = connect_postgres(e2e_postgres)
     try:
@@ -51,7 +69,12 @@ def test_pulse_agent_runtime_flow_persists_stage_ledger_and_public_decision(e2e_
             ]
         )
         provider = OpenAIPulseDecisionProvider(
-            OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-e2e", runner=runner)
+            OpenAIAgentsPulseDecisionClient(
+                api_key="sk-test",
+                model="gpt-e2e",
+                llm_gateway=FakeGateway(),
+                runner=runner,
+            )
         )
         context = _candidate_context()
         with repository_session_for_connection(conn) as repos:
@@ -73,9 +96,28 @@ def test_pulse_agent_runtime_flow_persists_stage_ledger_and_public_decision(e2e_
             )
 
         worker = PulseCandidateWorker(
-            repository_session=lambda: repository_session_for_connection(conn),
+            name="pulse_candidate",
+            settings=SimpleNamespace(
+                enabled=True,
+                interval_seconds=60.0,
+                timeout_seconds=120.0,
+                batch_size=1,
+                max_attempts=3,
+                statement_timeout_seconds=30.0,
+                advisory_lock_key=2026051502,
+                windows=("1h",),
+                scopes=("all",),
+                trigger_thresholds=SimpleNamespace(min_rank_score=45),
+                gate_thresholds=SimpleNamespace(
+                    trade_candidate_min=72,
+                    token_watch_min=45,
+                    high_info_rejection_min=30,
+                    high_conviction_min=78,
+                ),
+            ),
+            db=FakeDB(conn),
+            telemetry=object(),
             decision_client=provider,
-            batch_size=1,
         )
 
         result = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -120,6 +162,9 @@ def test_pulse_agent_runtime_flow_persists_stage_ledger_and_public_decision(e2e_
         assert steps[0]["input_json"]["context"]["candidate_id"] == context.candidate_id
         assert steps[0]["input_json"]["completeness"]["route"] == "meme"
         assert steps[2]["response_json"]["recommendation"] == "trade_candidate"
+        assert steps[0]["started_at_ms"] <= steps[0]["finished_at_ms"]
+        assert steps[0]["usage_json"] == {"input_tokens": 10, "output_tokens": 3, "total_tokens": 13}
+        assert run["usage_json"] == {"input_tokens": 30, "output_tokens": 9, "total_tokens": 39}
 
         assert len(eval_cases) == 1
         assert eval_cases[0]["source_run_id"] == run_id
@@ -160,7 +205,10 @@ class FakeRunner:
                 "run_config": run_config,
             }
         )
-        return SimpleNamespace(final_output=self.outputs.pop(0))
+        return SimpleNamespace(
+            final_output=self.outputs.pop(0),
+            usage={"input_tokens": 10, "output_tokens": 3, "total_tokens": 13},
+        )
 
 
 def _candidate_context() -> PulseCandidateContext:

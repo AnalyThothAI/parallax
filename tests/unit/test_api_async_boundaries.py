@@ -30,21 +30,26 @@ def test_readyz_uses_sync_route_boundary() -> None:
 
 
 def test_runtime_splits_db_pools_by_execution_role() -> None:
-    source = Path("src/gmgn_twitter_intel/app/runtime/app.py").read_text(encoding="utf-8")
+    app_source = Path("src/gmgn_twitter_intel/app/runtime/app.py").read_text(encoding="utf-8")
+    source = Path("src/gmgn_twitter_intel/app/runtime/bootstrap.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    runtime_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "CliRuntime")
+    runtime_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Runtime")
     fields = {
         statement.target.id
         for statement in runtime_class.body
         if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
     }
 
-    assert {"api_db_pool", "worker_db_pool", "wake_db_pool"} <= fields
-    assert "db_pool" not in fields
-    assert "repository_session(api_db_pool)" in source
-    assert "repository_session(worker_db_pool)" in source
-    assert "WakeBus(wake_db_pool.connection)" in source
-    assert "WakeListener(wake_db_pool.connection)" in source
+    assert {"settings", "db", "telemetry", "providers", "hub", "workers", "scheduler"} <= fields
+    assert "api_db_pool" not in fields
+    assert "worker_db_pool" not in fields
+    assert "wake_db_pool" not in fields
+    assert "DBPoolBundle.create(settings, telemetry=telemetry)" in source
+    assert "db.api_session()" in source
+    assert "db.worker_session(" in source
+    assert "_build_runtime" not in app_source
+    assert "_start_runtime_tasks" not in app_source
+    assert "_stop_runtime" not in app_source
 
 
 def _api_route_functions(source: str, *, outer_function_name: str) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:

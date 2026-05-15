@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +14,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
     PulseStageFailure,
+    _extract_usage,
     _JsonOutputSchema,
 )
 from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
@@ -35,7 +37,24 @@ class FakeRunner:
         return SimpleNamespace(final_output=self.outputs.pop(0))
 
 
+class FakeGateway:
+    trace_export_enabled = True
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+        self.openai_client_calls: list[dict[str, object]] = []
+
+    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
+        self.calls.append({"worker_name": worker_name, "stage": stage, "timeout_s": timeout_s})
+        return await coro_factory()
+
+    def openai_client(self, *, model, base_url, timeout_s):
+        self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
+        return object()
+
+
 def test_stage_runner_calls_analyst_critic_judge_in_order() -> None:
+    gateway = FakeGateway()
     runner = FakeRunner(
         [
             _analyst(),
@@ -43,7 +62,7 @@ def test_stage_runner_calls_analyst_critic_judge_in_order() -> None:
             _judge(),
         ]
     )
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", llm_gateway=gateway, runner=runner)
 
     result = asyncio.run(
         client.run_decision_pipeline(
@@ -57,6 +76,8 @@ def test_stage_runner_calls_analyst_critic_judge_in_order() -> None:
     )
 
     assert [call["agent"].name for call in runner.calls] == ["MemeAnalyst", "MemeCritic", "MemeJudge"]
+    assert [call["worker_name"] for call in gateway.calls] == ["pulse_candidate", "pulse_candidate", "pulse_candidate"]
+    assert [call["stage"] for call in gateway.calls] == ["analyst", "critic", "judge"]
     assert result.final_decision.recommendation == "trade_candidate"
     assert [audit.stage for audit in result.stage_audits] == ["analyst", "critic", "judge"]
     assert result.run_audit["agent_name"] == "PulseDecisionPipeline"
@@ -66,7 +87,9 @@ def test_stage_runner_calls_analyst_critic_judge_in_order() -> None:
 
 def test_each_stage_uses_max_turns_one_and_no_tools() -> None:
     runner = FakeRunner([_analyst(route="cex"), _critic(route="cex"), _judge(route="cex")])
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
+    )
 
     asyncio.run(
         client.run_decision_pipeline(
@@ -91,7 +114,9 @@ def test_critic_veto_returns_abstain_final_decision_without_judge() -> None:
             _critic(should_abstain=True, confidence_ceiling=0.2),
         ]
     )
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
+    )
 
     result = asyncio.run(
         client.run_decision_pipeline(
@@ -113,7 +138,9 @@ def test_critic_veto_returns_abstain_final_decision_without_judge() -> None:
 
 def test_stage_audit_contains_prompt_input_output_and_latency() -> None:
     runner = FakeRunner([_analyst(), _critic(), _judge()])
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
+    )
 
     result = asyncio.run(
         client.run_decision_pipeline(
@@ -134,6 +161,59 @@ def test_stage_audit_contains_prompt_input_output_and_latency() -> None:
     assert first.status == "ok"
 
 
+def test_extract_usage_recursively_returns_json_safe_payload() -> None:
+    class InputTokensDetails:
+        cached_tokens = 4
+
+    class OutputTokensDetails:
+        def __init__(self) -> None:
+            self.reasoning_tokens = 7
+
+    class Usage:
+        def __init__(self) -> None:
+            self.input_tokens = 10
+            self.output_tokens = 3
+            self.total_tokens = 13
+            self.input_tokens_details = InputTokensDetails()
+            self.output_tokens_details = OutputTokensDetails()
+
+    payload = _extract_usage(SimpleNamespace(usage=Usage()))
+
+    json.dumps(payload, ensure_ascii=False)
+    assert payload == {
+        "input_tokens": 10,
+        "output_tokens": 3,
+        "total_tokens": 13,
+        "input_tokens_details": {"cached_tokens": 4},
+        "output_tokens_details": {"reasoning_tokens": 7},
+    }
+
+
+def test_extract_usage_serializes_pure_slotted_usage_objects() -> None:
+    class Details:
+        __slots__ = ("cached_tokens",)
+
+        def __init__(self) -> None:
+            self.cached_tokens = 4
+
+    class Usage:
+        __slots__ = ("input_tokens", "input_tokens_details", "total_tokens")
+
+        def __init__(self) -> None:
+            self.input_tokens = 10
+            self.input_tokens_details = Details()
+            self.total_tokens = 10
+
+    payload = _extract_usage(SimpleNamespace(usage=Usage()))
+
+    json.dumps(payload, ensure_ascii=False)
+    assert payload == {
+        "input_tokens": 10,
+        "input_tokens_details": {"cached_tokens": 4},
+        "total_tokens": 10,
+    }
+
+
 def test_runner_rejects_execution_language_in_final_output() -> None:
     runner = FakeRunner(
         [
@@ -145,7 +225,9 @@ def test_runner_rejects_execution_language_in_final_output() -> None:
             },
         ]
     )
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
+    )
 
     with pytest.raises(PulseStageFailure) as exc_info:
         asyncio.run(
@@ -201,6 +283,21 @@ def test_json_output_schema_extracts_embedded_json_object_from_prose() -> None:
     assert result.recommendation == "watchlist"
 
 
+def test_pulse_client_normalizes_openai_root_base_url_before_building_model() -> None:
+    gateway = FakeGateway()
+
+    OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test",
+        model="gpt-test",
+        llm_gateway=gateway,
+        base_url="https://api.openai.com",
+    )
+
+    assert gateway.openai_client_calls == [
+        {"model": "gpt-test", "base_url": "https://api.openai.com/v1", "timeout_s": 20.0}
+    ]
+
+
 def test_stage_failure_carries_collected_audits_when_analyst_raises() -> None:
     class _RaisingRunner:
         def __init__(self) -> None:
@@ -211,7 +308,9 @@ def test_stage_failure_carries_collected_audits_when_analyst_raises() -> None:
             raise RuntimeError("model parse error")
 
     runner = _RaisingRunner()
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
+    )
 
     with pytest.raises(PulseStageFailure) as exc_info:
         asyncio.run(

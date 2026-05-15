@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh as token_resolution_refresh_module
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
     refresh_recent_token_state,
     reprocess_recent_token_intents,
@@ -27,11 +26,10 @@ def test_refresh_recent_token_state_defers_projection_to_worker(monkeypatch):
     def fake_reprocess(**kwargs):
         return {"reprocessed_intents": 1, "resolved_intents": 1}
 
-    def fail_rebuild(**kwargs):
-        raise AssertionError("projection worker owns automatic token radar rebuilds")
-
-    monkeypatch.setattr(token_resolution_refresh_module, "reprocess_recent_token_intents", fake_reprocess)
-    monkeypatch.setattr(token_resolution_refresh_module, "rebuild_token_radar_windows", fail_rebuild)
+    monkeypatch.setattr(
+        "gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh.reprocess_recent_token_intents",
+        fake_reprocess,
+    )
 
     result = refresh_recent_token_state(
         repos=object(),

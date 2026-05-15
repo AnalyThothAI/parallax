@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
+from types import GetSetDescriptorType, MemberDescriptorType
+from typing import Any, cast
 
-import httpx
 from agents import (
     Agent,
     AgentOutputSchema,
@@ -16,10 +17,8 @@ from agents import (
     RunConfig,
     Runner,
     retry_policies,
-    set_tracing_export_api_key,
 )
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from openai import AsyncOpenAI
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import BACKEND
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import pulse_harness_hash
@@ -88,11 +87,11 @@ class OpenAIAgentsPulseDecisionClient:
         *,
         api_key: str,
         model: str,
+        llm_gateway: Any,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
         runner: Any | None = None,
         trace_enabled: bool = True,
-        trace_api_key: str | None = None,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
     ) -> None:
@@ -100,18 +99,15 @@ class OpenAIAgentsPulseDecisionClient:
         self.model = str(model or "").strip()
         if not self.model:
             raise ValueError("llm.pulse_agent_model or llm.model is required")
+        if llm_gateway is None:
+            raise ValueError("llm_gateway is required")
+        self._llm_gateway = llm_gateway
         self.base_url = _api_base(base_url)
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        tracing_export_key = str(trace_api_key or "").strip()
-        if not tracing_export_key and _is_openai_base_url(self.base_url):
-            tracing_export_key = self.api_key
-        self.trace_enabled = bool(trace_enabled and tracing_export_key)
+        self.trace_enabled = bool(trace_enabled and getattr(self._llm_gateway, "trace_export_enabled", False))
         self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
-        if self.trace_enabled:
-            set_tracing_export_api_key(tracing_export_key)
         self._runner = runner or Runner
-        self._http_client: httpx.AsyncClient | None = None
         self._model = None if runner is not None else self._build_model()
 
     @property
@@ -256,20 +252,26 @@ class OpenAIAgentsPulseDecisionClient:
         started = int(time.time() * 1000)
         raw_output: Any = None
         try:
-            result = await self._runner.run(
-                agent,
-                stage_input,
-                max_turns=1,
-                run_config=RunConfig(
-                    workflow_name=self.workflow_name,
-                    trace_id=audit["sdk_trace_id"],
-                    group_id=_group_id(input_json.get("context")),
-                    trace_include_sensitive_data=self.trace_include_sensitive_data,
-                    tracing_disabled=not self.trace_enabled,
-                    trace_metadata=trace_metadata,
+            result = await self._llm_gateway.run_with_limits(
+                "pulse_candidate",
+                stage,
+                self.timeout_seconds,
+                lambda: self._runner.run(
+                    agent,
+                    stage_input,
+                    max_turns=1,
+                    run_config=RunConfig(
+                        workflow_name=self.workflow_name,
+                        trace_id=audit["sdk_trace_id"],
+                        group_id=_group_id(input_json.get("context")),
+                        trace_include_sensitive_data=self.trace_include_sensitive_data,
+                        tracing_disabled=not self.trace_enabled,
+                        trace_metadata=trace_metadata,
+                    ),
                 ),
             )
             raw_output = result.final_output
+            usage = _extract_usage(result)
             output = output_type.model_validate(raw_output)
         except Exception as exc:
             finished = int(time.time() * 1000)
@@ -282,8 +284,10 @@ class OpenAIAgentsPulseDecisionClient:
                 prompt_text=prompt,
                 response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
                 trace_metadata_json=trace_metadata,
-                usage_json={},
+                usage_json=_extract_usage(locals().get("result")),
                 latency_ms=max(0, finished - started),
+                started_at_ms=started,
+                finished_at_ms=finished,
                 status=status,
                 error=f"{type(exc).__name__}: {exc}"[:1000],
             )
@@ -296,8 +300,10 @@ class OpenAIAgentsPulseDecisionClient:
             prompt_text=prompt,
             response_json=output.model_dump(mode="json"),
             trace_metadata_json=trace_metadata,
-            usage_json={},
+            usage_json=usage,
             latency_ms=max(0, finished - started),
+            started_at_ms=started,
+            finished_at_ms=finished,
             status="ok",
             error=None,
         )
@@ -350,23 +356,17 @@ class OpenAIAgentsPulseDecisionClient:
         }
 
     def _build_model(self):
-        self._http_client = httpx.AsyncClient(trust_env=False)
         return OpenAIChatCompletionsModel(
             model=self.model,
-            openai_client=AsyncOpenAI(
-                api_key=str(self.api_key or ""),
+            openai_client=self._llm_gateway.openai_client(
+                model=self.model,
                 base_url=self.base_url,
-                timeout=self.timeout_seconds,
-                max_retries=0,
-                default_headers={"User-Agent": "gmgn-twitter-intel/0.1"},
-                http_client=self._http_client,
+                timeout_s=self.timeout_seconds,
             ),
         )
 
     async def aclose(self) -> None:
-        if self._http_client is not None:
-            await self._http_client.aclose()
-            self._http_client = None
+        return None
 
 
 def _model_settings() -> ModelSettings:
@@ -391,12 +391,10 @@ def _stage_agent_name(*, route: DecisionRoute, stage: StageName) -> str:
 
 
 def _api_base(base_url: str) -> str:
-    value = str(base_url or "").strip()
-    return value.rstrip("/") if value else "https://api.openai.com/v1"
-
-
-def _is_openai_base_url(base_url: str) -> bool:
-    return _api_base(base_url) == "https://api.openai.com/v1"
+    value = str(base_url or "").strip().rstrip("/")
+    if not value:
+        return "https://api.openai.com/v1"
+    return value if value.endswith("/v1") else f"{value}/v1"
 
 
 def _trace_id(run_id: str) -> str:
@@ -431,6 +429,118 @@ def _truncate(value: Any, *, limit: int = 4000) -> str:
     return text[:limit]
 
 
+def _extract_usage(result: Any) -> dict[str, Any]:
+    for candidate in _usage_candidates(result):
+        payload = _usage_payload(candidate)
+        if payload:
+            return payload
+    return {}
+
+
+def _usage_candidates(result: Any) -> list[Any]:
+    if result is None:
+        return []
+    candidates = [
+        getattr(result, "usage", None),
+        getattr(getattr(result, "context_wrapper", None), "usage", None),
+    ]
+    for attr in ("raw_response", "response", "final_response"):
+        response = getattr(result, attr, None)
+        candidates.append(getattr(response, "usage", None))
+        candidates.append(response)
+    responses = getattr(result, "raw_responses", None) or getattr(result, "responses", None)
+    if isinstance(responses, list | tuple):
+        for response in responses:
+            candidates.append(getattr(response, "usage", None))
+            candidates.append(response)
+    return candidates
+
+
+def _usage_payload(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        data = model_dump(mode="json")
+        if isinstance(data, dict):
+            return cast(dict[str, Any], _json_safe_usage(data))
+    data = _json_safe_usage(value)
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+def _json_safe_usage(value: Any, *, depth: int = 0) -> Any:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if depth > 8:
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe_usage(item, depth=depth + 1) for key, item in value.items() if item is not None}
+    if isinstance(value, list | tuple):
+        return [_json_safe_usage(item, depth=depth + 1) for item in value if item is not None]
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        data = model_dump(mode="json")
+        return _json_safe_usage(data, depth=depth + 1)
+    object_values = _public_object_values(value)
+    if object_values:
+        return {key: _json_safe_usage(item, depth=depth + 1) for key, item in object_values.items() if item is not None}
+    return str(value)
+
+
+def _public_object_values(value: Any) -> dict[str, Any]:
+    if not hasattr(value, "__dict__") and not hasattr(value, "__slots__"):
+        return {}
+    data = {}
+    if hasattr(value, "__dict__"):
+        data.update(
+            {str(key): item for key, item in vars(value).items() if not str(key).startswith("_") and item is not None}
+        )
+    slot_names = set(_public_slot_names(value))
+    for name in slot_names:
+        if name in data:
+            continue
+        try:
+            item = getattr(value, name)
+        except AttributeError:
+            continue
+        if item is not None:
+            data[name] = item
+    for name, item in inspect.getmembers_static(value):
+        if name.startswith("_") or name in data:
+            continue
+        if isinstance(item, property | classmethod | staticmethod):
+            continue
+        if isinstance(item, GetSetDescriptorType | MemberDescriptorType):
+            continue
+        if item is None or callable(item):
+            continue
+        if isinstance(item, type):
+            continue
+        data[name] = item
+    return data
+
+
+def _public_slot_names(value: Any) -> tuple[str, ...]:
+    names: list[str] = []
+    for cls in type(value).__mro__:
+        slots = getattr(cls, "__slots__", ())
+        if isinstance(slots, str):
+            slot_items = (slots,)
+        else:
+            try:
+                slot_items = tuple(slots)
+            except TypeError:
+                continue
+        for name in slot_items:
+            text = str(name)
+            if text.startswith("_") or text in {"__dict__", "__weakref__"}:
+                continue
+            names.append(text)
+    return tuple(names)
+
+
 __all__ = [
     "AGENT_NAME",
     "PULSE_DECISION_PROMPT_VERSION",
@@ -438,4 +548,5 @@ __all__ = [
     "WORKFLOW_NAME",
     "OpenAIAgentsPulseDecisionClient",
     "PulseDecisionAgentResult",
+    "_extract_usage",
 ]

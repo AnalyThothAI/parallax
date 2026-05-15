@@ -3,12 +3,12 @@ from __future__ import annotations
 import secrets
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
-from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, app_log_path, config_path
+from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
@@ -71,32 +71,11 @@ class LlmConfig(BaseModel):
     model: str | None = None
     base_url: str = "https://api.openai.com/v1"
     timeout_seconds: float = 120.0
-    enrichment_poll_interval: float = 2.0
-    enrichment_concurrency: int = 4
     trace_enabled: bool = True
     trace_api_key: str | None = None
     trace_include_sensitive_data: bool = False
-    pulse_agent_enabled: bool = True
-    pulse_agent_interval_seconds: float = 60.0
-    pulse_agent_batch_size: int = 10
-    pulse_agent_max_attempts: int = 3
     pulse_agent_model: str | None = None
-    pulse_agent_trigger_min_rank_score: int = 45
-    pulse_agent_gate_trade_candidate_min: int = 72
-    pulse_agent_gate_token_watch_min: int = 45
-    pulse_agent_gate_high_info_rejection_min: int = 30
-    pulse_agent_gate_high_conviction_min: int = 78
-    watchlist_handle_summary_enabled: bool = True
     watchlist_handle_summary_model: str | None = None
-    watchlist_handle_summary_signal_threshold: int = 10
-    watchlist_handle_summary_time_threshold_ms: int = 30 * 60 * 1000
-    watchlist_handle_summary_min_interval_ms: int = 5 * 60 * 1000
-    watchlist_handle_summary_poll_interval_seconds: float = 2.0
-    watchlist_handle_summary_concurrency: int = 1
-    watchlist_handle_summary_input_limit: int = 80
-    watchlist_handle_summary_window_days: int = 7
-    watchlist_handle_summary_lease_ms: int = 120_000
-    watchlist_handle_summary_max_attempts: int = 3
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -227,7 +206,6 @@ class NotificationChannelConfig(BaseModel):
     provider: str = "apprise"
     url: str | None = None
     min_severity: str = "warning"
-    max_attempts: int = 5
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -258,7 +236,6 @@ class NotificationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    poll_interval_seconds: float = 5.0
     token_flow_limit: int = 50
     retention_days: int = 30
     rules: dict[str, NotificationRuleConfig] = Field(
@@ -304,18 +281,10 @@ class OkxProviderConfig(BaseModel):
 
     cex_base_url: str = "https://www.okx.com"
     cex_sync_enabled: bool = True
-    cex_sync_interval_seconds: float = 300.0
     cex_inst_types: tuple[str, ...] = ("SPOT", "SWAP")
     dex_base_url: str = "https://web3.okx.com"
     dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453", "607")
-    dex_sync_interval_seconds: float = Field(default=30.0, gt=0)
-    dex_price_hot_stale_seconds: float = Field(default=90.0, gt=0)
-    dex_price_warm_stale_seconds: float = Field(default=300.0, gt=0)
-    dex_price_refresh_limit: int = Field(default=160, gt=0)
     dex_ws_url: str = "wss://wsdex.okx.com/ws/v6/dex"
-    dex_ws_subscription_limit: int = Field(default=100, gt=0)
-    dex_ws_hot_target_ttl_seconds: float = Field(default=300.0, gt=0)
-    dex_ws_reconnect_delay_seconds: float = Field(default=3.0, gt=0)
     dex_api_key: str | None = None
     dex_secret_key: str | None = None
     dex_passphrase: str | None = None
@@ -361,6 +330,190 @@ class ProvidersConfig(BaseModel):
     marketlane: MarketlaneProviderConfig = Field(default_factory=MarketlaneProviderConfig)
 
 
+class BackoffPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["exponential"] = "exponential"
+    base_ms: int = Field(default=1000, ge=0)
+    max_ms: int = Field(default=60_000, ge=0)
+
+
+class PerWorkerSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    interval_seconds: float = Field(default=5.0, ge=0)
+    timeout_seconds: float = Field(default=120.0, ge=0)
+    concurrency: int = Field(default=1, ge=1)
+    batch_size: int = Field(default=100, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    restart_locally: bool = False
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
+    backoff: BackoffPolicy = Field(default_factory=BackoffPolicy)
+
+
+class WorkerDefaults(PerWorkerSettings):
+    pass
+
+
+class CollectorWorkerSettings(PerWorkerSettings):
+    mode: Literal["continuous"] = "continuous"
+    interval_seconds: float = Field(default=3.0, ge=0)
+    timeout_seconds: float = Field(default=0.0, ge=0)
+    snapshot_timeout_seconds: float = Field(default=0.5, ge=0)
+    watchdog_interval_seconds: float = Field(default=30.0, ge=0)
+    stale_timeout_seconds: float = Field(default=180.0, ge=0)
+
+
+class AnchorPriceWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=5.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+
+
+class LivePriceGatewayWorkerSettings(PerWorkerSettings):
+    mode: Literal["continuous"] = "continuous"
+    interval_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    subscription_limit: int = Field(default=100, ge=1)
+    hot_target_ttl_seconds: float = Field(default=300.0, ge=0)
+    reconnect_delay_seconds: float = Field(default=3.0, ge=0)
+    cex_poll_interval_seconds: float = Field(default=30.0, ge=0)
+    live_observation_heartbeat_seconds: float = Field(default=60.0, gt=0)
+    live_observation_min_price_change_pct: float = Field(default=0.005, ge=0)
+    live_observation_min_write_interval_seconds: float = Field(default=5.0, ge=0)
+
+
+class ResolutionRefreshWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=50, ge=1)
+    reprocess_limit: int = Field(default=500, ge=1)
+    chain_ids: tuple[str, ...] = ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton")
+
+    @field_validator("chain_ids", mode="before")
+    @classmethod
+    def parse_chain_ids(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    batch_size: int = Field(default=50, ge=1)
+
+
+class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=10.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    statement_timeout_seconds: float = Field(default=120.0, ge=0)
+    advisory_lock_key: int = 2026051501
+    wakes_on: tuple[str, ...] = ("market_observation_written", "resolution_updated")
+    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
+    scopes: tuple[str, ...] = ("all", "matched")
+    hot_windows: tuple[str, ...] = ("5m",)
+
+    @field_validator("wakes_on", "windows", "scopes", "hot_windows", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class PulseCandidateTriggerThresholds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_rank_score: int = 45
+
+
+class PulseCandidateGateThresholds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trade_candidate_min: int = 72
+    token_watch_min: int = 45
+    high_info_rejection_min: int = 30
+    high_conviction_min: int = 78
+
+
+class PulseCandidateWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    batch_size: int = Field(default=10, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    advisory_lock_key: int = 2026051502
+    wakes_on: tuple[str, ...] = ("token_radar_updated",)
+    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
+    scopes: tuple[str, ...] = ("all", "matched")
+    trigger_thresholds: PulseCandidateTriggerThresholds = Field(default_factory=PulseCandidateTriggerThresholds)
+    gate_thresholds: PulseCandidateGateThresholds = Field(default_factory=PulseCandidateGateThresholds)
+
+    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class EnrichmentWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=2.0, ge=0)
+    concurrency: int = Field(default=4, ge=1)
+    batch_size: int = Field(default=1, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+
+
+class HandleSummaryWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=2.0, ge=0)
+    concurrency: int = Field(default=1, ge=1)
+    batch_size: int = Field(default=1, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    reconcile_limit: int = Field(default=100, ge=1)
+    signal_threshold: int = Field(default=10, ge=1)
+    time_threshold_ms: int = Field(default=1_800_000, ge=1)
+    min_interval_ms: int = Field(default=300_000, ge=1)
+    input_limit: int = Field(default=80, ge=1)
+    window_days: int = Field(default=7, ge=1)
+
+
+class HarnessOpsWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    batch_size: int = Field(default=200, ge=1)
+    horizons: tuple[str, ...] = ("6h", "24h")
+
+    @field_validator("horizons", mode="before")
+    @classmethod
+    def parse_horizons(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class NotificationRuleWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=5.0, ge=0)
+    batch_size: int = Field(default=50, ge=1)
+
+
+class NotificationDeliveryWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=5.0, ge=0)
+    batch_size: int = Field(default=1, ge=1)
+    max_attempts: int = Field(default=5, ge=1)
+
+
+class WorkersSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    defaults: WorkerDefaults = Field(default_factory=WorkerDefaults)
+    collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
+    anchor_price: AnchorPriceWorkerSettings = Field(default_factory=AnchorPriceWorkerSettings)
+    live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
+    resolution_refresh: ResolutionRefreshWorkerSettings = Field(default_factory=ResolutionRefreshWorkerSettings)
+    asset_profile_refresh: AssetProfileRefreshWorkerSettings = Field(default_factory=AssetProfileRefreshWorkerSettings)
+    token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
+        default_factory=TokenRadarProjectionWorkerSettings
+    )
+    pulse_candidate: PulseCandidateWorkerSettings = Field(default_factory=PulseCandidateWorkerSettings)
+    enrichment: EnrichmentWorkerSettings = Field(default_factory=EnrichmentWorkerSettings)
+    handle_summary: HandleSummaryWorkerSettings = Field(default_factory=HandleSummaryWorkerSettings)
+    harness_ops: HarnessOpsWorkerSettings = Field(default_factory=HarnessOpsWorkerSettings)
+    notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
+    notification_delivery: NotificationDeliveryWorkerSettings = Field(
+        default_factory=NotificationDeliveryWorkerSettings
+    )
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -374,11 +527,8 @@ class Settings(BaseModel):
     gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
-    collector: CollectorConfig = Field(default_factory=CollectorConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
-    live_observation_heartbeat_seconds: float = Field(default=60.0, gt=0)
-    live_observation_min_price_change_pct: float = Field(default=0.005, ge=0)
-    live_observation_min_write_interval_seconds: float = Field(default=5.0, ge=0)
+    workers: WorkersSettings = Field(default_factory=WorkersSettings)
 
     @property
     def config_dir(self) -> Path:
@@ -458,30 +608,6 @@ class Settings(BaseModel):
         return self.llm.timeout_seconds
 
     @property
-    def enrichment_poll_interval(self) -> float:
-        return self.llm.enrichment_poll_interval
-
-    @property
-    def enrichment_concurrency(self) -> int:
-        return max(1, min(16, int(self.llm.enrichment_concurrency)))
-
-    @property
-    def pulse_agent_enabled(self) -> bool:
-        return bool(self.llm.pulse_agent_enabled)
-
-    @property
-    def pulse_agent_interval_seconds(self) -> float:
-        return max(1.0, min(3600.0, float(self.llm.pulse_agent_interval_seconds)))
-
-    @property
-    def pulse_agent_batch_size(self) -> int:
-        return max(1, min(100, int(self.llm.pulse_agent_batch_size)))
-
-    @property
-    def pulse_agent_max_attempts(self) -> int:
-        return max(1, min(10, int(self.llm.pulse_agent_max_attempts)))
-
-    @property
     def pulse_agent_model(self) -> str | None:
         return self.llm.pulse_agent_model or self.llm_model
 
@@ -490,72 +616,12 @@ class Settings(BaseModel):
         return bool(self.llm_api_key and self.pulse_agent_model)
 
     @property
-    def pulse_agent_trigger_min_rank_score(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trigger_min_rank_score, low=0, high=100)
-
-    @property
-    def pulse_agent_gate_trade_candidate_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_gate_trade_candidate_min, low=0, high=100)
-
-    @property
-    def pulse_agent_gate_token_watch_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_gate_token_watch_min, low=0, high=100)
-
-    @property
-    def pulse_agent_gate_high_info_rejection_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_gate_high_info_rejection_min, low=0, high=100)
-
-    @property
-    def pulse_agent_gate_high_conviction_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_gate_high_conviction_min, low=0, high=100)
-
-    @property
-    def watchlist_handle_summary_enabled(self) -> bool:
-        return bool(self.llm.watchlist_handle_summary_enabled)
-
-    @property
     def watchlist_handle_summary_model(self) -> str | None:
         return self.llm.watchlist_handle_summary_model or self.llm_model
 
     @property
     def watchlist_handle_summary_configured(self) -> bool:
         return bool(self.llm_api_key and self.watchlist_handle_summary_model)
-
-    @property
-    def watchlist_handle_summary_signal_threshold(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_signal_threshold, low=1, high=1000)
-
-    @property
-    def watchlist_handle_summary_time_threshold_ms(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_time_threshold_ms, low=60_000, high=86_400_000)
-
-    @property
-    def watchlist_handle_summary_min_interval_ms(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_min_interval_ms, low=60_000, high=86_400_000)
-
-    @property
-    def watchlist_handle_summary_poll_interval_seconds(self) -> float:
-        return _clamp_float(self.llm.watchlist_handle_summary_poll_interval_seconds, low=1.0, high=3600.0)
-
-    @property
-    def watchlist_handle_summary_concurrency(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_concurrency, low=1, high=8)
-
-    @property
-    def watchlist_handle_summary_input_limit(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_input_limit, low=1, high=500)
-
-    @property
-    def watchlist_handle_summary_window_days(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_window_days, low=1, high=30)
-
-    @property
-    def watchlist_handle_summary_lease_ms(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_lease_ms, low=10_000, high=3_600_000)
-
-    @property
-    def watchlist_handle_summary_max_attempts(self) -> int:
-        return _clamp_int(self.llm.watchlist_handle_summary_max_attempts, low=1, high=10)
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -612,10 +678,6 @@ class Settings(BaseModel):
         return self.providers.okx.cex_sync_enabled
 
     @property
-    def okx_cex_sync_interval_seconds(self) -> float:
-        return self.providers.okx.cex_sync_interval_seconds
-
-    @property
     def okx_cex_inst_types(self) -> tuple[str, ...]:
         return self.providers.okx.cex_inst_types or ("SPOT", "SWAP")
 
@@ -628,36 +690,8 @@ class Settings(BaseModel):
         return self.providers.okx.dex_chain_indexes or ("501", "1", "56", "8453", "607")
 
     @property
-    def okx_dex_sync_interval_seconds(self) -> float:
-        return self.providers.okx.dex_sync_interval_seconds
-
-    @property
-    def okx_dex_price_hot_stale_seconds(self) -> float:
-        return self.providers.okx.dex_price_hot_stale_seconds
-
-    @property
-    def okx_dex_price_warm_stale_seconds(self) -> float:
-        return self.providers.okx.dex_price_warm_stale_seconds
-
-    @property
-    def okx_dex_price_refresh_limit(self) -> int:
-        return self.providers.okx.dex_price_refresh_limit
-
-    @property
     def okx_dex_ws_url(self) -> str:
         return self.providers.okx.dex_ws_url
-
-    @property
-    def okx_dex_ws_subscription_limit(self) -> int:
-        return self.providers.okx.dex_ws_subscription_limit
-
-    @property
-    def okx_dex_ws_hot_target_ttl_seconds(self) -> float:
-        return self.providers.okx.dex_ws_hot_target_ttl_seconds
-
-    @property
-    def okx_dex_ws_reconnect_delay_seconds(self) -> float:
-        return self.providers.okx.dex_ws_reconnect_delay_seconds
 
     @property
     def okx_dex_api_key(self) -> str | None:
@@ -725,14 +759,6 @@ class Settings(BaseModel):
     def upstream_idle_timeout(self) -> float:
         return self.upstream.idle_timeout
 
-    @property
-    def collector_watchdog_interval(self) -> float:
-        return self.collector.watchdog_interval
-
-    @property
-    def collector_stale_timeout(self) -> float:
-        return self.collector.stale_timeout
-
     @field_validator("handles", mode="before")
     @classmethod
     def parse_handles(cls, value: Any) -> tuple[str, ...]:
@@ -758,8 +784,14 @@ def load_settings(*, require_ws_token: bool = True) -> Settings:
     path = config_path()
     if not path.exists():
         raise FileNotFoundError(f"config.yaml not found at {path}; run `gmgn-twitter-intel init` first")
+    workers_path = workers_config_path(path.parent)
+    if not workers_path.exists():
+        raise FileNotFoundError(f"workers.yaml not found at {workers_path}; run `gmgn-twitter-intel init` first")
     data = _load_yaml_mapping(path)
-    settings = Settings(**data)
+    if "workers" in data:
+        raise ValueError("workers runtime settings must be configured in workers.yaml, not config.yaml")
+    workers = WorkersSettings(**_load_yaml_mapping(workers_path))
+    settings = Settings(**dict(data), workers=workers)
     settings.set_config_dir(path.parent)
     if require_ws_token and not settings.ws_token:
         raise ValueError("ws_token is required in config.yaml")
@@ -769,11 +801,13 @@ def load_settings(*, require_ws_token: bool = True) -> Settings:
 def write_default_config(*, force: bool = False) -> Path:
     home = app_home()
     path = config_path(home)
+    workers_path = workers_config_path(home)
     home.mkdir(parents=True, exist_ok=True)
     (home / "logs").mkdir(parents=True, exist_ok=True)
-    if path.exists() and not force:
-        return path
-    path.write_text(default_config_yaml(), encoding="utf-8")
+    if force or not path.exists():
+        path.write_text(default_config_yaml(), encoding="utf-8")
+    if force or not workers_path.exists():
+        workers_path.write_text(default_workers_yaml(), encoding="utf-8")
     return path
 
 
@@ -816,32 +850,11 @@ llm:
   model:
   base_url: "https://api.openai.com/v1"
   timeout_seconds: 120
-  enrichment_poll_interval: 2
-  enrichment_concurrency: 4
   trace_enabled: true
   trace_api_key:
   trace_include_sensitive_data: false
-  pulse_agent_enabled: true
-  pulse_agent_interval_seconds: 60
-  pulse_agent_batch_size: 10
-  pulse_agent_max_attempts: 3
   pulse_agent_model:
-  pulse_agent_trigger_min_rank_score: 45
-  pulse_agent_gate_trade_candidate_min: 72
-  pulse_agent_gate_token_watch_min: 45
-  pulse_agent_gate_high_info_rejection_min: 30
-  pulse_agent_gate_high_conviction_min: 78
-  watchlist_handle_summary_enabled: true
   watchlist_handle_summary_model:
-  watchlist_handle_summary_signal_threshold: 10
-  watchlist_handle_summary_time_threshold_ms: 1800000
-  watchlist_handle_summary_min_interval_ms: 300000
-  watchlist_handle_summary_poll_interval_seconds: 2
-  watchlist_handle_summary_concurrency: 1
-  watchlist_handle_summary_input_limit: 80
-  watchlist_handle_summary_window_days: 7
-  watchlist_handle_summary_lease_ms: 120000
-  watchlist_handle_summary_max_attempts: 3
 
 gmgn:
   api_key:
@@ -853,18 +866,10 @@ providers:
   okx:
     cex_base_url: "https://www.okx.com"
     cex_sync_enabled: true
-    cex_sync_interval_seconds: 300
     cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453", "607"]
-    dex_sync_interval_seconds: 30
-    dex_price_hot_stale_seconds: 90
-    dex_price_warm_stale_seconds: 300
-    dex_price_refresh_limit: 160
     dex_ws_url: "wss://wsdex.okx.com/ws/v6/dex"
-    dex_ws_subscription_limit: 100
-    dex_ws_hot_target_ttl_seconds: 300
-    dex_ws_reconnect_delay_seconds: 3
     dex_api_key:
     dex_secret_key:
     dex_passphrase:
@@ -879,17 +884,8 @@ upstream:
   heartbeat_interval: 25
   idle_timeout: 90
 
-collector:
-  watchdog_interval: 30
-  stale_timeout: 180
-
-live_observation_heartbeat_seconds: 60
-live_observation_min_price_change_pct: 0.005
-live_observation_min_write_interval_seconds: 5
-
 notifications:
   enabled: true
-  poll_interval_seconds: 5
   token_flow_limit: 50
   retention_days: 30
   rules:
@@ -927,13 +923,134 @@ notifications:
 """
 
 
+def default_workers_yaml() -> str:
+    return """# GMGN Twitter Intel worker runtime
+defaults:
+  enabled: true
+  interval_seconds: 5.0
+  timeout_seconds: 120.0
+  concurrency: 1
+  batch_size: 100
+  max_attempts: 3
+  lease_ms: 120000
+  restart_locally: false
+  statement_timeout_seconds: 30.0
+  backoff:
+    kind: "exponential"
+    base_ms: 1000
+    max_ms: 60000
+collector:
+  enabled: true
+  mode: "continuous"
+  interval_seconds: 3.0
+  timeout_seconds: 0.0
+  snapshot_timeout_seconds: 0.5
+  watchdog_interval_seconds: 30.0
+  stale_timeout_seconds: 180.0
+anchor_price:
+  enabled: true
+  interval_seconds: 5.0
+  batch_size: 100
+live_price_gateway:
+  enabled: true
+  mode: "continuous"
+  interval_seconds: 30.0
+  batch_size: 100
+  subscription_limit: 100
+  hot_target_ttl_seconds: 300.0
+  reconnect_delay_seconds: 3.0
+  cex_poll_interval_seconds: 30.0
+  live_observation_heartbeat_seconds: 60.0
+  live_observation_min_price_change_pct: 0.005
+  live_observation_min_write_interval_seconds: 5.0
+resolution_refresh:
+  enabled: true
+  interval_seconds: 30.0
+  batch_size: 50
+  reprocess_limit: 500
+  chain_ids: ["solana", "eip155:1", "eip155:56", "eip155:8453", "ton"]
+asset_profile_refresh:
+  enabled: true
+  interval_seconds: 60.0
+  batch_size: 50
+token_radar_projection:
+  enabled: true
+  interval_seconds: 10.0
+  batch_size: 100
+  statement_timeout_seconds: 120.0
+  advisory_lock_key: 2026051501
+  wakes_on: ["market_observation_written", "resolution_updated"]
+  windows: ["5m", "1h", "4h", "24h"]
+  scopes: ["all", "matched"]
+  hot_windows: ["5m"]
+pulse_candidate:
+  enabled: true
+  interval_seconds: 60.0
+  batch_size: 10
+  max_attempts: 3
+  advisory_lock_key: 2026051502
+  wakes_on: ["token_radar_updated"]
+  windows: ["5m", "1h", "4h", "24h"]
+  scopes: ["all", "matched"]
+  trigger_thresholds:
+    min_rank_score: 45
+  gate_thresholds:
+    trade_candidate_min: 72
+    token_watch_min: 45
+    high_info_rejection_min: 30
+    high_conviction_min: 78
+enrichment:
+  enabled: true
+  interval_seconds: 2.0
+  concurrency: 4
+  batch_size: 1
+  max_attempts: 3
+handle_summary:
+  enabled: true
+  interval_seconds: 2.0
+  concurrency: 1
+  batch_size: 1
+  lease_ms: 120000
+  max_attempts: 3
+  reconcile_limit: 100
+  signal_threshold: 10
+  time_threshold_ms: 1800000
+  min_interval_ms: 300000
+  input_limit: 80
+  window_days: 7
+harness_ops:
+  enabled: true
+  interval_seconds: 60.0
+  batch_size: 200
+  horizons: ["6h", "24h"]
+notification_rule:
+  enabled: true
+  interval_seconds: 5.0
+  batch_size: 50
+notification_delivery:
+  enabled: true
+  interval_seconds: 5.0
+  batch_size: 1
+  max_attempts: 5
+"""
+
+
+def write_default_workers_config(*, force: bool = False) -> Path:
+    home = app_home()
+    path = workers_config_path(home)
+    home.mkdir(parents=True, exist_ok=True)
+    if force or not path.exists():
+        path.write_text(default_workers_yaml(), encoding="utf-8")
+    return path
+
+
 def _load_yaml_mapping(path: Path) -> Mapping[str, Any]:
     with path.open("r", encoding="utf-8") as config_file:
         data = yaml.safe_load(config_file)
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise ValueError(f"config.yaml must contain a mapping at {path}")
+        raise ValueError(f"{path.name} must contain a mapping at {path}")
     return data
 
 

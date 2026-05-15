@@ -2,66 +2,77 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 from typing import Any
 
-from loguru import logger
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenProfile
+from gmgn_twitter_intel.domains.asset_market.services.asset_profile_refresh import (
+    fetch_asset_profile,
+    select_due_asset_profile_rows,
+    write_error_asset_profile,
+    write_missing_asset_profile,
+    write_ready_asset_profile,
+)
 
-from gmgn_twitter_intel.domains.asset_market.services.asset_profile_refresh import refresh_asset_profiles_once
 
-
-class AssetProfileRefreshWorker:
+class AssetProfileRefreshWorker(WorkerBase):
     def __init__(
         self,
         *,
-        repository_session: Callable[[], AbstractContextManager[Any]],
+        name: str,
+        settings: Any,
+        db: Any,
+        telemetry: Any,
         dex_profile_market: Any = None,
-        interval_seconds: float = 60.0,
-        limit: int = 50,
     ) -> None:
-        self.repository_session = repository_session
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.dex_profile_market = dex_profile_market
-        self.interval_seconds = max(1.0, float(interval_seconds))
-        self.limit = max(1, int(limit))
-        self.last_started_at_ms: int | None = None
-        self.last_run_at_ms: int | None = None
-        self.last_result: dict[str, Any] | None = None
-        self.last_error: str | None = None
-        self._stopped = False
 
-    async def run(self) -> None:
-        while not self._stopped:
-            try:
-                await asyncio.to_thread(self.run_once)
-            except Exception as exc:  # pragma: no cover - watchdog path
-                self.last_error = str(exc)
-                logger.exception(f"asset profile refresh worker failed: {exc}")
-            await asyncio.sleep(self.interval_seconds)
-
-    def run_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
+    async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else time.time() * 1000)
-        self.last_started_at_ms = observed_at_ms
-        self.last_error = None
-        try:
-            with self.repository_session() as repos:
-                result = refresh_asset_profiles_once(
-                    repos=repos,
-                    dex_profile_market=self.dex_profile_market,
-                    now_ms=observed_at_ms,
-                    limit=self.limit,
-                )
-        except Exception as exc:
-            self.last_error = str(exc)
-            raise
-        self.last_run_at_ms = int(time.time() * 1000)
-        self.last_result = result
+        result = await asyncio.to_thread(self._refresh_once, observed_at_ms)
+        return WorkerResult(
+            processed=int(result.get("ready") or 0) + int(result.get("missing") or 0),
+            failed=int(result.get("error") or 0),
+            skipped=int(result.get("skipped") or 0),
+            notes={"result": result},
+        )
+
+    def _refresh_once(self, now_ms: int) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "provider": "gmgn_dex_profile",
+            "selected": 0,
+            "ready": 0,
+            "missing": 0,
+            "error": 0,
+            "skipped": 0,
+            "started_at_ms": int(now_ms),
+            "finished_at_ms": int(now_ms),
+        }
+        if self.dex_profile_market is None:
+            result["skipped"] = 1
+            return result
+        with self.db.worker_session(self.name) as repos:
+            rows = select_due_asset_profile_rows(
+                repos=repos,
+                now_ms=now_ms,
+                limit=max(1, int(getattr(self.settings, "batch_size", 50))),
+            )
+        result["selected"] = len(rows)
+        for row in rows:
+            try:
+                profile = fetch_asset_profile(dex_profile_market=self.dex_profile_market, row=row)
+            except Exception as exc:
+                with self.db.worker_session(self.name) as repos:
+                    write_error_asset_profile(repos=repos, row=row, exc=exc, now_ms=now_ms)
+                result["error"] += 1
+                continue
+            with self.db.worker_session(self.name) as repos:
+                if isinstance(profile, DexTokenProfile):
+                    write_ready_asset_profile(repos=repos, row=row, profile=profile, now_ms=now_ms)
+                    result["ready"] += 1
+                else:
+                    write_missing_asset_profile(repos=repos, row=row, now_ms=now_ms)
+                    result["missing"] += 1
         return result
-
-    def stop(self) -> None:
-        self._stopped = True
-
-    def close(self) -> None:
-        close = getattr(self.dex_profile_market, "close", None)
-        if close:
-            close()
