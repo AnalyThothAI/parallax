@@ -16,7 +16,7 @@ asset identity, or market data.
 
 | Stage | Code owner | Persisted facts | Invariant |
 |-------|------------|-----------------|-----------|
-| Candidate gate | `services/pulse_candidate_gate.py` | none (in-memory admission) | Reads `factor_snapshot_json.market.decision_latest`, `normalization.cohort_status`, and gate fields. Fails closed when target rows lack material `decision_latest` or have an insufficient/all-tied cohort. |
+| Candidate gate | `services/pulse_candidate_gate.py` | none (in-memory admission) | Reads the public `factor_snapshot_json.market.decision_latest` compatibility key, `normalization.cohort_status`, and gate fields. That market key is generated from `enriched_events` and `market_ticks`, not an internal DB role. Fails closed when target rows lack current market context or have an insufficient/all-tied cohort. |
 | Agent route policy | `services/agent_routing.py` | none (in-memory decision) | Deterministic route assignment to `cex`, `meme`, or `research_only`. Completeness gates are driven by the `pulse_candidate` worker settings in `workers.yaml`. |
 | Stage runtime | `integrations/openai_agents/` (out of domain; called by injection) | none in this domain | Runs Analyst / Critic / Judge stages with typed outputs and returns domain values. Does not own routing, persistence, product thresholds, or SQL. |
 | Pulse worker | `runtime/pulse_candidate_worker.py` | `pulse_candidates`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_candidates.decision_*` columns, `pulse_candidates.decision_json` | The only runtime writer of these tables. Inherits `WorkerBase`, is started by `WorkerScheduler`, listens to `token_radar_updated` for wake, and runs `interval_seconds` catch-up. |
