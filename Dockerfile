@@ -53,6 +53,7 @@ COPY src ./src
 COPY --from=web-builder /app/web/dist ./src/gmgn_twitter_intel/web/dist
 
 RUN --mount=type=secret,id=github_token \
+    --mount=type=cache,target=/root/.cache/uv \
     set -eu; \
     cleanup() { \
         if [ -n "${token:-}" ]; then \
@@ -64,7 +65,12 @@ RUN --mount=type=secret,id=github_token \
         token="$(cat /run/secrets/github_token)"; \
         git config --global url."https://x-access-token:${token}@github.com/".insteadOf "https://github.com/"; \
     fi; \
-    uv sync --frozen --no-dev
+    for attempt in 1 2 3 4 5; do \
+        UV_HTTP_TIMEOUT=300 UV_CONCURRENT_DOWNLOADS=1 uv sync --frozen --no-dev \
+        && exit 0; \
+        sleep "$((attempt * 5))"; \
+    done; \
+    exit 1
 
 ENV PATH="/app/.venv/bin:${PATH}"
 
