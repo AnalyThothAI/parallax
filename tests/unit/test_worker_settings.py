@@ -14,9 +14,12 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.defaults.backoff.kind == "exponential"
     assert settings.collector.mode == "continuous"
     assert settings.collector.snapshot_timeout_seconds == 0.5
+    assert settings.anchor_price.statement_timeout_seconds == 120
     assert settings.live_price_gateway.subscription_limit == 100
     assert settings.resolution_refresh.chain_ids == ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton")
+    assert settings.asset_profile_refresh.statement_timeout_seconds == 120
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
+    assert settings.pulse_candidate.timeout_seconds == 0
     assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
     assert settings.handle_summary.time_threshold_ms == 1_800_000

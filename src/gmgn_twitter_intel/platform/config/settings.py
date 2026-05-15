@@ -369,6 +369,7 @@ class CollectorWorkerSettings(PerWorkerSettings):
 class AnchorPriceWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
+    statement_timeout_seconds: float = Field(default=120.0, ge=0)
 
 
 class LivePriceGatewayWorkerSettings(PerWorkerSettings):
@@ -399,6 +400,7 @@ class ResolutionRefreshWorkerSettings(PerWorkerSettings):
 class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    statement_timeout_seconds: float = Field(default=120.0, ge=0)
 
 
 class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
@@ -434,6 +436,7 @@ class PulseCandidateGateThresholds(BaseModel):
 
 class PulseCandidateWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
+    timeout_seconds: float = Field(default=0.0, ge=0)
     batch_size: int = Field(default=10, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026051502
@@ -951,6 +954,7 @@ anchor_price:
   enabled: true
   interval_seconds: 5.0
   batch_size: 100
+  statement_timeout_seconds: 120.0
 live_price_gateway:
   enabled: true
   mode: "continuous"
@@ -973,6 +977,7 @@ asset_profile_refresh:
   enabled: true
   interval_seconds: 60.0
   batch_size: 50
+  statement_timeout_seconds: 120.0
 token_radar_projection:
   enabled: true
   interval_seconds: 10.0
@@ -986,6 +991,7 @@ token_radar_projection:
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0
+  timeout_seconds: 0.0
   batch_size: 10
   max_attempts: 3
   advisory_lock_key: 2026051502
