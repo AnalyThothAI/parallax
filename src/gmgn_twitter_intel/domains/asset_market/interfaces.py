@@ -18,10 +18,12 @@ from .identity_evidence_policy import (
 from .repositories.asset_profile_repository import AssetProfileRepository
 from .repositories.asset_repository import AssetRepository
 from .repositories.discovery_repository import DiscoveryRepository
+from .repositories.enriched_event_repository import EnrichedEventRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
 from .repositories.market_repository import MarketRepository
-from .repositories.price_observation_repository import PriceObservationRepository
+from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
+from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
 from .types import (
     MarketContext,
     MarketObservation,
@@ -48,14 +50,16 @@ __all__ = [
     "AssetProfileRepository",
     "AssetRepository",
     "DiscoveryRepository",
+    "EnrichedEventRepository",
     "IdentityEvidenceRepository",
     "MarketContext",
     "MarketObservation",
     "MarketReadiness",
     "MarketRepository",
     "MarketTargetRef",
-    "PriceObservationRepository",
+    "MarketTickRepository",
     "RegistryRepository",
+    "TokenCaptureTierRepository",
     "market_context_to_dict",
     "market_observation_from_row",
     "market_observation_to_dict",

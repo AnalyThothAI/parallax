@@ -9,10 +9,12 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     AssetProfileRepository,
     AssetRepository,
     DiscoveryRepository,
+    EnrichedEventRepository,
     IdentityEvidenceRepository,
     MarketRepository,
-    PriceObservationRepository,
+    MarketTickRepository,
     RegistryRepository,
+    TokenCaptureTierRepository,
 )
 from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
@@ -51,7 +53,9 @@ class RepositorySession:
     registry: RegistryRepository
     identity_evidence: IdentityEvidenceRepository
     discovery: DiscoveryRepository
-    price_observations: PriceObservationRepository
+    market_ticks: MarketTickRepository
+    enriched_events: EnrichedEventRepository
+    token_capture_tiers: TokenCaptureTierRepository
     token_intent_lookup: TokenIntentLookupRepository
     market: MarketRepository
     token_radar: TokenRadarRepository
@@ -82,7 +86,9 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         registry=RegistryRepository(conn),
         identity_evidence=IdentityEvidenceRepository(conn),
         discovery=DiscoveryRepository(conn),
-        price_observations=PriceObservationRepository(conn),
+        market_ticks=MarketTickRepository(conn),
+        enriched_events=EnrichedEventRepository(conn),
+        token_capture_tiers=TokenCaptureTierRepository(conn),
         token_intent_lookup=TokenIntentLookupRepository(conn),
         market=MarketRepository(conn),
         token_radar=TokenRadarRepository(conn),
