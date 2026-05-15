@@ -1,18 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from hashlib import sha256
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick
-
-
-def market_tick_id(*, target_type: str, target_id: str, source_provider: str, observed_at_ms: int) -> str:
-    key = f"{target_type}\x1f{target_id}\x1f{source_provider}\x1f{observed_at_ms}"
-    digest = sha256(key.encode("utf-8")).hexdigest()
-    return f"market_tick:{digest}"
+from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
 
 
 class MarketTickRepository:

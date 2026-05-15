@@ -15,6 +15,7 @@ from .market_tick import (
     MarketTickSourceTier,
     MarketTickTargetType,
 )
+from .market_tick_id import market_tick_id
 
 __all__ = [
     "EnrichedEventCapture",
@@ -30,4 +31,5 @@ __all__ = [
     "market_context_to_dict",
     "market_observation_from_row",
     "market_observation_to_dict",
+    "market_tick_id",
 ]
