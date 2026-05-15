@@ -1,4 +1,7 @@
-import { canSeedTokenCasePosts } from "@features/token-case/api/useTokenCase";
+import {
+  canSeedTokenCasePosts,
+  shouldEnableTokenCasePostsQuery,
+} from "@features/token-case/api/useTokenCase";
 import type { TokenCasePostsData } from "@lib/types";
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { describe, expect, it } from "vitest";
@@ -66,6 +69,47 @@ describe("useTokenCase post seeding", () => {
         scope: "all",
         range: "current_window",
         serverSort: "recent",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the posts query idle while the dossier seed is still loading", () => {
+    expect(
+      shouldEnableTokenCasePostsQuery({
+        token: "secret",
+        target,
+        initialPosts: undefined,
+        hasSeedPosts: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("allows a cold or mismatched query to fetch its own first page", () => {
+    expect(
+      shouldEnableTokenCasePostsQuery({
+        token: "secret",
+        target,
+        initialPosts: null,
+        hasSeedPosts: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldEnableTokenCasePostsQuery({
+        token: "secret",
+        target,
+        initialPosts: tokenCaseFixture().posts,
+        hasSeedPosts: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not refetch the first page when a matching dossier seed is present", () => {
+    expect(
+      shouldEnableTokenCasePostsQuery({
+        token: "secret",
+        target,
+        initialPosts: tokenCaseFixture().posts,
+        hasSeedPosts: true,
       }),
     ).toBe(false);
   });

@@ -62,7 +62,7 @@ export function useTokenCasePosts({
   postsLimit = 24,
   postSort,
   range = "current_window",
-  initialPosts = null,
+  initialPosts,
 }: UseTokenCasePostsArgs) {
   const serverSort = postSort === "catalyst" ? "catalyst" : "recent";
   const apiScope = tokenCaseScopeToApiScope(scope);
@@ -76,6 +76,12 @@ export function useTokenCasePosts({
   })
     ? initialPosts
     : null;
+  const shouldFetchFirstPage = shouldEnableTokenCasePostsQuery({
+    token,
+    target,
+    initialPosts,
+    hasSeedPosts: Boolean(seedPosts),
+  });
   const queryKey = queryKeys.targetPosts(
     target ? targetRefKey(target) : null,
     window,
@@ -112,7 +118,7 @@ export function useTokenCasePosts({
     initialPageParam: "",
     getNextPageParam: (lastPage) =>
       lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
-    enabled: Boolean(token && target && seedPosts),
+    enabled: shouldFetchFirstPage,
     refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
@@ -166,4 +172,24 @@ export function canSeedTokenCasePosts({
 
 function tokenCaseScopeKey(scope: TokenCaseApiScope): TokenCaseScope {
   return scope === "matched" ? "watched" : scope;
+}
+
+export function shouldEnableTokenCasePostsQuery({
+  token,
+  target,
+  initialPosts,
+  hasSeedPosts,
+}: {
+  token: string;
+  target: TargetRef | null;
+  initialPosts?: TokenCasePostsData | null;
+  hasSeedPosts: boolean;
+}): boolean {
+  if (!token || !target) {
+    return false;
+  }
+  if (hasSeedPosts) {
+    return false;
+  }
+  return initialPosts !== undefined;
 }
