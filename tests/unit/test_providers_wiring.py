@@ -7,21 +7,28 @@ from gmgn_twitter_intel.app.runtime import providers_wiring
 from gmgn_twitter_intel.app.runtime.providers_wiring import (
     GmgnDexMarketProvider,
     OkxDexDiscoveryProvider,
+    OkxDexQuoteProvider,
     okx_chain_indexes_to_chain_ids,
 )
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuoteRequest
 from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
-from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate
+from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 
-def test_asset_market_wires_okx_discovery_and_gmgn_exact_market_roles(monkeypatch) -> None:
+def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_roles(monkeypatch) -> None:
     okx_created: list[FakeDexDiscoveryProvider] = []
+    okx_quote_created: list[FakeDexQuoteProvider] = []
     gmgn_created: list[FakeGmgnDexMarketProvider] = []
 
     def fake_okx(settings: Settings) -> FakeDexDiscoveryProvider:
         provider = FakeDexDiscoveryProvider()
         okx_created.append(provider)
+        return provider
+
+    def fake_okx_quote(settings: Settings) -> FakeDexQuoteProvider:
+        provider = FakeDexQuoteProvider()
+        okx_quote_created.append(provider)
         return provider
 
     def fake_gmgn(settings: Settings) -> FakeGmgnDexMarketProvider:
@@ -30,6 +37,7 @@ def test_asset_market_wires_okx_discovery_and_gmgn_exact_market_roles(monkeypatc
         return provider
 
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", fake_okx)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", fake_okx_quote)
     monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", fake_gmgn)
 
     providers = providers_wiring.wire_providers(
@@ -39,16 +47,19 @@ def test_asset_market_wires_okx_discovery_and_gmgn_exact_market_roles(monkeypatc
 
     assert providers.dex_discovery_market is not None
     assert providers.dex_quote_market is not None
-    assert providers.dex_candle_market is providers.dex_quote_market
-    assert providers.dex_profile_market is providers.dex_quote_market
+    assert providers.dex_quote_market is okx_quote_created[0]
+    assert providers.dex_candle_market is gmgn_created[0]
+    assert providers.dex_profile_market is gmgn_created[0]
     assert providers.dex_discovery_market is not providers.dex_quote_market
     assert not hasattr(providers.dex_discovery_market, "token_quotes")
     assert len(okx_created) == 1
+    assert len(okx_quote_created) == 1
     assert len(gmgn_created) == 1
 
 
 def test_okx_dex_ws_market_provider_is_wired_separately_from_discovery_and_gmgn(monkeypatch) -> None:
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: FakeDexDiscoveryProvider())
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: FakeDexQuoteProvider())
     monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", lambda settings: FakeGmgnDexMarketProvider())
     monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", lambda settings: FakeDexStreamProvider())
 
@@ -118,8 +129,10 @@ def test_discovery_provider_close_is_idempotent(monkeypatch) -> None:
 
 def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(monkeypatch) -> None:
     okx_provider = CloseCountingDexDiscoveryProvider()
+    okx_quote_provider = CloseCountingDexQuoteProvider()
 
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: okx_provider)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: okx_quote_provider)
 
     def fail_gmgn(settings: Settings):
         raise RuntimeError("gmgn failed")
@@ -130,12 +143,15 @@ def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(
         providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
 
     assert okx_provider.close_count == 1
+    assert okx_quote_provider.close_count == 1
 
 
 def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(monkeypatch) -> None:
     okx_provider = CloseFailingDexDiscoveryProvider()
+    okx_quote_provider = CloseFailingDexQuoteProvider()
 
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: okx_provider)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: okx_quote_provider)
 
     def fail_gmgn(settings: Settings):
         raise RuntimeError("gmgn failed")
@@ -147,6 +163,7 @@ def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(mon
 
     assert "cleanup failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
+    assert "quote close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
 
 
 def test_okx_bundle_wiring_closes_cex_partial_provider_when_discovery_wiring_fails(monkeypatch) -> None:
@@ -168,9 +185,11 @@ def test_okx_bundle_wiring_closes_cex_partial_provider_when_discovery_wiring_fai
 def test_okx_bundle_wiring_closes_cex_and_discovery_when_stream_wiring_fails(monkeypatch) -> None:
     cex_provider = CloseCountingCexProvider()
     discovery_provider = CloseCountingDexDiscoveryProvider()
+    quote_provider = CloseCountingDexQuoteProvider()
 
     monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex_provider)
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: discovery_provider)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: quote_provider)
 
     def fail_stream(settings: Settings):
         raise RuntimeError("stream failed")
@@ -182,6 +201,7 @@ def test_okx_bundle_wiring_closes_cex_and_discovery_when_stream_wiring_fails(mon
 
     assert cex_provider.close_count == 1
     assert discovery_provider.close_count == 1
+    assert quote_provider.close_count == 1
 
 
 def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(monkeypatch) -> None:
@@ -237,6 +257,43 @@ def test_unknown_numeric_okx_dex_chain_indexes_round_trip_through_discovery_prov
 
     assert chain_ids == ("137",)
     assert client.search_requests == [{"query": "POL", "chain_indexes": ("137",)}]
+
+
+def test_okx_dex_quote_provider_maps_token_price_batch_to_quotes() -> None:
+    client = FakeOkxDexClient()
+    provider = OkxDexQuoteProvider(client)
+
+    quotes = provider.token_quotes(
+        [
+            DexTokenQuoteRequest(
+                chain_id="eip155:1",
+                address="0xF280B16eF293d8E534e370794EF26Bf312694126",
+            ),
+            DexTokenQuoteRequest(chain_id="unknown-chain", address="0x0000000000000000000000000000000000000000"),
+        ]
+    )
+
+    assert client.price_requests == [
+        [
+            {
+                "chainIndex": "1",
+                "tokenContractAddress": "0xf280b16ef293d8e534e370794ef26bf312694126",
+            }
+        ]
+    ]
+    assert quotes == [
+        providers_wiring.DexTokenQuote(
+            chain_id="eip155:1",
+            address="0xf280b16ef293d8e534e370794ef26bf312694126",
+            observed_at_ms=123456789,
+            price_usd=0.42,
+            raw={"chainIndex": "1", "tokenContractAddress": "0xF280B16eF293d8E534e370794EF26Bf312694126"},
+            market_cap_usd=None,
+            liquidity_usd=None,
+            volume_24h_usd=None,
+            holders=None,
+        )
+    ]
 
 
 def test_gmgn_dex_market_provider_maps_token_info_to_quote_and_profile() -> None:
@@ -298,6 +355,7 @@ def test_gmgn_dex_market_provider_maps_token_info_to_quote_and_profile() -> None
 class FakeOkxDexClient:
     def __init__(self) -> None:
         self.search_requests: list[dict[str, object]] = []
+        self.price_requests: list[list[dict[str, str]]] = []
 
     def search_tokens(self, *, query: str, chain_indexes: tuple[str, ...]):
         self.search_requests.append({"query": query, "chain_indexes": tuple(chain_indexes)})
@@ -317,9 +375,26 @@ class FakeOkxDexClient:
             )
         ]
 
+    def token_prices(self, tokens: list[dict[str, str]]) -> list[OkxDexTokenPrice]:
+        self.price_requests.append(tokens)
+        return [
+            OkxDexTokenPrice(
+                chain_index="1",
+                address="0xF280B16eF293d8E534e370794EF26Bf312694126",
+                observed_at_ms=123456789,
+                price_usd=0.42,
+                raw={"chainIndex": "1", "tokenContractAddress": "0xF280B16eF293d8E534e370794EF26Bf312694126"},
+            )
+        ]
+
 
 class FakeDexDiscoveryProvider:
     def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]):
+        return []
+
+
+class FakeDexQuoteProvider:
+    def token_quotes(self, tokens):
         return []
 
 
@@ -360,6 +435,19 @@ class CloseCountingDexDiscoveryProvider(FakeDexDiscoveryProvider):
 class CloseFailingDexDiscoveryProvider(FakeDexDiscoveryProvider):
     def close(self) -> None:
         raise RuntimeError("close failed")
+
+
+class CloseCountingDexQuoteProvider(FakeDexQuoteProvider):
+    def __init__(self) -> None:
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class CloseFailingDexQuoteProvider(FakeDexQuoteProvider):
+    def close(self) -> None:
+        raise RuntimeError("quote close failed")
 
 
 class CloseCountingCexProvider:

@@ -15,6 +15,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenDiscoveryProvider,
     DexTokenProfile,
     DexTokenQuote,
+    DexTokenQuoteProvider,
     DexTokenQuoteRequest,
     MarketCandle,
     MarketCapability,
@@ -51,7 +52,7 @@ class AssetMarketProviders:
     sync_cex_market: CexMarketProvider | None = None
     message_cex_market: CexMarketProvider | None = None
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
-    dex_quote_market: object | None = None
+    dex_quote_market: DexTokenQuoteProvider | None = None
     dex_candle_market: object | None = None
     dex_profile_market: object | None = None
     stream_dex_market: DexMarketStreamProvider | None = None
@@ -64,6 +65,7 @@ class OkxProviderBundle:
     sync_cex_market: CexMarketProvider | None
     message_cex_market: CexMarketProvider | None
     dex_discovery_market: DexTokenDiscoveryProvider | None
+    dex_quote_market: DexTokenQuoteProvider | None
     stream_dex_market: DexMarketStreamProvider | None
     health: ProviderHealth
 
@@ -127,6 +129,43 @@ class OkxDexDiscoveryProvider:
         return [
             _dex_token_candidate(candidate)
             for candidate in self._client.search_tokens(query=query, chain_indexes=chain_indexes)
+        ]
+
+    def close(self) -> None:
+        self._client.close()
+
+
+class OkxDexQuoteProvider:
+    def __init__(self, client: OkxDexClient) -> None:
+        self._client = client
+
+    def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]:
+        request_items: list[dict[str, str]] = []
+        for token in tokens:
+            chain_index = okx_chain_index(token.chain_id)
+            if not chain_index:
+                continue
+            request_items.append(
+                {
+                    "chainIndex": chain_index,
+                    "tokenContractAddress": _normalize_address(token.address),
+                }
+            )
+        if not request_items:
+            return []
+        return [
+            DexTokenQuote(
+                chain_id=okx_index_to_chain_id(price.chain_index) or str(price.chain_index),
+                address=_normalize_address(price.address),
+                observed_at_ms=price.observed_at_ms,
+                price_usd=price.price_usd,
+                raw=price.raw,
+                market_cap_usd=None,
+                liquidity_usd=None,
+                volume_24h_usd=None,
+                holders=None,
+            )
+            for price in self._client.token_prices(request_items)
         ]
 
     def close(self) -> None:
@@ -391,7 +430,7 @@ def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
             sync_cex_market=okx_bundle.sync_cex_market,
             message_cex_market=okx_bundle.message_cex_market,
             dex_discovery_market=okx_bundle.dex_discovery_market,
-            dex_quote_market=gmgn_dex_market,
+            dex_quote_market=okx_bundle.dex_quote_market,
             dex_candle_market=gmgn_dex_market,
             dex_profile_market=gmgn_dex_market,
             stream_dex_market=okx_bundle.stream_dex_market,
@@ -404,6 +443,7 @@ def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
             getattr(okx_bundle, "sync_cex_market", None),
             getattr(okx_bundle, "message_cex_market", None),
             getattr(okx_bundle, "dex_discovery_market", None),
+            getattr(okx_bundle, "dex_quote_market", None),
             getattr(okx_bundle, "stream_dex_market", None),
             gmgn_dex_market,
         )
@@ -414,6 +454,7 @@ def _wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
     capabilities: set[MarketCapability] = set()
     shared_cex_market: OkxCexMarketProvider | None = None
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
+    dex_quote_market: DexTokenQuoteProvider | None = None
     stream_dex_market: DexMarketStreamProvider | None = None
     try:
         if settings.okx_cex_sync_enabled:
@@ -421,7 +462,9 @@ def _wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
             capabilities.add(MarketCapability.QUOTE_CEX)
         if settings.okx_dex_configured:
             dex_discovery_market = _SerializedDiscoveryProvider(_okx_dex_discovery_market(settings))
+            dex_quote_market = _okx_dex_quote_market(settings)
             capabilities.add(MarketCapability.SEARCH_DEX)
+            capabilities.add(MarketCapability.QUOTE_DEX_EXACT)
         if settings.okx_dex_ws_configured:
             stream_dex_market = _okx_dex_ws_market(settings)
             capabilities.add(MarketCapability.STREAM_DEX)
@@ -429,6 +472,7 @@ def _wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
             sync_cex_market=shared_cex_market,
             message_cex_market=shared_cex_market,
             dex_discovery_market=dex_discovery_market,
+            dex_quote_market=dex_quote_market,
             stream_dex_market=stream_dex_market,
             health=ProviderHealth(
                 provider="okx",
@@ -437,7 +481,7 @@ def _wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
             ),
         )
     except Exception as exc:
-        _close_partial_providers(exc, shared_cex_market, dex_discovery_market, stream_dex_market)
+        _close_partial_providers(exc, shared_cex_market, dex_discovery_market, dex_quote_market, stream_dex_market)
         raise
 
 
@@ -460,7 +504,6 @@ def _gmgn_provider_health(settings: Settings) -> ProviderHealth:
     capabilities = (
         frozenset(
             {
-                MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
                 MarketCapability.CANDLES_DEX_EXACT,
             }
@@ -509,6 +552,18 @@ def _okx_cex_market(settings: Settings) -> OkxCexMarketProvider:
 
 def _okx_dex_discovery_market(settings: Settings) -> OkxDexDiscoveryProvider:
     return OkxDexDiscoveryProvider(
+        OkxDexClient(
+            base_url=settings.okx_dex_base_url,
+            api_key=settings.okx_dex_api_key,
+            secret_key=settings.okx_dex_secret_key,
+            passphrase=settings.okx_dex_passphrase,
+            timeout_seconds=settings.okx_timeout_seconds,
+        )
+    )
+
+
+def _okx_dex_quote_market(settings: Settings) -> OkxDexQuoteProvider:
+    return OkxDexQuoteProvider(
         OkxDexClient(
             base_url=settings.okx_dex_base_url,
             api_key=settings.okx_dex_api_key,
@@ -690,6 +745,7 @@ __all__ = [
     "MarketlaneProviders",
     "OkxCexMarketProvider",
     "OkxDexDiscoveryProvider",
+    "OkxDexQuoteProvider",
     "OkxDexWebSocketMarketProviderAdapter",
     "OkxProviderBundle",
     "PulseLabProviders",

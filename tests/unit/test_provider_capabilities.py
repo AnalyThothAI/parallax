@@ -8,11 +8,13 @@ from gmgn_twitter_intel.platform.config.settings import Settings
 def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     cex = object()
     discovery = FakeDiscoveryProvider()
+    quote = FakeQuoteProvider()
     stream = FakeStreamProvider()
     gmgn = FakeGmgnProvider()
 
     monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex)
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: discovery)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: quote)
     monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", lambda settings: stream)
     monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", lambda settings: gmgn)
 
@@ -35,6 +37,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     assert providers.sync_cex_market is cex
     assert providers.message_cex_market is cex
     assert providers.dex_discovery_market is not None
+    assert providers.dex_quote_market is quote
     assert providers.stream_dex_market is stream
     health = {entry.provider: entry for entry in providers.provider_health}
     assert health["okx"] == ProviderHealth(
@@ -42,6 +45,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
         capabilities=frozenset(
             {
                 MarketCapability.QUOTE_CEX,
+                MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.SEARCH_DEX,
                 MarketCapability.STREAM_DEX,
             }
@@ -52,7 +56,6 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
         provider="gmgn",
         capabilities=frozenset(
             {
-                MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
                 MarketCapability.CANDLES_DEX_EXACT,
             }
@@ -64,6 +67,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
 def test_okx_stream_capability_comes_from_credentials_not_enabled_flag(monkeypatch) -> None:
     monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: object())
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: FakeDiscoveryProvider())
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: FakeQuoteProvider())
     monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", lambda settings: FakeStreamProvider())
 
     providers = providers_wiring.wire_providers(
@@ -78,6 +82,11 @@ def test_okx_stream_capability_comes_from_credentials_not_enabled_flag(monkeypat
 
 class FakeDiscoveryProvider:
     def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]):
+        return []
+
+
+class FakeQuoteProvider:
+    def token_quotes(self, tokens):
         return []
 
 
