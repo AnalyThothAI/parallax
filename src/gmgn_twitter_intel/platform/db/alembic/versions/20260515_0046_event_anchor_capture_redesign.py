@@ -54,7 +54,7 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_market_ticks_dedupe
-          ON market_ticks(source_provider, target_type, target_id, observed_at_ms, received_at_ms)
+          ON market_ticks(target_type, target_id, source_provider, observed_at_ms)
         """
     )
     op.execute(
@@ -85,9 +85,9 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS enriched_events (
-          event_id TEXT REFERENCES events(event_id),
-          intent_id TEXT REFERENCES token_intents(intent_id),
-          resolution_id TEXT REFERENCES token_intent_resolutions(resolution_id),
+          event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+          intent_id TEXT NOT NULL REFERENCES token_intents(intent_id) ON DELETE CASCADE,
+          resolution_id TEXT NOT NULL REFERENCES token_intent_resolutions(resolution_id) ON DELETE CASCADE,
           target_type TEXT NOT NULL CHECK (target_type IN ('chain_token', 'cex_symbol')),
           target_id TEXT NOT NULL,
           t_event_ms BIGINT NOT NULL,
@@ -96,7 +96,7 @@ def upgrade() -> None:
           capture_method TEXT NOT NULL CHECK (
             capture_method IN ('tier1_ws', 'tier2_poll', 'tier3_inline', 'unavailable')
           ),
-          capture_reason TEXT,
+          capture_reason TEXT NOT NULL,
           created_at_ms BIGINT NOT NULL,
           PRIMARY KEY(event_id, intent_id),
           CHECK (

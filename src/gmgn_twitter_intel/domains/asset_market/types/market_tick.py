@@ -36,12 +36,12 @@ class MarketTick:
 class EnrichedEventCapture:
     event_id: str
     intent_id: str
-    resolution_id: str | None
+    resolution_id: str
     target_type: MarketTickTargetType
     target_id: str
     t_event_ms: int
     tick_id: str | None
     tick_lag_ms: int | None
     capture_method: EventCaptureMethod
-    capture_reason: str | None
+    capture_reason: str
     created_at_ms: int

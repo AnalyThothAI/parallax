@@ -238,7 +238,6 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
     for table_name in ("market_ticks", "token_capture_tier", "enriched_events"):
         assert f"CREATE TABLE IF NOT EXISTS {table_name}" in text
     for index_name in (
-        "idx_market_ticks_dedupe",
         "idx_market_ticks_target_observed",
         "idx_market_ticks_received",
         "idx_enriched_events_event",
@@ -246,6 +245,16 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
         "idx_enriched_events_tick",
     ):
         assert index_name in text
+    assert (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_market_ticks_dedupe\n"
+        "          ON market_ticks(target_type, target_id, source_provider, observed_at_ms)"
+    ) in text
+    assert "event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE" in text
+    assert "intent_id TEXT NOT NULL REFERENCES token_intents(intent_id) ON DELETE CASCADE" in text
+    assert (
+        "resolution_id TEXT NOT NULL REFERENCES token_intent_resolutions(resolution_id) ON DELETE CASCADE"
+    ) in text
+    assert "capture_reason TEXT NOT NULL" in text
     assert "CREATE OR REPLACE FUNCTION forbid_market_fact_update()" in text
     assert "BEFORE UPDATE ON market_ticks" in text
     assert "BEFORE UPDATE ON enriched_events" in text
