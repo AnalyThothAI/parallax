@@ -17,7 +17,13 @@ DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 
 EXPECTED_WORKERS = {
     "collector": "gmgn_twitter_intel.domains.ingestion.runtime.collector_service.CollectorService",
-    "anchor_price": "gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker.AnchorPriceWorker",
+    "market_tick_stream": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
+    ),
+    "market_tick_poll": "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
+    "token_capture_tier": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
+    ),
     "live_price_gateway": "gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway.LivePriceGateway",
     "resolution_refresh": (
         "gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"
@@ -40,7 +46,9 @@ EXPECTED_WORKERS = {
 
 OLD_READYZ_WORKER_KEYS = {
     "collector",
-    "anchor_price",
+    "market_tick_stream",
+    "market_tick_poll",
+    "token_capture_tier",
     "live_price_gateway",
     "resolution_refresh",
     "asset_profile_refresh",
