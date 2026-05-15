@@ -653,12 +653,20 @@ def _market_context(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms
             ),
         )
     social_start = min(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
-    event_anchor = _observation_from_row(social_start, prefix="event_price", source="event_anchor")
+    event_anchor = _observation_from_row(
+        social_start,
+        prefix="event_price",
+        source=social_start.get("event_price_capture_method"),
+    )
     latest_row = max(
         window_rows,
-        key=lambda item: int(item.get("decision_latest_observed_at_ms") or 0),
+        key=lambda item: int(item.get("latest_price_observed_at_ms") or 0),
     )
-    decision_latest = _observation_from_row(latest_row, prefix="decision_latest", source="decision_latest")
+    decision_latest = _observation_from_row(
+        latest_row,
+        prefix="latest_price",
+        source=latest_row.get("latest_price_source_tier"),
+    )
     return _market_context_dict(
         event_anchor=event_anchor,
         decision_latest=decision_latest,
@@ -684,7 +692,7 @@ def _market_context_dict(
     }
 
 
-def _observation_from_row(row: dict[str, Any], *, prefix: str, source: str) -> dict[str, Any] | None:
+def _observation_from_row(row: dict[str, Any], *, prefix: str, source: Any) -> dict[str, Any] | None:
     price_usd = row.get(_observation_column(prefix, "price_usd"))
     price_quote = row.get(_observation_column(prefix, "price_quote"))
     observed_at_ms = _int_or_none(row.get(f"{prefix}_observed_at_ms"))
@@ -695,7 +703,7 @@ def _observation_from_row(row: dict[str, Any], *, prefix: str, source: str) -> d
         "target_id": row.get("target_id"),
         "observed_at_ms": observed_at_ms,
         "received_at_ms": _int_or_none(row.get(f"{prefix}_received_at_ms") or row.get("received_at_ms")),
-        "source": source,
+        "source": str(source or ""),
         "provider": row.get(f"{prefix}_provider"),
         "pricefeed_id": row.get(f"{prefix}_pricefeed_id") or row.get("pricefeed_id"),
         "price_usd": _float_or_none(price_usd),
@@ -714,6 +722,8 @@ def _observation_from_row(row: dict[str, Any], *, prefix: str, source: str) -> d
 def _observation_column(prefix: str, field: str) -> str:
     if prefix == "event_price" and field in {"price_usd", "price_quote", "price_basis"}:
         return f"event_{field}"
+    if prefix == "latest_price" and field in {"price_usd", "price_quote", "price_basis"}:
+        return f"latest_{field}"
     return f"{prefix}_{field}"
 
 

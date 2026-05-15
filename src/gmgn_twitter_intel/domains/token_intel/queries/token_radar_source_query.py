@@ -82,33 +82,38 @@ class TokenRadarSourceQuery:
               NULL::numeric AS first_price_quote,
               NULL::text AS first_price_quote_symbol,
               NULL::text AS first_price_basis,
-              event_price_capture.tick_id AS event_price_observation_id,
-              event_price_capture.capture_method AS event_price_observation_kind,
-              event_price_capture.source_provider AS event_price_provider,
-              event_price_capture.observed_at_ms AS event_price_observed_at_ms,
-              event_price_capture.price_usd AS event_price_usd,
+              event_price_capture.tick_id AS event_price_capture_id,
+              event_price_capture.capture_method AS event_price_capture_method,
+              event_price_capture.capture_reason AS event_price_capture_reason,
+              event_price_tick.source_provider AS event_price_provider,
+              event_price_tick.source_tier AS event_price_source_tier,
+              event_price_tick.pricefeed_id AS event_price_pricefeed_id,
+              event_price_tick.observed_at_ms AS event_price_observed_at_ms,
+              event_price_tick.created_at_ms AS event_price_received_at_ms,
+              event_price_tick.price_usd AS event_price_usd,
               NULL::numeric AS event_price_quote,
               NULL::text AS event_price_quote_symbol,
               NULL::text AS event_price_basis,
-              event_price_capture.market_cap_usd AS event_price_market_cap_usd,
-              event_price_capture.liquidity_usd AS event_price_liquidity_usd,
-              event_price_capture.volume_24h_usd AS event_price_volume_24h_usd,
+              event_price_tick.market_cap_usd AS event_price_market_cap_usd,
+              event_price_tick.liquidity_usd AS event_price_liquidity_usd,
+              event_price_tick.volume_24h_usd AS event_price_volume_24h_usd,
               NULL::numeric AS event_price_open_interest_usd,
               NULL::bigint AS event_price_holders,
-              decision_latest_tick.tick_id AS decision_latest_observation_id,
-              decision_latest_tick.source_provider AS decision_latest_provider,
-              decision_latest_tick.pricefeed_id AS decision_latest_pricefeed_id,
-              decision_latest_tick.observed_at_ms AS decision_latest_observed_at_ms,
-              decision_latest_tick.created_at_ms AS decision_latest_received_at_ms,
-              decision_latest_tick.price_usd AS decision_latest_price_usd,
-              NULL::numeric AS decision_latest_price_quote,
-              NULL::text AS decision_latest_quote_symbol,
-              NULL::text AS decision_latest_price_basis,
-              decision_latest_tick.market_cap_usd AS decision_latest_market_cap_usd,
-              decision_latest_tick.liquidity_usd AS decision_latest_liquidity_usd,
-              decision_latest_tick.volume_24h_usd AS decision_latest_volume_24h_usd,
-              NULL::numeric AS decision_latest_open_interest_usd,
-              NULL::bigint AS decision_latest_holders,
+              latest_price_tick.tick_id AS latest_price_tick_id,
+              latest_price_tick.source_provider AS latest_price_provider,
+              latest_price_tick.source_tier AS latest_price_source_tier,
+              latest_price_tick.pricefeed_id AS latest_price_pricefeed_id,
+              latest_price_tick.observed_at_ms AS latest_price_observed_at_ms,
+              latest_price_tick.created_at_ms AS latest_price_received_at_ms,
+              latest_price_tick.price_usd AS latest_price_usd,
+              NULL::numeric AS latest_price_quote,
+              NULL::text AS latest_price_quote_symbol,
+              NULL::text AS latest_price_basis,
+              latest_price_tick.market_cap_usd AS latest_price_market_cap_usd,
+              latest_price_tick.liquidity_usd AS latest_price_liquidity_usd,
+              latest_price_tick.volume_24h_usd AS latest_price_volume_24h_usd,
+              NULL::numeric AS latest_price_open_interest_usd,
+              NULL::bigint AS latest_price_holders,
               NULL::bigint AS before_event_price_observed_at_ms,
               NULL::numeric AS before_event_price_usd,
               NULL::numeric AS before_event_price_quote,
@@ -195,20 +200,16 @@ class TokenRadarSourceQuery:
                 enriched_events.tick_id,
                 enriched_events.capture_method,
                 enriched_events.capture_reason,
-                market_ticks.source_provider,
-                market_ticks.observed_at_ms,
-                market_ticks.price_usd,
-                market_ticks.market_cap_usd,
-                market_ticks.liquidity_usd,
-                market_ticks.volume_24h_usd
+                enriched_events.created_at_ms
               FROM enriched_events
-              LEFT JOIN market_ticks ON market_ticks.tick_id = enriched_events.tick_id
               WHERE enriched_events.event_id = events.event_id
                 AND enriched_events.intent_id = token_intents.intent_id
                 AND enriched_events.resolution_id = token_intent_resolutions.resolution_id
               ORDER BY enriched_events.created_at_ms DESC
               LIMIT 1
             ) event_price_capture ON true
+            LEFT JOIN market_ticks event_price_tick
+              ON event_price_tick.tick_id = event_price_capture.tick_id
             LEFT JOIN LATERAL (
               SELECT *
               FROM market_ticks
@@ -217,7 +218,7 @@ class TokenRadarSourceQuery:
                 AND market_ticks.observed_at_ms <= %s
               ORDER BY market_ticks.observed_at_ms DESC, market_ticks.tick_id DESC
               LIMIT 1
-            ) decision_latest_tick ON true
+            ) latest_price_tick ON true
             LEFT JOIN LATERAL (
               SELECT *
               FROM market_ticks

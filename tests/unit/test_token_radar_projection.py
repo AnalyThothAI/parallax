@@ -461,18 +461,21 @@ def test_projection_marks_market_missing_when_anchor_price_has_not_arrived(monke
     assert token_radar.rows[0]["market_json"] == {}
 
 
-def test_projection_market_uses_latest_market_snapshot_fields():
+def test_projection_market_uses_event_capture_and_latest_market_tick_fields():
     row = source_row("event-market", received_at_ms=1_777_800_000_000)
-    row["decision_latest_price_usd"] = 0.012
-    row["decision_latest_market_cap_usd"] = 1_000_000
-    row["decision_latest_liquidity_usd"] = 250_000
-    row["decision_latest_volume_24h_usd"] = 12_000
-    row["decision_latest_holders"] = 1000
+    row["event_price_capture_method"] = "tier3_inline"
+    row["latest_price_usd"] = 0.012
+    row["latest_price_market_cap_usd"] = 1_000_000
+    row["latest_price_liquidity_usd"] = 250_000
+    row["latest_price_volume_24h_usd"] = 12_000
+    row["latest_price_holders"] = 1000
 
     market = _market_context([row], resolved=True, now_ms=1_777_800_060_000)
 
     assert market["event_anchor"]["price_usd"] == 0.01
+    assert market["event_anchor"]["source"] == "tier3_inline"
     assert market["event_anchor"]["provider"] == "okx"
+    assert "observation_kind" not in market["event_anchor"]
     assert market["decision_latest"]["price_usd"] == 0.012
     assert market["decision_latest"]["market_cap_usd"] == 1_000_000
     assert market["decision_latest"]["liquidity_usd"] == 250_000
@@ -503,6 +506,7 @@ def test_projection_market_uses_social_start_row_not_latest_row():
                 "event_price_usd": 1.0,
                 "event_price_observed_at_ms": 1_777_800_000_500,
                 "event_price_basis": "usd",
+                "event_price_capture_method": "tier1_ws",
                 "before_event_price_usd": 0.9,
                 "before_event_price_basis": "usd",
                 "first_price_usd": 0.8,
@@ -519,6 +523,7 @@ def test_projection_market_uses_social_start_row_not_latest_row():
                 "event_price_usd": 1.4,
                 "event_price_observed_at_ms": 1_777_800_120_500,
                 "event_price_basis": "usd",
+                "event_price_capture_method": "tier2_poll",
                 "first_price_usd": 0.8,
                 "first_price_observed_at_ms": 1_777_799_000_000,
             },
@@ -557,11 +562,14 @@ def test_source_rows_does_not_read_historical_price_observations():
     assert "latest_subject_price" not in conn.sql
     assert "LEFT JOIN LATERAL" in conn.sql
     assert "event_price_capture" in conn.sql
-    assert "decision_latest_tick" in conn.sql
+    assert "event_price_tick" in conn.sql
+    assert "latest_price_tick" in conn.sql
     assert "token_market_price_" + "baselines" not in conn.sql
     assert "message_event_price" not in conn.sql
     assert "event_history_price" not in conn.sql
     assert "latest_price_observation" not in conn.sql
+    assert "event_anchor" not in conn.sql
+    assert "decision_latest" not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
     assert "WITH window_events AS MATERIALIZED" in conn.sql
@@ -691,21 +699,22 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "event_price_volume_24h_usd": None,
         "event_price_open_interest_usd": None,
         "event_price_holders": 1_000,
-        "decision_latest_provider": "okx_dex_ws_price_info",
-        "decision_latest_pricefeed_id": (
+        "event_price_capture_method": "tier1_ws",
+        "latest_price_provider": "okx_dex_ws_price_info",
+        "latest_price_pricefeed_id": (
             "pricefeed:dex-token:okx_dex_search:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933"
         ),
-        "decision_latest_observed_at_ms": received_at_ms + 1_000,
-        "decision_latest_received_at_ms": received_at_ms + 1_000,
-        "decision_latest_price_usd": 0.01,
-        "decision_latest_price_quote": None,
-        "decision_latest_quote_symbol": "USD",
-        "decision_latest_price_basis": "usd",
-        "decision_latest_market_cap_usd": 1_000_000,
-        "decision_latest_liquidity_usd": 250_000,
-        "decision_latest_volume_24h_usd": None,
-        "decision_latest_open_interest_usd": None,
-        "decision_latest_holders": 1_000,
+        "latest_price_observed_at_ms": received_at_ms + 1_000,
+        "latest_price_received_at_ms": received_at_ms + 1_000,
+        "latest_price_usd": 0.01,
+        "latest_price_quote": None,
+        "latest_price_quote_symbol": "USD",
+        "latest_price_basis": "usd",
+        "latest_price_market_cap_usd": 1_000_000,
+        "latest_price_liquidity_usd": 250_000,
+        "latest_price_volume_24h_usd": None,
+        "latest_price_open_interest_usd": None,
+        "latest_price_holders": 1_000,
         "first_price_usd": 0.01,
         "first_price_observed_at_ms": received_at_ms,
     }
