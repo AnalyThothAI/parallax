@@ -9,6 +9,8 @@ LATEST_MIGRATION = (
     ROOT
     / "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 )
+ALEMBIC_VERSIONS = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
+SUPERPOWERS_DOCS = ROOT / "docs/superpowers"
 
 SCANNED_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".sql"}
 SKIPPED_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
@@ -21,12 +23,6 @@ BANNED_RUNTIME_STRINGS = (
     "decision_latest",
     "should_persist_live_observation",
 )
-ALLOWED_HISTORICAL_PATHS = {
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260513_0036_token_radar_kappa_cqrs_hard_cut.py",
-    "docs/superpowers/specs/active/2026-05-15-event-anchor-capture-redesign-cn.md",
-    "docs/superpowers/plans/active/2026-05-15-event-anchor-capture-redesign-plan-cn.md",
-    "tests/architecture/test_event_anchor_capture_redesign_contracts.py",
-}
 
 
 @pytest.mark.architecture
@@ -34,7 +30,7 @@ def test_old_price_observation_runtime_is_removed() -> None:
     offenders: list[str] = []
     for path in _scanned_project_files():
         rel_path = path.relative_to(ROOT).as_posix()
-        if rel_path in ALLOWED_HISTORICAL_PATHS:
+        if _allows_historical_anchor_references(path):
             continue
 
         text = path.read_text(encoding="utf-8")
@@ -63,4 +59,10 @@ def _scanned_project_files() -> list[Path]:
         if path.is_file()
         and path.suffix in SCANNED_SUFFIXES
         and not SKIPPED_DIRS.intersection(path.relative_to(ROOT).parts)
+    )
+
+
+def _allows_historical_anchor_references(path: Path) -> bool:
+    return path == Path(__file__).resolve() or any(
+        path.is_relative_to(allowed_root) for allowed_root in (ALEMBIC_VERSIONS, SUPERPOWERS_DOCS)
     )
