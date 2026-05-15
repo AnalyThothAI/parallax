@@ -48,6 +48,7 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
                 market_cap_usd=456.7,
                 liquidity_usd=89.01,
                 volume_24h_usd=234.56,
+                holders=333,
                 raw={"source": "fake"},
             )
         ],
@@ -91,6 +92,7 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert tick.market_cap_usd == Decimal("456.7")
     assert tick.liquidity_usd == Decimal("89.01")
     assert tick.volume_24h_usd == Decimal("234.56")
+    assert tick.holders == 333
     assert tick.raw_payload_json == {"source": "fake"}
     assert wake.channels == ["market_tick_written"]
     assert wake.market_tick_notifications == [

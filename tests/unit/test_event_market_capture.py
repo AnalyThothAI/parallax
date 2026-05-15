@@ -67,6 +67,7 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
         market_cap_usd=123_000.0,
         liquidity_usd=45_000.5,
         volume_24h_usd=9_876.5,
+        holders=321,
         raw={"price": "1.23"},
     )
     provider = RecordingDexQuoteProvider([quote])
@@ -113,6 +114,7 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
     assert result.tick.market_cap_usd == Decimal("123000.0")
     assert result.tick.liquidity_usd == Decimal("45000.5")
     assert result.tick.volume_24h_usd == Decimal("9876.5")
+    assert result.tick.holders == 321
     assert result.tick.raw_payload_json == {"price": "1.23"}
     assert result.capture.tick_id == result.tick.tick_id
     assert result.capture.tick_lag_ms == 100
@@ -353,6 +355,7 @@ def test_inline_dex_invalid_optional_market_fields_do_not_block_tick() -> None:
                         liquidity_usd="not-a-number",
                         volume_24h_usd=float("nan"),
                         market_cap_usd=float("inf"),
+                        holders="not-a-number",
                         raw={},
                     )
                 ]
@@ -378,6 +381,7 @@ def test_inline_dex_invalid_optional_market_fields_do_not_block_tick() -> None:
     assert result.tick.liquidity_usd is None
     assert result.tick.volume_24h_usd is None
     assert result.tick.market_cap_usd is None
+    assert result.tick.holders is None
     assert result.capture.capture_method == "tier3_inline"
 
 
@@ -590,6 +594,7 @@ def _market_tick_row(*, observed_at_ms: int, source_tier: str) -> dict[str, Any]
         "liquidity_usd": Decimal("1000"),
         "volume_24h_usd": Decimal("2000"),
         "market_cap_usd": Decimal("3000"),
+        "holders": 456,
         "created_at_ms": observed_at_ms + 20,
         "raw_payload_json": {"from": "ws"},
     }

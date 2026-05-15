@@ -437,6 +437,9 @@ def test_projection_marks_market_missing_when_anchor_price_has_not_arrived(monke
         row["event_price_quote"] = None
         row["event_price_provider"] = None
         row["event_price_observed_at_ms"] = None
+        row["event_price_capture_method"] = "unavailable"
+        row["event_price_capture_reason"] = "provider_no_quote"
+        row["event_price_tick_lag_ms"] = None
         row["first_price_usd"] = None
         return [row]
 
@@ -457,6 +460,9 @@ def test_projection_marks_market_missing_when_anchor_price_has_not_arrived(monke
     assert result["status"] == "ready"
     snapshot = token_radar.rows[0]["factor_snapshot_json"]
     assert snapshot["data_health"]["market"] == "missing"
+    assert snapshot["market"]["capture_method"] == "unavailable"
+    assert snapshot["market"]["capture_reason"] == "provider_no_quote"
+    assert snapshot["market"]["tick_lag_ms"] is None
     assert "market_freshness_missing" not in snapshot["gates"]["blocked_reasons"]
     assert token_radar.rows[0]["market_json"] == {}
 
@@ -464,6 +470,8 @@ def test_projection_marks_market_missing_when_anchor_price_has_not_arrived(monke
 def test_projection_market_uses_event_capture_and_latest_market_tick_fields():
     row = source_row("event-market", received_at_ms=1_777_800_000_000)
     row["event_price_capture_method"] = "tier3_inline"
+    row["event_price_capture_reason"] = "inline_quote"
+    row["event_price_tick_lag_ms"] = 500
     row["latest_price_usd"] = 0.012
     row["latest_price_market_cap_usd"] = 1_000_000
     row["latest_price_liquidity_usd"] = 250_000
@@ -476,6 +484,9 @@ def test_projection_market_uses_event_capture_and_latest_market_tick_fields():
     assert market["event_anchor"]["source"] == "tier3_inline"
     assert market["event_anchor"]["provider"] == "okx"
     assert "observation_kind" not in market["event_anchor"]
+    assert market["capture_method"] == "tier3_inline"
+    assert market["capture_reason"] == "inline_quote"
+    assert market["tick_lag_ms"] == 500
     assert market["decision_latest"]["price_usd"] == 0.012
     assert market["decision_latest"]["market_cap_usd"] == 1_000_000
     assert market["decision_latest"]["liquidity_usd"] == 250_000
@@ -700,6 +711,8 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "event_price_open_interest_usd": None,
         "event_price_holders": 1_000,
         "event_price_capture_method": "tier1_ws",
+        "event_price_capture_reason": "fresh_tick",
+        "event_price_tick_lag_ms": 500,
         "latest_price_provider": "okx_dex_ws_price_info",
         "latest_price_pricefeed_id": (
             "pricefeed:dex-token:okx_dex_search:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933"

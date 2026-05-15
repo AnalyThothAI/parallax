@@ -44,6 +44,7 @@ class MarketTickRepository:
                 liquidity_usd,
                 volume_24h_usd,
                 market_cap_usd,
+                holders,
                 raw_payload_json,
                 created_at_ms
             )
@@ -64,6 +65,7 @@ class MarketTickRepository:
                 %(liquidity_usd)s,
                 %(volume_24h_usd)s,
                 %(market_cap_usd)s,
+                %(holders)s,
                 %(raw_payload_json)s,
                 %(created_at_ms)s
             )
@@ -86,6 +88,7 @@ class MarketTickRepository:
                 "liquidity_usd": tick.liquidity_usd,
                 "volume_24h_usd": tick.volume_24h_usd,
                 "market_cap_usd": tick.market_cap_usd,
+                "holders": tick.holders,
                 "raw_payload_json": Jsonb(tick.raw_payload_json),
                 "created_at_ms": tick.created_at_ms,
             },

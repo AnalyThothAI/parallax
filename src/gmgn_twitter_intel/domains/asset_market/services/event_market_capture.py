@@ -120,6 +120,7 @@ def _capture_chain_token(
         liquidity_usd=_optional_decimal(quote.liquidity_usd),
         volume_24h_usd=_optional_decimal(quote.volume_24h_usd),
         market_cap_usd=_optional_decimal(quote.market_cap_usd),
+        holders=_int_or_none(quote.holders),
         created_at_ms=created_at_ms,
         raw_payload_json=dict(quote.raw),
     )
@@ -177,6 +178,7 @@ def _capture_cex_symbol(
         liquidity_usd=None,
         volume_24h_usd=_optional_decimal(ticker.volume_24h),
         market_cap_usd=None,
+        holders=None,
         created_at_ms=created_at_ms,
         raw_payload_json=dict(ticker.raw),
     )
@@ -284,6 +286,7 @@ def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick | None:
         liquidity_usd=_optional_decimal(row.get("liquidity_usd")),
         volume_24h_usd=_optional_decimal(row.get("volume_24h_usd")),
         market_cap_usd=_optional_decimal(row.get("market_cap_usd")),
+        holders=_int_or_none(row.get("holders")),
         created_at_ms=int(row["created_at_ms"]),
         raw_payload_json=dict(row.get("raw_payload_json") or {}),
     )

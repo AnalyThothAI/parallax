@@ -21,7 +21,11 @@ TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS = frozenset(
     }
 )
 TOKEN_FACTOR_SNAPSHOT_PROVENANCE_KEYS = frozenset({"source_event_ids", "computed_at_ms"})
-TOKEN_FACTOR_SNAPSHOT_MARKET_KEYS = frozenset({"event_anchor", "decision_latest", "readiness"})
+TOKEN_FACTOR_SNAPSHOT_MARKET_REQUIRED_KEYS = frozenset({"event_anchor", "decision_latest", "readiness"})
+TOKEN_FACTOR_SNAPSHOT_MARKET_OPTIONAL_KEYS = frozenset({"capture_method", "capture_reason", "tick_lag_ms"})
+TOKEN_FACTOR_SNAPSHOT_MARKET_KEYS = (
+    TOKEN_FACTOR_SNAPSHOT_MARKET_REQUIRED_KEYS | TOKEN_FACTOR_SNAPSHOT_MARKET_OPTIONAL_KEYS
+)
 TOKEN_FACTOR_SNAPSHOT_MARKET_READINESS_KEYS = frozenset(
     {"anchor_status", "latest_status", "dex_floor_status", "missing_fields", "stale_fields"}
 )
@@ -58,8 +62,9 @@ def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snaps
         _required_dict(value.get(key), field_name=f"{field_name}.{key}")
 
     market = _required_dict(value.get("market"), field_name=f"{field_name}.market")
-    _require_exact_keys(
+    _require_allowed_keys(
         market,
+        required=TOKEN_FACTOR_SNAPSHOT_MARKET_REQUIRED_KEYS,
         allowed=TOKEN_FACTOR_SNAPSHOT_MARKET_KEYS,
         field_name=f"{field_name}.market",
     )
@@ -138,6 +143,22 @@ def _required_dict(value: Any, *, field_name: str) -> dict[str, Any]:
 def _require_exact_keys(value: dict[str, Any], *, allowed: frozenset[str], field_name: str) -> None:
     keys = set(value)
     missing = sorted(allowed - keys)
+    if missing:
+        raise ValueError(f"{field_name}.{missing[0]} is required")
+    extra = sorted(keys - allowed)
+    if extra:
+        raise ValueError(f"{field_name}.{extra[0]} is not allowed")
+
+
+def _require_allowed_keys(
+    value: dict[str, Any],
+    *,
+    required: frozenset[str],
+    allowed: frozenset[str],
+    field_name: str,
+) -> None:
+    keys = set(value)
+    missing = sorted(required - keys)
     if missing:
         raise ValueError(f"{field_name}.{missing[0]} is required")
     extra = sorted(keys - allowed)

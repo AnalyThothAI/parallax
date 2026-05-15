@@ -85,6 +85,7 @@ class TokenRadarSourceQuery:
               event_price_capture.tick_id AS event_price_capture_id,
               event_price_capture.capture_method AS event_price_capture_method,
               event_price_capture.capture_reason AS event_price_capture_reason,
+              event_price_capture.tick_lag_ms AS event_price_tick_lag_ms,
               event_price_tick.source_provider AS event_price_provider,
               event_price_tick.source_tier AS event_price_source_tier,
               event_price_tick.pricefeed_id AS event_price_pricefeed_id,
@@ -98,7 +99,7 @@ class TokenRadarSourceQuery:
               event_price_tick.liquidity_usd AS event_price_liquidity_usd,
               event_price_tick.volume_24h_usd AS event_price_volume_24h_usd,
               NULL::numeric AS event_price_open_interest_usd,
-              NULL::bigint AS event_price_holders,
+              event_price_tick.holders AS event_price_holders,
               latest_price_tick.tick_id AS latest_price_tick_id,
               latest_price_tick.source_provider AS latest_price_provider,
               latest_price_tick.source_tier AS latest_price_source_tier,
@@ -113,7 +114,7 @@ class TokenRadarSourceQuery:
               latest_price_tick.liquidity_usd AS latest_price_liquidity_usd,
               latest_price_tick.volume_24h_usd AS latest_price_volume_24h_usd,
               NULL::numeric AS latest_price_open_interest_usd,
-              NULL::bigint AS latest_price_holders,
+              latest_price_tick.holders AS latest_price_holders,
               NULL::bigint AS before_event_price_observed_at_ms,
               NULL::numeric AS before_event_price_usd,
               NULL::numeric AS before_event_price_quote,
@@ -200,6 +201,7 @@ class TokenRadarSourceQuery:
                 enriched_events.tick_id,
                 enriched_events.capture_method,
                 enriched_events.capture_reason,
+                enriched_events.tick_lag_ms,
                 enriched_events.created_at_ms
               FROM enriched_events
               WHERE enriched_events.event_id = events.event_id

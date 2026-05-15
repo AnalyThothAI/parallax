@@ -46,6 +46,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
                 market_cap_usd=1234.5,
                 liquidity_usd=678.9,
                 volume_24h_usd=10.11,
+                holders=222,
             )
         ],
     )
@@ -105,6 +106,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     assert dex_tick.market_cap_usd == Decimal("1234.5")
     assert dex_tick.liquidity_usd == Decimal("678.9")
     assert dex_tick.volume_24h_usd == Decimal("10.11")
+    assert dex_tick.holders == 222
     assert dex_tick.raw_payload_json == {"provider": "dex"}
 
     assert cex_tick.tick_id == market_tick_id(

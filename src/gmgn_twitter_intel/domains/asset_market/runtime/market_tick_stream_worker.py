@@ -247,6 +247,7 @@ def _tick_from_update(
         liquidity_usd=_decimal_or_none(update.liquidity_usd),
         volume_24h_usd=_decimal_or_none(update.volume_24h_usd),
         market_cap_usd=_decimal_or_none(update.market_cap_usd),
+        holders=_int_or_none(update.holders),
         created_at_ms=received_at_ms,
         raw_payload_json=update.raw or {},
     )
@@ -269,6 +270,15 @@ def _decimal_or_none(value: Any) -> Decimal | None:
     if not result.is_finite():
         return None
     return result
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _target_key(chain_id: str, address: str) -> tuple[str, str]:

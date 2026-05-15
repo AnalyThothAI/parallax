@@ -28,6 +28,7 @@ class MarketTick:
     liquidity_usd: Decimal | None
     volume_24h_usd: Decimal | None
     market_cap_usd: Decimal | None
+    holders: int | None
     created_at_ms: int
     raw_payload_json: dict[str, Any] = field(default_factory=dict)
 

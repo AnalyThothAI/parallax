@@ -67,6 +67,7 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
     assert conn.commits == 0
     assert len(conn.params) == 2
     assert conn.params[0]["tick_id"] == tick.tick_id
+    assert conn.params[0]["holders"] == 1234
     assert conn.params[0]["raw_payload_json"].obj == {"pair": "abc"}
 
 
@@ -192,6 +193,7 @@ def _tick(*, tick_id: str | None = None, observed_at_ms: int = 1_700_000_000_000
         liquidity_usd=Decimal("1000"),
         volume_24h_usd=Decimal("5000"),
         market_cap_usd=Decimal("100000"),
+        holders=1234,
         created_at_ms=1_700_000_000_200,
         raw_payload_json={"pair": "abc"},
     )

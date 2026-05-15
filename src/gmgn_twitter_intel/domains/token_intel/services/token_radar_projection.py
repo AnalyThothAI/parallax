@@ -634,6 +634,9 @@ def _market_context(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms
         return _market_context_dict(
             event_anchor=None,
             decision_latest=None,
+            capture_method=None,
+            capture_reason=None,
+            tick_lag_ms=None,
             readiness=_market_readiness(
                 event_anchor=None,
                 decision_latest=None,
@@ -645,6 +648,9 @@ def _market_context(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms
         return _market_context_dict(
             event_anchor=None,
             decision_latest=None,
+            capture_method=None,
+            capture_reason=None,
+            tick_lag_ms=None,
             readiness=_market_readiness(
                 event_anchor=None,
                 decision_latest=None,
@@ -670,6 +676,9 @@ def _market_context(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms
     return _market_context_dict(
         event_anchor=event_anchor,
         decision_latest=decision_latest,
+        capture_method=_optional_str(social_start.get("event_price_capture_method")),
+        capture_reason=_optional_str(social_start.get("event_price_capture_reason")),
+        tick_lag_ms=_int_or_none(social_start.get("event_price_tick_lag_ms")),
         readiness=_market_readiness(
             event_anchor=event_anchor,
             decision_latest=decision_latest,
@@ -683,11 +692,17 @@ def _market_context_dict(
     *,
     event_anchor: dict[str, Any] | None,
     decision_latest: dict[str, Any] | None,
+    capture_method: str | None,
+    capture_reason: str | None,
+    tick_lag_ms: int | None,
     readiness: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "event_anchor": event_anchor,
         "decision_latest": decision_latest,
+        "capture_method": capture_method,
+        "capture_reason": capture_reason,
+        "tick_lag_ms": tick_lag_ms,
         "readiness": readiness,
     }
 
@@ -930,6 +945,13 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:

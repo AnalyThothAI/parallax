@@ -330,6 +330,7 @@ def _tick_from_dex_quote(
         liquidity_usd=_optional_decimal(quote.liquidity_usd),
         volume_24h_usd=_optional_decimal(quote.volume_24h_usd),
         market_cap_usd=_optional_decimal(quote.market_cap_usd),
+        holders=_int_or_none(quote.holders),
         created_at_ms=received_at_ms,
         raw_payload_json=dict(quote.raw),
     )
@@ -367,6 +368,7 @@ def _tick_from_cex_ticker(
         liquidity_usd=None,
         volume_24h_usd=_optional_decimal(ticker.volume_24h),
         market_cap_usd=None,
+        holders=None,
         created_at_ms=received_at_ms,
         raw_payload_json=dict(ticker.raw),
     )
