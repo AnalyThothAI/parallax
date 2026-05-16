@@ -64,7 +64,7 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
     def test_direct_client_subscribes_all_configured_chains_in_one_frame(self):
         class WebSocket:
             def __init__(self):
-                self.send = AsyncMock()
+                self.send_str = AsyncMock()
 
         websocket = WebSocket()
         client = DirectGmgnWebSocketClient(
@@ -78,17 +78,77 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
 
         asyncio.run(client._subscribe_all(websocket))
 
-        websocket.send.assert_awaited_once()
-        sent = json.loads(websocket.send.await_args.args[0])
+        websocket.send_str.assert_awaited_once()
+        sent = json.loads(websocket.send_str.await_args.args[0])
         self.assertEqual(sent["channel"], "twitter_monitor_basic")
         self.assertEqual(
             sent["data"],
             [{"chain": "sol"}, {"chain": "eth"}, {"chain": "base"}, {"chain": "bsc"}],
         )
 
+    def test_direct_client_uses_browser_impersonated_curl_ws_transport(self):
+        import asyncio
+
+        class StopAfterFirstFrame(RuntimeError):
+            pass
+
+        class FakeWebSocket:
+            def __init__(self):
+                self.sent_messages = []
+                self.close = AsyncMock()
+
+            async def send_str(self, message):
+                self.sent_messages.append(json.loads(message))
+
+            async def recv_str(self):
+                return '{"channel":"ack"}'
+
+        class FakeSession:
+            def __init__(self, websocket):
+                self.websocket = websocket
+                self.connect_url = None
+                self.connect_kwargs = None
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return False
+
+            async def ws_connect(self, url, **kwargs):
+                self.connect_url = url
+                self.connect_kwargs = kwargs
+                return self.websocket
+
+        websocket = FakeWebSocket()
+        session = FakeSession(websocket)
+
+        def on_frame(frame):
+            self.assertEqual(frame, '{"channel":"ack"}')
+            raise StopAfterFirstFrame
+
+        client = DirectGmgnWebSocketClient(
+            app_version="20260429-12894-ccec416",
+            channels=["twitter_monitor_basic"],
+            chains=["sol"],
+            on_frame=on_frame,
+            session_factory=lambda: session,
+        )
+
+        with self.assertRaises(StopAfterFirstFrame):
+            asyncio.run(client._run_once())
+
+        self.assertIsNotNone(session.connect_url)
+        self.assertIn("client_id=gmgn_web_20260429-12894-ccec416", session.connect_url)
+        self.assertEqual(session.connect_kwargs["impersonate"], "chrome")
+        self.assertEqual(session.connect_kwargs["headers"]["Origin"], "https://gmgn.ai")
+        self.assertIn("Chrome/136.0.0.0", session.connect_kwargs["headers"]["User-Agent"])
+        self.assertEqual(websocket.sent_messages[0]["action"], "subscribe")
+        websocket.close.assert_awaited_once()
+
     def test_direct_client_times_out_silent_upstream_connections(self):
         class SilentWebSocket:
-            async def recv(self):
+            async def recv_str(self):
                 import asyncio
 
                 await asyncio.sleep(60)
@@ -113,7 +173,7 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
             pass
 
         class HotWebSocket:
-            async def recv(self):
+            async def recv_str(self):
                 return "{}"
 
         async def run_probe():

@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urlencode
 
-import websockets
+from curl_cffi import requests as curl_requests
 from loguru import logger
 
 GMGN_WS_ENDPOINT = "wss://gmgn.ai/ws"
@@ -99,6 +99,7 @@ class DirectGmgnWebSocketClient:
         heartbeat_interval: float = 25,
         idle_timeout: float = 90,
         user_agent: str = DEFAULT_USER_AGENT,
+        session_factory: Callable[[], Any] | None = None,
     ):
         self.app_version = app_version
         self.channels = channels
@@ -109,6 +110,7 @@ class DirectGmgnWebSocketClient:
         self.heartbeat_interval = heartbeat_interval
         self.idle_timeout = idle_timeout
         self.user_agent = user_agent
+        self._session_factory = session_factory or curl_requests.AsyncSession
         self.connection_state = "disconnected"
         self.last_state_change_at_ms = _now_ms()
 
@@ -140,35 +142,41 @@ class DirectGmgnWebSocketClient:
             self.app_version,
             reconnect=1 if reconnect_count else 0,
         )
-        headers = {"User-Agent": self.user_agent}
+        headers = {
+            "Origin": "https://gmgn.ai",
+            "User-Agent": self.user_agent,
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        }
         connect_kwargs = {
-            "origin": "https://gmgn.ai",
-            "additional_headers": headers,
-            "ping_interval": 20,
-            "ping_timeout": 20,
-            "open_timeout": 15,
+            "headers": headers,
+            "timeout": 15,
+            "impersonate": "chrome",
             "proxy": self.proxy,
         }
 
         self._set_connection_state("connecting")
-        async with websockets.connect(ws_url, **connect_kwargs) as websocket:
+        async with self._session_factory() as session:
+            websocket = await session.ws_connect(ws_url, **connect_kwargs)
             self._set_connection_state("authenticating")
             logger.success(f"GMGN 直连 WS 已连接，匿名订阅频道: {', '.join(self.channels)}")
-            await self._subscribe_all(websocket)
-            self._set_connection_state("subscribed")
-            heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
             try:
-                await self._receive_frames(websocket)
+                await self._subscribe_all(websocket)
+                self._set_connection_state("subscribed")
+                heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
+                try:
+                    await self._receive_frames(websocket)
+                finally:
+                    heartbeat_task.cancel()
+                    await asyncio.gather(heartbeat_task, return_exceptions=True)
             finally:
-                heartbeat_task.cancel()
-                await asyncio.gather(heartbeat_task, return_exceptions=True)
+                await websocket.close()
                 if self.connection_state != "failed":
                     self._set_connection_state("disconnected")
 
     async def _receive_frames(self, websocket) -> None:
         while True:
             try:
-                frame = await asyncio.wait_for(websocket.recv(), timeout=self.idle_timeout)
+                frame = await asyncio.wait_for(websocket.recv_str(), timeout=self.idle_timeout)
             except TimeoutError as exc:
                 raise UpstreamIdleTimeoutError(f"no upstream frame received for {self.idle_timeout:g}s") from exc
             self._set_connection_state("streaming")
@@ -181,14 +189,14 @@ class DirectGmgnWebSocketClient:
         data = [{"chain": chain} for chain in self.chains]
         for channel in self.channels:
             message = build_subscribe_message(channel, data)
-            await websocket.send(json.dumps(message, ensure_ascii=False, separators=(",", ":")))
+            await websocket.send_str(json.dumps(message, ensure_ascii=False, separators=(",", ":")))
             logger.info(f"📡 已订阅 GMGN 匿名频道: {channel} chains={','.join(self.chains)}")
 
     async def _heartbeat_loop(self, websocket) -> None:
         while True:
             await asyncio.sleep(self.heartbeat_interval)
             message = build_heartbeat_message()
-            await websocket.send(json.dumps(message, separators=(",", ":")))
+            await websocket.send_str(json.dumps(message, separators=(",", ":")))
 
     def _set_connection_state(self, state: str) -> None:
         if state not in WS_CONNECTION_STATES:
