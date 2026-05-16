@@ -38,7 +38,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     StageStatus,
 )
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
+    InstructorSafetyNet,
+    SafetyNetExhausted,
+)
 from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
@@ -283,6 +286,7 @@ class OpenAIAgentsPulseDecisionClient:
             "safety_net_used": False,
             "safety_net_retries": 0,
             "parse_mode": "strict",
+            "usage": {},
         }
         try:
             if self._safety_net is not None:
@@ -298,7 +302,6 @@ class OpenAIAgentsPulseDecisionClient:
                     ),
                 )
                 raw_output = final_output
-                usage: dict[str, Any] = {}  # safety_net path loses SDK usage; PR 7 OTel will recover
             else:
                 # Legacy path (tests pass runner=FakeRunner()).
                 result = await self._llm_gateway.run_with_limits(
@@ -313,17 +316,37 @@ class OpenAIAgentsPulseDecisionClient:
                     ),
                 )
                 raw_output = result.final_output
-                usage = _extract_usage(result)
+                audit_extra = {**audit_extra, "usage": _extract_usage(result)}
             output = (
                 raw_output
                 if isinstance(raw_output, output_type)
                 else output_type.model_validate(raw_output)
             )
+        except SafetyNetExhausted as exhausted:
+            finished = int(time.time() * 1000)
+            audit_extra = exhausted.audit_extra
+            trace_metadata_failed = {**base_trace_metadata, **audit_extra}
+            return StageRunAudit(
+                stage=stage,
+                route=route,
+                attempt_index=0,
+                input_json=input_json,
+                prompt_text=prompt,
+                response_json=None,
+                trace_metadata_json=trace_metadata_failed,
+                usage_json=audit_extra.get("usage") or {},
+                latency_ms=max(0, finished - started),
+                started_at_ms=started,
+                finished_at_ms=finished,
+                status="failed",
+                error=f"{type(exhausted.original).__name__}: {exhausted.original}"[:1000],
+                safety_net_used=True,
+                safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
+                parse_mode=str(audit_extra.get("parse_mode") or "instructor_failed"),
+            )
         except Exception as exc:
             finished = int(time.time() * 1000)
             status: StageStatus = "timeout" if isinstance(exc, TimeoutError) else "failed"
-            # PR 1: safety_net audit lives in trace_metadata_json (jsonb) until PR 2
-            # promotes the fields to dedicated columns.
             trace_metadata_failed = {**base_trace_metadata, **audit_extra}
             return StageRunAudit(
                 stage=stage,
@@ -333,12 +356,15 @@ class OpenAIAgentsPulseDecisionClient:
                 prompt_text=prompt,
                 response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
                 trace_metadata_json=trace_metadata_failed,
-                usage_json=_extract_usage(locals().get("result")) if "result" in locals() else {},
+                usage_json=audit_extra.get("usage") or {},
                 latency_ms=max(0, finished - started),
                 started_at_ms=started,
                 finished_at_ms=finished,
                 status=status,
                 error=f"{type(exc).__name__}: {exc}"[:1000],
+                safety_net_used=bool(audit_extra.get("safety_net_used")),
+                safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
+                parse_mode=str(audit_extra.get("parse_mode") or "strict"),
             )
         finished = int(time.time() * 1000)
         trace_metadata_ok = {**base_trace_metadata, **audit_extra}
@@ -350,12 +376,15 @@ class OpenAIAgentsPulseDecisionClient:
             prompt_text=prompt,
             response_json=output.model_dump(mode="json"),
             trace_metadata_json=trace_metadata_ok,
-            usage_json=usage,
+            usage_json=audit_extra.get("usage") or {},
             latency_ms=max(0, finished - started),
             started_at_ms=started,
             finished_at_ms=finished,
             status="ok",
             error=None,
+            safety_net_used=bool(audit_extra.get("safety_net_used")),
+            safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
+            parse_mode=str(audit_extra.get("parse_mode") or "strict"),
         )
 
     def _request_audit(

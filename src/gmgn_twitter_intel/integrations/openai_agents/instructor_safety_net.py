@@ -1,8 +1,11 @@
 """Instructor-backed safety net for openai-agents-python SDK call failures.
 
 Design:
-- Does NOT participate in the success path. If Runner.run returns, we return.
-- Only triggers on ModelBehaviorError or Pydantic ValidationError.
+- Does NOT participate in the success path. If Runner.run returns, we return
+  the SDK output and forward the SDK's usage payload through audit_extra.
+- Triggers on ModelBehaviorError or Pydantic ValidationError, runs an Instructor
+  reask up to max_retries times; if all retries fail it raises SafetyNetExhausted
+  carrying audit_extra so callers can persist a truthful audit row.
 - Uses an independent AsyncOpenAI instance so instructor.from_openai patching
   cannot affect the SDK's main client.
 """
@@ -10,7 +13,7 @@ Design:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import instructor
 from agents import Agent, Runner
@@ -22,12 +25,78 @@ from pydantic import BaseModel, ValidationError
 _logger = logging.getLogger(__name__)
 
 
+def _json_safe(value: Any, depth: int = 0) -> Any:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if depth > 6:
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v, depth + 1) for k, v in value.items() if v is not None}
+    if isinstance(value, list | tuple):
+        return [_json_safe(item, depth + 1) for item in value]
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        data = dump(mode="json")
+        if isinstance(data, dict):
+            return _json_safe(data, depth + 1)
+    return str(value)
+
+
+def _extract_sdk_usage(result: Any) -> dict[str, Any]:
+    """Pull a JSON-safe usage dict out of an Agents SDK RunResult, if any."""
+    if result is None:
+        return {}
+    candidates: list[Any] = [
+        getattr(result, "usage", None),
+        getattr(getattr(result, "context_wrapper", None), "usage", None),
+    ]
+    for attr in ("raw_response", "response", "final_response"):
+        response = getattr(result, attr, None)
+        if response is not None:
+            candidates.append(getattr(response, "usage", None))
+    responses = getattr(result, "raw_responses", None) or getattr(result, "responses", None)
+    if isinstance(responses, list | tuple):
+        candidates.extend(getattr(response, "usage", None) for response in responses)
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        data = _json_safe(candidate)
+        if isinstance(data, dict) and data:
+            return cast(dict[str, Any], data)
+    return {}
+
+
+def _extract_instructor_usage(obj: Any) -> dict[str, Any]:
+    """Instructor v1.15 attaches the raw OpenAI response on _raw_response."""
+    raw = getattr(obj, "_raw_response", None)
+    if raw is None:
+        return {}
+    return _extract_sdk_usage(raw)
+
+
+class SafetyNetExhausted(Exception):
+    """Raised when SafetyNet exhausted its Instructor reask retries.
+
+    Carries audit_extra so callers can persist a truthful StageRunAudit row
+    (parse_mode='instructor_failed', safety_net_used=True, retries=N)
+    before re-raising the underlying ModelBehaviorError / ValidationError.
+    """
+
+    def __init__(self, message: str, *, audit_extra: dict[str, Any], original: BaseException) -> None:
+        super().__init__(message)
+        self.audit_extra = dict(audit_extra)
+        self.original = original
+
+
 class InstructorSafetyNet:
     """Wraps Runner.run with an Instructor-based reask fallback.
 
-    Returned tuple is (final_output, audit_extra). audit_extra always contains
-    safety_net_used / safety_net_retries / parse_mode fields suitable to merge
-    into StageRunAudit.
+    ``run_with_safety_net`` returns ``(final_output, audit_extra)``. ``audit_extra``
+    always contains:
+      - ``safety_net_used`` (bool)
+      - ``safety_net_retries`` (int)
+      - ``parse_mode`` (str: 'strict' | 'instructor_reask' | 'instructor_failed')
+      - ``usage`` (dict, possibly empty)
     """
 
     def __init__(
@@ -75,11 +144,6 @@ class InstructorSafetyNet:
         run_config: RunConfig | None = None,
         pydantic_output_type: type[BaseModel] | None = None,
     ) -> tuple[Any, dict[str, Any]]:
-        """Primary path is SDK Runner.run. Fallback is Instructor reask.
-
-        ``pydantic_output_type`` is the underlying Pydantic class the agent expects.
-        Pass it explicitly because Agent.output_type may be wrapped (e.g. _JsonOutputSchema).
-        """
         try:
             result = await Runner.run(
                 agent,
@@ -91,18 +155,10 @@ class InstructorSafetyNet:
                 "safety_net_used": False,
                 "safety_net_retries": 0,
                 "parse_mode": "strict",
+                "usage": _extract_sdk_usage(result),
             }
         except (ModelBehaviorError, ValidationError) as exc:
-            if not self._enabled:
-                raise
-            if pydantic_output_type is None:
-                # Safety net needs a Pydantic class for response_model. If callers wrap
-                # output_type opaquely (e.g. _JsonOutputSchema), they must pass the bare class.
-                _logger.warning(
-                    "agent_output_invalid_no_pydantic_class agent=%s err=%s",
-                    getattr(agent, "name", "?"),
-                    str(exc)[:200],
-                )
+            if not self._enabled or pydantic_output_type is None:
                 raise
             _logger.warning(
                 "agent_output_invalid_falling_back_to_instructor agent=%s err=%s",
@@ -111,16 +167,29 @@ class InstructorSafetyNet:
             )
             messages = self._rebuild_messages(agent, input_payload, str(exc))
             inst = self._ensure_instructor()
-            obj = await inst.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                response_model=pydantic_output_type,
-                max_retries=self._max_retries,
-            )
+            try:
+                obj = await inst.chat.completions.create(
+                    model=self._model,
+                    messages=messages,
+                    response_model=pydantic_output_type,
+                    max_retries=self._max_retries,
+                )
+            except Exception as reask_exc:
+                raise SafetyNetExhausted(
+                    f"safety_net exhausted after {self._max_retries} retries: {reask_exc}",
+                    audit_extra={
+                        "safety_net_used": True,
+                        "safety_net_retries": self._max_retries,
+                        "parse_mode": "instructor_failed",
+                        "usage": {},
+                    },
+                    original=reask_exc,
+                ) from reask_exc
             return obj, {
                 "safety_net_used": True,
                 "safety_net_retries": self._max_retries,
                 "parse_mode": "instructor_reask",
+                "usage": _extract_instructor_usage(obj),
             }
 
     @staticmethod
@@ -149,4 +218,4 @@ class InstructorSafetyNet:
         ]
 
 
-__all__ = ["InstructorSafetyNet"]
+__all__ = ["InstructorSafetyNet", "SafetyNetExhausted"]
