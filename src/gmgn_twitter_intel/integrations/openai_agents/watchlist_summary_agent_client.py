@@ -260,6 +260,7 @@ def _model_settings() -> ModelSettings:
             ),
         ),
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        include_usage=True,
     )
 
 

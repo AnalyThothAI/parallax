@@ -193,6 +193,7 @@ def _model_settings() -> ModelSettings:
         ),
         # qwen3.6 reasoning variant - disable thinking to keep grammar enforced.
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        include_usage=True,
     )
 
 
