@@ -11,22 +11,20 @@ CORE_TABLES = (
     "raw_frames",
     "events",
     "event_entities",
-    "assets",
-    "asset_aliases",
-    "asset_venues",
-    "asset_market_snapshots",
+    "registry_assets",
+    "asset_identity_evidence",
+    "asset_identity_current",
+    "market_ticks",
+    "enriched_events",
     "token_evidence",
     "token_intents",
     "token_intent_evidence",
     "token_intent_resolutions",
-    "token_intent_resolution_candidates",
-    "market_provider_observations",
     "token_radar_rows",
-    "asset_signal_snapshots",
-    "asset_signal_outcomes",
     "enrichment_jobs",
     "social_event_extractions",
     "harness_snapshots",
+    "harness_outcomes",
     "notifications",
     "token_score_evaluations",
     "watchlist_handle_summary_jobs",
@@ -314,7 +312,7 @@ class ProjectionValidationAudit:
         sample_size = max(0, int(sample))
         radar_rows = self.conn.execute(
             """
-            SELECT row_id, intent_id, asset_id
+            SELECT row_id, intent_id, target_type, target_id
             FROM token_radar_rows
             ORDER BY computed_at_ms DESC, rank ASC
             LIMIT %s
@@ -329,10 +327,10 @@ class ProjectionValidationAudit:
             ).fetchone()
             if intent is None:
                 missing_refs += 1
-            if row.get("asset_id"):
+            if row.get("target_type") == "Asset" and row.get("target_id"):
                 asset = self.conn.execute(
-                    "SELECT 1 AS ok FROM assets WHERE asset_id = %s",
-                    (row["asset_id"],),
+                    "SELECT 1 AS ok FROM registry_assets WHERE asset_id = %s",
+                    (row["target_id"],),
                 ).fetchone()
                 if asset is None:
                     missing_refs += 1

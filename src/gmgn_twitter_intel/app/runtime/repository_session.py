@@ -21,7 +21,6 @@ from gmgn_twitter_intel.domains.notifications.repositories.notification_reposito
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.asset_signal_repository import AssetSignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_factor_evaluation_repository import (
@@ -58,7 +57,6 @@ class RepositorySession:
     token_radar: TokenRadarRepository
     token_factor_evaluations: TokenFactorEvaluationRepository
     token_targets: TokenTargetRepository
-    asset_signals: AssetSignalRepository
     enrichment: EnrichmentRepository
     harness: HarnessRepository
     notifications: NotificationRepository
@@ -90,7 +88,6 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_radar=TokenRadarRepository(conn),
         token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),
-        asset_signals=AssetSignalRepository(conn),
         enrichment=EnrichmentRepository(conn),
         harness=HarnessRepository(conn),
         notifications=NotificationRepository(conn),

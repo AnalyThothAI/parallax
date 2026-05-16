@@ -30,19 +30,11 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "projection_offsets" in names
     assert "projection_runs" in names
     assert "projection_dirty_ranges" in names
-    assert "assets" in names
-    assert "asset_aliases" in names
-    assert "asset_venues" in names
-    assert "asset_market_snapshots" in names
     assert "token_evidence" in names
     assert "token_intents" in names
     assert "token_intent_evidence" in names
     assert "token_intent_resolutions" in names
-    assert "token_intent_resolution_candidates" in names
-    assert "market_provider_observations" in names
     assert "token_radar_rows" in names
-    assert "asset_signal_snapshots" in names
-    assert "asset_signal_outcomes" in names
     for legacy_table in (
         "asset_mentions",
         "asset_attributions",
@@ -52,6 +44,16 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
         "token_market_snapshots",
         "token_market_observations",
         "token_signal_snapshots",
+        "assets",
+        "asset_aliases",
+        "asset_venues",
+        "asset_market_snapshots",
+        "asset_signal_snapshots",
+        "asset_signal_outcomes",
+        "token_intent_resolution_candidates",
+        "market_provider_observations",
+        "current_market_field_facts",
+        "token_market_price_baselines",
     ):
         assert legacy_table not in names
 

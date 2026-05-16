@@ -31,15 +31,15 @@ class PendingAssetProfileQuery:
             ),
             radar_assets AS (
               SELECT
-                COALESCE(token_radar_rows.asset_id, token_radar_rows.target_id) AS asset_id,
+                token_radar_rows.target_id AS asset_id,
                 MIN(token_radar_rows.rank) AS best_radar_rank,
                 MAX(token_radar_rows.computed_at_ms) AS latest_radar_computed_at_ms
               FROM token_radar_rows
               JOIN latest_radar
                 ON latest_radar.computed_at_ms = token_radar_rows.computed_at_ms
               WHERE token_radar_rows.target_type = 'Asset'
-                AND COALESCE(token_radar_rows.asset_id, token_radar_rows.target_id) IS NOT NULL
-              GROUP BY COALESCE(token_radar_rows.asset_id, token_radar_rows.target_id)
+                AND token_radar_rows.target_id IS NOT NULL
+              GROUP BY token_radar_rows.target_id
             ),
             due_assets AS (
               SELECT
