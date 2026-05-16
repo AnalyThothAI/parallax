@@ -20,10 +20,9 @@ import {
   ArrowUp,
   ArrowUpRight,
   ChevronsUpDown,
-  ExternalLink,
   Minus,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
 
 type TokenRadarTableProps = {
   items: TokenFlowItem[];
@@ -33,7 +32,6 @@ type TokenRadarTableProps = {
   isLoading: boolean;
   error?: Error | null;
   onSelect: (item: TokenFlowItem) => void;
-  onOpenSearch: (item: TokenFlowItem) => void;
   onScopeChange: (scope: ScopeKey) => void;
   onWindowChange: (window: WindowKey) => void;
 };
@@ -47,14 +45,16 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     isLoading,
     error,
     onSelect,
-    onOpenSearch,
     onScopeChange,
     onWindowChange,
   } = props;
-  const resultLabel = `${items.length} live ${items.length === 1 ? "case" : "cases"}`;
+  const showLoading = !error && (isLoading || items.length === 0);
+  const resultLabel = showLoading
+    ? "loading"
+    : `${items.length} live ${items.length === 1 ? "case" : "cases"}`;
   const columns = useMemo<ColumnDef<TokenFlowItem>[]>(
-    () => tokenRadarColumns({ onOpenSearch, onSelect, selectedKey }),
-    [onOpenSearch, onSelect, selectedKey],
+    () => tokenRadarColumns({ onSelect, selectedKey }),
+    [onSelect, selectedKey],
   );
   const [sorting, setSorting] = useState<SortingState>([{ id: "score", desc: true }]);
   const table = useReactTable({
@@ -86,12 +86,9 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
       </header>
 
       <div className="token-radar-table">
-        {isLoading ? <RadarSkeleton /> : null}
+        {showLoading ? <RadarSkeleton /> : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
-        {!isLoading && !error && items.length === 0 ? (
-          <RemoteState.Empty title="当前窗口暂无可交易 token 热度" />
-        ) : null}
-        {!isLoading && !error && items.length ? (
+        {!showLoading && !error && items.length ? (
           <div className="radar-data-table">
             <div>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -123,17 +120,23 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
                 const key = tokenKey(row.original);
                 const tokenCase = buildTokenRadarCompactCase(row.original);
                 return (
-                  <article
-                    aria-label={`Token Radar item ${tokenCase.label}`}
-                    className={clsx("token-radar-row", selectedKey === key && "selected")}
-                    key={row.id}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <div className={`token-radar-cell ${cell.column.id}`} key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </div>
-                    ))}
-                  </article>
+                  <Fragment key={row.id}>
+                    {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+                    <article
+                      aria-label={`Token Radar item ${tokenCase.label}`}
+                      className={clsx("token-radar-row", selectedKey === key && "selected")}
+                      tabIndex={0}
+                      onClick={() => onSelect(row.original)}
+                      onKeyDown={(event) => handleRowKeyDown(event, row.original, onSelect)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <div className={`token-radar-cell ${cell.column.id}`} key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      ))}
+                    </article>
+                    {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+                  </Fragment>
                 );
               })}
             </div>
@@ -145,13 +148,11 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
 }
 
 type TokenRadarColumnDeps = {
-  onOpenSearch: (item: TokenFlowItem) => void;
   onSelect: (item: TokenFlowItem) => void;
   selectedKey: string | null;
 };
 
 function tokenRadarColumns({
-  onOpenSearch,
   onSelect,
   selectedKey,
 }: TokenRadarColumnDeps): ColumnDef<TokenFlowItem>[] {
@@ -203,9 +204,21 @@ function tokenRadarColumns({
       header: "Listed",
       accessorFn: (item) =>
         item.radar?.listed_at_ms ?? item.radar?.computed_at_ms ?? item.flow.window_end_ms ?? 0,
-      cell: ({ row }) => <ListedActionCell item={row.original} onOpenSearch={onOpenSearch} />,
+      cell: ({ row }) => <ListedCell item={row.original} />,
     },
   ];
+}
+
+function handleRowKeyDown(
+  event: KeyboardEvent<HTMLElement>,
+  item: TokenFlowItem,
+  onSelect: (item: TokenFlowItem) => void,
+) {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+  event.preventDefault();
+  onSelect(item);
 }
 
 function TokenCaseCell({
@@ -231,7 +244,10 @@ function TokenCaseCell({
             aria-label={`Open token item ${tokenCase.label}`}
             className={clsx("radar-case-button", selected && "selected")}
             type="button"
-            onClick={() => onSelect(item)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(item);
+            }}
           >
             <strong>{tokenCase.label}</strong>
           </button>
@@ -244,6 +260,7 @@ function TokenCaseCell({
                   key={`${link.label}:${link.href}`}
                   rel="noreferrer"
                   target="_blank"
+                  onClick={(event) => event.stopPropagation()}
                 >
                   {link.label}
                 </a>
@@ -315,13 +332,7 @@ function ScoreCell({ item }: { item: TokenFlowItem }) {
   );
 }
 
-function ListedActionCell({
-  item,
-  onOpenSearch,
-}: {
-  item: TokenFlowItem;
-  onOpenSearch: (item: TokenFlowItem) => void;
-}) {
+function ListedCell({ item }: { item: TokenFlowItem }) {
   const tokenCase = buildTokenRadarCompactCase(item);
   return (
     <span className="radar-listed-action-cell" data-case-section="action">
@@ -329,18 +340,6 @@ function ListedActionCell({
         <b>{tokenCase.listed.value}</b>
         <em>{tokenCase.listed.detail}</em>
       </span>
-      <button
-        aria-label={`Open Search Intel for ${tokenCase.label}`}
-        className="row-drilldown-button"
-        title={tokenCase.searchTitle}
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpenSearch(item);
-        }}
-      >
-        <ExternalLink aria-hidden />
-      </button>
     </span>
   );
 }

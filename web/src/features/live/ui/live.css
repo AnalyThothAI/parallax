@@ -474,25 +474,6 @@
   gap: 5px;
 }
 
-.row-drilldown-button {
-  display: grid;
-  width: 26px;
-  height: 24px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid var(--opportunity-line);
-  border-radius: 4px;
-  color: var(--opportunity);
-  background: rgba(242, 165, 31, 0.07);
-  padding: 0;
-}
-
-.row-drilldown-button:hover {
-  color: var(--opportunity);
-  border-color: var(--opportunity-line);
-  background: var(--opportunity-soft);
-}
-
 .venue-link,
 .external-row {
   display: inline-flex;
@@ -1097,11 +1078,6 @@
     padding: 0 10px 10px 12px;
   }
 
-  .row-drilldown-button {
-    width: 100%;
-    min-height: 32px;
-  }
-
   .venue-link {
     width: 100%;
     min-height: 32px;
@@ -1282,12 +1258,15 @@
   border-radius: 0;
   color: var(--bone-2);
   background: rgba(14, 18, 15, 0.72);
+  cursor: pointer;
   padding: 7px 10px;
 }
 
 .radar-data-table .token-radar-row:hover,
+.radar-data-table .token-radar-row:focus-visible,
 .radar-data-table .token-radar-row.selected {
   border-color: var(--line-soft);
+  outline: 0;
   background: rgba(26, 32, 28, 0.9);
   box-shadow: inset 3px 0 0 var(--opportunity);
 }
@@ -1553,23 +1532,10 @@
 
 .radar-listed-action-cell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
   width: 100%;
   min-width: 0;
-}
-
-.radar-listed-action-cell .row-drilldown-button {
-  display: inline-flex;
-  width: 32px;
-  height: 32px;
-  border-radius: 5px;
-}
-
-.radar-listed-action-cell .row-drilldown-button svg {
-  width: 14px;
-  height: 14px;
 }
 
 @media (max-width: 767px) {

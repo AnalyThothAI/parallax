@@ -54,13 +54,6 @@ export function CockpitSideRail({
           label="Stocks"
           onClick={() => navigate(stocksPath())}
         />
-        <RailButton
-          active={Boolean(watchlistRouteMatch)}
-          index="3"
-          label="Watchlist"
-          value={watchlistRows.length}
-          onClick={() => navigate(watchlistPath())}
-        />
       </RailSection>
 
       <RailSection label="scope">

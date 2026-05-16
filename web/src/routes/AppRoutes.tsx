@@ -206,7 +206,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
       isAssetFlowLoading={isAssetFlowLoading}
       assetFlowError={assetFlowError}
       selectedTokenKey={null}
-      onOpenTokenSearch={selection.openTokenSearchPage}
       onSelectToken={selection.selectToken}
       scope={scope}
       windowKey={windowKey}

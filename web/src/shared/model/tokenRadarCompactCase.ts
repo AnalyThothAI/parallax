@@ -35,7 +35,6 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
       value: compactWhyNowTitle(item),
     },
     score: tokenCase.score,
-    searchTitle: tokenCase.actions.searchLabel,
     socialDetail: `关注源 ${compactNumber(item.flow.watched_mentions)} · 较前窗 ${signedCompactNumber(
       item.flow.mention_delta,
     )}`,

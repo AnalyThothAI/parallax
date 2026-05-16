@@ -1,6 +1,6 @@
 import { TokenRadarTable } from "@features/live/ui/TokenRadarTable";
 import type { TokenFlowItem } from "@lib/types";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,8 +24,9 @@ describe("TokenRadarTable rows", () => {
     const { container } = renderTokenRadarTable([mixedFreshnessToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
-    const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
-    expect(searchButton).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open Search Intel for $TROLL" }),
+    ).not.toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "官网" })).toHaveAttribute(
       "href",
       "https://troll.example",
@@ -64,6 +65,68 @@ describe("TokenRadarTable rows", () => {
     expect(market).not.toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("$0.104");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("keeps empty token radar data in loading unless the request errors", () => {
+    render(
+      <TokenRadarTable
+        error={null}
+        isLoading={false}
+        items={[]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("loading token radar")).toBeInTheDocument();
+    expect(screen.getByText("loading")).toBeInTheDocument();
+    expect(screen.queryByText("当前窗口暂无可交易 token 热度")).not.toBeInTheDocument();
+  });
+
+  it("shows token radar errors instead of the empty-data loading state", () => {
+    render(
+      <TokenRadarTable
+        error={new Error("boom")}
+        isLoading={true}
+        items={[]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("loading token radar")).not.toBeInTheDocument();
+    expect(screen.getByText("Token Radar 暂不可用 · boom")).toBeInTheDocument();
+  });
+
+  it("opens token detail from the whole row", () => {
+    const item = mixedFreshnessToken();
+    const onSelect = vi.fn();
+    render(
+      <TokenRadarTable
+        error={null}
+        isLoading={false}
+        items={[item]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onScopeChange={vi.fn()}
+        onSelect={onSelect}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("article", { name: "Token Radar item $TROLL" }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(item);
   });
 
   it("does not fall back to token price for DEX rows without market cap", () => {
@@ -143,7 +206,6 @@ describe("TokenRadarTable rows", () => {
         scope="matched"
         selectedKey={null}
         windowKey="5m"
-        onOpenSearch={vi.fn()}
         onScopeChange={vi.fn()}
         onSelect={vi.fn()}
         onWindowChange={vi.fn()}
@@ -179,7 +241,6 @@ describe("TokenRadarTable rows", () => {
         scope="all"
         selectedKey={null}
         windowKey="1h"
-        onOpenSearch={vi.fn()}
         onScopeChange={vi.fn()}
         onSelect={vi.fn()}
         onWindowChange={vi.fn()}
@@ -196,7 +257,7 @@ describe("TokenRadarTable rows", () => {
     expect(screen.queryByText(/2026-/)).not.toBeInTheDocument();
   });
 
-  it("keeps score before listed time and drilldown action", () => {
+  it("keeps score before listed time without a trailing Search action", () => {
     renderTokenRadarTable([mixedFreshnessToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
@@ -210,11 +271,12 @@ describe("TokenRadarTable rows", () => {
       "token-radar-cell listed",
     ]);
     expect((children.at(-2) as HTMLElement).querySelector(".radar-score")).toBeInTheDocument();
+    expect(within(children.at(-1) as HTMLElement).getByText("rank -")).toBeInTheDocument();
     expect(
-      within(children.at(-1) as HTMLElement).getByRole("button", {
+      within(children.at(-1) as HTMLElement).queryByRole("button", {
         name: "Open Search Intel for $TROLL",
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it("uses score ranking as the default table sort", () => {
@@ -242,7 +304,6 @@ describe("TokenRadarTable rows", () => {
         scope="all"
         selectedKey={null}
         windowKey="1h"
-        onOpenSearch={vi.fn()}
         onScopeChange={vi.fn()}
         onSelect={vi.fn()}
         onWindowChange={vi.fn()}
@@ -265,7 +326,6 @@ function renderTokenRadarTable(items: TokenFlowItem[]) {
       scope="all"
       selectedKey={null}
       windowKey="1h"
-      onOpenSearch={vi.fn()}
       onScopeChange={vi.fn()}
       onSelect={vi.fn()}
       onWindowChange={vi.fn()}

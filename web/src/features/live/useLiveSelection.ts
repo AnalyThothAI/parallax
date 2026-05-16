@@ -60,13 +60,6 @@ export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
     );
   };
 
-  const openTokenSearchPage = (item: TokenFlowItem) => {
-    setSelectedSignal(null);
-    setSelectedTapeEventId(null);
-    setMobileTask("radar");
-    navigate(tokenSearchPath(item, windowKey, scope));
-  };
-
   const selectPulseItem = (item: SignalPulseItem) => {
     setSelectedSignal({ kind: "pulse", item });
     setSelectedTapeEventId(item.candidate_id);
@@ -126,7 +119,6 @@ export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
     handleMobileTaskChange,
     handleTapeSelect,
     mobileTask,
-    openTokenSearchPage,
     selectAccountEvent,
     selectPulseItem,
     selectToken,

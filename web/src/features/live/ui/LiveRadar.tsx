@@ -9,7 +9,6 @@ type LiveRadarProps = {
   assetFlowError: Error | null;
   selectedTokenKey: string | null;
   onSelectToken: (item: TokenFlowItem) => void;
-  onOpenTokenSearch: (item: TokenFlowItem) => void;
   scope: ScopeKey;
   windowKey: WindowKey;
   onScopeChange: (scope: ScopeKey) => void;
@@ -22,7 +21,6 @@ export function LiveRadar({
   assetFlowError,
   selectedTokenKey,
   onSelectToken,
-  onOpenTokenSearch,
   scope,
   windowKey,
   onScopeChange,
@@ -37,7 +35,6 @@ export function LiveRadar({
         scope={scope}
         selectedKey={selectedTokenKey}
         windowKey={windowKey}
-        onOpenSearch={onOpenTokenSearch}
         onScopeChange={onScopeChange}
         onSelect={onSelectToken}
         onWindowChange={onWindowChange}
