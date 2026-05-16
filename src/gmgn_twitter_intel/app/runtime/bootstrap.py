@@ -491,6 +491,10 @@ class _PooledIngestStore:
             ingest = _ingest_service_for_repos(repos)
             return ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=captures)
 
+    def event_token_resolutions(self, event_id: str) -> list[dict[str, Any]]:
+        with self.db.worker_session("collector") as repos:
+            return repos.event_tokens.for_event(str(event_id))
+
 
 def _ingest_service_for_repos(repos: Any) -> IngestService:
     return IngestService(

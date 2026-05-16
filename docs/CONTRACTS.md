@@ -51,6 +51,9 @@ against `worker_registry.py` and `docs/WORKERS.md`.
 - Push payloads include `event`, `entities`, `alerts`, `enrichment`, harness
   updates after store commit, and `live_market_update` messages for subscribed
   market targets.
+- Event payload `token_resolutions` is the same public event-token projection
+  used by `/api/recent`: resolved token target identity plus event-anchored
+  `price`. It is not a raw `token_intent_resolutions` row.
 
 ## HTTP
 
@@ -119,6 +122,13 @@ Token Radar market contract:
   market-cap values are not used as market facts by themselves; ingest inline
   capture writes Tier 3 ticks and `enriched_events` rows in the event
   transaction.
+- `/api/recent`, WebSocket replay/live event payloads, and watchlist timelines
+  expose current `token_resolutions` through the shared event-token projection.
+  Public fields are limited to resolution identity, target identity,
+  `pricefeed_id`, status/reason arrays, `symbol`, and the standard message
+  `price` payload. Internal fact/audit fields such as `identity_status`,
+  `confidence`, `record_status`, `is_current`, and market join columns are not
+  part of the public contract.
 - Resolved DEX asset rows may expose a top-level `profile` block. Profile facts
   come from the persisted `asset_profiles` read model, not request-time provider
   calls and not `factor_snapshot_json`. `profile.status` is one of `ready`,

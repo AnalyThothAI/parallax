@@ -25,7 +25,7 @@ where token identity is extracted, resolved, refreshed, scored, and served.
 
 ## Architecture Invariants (Kappa/CQRS)
 
-These nine invariants govern how data flows through the service. Code that
+These ten invariants govern how data flows through the service. Code that
 violates them is wrong even if tests pass; tests that depend on a violation
 are wrong too.
 
@@ -45,33 +45,38 @@ are wrong too.
    `events`. Inline ingest capture writes Tier 3 `market_ticks` and the
    corresponding enriched event rows; downstream readers do not reconstruct
    event market context from provider frames.
-4. **One writer per read model.** Each derived read model has exactly one
+4. **Public event token mentions are projections.** HTTP recent, WebSocket
+   replay/live event payloads, and watchlist timelines read token mentions
+   through the shared event-token projection over `token_intent_resolutions`,
+   identity tables, `enriched_events`, and `market_ticks`. Public payloads do
+   not return raw resolution fact rows.
+5. **One writer per read model.** Each derived read model has exactly one
    runtime writer: `token_radar_rows` is written only by
    `TokenRadarProjectionWorker`; `token_capture_tier` is written only by
    `TokenCaptureTierWorker`; `pulse_candidates`, `pulse_agent_runs`,
    `pulse_agent_run_steps` are written only by `PulseCandidateWorker`. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md.
-5. **Wake is not truth.** PostgreSQL `NOTIFY` channels
+6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
    wake. Every listener must have a bounded `interval_seconds` catch-up so
    a missed `NOTIFY` cannot stall the pipeline.
-6. **No runtime compatibility layer.** Hard cuts delete the old runtime
+7. **No runtime compatibility layer.** Hard cuts delete the old runtime
    path. No `_overlay_*`, no `fallback_to_v2_snapshot`, no "if missing fall
    back to the old field". Migration code and rollback docs may reference
    removed names; runtime, public API, and frontend code may not.
-7. **Capture lanes own market persistence.** `MarketTickStreamWorker` writes
+8. **Capture lanes own market persistence.** `MarketTickStreamWorker` writes
    Tier 1 WebSocket ticks, `MarketTickPollWorker` writes Tier 2 REST ticks,
    and ingest inline capture writes Tier 3 ticks. `LivePriceGateway` is
    cache/publish only; it never writes market facts.
-8. **Observable IO state.** Each WS provider exposes a connection state
+9. **Observable IO state.** Each WS provider exposes a connection state
    (`disconnected | connecting | authenticating | subscribed | streaming |
    failed`) with a `last_state_change_at_ms`. The snapshot gate exposes
    outcome counters (`immediate_complete | debounced_complete |
    debounced_timeout | non_tw_channel`). Both surface through
    `/api/status`.
-9. **Audit ledger truth.** Every Signal Pulse decision must be replayable
+10. **Audit ledger truth.** Every Signal Pulse decision must be replayable
    from `pulse_agent_runs` and `pulse_agent_run_steps`. Insufficient data
    finishes as an abstain decision with the audit row written; no path may
    return a decision without an audit row, and no path may invent a

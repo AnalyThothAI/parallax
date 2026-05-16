@@ -9,6 +9,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_RADAR_SOURCE_TABLE,
     WINDOW_MS,
 )
+from gmgn_twitter_intel.domains.token_intel.queries.event_token_projection_query import EventTokenProjectionQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_stage_builder import build_token_target_stages
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import (
     IntentResolutionRepository,
@@ -49,6 +50,7 @@ __all__ = [
     "TOKEN_RADAR_RESOLVER_POLICY_VERSION",
     "TOKEN_RADAR_SOURCE_TABLE",
     "WINDOW_MS",
+    "EventTokenProjectionQuery",
     "IntentResolutionRepository",
     "SignalAlert",
     "SignalRepository",

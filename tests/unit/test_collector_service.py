@@ -13,6 +13,8 @@ class MemoryStore:
         self.twitter_events = []
         self.raw_frames = []
         self.watched_flags = []
+        self.event_token_resolution_ids = []
+        self.projected_token_resolutions = []
 
     def insert_raw_frame(self, **kwargs):
         self.raw_frames.append(kwargs)
@@ -21,7 +23,18 @@ class MemoryStore:
     def ingest_event(self, event, *, is_watched):
         self.twitter_events.append(event)
         self.watched_flags.append(is_watched)
-        return IngestedEvent(event=event, entities=[], alerts=[], token_intents=[], token_resolutions=[], inserted=True)
+        return IngestedEvent(
+            event=event,
+            entities=[],
+            alerts=[],
+            token_intents=[],
+            token_resolutions=[{"target_id": "raw-resolution"}],
+            inserted=True,
+        )
+
+    def event_token_resolutions(self, event_id):
+        self.event_token_resolution_ids.append(event_id)
+        return list(self.projected_token_resolutions)
 
 
 class MemoryPublisher:
@@ -36,6 +49,7 @@ class CollectorServiceTests(unittest.TestCase):
     def test_handle_frame_stores_all_observed_events_and_publishes_only_matches(self):
         async def scenario():
             store = MemoryStore()
+            store.projected_token_resolutions = [{"target_id": "asset:voice", "symbol": "VOICE"}]
             publisher = MemoryPublisher()
             service = CollectorService(
                 name="collector",
@@ -78,6 +92,11 @@ class CollectorServiceTests(unittest.TestCase):
             self.assertEqual(
                 [payload["event"]["event_id"] for payload in publisher.payloads],
                 ["gmgn:twitter_monitor_basic:keep"],
+            )
+            self.assertEqual(store.event_token_resolution_ids, ["gmgn:twitter_monitor_basic:keep"])
+            self.assertEqual(
+                publisher.payloads[0]["token_resolutions"],
+                [{"target_id": "asset:voice", "symbol": "VOICE"}],
             )
             self.assertEqual(store.raw_frames[0]["channel"], "twitter_monitor_basic")
 

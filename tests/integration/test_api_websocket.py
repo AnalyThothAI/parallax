@@ -365,13 +365,15 @@ def test_websocket_ignores_legacy_market_update_even_when_subscribed():
 
 def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
     result = client.app.state.service.ingest.ingest_event(event, is_watched=is_watched)
+    with client.app.state.service.repositories() as repos:
+        token_resolutions = repos.event_tokens.for_event(event.event_id)
     return {
         "type": "event",
         "event": event.to_dict(),
         "entities": result.entities,
         "alerts": result.alerts,
         "token_intents": result.token_intents,
-        "token_resolutions": result.token_resolutions,
+        "token_resolutions": token_resolutions,
         "harness": None,
     }
 

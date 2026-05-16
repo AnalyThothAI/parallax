@@ -832,7 +832,7 @@ def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
         "entities": repos.entities.entities_for_event(event_id),
         "alerts": repos.signals.alerts_for_event(event_id),
         "token_intents": repos.token_intents.intents_for_event(event_id),
-        "token_resolutions": repos.intent_resolutions.resolutions_for_event(event_id),
+        "token_resolutions": repos.event_tokens.for_event(event_id),
         "harness": repos.harness.harness_for_event(event_id),
     }
 

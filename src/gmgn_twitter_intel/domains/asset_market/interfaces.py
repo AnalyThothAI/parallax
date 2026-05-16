@@ -15,6 +15,7 @@ from .identity_evidence_policy import (
     EVIDENCE_TWEET_CONTRACT_MENTION,
     select_current_identity,
 )
+from .read_models.message_price_payload import message_price_payload
 from .repositories.asset_profile_repository import AssetProfileRepository
 from .repositories.asset_repository import AssetRepository
 from .repositories.discovery_repository import DiscoveryRepository
@@ -49,5 +50,6 @@ __all__ = [
     "MarketTickRepository",
     "RegistryRepository",
     "TokenCaptureTierRepository",
+    "message_price_payload",
     "select_current_identity",
 ]
