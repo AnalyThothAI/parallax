@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.domains.asset_market.read_models.message_price_payload import message_price_payload
 from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score
-
-from .token_message_price_payload import message_price_payload
 
 
 def token_target_post_payload(

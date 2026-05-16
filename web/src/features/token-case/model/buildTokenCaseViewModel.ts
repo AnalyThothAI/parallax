@@ -232,6 +232,13 @@ function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseT
   if (symbol) {
     pills.push({ label: `$${symbol}`, tone: "opportunity" });
   }
+  const postPrice = numberValue(post.price?.price_usd);
+  if (postPrice !== null && (post.price?.status === "ready" || post.price?.status === "stale")) {
+    pills.push({
+      label: formatTokenPriceUsd(postPrice),
+      tone: post.price.status === "stale" ? "warn" : "info",
+    });
+  }
   const score = numberValue(post.post_quality.score);
   pills.push({
     label: score === null ? "PQ -" : `PQ ${Math.round(score)}`,

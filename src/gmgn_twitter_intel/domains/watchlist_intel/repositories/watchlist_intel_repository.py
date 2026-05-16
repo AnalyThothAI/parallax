@@ -7,6 +7,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.asset_market.read_models.message_price_payload import message_price_payload
 from gmgn_twitter_intel.domains.evidence.interfaces import decode_event_row
 from gmgn_twitter_intel.domains.watchlist_intel.types import (
     WatchlistTimelineCursorError,
@@ -442,11 +443,88 @@ class WatchlistIntelRepository:
         placeholders = ",".join("%s" for _ in ids)
         rows = self.conn.execute(
             f"""
-            SELECT *
-            FROM token_intent_resolutions
-            WHERE event_id IN ({placeholders})
-              AND is_current = TRUE
-            ORDER BY event_id, decision_time_ms, resolution_id
+            SELECT
+              tir.resolution_id,
+              tir.intent_id,
+              tir.event_id,
+              tir.asset_id,
+              tir.primary_venue_id,
+              tir.target_type,
+              tir.target_id,
+              COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) AS pricefeed_id,
+              tir.resolution_status,
+              tir.identity_status,
+              tir.confidence,
+              tir.resolver_policy_version,
+              tir.reasons_json,
+              tir.risks_json,
+              tir.decision_time_ms,
+              tir.created_at_ms,
+              tir.reason_codes_json,
+              tir.candidate_ids_json,
+              tir.lookup_keys_json,
+              tir.registry_version,
+              tir.record_status,
+              tir.is_current,
+              tir.superseded_at_ms,
+              COALESCE(
+                asset_identity_current.canonical_symbol,
+                cex_tokens.base_symbol,
+                price_feeds.base_symbol
+              ) AS symbol,
+              price_feeds.quote_symbol AS quote_symbol,
+              event_tick.tick_id AS market_tick_id,
+              event_tick.source_provider AS market_tick_provider,
+              event_tick.observed_at_ms AS market_tick_observed_at_ms,
+              event_tick.price_usd,
+              NULL::numeric AS price_quote,
+              NULL::text AS price_quote_symbol,
+              event_market_capture.capture_method AS market_capture_method,
+              event_market_capture.tick_lag_ms AS market_tick_lag_ms
+            FROM token_intent_resolutions tir
+            LEFT JOIN asset_identity_current
+              ON tir.target_type = 'Asset'
+             AND asset_identity_current.asset_id = tir.target_id
+            LEFT JOIN cex_tokens
+              ON tir.target_type = 'CexToken'
+             AND cex_tokens.cex_token_id = tir.target_id
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_feeds
+              WHERE tir.target_type = 'CexToken'
+                AND price_feeds.subject_type = 'CexToken'
+                AND price_feeds.subject_id = tir.target_id
+                AND price_feeds.feed_type LIKE 'cex_%%'
+                AND price_feeds.status IN ('candidate', 'canonical')
+              ORDER BY
+                CASE
+                  WHEN price_feeds.feed_type = 'cex_spot' THEN 0
+                  WHEN price_feeds.feed_type = 'cex_swap' THEN 1
+                  ELSE 2
+                END,
+                CASE
+                  WHEN price_feeds.quote_symbol = 'USDT' THEN 0
+                  WHEN price_feeds.quote_symbol = 'USD' THEN 1
+                  WHEN price_feeds.quote_symbol = 'USDC' THEN 2
+                  ELSE 9
+                END,
+                price_feeds.updated_at_ms DESC,
+                price_feeds.native_market_id ASC
+              LIMIT 1
+            ) preferred_price_feed ON true
+            LEFT JOIN price_feeds
+              ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
+            LEFT JOIN enriched_events event_market_capture
+              ON event_market_capture.event_id = tir.event_id
+             AND event_market_capture.intent_id = tir.intent_id
+             AND event_market_capture.resolution_id = tir.resolution_id
+            LEFT JOIN market_ticks event_tick
+              ON event_tick.tick_id = event_market_capture.tick_id
+            WHERE tir.event_id IN ({placeholders})
+              AND tir.is_current = TRUE
+              AND tir.target_type IN ('Asset', 'CexToken')
+              AND tir.target_id IS NOT NULL
+            ORDER BY tir.event_id, tir.decision_time_ms, tir.resolution_id
             """,
             ids,
         ).fetchall()
@@ -555,7 +633,42 @@ def _decode_token_resolution(row: dict[str, Any]) -> dict[str, Any]:
     row["reason_codes_json"] = _loads(row.get("reason_codes_json"), [])
     row["candidate_ids_json"] = _loads(row.get("candidate_ids_json"), [])
     row["lookup_keys_json"] = _loads(row.get("lookup_keys_json"), [])
+    price = message_price_payload(row)
+    row["symbol"] = _resolution_symbol(row)
+    for key in _TOKEN_RESOLUTION_PRIVATE_PRICE_KEYS:
+        row.pop(key, None)
+    row["price"] = price
     return row
+
+
+_TOKEN_RESOLUTION_PRIVATE_PRICE_KEYS = {
+    "market_tick_id",
+    "market_tick_provider",
+    "market_tick_observed_at_ms",
+    "market_capture_method",
+    "market_tick_lag_ms",
+    "price_usd",
+    "price_quote",
+    "price_quote_symbol",
+    "quote_symbol",
+}
+
+
+def _resolution_symbol(row: dict[str, Any]) -> str | None:
+    symbol = _clean_text(row.get("symbol"))
+    if symbol:
+        return symbol
+    if row.get("target_type") != "CexToken":
+        return None
+    target_id = _clean_text(row.get("target_id"))
+    if not target_id:
+        return None
+    return target_id.rsplit(":", maxsplit=1)[-1].upper()
+
+
+def _clean_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
 
 
 def _decode_summary(row: dict[str, Any]) -> dict[str, Any]:

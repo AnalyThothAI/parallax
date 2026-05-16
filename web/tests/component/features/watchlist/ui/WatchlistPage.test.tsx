@@ -70,6 +70,8 @@ describe("WatchlistPage", () => {
     await waitFor(() => expect(screen.getAllByText("Second signal").length).toBeGreaterThan(0), {
       timeout: 1_000,
     });
+    expect(screen.getAllByText("$SOL").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$0.104").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "all" }));
     await waitFor(() => expect(screen.getAllByText("All source event").length).toBeGreaterThan(0), {
@@ -88,7 +90,21 @@ function timelineItem(eventId: string, summary: string) {
     cashtags: ["SOL"],
     hashtags: [],
     mentions: [],
-    token_resolutions: [],
+    token_resolutions: [
+      {
+        event_id: eventId,
+        target_type: "Asset",
+        target_id: "asset:solana:token:So11111111111111111111111111111111111111112",
+        symbol: "SOL",
+        resolution_status: "EXACT",
+        price: {
+          status: "ready",
+          provider: "gmgn_dex_quote",
+          price_usd: 0.104,
+          observation_id: `tick:${eventId}`,
+        },
+      },
+    ],
     social_event: { summary_zh: summary, is_signal_event: true, token_candidates: [] },
   };
 }

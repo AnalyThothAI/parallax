@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .token_message_price_payload import message_price_payload
+from gmgn_twitter_intel.domains.asset_market.read_models.message_price_payload import message_price_payload
 
 
 @dataclass(frozen=True)

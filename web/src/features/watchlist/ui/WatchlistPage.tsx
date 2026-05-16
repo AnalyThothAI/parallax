@@ -1,4 +1,4 @@
-import { formatRelativeTime } from "@lib/format";
+import { formatRelativeTime, formatTokenPriceUsd } from "@lib/format";
 import type {
   WatchlistHandleSummaryData,
   WatchlistHandleTimelineData,
@@ -351,15 +351,14 @@ function HandleTimelineItem({ item }: { item: WatchlistTimelineItem }) {
   const summary = social?.summary_zh;
   const anchorTerms = termsFromRecords(social?.anchor_terms, "term");
   const tokenSymbols = termsFromRecords(social?.token_candidates, "symbol");
-  const pills = [
+  const pills = uniquePills([
     social?.event_type,
     social?.subject,
+    ...tokenResolutionPills(item.token_resolutions),
     ...tokenSymbols.map((value) => `$${value.replace(/^\$+/, "")}`),
     ...(item.cashtags?.map((value) => `$${value.replace(/^\$+/, "")}`) ?? []),
     ...(item.hashtags?.map((value) => `#${value.replace(/^#+/, "")}`) ?? []),
-  ]
-    .filter(Boolean)
-    .slice(0, 8) as string[];
+  ]).slice(0, 8);
 
   return (
     <li>
@@ -405,6 +404,46 @@ function HandleTimelineItem({ item }: { item: WatchlistTimelineItem }) {
       </article>
     </li>
   );
+}
+
+function tokenResolutionPills(resolutions: WatchlistTimelineItem["token_resolutions"]): string[] {
+  return (resolutions ?? [])
+    .flatMap((resolution) => {
+      const symbol = tokenSymbol(resolution.symbol) ?? cexSymbolFromTargetId(resolution);
+      const priceUsd = resolution.price?.price_usd;
+      return [
+        symbol ? `$${symbol}` : null,
+        typeof priceUsd === "number" ? formatTokenPriceUsd(priceUsd) : null,
+      ];
+    })
+    .filter((value): value is string => Boolean(value));
+}
+
+function tokenSymbol(value: string | null | undefined): string | null {
+  const text = value?.replace(/^\$+/, "").trim();
+  return text ? text.toUpperCase() : null;
+}
+
+function cexSymbolFromTargetId(
+  resolution: NonNullable<WatchlistTimelineItem["token_resolutions"]>[number],
+): string | null {
+  if (resolution.target_type !== "CexToken") {
+    return null;
+  }
+  return tokenSymbol(resolution.target_id?.split(":").pop());
+}
+
+function uniquePills(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const pills: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    pills.push(value);
+  }
+  return pills;
 }
 
 function termsFromRecords(

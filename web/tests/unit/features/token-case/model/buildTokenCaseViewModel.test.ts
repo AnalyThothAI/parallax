@@ -29,6 +29,38 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.dataGaps.length).toBeGreaterThan(0);
   });
 
+  it("surfaces event-level token prices in timeline pills", () => {
+    const dossier = tokenCaseFixture();
+    const firstPost = dossier.posts.items[0];
+
+    const vm = buildTokenCaseViewModel({
+      dossier: {
+        ...dossier,
+        posts: {
+          ...dossier.posts,
+          items: [
+            {
+              ...firstPost,
+              price: {
+                status: "ready",
+                provider: "gmgn_dex_quote",
+                price_usd: 0.00042,
+                observed_at_ms: 1_700_000_000_000,
+                observation_lag_ms: 500,
+                observation_id: "tick:hansa",
+                observation_kind: "tier3_inline",
+              },
+            },
+            ...dossier.posts.items.slice(1),
+          ],
+        },
+      },
+      route: { window: "1h", scope: "all", postSort: "recent" },
+    });
+
+    expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("$0.00042");
+  });
+
   it("filters watched timeline items on the client", () => {
     const dossier = tokenCaseFixture();
 

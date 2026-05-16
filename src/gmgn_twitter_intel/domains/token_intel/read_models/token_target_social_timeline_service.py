@@ -3,8 +3,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from gmgn_twitter_intel.domains.asset_market.read_models.message_price_payload import message_price_payload
+
 from .asset_flow_service import WINDOW_MS
-from .token_message_price_payload import message_price_payload
 from .token_target_cursor import decode_target_cursor, encode_target_cursor
 from .token_target_post_serializer import token_target_post_payload
 from .token_target_stage_builder import build_token_target_stages

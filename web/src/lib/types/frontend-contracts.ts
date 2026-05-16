@@ -97,7 +97,9 @@ export type TokenResolutionRecord = {
   event_id?: string | null;
   target_type?: string | null;
   target_id?: string | null;
+  symbol?: string | null;
   pricefeed_id?: string | null;
+  price?: TokenMessagePrice | null;
   resolution_status?: string | null;
   reason_codes_json?: string[];
   candidate_ids_json?: string[];
