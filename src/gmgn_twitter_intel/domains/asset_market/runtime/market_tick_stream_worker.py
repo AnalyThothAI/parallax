@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import AsyncIterator, Iterable, Mapping
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -12,10 +12,15 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdate, DexMarketStreamTarget
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
+from gmgn_twitter_intel.domains.asset_market.types import (
+    MarketTick,
+    MarketTickSourceProvider,
+    MarketTickSourceTier,
+    market_tick_id,
+)
 
-SOURCE_TIER = "tier1_ws"
-SOURCE_PROVIDER = "okx_dex_ws"
+SOURCE_TIER: MarketTickSourceTier = "tier1_ws"
+SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_ws"
 DEFAULT_SUBSCRIPTION_LIMIT = 50
 DEFAULT_STREAM_CYCLE_SECONDS = 30.0
 
@@ -164,7 +169,7 @@ class _StreamPersistResult:
     skipped: int
 
 
-def _stream_targets(rows: list[Mapping[str, Any]], *, limit: int) -> tuple[list[DexMarketStreamTarget], int]:
+def _stream_targets(rows: Sequence[Mapping[str, Any]], *, limit: int) -> tuple[list[DexMarketStreamTarget], int]:
     targets: list[DexMarketStreamTarget] = []
     skipped = 0
     for row in rows[: max(0, int(limit))]:

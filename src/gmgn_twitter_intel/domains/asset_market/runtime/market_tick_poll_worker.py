@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -12,11 +12,16 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
-from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
+from gmgn_twitter_intel.domains.asset_market.types import (
+    MarketTick,
+    MarketTickSourceProvider,
+    MarketTickSourceTier,
+    market_tick_id,
+)
 
-SOURCE_TIER = "tier2_poll"
-DEX_SOURCE_PROVIDER = "okx_dex_rest"
-CEX_SOURCE_PROVIDER = "okx_cex_rest"
+SOURCE_TIER: MarketTickSourceTier = "tier2_poll"
+DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
+CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_cex_rest"
 DEFAULT_BATCH_SIZE = 100
 
 
@@ -237,7 +242,7 @@ class _PollTargets:
     skipped_reasons: Counter[str]
 
 
-def _poll_targets(rows: list[Mapping[str, Any]]) -> _PollTargets:
+def _poll_targets(rows: Sequence[Mapping[str, Any]]) -> _PollTargets:
     chain_targets: list[_ChainTarget] = []
     cex_targets: list[_CexTarget] = []
     skipped_reasons: Counter[str] = Counter()
@@ -246,18 +251,18 @@ def _poll_targets(rows: list[Mapping[str, Any]]) -> _PollTargets:
         target_type = _clean_str(row.get("target_type"))
         target_id = _clean_str(row.get("target_id"))
         if target_type == "chain_token":
-            target = _chain_target(target_id)
-            if target is None:
+            chain_target = _chain_target(target_id)
+            if chain_target is None:
                 skipped_reasons["invalid_chain_target"] += 1
                 continue
-            chain_targets.append(target)
+            chain_targets.append(chain_target)
             continue
         if target_type == "cex_symbol":
-            target = _cex_target(target_id)
-            if target is None:
+            cex_target = _cex_target(target_id)
+            if cex_target is None:
                 skipped_reasons["invalid_cex_target"] += 1
                 continue
-            cex_targets.append(target)
+            cex_targets.append(cex_target)
             continue
         skipped_reasons["unsupported_target_type"] += 1
 

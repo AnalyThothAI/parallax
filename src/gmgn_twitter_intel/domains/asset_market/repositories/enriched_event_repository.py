@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
 
@@ -68,7 +68,7 @@ class EnrichedEventRepository:
         )
 
     def by_event_intent(self, event_id: str, intent_id: str) -> dict[str, Any] | None:
-        return self._conn.execute(
+        row = self._conn.execute(
             f"""
             {self._joined_select()}
             WHERE ee.event_id = %(event_id)s
@@ -76,6 +76,7 @@ class EnrichedEventRepository:
             """,
             {"event_id": event_id, "intent_id": intent_id},
         ).fetchone()
+        return cast("dict[str, Any] | None", row)
 
     def latest_for_target(self, *, target_type: str, target_id: str, limit: int) -> list[dict[str, Any]]:
         return list(

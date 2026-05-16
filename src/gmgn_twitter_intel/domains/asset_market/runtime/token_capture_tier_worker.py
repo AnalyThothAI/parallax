@@ -12,8 +12,7 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 
-SCORE_KEYS = ("score", "rank_score", "composite_rank_score")
-RECENCY_SCORE_KEYS = ("computed_at_ms", "source_max_received_at_ms")
+SCORE_KEYS = ("score", "rank_score")
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_WS_LIMIT = 50
 DEFAULT_POLL_LIMIT = 200
@@ -123,9 +122,6 @@ def _candidate_from_row(row: Mapping[str, Any]) -> _Candidate | None:
 
 def _market_target(row: Mapping[str, Any]) -> tuple[str, str] | None:
     target_type = str(row.get("target_type") or "").strip()
-    target_id = str(row.get("target_id") or "").strip()
-    if target_type in {"chain_token", "cex_symbol"} and target_id:
-        return target_type, target_id
 
     if target_type == "Asset":
         chain_id = str(row.get("chain_id") or "").strip()
@@ -149,13 +145,6 @@ def _score(row: Mapping[str, Any]) -> Decimal:
         value = row.get(key)
         if value is not None and str(value).strip() != "":
             return _decimal(value)
-    recency_values = [
-        _decimal(value)
-        for key in RECENCY_SCORE_KEYS
-        if (value := row.get(key)) is not None and str(value).strip() != ""
-    ]
-    if recency_values:
-        return max(recency_values)
     return Decimal("0")
 
 

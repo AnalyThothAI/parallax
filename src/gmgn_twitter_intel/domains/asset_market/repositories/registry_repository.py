@@ -399,21 +399,50 @@ class RegistryRepository:
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            WITH active_targets AS (
-              SELECT DISTINCT ON (token_radar_rows.target_type, token_radar_rows.target_id)
-                token_radar_rows.target_type,
-                token_radar_rows.target_id,
-                token_radar_rows.pricefeed_id,
-                token_radar_rows.computed_at_ms,
-                token_radar_rows.source_max_received_at_ms,
-                NULLIF(token_radar_rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
+            WITH latest_sets AS MATERIALIZED (
+              SELECT
+                coverage."window",
+                coverage.scope,
+                latest_rows.computed_at_ms
+              FROM (
+                SELECT DISTINCT "window", scope
+                FROM token_radar_projection_coverage
+                WHERE projection_version = %s
+              ) coverage
+              JOIN LATERAL (
+                SELECT computed_at_ms
+                FROM token_radar_rows
+                WHERE token_radar_rows.projection_version = %s
+                  AND token_radar_rows."window" = coverage."window"
+                  AND token_radar_rows.scope = coverage.scope
+                  AND token_radar_rows.computed_at_ms >= %s
+                ORDER BY token_radar_rows.computed_at_ms DESC
+                LIMIT 1
+              ) latest_rows ON true
+            ),
+            active_targets AS MATERIALIZED (
+              SELECT DISTINCT ON (rows.target_type, rows.target_id)
+                rows.target_type,
+                rows.target_id,
+                rows.pricefeed_id,
+                rows.computed_at_ms,
+                rows.source_max_received_at_ms,
+                NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
                   AS rank_score
-              FROM token_radar_rows
-              WHERE token_radar_rows.projection_version = %s
-                AND token_radar_rows.target_type IN ('Asset', 'CexToken')
-                AND token_radar_rows.target_id IS NOT NULL
-                AND token_radar_rows.computed_at_ms >= %s
-              ORDER BY token_radar_rows.target_type, token_radar_rows.target_id, token_radar_rows.computed_at_ms DESC
+              FROM latest_sets
+              JOIN token_radar_rows rows
+                ON rows.projection_version = %s
+               AND rows."window" = latest_sets."window"
+               AND rows.scope = latest_sets.scope
+               AND rows.computed_at_ms = latest_sets.computed_at_ms
+              WHERE rows.target_type IN ('Asset', 'CexToken')
+                AND rows.target_id IS NOT NULL
+              ORDER BY
+                rows.target_type,
+                rows.target_id,
+                NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric DESC NULLS LAST,
+                rows.source_max_received_at_ms DESC,
+                rows.computed_at_ms DESC
             ),
             live_targets AS (
               SELECT
@@ -496,7 +525,13 @@ class RegistryRepository:
             ORDER BY score DESC NULLS LAST, computed_at_ms DESC, target_type, target_id
             LIMIT %s
             """,
-            (projection_version, int(since_ms), max(0, int(limit))),
+            (
+                projection_version,
+                projection_version,
+                int(since_ms),
+                projection_version,
+                max(0, int(limit)),
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 

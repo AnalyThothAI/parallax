@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 
 class TokenCaptureTierRepository:
@@ -67,7 +67,7 @@ class TokenCaptureTierRepository:
         )
 
     def get(self, target_type: str, target_id: str) -> dict[str, Any] | None:
-        return self._conn.execute(
+        row = self._conn.execute(
             """
             SELECT *
             FROM token_capture_tier
@@ -76,3 +76,4 @@ class TokenCaptureTierRepository:
             """,
             {"target_type": target_type, "target_id": target_id},
         ).fetchone()
+        return cast("dict[str, Any] | None", row)

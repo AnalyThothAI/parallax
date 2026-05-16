@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -21,8 +21,7 @@ class MarketTickRepository:
         )
         if tick.tick_id != expected_id:
             raise ValueError(
-                "market tick id must be deterministic for "
-                "(target_type, target_id, source_provider, observed_at_ms)"
+                "market tick id must be deterministic for (target_type, target_id, source_provider, observed_at_ms)"
             )
 
         self._conn.execute(
@@ -110,7 +109,7 @@ class MarketTickRepository:
         at_ms: int,
         max_lag_ms: int,
     ) -> dict[str, Any] | None:
-        return self._conn.execute(
+        row = self._conn.execute(
             """
             SELECT *
             FROM market_ticks
@@ -128,6 +127,7 @@ class MarketTickRepository:
                 "min_observed_at_ms": at_ms - max_lag_ms,
             },
         ).fetchone()
+        return cast("dict[str, Any] | None", row)
 
     def latest_for_target(
         self,
@@ -137,7 +137,7 @@ class MarketTickRepository:
         max_age_ms: int,
         now_ms: int,
     ) -> dict[str, Any] | None:
-        return self._conn.execute(
+        row = self._conn.execute(
             """
             SELECT *
             FROM market_ticks
@@ -153,6 +153,7 @@ class MarketTickRepository:
                 "min_received_at_ms": now_ms - max_age_ms,
             },
         ).fetchone()
+        return cast("dict[str, Any] | None", row)
 
     def first_between(
         self,
@@ -162,7 +163,7 @@ class MarketTickRepository:
         start_ms: int,
         end_ms: int,
     ) -> dict[str, Any] | None:
-        return self._conn.execute(
+        row = self._conn.execute(
             """
             SELECT *
             FROM market_ticks
@@ -180,3 +181,4 @@ class MarketTickRepository:
                 "end_ms": end_ms,
             },
         ).fetchone()
+        return cast("dict[str, Any] | None", row)

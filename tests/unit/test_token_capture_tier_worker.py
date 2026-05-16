@@ -20,9 +20,9 @@ from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default
 def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
     repos = FakeRepos(
         [
-            {"target_type": "chain_token", "target_id": "sol:mid", "score": Decimal("7")},
-            {"target_type": "cex_symbol", "target_id": "okx:ETH-USDT", "score": Decimal("12")},
-            {"target_type": "chain_token", "target_id": "sol:hot", "score": Decimal("20")},
+            asset_target("asset-mid", chain_id="sol", address="mid", score=Decimal("7")),
+            cex_target("cex-eth", provider="okx", native_market_id="ETH-USDT", score=Decimal("12")),
+            asset_target("asset-hot", chain_id="sol", address="hot", score=Decimal("20")),
         ]
     )
 
@@ -47,10 +47,10 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
 def test_project_once_assigns_tier2_and_tier3_deterministically() -> None:
     repos = FakeRepos(
         [
-            {"target_type": "chain_token", "target_id": "sol:c", "score": 10},
-            {"target_type": "chain_token", "target_id": "sol:b", "score": 10},
-            {"target_type": "chain_token", "target_id": "sol:a", "score": 10},
-            {"target_type": "cex_symbol", "target_id": "binance:BTCUSDT", "score": 9},
+            asset_target("asset-c", chain_id="sol", address="c", score=10),
+            asset_target("asset-b", chain_id="sol", address="b", score=10),
+            asset_target("asset-a", chain_id="sol", address="a", score=10),
+            cex_target("cex-btc", provider="binance", native_market_id="BTCUSDT", score=9),
         ]
     )
 
@@ -65,7 +65,7 @@ def test_project_once_assigns_tier2_and_tier3_deterministically() -> None:
     ]
 
 
-def test_project_once_maps_legacy_active_target_rows_to_new_market_targets() -> None:
+def test_project_once_maps_active_target_rows_to_market_targets() -> None:
     repos = FakeRepos(
         [
             {
@@ -80,7 +80,7 @@ def test_project_once_maps_legacy_active_target_rows_to_new_market_targets() -> 
                 "target_id": "cex-token-1",
                 "provider": "Binance",
                 "native_market_id": "ethusdt",
-                "composite_rank_score": "9.25",
+                "rank_score": "9.25",
             },
         ]
     )
@@ -100,19 +100,19 @@ def test_project_once_maps_legacy_active_target_rows_to_new_market_targets() -> 
     ]
 
 
-def test_project_once_uses_recency_score_when_rank_score_is_missing() -> None:
+def test_project_once_uses_zero_score_when_rank_score_is_missing() -> None:
     repos = FakeRepos(
         [
-            {"target_type": "chain_token", "target_id": "sol:older", "computed_at_ms": 100},
-            {"target_type": "chain_token", "target_id": "sol:newer", "source_max_received_at_ms": 200},
+            asset_target("asset-older", chain_id="sol", address="older"),
+            asset_target("asset-newer", chain_id="sol", address="newer"),
         ]
     )
 
     project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=10, poll_limit=10)
 
     assert repos.token_capture_tiers.upserts == [
-        tier("chain_token", "sol:newer", 1, "ws_subscribed", "200"),
-        tier("chain_token", "sol:older", 1, "ws_subscribed", "100"),
+        tier("chain_token", "sol:newer", 1, "ws_subscribed", "0"),
+        tier("chain_token", "sol:older", 1, "ws_subscribed", "0"),
     ]
 
 
@@ -120,8 +120,8 @@ def test_worker_run_once_returns_worker_result_processed_count() -> None:
     db = FakeDB(
         FakeRepos(
             [
-                {"target_type": "chain_token", "target_id": "sol:hot", "score": 3},
-                {"target_type": "cex_symbol", "target_id": "okx:ETH-USDT", "score": 2},
+                asset_target("asset-hot", chain_id="sol", address="hot", score=3),
+                cex_target("cex-eth", provider="okx", native_market_id="ETH-USDT", score=2),
             ]
         )
     )
@@ -177,6 +177,16 @@ def test_registry_active_live_market_targets_projects_rank_score_from_factor_sna
     assert "rank_score" in conn.sql
     assert "AS score" in conn.sql
     assert "AS rank_score" in conn.sql
+    assert "token_radar_projection_coverage" in conn.sql
+    assert "JOIN LATERAL" in conn.sql
+    assert "ORDER BY token_radar_rows.computed_at_ms DESC" in conn.sql
+    assert conn.params == (
+        TOKEN_RADAR_PROJECTION_VERSION,
+        TOKEN_RADAR_PROJECTION_VERSION,
+        1_800_000_000_000 - WINDOW_MS["24h"],
+        TOKEN_RADAR_PROJECTION_VERSION,
+        25,
+    )
 
 
 def tier(target_type: str, target_id: str, tier_value: int, reason: str, score: str) -> dict[str, object]:
@@ -188,6 +198,42 @@ def tier(target_type: str, target_id: str, tier_value: int, reason: str, score: 
         "score": Decimal(score),
         "updated_at_ms": 1_800_000_000_000,
     }
+
+
+def asset_target(
+    target_id: str,
+    *,
+    chain_id: str,
+    address: str,
+    score: object | None = None,
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "target_type": "Asset",
+        "target_id": target_id,
+        "chain_id": chain_id,
+        "address": address,
+    }
+    if score is not None:
+        row["score"] = score
+    return row
+
+
+def cex_target(
+    target_id: str,
+    *,
+    provider: str,
+    native_market_id: str,
+    score: object | None = None,
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "target_type": "CexToken",
+        "target_id": target_id,
+        "provider": provider,
+        "native_market_id": native_market_id,
+    }
+    if score is not None:
+        row["score"] = score
+    return row
 
 
 class FakeRepos:
