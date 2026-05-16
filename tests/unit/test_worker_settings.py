@@ -25,6 +25,11 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.market_tick_stream.subscription_limit == 100
     assert settings.market_tick_poll.interval_seconds == 15
     assert settings.market_tick_poll.batch_size == 100
+    assert settings.market_tick_poll.concurrency == 4
+    assert settings.event_anchor_backfill.interval_seconds == 1
+    assert settings.event_anchor_backfill.batch_size == 50
+    assert settings.event_anchor_backfill.concurrency == 8
+    assert settings.event_anchor_backfill.min_age_ms == 250
     assert settings.token_capture_tier.interval_seconds == 30
     assert settings.token_capture_tier.batch_size == 500
     assert settings.token_capture_tier.ws_limit == 100

@@ -24,6 +24,38 @@ def test_market_tick_stream_worker_is_not_single_writer_locked() -> None:
     assert worker._advisory_lock_key() is None
 
 
+def test_market_tick_stream_worker_reuses_stateful_provider_and_replaces_subscriptions() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(
+        state,
+        [tier_row(target_type="chain_token", target_id="solana:A", pricefeed_id="pf-A")],
+    )
+    db = FakeDB(state, repos)
+    provider = FakeStatefulStreamProvider(
+        [
+            DexMarketFactUpdate(chain_id="solana", address="A", observed_at_ms=1, price_usd=1),
+            DexMarketFactUpdate(chain_id="solana", address="B", observed_at_ms=2, price_usd=2),
+        ]
+    )
+    worker = MarketTickStreamWorker(
+        pool_bundle=db,
+        stream_dex_market=provider,
+        stream_cycle_seconds=0.05,
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    asyncio.run(worker.run_once())
+    repos.token_capture_tiers.rows = [
+        tier_row(target_type="chain_token", target_id="solana:B", pricefeed_id="pf-B")
+    ]
+    asyncio.run(worker.run_once())
+
+    assert provider.replace_calls == [[("solana", "A")], [("solana", "B")]]
+    assert provider.close_count == 0
+    # Provider was constructed once and never recreated
+    assert provider.iter_call_count >= 1
+
+
 def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_and_notifies() -> None:
     state = FakeSessionState()
     repos = FakeRepos(
@@ -314,14 +346,22 @@ class FakeDexMarketStream:
         self.updates = updates
         self.targets = []
         self.saw_in_session: list[bool] = []
+        self.replace_calls: list[list[tuple[str, str]]] = []
+        self.close_count = 0
 
-    async def stream_price_info(self, targets):
+    async def replace_subscriptions(self, targets) -> None:
         self.targets = list(targets)
+        self.replace_calls.append([(t.chain_id, t.address) for t in self.targets])
+
+    async def iter_price_info(self):
         if not self.targets:
             return
         self.saw_in_session.append(self.state.in_session)
         for update in self.updates:
             yield update
+
+    async def aclose(self) -> None:
+        self.close_count += 1
 
 
 class FailingDexMarketStream:
@@ -329,12 +369,19 @@ class FailingDexMarketStream:
         self.state = state
         self.updates = updates
         self.saw_in_session: list[bool] = []
+        self.targets = []
 
-    async def stream_price_info(self, targets):
+    async def replace_subscriptions(self, targets) -> None:
+        self.targets = list(targets)
+
+    async def iter_price_info(self):
         self.saw_in_session.append(self.state.in_session)
         for update in self.updates:
             yield update
         raise RuntimeError("socket dropped")
+
+    async def aclose(self) -> None:
+        return None
 
 
 class NeverYieldDexMarketStream:
@@ -342,8 +389,12 @@ class NeverYieldDexMarketStream:
         self.state = state
         self.saw_in_session: list[bool] = []
         self.closed = False
+        self.targets = []
 
-    async def stream_price_info(self, targets):
+    async def replace_subscriptions(self, targets) -> None:
+        self.targets = list(targets)
+
+    async def iter_price_info(self):
         self.saw_in_session.append(self.state.in_session)
         try:
             while True:
@@ -352,6 +403,32 @@ class NeverYieldDexMarketStream:
             self.closed = True
         if False:
             yield
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FakeStatefulStreamProvider:
+    def __init__(self, updates: list[DexMarketFactUpdate]) -> None:
+        self.updates = list(updates)
+        self.replace_calls: list[list[tuple[str, str]]] = []
+        self.close_count = 0
+        self.iter_call_count = 0
+        self._current_targets: list = []
+
+    async def replace_subscriptions(self, targets) -> None:
+        self._current_targets = list(targets)
+        self.replace_calls.append([(t.chain_id, t.address) for t in self._current_targets])
+
+    async def iter_price_info(self):
+        self.iter_call_count += 1
+        keys = {(t.chain_id, t.address) for t in self._current_targets}
+        for update in list(self.updates):
+            if (update.chain_id, update.address) in keys:
+                yield update
+
+    async def aclose(self) -> None:
+        self.close_count += 1
 
 
 class FakeWakeEmitter:

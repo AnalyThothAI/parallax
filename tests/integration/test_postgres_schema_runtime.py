@@ -275,5 +275,209 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
     }.issubset(market_fact_indexes)
 
 
+def test_market_ticks_update_still_rejected_by_trigger(tmp_path):
+    import pytest
+    from psycopg.errors import RaiseException
+
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _seed_pending_backfill_row(conn)
+        try:
+            with pytest.raises(RaiseException) as exc_info:
+                conn.execute(
+                    """
+                    UPDATE market_ticks
+                    SET liquidity_usd = liquidity_usd + 1
+                    WHERE tick_id = %s
+                    """,
+                    ("tick-async-target",),
+                )
+        finally:
+            conn.rollback()
+    finally:
+        conn.close()
+
+    assert "market facts are append-only" in str(exc_info.value)
+
+
+def test_enriched_events_pending_backfill_to_async_backfill_transition_succeeds(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _seed_pending_backfill_row(conn)
+        conn.execute(
+            """
+            UPDATE enriched_events
+            SET tick_id = %s,
+                tick_lag_ms = 100,
+                capture_method = 'tier3_inline',
+                capture_reason = 'async_backfill'
+            WHERE event_id = 'event-async'
+              AND intent_id = 'intent-async'
+              AND capture_method = 'unavailable'
+              AND capture_reason = 'pending_backfill'
+              AND tick_id IS NULL
+            """,
+            ("tick-async-target",),
+        )
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT capture_method, capture_reason, tick_id, tick_lag_ms
+            FROM enriched_events
+            WHERE event_id = 'event-async' AND intent_id = 'intent-async'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["capture_method"] == "tier3_inline"
+    assert row["capture_reason"] == "async_backfill"
+    assert row["tick_id"] == "tick-async-target"
+    assert row["tick_lag_ms"] == 100
+
+
+def test_enriched_events_other_updates_are_rejected_by_trigger(tmp_path):
+    import pytest
+    from psycopg.errors import RaiseException
+
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _seed_pending_backfill_row(conn)
+        try:
+            # Same pending_backfill -> async_backfill semantics, but mutating
+            # an immutable column (t_event_ms) must still be denied.
+            with pytest.raises(RaiseException) as exc_info:
+                conn.execute(
+                    """
+                    UPDATE enriched_events
+                    SET tick_id = %s,
+                        tick_lag_ms = 100,
+                        capture_method = 'tier3_inline',
+                        capture_reason = 'async_backfill',
+                        t_event_ms = t_event_ms + 1
+                    WHERE event_id = 'event-async' AND intent_id = 'intent-async'
+                    """,
+                    ("tick-async-target",),
+                )
+        finally:
+            conn.rollback()
+    finally:
+        conn.close()
+
+    assert "market facts are append-only" in str(exc_info.value)
+
+
+def test_pending_backfill_partial_index_present(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        indexes = {
+            row["indexname"]
+            for row in conn.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public' AND tablename = 'enriched_events'
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert "idx_enriched_events_pending_backfill" in indexes
+
+
+def _seed_pending_backfill_row(conn) -> None:
+    """Insert the minimum graph of events + intents + resolutions + ticks
+    + enriched_events needed to exercise the trigger transitions."""
+    EvidenceRepository(conn).insert_event(make_event(event_id="event-async"), is_watched=True)
+    conn.execute(
+        """
+        INSERT INTO token_evidence(
+          evidence_id, event_id, source_kind, source_id, evidence_type, raw_value,
+          normalized_symbol, chain_hint, address_hint, provider, provider_ref,
+          text_surface, span_start, span_end, sentence_id, local_group_key,
+          strength, confidence, created_at_ms
+        )
+        VALUES (
+          'evidence-async', 'event-async', 'entity', 'entity-async', 'cashtag', '$ASYNC',
+          'ASYNC', NULL, NULL, NULL, NULL, 'primary', 0, 5, 0, 'primary:0',
+          'medium', 0.8, 1
+        )
+        ON CONFLICT(evidence_id) DO NOTHING
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO token_intents(
+          intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
+          display_symbol, display_name, chain_hint, address_hint, intent_status,
+          intent_confidence, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          'intent-async', 'event-async', 'symbol:ASYNC', 'test', 'evidence-async',
+          'ASYNC', NULL, NULL, NULL, 'pending', 1.0, 1, 1
+        )
+        ON CONFLICT(intent_id) DO NOTHING
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO token_intent_resolutions(
+          resolution_id, intent_id, event_id, resolution_status, resolver_policy_version,
+          target_type, target_id, pricefeed_id, reason_codes_json, candidate_ids_json,
+          lookup_keys_json, record_status, is_current, decision_time_ms, created_at_ms
+        )
+        VALUES (
+          'resolution-async', 'intent-async', 'event-async', 'YES', 'v1',
+          'chain_token', 'solana:ASYNC', NULL, '[]'::jsonb, '[]'::jsonb, '["symbol:ASYNC"]'::jsonb,
+          'current', true, 1, 1
+        )
+        ON CONFLICT(resolution_id) DO NOTHING
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO market_ticks(
+          tick_id, target_type, target_id, chain, token_address,
+          exchange, instrument, pricefeed_id,
+          source_tier, source_provider,
+          observed_at_ms, received_at_ms,
+          price_usd, liquidity_usd, volume_24h_usd, market_cap_usd, holders,
+          raw_payload_json, created_at_ms
+        )
+        VALUES (
+          'tick-async-target', 'chain_token', 'solana:ASYNC', 'solana', 'ASYNC',
+          NULL, NULL, NULL,
+          'tier3_inline', 'okx_dex_rest',
+          1, 1,
+          1.5, 100, 1000, 5000, 10,
+          '{}'::jsonb, 1
+        )
+        ON CONFLICT(target_type, target_id, source_provider, observed_at_ms) DO NOTHING
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO enriched_events(
+          event_id, intent_id, resolution_id, target_type, target_id,
+          t_event_ms, tick_id, tick_lag_ms,
+          capture_method, capture_reason, created_at_ms
+        )
+        VALUES (
+          'event-async', 'intent-async', 'resolution-async', 'chain_token', 'solana:ASYNC',
+          1, NULL, NULL,
+          'unavailable', 'pending_backfill', 1
+        )
+        ON CONFLICT(event_id, intent_id) DO NOTHING
+        """
+    )
+    conn.commit()
+
+
 def _legacy_price_table() -> str:
     return "_".join(("price", "observations"))

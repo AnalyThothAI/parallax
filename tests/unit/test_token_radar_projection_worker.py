@@ -281,6 +281,85 @@ def _settings(**overrides):
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),
         "hot_windows": ("5m",),
+        "cold_interval_seconds": 60.0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def _worker(
+    *,
+    windows,
+    scopes,
+    hot_windows,
+    cold_interval_seconds,
+    coverage,
+    batch_size=7,
+):
+    import pytest
+
+    class _FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild(self, *, window, scope, now_ms=None, limit=100):
+            return {
+                "rows_written": 1,
+                "source_rows": 1,
+                "computed_at_ms": now_ms,
+                "status": "ready",
+            }
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(module, "_projection_class", lambda: _FakeProjection)
+    db = FakeDB(coverage)
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=windows,
+            scopes=scopes,
+            hot_windows=hot_windows,
+            batch_size=batch_size,
+            cold_interval_seconds=cold_interval_seconds,
+        ),
+        db=db,
+        telemetry=object(),
+    )
+    worker._test_monkeypatch = monkeypatch  # type: ignore[attr-defined]
+    return worker
+
+
+def test_projection_worker_skips_background_window_until_cold_interval_elapsed() -> None:
+    worker = _worker(
+        windows=("5m", "1h"),
+        scopes=("all",),
+        hot_windows=("5m",),
+        cold_interval_seconds=60,
+        coverage={
+            ("5m", "all"): {"status": "ready", "computed_at_ms": 1_000},
+            ("1h", "all"): {"status": "ready", "computed_at_ms": 990},
+        },
+    )
+    try:
+        result = worker.rebuild_once(now_ms=1_500)
+        assert list(result["windows"]) == ["5m:all"]
+    finally:
+        worker._test_monkeypatch.undo()
+
+
+def test_projection_worker_runs_stale_background_window_after_cold_interval() -> None:
+    worker = _worker(
+        windows=("5m", "1h"),
+        scopes=("all",),
+        hot_windows=("5m",),
+        cold_interval_seconds=60,
+        coverage={
+            ("5m", "all"): {"status": "ready", "computed_at_ms": 120_000},
+            ("1h", "all"): {"status": "ready", "computed_at_ms": 1_000},
+        },
+    )
+    try:
+        result = worker.rebuild_once(now_ms=122_000)
+        assert list(result["windows"]) == ["5m:all", "1h:all"]
+    finally:
+        worker._test_monkeypatch.undo()

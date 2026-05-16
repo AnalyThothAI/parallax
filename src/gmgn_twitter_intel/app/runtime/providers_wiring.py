@@ -307,8 +307,8 @@ class OkxDexWebSocketMarketProviderAdapter:
     def __init__(self, provider: OkxDexWebSocketMarketProvider) -> None:
         self._provider = provider
 
-    async def stream_price_info(self, targets):
-        mapped_targets = []
+    async def replace_subscriptions(self, targets: list[Any]) -> None:
+        mapped_targets: list[dict[str, str]] = []
         for target in targets:
             chain_index = okx_chain_index(target.chain_id)
             if not chain_index:
@@ -319,13 +319,20 @@ class OkxDexWebSocketMarketProviderAdapter:
                     "tokenContractAddress": _normalize_address(target.address),
                 }
             )
-        async for update in self._provider.stream_price_info(mapped_targets):
+        await self._provider.replace_subscriptions(mapped_targets)
+
+    async def iter_price_info(self):
+        async for update in self._provider.iter_price_info():
             yield _domain_dex_market_fact_update(update)
 
+    async def aclose(self) -> None:
+        await self._provider.aclose()
+
     def close(self) -> None:
-        close = getattr(self._provider, "close", None)
-        if close:
-            close()
+        # Synchronous close is only safe before the WS session connects (e.g. during
+        # partial provider wiring cleanup). Connected sessions must go through aclose().
+        if getattr(self._provider, "_websocket", None) is not None:
+            raise RuntimeError("use aclose() for connected OKX DEX WS provider cleanup")
 
     def connection_state_payload(self) -> dict[str, Any]:
         payload = getattr(self._provider, "connection_state_payload", None)

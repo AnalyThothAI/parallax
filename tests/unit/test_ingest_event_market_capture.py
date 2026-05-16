@@ -13,7 +13,12 @@ from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
 from tests.factories import make_event
 
 
-def test_pooled_ingest_calls_inline_provider_outside_worker_session(monkeypatch) -> None:
+def test_pooled_ingest_does_not_call_inline_provider_when_no_fresh_tick(monkeypatch) -> None:
+    """After the async-backfill hard cut, the collector inline path must
+    never reach a quote provider — pending captures are persisted as
+    ``unavailable`` / ``pending_backfill`` and the
+    ``event_anchor_backfill`` worker catches up asynchronously.
+    """
     state = _FakeState()
     provider = _AssertingDexQuoteProvider(state)
     db = _FakeDB(state, event_exists=False)
@@ -30,7 +35,7 @@ def test_pooled_ingest_calls_inline_provider_outside_worker_session(monkeypatch)
     result = store.ingest_event(event, is_watched=True)
 
     assert result.inserted is True
-    assert provider.calls == [("eip155:1", "0xabc")]
+    assert provider.calls == []
     assert db.session_names == ["collector", "collector"]
 
 

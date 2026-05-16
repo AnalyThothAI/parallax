@@ -469,18 +469,30 @@ class FakeGmgnDexMarketProvider:
 
 
 class FakeDexStreamProvider:
-    async def stream_price_info(self, targets):
+    async def replace_subscriptions(self, targets) -> None:
+        return None
+
+    async def iter_price_info(self):
         if False:
             yield None
+
+    async def aclose(self) -> None:
+        return None
 
 
 class FakeOkxDexWebSocketMarketProvider:
     def __init__(self, **kwargs) -> None:
         self.subscription_limit = kwargs["subscription_limit"]
 
-    async def stream_price_info(self, targets):
+    async def replace_subscriptions(self, targets) -> None:
+        return None
+
+    async def iter_price_info(self):
         if False:
             yield None
+
+    async def aclose(self) -> None:
+        return None
 
 
 class CloseCountingDexDiscoveryProvider(FakeDexDiscoveryProvider):

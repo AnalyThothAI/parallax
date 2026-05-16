@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import time
-from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -109,7 +108,8 @@ class MarketTickStreamWorker(WorkerBase):
         target_by_key = {_target_key(target.chain_id, target.address): target for target in targets}
         ticks: list[MarketTick] = []
         skipped = 0
-        iterator = _stream_price_info(self.stream_dex_market, targets).__aiter__()
+        await self.stream_dex_market.replace_subscriptions(targets)
+        iterator = self.stream_dex_market.iter_price_info().__aiter__()
         deadline = time.monotonic() + self.stream_cycle_seconds
         try:
             while True:
@@ -207,17 +207,6 @@ def _chain_token_parts(row: Mapping[str, Any], *, target_id: str) -> _TargetPart
     if not parsed_chain_id or not parsed_address:
         return None
     return _TargetParts(chain_id=parsed_chain_id, address=parsed_address)
-
-
-async def _stream_price_info(
-    stream_dex_market: Any,
-    targets: list[DexMarketStreamTarget],
-) -> AsyncIterator[DexMarketFactUpdate]:
-    stream = stream_dex_market.stream_price_info(targets)
-    if inspect.isawaitable(stream):
-        stream = await stream
-    async for update in stream:
-        yield update
 
 
 def _tick_from_update(

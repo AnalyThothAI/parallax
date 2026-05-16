@@ -36,12 +36,85 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
             "limit": 10,
         }
     ]
+    # Tier 1 is DEX WS only (chain_token). With ws_limit=2 both chain_tokens fill Tier 1
+    # even though the CEX symbol has a higher score; the CEX symbol drops to Tier 2.
     assert repos.token_capture_tiers.upserts == [
         tier("chain_token", "sol:hot", 1, "ws_subscribed", "20"),
-        tier("cex_symbol", "okx:ETH-USDT", 1, "ws_subscribed", "12"),
-        tier("chain_token", "sol:mid", 2, "batch_poll", "7"),
+        tier("chain_token", "sol:mid", 1, "ws_subscribed", "7"),
+        tier("cex_symbol", "okx:ETH-USDT", 2, "batch_poll", "12"),
     ]
     assert repos.conn.commit_count == 1
+
+
+def test_project_once_never_assigns_cex_symbol_to_tier1_ws_even_when_hottest() -> None:
+    repos = FakeRepos(
+        [
+            cex_target("cex-btc", provider="okx", native_market_id="BTC-USDT", score=Decimal("999")),
+            asset_target(
+                "asset-sol",
+                chain_id="solana",
+                address="So11111111111111111111111111111111111111112",
+                score=Decimal("500"),
+            ),
+        ]
+    )
+
+    processed = project_once(repos, now_ms=1_777_800_000_000, batch_size=10, ws_limit=1, poll_limit=10)
+
+    assert processed == 2
+    assert repos.token_capture_tiers.upserts == [
+        tier(
+            "chain_token",
+            "solana:So11111111111111111111111111111111111111112",
+            1,
+            "ws_subscribed",
+            "500",
+            updated_at_ms=1_777_800_000_000,
+        ),
+        tier(
+            "cex_symbol",
+            "okx:BTC-USDT",
+            2,
+            "batch_poll",
+            "999",
+            updated_at_ms=1_777_800_000_000,
+        ),
+    ]
+
+
+def test_project_once_demotes_old_hot_rows_absent_from_current_projection() -> None:
+    repos = FakeRepos(
+        [asset_target("asset-new", chain_id="solana", address="newhot", score=Decimal("100"))],
+        existing_tiers=[
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:oldhot",
+                "tier": 1,
+                "reason": "ws_subscribed",
+            },
+            {
+                "target_type": "cex_symbol",
+                "target_id": "okx:OLD-USDT",
+                "tier": 2,
+                "reason": "batch_poll",
+            },
+        ],
+    )
+
+    project_once(repos, now_ms=1_777_800_000_000, batch_size=10, ws_limit=1, poll_limit=10)
+
+    assert repos.token_capture_tiers.demotion_calls == [
+        {
+            "active_keys": [
+                {"target_type": "chain_token", "target_id": "solana:newhot"},
+            ],
+            "updated_at_ms": 1_777_800_000_000,
+        }
+    ]
+    assert repos.token_capture_tiers.demoted == [
+        ("chain_token", "solana:oldhot"),
+        ("cex_symbol", "okx:OLD-USDT"),
+    ]
 
 
 def test_project_once_assigns_tier2_and_tier3_deterministically() -> None:
@@ -88,8 +161,9 @@ def test_project_once_maps_active_target_rows_to_market_targets() -> None:
     processed = project_once(repos, now_ms=1_800_000_000_000, batch_size=10, ws_limit=10, poll_limit=10)
 
     assert processed == 2
+    # Tier 1 is DEX WS only: the chain_token row goes to Tier 1 even though the CEX symbol
+    # outranks it on score. The CEX symbol drops to Tier 2 batch_poll.
     assert repos.token_capture_tiers.upserts == [
-        tier("cex_symbol", "binance:ETHUSDT", 1, "ws_subscribed", "9.25"),
         tier(
             "chain_token",
             "solana:So11111111111111111111111111111111111111112",
@@ -97,6 +171,7 @@ def test_project_once_maps_active_target_rows_to_market_targets() -> None:
             "ws_subscribed",
             "4.5",
         ),
+        tier("cex_symbol", "binance:ETHUSDT", 2, "batch_poll", "9.25"),
     ]
 
 
@@ -189,14 +264,22 @@ def test_registry_active_live_market_targets_projects_rank_score_from_factor_sna
     )
 
 
-def tier(target_type: str, target_id: str, tier_value: int, reason: str, score: str) -> dict[str, object]:
+def tier(
+    target_type: str,
+    target_id: str,
+    tier_value: int,
+    reason: str,
+    score: str,
+    *,
+    updated_at_ms: int = 1_800_000_000_000,
+) -> dict[str, object]:
     return {
         "target_type": target_type,
         "target_id": target_id,
         "tier": tier_value,
         "reason": reason,
         "score": Decimal(score),
-        "updated_at_ms": 1_800_000_000_000,
+        "updated_at_ms": updated_at_ms,
     }
 
 
@@ -237,9 +320,14 @@ def cex_target(
 
 
 class FakeRepos:
-    def __init__(self, rows: list[dict[str, object]]) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, object]],
+        *,
+        existing_tiers: list[dict[str, object]] | None = None,
+    ) -> None:
         self.registry = FakeRegistry(rows)
-        self.token_capture_tiers = FakeTokenCaptureTiers()
+        self.token_capture_tiers = FakeTokenCaptureTiers(existing_tiers=existing_tiers or [])
         self.conn = FakeConn()
 
 
@@ -254,11 +342,35 @@ class FakeRegistry:
 
 
 class FakeTokenCaptureTiers:
-    def __init__(self) -> None:
+    def __init__(self, *, existing_tiers: list[dict[str, object]] | None = None) -> None:
         self.upserts: list[dict[str, object]] = []
+        self.demotion_calls: list[dict[str, object]] = []
+        self.demoted: list[tuple[str, str]] = []
+        self._existing: list[dict[str, object]] = list(existing_tiers or [])
 
     def upsert_tier(self, **kwargs) -> None:
         self.upserts.append(kwargs)
+
+    def demote_absent_hot_rows(
+        self,
+        *,
+        active_keys: list[dict[str, str]],
+        updated_at_ms: int,
+    ) -> int:
+        active = {(item["target_type"], item["target_id"]) for item in active_keys}
+        self.demotion_calls.append(
+            {
+                "active_keys": list(active_keys),
+                "updated_at_ms": int(updated_at_ms),
+            }
+        )
+        demoted_now: list[tuple[str, str]] = []
+        for row in self._existing:
+            key = (str(row["target_type"]), str(row["target_id"]))
+            if int(row.get("tier", 3)) in (1, 2) and key not in active:
+                demoted_now.append(key)
+        self.demoted.extend(demoted_now)
+        return len(demoted_now)
 
 
 class FakeConn:

@@ -26,6 +26,9 @@ EXPECTED_WORKERS = {
         "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
     ),
     "market_tick_poll": "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
+    "event_anchor_backfill": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
+    ),
     "token_capture_tier": (
         "gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
     ),
@@ -53,6 +56,7 @@ OLD_READYZ_WORKER_KEYS = {
     "collector",
     "market_tick_stream",
     "market_tick_poll",
+    "event_anchor_backfill",
     "token_capture_tier",
     "live_price_gateway",
     "resolution_refresh",

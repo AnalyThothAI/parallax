@@ -74,6 +74,8 @@ def project_once(
     poll_limit: int = DEFAULT_POLL_LIMIT,
 ) -> int:
     resolved_batch_size = max(1, int(batch_size))
+    resolved_ws_limit = max(0, int(ws_limit))
+    resolved_poll_limit = max(0, int(poll_limit))
     rows = repos.registry.active_live_market_targets(
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         since_ms=int(now_ms) - WINDOW_MS["24h"],
@@ -82,16 +84,65 @@ def project_once(
     candidates = _candidate_rows(rows)[:resolved_batch_size]
     candidates.sort(key=lambda candidate: (-candidate.score, candidate.target_type, candidate.target_id))
 
-    for index, candidate in enumerate(candidates):
-        tier, reason = _tier_for_index(index, ws_limit=max(0, int(ws_limit)), poll_limit=max(0, int(poll_limit)))
+    # Tier 1 is OKX DEX WS only: only chain_token candidates are eligible. Even if a CEX
+    # symbol outranks every chain_token on score, it must drop to Tier 2 batch_poll. This
+    # is the projection boundary that prevents the runtime owner of OKX DEX WS from being
+    # asked to subscribe to a CEX market id it cannot serve.
+    tier1_candidates = [candidate for candidate in candidates if candidate.target_type == "chain_token"]
+    tier1 = tier1_candidates[:resolved_ws_limit]
+    tier1_keys = {(candidate.target_type, candidate.target_id) for candidate in tier1}
+
+    tier2_pool = [
+        candidate
+        for candidate in candidates
+        if (candidate.target_type, candidate.target_id) not in tier1_keys
+    ]
+    tier2 = tier2_pool[:resolved_poll_limit]
+    tier2_keys = {(candidate.target_type, candidate.target_id) for candidate in tier2}
+
+    tier3 = [
+        candidate
+        for candidate in candidates
+        if (candidate.target_type, candidate.target_id) not in tier1_keys
+        and (candidate.target_type, candidate.target_id) not in tier2_keys
+    ]
+
+    for candidate in tier1:
         repos.token_capture_tiers.upsert_tier(
             target_type=candidate.target_type,
             target_id=candidate.target_id,
-            tier=tier,
-            reason=reason,
+            tier=1,
+            reason="ws_subscribed",
             score=candidate.score,
             updated_at_ms=int(now_ms),
         )
+    for candidate in tier2:
+        repos.token_capture_tiers.upsert_tier(
+            target_type=candidate.target_type,
+            target_id=candidate.target_id,
+            tier=2,
+            reason="batch_poll",
+            score=candidate.score,
+            updated_at_ms=int(now_ms),
+        )
+    for candidate in tier3:
+        repos.token_capture_tiers.upsert_tier(
+            target_type=candidate.target_type,
+            target_id=candidate.target_id,
+            tier=3,
+            reason="inline_only",
+            score=candidate.score,
+            updated_at_ms=int(now_ms),
+        )
+
+    active_keys = [
+        {"target_type": target_type, "target_id": target_id}
+        for target_type, target_id in (*tier1_keys, *tier2_keys)
+    ]
+    repos.token_capture_tiers.demote_absent_hot_rows(
+        active_keys=active_keys,
+        updated_at_ms=int(now_ms),
+    )
     _commit_if_supported(repos)
     return len(candidates)
 
@@ -153,14 +204,6 @@ def _decimal(value: Any) -> Decimal:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return Decimal("0")
-
-
-def _tier_for_index(index: int, *, ws_limit: int, poll_limit: int) -> tuple[int, str]:
-    if index < ws_limit:
-        return 1, "ws_subscribed"
-    if index < ws_limit + poll_limit:
-        return 2, "batch_poll"
-    return 3, "inline_only"
 
 
 def _commit_if_supported(repos: Any) -> None:

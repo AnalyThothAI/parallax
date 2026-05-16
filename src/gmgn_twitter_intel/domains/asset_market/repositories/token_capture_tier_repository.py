@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, cast
 
+from psycopg.types.json import Jsonb
+
 
 class TokenCaptureTierRepository:
     def __init__(self, conn: Any) -> None:
@@ -52,10 +54,29 @@ class TokenCaptureTierRepository:
             },
         )
 
-    def list_by_tier(self, tier: int, limit: int) -> list[dict[str, Any]]:
+    def list_by_tier(
+        self,
+        tier: int,
+        limit: int,
+        *,
+        exclude_keys: list[dict[str, str]] | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"tier": tier, "limit": limit}
+        exclude_filter = ""
+        if exclude_keys:
+            params["exclude_keys"] = Jsonb(list(exclude_keys))
+            exclude_filter = """
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM jsonb_to_recordset(%(exclude_keys)s::jsonb)
+                      AS excluded(target_type text, target_id text)
+                    WHERE excluded.target_type = token_capture_tier.target_type
+                      AND excluded.target_id = token_capture_tier.target_id
+                  )
+            """
         return list(
             self._conn.execute(
-                """
+                f"""
                 SELECT token_capture_tier.*
                 FROM token_capture_tier
                 LEFT JOIN LATERAL (
@@ -72,6 +93,7 @@ class TokenCaptureTierRepository:
                   LIMIT 1
                 ) latest_tick ON true
                 WHERE token_capture_tier.tier = %(tier)s
+                {exclude_filter}
                   ORDER BY
                   CASE
                     WHEN latest_tick.tick_id IS NOT NULL
@@ -91,7 +113,7 @@ class TokenCaptureTierRepository:
                   token_capture_tier.target_id ASC
                 LIMIT %(limit)s
                 """,
-                {"tier": tier, "limit": limit},
+                params,
             ).fetchall()
         )
 
@@ -106,3 +128,32 @@ class TokenCaptureTierRepository:
             {"target_type": target_type, "target_id": target_id},
         ).fetchone()
         return cast("dict[str, Any] | None", row)
+
+    def demote_absent_hot_rows(
+        self,
+        *,
+        active_keys: list[dict[str, str]],
+        updated_at_ms: int,
+    ) -> int:
+        cursor = self._conn.execute(
+            """
+            WITH active_keys AS (
+              SELECT target_type, target_id
+              FROM jsonb_to_recordset(%(active_keys)s::jsonb)
+                AS x(target_type text, target_id text)
+            )
+            UPDATE token_capture_tier AS t
+            SET tier = 3,
+                reason = 'inline_only',
+                updated_at_ms = %(updated_at_ms)s
+            WHERE t.tier IN (1, 2)
+              AND NOT EXISTS (
+                SELECT 1
+                FROM active_keys k
+                WHERE k.target_type = t.target_type
+                  AND k.target_id = t.target_id
+              )
+            """,
+            {"active_keys": Jsonb(list(active_keys)), "updated_at_ms": int(updated_at_ms)},
+        )
+        return int(getattr(cursor, "rowcount", 0) or 0)

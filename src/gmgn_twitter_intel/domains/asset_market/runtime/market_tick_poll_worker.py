@@ -59,21 +59,29 @@ class MarketTickPollWorker(WorkerBase):
         )
         self.wake_emitter = wake_emitter or wake_bus
         self.batch_size = max(1, int(getattr(resolved_settings, "batch_size", batch_size)))
+        self.concurrency = max(1, int(getattr(resolved_settings, "concurrency", 4) or 4))
         self.clock = clock or _now_ms
+        self._recent_tier2_attempts: set[tuple[str, str]] = set()
 
     async def run_once(self) -> WorkerResult:
-        return await asyncio.to_thread(self._run_once_sync)
-
-    def _run_once_sync(self) -> WorkerResult:
-        rows = self._list_tier2_rows()
+        # DB read happens off the event loop; provider IO must not run while a
+        # DB session is held, so we materialize rows first, then drop the session.
+        rows = await asyncio.to_thread(self._list_tier2_rows)
         targets = _poll_targets(rows)
 
-        ticks: list[MarketTick] = []
-        skipped_reasons = Counter(targets.skipped_reasons)
-        ticks.extend(self._poll_chain_targets(targets.chain_targets, skipped_reasons))
-        ticks.extend(self._poll_cex_targets(targets.cex_targets, skipped_reasons))
+        # New semaphore per cycle so concurrency state does not leak across runs.
+        semaphore = asyncio.Semaphore(self.concurrency)
+        chain_result, cex_result = await asyncio.gather(
+            self._poll_chain_targets_async(targets.chain_targets, semaphore),
+            self._poll_cex_targets_async(targets.cex_targets, semaphore),
+        )
 
-        inserted = self._persist_ticks(ticks)
+        skipped_reasons: Counter[str] = Counter(targets.skipped_reasons)
+        skipped_reasons.update(chain_result.skipped_reasons)
+        skipped_reasons.update(cex_result.skipped_reasons)
+        ticks = [*chain_result.ticks, *cex_result.ticks]
+
+        inserted = await asyncio.to_thread(self._persist_ticks, ticks)
         return WorkerResult(
             processed=inserted,
             skipped=sum(skipped_reasons.values()),
@@ -88,25 +96,52 @@ class MarketTickPollWorker(WorkerBase):
         )
 
     def _list_tier2_rows(self) -> list[dict[str, Any]]:
+        exclude_keys = _target_key_dicts(self._recent_tier2_attempts)
         with self.db.worker_session(self.name) as repos:
-            rows = repos.token_capture_tiers.list_by_tier(2, limit=self.batch_size)
+            rows = _list_tier2_page(
+                repos,
+                limit=self.batch_size,
+                exclude_keys=exclude_keys,
+            )
+            if not rows and exclude_keys:
+                self._recent_tier2_attempts.clear()
+                rows = repos.token_capture_tiers.list_by_tier(2, limit=self.batch_size)
+        self._remember_tier2_attempts(rows)
         return [dict(row) for row in rows]
 
-    def _poll_chain_targets(self, targets: list[_ChainTarget], skipped_reasons: Counter[str]) -> list[MarketTick]:
+    def _remember_tier2_attempts(self, rows: Sequence[Mapping[str, Any]]) -> None:
+        for row in rows:
+            target_type = str(row.get("target_type") or "").strip()
+            target_id = str(row.get("target_id") or "").strip()
+            if target_type and target_id:
+                self._recent_tier2_attempts.add((target_type, target_id))
+        max_recent = max(self.batch_size * 50, 1_000)
+        if len(self._recent_tier2_attempts) > max_recent:
+            self._recent_tier2_attempts.clear()
+
+    async def _poll_chain_targets_async(
+        self,
+        targets: list[_ChainTarget],
+        semaphore: asyncio.Semaphore,
+    ) -> _PollProviderResult:
         provider = getattr(self.providers, "dex_quote_market", None)
         if provider is None:
-            skipped_reasons["dex_provider_unavailable"] += len(targets)
-            return []
+            skipped: Counter[str] = Counter()
+            skipped["dex_provider_unavailable"] += len(targets)
+            return _PollProviderResult(ticks=[], skipped_reasons=skipped)
+        if not targets:
+            return _PollProviderResult(ticks=[], skipped_reasons=Counter())
 
         requests = [DexTokenQuoteRequest(chain_id=target.chain_id, address=target.address) for target in targets]
         try:
-            quotes = provider.token_quotes(requests)
+            quotes = await asyncio.to_thread(provider.token_quotes, requests)
         except Exception as exc:
             self.logger.bind(reason=_provider_error_reason(exc), target_count=len(targets)).warning(
                 "market tick poll batch quote failed; retrying individually"
             )
-            return self._poll_chain_targets_individually(provider, targets, skipped_reasons)
+            return await self._poll_chain_targets_individually_async(provider, targets, semaphore)
 
+        skipped_reasons: Counter[str] = Counter()
         quotes_by_key = {_target_key(quote.chain_id, quote.address): quote for quote in quotes}
         ticks: list[MarketTick] = []
         for target in targets:
@@ -129,86 +164,84 @@ class MarketTickPollWorker(WorkerBase):
                 ).warning("market tick poll quote skipped")
                 continue
             ticks.append(tick)
-        return ticks
+        return _PollProviderResult(ticks=ticks, skipped_reasons=skipped_reasons)
 
-    def _poll_chain_targets_individually(
+    async def _poll_chain_targets_individually_async(
         self,
         provider: Any,
         targets: list[_ChainTarget],
-        skipped_reasons: Counter[str],
-    ) -> list[MarketTick]:
-        ticks: list[MarketTick] = []
-        for target in targets:
-            try:
-                quotes = provider.token_quotes([DexTokenQuoteRequest(chain_id=target.chain_id, address=target.address)])
-            except Exception as exc:
-                reason = _provider_error_reason(exc)
-                skipped_reasons[reason] += 1
-                self.logger.bind(
-                    target_type="chain_token",
-                    target_id=target.target_id,
-                    reason=reason,
-                ).warning("market tick poll quote skipped")
-                continue
+        semaphore: asyncio.Semaphore,
+    ) -> _PollProviderResult:
+        async def _one(target: _ChainTarget) -> _SingleTargetOutcome:
+            async with semaphore:
+                try:
+                    quotes = await asyncio.to_thread(
+                        provider.token_quotes,
+                        [DexTokenQuoteRequest(chain_id=target.chain_id, address=target.address)],
+                    )
+                except Exception as exc:
+                    return _SingleTargetOutcome(tick=None, skip_reason=_provider_error_reason(exc))
             quote = _quote_for_chain_target(quotes, target=target)
             if quote is None:
-                skipped_reasons["dex_quote_unavailable"] += 1
-                self.logger.bind(
-                    target_type="chain_token",
-                    target_id=target.target_id,
-                    reason="dex_quote_unavailable",
-                ).warning("market tick poll quote skipped")
-                continue
+                return _SingleTargetOutcome(tick=None, skip_reason="dex_quote_unavailable")
             tick = _tick_from_dex_quote(quote, target=target, received_at_ms=int(self.clock()))
             if tick is None:
-                skipped_reasons["invalid_price"] += 1
-                self.logger.bind(
-                    target_type="chain_token",
-                    target_id=target.target_id,
-                    reason="invalid_price",
-                ).warning("market tick poll quote skipped")
-                continue
-            ticks.append(tick)
-        return ticks
+                return _SingleTargetOutcome(tick=None, skip_reason="invalid_price")
+            return _SingleTargetOutcome(tick=tick, skip_reason=None)
 
-    def _poll_cex_targets(self, targets: list[_CexTarget], skipped_reasons: Counter[str]) -> list[MarketTick]:
+        outcomes = await asyncio.gather(*[_one(target) for target in targets])
+        return self._collect_outcomes(targets_kind="chain_token", targets=targets, outcomes=outcomes)
+
+    async def _poll_cex_targets_async(
+        self,
+        targets: list[_CexTarget],
+        semaphore: asyncio.Semaphore,
+    ) -> _PollProviderResult:
         provider = getattr(self.providers, "message_cex_market", None)
         if provider is None:
-            skipped_reasons["cex_provider_unavailable"] += len(targets)
-            return []
+            skipped: Counter[str] = Counter()
+            skipped["cex_provider_unavailable"] += len(targets)
+            return _PollProviderResult(ticks=[], skipped_reasons=skipped)
+        if not targets:
+            return _PollProviderResult(ticks=[], skipped_reasons=Counter())
 
-        ticks: list[MarketTick] = []
-        for target in targets:
-            try:
-                ticker = provider.ticker(inst_id=target.instrument)
-            except Exception as exc:
-                reason = _provider_error_reason(exc)
-                skipped_reasons[reason] += 1
-                self.logger.bind(
-                    target_type="cex_symbol",
-                    target_id=target.target_id,
-                    reason=reason,
-                ).warning("market tick poll quote skipped")
-                continue
+        async def _one(target: _CexTarget) -> _SingleTargetOutcome:
+            async with semaphore:
+                try:
+                    ticker = await asyncio.to_thread(provider.ticker, inst_id=target.instrument)
+                except Exception as exc:
+                    return _SingleTargetOutcome(tick=None, skip_reason=_provider_error_reason(exc))
             if ticker is None:
-                skipped_reasons["cex_quote_unavailable"] += 1
-                self.logger.bind(
-                    target_type="cex_symbol",
-                    target_id=target.target_id,
-                    reason="cex_quote_unavailable",
-                ).warning("market tick poll quote skipped")
-                continue
+                return _SingleTargetOutcome(tick=None, skip_reason="cex_quote_unavailable")
             tick = _tick_from_cex_ticker(ticker, target=target, received_at_ms=int(self.clock()))
             if tick is None:
-                skipped_reasons["invalid_price"] += 1
-                self.logger.bind(
-                    target_type="cex_symbol",
-                    target_id=target.target_id,
-                    reason="invalid_price",
-                ).warning("market tick poll quote skipped")
+                return _SingleTargetOutcome(tick=None, skip_reason="invalid_price")
+            return _SingleTargetOutcome(tick=tick, skip_reason=None)
+
+        outcomes = await asyncio.gather(*[_one(target) for target in targets])
+        return self._collect_outcomes(targets_kind="cex_symbol", targets=targets, outcomes=outcomes)
+
+    def _collect_outcomes(
+        self,
+        *,
+        targets_kind: str,
+        targets: Sequence[Any],
+        outcomes: Sequence[_SingleTargetOutcome],
+    ) -> _PollProviderResult:
+        skipped_reasons: Counter[str] = Counter()
+        ticks: list[MarketTick] = []
+        for target, outcome in zip(targets, outcomes, strict=True):
+            if outcome.tick is not None:
+                ticks.append(outcome.tick)
                 continue
-            ticks.append(tick)
-        return ticks
+            reason = outcome.skip_reason or "provider_error"
+            skipped_reasons[reason] += 1
+            self.logger.bind(
+                target_type=targets_kind,
+                target_id=target.target_id,
+                reason=reason,
+            ).warning("market tick poll quote skipped")
+        return _PollProviderResult(ticks=ticks, skipped_reasons=skipped_reasons)
 
     def _persist_ticks(self, ticks: Iterable[MarketTick]) -> int:
         materialized = list(ticks)
@@ -241,6 +274,36 @@ class _PollTargets:
     chain_targets: list[_ChainTarget]
     cex_targets: list[_CexTarget]
     skipped_reasons: Counter[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _PollProviderResult:
+    ticks: list[MarketTick]
+    skipped_reasons: Counter[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _SingleTargetOutcome:
+    tick: MarketTick | None
+    skip_reason: str | None
+
+
+def _list_tier2_page(
+    repos: Any,
+    *,
+    limit: int,
+    exclude_keys: list[dict[str, str]],
+) -> list[Mapping[str, Any]]:
+    if exclude_keys:
+        return repos.token_capture_tiers.list_by_tier(2, limit=limit, exclude_keys=exclude_keys)
+    return repos.token_capture_tiers.list_by_tier(2, limit=limit)
+
+
+def _target_key_dicts(keys: set[tuple[str, str]]) -> list[dict[str, str]]:
+    return [
+        {"target_type": target_type, "target_id": target_id}
+        for target_type, target_id in sorted(keys)
+    ]
 
 
 def _poll_targets(rows: Sequence[Mapping[str, Any]]) -> _PollTargets:

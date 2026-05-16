@@ -92,6 +92,57 @@ class EnrichedEventRepository:
             ).fetchall()
         )
 
+    def list_pending_backfill(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        min_age_ms: int,
+    ) -> list[dict[str, Any]]:
+        return list(
+            self._conn.execute(
+                """
+                SELECT *
+                FROM enriched_events
+                WHERE capture_method = 'unavailable'
+                  AND capture_reason = 'pending_backfill'
+                  AND tick_id IS NULL
+                  AND created_at_ms <= %(ready_before_ms)s
+                ORDER BY created_at_ms ASC, event_id ASC, intent_id ASC
+                LIMIT %(limit)s
+                """,
+                {
+                    "ready_before_ms": int(now_ms) - int(min_age_ms),
+                    "limit": max(1, int(limit)),
+                },
+            ).fetchall()
+        )
+
+    def attach_backfill_capture(self, capture: EnrichedEventCapture) -> bool:
+        cursor = self._conn.execute(
+            """
+            UPDATE enriched_events
+            SET tick_id = %(tick_id)s,
+                tick_lag_ms = %(tick_lag_ms)s,
+                capture_method = %(capture_method)s,
+                capture_reason = %(capture_reason)s
+            WHERE event_id = %(event_id)s
+              AND intent_id = %(intent_id)s
+              AND capture_method = 'unavailable'
+              AND capture_reason = 'pending_backfill'
+              AND tick_id IS NULL
+            """,
+            {
+                "event_id": capture.event_id,
+                "intent_id": capture.intent_id,
+                "tick_id": capture.tick_id,
+                "tick_lag_ms": capture.tick_lag_ms,
+                "capture_method": capture.capture_method,
+                "capture_reason": capture.capture_reason,
+            },
+        )
+        return int(getattr(cursor, "rowcount", 0) or 0) == 1
+
     def _joined_select(self) -> str:
         return """
             SELECT

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -212,12 +214,12 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
     assert repos.conn.commit_count == 0
     assert wake.market_tick_notifications == []
     assert dex_provider.saw_in_session == [False, False, False]
-    assert dex_provider.requests == [
-        ("solana", "missing"),
-        ("solana", "failing"),
-        ("solana", "missing"),
-        ("solana", "failing"),
-    ]
+    # Batch records both in order; individual fallback runs the two retries
+    # via asyncio.gather so their relative order is non-deterministic.
+    assert dex_provider.requests[:2] == [("solana", "missing"), ("solana", "failing")]
+    assert sorted(dex_provider.requests[2:]) == sorted(
+        [("solana", "missing"), ("solana", "failing")],
+    )
     assert cex_provider.saw_in_session == [False, False]
 
 
@@ -261,12 +263,12 @@ def test_market_tick_poll_worker_retries_dex_batch_individually_to_preserve_vali
     assert repos.market_ticks.inserted[0].source_provider == "okx_dex_rest"
     assert wake.market_tick_notifications == [{"target_type": "chain_token", "target_id": "solana:Good"}]
     assert dex_provider.saw_in_session == [False, False, False]
-    assert dex_provider.requests == [
-        ("solana", "Good"),
-        ("solana", "Failing"),
-        ("solana", "Good"),
-        ("solana", "Failing"),
-    ]
+    # Batch records both targets in order; the individual fallback runs the two
+    # retries via asyncio.gather so their relative order is non-deterministic.
+    assert dex_provider.requests[:2] == [("solana", "Good"), ("solana", "Failing")]
+    assert sorted(dex_provider.requests[2:]) == sorted(
+        [("solana", "Good"), ("solana", "Failing")],
+    )
 
 
 @pytest.mark.parametrize("bad_price", [None, 0, -1, "not-a-price", float("nan"), float("inf")])
@@ -320,6 +322,167 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
     assert wake.market_tick_notifications == []
 
 
+def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(
+        state,
+        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(4)],
+        sort_fresh_targets_last=True,
+    )
+    provider = FakeCexProvider(
+        state,
+        {
+            f"SYM{i}-USDT": CexTicker(
+                inst_id=f"SYM{i}-USDT",
+                inst_type="SPOT",
+                last_price=Decimal(i + 1),
+                volume_24h=None,
+                open_interest=None,
+                raw={"ts": str(1_800_000_000_000 + i)},
+            )
+            for i in range(4)
+        },
+    )
+    worker = MarketTickPollWorker(
+        pool_bundle=FakeDB(state, repos),
+        providers=FakeProviders(dex_quote_market=None, message_cex_market=provider),
+        batch_size=2,
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=5.0,
+            timeout_seconds=120.0,
+            batch_size=2,
+            concurrency=2,
+        ),
+    )
+
+    asyncio.run(worker.run_once())
+    asyncio.run(worker.run_once())
+
+    assert repos.token_capture_tiers.calls == [
+        {"tier": 2, "limit": 2},
+        {
+            "tier": 2,
+            "limit": 2,
+            "exclude_keys": [
+                {"target_type": "cex_symbol", "target_id": "okx:SYM0-USDT"},
+                {"target_type": "cex_symbol", "target_id": "okx:SYM1-USDT"},
+            ],
+        },
+    ]
+    assert set(provider.requests[:2]) == {"SYM0-USDT", "SYM1-USDT"}
+    assert set(provider.requests[2:]) == {"SYM2-USDT", "SYM3-USDT"}
+
+
+def test_market_tick_poll_worker_uses_stable_freshness_order_without_empty_page_wrap() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(
+        state,
+        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(3)],
+    )
+    worker = MarketTickPollWorker(
+        pool_bundle=FakeDB(state, repos),
+        providers=FakeProviders(dex_quote_market=None, message_cex_market=FakeCexProvider(state, {})),
+        batch_size=2,
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=5.0,
+            timeout_seconds=120.0,
+            batch_size=2,
+            concurrency=2,
+        ),
+    )
+
+    asyncio.run(worker.run_once())
+    asyncio.run(worker.run_once())  # same freshness-ordered query, no cursor state
+
+    assert repos.token_capture_tiers.calls == [
+        {"tier": 2, "limit": 2},
+        {
+            "tier": 2,
+            "limit": 2,
+            "exclude_keys": [
+                {"target_type": "cex_symbol", "target_id": "okx:SYM0-USDT"},
+                {"target_type": "cex_symbol", "target_id": "okx:SYM1-USDT"},
+            ],
+        },
+    ]
+
+
+def test_market_tick_poll_worker_rotates_recently_attempted_no_quote_targets_without_offset() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(
+        state,
+        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(4)],
+    )
+    provider = FakeCexProvider(state, {})
+    worker = MarketTickPollWorker(
+        pool_bundle=FakeDB(state, repos),
+        providers=FakeProviders(dex_quote_market=None, message_cex_market=provider),
+        batch_size=2,
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=5.0,
+            timeout_seconds=120.0,
+            batch_size=2,
+            concurrency=2,
+        ),
+    )
+
+    asyncio.run(worker.run_once())
+    asyncio.run(worker.run_once())
+
+    assert set(provider.requests[:2]) == {"SYM0-USDT", "SYM1-USDT"}
+    assert set(provider.requests[2:]) == {"SYM2-USDT", "SYM3-USDT"}
+    assert repos.token_capture_tiers.calls == [
+        {"tier": 2, "limit": 2},
+        {
+            "tier": 2,
+            "limit": 2,
+            "exclude_keys": [
+                {"target_type": "cex_symbol", "target_id": "okx:SYM0-USDT"},
+                {"target_type": "cex_symbol", "target_id": "okx:SYM1-USDT"},
+            ],
+        },
+    ]
+
+
+def test_market_tick_poll_worker_polls_cex_targets_with_bounded_concurrency() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(
+        state,
+        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(4)],
+    )
+    provider = BlockingCexProvider(state)
+    worker = MarketTickPollWorker(
+        pool_bundle=FakeDB(state, repos),
+        providers=FakeProviders(dex_quote_market=None, message_cex_market=provider),
+        batch_size=4,
+        settings=SimpleNamespace(
+            enabled=True,
+            interval_seconds=5.0,
+            timeout_seconds=120.0,
+            batch_size=4,
+            concurrency=2,
+        ),
+    )
+
+    async def driver() -> WorkerResult:
+        task = asyncio.create_task(worker.run_once())
+        await provider.wait_until_active(2)
+        provider.release_all()
+        return await task
+
+    result = asyncio.run(driver())
+
+    assert provider.max_active == 2
+    assert result.processed == 0  # tickers map is empty, so all CEX skipped
+    assert sorted(provider.requests) == ["SYM0-USDT", "SYM1-USDT", "SYM2-USDT", "SYM3-USDT"]
+    # All 4 targets must be attempted, none in-session.
+    assert len(provider.saw_in_session) == 4
+    assert all(not seen for seen in provider.saw_in_session)
+
+
 def tier_row(*, target_type: str, target_id: str) -> dict[str, object]:
     return {
         "target_type": target_type,
@@ -337,30 +500,70 @@ class FakeSessionState:
 
 
 class FakeRepos:
-    def __init__(self, state: FakeSessionState, tier_rows: list[dict[str, object]]) -> None:
-        self.token_capture_tiers = FakeTokenCaptureTiers(tier_rows)
+    def __init__(
+        self,
+        state: FakeSessionState,
+        tier_rows: list[dict[str, object]],
+        *,
+        sort_fresh_targets_last: bool = False,
+    ) -> None:
         self.market_ticks = FakeMarketTicks(state)
+        self.token_capture_tiers = FakeTokenCaptureTiers(
+            tier_rows,
+            market_ticks=self.market_ticks,
+            sort_fresh_targets_last=sort_fresh_targets_last,
+        )
         self.conn = FakeConn()
 
 
 class FakeTokenCaptureTiers:
-    def __init__(self, rows: list[dict[str, object]]) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, object]],
+        *,
+        market_ticks: FakeMarketTicks,
+        sort_fresh_targets_last: bool = False,
+    ) -> None:
         self.rows = rows
-        self.calls: list[dict[str, int]] = []
+        self.market_ticks = market_ticks
+        self.sort_fresh_targets_last = sort_fresh_targets_last
+        self.calls: list[dict[str, Any]] = []
 
-    def list_by_tier(self, tier: int, limit: int) -> list[dict[str, object]]:
-        self.calls.append({"tier": tier, "limit": limit})
-        return self.rows[:limit]
+    def list_by_tier(
+        self,
+        tier: int,
+        limit: int,
+        *,
+        exclude_keys: list[dict[str, str]] | None = None,
+    ) -> list[dict[str, object]]:
+        call = {"tier": tier, "limit": limit}
+        if exclude_keys is not None:
+            call["exclude_keys"] = list(exclude_keys)
+        self.calls.append(call)
+        rows = list(self.rows)
+        if exclude_keys:
+            excluded = {(item["target_type"], item["target_id"]) for item in exclude_keys}
+            rows = [
+                row
+                for row in rows
+                if (str(row["target_type"]), str(row["target_id"])) not in excluded
+            ]
+        if self.sort_fresh_targets_last:
+            fresh = self.market_ticks.inserted_target_ids
+            rows.sort(key=lambda row: (str(row["target_id"]) in fresh, str(row["target_id"])))
+        return rows[:limit]
 
 
 class FakeMarketTicks:
     def __init__(self, state: FakeSessionState) -> None:
         self.state = state
         self.inserted = []
+        self.inserted_target_ids: set[str] = set()
 
     def insert_ticks(self, ticks) -> int:
         assert self.state.in_session is True
         self.inserted.extend(ticks)
+        self.inserted_target_ids.update(str(tick.target_id) for tick in ticks)
         return len(ticks)
 
 
@@ -442,6 +645,52 @@ class FakeCexProvider:
         if isinstance(result, Exception):
             raise result
         return result
+
+
+class BlockingCexProvider:
+    """CEX provider that blocks each ticker() call (in a thread pool) until released.
+
+    Records max concurrent active calls so tests can assert bounded concurrency.
+    """
+
+    def __init__(self, state: FakeSessionState) -> None:
+        self.state = state
+        self.requests: list[str] = []
+        self.saw_in_session: list[bool] = []
+        self._gate = threading.Event()
+        self._lock = threading.Lock()
+        self._active = 0
+        self.max_active = 0
+        self._target_active = 0
+        self._target_reached = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def wait_until_active(self, count: int) -> None:
+        self._loop = asyncio.get_running_loop()
+        self._target_active = count
+        with self._lock:
+            already = self._active >= count
+        if already:
+            return
+        await self._target_reached.wait()
+
+    def release_all(self) -> None:
+        self._gate.set()
+
+    def ticker(self, *, inst_id: str):
+        self.saw_in_session.append(self.state.in_session)
+        self.requests.append(inst_id)
+        with self._lock:
+            self._active += 1
+            self.max_active = max(self.max_active, self._active)
+            reached = self._active >= self._target_active and self._target_active > 0
+        if reached and self._loop is not None:
+            self._loop.call_soon_threadsafe(self._target_reached.set)
+        try:
+            self._gate.wait(timeout=5.0)
+        finally:
+            with self._lock:
+                self._active -= 1
 
 
 class FakeWakeEmitter:

@@ -156,6 +156,43 @@ class MarketTickRepository:
         ).fetchone()
         return cast("dict[str, Any] | None", row)
 
+    def latest_for_targets(
+        self,
+        *,
+        targets: list[dict[str, str]],
+        max_age_ms: int,
+        now_ms: int,
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        if not targets:
+            return {}
+        values_sql = ",".join(["(%s, %s)"] * len(targets))
+        params: list[Any] = []
+        for target in targets:
+            params.extend([str(target["target_type"]), str(target["target_id"])])
+        params.append(int(now_ms) - int(max_age_ms))
+        rows = self._conn.execute(
+            f"""
+            WITH requested(target_type, target_id) AS (VALUES {values_sql}),
+            ranked AS (
+              SELECT mt.*,
+                     row_number() OVER (
+                       PARTITION BY mt.target_type, mt.target_id
+                       ORDER BY mt.observed_at_ms DESC, mt.received_at_ms DESC, mt.tick_id DESC
+                     ) AS rn
+              FROM requested r
+              JOIN market_ticks mt
+                ON mt.target_type = r.target_type
+               AND mt.target_id = r.target_id
+              WHERE mt.received_at_ms >= %s
+            )
+            SELECT *
+            FROM ranked
+            WHERE rn = 1
+            """,
+            params,
+        ).fetchall()
+        return {(str(row["target_type"]), str(row["target_id"])): dict(row) for row in rows}
+
     def first_between(
         self,
         *,

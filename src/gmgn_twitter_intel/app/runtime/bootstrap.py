@@ -24,6 +24,7 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_servic
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
@@ -304,6 +305,20 @@ def _construct_workers(
             wake_emitter=wake_bus,
             batch_size=workers.market_tick_poll.batch_size,
         )
+    if workers.event_anchor_backfill.enabled and (
+        message_cex_market is not None or dex_quote_market is not None
+    ):
+        constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(
+            name="event_anchor_backfill",
+            settings=workers.event_anchor_backfill,
+            pool_bundle=db,
+            telemetry=telemetry,
+            providers=asset_market,
+            wake_emitter=wake_bus,
+            batch_size=workers.event_anchor_backfill.batch_size,
+            concurrency=workers.event_anchor_backfill.concurrency,
+            min_age_ms=workers.event_anchor_backfill.min_age_ms,
+        )
     if workers.pulse_candidate.enabled and settings.pulse_agent_configured:
         worker_name = "pulse_candidate"
         constructed["pulse_candidate"] = PulseCandidateWorker(
@@ -374,7 +389,7 @@ def _construct_workers(
             chain_ids=workers.resolution_refresh.chain_ids,
             wake_bus=wake_bus,
         )
-    if workers.live_price_gateway.enabled and (stream_dex_market is not None or message_cex_market is not None):
+    if workers.live_price_gateway.enabled:
         constructed["live_price_gateway"] = LivePriceGateway(
             name="live_price_gateway",
             pool_bundle=db,

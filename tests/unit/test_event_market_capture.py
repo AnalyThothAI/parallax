@@ -58,6 +58,127 @@ def test_existing_recent_tick_hit_returns_capture_without_provider_io() -> None:
     assert result.capture.created_at_ms == NOW_MS
 
 
+def test_capture_for_event_does_not_call_provider_when_no_fresh_tick() -> None:
+    dex_provider = RaisingDexQuoteProvider()
+    cex_provider = RaisingCexMarketProvider()
+    service = EventMarketCaptureService(
+        providers=AssetMarketProviders(dex_quote_market=dex_provider, message_cex_market=cex_provider),
+        now_ms=lambda: NOW_MS,
+    )
+    lookup = RecordingTickLookup(row=None)
+
+    result = service.capture_for_event(
+        event_id="evt",
+        intent_id="intent",
+        resolution_id="res",
+        resolution={
+            "target_type": "chain_token",
+            "target_id": "solana:ABC111",
+            "chain_id": "solana",
+            "token_address": "ABC111",
+        },
+        event_ms=EVENT_MS,
+        tick_lookup=lookup.as_tick_lookup(),
+    )
+
+    assert dex_provider.calls == []
+    assert cex_provider.calls == []
+    assert result.tick is None
+    assert result.capture.capture_method == "unavailable"
+    assert result.capture.capture_reason == "pending_backfill"
+    assert result.capture.tick_id is None
+    assert result.capture.tick_lag_ms is None
+    assert result.capture.created_at_ms == NOW_MS
+
+
+def test_capture_backfill_quote_dispatches_chain_token_to_dex_provider() -> None:
+    quote = DexTokenQuote(
+        chain_id="solana",
+        address="ABC111",
+        observed_at_ms=EVENT_MS + 100,
+        price_usd=1.23,
+        raw={},
+    )
+    provider = RecordingDexQuoteProvider([quote])
+    service = EventMarketCaptureService(
+        providers=AssetMarketProviders(dex_quote_market=provider),
+        now_ms=lambda: NOW_MS,
+    )
+
+    result = service.capture_backfill_quote(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={
+            "target_type": "chain_token",
+            "target_id": "solana:ABC111",
+            "chain_id": "solana",
+            "token_address": "ABC111",
+        },
+        event_ms=EVENT_MS,
+    )
+
+    assert result.tick is not None
+    assert result.tick.source_tier == "tier3_inline"
+    assert result.capture.capture_method == "tier3_inline"
+    assert result.capture.capture_reason == "inline_quote"
+
+
+def test_capture_backfill_quote_dispatches_cex_symbol_to_cex_provider() -> None:
+    provider = RecordingCexMarketProvider(
+        CexTicker(
+            inst_id="BTC-USDT",
+            inst_type="SPOT",
+            last_price=70_000.25,
+            volume_24h=None,
+            open_interest=None,
+            raw={"ts": str(EVENT_MS + 50)},
+        )
+    )
+    service = EventMarketCaptureService(
+        providers=AssetMarketProviders(message_cex_market=provider),
+        now_ms=lambda: NOW_MS,
+    )
+
+    result = service.capture_backfill_quote(
+        event_id="event-2",
+        intent_id="intent-2",
+        resolution_id="resolution-2",
+        resolution={
+            "target_type": "cex_symbol",
+            "target_id": "OKX:BTC-USDT",
+            "exchange": "OKX",
+            "instrument": "BTC-USDT",
+        },
+        event_ms=EVENT_MS,
+    )
+
+    assert provider.calls == ["BTC-USDT"]
+    assert result.tick is not None
+    assert result.tick.source_tier == "tier3_inline"
+    assert result.capture.capture_method == "tier3_inline"
+    assert result.capture.capture_reason == "inline_ticker"
+
+
+def test_capture_backfill_quote_returns_unavailable_for_invalid_resolution() -> None:
+    service = EventMarketCaptureService(
+        providers=AssetMarketProviders(),
+        now_ms=lambda: NOW_MS,
+    )
+
+    result = service.capture_backfill_quote(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={"target_type": "unknown", "target_id": ""},
+        event_ms=EVENT_MS,
+    )
+
+    assert result.tick is None
+    assert result.capture.capture_method == "unavailable"
+    assert result.capture.capture_reason == "invalid_resolution"
+
+
 def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
     quote = DexTokenQuote(
         chain_id="solana",
@@ -76,7 +197,7 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
         now_ms=lambda: NOW_MS,
     )
 
-    result = service.capture_for_event(
+    result = service.capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -87,7 +208,6 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert [(item.chain_id, item.address) for item in provider.calls[0]] == [("solana", "ABC111")]
@@ -135,13 +255,12 @@ def test_inline_dex_quote_preserves_gmgn_source_provider() -> None:
     result = EventMarketCaptureService(
         providers=AssetMarketProviders(dex_quote_market=RecordingDexQuoteProvider([quote])),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
         resolution={"target_type": "chain_token", "target_id": "eip155:1:0xabc"},
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is not None
@@ -181,13 +300,12 @@ def test_inline_dex_quote_parses_chain_and_address_from_target_id(
     result = EventMarketCaptureService(
         providers=AssetMarketProviders(dex_quote_market=provider),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
         resolution={"target_type": "chain_token", "target_id": target_id},
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert [(item.chain_id, item.address) for item in provider.calls[0]] == [(expected_chain, expected_address)]
@@ -212,7 +330,7 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
         now_ms=lambda: NOW_MS,
     )
 
-    result = service.capture_for_event(
+    result = service.capture_backfill_quote(
         event_id="event-2",
         intent_id="intent-2",
         resolution_id="resolution-2",
@@ -223,7 +341,6 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
             "instrument": "BTC-USDT",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert provider.calls == ["BTC-USDT"]
@@ -267,13 +384,12 @@ def test_inline_cex_ticker_parses_exchange_and_instrument_from_target_id() -> No
     result = EventMarketCaptureService(
         providers=AssetMarketProviders(message_cex_market=provider),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
         resolution={"target_type": "cex_symbol", "target_id": "okx:PEPE-USDT"},
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert provider.calls == ["PEPE-USDT"]
@@ -286,7 +402,7 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
     no_quote_result = EventMarketCaptureService(
         providers=AssetMarketProviders(dex_quote_market=RecordingDexQuoteProvider([])),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -297,7 +413,6 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
     null_price_result = EventMarketCaptureService(
         providers=AssetMarketProviders(
@@ -314,7 +429,7 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
             )
         ),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-2",
         intent_id="intent-2",
         resolution_id="resolution-2",
@@ -325,7 +440,6 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert no_quote_result.tick is None
@@ -355,7 +469,7 @@ def test_inline_dex_invalid_price_is_unavailable(price_usd: Any) -> None:
             )
         ),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -366,7 +480,6 @@ def test_inline_dex_invalid_price_is_unavailable(price_usd: Any) -> None:
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is None
@@ -394,7 +507,7 @@ def test_inline_dex_invalid_optional_market_fields_do_not_block_tick() -> None:
             )
         ),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -405,7 +518,6 @@ def test_inline_dex_invalid_optional_market_fields_do_not_block_tick() -> None:
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is not None
@@ -433,7 +545,7 @@ def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
             )
         ),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -444,7 +556,6 @@ def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
             "instrument": "BTC-USDT",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is None
@@ -467,7 +578,7 @@ def test_inline_cex_invalid_optional_volume_does_not_block_tick() -> None:
             )
         ),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -478,7 +589,6 @@ def test_inline_cex_invalid_optional_volume_does_not_block_tick() -> None:
             "instrument": "BTC-USDT",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is not None
@@ -503,7 +613,7 @@ def test_inline_dex_provider_timestamp_before_event_preserves_capture_with_absol
             )
         ),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -514,7 +624,6 @@ def test_inline_dex_provider_timestamp_before_event_preserves_capture_with_absol
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is not None
@@ -526,7 +635,7 @@ def test_provider_exception_maps_to_unavailable_without_raising() -> None:
     result = EventMarketCaptureService(
         providers=AssetMarketProviders(dex_quote_market=FailingDexQuoteProvider(TimeoutError("slow provider"))),
         now_ms=lambda: NOW_MS,
-    ).capture_for_event(
+    ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
@@ -537,7 +646,6 @@ def test_provider_exception_maps_to_unavailable_without_raising() -> None:
             "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
-        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
     )
 
     assert result.tick is None
@@ -606,6 +714,15 @@ class RecordingCexMarketProvider:
     def ticker(self, *, inst_id: str) -> CexTicker | None:
         self.calls.append(inst_id)
         return self._ticker
+
+
+class RaisingCexMarketProvider:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def ticker(self, *, inst_id: str) -> CexTicker | None:
+        self.calls.append(inst_id)
+        raise AssertionError("provider should not be called")
 
 
 def _market_tick_row(*, observed_at_ms: int, source_tier: str) -> dict[str, Any]:

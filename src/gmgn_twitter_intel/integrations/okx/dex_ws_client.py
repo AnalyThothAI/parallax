@@ -54,6 +54,9 @@ class OkxDexWebSocketMarketProvider:
         self.subscription_limit = max(1, int(subscription_limit))
         self.connection_state = "disconnected"
         self.last_state_change_at_ms = _now_ms()
+        self._websocket: Any | None = None
+        self._subscribed_args: set[tuple[str, str]] = set()
+        self._lock = asyncio.Lock()
 
     def connection_state_payload(self) -> dict[str, Any]:
         return {
@@ -62,48 +65,99 @@ class OkxDexWebSocketMarketProvider:
             "last_state_change_at_ms": self.last_state_change_at_ms,
         }
 
-    async def stream_price_info(
-        self,
-        targets: list[dict[str, str]],
-    ) -> AsyncIterator[OkxDexPriceInfoUpdate]:
-        args = [
-            {
-                "channel": "price-info",
-                "chainIndex": str(target.get("chainIndex") or target.get("chain_id") or ""),
-                "tokenContractAddress": _normalize_address(
-                    target.get("tokenContractAddress") or target.get("address") or ""
-                ),
-            }
-            for target in targets[: self.subscription_limit]
-            if str(target.get("chainIndex") or target.get("chain_id") or "").strip()
-            and str(target.get("tokenContractAddress") or target.get("address") or "").strip()
-        ]
-        if not args:
+    async def ensure_connected(self) -> None:
+        if self._websocket is not None:
             return
-        try:
-            self._set_connection_state("connecting")
-            async with websockets.connect(self.url, ping_interval=20, close_timeout=5) as websocket:
+        async with self._lock:
+            if self._websocket is not None:
+                return
+            websocket: Any | None = None
+            try:
+                self._set_connection_state("connecting")
+                websocket = await websockets.connect(self.url, ping_interval=20, close_timeout=5)
                 self._set_connection_state("authenticating")
-                await websocket.send(json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase)))
+                await websocket.send(
+                    json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase))
+                )
                 await _wait_for_login(websocket)
-                await websocket.send(json.dumps({"op": "subscribe", "args": args}))
+                self._websocket = websocket
+                websocket = None
                 self._set_connection_state("subscribed")
-                while True:
-                    raw_message = await websocket.recv()
-                    message = json.loads(str(raw_message))
-                    if isinstance(message, dict) and message.get("event") == "error":
-                        raise OkxDexWsClientError(_error_message(message))
-                    for row in _rows_from_message(message):
-                        update = _price_info_update_from_row(row)
-                        if update is not None:
-                            self._set_connection_state("streaming")
-                            yield update
+            except asyncio.CancelledError:
+                await _close_websocket(websocket)
+                await self._drop_connection(state="disconnected")
+                raise
+            except Exception:
+                await _close_websocket(websocket)
+                await self._drop_connection(state="failed")
+                raise
+
+    async def replace_subscriptions(self, targets: list[dict[str, str]]) -> None:
+        await self.ensure_connected()
+        websocket = self._websocket
+        if websocket is None:
+            raise OkxDexWsClientError("OKX DEX WS connection lost before replace_subscriptions")
+        desired_args = _subscription_args(targets, limit=self.subscription_limit)
+        desired_keys = {_arg_key(arg) for arg in desired_args}
+        to_unsubscribe_keys = sorted(self._subscribed_args - desired_keys)
+        to_subscribe_keys = sorted(desired_keys - self._subscribed_args)
+        try:
+            if to_unsubscribe_keys:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "op": "unsubscribe",
+                            "args": [_arg_from_key(key) for key in to_unsubscribe_keys],
+                        }
+                    )
+                )
+            if to_subscribe_keys:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "op": "subscribe",
+                            "args": [_arg_from_key(key) for key in to_subscribe_keys],
+                        }
+                    )
+                )
         except asyncio.CancelledError:
-            self._set_connection_state("disconnected")
             raise
         except Exception:
-            self._set_connection_state("failed")
+            await self._drop_connection(state="failed")
             raise
+        self._subscribed_args = desired_keys
+
+    async def iter_price_info(self) -> AsyncIterator[OkxDexPriceInfoUpdate]:
+        await self.ensure_connected()
+        websocket = self._websocket
+        if websocket is None:
+            raise OkxDexWsClientError("OKX DEX WS connection lost before iter_price_info")
+        try:
+            while True:
+                raw_message = await websocket.recv()
+                message = json.loads(str(raw_message))
+                if isinstance(message, dict) and message.get("event") == "error":
+                    raise OkxDexWsClientError(_error_message(message))
+                for row in _rows_from_message(message):
+                    update = _price_info_update_from_row(row)
+                    if update is not None:
+                        self._set_connection_state("streaming")
+                        yield update
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await self._drop_connection(state="failed")
+            raise
+
+    async def aclose(self) -> None:
+        await self._drop_connection(state="disconnected")
+
+    async def _drop_connection(self, *, state: str) -> None:
+        websocket = self._websocket
+        self._websocket = None
+        self._subscribed_args = set()
+        await _close_websocket(websocket)
+        self._set_connection_state(state)
 
     def _set_connection_state(self, state: str) -> None:
         if state not in WS_CONNECTION_STATES:
@@ -117,6 +171,51 @@ class OkxDexWebSocketMarketProvider:
             self.connection_state,
             self.last_state_change_at_ms,
         )
+
+
+def _subscription_args(targets: list[dict[str, str]], *, limit: int) -> list[dict[str, str]]:
+    args: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for target in targets:
+        chain_index = str(target.get("chainIndex") or target.get("chain_id") or "").strip()
+        address = _normalize_address(target.get("tokenContractAddress") or target.get("address") or "")
+        if not chain_index or not address:
+            continue
+        key = (chain_index, address)
+        if key in seen:
+            continue
+        seen.add(key)
+        args.append(
+            {
+                "channel": "price-info",
+                "chainIndex": chain_index,
+                "tokenContractAddress": address,
+            }
+        )
+        if len(args) >= max(1, int(limit)):
+            break
+    return args
+
+
+def _arg_key(arg: dict[str, str]) -> tuple[str, str]:
+    return (str(arg.get("chainIndex") or ""), str(arg.get("tokenContractAddress") or ""))
+
+
+def _arg_from_key(key: tuple[str, str]) -> dict[str, str]:
+    return {
+        "channel": "price-info",
+        "chainIndex": key[0],
+        "tokenContractAddress": key[1],
+    }
+
+
+async def _close_websocket(websocket: Any | None) -> None:
+    if websocket is None:
+        return
+    try:
+        await websocket.close()
+    except Exception as exc:
+        logger.warning("OKX DEX WS close raised | error={}", exc)
 
 
 def _login_payload(api_key: str, secret_key: str, passphrase: str) -> dict[str, Any]:

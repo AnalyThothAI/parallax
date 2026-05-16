@@ -40,6 +40,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         hot_windows = tuple(getattr(settings, "hot_windows", DEFAULT_HOT_WINDOWS) or DEFAULT_HOT_WINDOWS)
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
         self.limit = max(1, int(getattr(settings, "batch_size", 100) or 100))
+        self.cold_interval_ms = int(float(getattr(settings, "cold_interval_seconds", 60.0) or 0) * 1000)
         self.wake_bus = wake_bus
         self._cursor = 0
 
@@ -102,7 +103,10 @@ class TokenRadarProjectionWorker(WorkerBase):
             work_items = _dedupe_work_items([*self._hot_work_items(), *missing_items])
             primary_item = missing_items[0]
         else:
-            work_items, primary_item = self._next_work_items()
+            work_items, primary_item = self._next_work_items(
+                coverage=coverage,
+                computed_at_ms=computed_at_ms,
+            )
         for window, scope in work_items:
             key = f"{window}:{scope}"
             try:
@@ -139,9 +143,17 @@ class TokenRadarProjectionWorker(WorkerBase):
                 self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
         return result
 
-    def _next_work_items(self) -> tuple[list[tuple[str, str]], tuple[str, str]]:
+    def _next_work_items(
+        self,
+        *,
+        coverage: dict[tuple[str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> tuple[list[tuple[str, str]], tuple[str, str]]:
         hot_items = self._hot_work_items()
-        background_item = self._next_background_window_scope()
+        background_item = self._next_background_window_scope(
+            coverage=coverage,
+            computed_at_ms=computed_at_ms,
+        )
         work_items = list(hot_items)
         if background_item is not None and background_item not in work_items:
             work_items.append(background_item)
@@ -149,15 +161,24 @@ class TokenRadarProjectionWorker(WorkerBase):
             raise RuntimeError("token radar projection worker has no windows or scopes configured")
         return work_items, background_item or work_items[-1]
 
-    def _next_background_window_scope(self) -> tuple[str, str] | None:
+    def _next_background_window_scope(
+        self,
+        *,
+        coverage: dict[tuple[str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> tuple[str, str] | None:
         work_items = [
             (window, scope) for window in self.windows if window not in self.hot_windows for scope in self.scopes
         ]
         if not work_items:
             return None
-        item = work_items[self._cursor % len(work_items)]
-        self._cursor += 1
-        return item
+        for _ in range(len(work_items)):
+            item = work_items[self._cursor % len(work_items)]
+            self._cursor += 1
+            latest = coverage.get(item, {}).get("computed_at_ms")
+            if latest is None or computed_at_ms - int(latest) >= self.cold_interval_ms:
+                return item
+        return None
 
     def _hot_work_items(self) -> list[tuple[str, str]]:
         return [(window, scope) for window in self.hot_windows for scope in self.scopes]

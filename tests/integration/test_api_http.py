@@ -508,6 +508,7 @@ def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
         "token_capture_tier",
         "market_tick_stream",
         "market_tick_poll",
+        "event_anchor_backfill",
         "live_price_gateway",
         "resolution_refresh",
         "token_radar_projection",
@@ -520,6 +521,8 @@ def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
             "last_result",
             "last_error",
         }
+    assert "event_anchor_backfill" in workers
+    assert workers["event_anchor_backfill"]["enabled"] is True
 
 
 def test_api_exposes_recent_search_and_signal_read_models(tmp_path):

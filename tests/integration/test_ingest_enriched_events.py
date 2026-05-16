@@ -12,7 +12,7 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_ingest_chain_event_commits_enriched_event_and_market_tick_together(tmp_path) -> None:
+def test_ingest_chain_event_writes_pending_backfill_without_inline_provider_call(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     event = make_event(
@@ -58,17 +58,18 @@ def test_ingest_chain_event_commits_enriched_event_and_market_tick_together(tmp_
 
     assert result.inserted is True
     assert event_row is not None
-    assert len(market_rows) == 1
+    assert provider.calls == []
+    assert len(market_rows) == 0
     assert len(enriched_rows) == 1
-    assert enriched_rows[0]["tick_id"] == market_rows[0]["tick_id"]
-    assert enriched_rows[0]["capture_method"] == "tier3_inline"
+    assert enriched_rows[0]["tick_id"] is None
+    assert enriched_rows[0]["capture_method"] == "unavailable"
+    assert enriched_rows[0]["capture_reason"] == "pending_backfill"
     assert enriched_rows[0]["target_type"] == "chain_token"
     assert enriched_rows[0]["target_id"] == "eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933"
-    assert market_rows[0]["target_type"] == "chain_token"
     assert len(identity_rows) == 1
 
 
-def test_ingest_chain_event_with_null_price_writes_unavailable_capture_without_tick(tmp_path) -> None:
+def test_ingest_chain_event_with_provider_no_quote_still_writes_pending_backfill(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     event = make_event(
@@ -100,10 +101,11 @@ def test_ingest_chain_event_with_null_price_writes_unavailable_capture_without_t
         conn.close()
 
     assert result.inserted is True
+    assert provider.calls == []
     assert len(market_rows) == 0
     assert len(enriched_rows) == 1
     assert enriched_rows[0]["capture_method"] == "unavailable"
-    assert enriched_rows[0]["capture_reason"] == "no_market_data"
+    assert enriched_rows[0]["capture_reason"] == "pending_backfill"
     assert enriched_rows[0]["tick_id"] is None
 
 

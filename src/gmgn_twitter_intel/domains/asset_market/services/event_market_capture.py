@@ -64,6 +64,13 @@ class EventMarketCaptureService:
         event_ms: int,
         tick_lookup: TickLookup,
     ) -> CaptureResult:
+        """Lookup-only inline capture used by the collector path.
+
+        Returns an existing fresh tick when one is present within
+        ``max_existing_tick_lag_ms``. Otherwise emits an ``unavailable`` /
+        ``pending_backfill`` capture so the async backfill worker can pick it
+        up — never calls upstream providers inside the collector hot path.
+        """
         target_type = _target_type(resolution.get("target_type"))
         target_id = _clean_str(resolution.get("target_id"))
         if target_type is None or not target_id:
@@ -74,6 +81,32 @@ class EventMarketCaptureService:
         row = tick_lookup.latest_at_or_before(target_type, target_id, event_ms, self._max_existing_tick_lag_ms)
         if row is not None:
             return _existing_capture(req, row=row, created_at_ms=self._now_ms())
+        return _unavailable(req, reason="pending_backfill", created_at_ms=self._now_ms())
+
+    def capture_backfill_quote(
+        self,
+        *,
+        event_id: str,
+        intent_id: str,
+        resolution_id: str,
+        resolution: Mapping[str, Any],
+        event_ms: int,
+    ) -> CaptureResult:
+        """Async-backfill capture that calls the appropriate provider.
+
+        Dispatches deterministically by ``target_type``: ``chain_token``
+        uses ``providers.dex_quote_market`` (GMGN OpenAPI primary + OKX DEX
+        REST fallback) and ``cex_symbol`` uses
+        ``providers.message_cex_market`` (OKX CEX REST). No free-form
+        provider choice.
+        """
+        target_type = _target_type(resolution.get("target_type"))
+        target_id = _clean_str(resolution.get("target_id"))
+        if target_type is None or not target_id:
+            req = _CaptureRequest(event_id, intent_id, resolution_id, target_type or "chain_token", target_id, event_ms)
+            return _unavailable(req, reason="invalid_resolution", created_at_ms=self._now_ms())
+
+        req = _CaptureRequest(event_id, intent_id, resolution_id, target_type, target_id, event_ms)
         if target_type == "chain_token":
             return _capture_chain_token(req, resolution=resolution, providers=self._providers, now_ms=self._now_ms)
         return _capture_cex_symbol(req, resolution=resolution, providers=self._providers, now_ms=self._now_ms)

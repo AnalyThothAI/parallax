@@ -3,15 +3,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.market_field_facts import PROVIDER_OKX_DEX_WS_PRICE_INFO
-from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexMarketFactUpdate, DexMarketStreamTarget
 
 DEFAULT_LIVE_TARGET_LIMIT = 100
 DEFAULT_LIVE_TARGET_TTL_SECONDS = 300.0
@@ -80,8 +79,10 @@ class LivePriceGateway(WorkerBase):
         interval = max(0.001, float(interval_seconds))
         settings = SimpleNamespace(enabled=True, interval_seconds=interval, timeout_seconds=120.0)
         super().__init__(name=name, settings=settings, db=pool_bundle, telemetry=telemetry or object())
-        self.stream_provider = getattr(providers, "stream_dex_market", None)
-        self.cex_market = getattr(providers, "message_cex_market", None)
+        # NOTE: LivePriceGateway no longer owns any upstream price provider.
+        # OKX DEX WS is owned exclusively by MarketTickStreamWorker; CEX/REST quotes are
+        # owned by MarketTickPollWorker. This worker fans out latest `market_ticks`.
+        del providers
         self.projection_version = projection_version
         self.target_limit = DEFAULT_LIVE_TARGET_LIMIT
         self.target_ttl_seconds = DEFAULT_LIVE_TARGET_TTL_SECONDS
@@ -139,26 +140,26 @@ class LivePriceGateway(WorkerBase):
         received_at_ms = int(now_ms if now_ms is not None else self.clock())
         result = {
             "targets_selected": 0,
-            "dex_targets_selected": 0,
-            "cex_targets_selected": 0,
-            "updates_received": 0,
-            "cex_quotes_received": 0,
             "live_market_updates_published": 0,
         }
-        targets = await asyncio.to_thread(self._active_targets, now_ms=received_at_ms)
-        result["targets_selected"] = len(targets)
-        dex_targets = [target for target in targets if _is_dex_target(target)]
-        cex_targets = [target for target in targets if _is_cex_target(target)]
-        result["dex_targets_selected"] = len(dex_targets)
-        result["cex_targets_selected"] = len(cex_targets)
-        cex_payloads = await asyncio.to_thread(self._poll_cex, cex_targets, received_at_ms=received_at_ms)
-        for payload in cex_payloads:
-            result["cex_quotes_received"] += 1
-            await self._publish(payload.payload)
-            result["live_market_updates_published"] += 1
-        async for payload in self._stream_dex(dex_targets, received_at_ms=received_at_ms):
-            result["updates_received"] += 1
-            await self._publish(payload.payload)
+        active_targets = await asyncio.to_thread(self._active_targets, now_ms=received_at_ms)
+        result["targets_selected"] = len(active_targets)
+        market_targets = [_market_target_from_row(row) for row in active_targets]
+        market_targets = [target for target in market_targets if target is not None]
+        if not market_targets:
+            return result
+        latest_by_target = await asyncio.to_thread(
+            self._latest_market_ticks,
+            targets=market_targets,
+            now_ms=received_at_ms,
+        )
+        for target in market_targets:
+            key = (target["target_type"], target["target_id"])
+            tick = latest_by_target.get(key)
+            if tick is None:
+                continue
+            payload = self._payload_from_tick(tick, target=target, received_at_ms=received_at_ms).payload
+            await self._publish(payload)
             result["live_market_updates_published"] += 1
             if self._stop_event.is_set():
                 break
@@ -209,114 +210,61 @@ class LivePriceGateway(WorkerBase):
             )
         return [dict(target) for target in targets]
 
-    def _poll_cex(self, targets: list[dict[str, Any]], *, received_at_ms: int) -> list[LiveMarketEmit]:
-        if self.cex_market is None:
-            return []
-        payloads: list[LiveMarketEmit] = []
-        for target in targets:
-            inst_id = str(target.get("native_market_id") or "").strip().upper()
-            if not inst_id:
-                continue
-            ticker = self.cex_market.ticker(inst_id=inst_id)
-            if ticker is None:
-                continue
-            payloads.append(self._payload_from_cex(ticker, target=target, received_at_ms=received_at_ms))
-        return payloads
-
-    async def _stream_dex(
+    def _latest_market_ticks(
         self,
+        *,
         targets: list[dict[str, Any]],
-        *,
-        received_at_ms: int,
-    ) -> AsyncIterator[LiveMarketEmit]:
-        if self.stream_provider is None or not targets:
-            return
-        stream_targets = [
-            DexMarketStreamTarget(
-                chain_id=str(target["chain_id"]),
-                address=str(target["address"]),
-                subject_type=str(target["target_type"]),
-                subject_id=str(target["target_id"]),
-                pricefeed_id=str(target.get("pricefeed_id") or "") or None,
-            )
+        now_ms: int,
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        if not targets:
+            return {}
+        request = [
+            {"target_type": target["target_type"], "target_id": target["target_id"]}
             for target in targets
-            if target.get("chain_id") and target.get("address") and target.get("target_id")
         ]
-        target_by_key = {_target_key(target.chain_id, target.address): target for target in stream_targets}
-        stream = self.stream_provider.stream_price_info(stream_targets)
-        iterator = stream.__aiter__()
-        deadline = time.monotonic() + self._dex_stream_cycle_seconds()
-        try:
-            while not self._stop_event.is_set():
-                remaining_seconds = deadline - time.monotonic()
-                if remaining_seconds <= 0:
-                    break
-                try:
-                    update = await asyncio.wait_for(iterator.__anext__(), timeout=remaining_seconds)
-                except (TimeoutError, StopAsyncIteration):
-                    break
-                target = target_by_key.get(_target_key(update.chain_id, update.address))
-                if target is None:
-                    continue
-                yield self._payload_from_dex(update, target=target, received_at_ms=received_at_ms)
-        finally:
-            close = getattr(iterator, "aclose", None)
-            if close is not None:
-                await close()
+        with self.db.worker_session(self.name) as repos:
+            return repos.market_ticks.latest_for_targets(
+                targets=request,
+                max_age_ms=int(self.target_ttl_seconds * 1000),
+                now_ms=int(now_ms),
+            )
 
-    def _dex_stream_cycle_seconds(self) -> float:
-        return max(0.1, min(self.target_ttl_seconds, self.cycle_interval_seconds, 30.0))
-
-    def _payload_from_dex(
+    def _payload_from_tick(
         self,
-        update: DexMarketFactUpdate,
+        tick: Mapping[str, Any],
         *,
-        target: DexMarketStreamTarget,
+        target: dict[str, Any],
         received_at_ms: int,
     ) -> LiveMarketEmit:
-        snapshot = LiveMarketSnapshot(
-            target_type=target.subject_type,
-            target_id=target.subject_id,
-            status="live",
-            price_usd=update.price_usd,
-            price_quote=None,
-            quote_symbol="USD",
-            price_basis="usd" if update.price_usd is not None else "unavailable",
-            market_cap_usd=update.market_cap_usd,
-            liquidity_usd=update.liquidity_usd,
-            holders=update.holders,
-            volume_24h_usd=update.volume_24h_usd,
-            observed_at_ms=update.observed_at_ms,
-            received_at_ms=received_at_ms,
-            provider=PROVIDER_OKX_DEX_WS_PRICE_INFO,
-        )
-        return self._store_payload(
-            snapshot,
-            pricefeed_id=target.pricefeed_id,
-        )
-
-    def _payload_from_cex(self, ticker: CexTicker, *, target: dict[str, Any], received_at_ms: int) -> LiveMarketEmit:
-        quote_symbol = target.get("quote_symbol") or _quote_from_inst_id(ticker.inst_id)
-        price_basis = "quote_as_usd" if str(quote_symbol or "").upper() in {"USD", "USDT", "USDC"} else "quote"
+        source_provider = str(tick.get("source_provider") or "") or None
+        price_usd = _float(tick.get("price_usd"))
+        quote_symbol = target.get("quote_symbol")
+        price_basis = "usd" if price_usd is not None else "unavailable"
+        if target["target_type"] == "cex_symbol" and quote_symbol:
+            price_basis = (
+                "quote_as_usd"
+                if str(quote_symbol).upper() in {"USD", "USDT", "USDC"}
+                else "quote"
+            )
         snapshot = LiveMarketSnapshot(
             target_type=str(target["target_type"]),
             target_id=str(target["target_id"]),
             status="live",
-            price_usd=ticker.last_price if price_basis == "quote_as_usd" else None,
-            price_quote=ticker.last_price,
+            price_usd=price_usd,
+            price_quote=price_usd if price_basis in {"quote", "quote_as_usd"} else None,
             quote_symbol=str(quote_symbol).upper() if quote_symbol else None,
             price_basis=price_basis,
-            market_cap_usd=None,
-            liquidity_usd=None,
-            holders=None,
-            volume_24h_usd=ticker.volume_24h,
-            observed_at_ms=received_at_ms,
-            received_at_ms=received_at_ms,
-            provider="okx_cex",
+            market_cap_usd=_float(tick.get("market_cap_usd")),
+            liquidity_usd=_float(tick.get("liquidity_usd")),
+            holders=_int(tick.get("holders")),
+            volume_24h_usd=_float(tick.get("volume_24h_usd")),
+            observed_at_ms=_int(tick.get("observed_at_ms")),
+            received_at_ms=_int(tick.get("received_at_ms")) or received_at_ms,
+            provider=source_provider,
         )
         return self._store_payload(
             snapshot,
-            pricefeed_id=str(target.get("pricefeed_id") or "") or None,
+            pricefeed_id=str(tick.get("pricefeed_id") or "") or str(target.get("pricefeed_id") or "") or None,
         )
 
     def _store_payload(
@@ -345,28 +293,76 @@ class LivePriceGateway(WorkerBase):
             await result
 
 
-def _is_dex_target(target: dict[str, Any]) -> bool:
-    return str(target.get("target_type") or "") == "Asset" and bool(target.get("chain_id") and target.get("address"))
-
-
-def _is_cex_target(target: dict[str, Any]) -> bool:
-    return str(target.get("target_type") or "") == "CexToken" and bool(target.get("native_market_id"))
-
-
-def _target_key(chain_id: Any, address: Any) -> tuple[str, str]:
-    return (str(chain_id or "").strip().lower(), _normalize_address(address))
-
-
-def _normalize_address(address: Any) -> str:
-    text = str(address or "").strip()
-    return text.lower() if text.startswith(("0x", "0X")) else text
-
-
-def _quote_from_inst_id(inst_id: str) -> str | None:
-    parts = [part.strip().upper() for part in str(inst_id).split("-") if part.strip()]
-    if len(parts) < 2:
+def _market_target_from_row(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    target_type = str(row.get("target_type") or "").strip()
+    target_id = str(row.get("target_id") or "").strip()
+    if not target_type or not target_id:
         return None
-    return parts[1]
+    if target_type in {"chain_token", "cex_symbol"}:
+        return {
+            "target_type": target_type,
+            "target_id": target_id,
+            "chain_id": row.get("chain_id"),
+            "address": row.get("address"),
+            "provider": row.get("provider"),
+            "native_market_id": row.get("native_market_id"),
+            "quote_symbol": row.get("quote_symbol"),
+            "pricefeed_id": row.get("pricefeed_id"),
+        }
+    if target_type == "Asset":
+        chain_id = str(row.get("chain_id") or "").strip()
+        address = str(row.get("address") or "").strip()
+        if not chain_id or not address:
+            return None
+        return {
+            "target_type": "chain_token",
+            "target_id": f"{chain_id}:{address}",
+            "chain_id": chain_id,
+            "address": address,
+            "provider": row.get("provider"),
+            "native_market_id": None,
+            "quote_symbol": None,
+            "pricefeed_id": row.get("pricefeed_id"),
+        }
+    if target_type == "CexToken":
+        provider = str(row.get("provider") or "").strip().lower()
+        native_market_id = str(row.get("native_market_id") or "").strip().upper()
+        if not provider or not native_market_id:
+            return None
+        return {
+            "target_type": "cex_symbol",
+            "target_id": f"{provider}:{native_market_id}",
+            "chain_id": None,
+            "address": None,
+            "provider": provider,
+            "native_market_id": native_market_id,
+            "quote_symbol": row.get("quote_symbol"),
+            "pricefeed_id": row.get("pricefeed_id"),
+        }
+    return None
+
+
+def _float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        try:
+            return float(value)
+        except (OverflowError, ValueError):
+            return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _now_ms() -> int:

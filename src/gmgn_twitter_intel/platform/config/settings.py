@@ -376,6 +376,14 @@ class MarketTickStreamWorkerSettings(PerWorkerSettings):
 class MarketTickPollWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=15.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
+    concurrency: int = Field(default=4, ge=1)
+
+
+class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=1.0, ge=0)
+    batch_size: int = Field(default=50, ge=1)
+    concurrency: int = Field(default=8, ge=1)
+    min_age_ms: int = Field(default=250, ge=0)
 
 
 class LivePriceGatewayWorkerSettings(PerWorkerSettings):
@@ -418,6 +426,7 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
     scopes: tuple[str, ...] = ("all", "matched")
     hot_windows: tuple[str, ...] = ("5m",)
+    cold_interval_seconds: float = Field(default=60.0, ge=0)
 
     @field_validator("wakes_on", "windows", "scopes", "hot_windows", mode="before")
     @classmethod
@@ -508,6 +517,9 @@ class WorkersSettings(BaseModel):
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
     market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
     market_tick_poll: MarketTickPollWorkerSettings = Field(default_factory=MarketTickPollWorkerSettings)
+    event_anchor_backfill: EventAnchorBackfillWorkerSettings = Field(
+        default_factory=EventAnchorBackfillWorkerSettings
+    )
     token_capture_tier: TokenCaptureTierWorkerSettings = Field(default_factory=TokenCaptureTierWorkerSettings)
     live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
     resolution_refresh: ResolutionRefreshWorkerSettings = Field(default_factory=ResolutionRefreshWorkerSettings)
@@ -966,6 +978,13 @@ market_tick_poll:
   enabled: true
   interval_seconds: 15.0
   batch_size: 100
+  concurrency: 4
+event_anchor_backfill:
+  enabled: true
+  interval_seconds: 1.0
+  batch_size: 50
+  concurrency: 8
+  min_age_ms: 250
 token_capture_tier:
   enabled: true
   interval_seconds: 30.0
@@ -998,6 +1017,7 @@ token_radar_projection:
   windows: ["5m", "1h", "4h", "24h"]
   scopes: ["all", "matched"]
   hot_windows: ["5m"]
+  cold_interval_seconds: 60.0
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0
