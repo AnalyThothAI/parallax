@@ -268,9 +268,7 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
     assert columns["score_stddev"]["data_type"] == "double precision"
     assert columns["score_stddev"]["is_nullable"] == "YES"
     assert columns["diagnostics_json"]["is_nullable"] == "NO"
-    assert {"idx_token_score_evaluations_generated", "idx_token_radar_rows_settlement"}.issubset(
-        token_factor_indexes
-    )
+    assert {"idx_token_score_evaluations_generated", "idx_token_radar_rows_settlement"}.issubset(token_factor_indexes)
     assert {
         "idx_market_ticks_target_observed",
         "idx_enriched_events_target_time",

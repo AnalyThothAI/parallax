@@ -253,9 +253,7 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
     assert "received_at_ms" not in dedupe_index
     assert "event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE" in text
     assert "intent_id TEXT NOT NULL REFERENCES token_intents(intent_id) ON DELETE CASCADE" in text
-    assert (
-        "resolution_id TEXT NOT NULL REFERENCES token_intent_resolutions(resolution_id) ON DELETE CASCADE"
-    ) in text
+    assert ("resolution_id TEXT NOT NULL REFERENCES token_intent_resolutions(resolution_id) ON DELETE CASCADE") in text
     assert "capture_reason TEXT NOT NULL" in text
     assert "CREATE OR REPLACE FUNCTION forbid_market_fact_update()" in text
     assert "BEFORE UPDATE ON market_ticks" in text

@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel._constants import WINDOW_MS
-from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
 from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
 
 DEFAULT_REPROCESS_LIMIT = 500
@@ -90,30 +89,6 @@ def reprocess_recent_token_intents(
         "resolved_intents": resolved,
         "since_ms": since_ms,
     }
-
-
-def _rebuild_token_radar_windows(
-    *,
-    repos: Any,
-    now_ms: int,
-    windows: tuple[str, ...] = DEFAULT_WINDOWS,
-    scopes: tuple[str, ...] = DEFAULT_SCOPES,
-    limit: int = 100,
-) -> dict[str, Any]:
-    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
-        TokenRadarProjection,
-    )
-
-    projection = TokenRadarProjection(repos=repos)
-    result: dict[str, Any] = {"rows_written": 0, "source_rows": 0, "windows": {}}
-    for window in windows:
-        for scope in scopes:
-            key = f"{window}:{scope}"
-            window_result = projection.rebuild(window=window, scope=scope, now_ms=now_ms, limit=limit)
-            result["windows"][key] = window_result
-            result["rows_written"] += int(window_result.get("rows_written") or 0)
-            result["source_rows"] += int(window_result.get("source_rows") or 0)
-    return result
 
 
 def deferred_token_radar_projection() -> dict[str, Any]:

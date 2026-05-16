@@ -56,6 +56,7 @@ class FakeStreamProvider:
         for update in self.updates:
             yield update
 
+
 class FakeDB:
     def __init__(self) -> None:
         self.repos = FakeRepos()

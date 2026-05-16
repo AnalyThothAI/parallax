@@ -6,8 +6,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 LATEST_MIGRATION = (
-    ROOT
-    / "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
+    ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 )
 ALEMBIC_VERSIONS = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
 SUPERPOWERS_DOCS = ROOT / "docs/superpowers"

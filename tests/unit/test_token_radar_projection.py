@@ -55,9 +55,7 @@ def test_token_radar_projection_uses_factor_snapshot_contract():
         "semantic_catalyst",
         "timing_risk",
     )
-    assert TOKEN_RADAR_SOURCE_TABLE == (
-        "token_intent_resolutions+asset_identity_current+enriched_events+market_ticks"
-    )
+    assert TOKEN_RADAR_SOURCE_TABLE == ("token_intent_resolutions+asset_identity_current+enriched_events+market_ticks")
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
 
 

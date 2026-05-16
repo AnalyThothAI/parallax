@@ -172,6 +172,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     raise RuntimeError(
-        "20260515_0046 hard-cut migration is not safely reversible; "
-        "rollback requires restoring a pre-migration backup."
+        "20260515_0046 hard-cut migration is not safely reversible; rollback requires restoring a pre-migration backup."
     )
