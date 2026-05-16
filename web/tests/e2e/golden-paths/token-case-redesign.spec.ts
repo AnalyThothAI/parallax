@@ -20,6 +20,23 @@ test("token route renders the HANSA case dossier and loads another post page", a
   await expect(
     tokenCase.getByRole("article").filter({ hasText: "Follow-up page adds fresh HANSA context" }),
   ).toBeVisible();
+
+  const routeBackSentinel = await page.evaluate(() => {
+    const routeWindow = window as Window & { __routeBackSentinel?: string };
+    routeWindow.__routeBackSentinel = crypto.randomUUID();
+    return routeWindow.__routeBackSentinel;
+  });
+
+  await tokenCase.getByRole("link", { name: "返回 Token Radar" }).click();
+
+  await expect(page.getByRole("heading", { name: "Token Radar" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as Window & { __routeBackSentinel?: string }).__routeBackSentinel,
+      ),
+    )
+    .toBe(routeBackSentinel);
 });
 
 test("search token_result reuses the case dossier without fetching token-case", async ({
