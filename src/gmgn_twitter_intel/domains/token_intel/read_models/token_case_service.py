@@ -64,13 +64,21 @@ class TokenCaseService:
         timeline["query"]["scope"] = response_scope
         posts["query"]["scope"] = response_scope
         profile = self.profiles.profile_for_target(target_type=target_type, target_id=target_id)
+        market_live = self._market_live(target=target, now_ms=now_ms)
+        agent_brief = build_token_agent_brief(
+            target=target,
+            timeline=timeline,
+            posts=posts,
+            radar_item=None,
+            market_live=market_live,
+        )
         return {
             "target": target,
             "profile": profile,
             "timeline": timeline,
             "posts": posts,
-            "agent_brief": build_token_agent_brief(target=target, timeline=timeline, posts=posts, radar_item=None),
-            "market_live": self._market_live(target=target, now_ms=now_ms),
+            "agent_brief": agent_brief,
+            "market_live": market_live,
         }
 
     def _market_live(self, *, target: dict[str, Any], now_ms: int | None) -> dict[str, Any]:

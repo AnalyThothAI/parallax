@@ -154,6 +154,7 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
     assert dossier["market_live"]["volume_24h_usd"] == 26133.3652616
     assert dossier["market_live"]["holders"] == 551
     assert dossier["market_live"]["age_ms"] == 1_000
+    assert "缺 holders" not in dossier["agent_brief"]["project_summary"]["data_gaps"]
 
 
 def test_token_case_uses_unsupported_live_market_without_gateway():

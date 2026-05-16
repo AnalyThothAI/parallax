@@ -6,6 +6,7 @@ from typing import Any, cast
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
+from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
 
 
 class MarketTickRepository:
@@ -88,7 +89,7 @@ class MarketTickRepository:
                 "volume_24h_usd": tick.volume_24h_usd,
                 "market_cap_usd": tick.market_cap_usd,
                 "holders": tick.holders,
-                "raw_payload_json": Jsonb(tick.raw_payload_json),
+                "raw_payload_json": Jsonb(postgres_safe_json(tick.raw_payload_json)),
                 "created_at_ms": tick.created_at_ms,
             },
         )

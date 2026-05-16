@@ -5,6 +5,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json, postgres_safe_text
+
 GMGN_DEX_PROFILE_PROVIDER = "gmgn_dex_profile"
 READY_REFRESH_MS = 6 * 60 * 60 * 1000
 MISSING_REFRESH_MS = 15 * 60 * 1000
@@ -185,19 +187,11 @@ def _required_text(value: str) -> str:
 
 
 def _clean_text(value: Any) -> str:
-    return str(value or "").replace("\x00", "")
+    return postgres_safe_text(value)
 
 
 def _sanitize_json(value: Any) -> Any:
-    if isinstance(value, str):
-        return value.replace("\x00", "")
-    if isinstance(value, list):
-        return [_sanitize_json(item) for item in value]
-    if isinstance(value, tuple):
-        return [_sanitize_json(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key).replace("\x00", ""): _sanitize_json(item) for key, item in value.items()}
-    return value
+    return postgres_safe_json(value)
 
 
 def _now_ms() -> int:

@@ -11,6 +11,7 @@ def build_token_agent_brief(
     timeline: dict[str, Any],
     posts: dict[str, Any] | list[dict[str, Any]],
     radar_item: dict[str, Any] | None,
+    market_live: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del radar_item
     post_items = _post_items(posts)
@@ -25,7 +26,7 @@ def build_token_agent_brief(
     watched_posts = int(summary.get("watched_posts") or sum(1 for item in post_items if item.get("is_watched")))
     top_author_share = float(summary.get("top_author_share") or 0.0)
     duplicate_share = float(summary.get("duplicate_text_share") or 0.0)
-    data_gaps = _token_data_gaps(timeline=timeline)
+    data_gaps = _token_data_gaps(timeline=timeline, market_live=market_live)
     stance = _stance(
         posts=posts_count,
         authors=authors_count,
@@ -257,11 +258,13 @@ def _propagation_summary(*, symbol: str, phases: list[dict[str, Any]]) -> str:
     return f"${symbol} 过去 24 小时传播路径为 {labels}，应优先核对每个阶段的代表推文和 lead accounts。"
 
 
-def _token_data_gaps(*, timeline: dict[str, Any]) -> list[str]:
+def _token_data_gaps(*, timeline: dict[str, Any], market_live: dict[str, Any] | None) -> list[str]:
     gaps = ["缺真实 OHLC/K 线，只能展示事件市场 tick 与最新 tick"]
     if not timeline.get("market_overlay"):
         gaps.append("缺市场 overlay")
-    gaps.extend(["缺 holders", "缺合约风险和项目方资料"])
+    if not _has_value(_dict(market_live).get("holders")):
+        gaps.append("缺 holders")
+    gaps.append("缺合约风险和项目方资料")
     return gaps
 
 
@@ -323,6 +326,10 @@ def _last_phase(stages: list[dict[str, Any]]) -> str | None:
 
 def _author_posts(events: list[dict[str, Any]], handle: str) -> int:
     return sum(1 for event in events if str(event.get("author_handle") or "") == handle)
+
+
+def _has_value(value: Any) -> bool:
+    return value is not None and value != ""
 
 
 def _dict(value: Any) -> dict[str, Any]:

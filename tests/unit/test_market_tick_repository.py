@@ -71,6 +71,18 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
     assert conn.params[0]["raw_payload_json"].obj == {"pair": "abc"}
 
 
+def test_insert_market_tick_strips_nul_bytes_from_raw_payload() -> None:
+    conn = _ScriptedConnection([])
+    tick = _tick(raw_payload_json={"symbol\x00": "ZEC\x00", "links": ["https://x.example/\x00zec"]})
+
+    MarketTickRepository(conn).insert_tick(tick)
+
+    assert conn.params[0]["raw_payload_json"].obj == {
+        "symbol": "ZEC",
+        "links": ["https://x.example/zec"],
+    }
+
+
 def test_insert_ticks_returns_attempted_count() -> None:
     conn = _ScriptedConnection([])
 
@@ -169,7 +181,12 @@ class _ScriptedConnection:
         self.commits += 1
 
 
-def _tick(*, tick_id: str | None = None, observed_at_ms: int = 1_700_000_000_000) -> MarketTick:
+def _tick(
+    *,
+    tick_id: str | None = None,
+    observed_at_ms: int = 1_700_000_000_000,
+    raw_payload_json: dict[str, Any] | None = None,
+) -> MarketTick:
     tick_id = tick_id or market_tick_id(
         target_type="chain_token",
         target_id="solana:abc",
@@ -195,5 +212,5 @@ def _tick(*, tick_id: str | None = None, observed_at_ms: int = 1_700_000_000_000
         market_cap_usd=Decimal("100000"),
         holders=1234,
         created_at_ms=1_700_000_000_200,
-        raw_payload_json={"pair": "abc"},
+        raw_payload_json=raw_payload_json or {"pair": "abc"},
     )
