@@ -22,6 +22,8 @@ export type TokenCasePostEvent = {
   id: string;
   handle: string | null;
   text: string;
+  sourceText?: string | null;
+  detailsLabel?: string | null;
   url: string | null;
   timestampMs: number | null;
   timeLabel: string | null;

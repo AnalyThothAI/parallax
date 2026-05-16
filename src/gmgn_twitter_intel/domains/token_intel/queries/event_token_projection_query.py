@@ -37,15 +37,29 @@ class EventTokenProjectionQuery:
                 price_feeds.base_symbol
               ) AS symbol,
               price_feeds.quote_symbol AS quote_symbol,
-              event_tick.tick_id AS market_tick_id,
-              event_tick.source_provider AS market_tick_provider,
-              event_tick.observed_at_ms AS market_tick_observed_at_ms,
-              event_tick.price_usd,
+              COALESCE(event_tick.tick_id, latest_tick.tick_id) AS market_tick_id,
+              COALESCE(event_tick.source_provider, latest_tick.source_provider) AS market_tick_provider,
+              COALESCE(event_tick.observed_at_ms, latest_tick.observed_at_ms) AS market_tick_observed_at_ms,
+              COALESCE(event_tick.price_usd, latest_tick.price_usd) AS price_usd,
               NULL::numeric AS price_quote,
               NULL::text AS price_quote_symbol,
-              event_market_capture.capture_method AS market_capture_method,
-              event_market_capture.tick_lag_ms AS market_tick_lag_ms
+              COALESCE(
+                event_market_capture.capture_method,
+                CASE WHEN latest_tick.tick_id IS NOT NULL THEN 'latest_market_tick' ELSE NULL END
+              ) AS market_capture_method,
+              COALESCE(
+                event_market_capture.tick_lag_ms,
+                CASE
+                  WHEN latest_tick.tick_id IS NOT NULL THEN ABS(latest_tick.observed_at_ms - events.received_at_ms)
+                  ELSE NULL
+                END
+              ) AS market_tick_lag_ms
             FROM token_intent_resolutions tir
+            JOIN events
+              ON events.event_id = tir.event_id
+            LEFT JOIN registry_assets
+              ON tir.target_type = 'Asset'
+             AND registry_assets.asset_id = tir.target_id
             LEFT JOIN asset_identity_current
               ON tir.target_type = 'Asset'
              AND asset_identity_current.asset_id = tir.target_id
@@ -84,6 +98,24 @@ class EventTokenProjectionQuery:
              AND event_market_capture.resolution_id = tir.resolution_id
             LEFT JOIN market_ticks event_tick
               ON event_tick.tick_id = event_market_capture.tick_id
+            LEFT JOIN LATERAL (
+              SELECT market_ticks.*
+              FROM market_ticks
+              WHERE (
+                  tir.target_type = 'Asset'
+                  AND registry_assets.asset_id IS NOT NULL
+                  AND market_ticks.target_type = 'chain_token'
+                  AND market_ticks.target_id = registry_assets.chain_id || ':' || registry_assets.address
+                )
+                 OR (
+                  tir.target_type = 'CexToken'
+                  AND price_feeds.pricefeed_id IS NOT NULL
+                  AND market_ticks.target_type = 'cex_symbol'
+                  AND market_ticks.target_id = price_feeds.provider || ':' || price_feeds.native_market_id
+                )
+              ORDER BY market_ticks.observed_at_ms DESC, market_ticks.received_at_ms DESC, market_ticks.tick_id DESC
+              LIMIT 1
+            ) latest_tick ON event_tick.tick_id IS NULL
             WHERE tir.event_id IN ({placeholders})
               AND tir.is_current = TRUE
               AND tir.target_type IN ('Asset', 'CexToken')

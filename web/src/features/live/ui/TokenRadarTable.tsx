@@ -30,6 +30,7 @@ type TokenRadarTableProps = {
   scope: ScopeKey;
   windowKey: WindowKey;
   isLoading: boolean;
+  isRefreshing?: boolean;
   error?: Error | null;
   onSelect: (item: TokenFlowItem) => void;
   onScopeChange: (scope: ScopeKey) => void;
@@ -43,17 +44,20 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     scope,
     windowKey,
     isLoading,
+    isRefreshing = false,
     error,
     onSelect,
     onScopeChange,
     onWindowChange,
   } = props;
-  const showLoading = !error && isLoading;
-  const showEmpty = !error && !isLoading && items.length === 0;
+  const showLoading = !error && isLoading && items.length === 0;
+  const showEmpty = !error && !showLoading && items.length === 0;
   const resultLabel = showLoading
     ? "loading"
     : items.length
-      ? `${items.length} live ${items.length === 1 ? "case" : "cases"}`
+      ? `${items.length} live ${items.length === 1 ? "case" : "cases"}${
+          isRefreshing ? " · updating" : ""
+        }`
       : "no live cases";
   const columns = useMemo<ColumnDef<TokenFlowItem>[]>(
     () => tokenRadarColumns({ onSelect, selectedKey }),
@@ -89,62 +93,66 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
       </header>
 
       <div className="token-radar-table">
-        {showLoading ? <RadarSkeleton /> : null}
+        {showLoading ? (
+          <RemoteState.Loading layout="panel" rows={8} label="loading token radar" />
+        ) : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
         {showEmpty ? <RemoteState.Empty title="当前窗口暂无可交易 token 热度" /> : null}
         {!showLoading && !error && items.length ? (
-          <div className="radar-data-table">
-            <div>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <div className="token-radar-head" key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <div
-                      className={`radar-head-cell ${header.column.id}`}
-                      data-sort={sortState(header.column.getIsSorted())}
-                      key={header.id}
-                    >
-                      <button
-                        aria-label={`Sort by ${headerLabel(header.column.id).toLowerCase()}`}
-                        className="radar-sort-button"
-                        type="button"
-                        onClick={header.column.getToggleSortingHandler()}
+          <RemoteState.Stale updating={isRefreshing}>
+            <div className="radar-data-table">
+              <div>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <div className="token-radar-head" key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <div
+                        className={`radar-head-cell ${header.column.id}`}
+                        data-sort={sortState(header.column.getIsSorted())}
+                        key={header.id}
                       >
-                        <span>
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </span>
-                        <SortIcon direction={header.column.getIsSorted()} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ))}
+                        <button
+                          aria-label={`Sort by ${headerLabel(header.column.id).toLowerCase()}`}
+                          className="radar-sort-button"
+                          type="button"
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          <span>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
+                          <SortIcon direction={header.column.getIsSorted()} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div>
+                {table.getRowModel().rows.map((row) => {
+                  const key = tokenKey(row.original);
+                  const tokenCase = buildTokenRadarCompactCase(row.original);
+                  return (
+                    <Fragment key={row.id}>
+                      {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+                      <article
+                        aria-label={`Token Radar item ${tokenCase.label}`}
+                        className={clsx("token-radar-row", selectedKey === key && "selected")}
+                        tabIndex={0}
+                        onClick={() => onSelect(row.original)}
+                        onKeyDown={(event) => handleRowKeyDown(event, row.original, onSelect)}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <div className={`token-radar-cell ${cell.column.id}`} key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </div>
+                        ))}
+                      </article>
+                      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+                    </Fragment>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              {table.getRowModel().rows.map((row) => {
-                const key = tokenKey(row.original);
-                const tokenCase = buildTokenRadarCompactCase(row.original);
-                return (
-                  <Fragment key={row.id}>
-                    {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
-                    <article
-                      aria-label={`Token Radar item ${tokenCase.label}`}
-                      className={clsx("token-radar-row", selectedKey === key && "selected")}
-                      tabIndex={0}
-                      onClick={() => onSelect(row.original)}
-                      onKeyDown={(event) => handleRowKeyDown(event, row.original, onSelect)}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <div className={`token-radar-cell ${cell.column.id}`} key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </div>
-                      ))}
-                    </article>
-                    {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
-                  </Fragment>
-                );
-              })}
-            </div>
-          </div>
+          </RemoteState.Stale>
         ) : null}
       </div>
     </section>
@@ -378,14 +386,4 @@ function SortIcon({ direction }: { direction: false | SortDirection }) {
     return <ArrowDown aria-hidden />;
   }
   return <ChevronsUpDown aria-hidden />;
-}
-
-function RadarSkeleton() {
-  return (
-    <div className="radar-skeleton" aria-label="loading token radar">
-      {Array.from({ length: 8 }, (_, index) => (
-        <span key={index} />
-      ))}
-    </div>
-  );
 }

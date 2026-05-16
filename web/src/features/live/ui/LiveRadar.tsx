@@ -6,6 +6,7 @@ import "./live.css";
 type LiveRadarProps = {
   tokenItems: TokenFlowItem[];
   isAssetFlowLoading: boolean;
+  isAssetFlowRefreshing?: boolean;
   assetFlowError: Error | null;
   selectedTokenKey: string | null;
   onSelectToken: (item: TokenFlowItem) => void;
@@ -18,6 +19,7 @@ type LiveRadarProps = {
 export function LiveRadar({
   tokenItems,
   isAssetFlowLoading,
+  isAssetFlowRefreshing = false,
   assetFlowError,
   selectedTokenKey,
   onSelectToken,
@@ -31,6 +33,7 @@ export function LiveRadar({
       <TokenRadarTable
         error={assetFlowError}
         isLoading={isAssetFlowLoading}
+        isRefreshing={isAssetFlowRefreshing}
         items={tokenItems}
         scope={scope}
         selectedKey={selectedTokenKey}

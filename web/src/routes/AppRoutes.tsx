@@ -55,6 +55,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
   const decisionCounts = liveRadar.decisionCounts;
   const handles = liveRoute.handles;
   const isAssetFlowLoading = liveRadar.isAssetFlowLoading;
+  const isAssetFlowRefreshing = liveRadar.isAssetFlowRefreshing;
   const isRecentLoading = recentQuery.isPending;
   const marketTargets = liveRadar.marketTargets;
   const recentReplayItems = recentQuery.data?.data.items ?? EMPTY_LIVE_ITEMS;
@@ -205,6 +206,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
     <LiveRadarRoute
       tokenItems={tokenItems}
       isAssetFlowLoading={isAssetFlowLoading}
+      isAssetFlowRefreshing={isAssetFlowRefreshing}
       assetFlowError={assetFlowError}
       selectedTokenKey={null}
       onSelectToken={selection.selectToken}

@@ -23,3 +23,4 @@ export type {
 
 export { TokenCasePanel } from "./TokenCasePanel";
 export type { TokenCasePanelProps } from "./TokenCasePanel";
+export { TokenCasePostEventCard } from "./TokenCasePostEventCard";

@@ -3,6 +3,7 @@ import {
   formatRelativeAge,
   formatUsdCompact,
   formatUtcTimestamp,
+  formatTokenPriceUsd,
   shortAddress,
 } from "@lib/format";
 import type {
@@ -13,6 +14,12 @@ import type {
   TokenFactorFamily,
   TokenFactorFamilyKey,
 } from "@lib/types";
+import type { TokenCasePostEvent, TokenCaseTone } from "@shared/model/tokenCaseViewModel";
+import {
+  buildTokenPostEventMarket,
+  cleanText,
+  normalizeTokenSymbol,
+} from "@shared/model/tokenPostEvent";
 
 export const GATE_AGENT_MISMATCH_CONFIDENCE = 0.5;
 
@@ -60,7 +67,7 @@ export type FactorFamilyView = {
   breakdown: FactorFamilyBreakdownRow[];
 };
 export type MarketMetric = {
-  id: "mcap" | "liq" | "vol_24h" | "holders";
+  id: "price" | "mcap" | "liq" | "vol_24h" | "holders";
   label: string;
   value: string;
   subValue: string | null;
@@ -114,6 +121,7 @@ export type EvidenceView = {
   totalUniqueAuthors: number;
   authorChips: EvidenceAuthorChip[];
   groups: EvidenceGroup[];
+  timelineItems: TokenCasePostEvent[];
   concentration: AuthorConcentrationBar;
   abstainCallout: string | null;
 };
@@ -555,14 +563,24 @@ function buildFamily(
 }
 
 function buildMarket(item: SignalPulseItem): PulseDetailViewModel["market"] {
+  const anchor = item.factor_snapshot.market.event_anchor;
   const latest = item.factor_snapshot.market.decision_latest;
   const readiness = item.factor_snapshot.market.readiness;
+  const price = anchor?.price_usd ?? latest?.price_usd ?? null;
+  const priceStatus = anchor?.price_usd != null ? readiness.anchor_status : readiness.latest_status;
   const marketCap = latest?.market_cap_usd ?? null;
   const liquidity = latest?.liquidity_usd ?? null;
   const volume = latest?.volume_24h_usd ?? null;
   const holders = latest?.holders ?? null;
   const volRatio = marketCap && volume ? volume / marketCap : null;
   const metrics: MarketMetric[] = [
+    {
+      id: "price",
+      label: anchor?.price_usd != null ? "提及价格" : "最新价格",
+      value: formatTokenPriceUsd(price),
+      subValue: priceStatus ? priceStatus.replaceAll("_", " ") : null,
+      tone: priceStatus === "ready" || priceStatus === "live" ? "health" : "warn",
+    },
     {
       id: "mcap",
       label: "市值",
@@ -646,6 +664,9 @@ function buildEvidence(
   });
   const groups = bucketGroups(rows, burst, item.updated_at_ms);
   const uniqueAuthors = authorCounts.size;
+  const timelineItems = groups.flatMap((group) =>
+    group.rows.map((row) => evidenceRowToTimelineItem(item, row, evidencePhase(group.id))),
+  );
   return {
     totalCount: events.length,
     citedCount: rows.filter((row) => row.cited).length,
@@ -662,6 +683,7 @@ function buildEvidence(
             }))
         : [],
     groups,
+    timelineItems,
     concentration: buildConcentration(rows, authorCounts),
     abstainCallout:
       item.decision.recommendation === "abstain"
@@ -720,6 +742,96 @@ function bucketGroups(
         uniqueAuthors: new Set(groupRows.map((row) => row.handle)).size,
       };
     });
+}
+
+function evidenceRowToTimelineItem(
+  item: SignalPulseItem,
+  row: EvidenceRow,
+  phase: string,
+): TokenCasePostEvent {
+  const symbol =
+    normalizeTokenSymbol(item.factor_snapshot.subject.symbol) ??
+    normalizeTokenSymbol(item.symbol) ??
+    normalizeTokenSymbol(item.subject_key);
+  const market = pulseEvidenceMarket(item);
+  const authorLabel = formatAuthorTag(row.authorTag);
+  return {
+    id: row.eventId,
+    handle: row.handle,
+    text: row.body || "（空转发 / 引用，无正文）",
+    url: row.canonicalUrl,
+    timestampMs: row.timestampMs,
+    timeLabel: row.timestampLabel,
+    phase,
+    role: formatAction(row.action),
+    isWatched: row.authorTag === "watched",
+    pills: uniqueTimelinePills([
+      symbol ? { label: `$${symbol}`, tone: "opportunity" } : null,
+      row.cited ? { label: "agent cited", tone: "agent" } : null,
+      { label: formatAction(row.action), tone: row.action === "tweet" ? "health" : "info" },
+      { label: authorLabel, tone: toneForAuthorTag(row.authorTag) as TokenCaseTone },
+      row.followers != null
+        ? { label: `${compactNumber(row.followers)} followers`, tone: "neutral" }
+        : null,
+    ]),
+    market,
+    quality: {
+      score: null,
+      scoreLabel: "source event",
+      reasons: [],
+      contributions: [],
+    },
+  };
+}
+
+function pulseEvidenceMarket(item: SignalPulseItem): TokenCasePostEvent["market"] {
+  const market = item.factor_snapshot.market;
+  const anchor = market.event_anchor;
+  if (anchor?.price_usd != null) {
+    return buildTokenPostEventMarket({
+      fallbackProvider: "event anchor",
+      priceUsd: anchor.price_usd,
+      provider: cleanText(anchor.provider),
+      providerPrefix: "anchor",
+      status: market.readiness.anchor_status,
+    });
+  }
+  const latest = market.decision_latest;
+  return buildTokenPostEventMarket({
+    fallbackProvider: "decision latest",
+    priceUsd: latest?.price_usd,
+    provider: cleanText(latest?.provider),
+    providerPrefix: "latest",
+    status: market.readiness.latest_status,
+  });
+}
+
+function evidencePhase(id: EvidenceGroupId): string {
+  switch (id) {
+    case "earlier":
+      return "early";
+    case "burst_window":
+      return "burst";
+    case "post_burst":
+      return "post-burst";
+    case "latest":
+      return "latest";
+  }
+}
+
+function uniqueTimelinePills(
+  values: Array<{ label: string; tone: TokenCaseTone } | null>,
+): TokenCasePostEvent["pills"] {
+  const seen = new Set<string>();
+  const pills: TokenCasePostEvent["pills"] = [];
+  for (const value of values) {
+    if (!value || seen.has(value.label)) {
+      continue;
+    }
+    seen.add(value.label);
+    pills.push(value);
+  }
+  return pills;
 }
 
 function buildConcentration(
@@ -881,6 +993,19 @@ function toneForAuthorTag(tag: EvidenceAuthorTag): Tone {
   return "info";
 }
 
+function formatAuthorTag(tag: EvidenceAuthorTag): string {
+  switch (tag) {
+    case "watched":
+      return "watched";
+    case "spam_suspect":
+      return "spam suspect";
+    case "kol_signal":
+      return "KOL";
+    default:
+      return "normal";
+  }
+}
+
 function scoreBandTone(value: string | null | undefined): Tone {
   if (value === "high_conviction" || value === "trade_candidate") {
     return "opportunity";
@@ -926,6 +1051,21 @@ function emptyStages(): SignalPulseStages {
 
 function formatConfidence(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "n/a" : value.toFixed(2);
+}
+
+function formatAction(action: string): string {
+  switch (action) {
+    case "tweet":
+      return "tweet";
+    case "quote":
+      return "quote";
+    case "repost":
+      return "repost";
+    case "reply":
+      return "reply";
+    default:
+      return action;
+  }
 }
 
 function shortenId(value: string): string {

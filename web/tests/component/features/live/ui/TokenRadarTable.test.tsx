@@ -93,6 +93,7 @@ describe("TokenRadarTable rows", () => {
       <TokenRadarTable
         error={null}
         isLoading={true}
+        isRefreshing={false}
         items={[]}
         scope="all"
         selectedKey={null}
@@ -108,11 +109,34 @@ describe("TokenRadarTable rows", () => {
     expect(screen.queryByText("当前窗口暂无可交易 token 热度")).not.toBeInTheDocument();
   });
 
+  it("keeps the last settled rows visible while radar refreshes", () => {
+    render(
+      <TokenRadarTable
+        error={null}
+        isLoading={false}
+        isRefreshing={true}
+        items={[mixedFreshnessToken()]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("article", { name: "Token Radar item $TROLL" })).toBeInTheDocument();
+    expect(screen.getByText("1 live case · updating")).toBeInTheDocument();
+    expect(screen.queryByLabelText("loading token radar")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前窗口暂无可交易 token 热度")).not.toBeInTheDocument();
+  });
+
   it("shows token radar errors instead of the empty-data loading state", () => {
     render(
       <TokenRadarTable
         error={new Error("boom")}
         isLoading={true}
+        isRefreshing={false}
         items={[]}
         scope="all"
         selectedKey={null}

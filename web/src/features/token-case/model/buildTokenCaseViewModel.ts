@@ -6,6 +6,14 @@ import type {
   TokenCaseTone,
   TokenCaseViewModel,
 } from "@shared/model/tokenCaseViewModel";
+import {
+  buildTokenPostEventMarket,
+  cleanText,
+  normalizeTokenSymbol,
+  numberValue,
+  relativeTimeLabel,
+  tokenPricePill,
+} from "@shared/model/tokenPostEvent";
 
 import type { TokenCaseRouteState } from "../state/tokenCaseRouteState";
 
@@ -225,25 +233,13 @@ function buildPostMarket(
   post: TokenPostItem,
   livePriceUsd: number | null,
 ): TokenCasePostEvent["market"] {
-  const price = post.price;
-  const eventPrice = numberValue(price?.price_usd);
-  if (eventPrice === null || (price?.status !== "ready" && price?.status !== "stale")) {
-    return null;
-  }
-  const deltaPct =
-    livePriceUsd !== null && eventPrice > 0
-      ? ((livePriceUsd - eventPrice) / eventPrice) * 100
-      : null;
-  return {
-    eventPriceLabel: formatTokenPriceUsd(eventPrice),
-    liveDeltaLabel: deltaPct === null ? null : `${formatSignedPercent(deltaPct)} vs live`,
-    providerLabel:
-      cleanText(price?.provider) ??
-      cleanText(price?.observation_kind) ??
-      price?.status ??
-      "market tick",
-    tone: marketDeltaTone(deltaPct),
-  };
+  return buildTokenPostEventMarket({
+    livePriceUsd,
+    observationKind: post.price?.observation_kind,
+    priceUsd: post.price?.price_usd,
+    provider: post.price?.provider,
+    status: post.price?.status,
+  });
 }
 
 function sortTimelineItems(
@@ -260,16 +256,13 @@ function sortTimelineItems(
 
 function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseTone }> {
   const pills: Array<{ label: string; tone: TokenCaseTone }> = [];
-  const symbol = cleanText(post.symbol)?.replace(/^\$+/, "");
+  const symbol = normalizeTokenSymbol(post.symbol);
   if (symbol) {
     pills.push({ label: `$${symbol}`, tone: "opportunity" });
   }
-  const postPrice = numberValue(post.price?.price_usd);
-  if (postPrice !== null && (post.price?.status === "ready" || post.price?.status === "stale")) {
-    pills.push({
-      label: formatTokenPriceUsd(postPrice),
-      tone: post.price.status === "stale" ? "warn" : "info",
-    });
+  const pricePill = tokenPricePill(post.price?.price_usd, post.price?.status);
+  if (pricePill) {
+    pills.push(pricePill);
   }
   const score = numberValue(post.post_quality.score);
   pills.push({
@@ -350,38 +343,13 @@ function shortId(value: string): string {
 }
 
 function timeAgoLabel(timestampMs: number): string {
-  const minutes = Math.max(0, Math.round((Date.now() - timestampMs) / 60_000));
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  return `${Math.round(minutes / 60)}h ago`;
+  return relativeTimeLabel(timestampMs);
 }
 
 function formatContributionValue(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : "-";
 }
 
-function formatSignedPercent(value: number): string {
-  if (!Number.isFinite(value)) return "-";
-  const normalized = Math.abs(value) < 0.005 ? 0 : value;
-  const sign = normalized > 0 ? "+" : "";
-  return `${sign}${normalized.toFixed(2)}%`;
-}
-
-function marketDeltaTone(value: number | null): TokenCaseTone {
-  if (value === null || Math.abs(value) < 0.01) return "neutral";
-  return value > 0 ? "health" : "risk";
-}
-
-function numberValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
-}
-
-function cleanText(value?: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
 }

@@ -58,8 +58,7 @@
 
 .watchlist-kicker,
 .watchlist-section-head span,
-.watchlist-signal-card span,
-.watchlist-evidence-time span {
+.watchlist-signal-card span {
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
@@ -91,8 +90,7 @@
 
 .watchlist-monitor-title p,
 .watchlist-section-head p,
-.watchlist-signal-card p,
-.watchlist-evidence-card p {
+.watchlist-signal-card p {
   margin: 0;
   color: var(--ash);
   line-height: 1.45;
@@ -220,9 +218,7 @@
 }
 
 .watchlist-summary-meta span,
-.watchlist-summary-empty,
-.watchlist-evidence-pills span,
-.watchlist-anchor-row span {
+.watchlist-summary-empty {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -355,106 +351,8 @@
 
 .watchlist-evidence-stream li {
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-}
-
-.watchlist-evidence-time {
-  display: flex;
-  justify-content: flex-end;
-  border-right: 1px solid var(--line);
-  padding: 10px 9px 0 0;
-}
-
-.watchlist-evidence-card {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-  border: 1px solid var(--line-soft);
-  background: rgba(18, 23, 19, 0.72);
-  padding: 10px;
-}
-
-.watchlist-evidence-card.signal {
-  border-color: var(--opportunity-line);
-  background: rgba(30, 25, 13, 0.72);
-}
-
-.watchlist-evidence-card > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-
-.watchlist-evidence-card a,
-.watchlist-evidence-card b {
-  overflow: hidden;
-  min-width: 0;
-  color: var(--bone);
-  font-family: var(--mono);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.watchlist-evidence-card a {
-  text-decoration: none;
-}
-
-.watchlist-evidence-card a:hover {
-  color: var(--opportunity);
-}
-
-.watchlist-evidence-card p {
-  color: var(--bone-2);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.watchlist-evidence-card .watchlist-signal-summary {
-  color: var(--bone);
-  font-size: 14px;
-}
-
-.watchlist-evidence-pills,
-.watchlist-anchor-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.watchlist-evidence-pills span {
-  border-color: var(--info-line);
-  color: var(--info-ink);
-  background: var(--info-soft);
-}
-
-.watchlist-anchor-row span {
-  border-color: var(--health-line);
-  color: var(--health-ink);
-  background: var(--health-soft);
-}
-
-.watchlist-original-text {
-  border-top: 1px solid var(--line-soft);
-  padding-top: 7px;
-}
-
-.watchlist-original-text summary {
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 10px;
-  cursor: pointer;
-  text-transform: uppercase;
-}
-
-.watchlist-original-text p {
-  margin-top: 7px;
-  color: var(--ash);
 }
 
 .watchlist-load-more-row {
@@ -594,12 +492,6 @@
 
   .watchlist-evidence-stream li {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .watchlist-evidence-time {
-    justify-content: flex-start;
-    border-right: 0;
-    padding: 0;
   }
 
   .watchlist-monitor-title h2 {

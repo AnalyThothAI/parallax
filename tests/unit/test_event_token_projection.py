@@ -83,6 +83,52 @@ def test_event_token_projection_returns_lean_symbol_and_price_payload() -> None:
     }
 
 
+def test_event_token_projection_falls_back_to_latest_market_tick_when_event_capture_is_missing() -> None:
+    conn = _FakeConn(
+        [
+            {
+                "event_id": "event-1",
+                "intent_id": "intent-1",
+                "resolution_id": "resolution-1",
+                "target_type": "CexToken",
+                "target_id": "cex_token:USELESS",
+                "pricefeed_id": "pricefeed:cex:okx:swap:USELESS-USDT-SWAP",
+                "resolution_status": "UNIQUE_BY_CONTEXT",
+                "reason_codes_json": ["confirmed_cex_token"],
+                "candidate_ids_json": [],
+                "lookup_keys_json": ["symbol:USELESS"],
+                "symbol": "USELESS",
+                "market_tick_id": "latest-tick-1",
+                "market_tick_provider": "okx_cex_rest",
+                "market_tick_observed_at_ms": 1_700_000_060_000,
+                "price_usd": Decimal("0.06103"),
+                "price_quote": None,
+                "price_quote_symbol": None,
+                "quote_symbol": "USDT",
+                "market_capture_method": "latest_market_tick",
+                "market_tick_lag_ms": 60_000,
+            }
+        ]
+    )
+
+    resolution = EventTokenProjectionQuery(conn).for_event("event-1")[0]
+
+    assert "latest_market_tick" in conn.sql
+    assert "COALESCE(event_tick.tick_id, latest_tick.tick_id)" in conn.sql
+    assert resolution["price"] == {
+        "status": "ready",
+        "provider": "okx_cex_rest",
+        "pricefeed_id": "pricefeed:cex:okx:swap:USELESS-USDT-SWAP",
+        "price_usd": 0.06103,
+        "price_quote": None,
+        "quote_symbol": "USDT",
+        "observed_at_ms": 1_700_000_060_000,
+        "observation_lag_ms": 60_000,
+        "observation_id": "latest-tick-1",
+        "observation_kind": "latest_market_tick",
+    }
+
+
 def test_event_token_projection_omits_unresolved_public_rows() -> None:
     conn = _FakeConn(
         [

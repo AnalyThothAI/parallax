@@ -56,6 +56,7 @@ describe("buildPulseDetailView", () => {
     expect(view.families[0].rankLabel).toMatch(/top 9%/);
     expect(view.families[3].dataHealth).toBe("missing");
     expect(view.market.metrics.map((metric) => metric.id)).toEqual([
+      "price",
       "mcap",
       "liq",
       "vol_24h",
@@ -64,6 +65,37 @@ describe("buildPulseDetailView", () => {
     expect(view.market.metrics.find((metric) => metric.id === "liq")?.tone).toBe("warn");
     expect(view.market.metrics.find((metric) => metric.id === "vol_24h")?.tone).toBe("risk");
     expect(view.market.staleNotice).toMatch(/decision_latest 陈旧/);
+  });
+
+  it("adapts source evidence into token-case timeline cards with quote context", () => {
+    expect(view.evidence.timelineItems).toHaveLength(5);
+    expect(view.evidence.timelineItems[0]).toMatchObject({
+      handle: "moontoklisting",
+      market: {
+        eventPriceLabel: "$0.00011621",
+        providerLabel: "latest · okx_dex_ws_price_info",
+      },
+      phase: "burst",
+    });
+    expect(view.evidence.timelineItems[0].pills.map((pill) => pill.label)).toEqual(
+      expect.arrayContaining(["$TITTY", "tweet", "KOL"]),
+    );
+
+    const withPostBurst = buildPulseDetailView({
+      item: tittyPulseFixture,
+      sourceEvents: [
+        ...tittySourceEventsFixture,
+        {
+          ...tittySourceEventsFixture[0],
+          event_id: "post-burst-event",
+          timestamp_ms: TITTY_NOW_MS - 15 * 60_000,
+          author_handle: "latecaller",
+          text_clean: "follow-on mention after the burst",
+        },
+      ],
+      now: TITTY_NOW_MS,
+    });
+    expect(withPostBurst.evidence.timelineItems.map((item) => item.phase)).toContain("post-burst");
   });
 
   it("enriches factor family breakdowns with all spec'd rows", () => {

@@ -356,19 +356,24 @@
   border-top: 1px solid var(--line);
 }
 
-.rows article {
+.rows[data-view="timeline"] {
+  gap: 8px;
+  padding: 8px;
+}
+
+.rows:not([data-view="timeline"]) article {
   display: grid;
   gap: 6px;
   padding: 10px 11px;
   background: rgba(0, 0, 0, 0.16);
 }
 
-.rows article[data-cited="true"] {
+.rows:not([data-view="timeline"]) article[data-cited="true"] {
   background: linear-gradient(90deg, rgba(217, 154, 40, 0.07), rgba(0, 0, 0, 0.16) 60px);
   box-shadow: inset 3px 0 0 var(--opportunity-ink);
 }
 
-.rows article[data-empty="true"] p {
+.rows:not([data-view="timeline"]) article[data-empty="true"] p {
   color: var(--dim);
   font-style: italic;
 }
@@ -463,14 +468,14 @@
   font-size: 12px;
 }
 
-.rows p {
+.rows:not([data-view="timeline"]) p {
   margin: 0;
   color: var(--bone-2);
   font-size: 13px;
   line-height: 1.45;
 }
 
-.rows small {
+.rows:not([data-view="timeline"]) small {
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;

@@ -1,5 +1,5 @@
 import type { WatchlistOverviewCluster } from "@lib/types";
-import { searchPath } from "@shared/routing/paths";
+import { searchPath, tokenTargetPath } from "@shared/routing/paths";
 import { RemoteState } from "@shared/ui/RemoteState";
 import { Link } from "react-router-dom";
 
@@ -76,7 +76,7 @@ function ClusterList({
     <ul className="watchlist-cluster-list">
       {items.map((item) => (
         <li key={`${item.kind}-${item.label}`}>
-          <Link to={searchPath({ q: item.query })}>
+          <Link to={clusterPath(item)}>
             <b>{item.label}</b>
             <span>
               {item.count} event{item.count === 1 ? "" : "s"}
@@ -86,6 +86,13 @@ function ClusterList({
       ))}
     </ul>
   );
+}
+
+function clusterPath(item: WatchlistOverviewCluster): string {
+  if (item.kind === "resolved_token" && item.target_type && item.target_id) {
+    return tokenTargetPath({ targetType: item.target_type, targetId: item.target_id });
+  }
+  return searchPath({ q: item.query });
 }
 
 function RiskPanel({ notes }: { notes: string[] }) {

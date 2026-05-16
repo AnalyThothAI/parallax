@@ -107,6 +107,10 @@ describe("WatchlistPage", () => {
     );
     await waitFor(() => expect(screen.getAllByText("$ALOY").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Resolved targets").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "$SOL1 event" })).toHaveAttribute(
+      "href",
+      "/token/Asset/asset%3Asolana%3Atoken%3ASo11111111111111111111111111111111111111112",
+    );
 
     await waitFor(() => expect(screen.getAllByText("First signal").length).toBeGreaterThan(0), {
       timeout: 1_000,
@@ -123,6 +127,7 @@ describe("WatchlistPage", () => {
     });
     expect(screen.getAllByText("$SOL").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.104").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("gmgn_dex_quote").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "all" }));
     await waitFor(() => expect(screen.getAllByText("All source event").length).toBeGreaterThan(0), {
@@ -199,6 +204,75 @@ describe("WatchlistPage", () => {
     await waitFor(() => expect(screen.getByText("$ALOY")).toBeInTheDocument());
     expect(screen.getAllByText("Resolved targets").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0").length).toBeGreaterThan(0);
+  });
+
+  it("keeps source-only timeline text visible in all mode", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/overview")) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            query: { handle: "gdb", scope: "all", window: "7d" },
+            metrics: {
+              source_event_count: 1,
+              signal_event_count: 0,
+              resolved_token_count: 0,
+              candidate_mention_count: 0,
+              narrative_count: 0,
+              last_source_event_at_ms: 1_700_000_000_000,
+            },
+            resolved_token_clusters: [],
+            candidate_mention_clusters: [],
+            narrative_clusters: [],
+            risk_notes: [],
+          },
+        });
+      }
+      if (url.pathname.endsWith("/summary")) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            handle: "gdb",
+            status: "not_ready",
+            is_stale: false,
+            pending_recompute: false,
+            signal_count: 0,
+            input_event_count: 0,
+            signal_count_at_generation: 0,
+            summary_zh: "",
+            topics: [],
+          },
+        });
+      }
+      return jsonResponse({
+        ok: true,
+        data: {
+          query: { handle: "gdb", scope: "all", limit: 30 },
+          items: [
+            {
+              event_id: "source-1",
+              received_at_ms: 1_700_000_000_000,
+              author_handle: "gdb",
+              text_clean: "so much to build",
+              cashtags: [],
+              hashtags: [],
+              mentions: [],
+              token_resolutions: [],
+              social_event: null,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        },
+      });
+    });
+
+    renderWithProviders(<WatchlistPage handles={["gdb"]} token="secret" />, {
+      route: "/watchlist?handle=gdb&timeline_scope=all",
+    });
+
+    await waitFor(() => expect(screen.getByText("so much to build")).toBeVisible());
   });
 });
 

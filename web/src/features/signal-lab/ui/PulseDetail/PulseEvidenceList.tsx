@@ -1,3 +1,5 @@
+import type { TokenCasePostEvent } from "@shared/model/tokenCaseViewModel";
+import { TokenCasePostEventCard } from "@shared/ui/case-file";
 import { useMemo, useState } from "react";
 
 import type {
@@ -26,6 +28,10 @@ export function PulseEvidenceList({ evidence }: Props) {
       .map((group) => filterGroup(group, view, handleFilter, sortMode))
       .filter((group) => group.rows.length > 0);
   }, [evidence.groups, view, handleFilter, sortMode]);
+  const timelineItemsById = useMemo(
+    () => new Map(evidence.timelineItems.map((item) => [item.id, item])),
+    [evidence.timelineItems],
+  );
 
   return (
     <section className={styles.evidence} aria-label="source events">
@@ -88,9 +94,12 @@ export function PulseEvidenceList({ evidence }: Props) {
                   {group.rows.length} 条 · {group.uniqueAuthors} 位作者 · {group.rangeLabel}
                 </small>
               </summary>
-              <div className={styles.rows}>
+              <div className={styles.rows} data-view="timeline">
                 {group.rows.map((row) => (
-                  <EvidenceRowItem key={row.eventId} row={row} />
+                  <TokenCasePostEventCard
+                    item={timelineItemsById.get(row.eventId) ?? fallbackTimelineItem(row)}
+                    key={row.eventId}
+                  />
                 ))}
               </div>
             </details>
@@ -99,78 +108,6 @@ export function PulseEvidenceList({ evidence }: Props) {
       </div>
     </section>
   );
-}
-
-function EvidenceRowItem({ row }: { row: EvidenceRow }) {
-  const tweetUrl = row.canonicalUrl;
-  return (
-    <article
-      data-cited={row.cited ? "true" : "false"}
-      data-empty={row.isEmptyBody ? "true" : "false"}
-    >
-      <div className={styles.rowMeta}>
-        {row.cited ? (
-          <span className={styles.star} aria-label="agent cited">
-            ★
-          </span>
-        ) : null}
-        {tweetUrl ? (
-          <a className={styles.authorLink} href={tweetUrl} target="_blank" rel="noreferrer">
-            @{row.handle}
-          </a>
-        ) : (
-          <strong>@{row.handle}</strong>
-        )}
-        <span data-tag={row.authorTag}>{formatAuthorTag(row.authorTag)}</span>
-        {row.cohortPosition ? <span className={styles.position}>{row.cohortPosition}</span> : null}
-        <time>{row.timestampLabel}</time>
-        {tweetUrl ? (
-          <a
-            className={styles.openLink}
-            href={tweetUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="open tweet"
-          >
-            ↗
-          </a>
-        ) : null}
-      </div>
-      <p>{row.body || "（空转发 / 引用，无正文）"}</p>
-      <small>
-        {formatAction(row.action)} · {formatChannel(row.channel)}
-        {row.followers != null ? ` · ${row.followers.toLocaleString()} 粉丝` : ""}
-      </small>
-    </article>
-  );
-}
-
-function formatAuthorTag(tag: EvidenceRow["authorTag"]): string {
-  switch (tag) {
-    case "watched":
-      return "已关注";
-    case "spam_suspect":
-      return "疑似营销号";
-    case "kol_signal":
-      return "KOL";
-    default:
-      return "普通";
-  }
-}
-
-function formatAction(action: string): string {
-  switch (action) {
-    case "tweet":
-      return "原推";
-    case "quote":
-      return "引用";
-    case "repost":
-      return "转推";
-    case "reply":
-      return "回复";
-    default:
-      return action;
-  }
 }
 
 function AuthorChips({
@@ -281,12 +218,19 @@ function sortRows(rows: EvidenceRow[], mode: SortMode): EvidenceRow[] {
   return next;
 }
 
-function formatChannel(channel: string): string {
-  switch (channel) {
-    case "twitter_monitor_basic":
-    case "twitter_monitor":
-      return "Twitter";
-    default:
-      return channel.replaceAll("_", " ");
-  }
+function fallbackTimelineItem(row: EvidenceRow): TokenCasePostEvent {
+  return {
+    id: row.eventId,
+    handle: row.handle,
+    text: row.body || "（空转发 / 引用，无正文）",
+    url: row.canonicalUrl,
+    timestampMs: row.timestampMs,
+    timeLabel: row.timestampLabel,
+    phase: null,
+    role: row.action,
+    isWatched: row.authorTag === "watched",
+    pills: [],
+    market: null,
+    quality: { score: null, scoreLabel: "source event", reasons: [], contributions: [] },
+  };
 }

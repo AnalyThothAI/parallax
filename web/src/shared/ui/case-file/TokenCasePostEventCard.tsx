@@ -8,6 +8,8 @@ type TokenCasePostEventCardProps = {
 
 export function TokenCasePostEventCard({ item }: TokenCasePostEventCardProps) {
   const handle = item.handle ? `@${item.handle.replace(/^@+/, "")}` : "unknown";
+  const detailText = item.sourceText ?? item.text;
+  const showDetails = Boolean(item.sourceText) || item.quality.contributions.length > 0;
 
   return (
     <article className={styles.card} data-phase={item.phase ?? "unknown"}>
@@ -49,21 +51,25 @@ export function TokenCasePostEventCard({ item }: TokenCasePostEventCardProps) {
           ))}
         </div>
         <p className={styles.text}>{item.text}</p>
-        <details className={styles.details}>
-          <summary>原文</summary>
-          <p>{item.text}</p>
-          <dl className={styles.contributions}>
-            {item.quality.contributions.map((contribution) => (
-              <div key={`${item.id}-${contribution.label}`}>
-                <dt>{contribution.label}</dt>
-                <dd>
-                  <b>{contribution.value}</b>
-                  <span>{contribution.reason}</span>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </details>
+        {showDetails ? (
+          <details className={styles.details}>
+            <summary>{item.detailsLabel ?? "原文"}</summary>
+            {detailText ? <p>{detailText}</p> : null}
+            {item.quality.contributions.length ? (
+              <dl className={styles.contributions}>
+                {item.quality.contributions.map((contribution) => (
+                  <div key={`${item.id}-${contribution.label}`}>
+                    <dt>{contribution.label}</dt>
+                    <dd>
+                      <b>{contribution.value}</b>
+                      <span>{contribution.reason}</span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </details>
+        ) : null}
       </div>
     </article>
   );
