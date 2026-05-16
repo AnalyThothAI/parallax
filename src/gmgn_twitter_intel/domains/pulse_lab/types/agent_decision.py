@@ -20,13 +20,18 @@ _FORBIDDEN_EXECUTION_RE = re.compile(
 
 
 class AnalystOpinion(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     route: DecisionRoute
     recommendation: Literal["trade_candidate", "watchlist", "ignore"]
     confidence: float = Field(ge=0, le=1)
     summary_zh: str
     evidence: list[str]
+
+    @field_validator("confidence", mode="after")
+    @classmethod
+    def _clamp_confidence(cls, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
 
     @field_validator("summary_zh", mode="after")
     @classmethod
@@ -40,13 +45,18 @@ class AnalystOpinion(BaseModel):
 
 
 class CritiqueReport(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     route: DecisionRoute
     weaknesses: list[str]
     missing_fact_impacts: list[str]
     confidence_ceiling: float = Field(ge=0, le=1)
     should_abstain: bool
+
+    @field_validator("confidence_ceiling", mode="after")
+    @classmethod
+    def _clamp_ceiling(cls, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
 
     @model_validator(mode="after")
     def _reject_execution_language(self) -> CritiqueReport:
@@ -55,7 +65,7 @@ class CritiqueReport(BaseModel):
 
 
 class FinalDecision(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     route: DecisionRoute
     recommendation: DecisionRecommendation
@@ -65,6 +75,11 @@ class FinalDecision(BaseModel):
     invalidation_conditions: list[str]
     residual_risks: list[str]
     evidence_event_ids: list[str]
+
+    @field_validator("confidence", mode="after")
+    @classmethod
+    def _clamp_confidence(cls, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
 
     @field_validator("summary_zh", mode="after")
     @classmethod
@@ -94,7 +109,7 @@ class FinalDecision(BaseModel):
 
 
 class StageRunAudit(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     stage: StageName
     route: DecisionRoute
@@ -109,10 +124,13 @@ class StageRunAudit(BaseModel):
     finished_at_ms: int | None = Field(default=None, ge=0)
     status: StageStatus
     error: str | None = None
+    # safety_net_used / safety_net_retries / parse_mode are stored inside trace_metadata_json
+    # for PR 1. PR 2 promotes them to top-level columns + Pydantic fields once the alembic
+    # migration lands.
 
 
 class PulseDecisionPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     final_decision: FinalDecision
     stage_audits: tuple[StageRunAudit, ...]
@@ -134,8 +152,11 @@ def contains_trading_execution_instruction(text: str) -> bool:
     return bool(_FORBIDDEN_EXECUTION_RE.search(text))
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
 def _clean_text(value: str) -> str:
-    return value.strip()
+    return _THINK_BLOCK_RE.sub("", value).strip()
 
 
 def _reject_execution_language(value: Any) -> None:

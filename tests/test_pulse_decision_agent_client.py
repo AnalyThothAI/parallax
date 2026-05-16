@@ -82,7 +82,7 @@ def test_stage_runner_calls_analyst_critic_judge_in_order() -> None:
     assert [audit.stage for audit in result.stage_audits] == ["analyst", "critic", "judge"]
     assert result.run_audit["agent_name"] == "PulseDecisionPipeline"
     assert result.run_audit["prompt_version"] == "pulse-decision-v1"
-    assert result.run_audit["schema_version"] == "pulse_decision_v1"
+    assert result.run_audit["schema_version"] == "pulse_decision_v2"
 
 
 def test_each_stage_uses_max_turns_one_and_no_tools() -> None:
@@ -256,11 +256,19 @@ def test_stage_prompt_embeds_output_schema_and_demands_json_only() -> None:
     assert "confidence" in prompt
 
 
-def test_json_output_schema_disables_strict() -> None:
+def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
     schema = _JsonOutputSchema(AnalystOpinion)
-    assert schema.is_strict_json_schema() is False
+    assert schema.is_strict_json_schema() is True
     assert schema.is_plain_text() is False
-    assert "type" in schema.json_schema()
+    flat = schema.json_schema()
+    assert "type" in flat
+    # jsonref.replace_refs must strip $ref/$defs so llama.cpp grammar conversion
+    # does not silent-fail-open (llama.cpp issue #21228).
+    serialized = json.dumps(flat)
+    assert "$ref" not in serialized
+    assert "$defs" not in serialized
+    # Expose underlying Pydantic class for InstructorSafetyNet fallback path.
+    assert schema.output_type is AnalystOpinion
 
 
 def test_json_output_schema_parses_plain_json_object() -> None:
@@ -351,7 +359,7 @@ def _harness(*, model: str = "gpt-test") -> dict[str, object]:
         "strategy": "signal_pulse_decision",
         "runtime": {"stages": ["analyst", "critic", "judge"], "max_turns_per_stage": 1},
         "model": {"provider": "openai", "model": model, "artifact_version_hash": f"artifact:{model}"},
-        "contracts": {"prompt_version": "pulse-decision-v1", "schema_version": "pulse_decision_v1"},
+        "contracts": {"prompt_version": "pulse-decision-v1", "schema_version": "pulse_decision_v2"},
         "eval_metadata": {"deterministic_grader_version": "pulse-deterministic-harness-v1"},
     }
 

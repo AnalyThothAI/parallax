@@ -80,7 +80,7 @@ SemanticRisk = Literal[
 
 
 class AnchorTermPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     term: str = Field(description="Canonical anchor term for the attention event.")
     role: AnchorRole = Field(description="Semantic role of the anchor term.")
@@ -88,7 +88,7 @@ class AnchorTermPayload(BaseModel):
 
 
 class SocialTokenCandidatePayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     symbol: str | None = Field(description="Token symbol when evidenced by the source text, otherwise null.")
     project_name: str | None = Field(description="Project name when evidenced by the source text, otherwise null.")
@@ -99,7 +99,7 @@ class SocialTokenCandidatePayload(BaseModel):
 
 
 class SocialEventPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     is_signal_event: bool = Field(
         description="True only when the tweet contains a source-backed event worth harness materialization."

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from types import GetSetDescriptorType, MemberDescriptorType
 from typing import Any, cast
 
+import jsonref
 from agents import (
     Agent,
     AgentOutputSchema,
@@ -20,7 +21,11 @@ from agents import (
 )
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
-from gmgn_twitter_intel.domains.pulse_lab.interfaces import BACKEND
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
+    BACKEND,
+    PULSE_DECISION_PROMPT_VERSION,
+    PULSE_DECISION_SCHEMA_VERSION,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import pulse_harness_hash
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     AnalystOpinion,
@@ -33,12 +38,11 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     StageStatus,
 )
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionPipeline"
-PULSE_DECISION_PROMPT_VERSION = "pulse-decision-v1"
-PULSE_DECISION_SCHEMA_VERSION = "pulse_decision_v1"
 
 
 @dataclass(frozen=True)
@@ -49,15 +53,29 @@ class PulseDecisionAgentResult:
 
 
 class _JsonOutputSchema(AgentOutputSchemaBase):
-    """Prompt-based JSON output: schema lives in instructions, not in strict response_format.
+    """qwen3.6 + llama.cpp compatible structured-output wrapper.
 
-    Works across OpenAI / DeepSeek / qwen on the OpenAI-compatible Chat Completions surface
-    because it relies on the model following the prompt, not on the provider honoring strict
-    json_schema. Recovers JSON embedded in prose by extracting the first balanced object.
+    Design (revised 2026-05-16):
+    - strict_json_schema=True so the SDK emits response_format.strict=true.
+    - jsonref flattens any $ref/$defs to avoid llama.cpp #21228 silent fail-open
+      (server fingerprint b8779 silently falls back to free-form text when the
+      grammar conversion hits an unresolved $ref).
+    - validate_json keeps tolerant extraction for occasional prose-before-json
+      stray output.
     """
 
     def __init__(self, output_type: type[Any]) -> None:
-        self._schema = AgentOutputSchema(output_type, strict_json_schema=False)
+        self._output_type = output_type
+        self._schema = AgentOutputSchema(output_type, strict_json_schema=True)
+        raw = self._schema.json_schema()
+        # proxies=False / lazy_load=False produces a plain dict; otherwise json.dumps
+        # raises when it hits the jsonref proxy objects.
+        self._flat = jsonref.replace_refs(raw, proxies=False, lazy_load=False)
+
+    @property
+    def output_type(self) -> type[Any]:
+        """Expose underlying Pydantic class for InstructorSafetyNet fallback."""
+        return self._output_type
 
     def is_plain_text(self) -> bool:
         return self._schema.is_plain_text()
@@ -66,10 +84,10 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
         return self._schema.name()
 
     def json_schema(self) -> dict[str, Any]:
-        return self._schema.json_schema()
+        return self._flat
 
     def is_strict_json_schema(self) -> bool:
-        return False
+        return True
 
     def validate_json(self, json_str: str) -> Any:
         text = str(json_str or "")
@@ -91,6 +109,7 @@ class OpenAIAgentsPulseDecisionClient:
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
         runner: Any | None = None,
+        safety_net: InstructorSafetyNet | None = None,
         trace_enabled: bool = True,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
@@ -108,6 +127,7 @@ class OpenAIAgentsPulseDecisionClient:
         self.trace_enabled = bool(trace_enabled and getattr(self._llm_gateway, "trace_export_enabled", False))
         self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
         self._runner = runner or Runner
+        self._safety_net = safety_net
         self._model = None if runner is not None else self._build_model()
 
     @property
@@ -248,34 +268,63 @@ class OpenAIAgentsPulseDecisionClient:
             model_settings=_model_settings(),
         )
         stage_input = json.dumps(input_json, ensure_ascii=False, sort_keys=True)
-        trace_metadata = {**audit["trace_metadata"], "stage": stage, "route": route}
+        base_trace_metadata = {**audit["trace_metadata"], "stage": stage, "route": route}
+        run_config = RunConfig(
+            workflow_name=self.workflow_name,
+            trace_id=audit["sdk_trace_id"],
+            group_id=_group_id(input_json.get("context")),
+            trace_include_sensitive_data=self.trace_include_sensitive_data,
+            tracing_disabled=not self.trace_enabled,
+            trace_metadata=base_trace_metadata,
+        )
         started = int(time.time() * 1000)
         raw_output: Any = None
+        audit_extra: dict[str, Any] = {
+            "safety_net_used": False,
+            "safety_net_retries": 0,
+            "parse_mode": "strict",
+        }
         try:
-            result = await self._llm_gateway.run_with_limits(
-                "pulse_candidate",
-                stage,
-                self.timeout_seconds,
-                lambda: self._runner.run(
-                    agent,
-                    stage_input,
-                    max_turns=1,
-                    run_config=RunConfig(
-                        workflow_name=self.workflow_name,
-                        trace_id=audit["sdk_trace_id"],
-                        group_id=_group_id(input_json.get("context")),
-                        trace_include_sensitive_data=self.trace_include_sensitive_data,
-                        tracing_disabled=not self.trace_enabled,
-                        trace_metadata=trace_metadata,
+            if self._safety_net is not None:
+                final_output, audit_extra = await self._llm_gateway.run_with_limits(
+                    "pulse_candidate",
+                    stage,
+                    self.timeout_seconds,
+                    lambda: self._safety_net.run_with_safety_net(
+                        agent=agent,
+                        input_payload=stage_input,
+                        run_config=run_config,
+                        pydantic_output_type=output_type,
                     ),
-                ),
+                )
+                raw_output = final_output
+                usage: dict[str, Any] = {}  # safety_net path loses SDK usage; PR 7 OTel will recover
+            else:
+                # Legacy path (tests pass runner=FakeRunner()).
+                result = await self._llm_gateway.run_with_limits(
+                    "pulse_candidate",
+                    stage,
+                    self.timeout_seconds,
+                    lambda: self._runner.run(
+                        agent,
+                        stage_input,
+                        max_turns=1,
+                        run_config=run_config,
+                    ),
+                )
+                raw_output = result.final_output
+                usage = _extract_usage(result)
+            output = (
+                raw_output
+                if isinstance(raw_output, output_type)
+                else output_type.model_validate(raw_output)
             )
-            raw_output = result.final_output
-            usage = _extract_usage(result)
-            output = output_type.model_validate(raw_output)
         except Exception as exc:
             finished = int(time.time() * 1000)
             status: StageStatus = "timeout" if isinstance(exc, TimeoutError) else "failed"
+            # PR 1: safety_net audit lives in trace_metadata_json (jsonb) until PR 2
+            # promotes the fields to dedicated columns.
+            trace_metadata_failed = {**base_trace_metadata, **audit_extra}
             return StageRunAudit(
                 stage=stage,
                 route=route,
@@ -283,8 +332,8 @@ class OpenAIAgentsPulseDecisionClient:
                 input_json=input_json,
                 prompt_text=prompt,
                 response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
-                trace_metadata_json=trace_metadata,
-                usage_json=_extract_usage(locals().get("result")),
+                trace_metadata_json=trace_metadata_failed,
+                usage_json=_extract_usage(locals().get("result")) if "result" in locals() else {},
                 latency_ms=max(0, finished - started),
                 started_at_ms=started,
                 finished_at_ms=finished,
@@ -292,6 +341,7 @@ class OpenAIAgentsPulseDecisionClient:
                 error=f"{type(exc).__name__}: {exc}"[:1000],
             )
         finished = int(time.time() * 1000)
+        trace_metadata_ok = {**base_trace_metadata, **audit_extra}
         return StageRunAudit(
             stage=stage,
             route=route,
@@ -299,7 +349,7 @@ class OpenAIAgentsPulseDecisionClient:
             input_json=input_json,
             prompt_text=prompt,
             response_json=output.model_dump(mode="json"),
-            trace_metadata_json=trace_metadata,
+            trace_metadata_json=trace_metadata_ok,
             usage_json=usage,
             latency_ms=max(0, finished - started),
             started_at_ms=started,
@@ -380,7 +430,13 @@ def _model_settings() -> ModelSettings:
                 retry_policies.network_error(),
                 retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
             ),
-        )
+        ),
+        # qwen3.6 is a reasoning variant; if the server-side enable_thinking flag
+        # stays on, llama.cpp grammar enforcement breaks (issue #20345) and the
+        # model emits <think> tokens. Disable via chat_template_kwargs in extra_body.
+        # Measured 2026-05-16 against big9er.com b8779: same prompt output drops
+        # from 186 tokens to 10 tokens.
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
 

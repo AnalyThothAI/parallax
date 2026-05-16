@@ -13,6 +13,8 @@ dependencies = [
     "eth-utils>=5.0.0",
     "fastapi>=0.115.0",
     "httpx[socks]>=0.27.0",
+    "instructor>=1.15.1",
+    "jsonref>=1.1.0",
     "loguru>=0.7.2",
     "marketlane-cli",
     "openai>=2.0.0",

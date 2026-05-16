@@ -32,6 +32,7 @@ from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
 from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
@@ -654,14 +655,28 @@ def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapt
     )
 
 
+def _build_safety_net(settings: Settings, *, model: str) -> InstructorSafetyNet | None:
+    if not settings.llm.instructor_safety_net_enabled:
+        return None
+    return InstructorSafetyNet(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key or "",
+        model=model,
+        max_retries=int(settings.llm.instructor_max_retries),
+        enabled=True,
+    )
+
+
 def _openai_social_event_provider(settings: Settings, *, llm_gateway: object | None) -> OpenAIAgentsSocialEventClient:
     gateway = _require_llm_gateway(llm_gateway)
+    model = settings.llm_model or ""
     return OpenAIAgentsSocialEventClient(
         api_key=settings.llm_api_key or "",
-        model=settings.llm_model or "",
+        model=model,
         llm_gateway=gateway,
         base_url=settings.llm_base_url,
         timeout_seconds=settings.llm_timeout_seconds,
+        safety_net=_build_safety_net(settings, model=model),
         trace_enabled=settings.llm_trace_enabled,
         trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
     )
@@ -669,13 +684,15 @@ def _openai_social_event_provider(settings: Settings, *, llm_gateway: object | N
 
 def _openai_pulse_decision_provider(settings: Settings, *, llm_gateway: object | None) -> OpenAIPulseDecisionProvider:
     gateway = _require_llm_gateway(llm_gateway)
+    model = settings.pulse_agent_model or ""
     return OpenAIPulseDecisionProvider(
         OpenAIAgentsPulseDecisionClient(
             api_key=settings.llm_api_key or "",
-            model=settings.pulse_agent_model or "",
+            model=model,
             llm_gateway=gateway,
             base_url=settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
+            safety_net=_build_safety_net(settings, model=model),
             trace_enabled=settings.llm_trace_enabled,
             trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
         )
@@ -686,12 +703,14 @@ def _openai_watchlist_summary_provider(
     settings: Settings, *, llm_gateway: object | None
 ) -> OpenAIAgentsWatchlistSummaryClient:
     gateway = _require_llm_gateway(llm_gateway)
+    model = settings.watchlist_handle_summary_model or ""
     return OpenAIAgentsWatchlistSummaryClient(
         api_key=settings.llm_api_key or "",
-        model=settings.watchlist_handle_summary_model or "",
+        model=model,
         llm_gateway=gateway,
         base_url=settings.llm_base_url,
         timeout_seconds=settings.llm_timeout_seconds,
+        safety_net=_build_safety_net(settings, model=model),
         trace_enabled=settings.llm_trace_enabled,
         trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
     )
