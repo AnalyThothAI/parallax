@@ -243,11 +243,13 @@ class EnrichmentRepository:
                   workflow_name, agent_name, artifact_version_hash, prompt_version,
                   schema_version, input_hash, output_hash, trace_metadata_json,
                   usage_json, latency_ms, status, request_json, response_json, error,
-                  started_at_ms, finished_at_ms
+                  started_at_ms, finished_at_ms,
+                  safety_net_used, safety_net_retries, parse_mode
                 )
                 VALUES (
                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s
                 )
                 """,
                 (
@@ -274,6 +276,9 @@ class EnrichmentRepository:
                     None,
                     started,
                     now_ms,
+                    bool(audit.get("safety_net_used", False)),
+                    max(0, int(audit.get("safety_net_retries") or 0)),
+                    str(audit.get("parse_mode") or "strict"),
                 ),
             )
             self.conn.execute(
@@ -316,11 +321,13 @@ class EnrichmentRepository:
               workflow_name, agent_name, artifact_version_hash, prompt_version,
               schema_version, input_hash, output_hash, trace_metadata_json,
               usage_json, latency_ms, status, request_json, response_json, error,
-              started_at_ms, finished_at_ms
+              started_at_ms, finished_at_ms,
+              safety_net_used, safety_net_retries, parse_mode
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s
             )
             ON CONFLICT(run_id) DO NOTHING
             """,
@@ -348,6 +355,9 @@ class EnrichmentRepository:
                 error[:1000],
                 started,
                 now_ms,
+                bool(run_audit.get("safety_net_used", False)),
+                max(0, int(run_audit.get("safety_net_retries") or 0)),
+                str(run_audit.get("parse_mode") or "strict"),
             ),
         )
         self.conn.commit()

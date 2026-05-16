@@ -266,15 +266,19 @@ class WatchlistIntelRepository:
         error: str | None,
         started_at_ms: int,
         finished_at_ms: int,
+        safety_net_used: bool = False,
+        safety_net_retries: int = 0,
+        parse_mode: str = "strict",
         commit: bool = True,
     ) -> dict[str, Any]:
         row = self.conn.execute(
             """
             INSERT INTO watchlist_handle_summary_runs(
               run_id, handle, status, model, request_json, response_json, input_event_count,
-              usage_json, error, started_at_ms, finished_at_ms, created_at_ms
+              usage_json, error, started_at_ms, finished_at_ms, created_at_ms,
+              safety_net_used, safety_net_retries, parse_mode
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -290,6 +294,9 @@ class WatchlistIntelRepository:
                 int(started_at_ms),
                 int(finished_at_ms),
                 _now_ms(),
+                bool(safety_net_used),
+                max(0, int(safety_net_retries)),
+                str(parse_mode or "strict"),
             ),
         ).fetchone()
         if commit:

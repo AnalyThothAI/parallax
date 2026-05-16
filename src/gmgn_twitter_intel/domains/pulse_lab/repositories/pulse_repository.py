@@ -749,6 +749,9 @@ class PulseRepository:
         started_at_ms: int | None = None,
         finished_at_ms: int | None = None,
         created_at_ms: int | None = None,
+        safety_net_used: bool = False,
+        safety_net_retries: int = 0,
+        parse_mode: str = "strict",
         commit: bool = True,
     ) -> dict[str, Any]:
         started = int(started_at_ms if started_at_ms is not None else _now_ms())
@@ -760,11 +763,13 @@ class PulseRepository:
               step_id, run_id, stage, route, attempt_index, provider, model,
               prompt_version, schema_version, input_json, prompt_text, response_json,
               trace_metadata_json, usage_json, latency_ms, status, error,
-              started_at_ms, finished_at_ms, created_at_ms
+              started_at_ms, finished_at_ms, created_at_ms,
+              safety_net_used, safety_net_retries, parse_mode
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s
             )
             ON CONFLICT(run_id, stage, attempt_index) DO UPDATE SET
               step_id = excluded.step_id,
@@ -783,7 +788,10 @@ class PulseRepository:
               error = excluded.error,
               started_at_ms = excluded.started_at_ms,
               finished_at_ms = excluded.finished_at_ms,
-              created_at_ms = excluded.created_at_ms
+              created_at_ms = excluded.created_at_ms,
+              safety_net_used = excluded.safety_net_used,
+              safety_net_retries = excluded.safety_net_retries,
+              parse_mode = excluded.parse_mode
             RETURNING *
             """,
             (
@@ -807,6 +815,9 @@ class PulseRepository:
                 started,
                 finished,
                 created,
+                bool(safety_net_used),
+                max(0, int(safety_net_retries)),
+                str(parse_mode or "strict"),
             ),
         ).fetchone()
         if commit:

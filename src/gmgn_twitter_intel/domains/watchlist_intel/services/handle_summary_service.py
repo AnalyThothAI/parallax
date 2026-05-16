@@ -141,6 +141,7 @@ class WatchlistHandleSummaryService:
         finished_at_ms: int,
     ) -> dict[str, Any]:
         usage = _mapping(response.get("usage"))
+        run_audit = _mapping(response.get("agent_run_audit"))
         summary = self.repository.complete_handle_summary(
             job=job,
             handle=inputs.handle,
@@ -168,6 +169,9 @@ class WatchlistHandleSummaryService:
                 "error": None,
                 "started_at_ms": started_at_ms,
                 "finished_at_ms": finished_at_ms,
+                "safety_net_used": bool(run_audit.get("safety_net_used", False)),
+                "safety_net_retries": int(run_audit.get("safety_net_retries") or 0),
+                "parse_mode": str(run_audit.get("parse_mode") or "strict"),
             },
         )
         if summary is None:

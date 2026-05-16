@@ -124,9 +124,12 @@ class StageRunAudit(BaseModel):
     finished_at_ms: int | None = Field(default=None, ge=0)
     status: StageStatus
     error: str | None = None
-    # safety_net_used / safety_net_retries / parse_mode are stored inside trace_metadata_json
-    # for PR 1. PR 2 promotes them to top-level columns + Pydantic fields once the alembic
-    # migration lands.
+    # Promoted from trace_metadata_json jsonb to dedicated columns by migration
+    # 20260516_0048. Clients keep dual-writing into trace_metadata_json for one
+    # release cycle so a rollback can recover the values.
+    safety_net_used: bool = False
+    safety_net_retries: int = Field(default=0, ge=0)
+    parse_mode: str = "strict"
 
 
 class PulseDecisionPayload(BaseModel):
