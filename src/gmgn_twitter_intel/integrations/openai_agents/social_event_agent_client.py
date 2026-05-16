@@ -115,11 +115,16 @@ class OpenAIAgentsSocialEventClient:
             final_output = result.final_output
         payload = payload_from_output(final_output)
         output_json = payload.model_dump(mode="json")
-        # PR 1: safety_net audit lives in trace_metadata jsonb until PR 2 promotes columns.
+        # Dual-write audit_extra: top-level for the model_runs column writes added in
+        # migration 20260516_0048, and inside trace_metadata so older readers / replay
+        # tooling still see the same data path.
         audit = {
             **audit,
             "output_hash": _sha256(output_json),
             "trace_metadata": {**audit["trace_metadata"], **audit_extra},
+            "safety_net_used": bool(audit_extra.get("safety_net_used", False)),
+            "safety_net_retries": int(audit_extra.get("safety_net_retries") or 0),
+            "parse_mode": str(audit_extra.get("parse_mode") or "strict"),
         }
         return social_event_extraction_from_payload(
             payload,

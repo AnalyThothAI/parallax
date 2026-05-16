@@ -533,6 +533,9 @@ class PulseCandidateWorker(WorkerBase):
                         started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
                         finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
                         created_at_ms=finished_at_ms,
+                        safety_net_used=stage_audit.safety_net_used,
+                        safety_net_retries=stage_audit.safety_net_retries,
+                        parse_mode=stage_audit.parse_mode,
                         commit=False,
                     )
                 repos.pulse.finish_agent_run(
@@ -646,6 +649,9 @@ class PulseCandidateWorker(WorkerBase):
                         started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
                         finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
                         created_at_ms=failed_at_ms,
+                        safety_net_used=stage_audit.safety_net_used,
+                        safety_net_retries=stage_audit.safety_net_retries,
+                        parse_mode=stage_audit.parse_mode,
                         commit=False,
                     )
                 if audit is not None:
