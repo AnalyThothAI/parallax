@@ -263,6 +263,7 @@ function post(eventId: string, handle: string, text: string, quality: number, wa
     mention_source: "cashtag",
     target_type: "Asset",
     target_id: "asset:solana:token:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+    symbol: "HANSA",
     attribution_status: "ca_evidence",
     attribution_confidence: 0.91,
     attribution_weight: 1,

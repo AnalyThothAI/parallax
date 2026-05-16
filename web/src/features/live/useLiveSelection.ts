@@ -17,10 +17,9 @@ export type SelectedSignal =
 
 type UseLiveSelectionArgs = {
   scope: ScopeKey;
-  windowKey: WindowKey;
 };
 
-export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
+export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
   const navigate = useNavigate();
   const location = useLocation();
   const isSignalLabRoute = location.pathname.startsWith("/signal-lab");
@@ -45,9 +44,10 @@ export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
     setSelectedSignal(null);
     setSelectedTapeEventId(tapeId);
     setMobileTask("radar");
+    const detailWindow: WindowKey = "24h";
     const target = targetRefFromTokenItem(item);
     if (!target) {
-      navigate(tokenSearchPath(item, windowKey, scope));
+      navigate(tokenSearchPath(item, detailWindow, scope));
       return;
     }
     navigate(
@@ -55,7 +55,7 @@ export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
         targetId: target.target_id,
         targetType: target.target_type,
         scope,
-        window: windowKey,
+        window: detailWindow,
       }),
     );
   };

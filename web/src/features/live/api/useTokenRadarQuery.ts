@@ -1,7 +1,7 @@
 import { getApi } from "@lib/api/client";
 import type { AssetFlowData, ScopeKey, WindowKey } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 export function useTokenRadarQuery({
   token,
@@ -25,5 +25,6 @@ export function useTokenRadarQuery({
       }),
     enabled: Boolean(token) && enabled,
     refetchInterval: 10_000,
+    placeholderData: keepPreviousData,
   });
 }

@@ -48,10 +48,13 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     onScopeChange,
     onWindowChange,
   } = props;
-  const showLoading = !error && (isLoading || items.length === 0);
+  const showLoading = !error && isLoading;
+  const showEmpty = !error && !isLoading && items.length === 0;
   const resultLabel = showLoading
     ? "loading"
-    : `${items.length} live ${items.length === 1 ? "case" : "cases"}`;
+    : items.length
+      ? `${items.length} live ${items.length === 1 ? "case" : "cases"}`
+      : "no live cases";
   const columns = useMemo<ColumnDef<TokenFlowItem>[]>(
     () => tokenRadarColumns({ onSelect, selectedKey }),
     [onSelect, selectedKey],
@@ -88,6 +91,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
       <div className="token-radar-table">
         {showLoading ? <RadarSkeleton /> : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
+        {showEmpty ? <RemoteState.Empty title="当前窗口暂无可交易 token 热度" /> : null}
         {!showLoading && !error && items.length ? (
           <div className="radar-data-table">
             <div>

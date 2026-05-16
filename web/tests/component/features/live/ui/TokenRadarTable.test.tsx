@@ -67,11 +67,32 @@ describe("TokenRadarTable rows", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("keeps empty token radar data in loading unless the request errors", () => {
+  it("renders empty state when not loading and no items, instead of a skeleton", () => {
     render(
       <TokenRadarTable
         error={null}
         isLoading={false}
+        items={[]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("loading token radar")).not.toBeInTheDocument();
+    expect(screen.queryByText("loading")).not.toBeInTheDocument();
+    expect(screen.getByText("no live cases")).toBeInTheDocument();
+    expect(screen.getByText("当前窗口暂无可交易 token 热度")).toBeInTheDocument();
+  });
+
+  it("shows the skeleton only while the query is genuinely pending", () => {
+    render(
+      <TokenRadarTable
+        error={null}
+        isLoading={true}
         items={[]}
         scope="all"
         selectedKey={null}

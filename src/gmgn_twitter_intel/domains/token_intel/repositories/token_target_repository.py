@@ -93,6 +93,68 @@ class TokenTargetRepository:
             return _target_identity_payload(target_type=target_type, row=row)
         return None
 
+    def latest_market_tick(self, *, target_type: str, target_id: str) -> dict[str, Any] | None:
+        if target_type == "Asset":
+            row = self.conn.execute(
+                """
+                SELECT market_ticks.*
+                FROM registry_assets
+                JOIN LATERAL (
+                  SELECT *
+                  FROM market_ticks
+                  WHERE market_ticks.target_type = 'chain_token'
+                    AND market_ticks.target_id = registry_assets.chain_id || ':' || registry_assets.address
+                  ORDER BY market_ticks.observed_at_ms DESC, market_ticks.tick_id DESC
+                  LIMIT 1
+                ) market_ticks ON true
+                WHERE registry_assets.asset_id = %s
+                """,
+                [target_id],
+            ).fetchone()
+            return dict(row) if row is not None else None
+        if target_type == "CexToken":
+            row = self.conn.execute(
+                """
+                SELECT market_ticks.*
+                FROM cex_tokens
+                JOIN LATERAL (
+                  SELECT *
+                  FROM price_feeds
+                  WHERE price_feeds.subject_type = 'CexToken'
+                    AND price_feeds.subject_id = cex_tokens.cex_token_id
+                    AND price_feeds.feed_type LIKE 'cex_%%'
+                    AND price_feeds.status IN ('candidate', 'canonical')
+                  ORDER BY
+                    CASE
+                      WHEN price_feeds.feed_type = 'cex_spot' THEN 0
+                      WHEN price_feeds.feed_type = 'cex_swap' THEN 1
+                      ELSE 2
+                    END,
+                    CASE
+                      WHEN price_feeds.quote_symbol = 'USDT' THEN 0
+                      WHEN price_feeds.quote_symbol = 'USD' THEN 1
+                      WHEN price_feeds.quote_symbol = 'USDC' THEN 2
+                      ELSE 9
+                    END,
+                    price_feeds.updated_at_ms DESC,
+                    price_feeds.native_market_id ASC
+                  LIMIT 1
+                ) price_feeds ON true
+                JOIN LATERAL (
+                  SELECT *
+                  FROM market_ticks
+                  WHERE market_ticks.target_type = 'cex_symbol'
+                    AND market_ticks.target_id = price_feeds.provider || ':' || price_feeds.native_market_id
+                  ORDER BY market_ticks.observed_at_ms DESC, market_ticks.tick_id DESC
+                  LIMIT 1
+                ) market_ticks ON true
+                WHERE cex_tokens.cex_token_id = %s
+                """,
+                [target_id],
+            ).fetchone()
+            return dict(row) if row is not None else None
+        return None
+
     def timeline_rows(
         self,
         *,

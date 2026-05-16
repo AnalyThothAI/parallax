@@ -31,6 +31,7 @@ describe("TokenCasePanel", () => {
     expect(screen.getByText("Key Amplifiers")).toBeInTheDocument();
     expect(screen.getByText("Data Gaps")).toBeInTheDocument();
     expect(screen.getAllByText(/PQ/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText("$HANSA")[0]).toBeInTheDocument();
     expect(screen.getAllByText(/原文/)[0]).toBeInTheDocument();
   });
 });

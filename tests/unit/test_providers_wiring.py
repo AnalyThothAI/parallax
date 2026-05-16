@@ -47,7 +47,7 @@ def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_r
 
     assert providers.dex_discovery_market is not None
     assert providers.dex_quote_market is not None
-    assert providers.dex_quote_market is okx_quote_created[0]
+    assert isinstance(providers.dex_quote_market, providers_wiring.FallbackDexQuoteProvider)
     assert providers.dex_candle_market is gmgn_created[0]
     assert providers.dex_profile_market is gmgn_created[0]
     assert providers.dex_discovery_market is not providers.dex_quote_market
@@ -55,6 +55,53 @@ def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_r
     assert len(okx_created) == 1
     assert len(okx_quote_created) == 1
     assert len(gmgn_created) == 1
+
+
+def test_asset_market_quote_provider_prefers_gmgn_facts_and_falls_back_to_okx(monkeypatch) -> None:
+    gmgn_quote = providers_wiring.DexTokenQuote(
+        chain_id="eip155:1",
+        address="0xgmgn",
+        observed_at_ms=1,
+        price_usd=2.0,
+        raw={"source_provider": "gmgn_dex_quote"},
+        market_cap_usd=2000.0,
+        liquidity_usd=300.0,
+        volume_24h_usd=400.0,
+        holders=50,
+    )
+    okx_quote = providers_wiring.DexTokenQuote(
+        chain_id="eip155:1",
+        address="0xokx",
+        observed_at_ms=2,
+        price_usd=1.0,
+        raw={"source_provider": "okx_dex_rest"},
+        market_cap_usd=None,
+        liquidity_usd=None,
+        volume_24h_usd=None,
+        holders=None,
+    )
+    okx_quote_provider = FakeDexQuoteProvider([okx_quote])
+    gmgn_provider = FakeGmgnDexMarketProvider([gmgn_quote])
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: FakeDexDiscoveryProvider())
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: okx_quote_provider)
+    monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", lambda settings: gmgn_provider)
+
+    providers = providers_wiring.wire_providers(
+        _settings_with_okx_and_gmgn(),
+        start_collector=True,
+    ).asset_market
+
+    quotes = providers.dex_quote_market.token_quotes(
+        [
+            DexTokenQuoteRequest(chain_id="eip155:1", address="0xgmgn"),
+            DexTokenQuoteRequest(chain_id="eip155:1", address="0xokx"),
+        ]
+    )
+
+    assert [(quote.address, quote.market_cap_usd) for quote in quotes] == [("0xgmgn", 2000.0), ("0xokx", None)]
+    assert gmgn_provider.quote_requests == [[("eip155:1", "0xgmgn"), ("eip155:1", "0xokx")]]
+    assert okx_quote_provider.quote_requests == [[("eip155:1", "0xokx")]]
 
 
 def test_okx_dex_ws_market_provider_is_wired_separately_from_discovery_and_gmgn(monkeypatch) -> None:
@@ -394,13 +441,25 @@ class FakeDexDiscoveryProvider:
 
 
 class FakeDexQuoteProvider:
+    def __init__(self, quotes=None) -> None:
+        self.quotes = list(quotes or [])
+        self.quote_requests: list[list[tuple[str, str]]] = []
+
     def token_quotes(self, tokens):
-        return []
+        self.quote_requests.append([(token.chain_id, token.address) for token in tokens])
+        requested = {(token.chain_id, token.address.lower()) for token in tokens}
+        return [quote for quote in self.quotes if (quote.chain_id, quote.address.lower()) in requested]
 
 
 class FakeGmgnDexMarketProvider:
+    def __init__(self, quotes=None) -> None:
+        self.quotes = list(quotes or [])
+        self.quote_requests: list[list[tuple[str, str]]] = []
+
     def token_quotes(self, tokens):
-        return []
+        self.quote_requests.append([(token.chain_id, token.address) for token in tokens])
+        requested = {(token.chain_id, token.address.lower()) for token in tokens}
+        return [quote for quote in self.quotes if (quote.chain_id, quote.address.lower()) in requested]
 
     def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
         return []

@@ -134,6 +134,43 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     ]
 
 
+def test_market_tick_poll_worker_preserves_gmgn_quote_source_provider() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="eip155:1:0xAbC")])
+    dex_provider = FakeDexQuoteProvider(
+        state,
+        [
+            DexTokenQuote(
+                chain_id="eip155:1",
+                address="0xabc",
+                observed_at_ms=1_800_000_000_010,
+                price_usd=12.34,
+                raw={"source_provider": "gmgn_dex_quote"},
+                market_cap_usd=1234.5,
+                liquidity_usd=678.9,
+                volume_24h_usd=10.11,
+                holders=222,
+            )
+        ],
+    )
+    worker = MarketTickPollWorker(
+        pool_bundle=FakeDB(state, repos),
+        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=None),
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 1
+    assert repos.market_ticks.inserted[0].source_provider == "gmgn_dex_quote"
+    assert repos.market_ticks.inserted[0].tick_id == market_tick_id(
+        target_type="chain_token",
+        target_id="eip155:1:0xAbC",
+        source_provider="gmgn_dex_quote",
+        observed_at_ms=1_800_000_000_010,
+    )
+
+
 def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provider_failures() -> None:
     state = FakeSessionState()
     repos = FakeRepos(

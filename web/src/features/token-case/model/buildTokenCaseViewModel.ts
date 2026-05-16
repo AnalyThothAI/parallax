@@ -228,6 +228,10 @@ function sortTimelineItems(
 
 function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseTone }> {
   const pills: Array<{ label: string; tone: TokenCaseTone }> = [];
+  const symbol = cleanText(post.symbol)?.replace(/^\$+/, "");
+  if (symbol) {
+    pills.push({ label: `$${symbol}`, tone: "opportunity" });
+  }
   const score = numberValue(post.post_quality.score);
   pills.push({
     label: score === null ? "PQ -" : `PQ ${Math.round(score)}`,

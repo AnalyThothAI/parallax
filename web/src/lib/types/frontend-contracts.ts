@@ -915,6 +915,7 @@ export type TokenPostItem = {
   mention_source?: string | null;
   target_type?: string | null;
   target_id?: string | null;
+  symbol?: string | null;
   attribution_status?: string | null;
   attribution_confidence?: number | null;
   attribution_weight?: number | null;

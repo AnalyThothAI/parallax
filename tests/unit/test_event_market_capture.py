@@ -122,6 +122,38 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
     assert result.capture.capture_reason == "inline_quote"
 
 
+def test_inline_dex_quote_preserves_gmgn_source_provider() -> None:
+    quote = DexTokenQuote(
+        chain_id="eip155:1",
+        address="0xabc",
+        observed_at_ms=EVENT_MS + 100,
+        price_usd=1.23,
+        market_cap_usd=123_000.0,
+        raw={"source_provider": "gmgn_dex_quote"},
+    )
+
+    result = EventMarketCaptureService(
+        providers=AssetMarketProviders(dex_quote_market=RecordingDexQuoteProvider([quote])),
+        now_ms=lambda: NOW_MS,
+    ).capture_for_event(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={"target_type": "chain_token", "target_id": "eip155:1:0xabc"},
+        event_ms=EVENT_MS,
+        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
+    )
+
+    assert result.tick is not None
+    assert result.tick.source_provider == "gmgn_dex_quote"
+    assert result.tick.tick_id == market_tick_id(
+        target_type="chain_token",
+        target_id="eip155:1:0xabc",
+        source_provider="gmgn_dex_quote",
+        observed_at_ms=EVENT_MS + 100,
+    )
+
+
 @pytest.mark.parametrize(
     ("target_id", "expected_chain", "expected_address"),
     [

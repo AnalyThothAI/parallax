@@ -82,6 +82,48 @@ def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():
     assert len(requests) == 1
 
 
+def test_gmgn_openapi_client_reads_nested_price_object_market_fields():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/token/info"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "address": "0x0fb006edd8d6c128b83d2461dbfe74b318952886",
+                    "symbol": "PENIS",
+                    "decimals": 9,
+                    "price": {
+                        "price": "0.000028486255",
+                        "volume_24h": "26133.3652616",
+                    },
+                    "liquidity": "18230.629102955",
+                    "holder_count": "551",
+                    "circulating_supply": "999999999",
+                },
+            },
+        )
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        info = client.lookup_token_info(
+            chain="eip155:1",
+            address="0x0fb006edd8d6c128b83d2461dbfe74b318952886",
+        ).info
+    finally:
+        client.close()
+
+    assert info is not None
+    assert info.price == 0.000028486255
+    assert info.market_cap == pytest.approx(28_486.254971513744)
+    assert info.liquidity == pytest.approx(18_230.629102955)
+    assert info.holder_count == 551
+
+
 def test_gmgn_openapi_client_force_ipv4_sets_curl_ipresolve(monkeypatch):
     sessions = []
 

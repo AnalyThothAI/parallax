@@ -30,7 +30,7 @@ def test_upsert_tier_updates_only_token_capture_tier_projection() -> None:
     assert conn.params[-1]["score"] == Decimal("9.5")
 
 
-def test_list_by_tier_orders_by_score_updated_and_target() -> None:
+def test_list_by_tier_prioritizes_missing_or_incomplete_market_ticks() -> None:
     conn = _ScriptedConnection([[{"target_id": "solana:abc"}]])
 
     rows = TokenCaptureTierRepository(conn).list_by_tier(1, limit=50)
@@ -38,8 +38,12 @@ def test_list_by_tier_orders_by_score_updated_and_target() -> None:
     assert rows == [{"target_id": "solana:abc"}]
     sql = conn.sql[-1]
     assert "FROM token_capture_tier" in sql
+    assert "LEFT JOIN LATERAL" in sql
+    assert "latest_tick.tick_id IS NULL" in sql
+    assert "latest_tick.market_cap_usd IS NULL" in sql
+    assert "latest_tick.received_at_ms ASC NULLS FIRST" in sql
     assert "tier = %(tier)s" in sql
-    assert "ORDER BY score DESC, updated_at_ms DESC, target_id ASC" in sql
+    assert "score DESC" in sql
     assert "LIMIT %(limit)s" in sql
     assert conn.params[-1] == {"tier": 1, "limit": 50}
 

@@ -184,7 +184,8 @@ class GmgnDexMarketProvider:
             info = lookup.info
             if info is None:
                 continue
-            raw = {**info.raw, "cache_status": lookup.cache_status}
+            raw = {**info.raw, "cache_status": lookup.cache_status, "source_provider": "gmgn_dex_quote"}
+            price_payload = raw.get("price") if isinstance(raw.get("price"), dict) else {}
             quotes.append(
                 DexTokenQuote(
                     chain_id=info.chain,
@@ -194,7 +195,12 @@ class GmgnDexMarketProvider:
                     raw=raw,
                     market_cap_usd=info.market_cap,
                     liquidity_usd=info.liquidity,
-                    volume_24h_usd=_number_from_mapping(info.raw, "volume_24h_usd", "volume24hUsd", "volume_24h"),
+                    volume_24h_usd=_number_from_mapping(
+                        {**price_payload, **info.raw},
+                        "volume_24h_usd",
+                        "volume24hUsd",
+                        "volume_24h",
+                    ),
                     holders=info.holder_count,
                 )
             )
@@ -239,6 +245,43 @@ class GmgnDexMarketProvider:
 
     def close(self) -> None:
         self._client.close()
+
+
+class FallbackDexQuoteProvider:
+    def __init__(self, *, primary: DexTokenQuoteProvider, fallback: DexTokenQuoteProvider | None) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]:
+        requests = list(tokens)
+        primary_quotes = self._primary.token_quotes(requests)
+        by_key = {
+            _quote_key(quote.chain_id, quote.address): quote
+            for quote in primary_quotes
+            if _quote_has_price(quote)
+        }
+        missing = [token for token in requests if _quote_key(token.chain_id, token.address) not in by_key]
+        if missing and self._fallback is not None:
+            fallback_quotes = self._fallback.token_quotes(missing)
+            for fallback_quote in fallback_quotes:
+                key = _quote_key(fallback_quote.chain_id, fallback_quote.address)
+                if _quote_has_price(fallback_quote):
+                    by_key[key] = fallback_quote
+        return [
+            quote
+            for token in requests
+            if (quote := by_key.get(_quote_key(token.chain_id, token.address))) is not None
+        ]
+
+    def close(self) -> None:
+        seen: set[int] = set()
+        for provider in (self._primary, self._fallback):
+            if provider is None or id(provider) in seen:
+                continue
+            seen.add(id(provider))
+            close = getattr(provider, "close", None)
+            if close:
+                close()
 
 
 class _SerializedDiscoveryProvider:
@@ -430,7 +473,10 @@ def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
             sync_cex_market=okx_bundle.sync_cex_market,
             message_cex_market=okx_bundle.message_cex_market,
             dex_discovery_market=okx_bundle.dex_discovery_market,
-            dex_quote_market=okx_bundle.dex_quote_market,
+            dex_quote_market=_dex_quote_market(
+                primary=gmgn_dex_market,
+                fallback=okx_bundle.dex_quote_market,
+            ),
             dex_candle_market=gmgn_dex_market,
             dex_profile_market=gmgn_dex_market,
             stream_dex_market=okx_bundle.stream_dex_market,
@@ -504,6 +550,7 @@ def _gmgn_provider_health(settings: Settings) -> ProviderHealth:
     capabilities = (
         frozenset(
             {
+                MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
                 MarketCapability.CANDLES_DEX_EXACT,
             }
@@ -583,6 +630,18 @@ def _gmgn_dex_market(settings: Settings) -> GmgnDexMarketProvider:
             cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
         )
     )
+
+
+def _dex_quote_market(
+    *,
+    primary: object | None,
+    fallback: DexTokenQuoteProvider | None,
+) -> DexTokenQuoteProvider | None:
+    if _has_token_quotes(primary) and fallback is not None:
+        return FallbackDexQuoteProvider(primary=primary, fallback=fallback)
+    if _has_token_quotes(primary):
+        return primary
+    return fallback
 
 
 def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapter:
@@ -726,6 +785,18 @@ def _normalize_address(address: Any) -> str:
     return text.lower() if EVM_ADDRESS_RE.match(text) else text
 
 
+def _has_token_quotes(value: object | None) -> bool:
+    return callable(getattr(value, "token_quotes", None))
+
+
+def _quote_key(chain_id: Any, address: Any) -> tuple[str, str]:
+    return (str(chain_id).strip(), _normalize_address(address))
+
+
+def _quote_has_price(quote: DexTokenQuote | None) -> bool:
+    return quote is not None and quote.price_usd is not None
+
+
 def _number_from_mapping(payload: dict[str, Any], *keys: str) -> float | None:
     for key in keys:
         value = payload.get(key)
@@ -740,6 +811,7 @@ def _number_from_mapping(payload: dict[str, Any], *keys: str) -> float | None:
 
 __all__ = [
     "AssetMarketProviders",
+    "FallbackDexQuoteProvider",
     "GmgnDexMarketProvider",
     "IngestionProviders",
     "MarketlaneProviders",

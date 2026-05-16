@@ -118,6 +118,44 @@ def test_token_case_uses_missing_live_market_when_gateway_returns_none():
     assert dossier["market_live"]["target_id"] == TARGET_ID
 
 
+def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
+    service = TokenCaseService(
+        targets=FakeTargets(
+            rows=[target_row("event-1")],
+            market_tick={
+                "source_provider": "gmgn_dex_quote",
+                "price_usd": Decimal("0.000028486255"),
+                "market_cap_usd": Decimal("28486.254971513744"),
+                "liquidity_usd": Decimal("18230.629102955"),
+                "volume_24h_usd": Decimal("26133.3652616"),
+                "holders": 551,
+                "observed_at_ms": NOW_MS - 2_000,
+                "received_at_ms": NOW_MS - 1_000,
+            },
+        ),
+        profiles=FakeProfiles(),
+        live_price_gateway=FakeLivePriceGateway(snapshot=None),
+    )
+
+    dossier = service.dossier(
+        target_type="Asset",
+        target_id=TARGET_ID,
+        window="1h",
+        scope="all",
+        posts_limit=2,
+        now_ms=NOW_MS,
+    )
+
+    assert dossier["market_live"]["status"] == "ready"
+    assert dossier["market_live"]["provider"] == "gmgn_dex_quote"
+    assert dossier["market_live"]["price_usd"] == 0.000028486255
+    assert dossier["market_live"]["market_cap_usd"] == 28486.254971513744
+    assert dossier["market_live"]["liquidity_usd"] == 18230.629102955
+    assert dossier["market_live"]["volume_24h_usd"] == 26133.3652616
+    assert dossier["market_live"]["holders"] == 551
+    assert dossier["market_live"]["age_ms"] == 1_000
+
+
 def test_token_case_uses_unsupported_live_market_without_gateway():
     service = TokenCaseService(
         targets=FakeTargets(rows=[target_row("event-1")]),
@@ -224,9 +262,10 @@ def test_token_target_repository_target_identity_escapes_cex_feed_like_pattern()
 
 
 class FakeTargets:
-    def __init__(self, *, rows, identity=None):
+    def __init__(self, *, rows, identity=None, market_tick=None):
         self.rows = rows
         self.identity = identity if identity is not None else target_identity()
+        self.market_tick = market_tick
         self.timeline_calls = []
 
     def target_identity(self, *, target_type, target_id):
@@ -256,6 +295,13 @@ class FakeTargets:
             and (not watched_only or row["is_watched"])
         ]
         return rows[:limit]
+
+    def latest_market_tick(self, *, target_type, target_id):
+        if self.identity is None:
+            return None
+        if self.identity["target_type"] != target_type or self.identity["target_id"] != target_id:
+            return None
+        return self.market_tick
 
 
 class FakeProfiles:

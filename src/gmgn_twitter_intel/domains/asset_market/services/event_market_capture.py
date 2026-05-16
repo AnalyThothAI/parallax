@@ -5,13 +5,21 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuoteRequest
-from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture, MarketTick, market_tick_id
+from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
+from gmgn_twitter_intel.domains.asset_market.types import (
+    DEX_QUOTE_SOURCE_PROVIDERS,
+    EnrichedEventCapture,
+    MarketTick,
+    MarketTickSourceProvider,
+    market_tick_id,
+)
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
 
 TargetType = Literal["chain_token", "cex_symbol"]
+DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
+CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_cex_rest"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,11 +106,12 @@ def _capture_chain_token(
 
     created_at_ms = now_ms()
     observed_at_ms = int(quote.observed_at_ms or created_at_ms)
+    source_provider = _dex_source_provider(quote)
     tick = MarketTick(
         tick_id=market_tick_id(
             target_type=req.target_type,
             target_id=req.target_id,
-            source_provider="okx_dex_rest",
+            source_provider=source_provider,
             observed_at_ms=observed_at_ms,
         ),
         target_type=req.target_type,
@@ -113,7 +122,7 @@ def _capture_chain_token(
         instrument=None,
         pricefeed_id=None,
         source_tier="tier3_inline",
-        source_provider="okx_dex_rest",
+        source_provider=source_provider,
         observed_at_ms=observed_at_ms,
         received_at_ms=created_at_ms,
         price_usd=price_usd,
@@ -160,7 +169,7 @@ def _capture_cex_symbol(
         tick_id=market_tick_id(
             target_type=req.target_type,
             target_id=req.target_id,
-            source_provider="okx_cex_rest",
+            source_provider=CEX_SOURCE_PROVIDER,
             observed_at_ms=observed_at_ms,
         ),
         target_type=req.target_type,
@@ -171,7 +180,7 @@ def _capture_cex_symbol(
         instrument=instrument,
         pricefeed_id=None,
         source_tier="tier3_inline",
-        source_provider="okx_cex_rest",
+        source_provider=CEX_SOURCE_PROVIDER,
         observed_at_ms=observed_at_ms,
         received_at_ms=created_at_ms,
         price_usd=price_usd,
@@ -342,6 +351,13 @@ def _provider_error_reason(exc: Exception) -> str:
 def _target_type(value: Any) -> TargetType | None:
     text = _clean_str(value)
     return cast(TargetType, text) if text in {"chain_token", "cex_symbol"} else None
+
+
+def _dex_source_provider(quote: DexTokenQuote) -> MarketTickSourceProvider:
+    source_provider = _clean_str(quote.raw.get("source_provider"))
+    if source_provider in DEX_QUOTE_SOURCE_PROVIDERS:
+        return source_provider
+    return DEX_SOURCE_PROVIDER
 
 
 def _decimal(value: Any) -> Decimal:

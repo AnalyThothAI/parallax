@@ -208,9 +208,12 @@ def _token_info_from_response(*, chain: str, address: str, data: Any) -> GmgnTok
     symbol = _string(data.get("symbol"))
     if not symbol:
         return None
-    price = _float_or_none(data.get("price"))
+    price_payload = data.get("price") if isinstance(data.get("price"), dict) else None
+    price = _float_or_none(data.get("price")) or _float_or_none((price_payload or {}).get("price"))
     market_cap = _market_cap(data, price=price)
     link = data.get("link") if isinstance(data.get("link"), dict) else None
+    stat = data.get("stat") if isinstance(data.get("stat"), dict) else None
+    pool = data.get("pool") if isinstance(data.get("pool"), dict) else None
     return GmgnTokenInfo(
         chain=_internal_chain(chain),
         address=_string(data.get("address")) or address,
@@ -220,10 +223,11 @@ def _token_info_from_response(*, chain: str, address: str, data: Any) -> GmgnTok
         banner_url=_string(data.get("banner")),
         decimals=_int_or_none(data.get("decimals")),
         price=price,
-        previous_price=_float_or_none(data.get("previous_price")),
+        previous_price=_float_or_none(data.get("previous_price"))
+        or _float_or_none((price_payload or {}).get("price_5m")),
         market_cap=market_cap,
-        liquidity=_float_or_none(data.get("liquidity")),
-        holder_count=_int_or_none(data.get("holder_count") or data.get("holders")),
+        liquidity=_float_or_none(data.get("liquidity")) or _float_or_none((pool or {}).get("liquidity")),
+        holder_count=_int_or_none(data.get("holder_count") or data.get("holders") or (stat or {}).get("holder_count")),
         circulating_supply=_float_or_none(data.get("circulating_supply")),
         total_supply=_float_or_none(data.get("total_supply")),
         max_supply=_float_or_none(data.get("max_supply")),
@@ -233,9 +237,9 @@ def _token_info_from_response(*, chain: str, address: str, data: Any) -> GmgnTok
         gmgn_url=_link_string(link, "gmgn"),
         geckoterminal_url=_link_string(link, "geckoterminal"),
         description=_link_string(link, "description") or _string(data.get("description")),
-        pool=dict(data["pool"]) if isinstance(data.get("pool"), dict) else None,
+        pool=dict(pool) if pool is not None else None,
         dev=dict(data["dev"]) if isinstance(data.get("dev"), dict) else None,
-        stat=dict(data["stat"]) if isinstance(data.get("stat"), dict) else None,
+        stat=dict(stat) if stat is not None else None,
         link=dict(link) if link is not None else None,
         raw=dict(data),
     )
@@ -268,7 +272,11 @@ def _internal_chain(chain: str) -> str:
 
 
 def _market_cap(data: dict[str, Any], *, price: float | None) -> float | None:
-    direct = _float_or_none(data.get("market_cap") or data.get("mcap"))
+    price_payload = data.get("price") if isinstance(data.get("price"), dict) else None
+    direct = (
+        _float_or_none(data.get("market_cap") or data.get("mcap") or data.get("market_cap_usd"))
+        or _float_or_none((price_payload or {}).get("market_cap") or (price_payload or {}).get("market_cap_usd"))
+    )
     if direct is not None:
         return direct
     supply = _float_or_none(data.get("circulating_supply"))

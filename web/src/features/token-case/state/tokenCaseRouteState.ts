@@ -11,7 +11,7 @@ export type TokenCaseRouteState = {
 };
 
 export const TOKEN_CASE_ROUTE_DEFAULTS: TokenCaseRouteState = {
-  window: "1h",
+  window: "24h",
   scope: "all",
   postSort: "recent",
 };

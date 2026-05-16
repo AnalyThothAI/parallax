@@ -13,6 +13,7 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
 from gmgn_twitter_intel.domains.asset_market.types import (
+    DEX_QUOTE_SOURCE_PROVIDERS,
     MarketTick,
     MarketTickSourceProvider,
     MarketTickSourceTier,
@@ -313,11 +314,12 @@ def _tick_from_dex_quote(
     if price_usd is None:
         return None
     observed_at_ms = int(quote.observed_at_ms or received_at_ms)
+    source_provider = _dex_source_provider(quote)
     return MarketTick(
         tick_id=market_tick_id(
             target_type="chain_token",
             target_id=target.target_id,
-            source_provider=DEX_SOURCE_PROVIDER,
+            source_provider=source_provider,
             observed_at_ms=observed_at_ms,
         ),
         target_type="chain_token",
@@ -328,7 +330,7 @@ def _tick_from_dex_quote(
         instrument=None,
         pricefeed_id=None,
         source_tier=SOURCE_TIER,
-        source_provider=DEX_SOURCE_PROVIDER,
+        source_provider=source_provider,
         observed_at_ms=observed_at_ms,
         received_at_ms=received_at_ms,
         price_usd=price_usd,
@@ -421,6 +423,13 @@ def _clean_str(value: Any) -> str:
 
 def _target_key(chain_id: str, address: str) -> tuple[str, str]:
     return (str(chain_id).strip(), str(address).strip().lower())
+
+
+def _dex_source_provider(quote: DexTokenQuote) -> MarketTickSourceProvider:
+    source_provider = _clean_str(quote.raw.get("source_provider"))
+    if source_provider in DEX_QUOTE_SOURCE_PROVIDERS:
+        return source_provider
+    return DEX_SOURCE_PROVIDER
 
 
 def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:

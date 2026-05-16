@@ -61,7 +61,7 @@ export function stocksPath({
 export function tokenTargetPath({
   targetType,
   targetId,
-  window = "1h",
+  window = "24h",
   scope = "all",
   postRange,
   postSort,
@@ -73,7 +73,12 @@ export function tokenTargetPath({
   postRange?: TokenPostRange;
   postSort?: TokenPostSortMode;
 }): string {
-  const search = compactSearch({ window, scope, postRange, postSort });
+  const search = compactSearch({
+    window: window === "24h" ? undefined : window,
+    scope: scope === "all" ? undefined : scope,
+    postRange,
+    postSort,
+  });
   return `/token/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}${
     search ? `?${search}` : ""
   }`;

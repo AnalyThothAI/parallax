@@ -75,7 +75,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
   );
   const selection = useLiveSelection({
     scope,
-    windowKey,
   });
   const notificationsController = useNotificationsController({
     fallbackSummary: null,

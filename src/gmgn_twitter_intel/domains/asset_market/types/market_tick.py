@@ -6,7 +6,10 @@ from typing import Any, Literal
 
 MarketTickTargetType = Literal["chain_token", "cex_symbol"]
 MarketTickSourceTier = Literal["tier1_ws", "tier2_poll", "tier3_inline"]
-MarketTickSourceProvider = Literal["okx_dex_ws", "okx_dex_rest", "okx_cex_rest"]
+MarketTickSourceProvider = Literal["okx_dex_ws", "okx_dex_rest", "okx_cex_rest", "gmgn_dex_quote"]
+DEX_QUOTE_SOURCE_PROVIDERS: frozenset[MarketTickSourceProvider] = frozenset(
+    {"okx_dex_rest", "gmgn_dex_quote"}
+)
 EventCaptureMethod = Literal["tier1_ws", "tier2_poll", "tier3_inline", "unavailable"]
 
 
