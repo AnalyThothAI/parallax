@@ -157,6 +157,49 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
     assert "缺 holders" not in dossier["agent_brief"]["project_summary"]["data_gaps"]
 
 
+def test_token_case_data_gaps_do_not_claim_project_profile_missing_when_ready():
+    service = TokenCaseService(
+        targets=FakeTargets(
+            rows=[target_row("event-1")],
+            market_tick={
+                "source_provider": "gmgn_dex_quote",
+                "price_usd": Decimal("0.000028486255"),
+                "market_cap_usd": Decimal("28486.254971513744"),
+                "liquidity_usd": Decimal("18230.629102955"),
+                "volume_24h_usd": Decimal("26133.3652616"),
+                "holders": 551,
+                "observed_at_ms": NOW_MS - 2_000,
+                "received_at_ms": NOW_MS - 1_000,
+            },
+        ),
+        profiles=FakeProfiles(
+            profile={
+                "status": "ready",
+                "provider": "gmgn_dex_profile",
+                "identity": {"name": "Hansa"},
+                "links": {"website_url": "https://hansa.example"},
+                "source": {"raw_available": True},
+            }
+        ),
+        live_price_gateway=FakeLivePriceGateway(snapshot=None),
+    )
+
+    dossier = service.dossier(
+        target_type="Asset",
+        target_id=TARGET_ID,
+        window="1h",
+        scope="all",
+        posts_limit=2,
+        now_ms=NOW_MS,
+    )
+
+    data_gaps = dossier["agent_brief"]["project_summary"]["data_gaps"]
+
+    assert "缺合约风险和项目方资料" not in data_gaps
+    assert "缺项目方资料" not in data_gaps
+    assert "缺合约风险数据" in data_gaps
+
+
 def test_token_case_uses_unsupported_live_market_without_gateway():
     service = TokenCaseService(
         targets=FakeTargets(rows=[target_row("event-1")]),

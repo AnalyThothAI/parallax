@@ -58,9 +58,17 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
           notes: { rows_written: 0, source_rows: 0 },
         },
       }),
-      token_capture_tier: workerStatusFixture({ enabled: true, running: true, last_started_at_ms: NOW }),
+      token_capture_tier: workerStatusFixture({
+        enabled: true,
+        running: true,
+        last_started_at_ms: NOW,
+      }),
       market_tick_stream: workerStatusFixture({ enabled: false, running: false }),
-      market_tick_poll: workerStatusFixture({ enabled: true, running: true, last_started_at_ms: NOW }),
+      market_tick_poll: workerStatusFixture({
+        enabled: true,
+        running: true,
+        last_started_at_ms: NOW,
+      }),
       live_price_gateway: workerStatusFixture({
         enabled: true,
         running: true,

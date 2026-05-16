@@ -1,11 +1,62 @@
 .hero {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
+  gap: 10px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--slab) 94%, var(--void));
-  padding: 14px;
+  padding: 10px 12px 12px;
+}
+
+.topBar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.backLink {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--slab-2);
+  color: var(--bone-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-decoration: none;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.backLink:hover,
+.backLink:focus-visible {
+  border-color: var(--info-line);
+  color: var(--info);
+}
+
+.backLink svg,
+.actions svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.mainGrid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.54fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
 }
 
 .mark {
@@ -38,7 +89,12 @@
 .kicker,
 .metaRow,
 .segmented button,
-.actions a {
+.actions a,
+.marketFacts dt,
+.market p,
+.metricGrid dt,
+.metricDetail,
+.priceLine span {
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0;
@@ -53,16 +109,17 @@
   margin: 0;
   color: var(--bone);
   font-family: var(--mono);
-  font-size: clamp(22px, 3.6vw, 30px);
+  font-size: 28px;
   line-height: 1.05;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .titleBlock p {
   margin: 0;
   color: var(--ash);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
 .metaRow {
@@ -85,10 +142,11 @@
 }
 
 .controls {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
+  display: flex;
   min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .segmented {
@@ -104,13 +162,13 @@
 
 .segmented button {
   min-width: 0;
-  min-height: 28px;
+  min-height: 26px;
   border: 0;
   border-radius: 3px;
   background: transparent;
   color: var(--dim);
   cursor: pointer;
-  padding: 0 9px;
+  padding: 0 8px;
   white-space: nowrap;
 }
 
@@ -122,19 +180,19 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
+  gap: 5px;
 }
 
 .actions a {
-  min-height: 28px;
+  min-height: 26px;
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--slab-2);
   color: var(--bone-2);
-  padding: 0 9px;
+  padding: 0 8px;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -151,17 +209,179 @@
   color: var(--opportunity);
 }
 
-@media (max-width: 820px) {
-  .hero {
+.market {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+
+.marketHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.market h2 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.priceLine {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.priceLine b {
+  min-width: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 24px;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.priceLine[data-tone="health"] b {
+  color: var(--health);
+}
+
+.priceLine[data-tone="warn"] b {
+  color: var(--opportunity);
+}
+
+.priceLine span,
+.market p {
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.marketFacts,
+.metricGrid {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.marketFacts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.marketFacts div,
+.metricGrid div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+}
+
+.marketFacts dt,
+.metricGrid dt,
+.metricDetail {
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.marketFacts dd,
+.metricGrid dd {
+  margin: 0;
+  color: var(--bone-2);
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.market p {
+  margin: 0;
+}
+
+.metricGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metricGrid div[data-tone="health"] dd {
+  color: var(--health);
+}
+
+.metricGrid div[data-tone="info"],
+.metricGrid div[data-tone="agent"] {
+  border-color: var(--info-line);
+}
+
+.metricGrid div[data-tone="info"] dd,
+.metricGrid div[data-tone="agent"] dd {
+  color: var(--info);
+}
+
+.metricGrid div[data-tone="warn"],
+.metricGrid div[data-tone="opportunity"] {
+  border-color: var(--opportunity-line);
+}
+
+.metricGrid div[data-tone="warn"] dd,
+.metricGrid div[data-tone="opportunity"] dd {
+  color: var(--opportunity);
+}
+
+.metricGrid div[data-tone="risk"] {
+  border-color: var(--risk-line);
+}
+
+.metricGrid div[data-tone="risk"] dd {
+  color: var(--risk);
+}
+
+@media (max-width: 980px) {
+  .mainGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .market {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .topBar,
   .controls {
-    justify-items: stretch;
+    align-items: stretch;
   }
 
-  .segmented,
-  .actions {
-    justify-content: flex-start;
+  .topBar {
+    flex-direction: column;
+  }
+
+  .backLink,
+  .controls,
+  .segmented {
+    width: 100%;
+  }
+
+  .segmented {
+    justify-content: space-between;
+  }
+
+  .identity,
+  .marketFacts,
+  .metricGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .titleBlock h1 {
+    font-size: 24px;
   }
 }

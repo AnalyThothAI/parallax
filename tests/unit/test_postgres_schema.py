@@ -22,7 +22,7 @@ AGENTS_SDK_AUDIT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
 EVENT_PRICE_OBSERVATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_" "observations.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_" + "observations.py"
 )
 TOKEN_RADAR_PRUNE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"

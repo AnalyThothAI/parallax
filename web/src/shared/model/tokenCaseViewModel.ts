@@ -29,6 +29,12 @@ export type TokenCasePostEvent = {
   role: string | null;
   isWatched: boolean;
   pills: Array<{ label: string; tone: TokenCaseTone }>;
+  market: {
+    eventPriceLabel: string;
+    liveDeltaLabel: string | null;
+    providerLabel: string;
+    tone: TokenCaseTone;
+  } | null;
   quality: {
     score: number | null;
     scoreLabel: string;
@@ -44,6 +50,7 @@ export type TokenCaseMarketView = {
   marketCapLabel: string;
   liquidityLabel: string;
   holdersLabel: string;
+  volume24hLabel: string;
   observedAtLabel: string | null;
   emptyTitle: string | null;
   emptyDetail: string | null;

@@ -9,8 +9,6 @@ import { TokenCaseAmplifiersRail } from "./TokenCaseAmplifiersRail";
 import { TokenCaseBullBearRail } from "./TokenCaseBullBearRail";
 import { TokenCaseDataGapsRail } from "./TokenCaseDataGapsRail";
 import { TokenCaseHero } from "./TokenCaseHero";
-import { TokenCaseMarketRail } from "./TokenCaseMarketRail";
-import { TokenCaseMetricStrip } from "./TokenCaseMetricStrip";
 import styles from "./TokenCasePanel.module.css";
 import { TokenCasePropagationSummary } from "./TokenCasePropagationSummary";
 import { TokenCaseTimeline } from "./TokenCaseTimeline";
@@ -34,12 +32,13 @@ export function TokenCasePanel({
     <section className={styles.panel} aria-label="Token case">
       <TokenCaseHero
         hero={vm.hero}
+        market={vm.market}
+        metrics={vm.metrics}
         route={vm.route}
         target={vm.target}
         onScopeChange={onScopeChange}
         onWindowChange={onWindowChange}
       />
-      <TokenCaseMetricStrip metrics={vm.metrics} />
       <TokenCasePropagationSummary propagation={vm.propagation} />
       <div className={styles.workspace}>
         <div className={styles.mainColumn}>
@@ -50,7 +49,6 @@ export function TokenCasePanel({
           />
         </div>
         <div className={styles.sideRail} aria-label="Token case side rail">
-          <TokenCaseMarketRail market={vm.market} />
           <TokenCaseBullBearRail bullBear={vm.bullBear} />
           <TokenCaseAmplifiersRail amplifiers={vm.amplifiers} />
           <TokenCaseDataGapsRail dataGaps={vm.dataGaps} />

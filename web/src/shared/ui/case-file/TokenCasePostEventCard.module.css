@@ -41,9 +41,9 @@
 
 .eventHeader {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  justify-content: space-between;
   gap: 10px;
 }
 
@@ -63,7 +63,9 @@
 }
 
 .eventHeader span,
-.eventHeader a {
+.eventHeader a,
+.marketQuote span,
+.marketQuote em {
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
@@ -71,8 +73,56 @@
 }
 
 .eventHeader a {
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--info-line);
+  border-radius: 4px;
+  background: var(--info-soft);
   color: var(--info);
   text-decoration: none;
+}
+
+.eventActions {
+  display: flex;
+  align-items: start;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.marketQuote {
+  min-width: 148px;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  border-right: 1px solid var(--line-soft);
+  padding-right: 8px;
+  text-align: right;
+}
+
+.marketQuote b {
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.marketQuote[data-tone="health"] b,
+.marketQuote[data-tone="health"] em {
+  color: var(--health);
+}
+
+.marketQuote[data-tone="risk"] b,
+.marketQuote[data-tone="risk"] em {
+  color: var(--risk);
+}
+
+.marketQuote[data-tone="warn"] b,
+.marketQuote[data-tone="warn"] em,
+.marketQuote[data-tone="opportunity"] b,
+.marketQuote[data-tone="opportunity"] em {
+  color: var(--opportunity);
 }
 
 .pills {
@@ -184,6 +234,25 @@
 @media (max-width: 820px) {
   .card {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eventHeader,
+  .eventActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eventActions {
+    justify-content: stretch;
+  }
+
+  .marketQuote {
+    min-width: 0;
+    justify-items: start;
+    border-right: 0;
+    border-left: 1px solid var(--line-soft);
+    padding-right: 0;
+    padding-left: 8px;
+    text-align: left;
   }
 
   .timeGutter {

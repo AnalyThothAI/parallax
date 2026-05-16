@@ -21,16 +21,25 @@ export function TokenCasePostEventCard({ item }: TokenCasePostEventCardProps) {
             <b>{handle}</b>
             {item.role ? <span>{item.role}</span> : null}
           </div>
-          {item.url ? (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Open X post by ${handle}`}
-            >
-              X
-            </a>
-          ) : null}
+          <div className={styles.eventActions}>
+            {item.market ? (
+              <div className={styles.marketQuote} data-tone={item.market.tone}>
+                <span>{item.market.providerLabel}</span>
+                <b>{item.market.eventPriceLabel}</b>
+                {item.market.liveDeltaLabel ? <em>{item.market.liveDeltaLabel}</em> : null}
+              </div>
+            ) : null}
+            {item.url ? (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open X post by ${handle}`}
+              >
+                X
+              </a>
+            ) : null}
+          </div>
         </header>
         <div className={styles.pills}>
           {item.pills.map((pill) => (

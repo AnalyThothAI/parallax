@@ -273,9 +273,8 @@ def _internal_chain(chain: str) -> str:
 
 def _market_cap(data: dict[str, Any], *, price: float | None) -> float | None:
     price_payload = data.get("price") if isinstance(data.get("price"), dict) else None
-    direct = (
-        _float_or_none(data.get("market_cap") or data.get("mcap") or data.get("market_cap_usd"))
-        or _float_or_none((price_payload or {}).get("market_cap") or (price_payload or {}).get("market_cap_usd"))
+    direct = _float_or_none(data.get("market_cap") or data.get("mcap") or data.get("market_cap_usd")) or _float_or_none(
+        (price_payload or {}).get("market_cap") or (price_payload or {}).get("market_cap_usd")
     )
     if direct is not None:
         return direct

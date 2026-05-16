@@ -61,6 +61,48 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("$0.00042");
   });
 
+  it("promotes event prices with a live-market comparison for the timeline", () => {
+    const dossier = tokenCaseFixture();
+    const firstPost = dossier.posts.items[0];
+
+    const vm = buildTokenCaseViewModel({
+      dossier: {
+        ...dossier,
+        market_live: {
+          ...dossier.market_live,
+          status: "ready",
+          price_usd: 0.0005,
+          provider: "gmgn_dex_quote",
+        },
+        posts: {
+          ...dossier.posts,
+          items: [
+            {
+              ...firstPost,
+              price: {
+                status: "ready",
+                provider: "gmgn_dex_quote",
+                price_usd: 0.0004,
+                observed_at_ms: 1_700_000_000_000,
+                observation_lag_ms: 500,
+                observation_id: "tick:hansa",
+                observation_kind: "tier3_inline",
+              },
+            },
+          ],
+        },
+      },
+      route: { window: "1h", scope: "all", postSort: "recent" },
+    });
+
+    expect(vm.timeline.items[0].market).toEqual({
+      eventPriceLabel: "$0.0004",
+      liveDeltaLabel: "+25.00% vs live",
+      providerLabel: "gmgn_dex_quote",
+      tone: "health",
+    });
+  });
+
   it("filters watched timeline items on the client", () => {
     const dossier = tokenCaseFixture();
 

@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.asset_market.providers import (
     CexMarketProvider,
@@ -185,7 +185,8 @@ class GmgnDexMarketProvider:
             if info is None:
                 continue
             raw = {**info.raw, "cache_status": lookup.cache_status, "source_provider": "gmgn_dex_quote"}
-            price_payload = raw.get("price") if isinstance(raw.get("price"), dict) else {}
+            raw_price_payload = raw.get("price")
+            price_payload: dict[str, Any] = raw_price_payload if isinstance(raw_price_payload, dict) else {}
             quotes.append(
                 DexTokenQuote(
                     chain_id=info.chain,
@@ -256,9 +257,7 @@ class FallbackDexQuoteProvider:
         requests = list(tokens)
         primary_quotes = self._primary.token_quotes(requests)
         by_key = {
-            _quote_key(quote.chain_id, quote.address): quote
-            for quote in primary_quotes
-            if _quote_has_price(quote)
+            _quote_key(quote.chain_id, quote.address): quote for quote in primary_quotes if _quote_has_price(quote)
         }
         missing = [token for token in requests if _quote_key(token.chain_id, token.address) not in by_key]
         if missing and self._fallback is not None:
@@ -268,9 +267,7 @@ class FallbackDexQuoteProvider:
                 if _quote_has_price(fallback_quote):
                     by_key[key] = fallback_quote
         return [
-            quote
-            for token in requests
-            if (quote := by_key.get(_quote_key(token.chain_id, token.address))) is not None
+            quote for token in requests if (quote := by_key.get(_quote_key(token.chain_id, token.address))) is not None
         ]
 
     def close(self) -> None:
@@ -637,11 +634,12 @@ def _dex_quote_market(
     primary: object | None,
     fallback: DexTokenQuoteProvider | None,
 ) -> DexTokenQuoteProvider | None:
-    if _has_token_quotes(primary) and fallback is not None:
-        return FallbackDexQuoteProvider(primary=primary, fallback=fallback)
-    if _has_token_quotes(primary):
-        return primary
-    return fallback
+    if not _has_token_quotes(primary):
+        return fallback
+    primary_quote = cast(DexTokenQuoteProvider, primary)
+    if fallback is not None:
+        return FallbackDexQuoteProvider(primary=primary_quote, fallback=fallback)
+    return primary_quote
 
 
 def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapter:

@@ -32,11 +32,15 @@ export function buildTokenCaseViewModel({
     ? `$${symbol}${name && name !== symbol ? ` · ${name}` : ""}`
     : shortId(target.target_id);
   const mergedPosts = posts ?? dossier.posts;
-  const timelineItems = sortTimelineItems(mergedPosts.items.map(buildPostEvent), route.postSort);
+  const market = buildMarketView(dossier);
+  const livePrice = numberValue(dossier.market_live.price_usd);
+  const timelineItems = sortTimelineItems(
+    mergedPosts.items.map((post) => buildPostEvent(post, livePrice)),
+    route.postSort,
+  );
   const visibleTimelineItems =
     route.postSort === "watched" ? timelineItems.filter((item) => item.isWatched) : timelineItems;
   const dataGaps = dossier.agent_brief.project_summary.data_gaps.filter(Boolean);
-  const market = buildMarketView(dossier);
 
   return {
     target: {
@@ -160,7 +164,7 @@ export function buildTokenCaseViewModel({
   };
 }
 
-function buildPostEvent(post: TokenPostItem): TokenCasePostEvent {
+function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): TokenCasePostEvent {
   const score = numberValue(post.post_quality.score);
   const reasons = post.post_quality.reasons ?? [];
   return {
@@ -174,6 +178,7 @@ function buildPostEvent(post: TokenPostItem): TokenCasePostEvent {
     role: cleanText(post.author_role),
     isWatched: Boolean(post.is_watched),
     pills: postPills(post),
+    market: buildPostMarket(post, livePriceUsd),
     quality: {
       score,
       scoreLabel: score === null ? "PQ -" : `PQ ${Math.round(score)}`,
@@ -194,6 +199,7 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
   const marketCap = numberValue(live.market_cap_usd);
   const liquidity = numberValue(live.liquidity_usd);
   const holders = numberValue(live.holders);
+  const volume24h = numberValue(live.volume_24h_usd);
   const ready = status === "ready" || status === "live";
   return {
     status,
@@ -202,6 +208,7 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
     marketCapLabel: marketCap === null ? "-" : formatUsdCompact(marketCap),
     liquidityLabel: liquidity === null ? "-" : formatUsdCompact(liquidity),
     holdersLabel: holders === null ? "-" : compactNumber(holders),
+    volume24hLabel: volume24h === null ? "-" : formatUsdCompact(volume24h),
     observedAtLabel: numberValue(live.observed_at_ms)
       ? timeAgoLabel(Number(live.observed_at_ms))
       : null,
@@ -211,6 +218,31 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
       : (stringValue(live.error) ??
         "No live market snapshot has been attached to this dossier yet."),
     tone: ready ? "health" : "warn",
+  };
+}
+
+function buildPostMarket(
+  post: TokenPostItem,
+  livePriceUsd: number | null,
+): TokenCasePostEvent["market"] {
+  const price = post.price;
+  const eventPrice = numberValue(price?.price_usd);
+  if (eventPrice === null || (price?.status !== "ready" && price?.status !== "stale")) {
+    return null;
+  }
+  const deltaPct =
+    livePriceUsd !== null && eventPrice > 0
+      ? ((livePriceUsd - eventPrice) / eventPrice) * 100
+      : null;
+  return {
+    eventPriceLabel: formatTokenPriceUsd(eventPrice),
+    liveDeltaLabel: deltaPct === null ? null : `${formatSignedPercent(deltaPct)} vs live`,
+    providerLabel:
+      cleanText(price?.provider) ??
+      cleanText(price?.observation_kind) ??
+      price?.status ??
+      "market tick",
+    tone: marketDeltaTone(deltaPct),
   };
 }
 
@@ -327,6 +359,18 @@ function timeAgoLabel(timestampMs: number): string {
 
 function formatContributionValue(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : "-";
+}
+
+function formatSignedPercent(value: number): string {
+  if (!Number.isFinite(value)) return "-";
+  const normalized = Math.abs(value) < 0.005 ? 0 : value;
+  const sign = normalized > 0 ? "+" : "";
+  return `${sign}${normalized.toFixed(2)}%`;
+}
+
+function marketDeltaTone(value: number | null): TokenCaseTone {
+  if (value === null || Math.abs(value) < 0.01) return "neutral";
+  return value > 0 ? "health" : "risk";
 }
 
 function numberValue(value: unknown): number | null {

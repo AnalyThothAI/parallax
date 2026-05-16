@@ -71,6 +71,7 @@ class TokenCaseService:
             posts=posts,
             radar_item=None,
             market_live=market_live,
+            profile=profile,
         )
         return {
             "target": target,

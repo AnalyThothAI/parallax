@@ -37,7 +37,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     assert providers.sync_cex_market is cex
     assert providers.message_cex_market is cex
     assert providers.dex_discovery_market is not None
-    assert providers.dex_quote_market is quote
+    assert isinstance(providers.dex_quote_market, providers_wiring.FallbackDexQuoteProvider)
     assert providers.stream_dex_market is stream
     health = {entry.provider: entry for entry in providers.provider_health}
     assert health["okx"] == ProviderHealth(
@@ -56,6 +56,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
         provider="gmgn",
         capabilities=frozenset(
             {
+                MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
                 MarketCapability.CANDLES_DEX_EXACT,
             }

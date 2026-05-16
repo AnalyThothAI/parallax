@@ -27,6 +27,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError(
-        "20260516_0047 is not safely reversible while gmgn_dex_quote market tick facts may exist."
-    )
+    raise RuntimeError("20260516_0047 is not safely reversible while gmgn_dex_quote market tick facts may exist.")

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 describe("tokenCaseRouteState", () => {
   it("uses defaults when params are omitted", () => {
     expect(parseTokenCaseRouteState(new URLSearchParams())).toEqual({
-      window: "1h",
+      window: "24h",
       scope: "all",
       postSort: "recent",
     });
@@ -32,7 +32,7 @@ describe("tokenCaseRouteState", () => {
     expect(
       parseTokenCaseRouteState(new URLSearchParams("window=7d&scope=private&postSort=quality")),
     ).toEqual({
-      window: "1h",
+      window: "24h",
       scope: "all",
       postSort: "recent",
     });
@@ -41,7 +41,7 @@ describe("tokenCaseRouteState", () => {
   it("omits defaults when serializing", () => {
     expect(
       serializeTokenCaseRouteState({
-        window: "1h",
+        window: "24h",
         scope: "all",
         postSort: "recent",
       }).toString(),
@@ -51,11 +51,11 @@ describe("tokenCaseRouteState", () => {
   it("serializes public watched scope in stable order", () => {
     expect(
       serializeTokenCaseRouteState({
-        window: "24h",
+        window: "1h",
         scope: "watched",
         postSort: "recent",
       }).toString(),
-    ).toBe("window=24h&scope=watched");
+    ).toBe("window=1h&scope=watched");
   });
 
   it("maps public scope to the token-case API scope", () => {

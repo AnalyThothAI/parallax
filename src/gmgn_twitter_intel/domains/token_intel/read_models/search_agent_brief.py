@@ -12,6 +12,7 @@ def build_token_agent_brief(
     posts: dict[str, Any] | list[dict[str, Any]],
     radar_item: dict[str, Any] | None,
     market_live: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del radar_item
     post_items = _post_items(posts)
@@ -26,7 +27,7 @@ def build_token_agent_brief(
     watched_posts = int(summary.get("watched_posts") or sum(1 for item in post_items if item.get("is_watched")))
     top_author_share = float(summary.get("top_author_share") or 0.0)
     duplicate_share = float(summary.get("duplicate_text_share") or 0.0)
-    data_gaps = _token_data_gaps(timeline=timeline, market_live=market_live)
+    data_gaps = _token_data_gaps(timeline=timeline, market_live=market_live, profile=profile)
     stance = _stance(
         posts=posts_count,
         authors=authors_count,
@@ -258,14 +259,57 @@ def _propagation_summary(*, symbol: str, phases: list[dict[str, Any]]) -> str:
     return f"${symbol} 过去 24 小时传播路径为 {labels}，应优先核对每个阶段的代表推文和 lead accounts。"
 
 
-def _token_data_gaps(*, timeline: dict[str, Any], market_live: dict[str, Any] | None) -> list[str]:
-    gaps = ["缺真实 OHLC/K 线，只能展示事件市场 tick 与最新 tick"]
-    if not timeline.get("market_overlay"):
+def _token_data_gaps(
+    *,
+    timeline: dict[str, Any],
+    market_live: dict[str, Any] | None,
+    profile: dict[str, Any] | None,
+) -> list[str]:
+    gaps: list[str] = []
+    overlay = _dict(timeline.get("market_overlay"))
+    if not _has_ready_candles(overlay):
+        gaps.append("K 线未接入 token-case；当前展示事件 tick 与最新 tick")
+    if not overlay:
         gaps.append("缺市场 overlay")
-    if not _has_value(_dict(market_live).get("holders")):
+    live = _dict(market_live)
+    if not _has_value(live.get("holders")):
         gaps.append("缺 holders")
-    gaps.append("缺合约风险和项目方资料")
+    if not _has_contract_risk(profile):
+        gaps.append("缺合约风险数据")
+    if not _has_project_profile(profile):
+        gaps.append("缺项目方资料")
     return gaps
+
+
+def _has_ready_candles(overlay: dict[str, Any]) -> bool:
+    return overlay.get("candle_status") == "ready" and bool(_list(overlay.get("candles")))
+
+
+def _has_project_profile(profile: dict[str, Any] | None) -> bool:
+    block = _dict(profile)
+    if str(block.get("status") or "").lower() != "ready":
+        return False
+    identity = _dict(block.get("identity"))
+    links = _dict(block.get("links"))
+    return any(
+        _has_value(value)
+        for value in (
+            identity.get("symbol"),
+            identity.get("name"),
+            identity.get("description"),
+            links.get("website_url"),
+            links.get("twitter_url"),
+            links.get("twitter_username"),
+            links.get("telegram_url"),
+            links.get("gmgn_url"),
+            links.get("geckoterminal_url"),
+        )
+    )
+
+
+def _has_contract_risk(profile: dict[str, Any] | None) -> bool:
+    block = _dict(profile)
+    return bool(_dict(block.get("contract_risk")) or _dict(block.get("risk")))
 
 
 def _target_symbol(target: dict[str, Any], posts: list[dict[str, Any]]) -> str:
