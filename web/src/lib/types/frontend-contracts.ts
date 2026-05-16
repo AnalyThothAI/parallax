@@ -1,3 +1,5 @@
+import type { components } from "./openapi";
+
 export type ApiResponse<T> = {
   ok: boolean;
   data: T;
@@ -203,6 +205,11 @@ export type WatchlistHandleSummaryData = {
   summary_zh: string;
   topics: WatchlistTopic[];
 };
+
+export type WatchlistHandleRowOverview = components["schemas"]["WatchlistHandleRowOverview"];
+export type WatchlistHandlesOverviewData = components["schemas"]["WatchlistHandlesOverviewData"];
+export type WatchlistOverviewCluster = components["schemas"]["WatchlistOverviewCluster"];
+export type WatchlistHandleOverviewData = components["schemas"]["WatchlistHandleOverviewData"];
 
 export type WatchlistSocialEvent = {
   event_type?: string | null;

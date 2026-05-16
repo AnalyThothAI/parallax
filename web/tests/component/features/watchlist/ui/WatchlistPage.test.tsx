@@ -1,4 +1,4 @@
-import { WatchlistPage, type WatchlistAccountCase } from "@features/watchlist";
+import { WatchlistPage } from "@features/watchlist";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@tests/render/renderWithProviders";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +32,45 @@ describe("WatchlistPage", () => {
           },
         });
       }
+      if (url.pathname.endsWith("/overview")) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            query: { handle: "toly", scope: url.searchParams.get("scope"), window: "7d" },
+            metrics: {
+              source_event_count: 2,
+              signal_event_count: 2,
+              resolved_token_count: 1,
+              candidate_mention_count: 1,
+              narrative_count: 0,
+              last_source_event_at_ms: 1_700_000_000_000,
+            },
+            resolved_token_clusters: [
+              {
+                label: "$SOL",
+                count: 1,
+                query: "$SOL",
+                kind: "resolved_token",
+                target_type: "Asset",
+                target_id: "asset:solana:token:So11111111111111111111111111111111111111112",
+                symbol: "SOL",
+                source: "token_resolutions",
+              },
+            ],
+            candidate_mention_clusters: [
+              {
+                label: "$ALOY",
+                count: 1,
+                query: "$ALOY",
+                kind: "candidate_mention",
+                source: "social_event_candidates",
+              },
+            ],
+            narrative_clusters: [],
+            risk_notes: ["candidate_mentions_unresolved"],
+          },
+        });
+      }
       const scope = url.searchParams.get("scope");
       const cursor = url.searchParams.get("cursor");
       return jsonResponse({
@@ -53,9 +92,21 @@ describe("WatchlistPage", () => {
       });
     });
 
-    renderWithProviders(<WatchlistPage accountCases={[caseFor("toly")]} token="secret" />, {
-      route: "/watchlist?handle=toly",
-    });
+    renderWithProviders(
+      <WatchlistPage accountUnreadCounts={{ toly: 2 }} handles={["toly"]} token="secret" />,
+      {
+        route: "/watchlist?handle=toly&timeline_scope=signal",
+      },
+    );
+
+    await waitFor(
+      () => expect(screen.getAllByText("Candidate mentions").length).toBeGreaterThan(0),
+      {
+        timeout: 1_000,
+      },
+    );
+    await waitFor(() => expect(screen.getAllByText("$ALOY").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("Resolved targets").length).toBeGreaterThan(0);
 
     await waitFor(() => expect(screen.getAllByText("First signal").length).toBeGreaterThan(0), {
       timeout: 1_000,
@@ -78,6 +129,76 @@ describe("WatchlistPage", () => {
       timeout: 1_000,
     });
     expect(screen.queryAllByText("First signal")).toHaveLength(0);
+  });
+
+  it("shows candidate mentions separately when resolved targets are empty", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/overview")) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            query: { handle: "marionawfal", scope: "signal", window: "7d" },
+            metrics: {
+              source_event_count: 42,
+              signal_event_count: 42,
+              resolved_token_count: 0,
+              candidate_mention_count: 3,
+              narrative_count: 0,
+              last_source_event_at_ms: 1_700_000_000_000,
+            },
+            resolved_token_clusters: [],
+            candidate_mention_clusters: [
+              {
+                label: "$ALOY",
+                count: 3,
+                query: "$ALOY",
+                kind: "candidate_mention",
+                source: "social_event_candidates",
+              },
+            ],
+            narrative_clusters: [],
+            risk_notes: ["candidate_mentions_unresolved"],
+          },
+        });
+      }
+      if (url.pathname.endsWith("/summary")) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            handle: "marionawfal",
+            status: "not_ready",
+            is_stale: false,
+            pending_recompute: false,
+            signal_count: 42,
+            input_event_count: 0,
+            signal_count_at_generation: 0,
+            summary_zh: "",
+            topics: [],
+          },
+        });
+      }
+      return jsonResponse({
+        ok: true,
+        data: {
+          query: { handle: "marionawfal", scope: "signal", limit: 30 },
+          items: [],
+          has_more: false,
+          next_cursor: null,
+        },
+      });
+    });
+
+    renderWithProviders(<WatchlistPage handles={["marionawfal"]} token="secret" />, {
+      route: "/watchlist?handle=marionawfal&timeline_scope=signal",
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByText("Candidate mentions").length).toBeGreaterThan(0),
+    );
+    await waitFor(() => expect(screen.getByText("$ALOY")).toBeInTheDocument());
+    expect(screen.getAllByText("Resolved targets").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("0").length).toBeGreaterThan(0);
   });
 });
 
@@ -106,20 +227,6 @@ function timelineItem(eventId: string, summary: string) {
       },
     ],
     social_event: { summary_zh: summary, is_signal_event: true, token_candidates: [] },
-  };
-}
-
-function caseFor(handle: string): WatchlistAccountCase {
-  return {
-    emptyState: null,
-    handle,
-    lastSeenAtMs: 1_700_000_000_000,
-    narrativeClusters: [],
-    recentEvents: [],
-    riskNotes: [],
-    searchLinks: [{ href: `/search?q=%40${handle}`, label: "Search account" }],
-    tokenMentions: [],
-    unreadCount: 0,
   };
 }
 

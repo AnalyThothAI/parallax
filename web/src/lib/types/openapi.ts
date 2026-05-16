@@ -514,6 +514,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/watchlist/handle/{handle}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watchlist Handle Overview */
+        get: operations["watchlist_handle_overview_api_watchlist_handle__handle__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/watchlist/handle/{handle}/summary": {
         parameters: {
             query?: never;
@@ -540,6 +557,23 @@ export interface paths {
         };
         /** Watchlist Handle Timeline */
         get: operations["watchlist_handle_timeline_api_watchlist_handle__handle__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlist/handles/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watchlist Handles Overview */
+        get: operations["watchlist_handles_overview_api_watchlist_handles_overview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -905,6 +939,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ApiEnvelope[WatchlistHandleOverviewData] */
+        ApiEnvelope_WatchlistHandleOverviewData_: {
+            data?: components["schemas"]["WatchlistHandleOverviewData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ApiEnvelope[WatchlistHandleSummaryData] */
         ApiEnvelope_WatchlistHandleSummaryData_: {
             data?: components["schemas"]["WatchlistHandleSummaryData"] | null;
@@ -920,6 +966,18 @@ export interface components {
         /** ApiEnvelope[WatchlistHandleTimelineData] */
         ApiEnvelope_WatchlistHandleTimelineData_: {
             data?: components["schemas"]["WatchlistHandleTimelineData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[WatchlistHandlesOverviewData] */
+        ApiEnvelope_WatchlistHandlesOverviewData_: {
+            data?: components["schemas"]["WatchlistHandlesOverviewData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -1409,6 +1467,60 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WatchlistHandleOverviewData */
+        WatchlistHandleOverviewData: {
+            /** Candidate Mention Clusters */
+            candidate_mention_clusters?: components["schemas"]["WatchlistOverviewCluster"][];
+            /**
+             * Clusters Truncated
+             * @default false
+             */
+            clusters_truncated: boolean;
+            metrics: components["schemas"]["WatchlistOverviewMetrics"];
+            /** Narrative Clusters */
+            narrative_clusters?: components["schemas"]["WatchlistOverviewCluster"][];
+            query: components["schemas"]["WatchlistOverviewQuery"];
+            /** Resolved Token Clusters */
+            resolved_token_clusters?: components["schemas"]["WatchlistOverviewCluster"][];
+            /** Risk Notes */
+            risk_notes?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** WatchlistHandleRowOverview */
+        WatchlistHandleRowOverview: {
+            /** Handle */
+            handle: string;
+            /** Last Source Event At Ms */
+            last_source_event_at_ms?: number | null;
+            /**
+             * Recent Signal Event Count
+             * @default 0
+             */
+            recent_signal_event_count: number;
+            /**
+             * Recent Source Event Count
+             * @default 0
+             */
+            recent_source_event_count: number;
+            /**
+             * Summary Is Stale
+             * @default false
+             */
+            summary_is_stale: boolean;
+            /**
+             * Summary Status
+             * @enum {string}
+             */
+            summary_status: "ready" | "not_ready";
+            /**
+             * Total Signal Event Count
+             * @default 0
+             */
+            total_signal_event_count: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** WatchlistHandleSummaryData */
         WatchlistHandleSummaryData: {
             /** Generated At Ms */
@@ -1475,6 +1587,88 @@ export interface components {
             query: {
                 [key: string]: unknown;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        /** WatchlistHandlesOverviewData */
+        WatchlistHandlesOverviewData: {
+            /** Items */
+            items?: components["schemas"]["WatchlistHandleRowOverview"][];
+            /** Window */
+            window: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WatchlistOverviewCluster */
+        WatchlistOverviewCluster: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "resolved_token" | "candidate_mention" | "narrative";
+            /** Label */
+            label: string;
+            /** Query */
+            query: string;
+            /** Source */
+            source: string;
+            /** Symbol */
+            symbol?: string | null;
+            /** Target Id */
+            target_id?: string | null;
+            /** Target Type */
+            target_type?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WatchlistOverviewMetrics */
+        WatchlistOverviewMetrics: {
+            /**
+             * Candidate Mention Count
+             * @default 0
+             */
+            candidate_mention_count: number;
+            /** Last Source Event At Ms */
+            last_source_event_at_ms?: number | null;
+            /**
+             * Narrative Count
+             * @default 0
+             */
+            narrative_count: number;
+            /**
+             * Resolved Token Count
+             * @default 0
+             */
+            resolved_token_count: number;
+            /**
+             * Signal Event Count
+             * @default 0
+             */
+            signal_event_count: number;
+            /**
+             * Source Event Count
+             * @default 0
+             */
+            source_event_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WatchlistOverviewQuery */
+        WatchlistOverviewQuery: {
+            /** Handle */
+            handle: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "signal" | "all";
+            /** Window */
+            window: string;
         } & {
             [key: string]: unknown;
         };
@@ -2452,6 +2646,39 @@ export interface operations {
             };
         };
     };
+    watchlist_handle_overview_api_watchlist_handle__handle__overview_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path: {
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_WatchlistHandleOverviewData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     watchlist_handle_summary_api_watchlist_handle__handle__summary_get: {
         parameters: {
             query?: never;
@@ -2514,6 +2741,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watchlist_handles_overview_api_watchlist_handles_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_WatchlistHandlesOverviewData_"];
                 };
             };
         };

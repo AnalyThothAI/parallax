@@ -5,7 +5,8 @@ import type {
   TokenCaseViewModel,
   TokenCaseWindow,
 } from "@shared/model/tokenCaseViewModel";
-import { ArrowLeft, ExternalLink, Search } from "lucide-react";
+import { RouteBackLink } from "@shared/ui/RouteBackLink";
+import { ExternalLink, Search } from "lucide-react";
 
 import styles from "./TokenCaseHero.module.css";
 
@@ -36,10 +37,7 @@ export function TokenCaseHero({
   return (
     <header className={styles.hero}>
       <div className={styles.topBar}>
-        <a className={styles.backLink} href="/" aria-label="返回 Token Radar">
-          <ArrowLeft aria-hidden />
-          <span>返回</span>
-        </a>
+        <RouteBackLink to="/" label="返回" ariaLabel="返回 Token Radar" />
         <div className={styles.controls}>
           <div className={styles.segmented} role="group" aria-label="case window">
             {WINDOWS.map((window) => (

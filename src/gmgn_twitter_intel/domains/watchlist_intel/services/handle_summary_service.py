@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -207,6 +208,50 @@ class WatchlistHandleReadService:
             "topics": summary.get("topics") if summary else [],
         }
 
+    def handles_overview(
+        self,
+        *,
+        configured_handles: Sequence[str],
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
+        window_days = max(1, int(self.config.window_days))
+        rows = self.repository.handles_overview(
+            handles=tuple(normalize_watchlist_handle(handle) for handle in configured_handles),
+            since_ms=_window_since_ms(now_ms=resolved_now_ms, window_days=window_days),
+        )
+        return {
+            "window": f"{window_days}d",
+            "items": [_public_handle_row(row, now_ms=resolved_now_ms, config=self.config) for row in rows],
+        }
+
+    def overview(
+        self,
+        *,
+        handle: str,
+        configured_handles: Sequence[str],
+        scope: str,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        normalized = _configured_handle(handle, tuple(configured_handles))
+        resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
+        window_days = max(1, int(self.config.window_days))
+        overview = cast(
+            dict[str, Any],
+            self.repository.handle_overview(
+                handle=normalized,
+                scope=scope,
+                since_ms=_window_since_ms(now_ms=resolved_now_ms, window_days=window_days),
+            ),
+        )
+        query = dict(overview.get("query") or {})
+        overview["query"] = {
+            "handle": normalized,
+            "scope": str(query.get("scope") or scope),
+            "window": f"{window_days}d",
+        }
+        return overview
+
     def timeline(
         self,
         *,
@@ -259,6 +304,33 @@ def _configured_handle(handle: str, configured_handles: tuple[str, ...]) -> str:
     if normalized not in configured:
         raise LookupError("handle_not_found")
     return normalized
+
+
+def _public_handle_row(
+    row: dict[str, Any],
+    *,
+    now_ms: int,
+    config: HandleSummaryTriggerConfig,
+) -> dict[str, Any]:
+    public = dict(row)
+    generated_at_ms = public.pop("summary_generated_at_ms", None)
+    public["summary_is_stale"] = _summary_is_stale(generated_at_ms, now_ms=now_ms, config=config)
+    return public
+
+
+def _summary_is_stale(
+    generated_at_ms: Any,
+    *,
+    now_ms: int,
+    config: HandleSummaryTriggerConfig,
+) -> bool:
+    if generated_at_ms is None:
+        return False
+    return int(generated_at_ms) < now_ms - 2 * config.time_threshold_ms
+
+
+def _window_since_ms(*, now_ms: int, window_days: int) -> int:
+    return now_ms - max(1, int(window_days)) * 24 * 60 * 60 * 1000
 
 
 def _topics(value: Any) -> list[dict[str, Any]]:

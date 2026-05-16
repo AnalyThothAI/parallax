@@ -137,7 +137,7 @@
 
 .watchlist-signal-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -537,6 +537,10 @@
 }
 
 @media (max-width: 1120px) {
+  .watchlist-signal-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .watchlist-monitor-grid {
     grid-template-columns: minmax(0, 1fr);
   }

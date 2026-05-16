@@ -153,6 +153,19 @@ US Stocks radar contract:
 
 Watchlist handle intel contract:
 
+- `/api/watchlist/handles/overview` is authenticated and returns configured
+  handles only. Rows expose persisted handle-level recency and counts:
+  `last_source_event_at_ms`, `recent_source_event_count`,
+  `recent_signal_event_count`, `total_signal_event_count`, `summary_status`,
+  and `summary_is_stale`. This is the cockpit watchlist-row source; clients do
+  not derive selected-handle row facts from `/api/recent` or WebSocket replay.
+- `/api/watchlist/handle/{handle}/overview` is authenticated. `{handle}` follows
+  the same normalization and configured-handle requirement as summary/timeline.
+  The endpoint accepts `scope=signal|all` and returns selected-handle metrics,
+  `resolved_token_clusters`, `candidate_mention_clusters`,
+  `narrative_clusters`, and `risk_notes`. Resolved clusters are built from the
+  public event-token projection; candidate clusters come from structured
+  extraction candidates and event cashtags that are not resolved targets.
 - `/api/watchlist/handle/{handle}/summary` is authenticated. `{handle}` must
   match `^[A-Za-z0-9_.-]{1,64}$` after trimming `@`; unconfigured handles return
   `404 {"error":"handle_not_found"}`. The response exposes `handle`, `status`
@@ -174,6 +187,9 @@ Watchlist handle intel contract:
 - The Watchlist page renders `summary_zh` and `social_event.summary_zh` as the
   primary text. Raw tweet text remains available as event detail; frontend code
   must not reconstruct summaries from the original tweet body.
+- The canonical frontend Watchlist route state is
+  `/watchlist?handle=<handle>&timeline_scope=signal|all`. The live radar
+  `scope=matched|all` URL key is ignored by Watchlist timeline state.
 
 Search V2 contract:
 

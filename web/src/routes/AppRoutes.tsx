@@ -9,7 +9,11 @@ import {
 } from "@features/live";
 import { useNotificationsController } from "@features/notifications";
 import { useSignalLabCompactQuery } from "@features/signal-lab";
-import { buildWatchlistAccountCases, buildWatchlistRows } from "@features/watchlist";
+import {
+  buildWatchlistRows,
+  emptyWatchlistHandleRow,
+  useWatchlistHandlesOverviewQuery,
+} from "@features/watchlist";
 import type { LivePayload } from "@lib/types";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import type { MarketTargetRef } from "@shared/socket/socketTypes";
@@ -38,6 +42,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
     scope: liveRoute.scope,
     token: session.token,
   });
+  const watchlistHandlesOverviewQuery = useWatchlistHandlesOverviewQuery({ token: session.token });
   const liveRadar = useLiveRadarRouteData({
     scope: liveRoute.scope,
     token: session.token,
@@ -82,23 +87,20 @@ export function AppRoutes({ session }: { session: AppSession }) {
     socketNotifications: socketSnapshot.notificationItems,
     token,
   });
+  const configuredWatchlistHandles = statusHandles.length ? statusHandles : bootstrapHandles;
+  const watchlistHandleRows = useMemo(
+    () =>
+      watchlistHandlesOverviewQuery.data?.data.items ??
+      configuredWatchlistHandles.map((handle) => emptyWatchlistHandleRow(handle)),
+    [configuredWatchlistHandles, watchlistHandlesOverviewQuery.data?.data.items],
+  );
   const watchlistRows = useMemo(
     () =>
       buildWatchlistRows({
-        handles: statusHandles.length ? statusHandles : bootstrapHandles,
         accountUnreadCounts: notificationsController.notificationSummary?.account_unread_counts,
-        liveItems,
+        rows: watchlistHandleRows,
       }),
-    [
-      bootstrapHandles,
-      liveItems,
-      notificationsController.notificationSummary?.account_unread_counts,
-      statusHandles,
-    ],
-  );
-  const watchlistAccountCases = useMemo(
-    () => buildWatchlistAccountCases({ rows: watchlistRows, liveItems }),
-    [liveItems, watchlistRows],
+    [watchlistHandleRows, notificationsController.notificationSummary?.account_unread_counts],
   );
 
   const handleHotkey = (event: KeyboardEvent) => {
@@ -231,7 +233,15 @@ export function AppRoutes({ session }: { session: AppSession }) {
         />
         <Route
           path="watchlist"
-          element={<WatchlistRoute accountCases={watchlistAccountCases} token={token ?? ""} />}
+          element={
+            <WatchlistRoute
+              accountUnreadCounts={
+                notificationsController.notificationSummary?.account_unread_counts
+              }
+              handles={configuredWatchlistHandles}
+              token={token ?? ""}
+            />
+          }
         />
         <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
         <Route

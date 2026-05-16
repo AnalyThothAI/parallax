@@ -129,6 +129,157 @@ def test_watchlist_timeline_pages_all_and_signal_events(tmp_path):
     assert second_page["items"][0]["event_id"] == "event-1"
 
 
+def test_watchlist_handle_overview_separates_resolved_tokens_from_candidate_mentions(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        evidence = EvidenceRepository(conn)
+        harness = HarnessRepository(conn)
+        repo = WatchlistIntelRepository(conn)
+        evidence.insert_event(
+            make_event("event-1", author_handle="marionawfal", text="$ALOY #macro", received_at_ms=1_000),
+            is_watched=True,
+        )
+        evidence.insert_event(
+            make_event("event-2", author_handle="marionawfal", text="$BONK #solana", received_at_ms=2_000),
+            is_watched=True,
+        )
+        evidence.insert_event(
+            make_event("event-3", author_handle="marionawfal", text="source stream #fed", received_at_ms=3_000),
+            is_watched=True,
+        )
+        _extract_signal(
+            harness,
+            event_id="event-1",
+            author_handle="marionawfal",
+            received_at_ms=1_000,
+            summary_zh="ALOY 讨论升温。",
+            token_candidates=[{"symbol": "ALOY", "evidence": "$ALOY", "confidence": 0.8}],
+            anchor_terms=[{"term": "macro", "role": "topic", "evidence": "#macro"}],
+        )
+        _extract_signal(
+            harness,
+            event_id="event-2",
+            author_handle="marionawfal",
+            received_at_ms=2_000,
+            summary_zh="BONK 已解析为交易标的。",
+            token_candidates=[{"symbol": "BONK", "evidence": "$BONK", "confidence": 0.9}],
+            anchor_terms=[{"term": "solana", "role": "ecosystem", "evidence": "#solana"}],
+        )
+        _insert_token_resolution(conn, event_id="event-2", symbol="BONK")
+
+        overview = repo.handle_overview(handle="MarionAwfal", scope="signal", since_ms=0)
+        all_overview = repo.handle_overview(handle="marionawfal", scope="all", since_ms=0)
+    finally:
+        conn.close()
+
+    assert overview["query"]["handle"] == "marionawfal"
+    assert overview["query"]["scope"] == "signal"
+    assert overview["metrics"]["source_event_count"] == 2
+    assert overview["metrics"]["signal_event_count"] == 2
+    assert overview["metrics"]["candidate_mention_count"] == 1
+    assert overview["metrics"]["resolved_token_count"] == 1
+    assert overview["candidate_mention_clusters"][0]["label"] == "$ALOY"
+    assert overview["candidate_mention_clusters"][0]["source"] == "social_event_candidates"
+    assert overview["resolved_token_clusters"][0]["label"] == "$BONK"
+    assert overview["resolved_token_clusters"][0]["kind"] == "resolved_token"
+    assert overview["resolved_token_clusters"][0]["target_type"] == "CexToken"
+    assert "candidate_mentions_unresolved" in overview["risk_notes"]
+    assert all_overview["metrics"]["source_event_count"] == 3
+    assert any(cluster["label"] == "#fed" for cluster in all_overview["narrative_clusters"])
+
+
+def test_watchlist_handle_overview_metrics_are_not_limited_by_cluster_sample(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        evidence = EvidenceRepository(conn)
+        harness = HarnessRepository(conn)
+        repo = WatchlistIntelRepository(conn)
+        for index, symbol in enumerate(("ONE", "TWO", "THREE"), start=1):
+            event_id = f"event-{index}"
+            evidence.insert_event(
+                make_event(
+                    event_id,
+                    author_handle="marionawfal",
+                    text=f"${symbol} #macro",
+                    received_at_ms=index * 1_000,
+                ),
+                is_watched=True,
+            )
+            _extract_signal(
+                harness,
+                event_id=event_id,
+                author_handle="marionawfal",
+                received_at_ms=index * 1_000,
+                summary_zh=f"{symbol} 讨论升温。",
+                token_candidates=[{"symbol": symbol, "evidence": f"${symbol}", "confidence": 0.8}],
+                anchor_terms=[{"term": "macro", "role": "topic", "evidence": "#macro"}],
+            )
+
+        overview = repo.handle_overview(handle="marionawfal", scope="signal", since_ms=0, limit=2)
+    finally:
+        conn.close()
+
+    assert overview["metrics"]["source_event_count"] == 3
+    assert overview["metrics"]["signal_event_count"] == 3
+    assert overview["metrics"]["candidate_mention_count"] == 3
+    assert len(overview["candidate_mention_clusters"]) == 2
+    assert overview["clusters_truncated"] is True
+
+
+def test_watchlist_handles_overview_returns_configured_handle_rows(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        evidence = EvidenceRepository(conn)
+        harness = HarnessRepository(conn)
+        repo = WatchlistIntelRepository(conn)
+        evidence.insert_event(
+            make_event("event-1", author_handle="marionawfal", text="$ALOY", received_at_ms=1_000),
+            is_watched=True,
+        )
+        evidence.insert_event(
+            make_event("event-2", author_handle="toly", text="$SOL", received_at_ms=2_000),
+            is_watched=True,
+        )
+        _extract_signal(
+            harness,
+            event_id="event-1",
+            author_handle="marionawfal",
+            received_at_ms=1_000,
+            summary_zh="ALOY 讨论升温。",
+        )
+        repo.upsert_handle_summary(
+            handle="marionawfal",
+            generated_at_ms=2_500,
+            input_window_start_ms=0,
+            input_window_end_ms=2_500,
+            input_event_count=1,
+            signal_count_at_generation=1,
+            model="test-model",
+            summary_zh="Marion 聚焦 ALOY。",
+            topics=[],
+            raw_response={"ok": True},
+            commit=True,
+        )
+
+        rows = repo.handles_overview(handles=("marionawfal", "toly"), since_ms=0)
+    finally:
+        conn.close()
+
+    by_handle = {row["handle"]: row for row in rows}
+    assert set(by_handle) == {"marionawfal", "toly"}
+    assert by_handle["marionawfal"]["last_source_event_at_ms"] == 1_000
+    assert by_handle["marionawfal"]["recent_source_event_count"] == 1
+    assert by_handle["marionawfal"]["recent_signal_event_count"] == 1
+    assert by_handle["marionawfal"]["total_signal_event_count"] == 1
+    assert by_handle["marionawfal"]["summary_status"] == "ready"
+    assert by_handle["toly"]["last_source_event_at_ms"] == 2_000
+    assert by_handle["toly"]["recent_signal_event_count"] == 0
+    assert by_handle["toly"]["summary_status"] == "not_ready"
+
+
 def test_watchlist_timeline_uses_lower_author_cursor_index(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -195,12 +346,21 @@ def test_watchlist_summary_read_model_and_signal_counts(tmp_path):
     assert summary["topics"][0]["title"] == "SOL"
 
 
-def _extract_signal(harness: HarnessRepository, *, event_id: str, received_at_ms: int, summary_zh: str) -> None:
+def _extract_signal(
+    harness: HarnessRepository,
+    *,
+    event_id: str,
+    received_at_ms: int,
+    summary_zh: str,
+    author_handle: str = "toly",
+    token_candidates: list[dict] | None = None,
+    anchor_terms: list[dict] | None = None,
+) -> None:
     harness.upsert_social_event_extraction(
         extraction_id=f"extract-{event_id}",
         event_id=event_id,
         run_id=None,
-        author_handle="toly",
+        author_handle=author_handle,
         received_at_ms=received_at_ms,
         schema_version="social-event-v2",
         model_version="test-model",
@@ -213,8 +373,8 @@ def _extract_signal(harness: HarnessRepository, *, event_id: str, received_at_ms
         semantic_novelty_hint=0.6,
         confidence=0.85,
         is_signal_event=True,
-        anchor_terms=[{"term": "topic", "role": "topic", "evidence": "topic"}],
-        token_candidates=[{"symbol": "SOL", "evidence": "$SOL", "confidence": 0.8}],
+        anchor_terms=anchor_terms or [{"term": "topic", "role": "topic", "evidence": "topic"}],
+        token_candidates=token_candidates or [{"symbol": "SOL", "evidence": "$SOL", "confidence": 0.8}],
         semantic_risks=["public_stream_coverage"],
         summary_zh=summary_zh,
         raw_response={"ok": True},

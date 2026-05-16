@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -235,6 +235,57 @@ class WatchlistHandleSummaryData(ApiSchema):
     model: str | None = None
     summary_zh: str = ""
     topics: list[JsonObject] = Field(default_factory=list)
+
+
+class WatchlistHandleRowOverview(ApiSchema):
+    handle: str
+    last_source_event_at_ms: int | None = None
+    recent_source_event_count: int = 0
+    recent_signal_event_count: int = 0
+    total_signal_event_count: int = 0
+    summary_status: Literal["ready", "not_ready"]
+    summary_is_stale: bool = False
+
+
+class WatchlistHandlesOverviewData(ApiSchema):
+    window: str
+    items: list[WatchlistHandleRowOverview] = Field(default_factory=list)
+
+
+class WatchlistOverviewQuery(ApiSchema):
+    handle: str
+    scope: Literal["signal", "all"]
+    window: str
+
+
+class WatchlistOverviewMetrics(ApiSchema):
+    source_event_count: int = 0
+    signal_event_count: int = 0
+    resolved_token_count: int = 0
+    candidate_mention_count: int = 0
+    narrative_count: int = 0
+    last_source_event_at_ms: int | None = None
+
+
+class WatchlistOverviewCluster(ApiSchema):
+    label: str
+    count: int = 0
+    query: str
+    kind: Literal["resolved_token", "candidate_mention", "narrative"]
+    target_type: str | None = None
+    target_id: str | None = None
+    symbol: str | None = None
+    source: str
+
+
+class WatchlistHandleOverviewData(ApiSchema):
+    query: WatchlistOverviewQuery
+    metrics: WatchlistOverviewMetrics
+    resolved_token_clusters: list[WatchlistOverviewCluster] = Field(default_factory=list)
+    candidate_mention_clusters: list[WatchlistOverviewCluster] = Field(default_factory=list)
+    narrative_clusters: list[WatchlistOverviewCluster] = Field(default_factory=list)
+    clusters_truncated: bool = False
+    risk_notes: list[str] = Field(default_factory=list)
 
 
 class WatchlistHandleTimelineData(ApiSchema):

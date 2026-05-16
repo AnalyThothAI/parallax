@@ -5,22 +5,46 @@ import { normalizeWatchlistHandle } from "../model/watchlistCase";
 
 const SCOPES = new Set<WatchlistTimelineScope>(["signal", "all"]);
 
+export type WatchlistRouteState = {
+  selectedHandle: string | null;
+  timelineScope: WatchlistTimelineScope;
+};
+
+export function parseWatchlistRouteState(
+  searchParams: URLSearchParams,
+  defaultHandle: string | null,
+): WatchlistRouteState {
+  const selectedHandle = normalizeWatchlistHandle(searchParams.get("handle")) ?? defaultHandle;
+  const rawTimelineScope = searchParams.get("timeline_scope") as WatchlistTimelineScope | null;
+  return {
+    selectedHandle,
+    timelineScope: rawTimelineScope && SCOPES.has(rawTimelineScope) ? rawTimelineScope : "signal",
+  };
+}
+
+export function serializeWatchlistTimelineScope(
+  current: URLSearchParams,
+  nextScope: WatchlistTimelineScope,
+  selectedHandle: string | null,
+): URLSearchParams {
+  const next = new URLSearchParams(current);
+  next.delete("scope");
+  next.set("timeline_scope", nextScope);
+  if (selectedHandle) {
+    next.set("handle", selectedHandle);
+  }
+  return next;
+}
+
 export function useWatchlistRouteState(defaultHandle: string | null) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedHandle = normalizeWatchlistHandle(searchParams.get("handle")) ?? defaultHandle;
-  const rawScope = searchParams.get("scope") as WatchlistTimelineScope | null;
-  const scope: WatchlistTimelineScope = rawScope && SCOPES.has(rawScope) ? rawScope : "signal";
+  const { selectedHandle, timelineScope } = parseWatchlistRouteState(searchParams, defaultHandle);
 
-  const updateScope = (nextScope: WatchlistTimelineScope) => {
+  const updateTimelineScope = (nextScope: WatchlistTimelineScope) => {
     setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.set("scope", nextScope);
-      if (selectedHandle) {
-        next.set("handle", selectedHandle);
-      }
-      return next;
+      return serializeWatchlistTimelineScope(current, nextScope, selectedHandle);
     });
   };
 
-  return { scope, selectedHandle, updateScope };
+  return { selectedHandle, timelineScope, updateTimelineScope };
 }

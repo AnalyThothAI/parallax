@@ -1,4 +1,4 @@
-import type { LivePayload } from "@lib/types";
+import type { WatchlistHandleRowOverview } from "@lib/types";
 
 export type WatchlistRow = {
   handle: string;
@@ -7,32 +7,20 @@ export type WatchlistRow = {
 };
 
 type BuildWatchlistRowsInput = {
-  handles: string[];
   accountUnreadCounts?: Record<string, number> | null;
-  liveItems: LivePayload[];
+  rows: WatchlistHandleRowOverview[];
 };
 
 export function buildWatchlistRows({
-  handles,
   accountUnreadCounts,
-  liveItems,
+  rows,
 }: BuildWatchlistRowsInput): WatchlistRow[] {
-  const normalizedHandles = dedupeHandles(handles);
-  const latestByHandle = new Map<string, number>();
-  for (const item of liveItems) {
-    const handle = eventHandle(item)?.toLowerCase();
-    const receivedAtMs = Number(item.event.received_at_ms ?? 0);
-    if (!handle || !receivedAtMs) {
-      continue;
-    }
-    latestByHandle.set(handle, Math.max(latestByHandle.get(handle) ?? 0, receivedAtMs));
-  }
-  const originalIndex = new Map(normalizedHandles.map((handle, index) => [handle, index]));
-  return normalizedHandles
-    .map((handle) => ({
-      handle,
-      unreadCount: Number(accountUnreadCounts?.[handle] ?? 0),
-      lastSeenAtMs: latestByHandle.get(handle) ?? null,
+  const originalIndex = new Map(rows.map((row, index) => [row.handle, index]));
+  return rows
+    .map((row) => ({
+      handle: row.handle,
+      unreadCount: Number(accountUnreadCounts?.[row.handle] ?? 0),
+      lastSeenAtMs: row.last_source_event_at_ms ?? null,
     }))
     .sort(
       (a, b) =>
@@ -42,23 +30,14 @@ export function buildWatchlistRows({
     );
 }
 
-function dedupeHandles(handles: string[]): string[] {
-  const seen = new Set<string>();
-  const rows: string[] = [];
-  for (const raw of handles) {
-    const handle = raw.trim().replace(/^@/, "").toLowerCase();
-    if (!handle || seen.has(handle)) {
-      continue;
-    }
-    seen.add(handle);
-    rows.push(handle);
-  }
-  return rows;
-}
-
-function eventHandle(item: LivePayload): string | null {
-  if (item.event.author_handle) {
-    return item.event.author_handle;
-  }
-  return item.event.author?.handle ?? null;
+export function emptyWatchlistHandleRow(handle: string): WatchlistHandleRowOverview {
+  return {
+    handle,
+    last_source_event_at_ms: null,
+    recent_source_event_count: 0,
+    recent_signal_event_count: 0,
+    total_signal_event_count: 0,
+    summary_status: "not_ready",
+    summary_is_stale: false,
+  };
 }

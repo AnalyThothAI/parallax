@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -436,6 +437,114 @@ class WatchlistIntelRepository:
             "next_cursor": next_cursor,
         }
 
+    def handles_overview(self, *, handles: Sequence[str], since_ms: int) -> list[dict[str, Any]]:
+        normalized = [normalize_watchlist_handle(handle) for handle in handles]
+        if not normalized:
+            return []
+        values_sql = ",".join("(%s, %s)" for _ in normalized)
+        values_params: list[Any] = []
+        for index, handle in enumerate(normalized):
+            values_params.extend([handle, index])
+        rows = self.conn.execute(
+            f"""
+            WITH configured(handle, ord) AS (
+              VALUES {values_sql}
+            )
+            SELECT
+              configured.handle,
+              MAX(e.received_at_ms) AS last_source_event_at_ms,
+              COUNT(DISTINCT e.event_id) FILTER (WHERE e.received_at_ms >= %s) AS recent_source_event_count,
+              COUNT(DISTINCT e.event_id) FILTER (
+                WHERE e.received_at_ms >= %s AND se.is_signal_event = TRUE
+              ) AS recent_signal_event_count,
+              COUNT(DISTINCT e.event_id) FILTER (WHERE se.is_signal_event = TRUE) AS total_signal_event_count,
+              s.generated_at_ms AS summary_generated_at_ms
+            FROM configured
+            LEFT JOIN events e
+              ON lower(e.author_handle) = configured.handle
+            LEFT JOIN social_event_extractions se
+              ON se.event_id = e.event_id
+            LEFT JOIN watchlist_handle_summaries s
+              ON s.handle = configured.handle
+            GROUP BY configured.handle, configured.ord, s.generated_at_ms
+            ORDER BY configured.ord ASC
+            """,
+            (*values_params, int(since_ms), int(since_ms)),
+        ).fetchall()
+        return [_decode_handle_overview_row(dict(row)) for row in rows]
+
+    def handle_overview(self, *, handle: str, scope: str, since_ms: int, limit: int = 500) -> dict[str, Any]:
+        normalized = normalize_watchlist_handle(handle)
+        parsed_scope = _timeline_scope(scope)
+        cluster_limit = max(0, int(limit))
+        clauses = ["lower(e.author_handle) = %s", "e.received_at_ms >= %s"]
+        params: list[Any] = [normalized, int(since_ms)]
+        if parsed_scope == "signal":
+            clauses.append("se.is_signal_event = TRUE")
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              e.*,
+              se.extraction_id AS se_extraction_id,
+              se.schema_version AS se_schema_version,
+              se.model_version AS se_model_version,
+              se.event_type AS se_event_type,
+              se.source_action AS se_source_action,
+              se.subject AS se_subject,
+              se.direction_hint AS se_direction_hint,
+              se.attention_mechanism AS se_attention_mechanism,
+              se.impact_hint AS se_impact_hint,
+              se.semantic_novelty_hint AS se_semantic_novelty_hint,
+              se.confidence AS se_confidence,
+              se.is_signal_event AS se_is_signal_event,
+              se.anchor_terms_json AS se_anchor_terms_json,
+              se.token_candidates_json AS se_token_candidates_json,
+              se.semantic_risks_json AS se_semantic_risks_json,
+              se.summary_zh AS se_summary_zh,
+              se.raw_response_json AS se_raw_response_json
+            FROM events e
+            LEFT JOIN social_event_extractions se ON se.event_id = e.event_id
+            WHERE {" AND ".join(clauses)}
+            ORDER BY e.received_at_ms DESC, e.event_id DESC
+            """,
+            tuple(params),
+        ).fetchall()
+        events = [_decode_timeline_row(dict(row)) for row in rows]
+        event_ids = tuple(str(item["event_id"]) for item in events)
+        resolutions_by_event = self.token_resolutions_for_events(event_ids)
+        for item in events:
+            item["token_resolutions"] = resolutions_by_event.get(str(item["event_id"]), [])
+        clusters = _overview_clusters(events)
+        source_event_count = len(events)
+        signal_event_count = sum(
+            1
+            for item in events
+            if isinstance(item.get("social_event"), dict) and item["social_event"].get("is_signal_event")
+        )
+        last_source_event_at_ms = max((int(item.get("received_at_ms") or 0) for item in events), default=None)
+        candidate_mention_count = _cluster_count(clusters["candidate_mention_clusters"])
+        resolved_token_count = _cluster_count(clusters["resolved_token_clusters"])
+        public_clusters = _limit_overview_clusters(clusters, cluster_limit)
+        risk_notes = list(clusters["risk_notes"])
+        if candidate_mention_count:
+            risk_notes.append("candidate_mentions_unresolved")
+        return {
+            "query": {"handle": normalized, "scope": parsed_scope},
+            "metrics": {
+                "source_event_count": source_event_count,
+                "signal_event_count": signal_event_count,
+                "resolved_token_count": resolved_token_count,
+                "candidate_mention_count": candidate_mention_count,
+                "narrative_count": _cluster_count(clusters["narrative_clusters"]),
+                "last_source_event_at_ms": last_source_event_at_ms,
+            },
+            "resolved_token_clusters": public_clusters["resolved_token_clusters"],
+            "candidate_mention_clusters": public_clusters["candidate_mention_clusters"],
+            "narrative_clusters": public_clusters["narrative_clusters"],
+            "clusters_truncated": _overview_clusters_truncated(clusters, cluster_limit),
+            "risk_notes": sorted(dict.fromkeys(risk_notes)),
+        }
+
     def token_resolutions_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
         return EventTokenProjectionQuery(self.conn).for_events(event_ids)
 
@@ -538,6 +647,215 @@ def _decode_summary(row: dict[str, Any]) -> dict[str, Any]:
     row["topics"] = _loads(row.pop("topics_json", []), [])
     row["raw_response"] = _loads(row.pop("raw_response_json", {}), {})
     return row
+
+
+def _decode_handle_overview_row(row: dict[str, Any]) -> dict[str, Any]:
+    summary_generated_at_ms = row.get("summary_generated_at_ms")
+    return {
+        "handle": str(row.get("handle") or ""),
+        "last_source_event_at_ms": _optional_int(row.get("last_source_event_at_ms")),
+        "recent_source_event_count": int(row.get("recent_source_event_count") or 0),
+        "recent_signal_event_count": int(row.get("recent_signal_event_count") or 0),
+        "total_signal_event_count": int(row.get("total_signal_event_count") or 0),
+        "summary_status": "ready" if summary_generated_at_ms is not None else "not_ready",
+        "summary_is_stale": False,
+        "summary_generated_at_ms": _optional_int(summary_generated_at_ms),
+    }
+
+
+def _overview_clusters(events: list[dict[str, Any]]) -> dict[str, Any]:
+    resolved: dict[str, dict[str, Any]] = {}
+    candidates: dict[str, dict[str, Any]] = {}
+    narratives: dict[str, dict[str, Any]] = {}
+    resolved_symbols: set[str] = set()
+
+    for item in events:
+        for resolution in _list(item.get("token_resolutions")):
+            symbol = _token_symbol(resolution)
+            target_id = str(resolution.get("target_id") or "")
+            target_type = str(resolution.get("target_type") or "")
+            key = f"{target_type}:{target_id}" if target_id else f"symbol:{symbol}"
+            label = _money_label(symbol or target_id.rsplit(":", maxsplit=1)[-1])
+            resolved_symbols.add(_symbol_key(symbol or label))
+            cluster = resolved.setdefault(
+                key,
+                {
+                    "label": label,
+                    "count": 0,
+                    "query": label,
+                    "kind": "resolved_token",
+                    "target_type": target_type or None,
+                    "target_id": target_id or None,
+                    "symbol": symbol,
+                    "source": "token_resolutions",
+                },
+            )
+            cluster["count"] += 1
+
+    for item in events:
+        social_event = item.get("social_event") if isinstance(item.get("social_event"), dict) else {}
+        for candidate in _list(social_event.get("token_candidates")):
+            symbol = _candidate_symbol(candidate)
+            if not symbol:
+                continue
+            key = _symbol_key(symbol)
+            if key in resolved_symbols:
+                continue
+            _increment_cluster(
+                candidates,
+                key,
+                label=_money_label(symbol),
+                query=_money_label(symbol),
+                kind="candidate_mention",
+                source="social_event_candidates",
+            )
+        for cashtag in _list(item.get("cashtags")):
+            symbol = _clean_symbol(cashtag)
+            if not symbol:
+                continue
+            key = _symbol_key(symbol)
+            if key in resolved_symbols or key in candidates:
+                continue
+            _increment_cluster(
+                candidates,
+                key,
+                label=_money_label(symbol),
+                query=_money_label(symbol),
+                kind="candidate_mention",
+                source="event_cashtags",
+            )
+        for hashtag in _list(item.get("hashtags")):
+            term = _clean_hashtag(hashtag)
+            if term:
+                _increment_cluster(
+                    narratives,
+                    f"hashtag:{term.lower()}",
+                    label=f"#{term}",
+                    query=f"#{term}",
+                    kind="narrative",
+                    source="event_hashtags",
+                )
+        for anchor in _list(social_event.get("anchor_terms")):
+            term = _anchor_term(anchor)
+            if term and _symbol_key(term) not in resolved_symbols:
+                _increment_cluster(
+                    narratives,
+                    f"anchor:{term.lower()}",
+                    label=term,
+                    query=term,
+                    kind="narrative",
+                    source="anchor_terms",
+                )
+
+    return {
+        "resolved_token_clusters": _sorted_clusters(resolved.values()),
+        "candidate_mention_clusters": _sorted_clusters(candidates.values()),
+        "narrative_clusters": _sorted_clusters(narratives.values()),
+        "risk_notes": [],
+    }
+
+
+def _increment_cluster(
+    clusters: dict[str, dict[str, Any]],
+    key: str,
+    *,
+    label: str,
+    query: str,
+    kind: str,
+    source: str,
+) -> None:
+    cluster = clusters.setdefault(
+        key,
+        {
+            "label": label,
+            "count": 0,
+            "query": query,
+            "kind": kind,
+            "source": source,
+        },
+    )
+    cluster["count"] += 1
+
+
+def _sorted_clusters(clusters: Any) -> list[dict[str, Any]]:
+    return sorted(
+        (dict(cluster) for cluster in clusters),
+        key=lambda item: (-int(item.get("count") or 0), str(item.get("label") or "").lower()),
+    )
+
+
+def _cluster_count(clusters: list[dict[str, Any]]) -> int:
+    return sum(int(cluster.get("count") or 0) for cluster in clusters)
+
+
+def _limit_overview_clusters(clusters: dict[str, Any], limit: int) -> dict[str, Any]:
+    return {
+        "resolved_token_clusters": clusters["resolved_token_clusters"][:limit],
+        "candidate_mention_clusters": clusters["candidate_mention_clusters"][:limit],
+        "narrative_clusters": clusters["narrative_clusters"][:limit],
+    }
+
+
+def _overview_clusters_truncated(clusters: dict[str, Any], limit: int) -> bool:
+    return any(
+        len(clusters[key]) > limit
+        for key in ("resolved_token_clusters", "candidate_mention_clusters", "narrative_clusters")
+    )
+
+
+def _token_symbol(value: dict[str, Any]) -> str | None:
+    symbol = _clean_symbol(value.get("symbol"))
+    if symbol:
+        return symbol
+    target_id = str(value.get("target_id") or "")
+    if str(value.get("target_type") or "") == "CexToken" and target_id:
+        return _clean_symbol(target_id.rsplit(":", maxsplit=1)[-1])
+    return None
+
+
+def _candidate_symbol(value: Any) -> str | None:
+    if isinstance(value, dict):
+        return _clean_symbol(value.get("symbol") or value.get("ticker") or value.get("token"))
+    return _clean_symbol(value)
+
+
+def _anchor_term(value: Any) -> str | None:
+    if isinstance(value, dict):
+        term = str(value.get("term") or value.get("label") or "").strip()
+    else:
+        term = str(value or "").strip()
+    if not term or term.startswith(("$", "#", "@")):
+        return None
+    if len(term) > 48:
+        return None
+    return term
+
+
+def _clean_symbol(value: Any) -> str | None:
+    symbol = str(value or "").strip().lstrip("$").upper()
+    return symbol or None
+
+
+def _clean_hashtag(value: Any) -> str | None:
+    tag = str(value or "").strip().lstrip("#")
+    return tag or None
+
+
+def _money_label(value: str) -> str:
+    symbol = _clean_symbol(value) or str(value or "").strip()
+    return f"${symbol}" if symbol and not symbol.startswith("$") else symbol
+
+
+def _symbol_key(value: Any) -> str:
+    return (_clean_symbol(value) or "").upper()
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _optional_int(value: Any) -> int | None:
+    return int(value) if value is not None else None
 
 
 def _timeline_scope(value: str) -> str:

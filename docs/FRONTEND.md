@@ -47,6 +47,11 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 - **Search route.** `/search` reuses the cockpit topbar but owns its search-local rail, filters, resolver candidates, and selected result. Topbar submit navigates to `/search?q=<query>`. Token search results render the shared Token Case panel directly from `/api/search/inspect`; they do not fetch `/api/token-case` again.
 - **Token Case route.** `features/token-case` owns persistent `/token/:targetType/:targetId` inspection. The route parses `window`, `scope`, and timeline sort from the URL, fetches `/api/token-case`, seeds `/api/target-posts` from the dossier's first page, and subscribes only the active target for live market updates.
 - **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>` for resolver context, while explicit token links may route to the Token Case dossier when a canonical target id is already known.
+- **Watchlist route.** `features/watchlist/api` owns the selected-handle
+  overview, summary, and timeline server state. `/watchlist` uses
+  `timeline_scope=signal|all` for its own timeline state and does not consume
+  `/api/recent` or WebSocket replay to reconstruct selected-handle counts,
+  resolved targets, candidate mentions, or narrative clusters.
 - **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.

@@ -130,6 +130,52 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         )
 
     @router.get(
+        "/watchlist/handles/overview",
+        response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandlesOverviewData],
+    )
+    def watchlist_handles_overview(request: Request) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        with runtime.repositories() as repos:
+            data = WatchlistHandleReadService(
+                repository=repos.watchlist_intel,
+                config=_watchlist_handle_summary_config(runtime),
+            ).handles_overview(
+                configured_handles=tuple(runtime.settings.handles),
+                now_ms=_now_ms(),
+            )
+        return _json({"ok": True, "data": data})
+
+    @router.get(
+        "/watchlist/handle/{handle}/overview",
+        response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandleOverviewData],
+    )
+    def watchlist_handle_overview(
+        request: Request,
+        handle: str,
+        scope: Annotated[str, Query()] = "signal",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        try:
+            normalized_handle = normalize_watchlist_handle(handle)
+        except ValueError:
+            raise ApiBadRequest("invalid_handle", field="handle") from None
+        parsed_scope = _watchlist_timeline_scope(scope)
+        try:
+            with runtime.repositories() as repos:
+                data = WatchlistHandleReadService(
+                    repository=repos.watchlist_intel,
+                    config=_watchlist_handle_summary_config(runtime),
+                ).overview(
+                    handle=normalized_handle,
+                    configured_handles=tuple(runtime.settings.handles),
+                    scope=parsed_scope,
+                    now_ms=_now_ms(),
+                )
+        except LookupError:
+            return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
+        return _json({"ok": True, "data": data})
+
+    @router.get(
         "/watchlist/handle/{handle}/summary",
         response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandleSummaryData],
     )

@@ -1119,6 +1119,52 @@
         "title": "ApiEnvelope[TokenRadarData]",
         "type": "object"
       },
+      "ApiEnvelope_WatchlistHandleOverviewData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchlistHandleOverviewData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[WatchlistHandleOverviewData]",
+        "type": "object"
+      },
       "ApiEnvelope_WatchlistHandleSummaryData_": {
         "additionalProperties": true,
         "properties": {
@@ -1209,6 +1255,52 @@
           "ok"
         ],
         "title": "ApiEnvelope[WatchlistHandleTimelineData]",
+        "type": "object"
+      },
+      "ApiEnvelope_WatchlistHandlesOverviewData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchlistHandlesOverviewData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[WatchlistHandlesOverviewData]",
         "type": "object"
       },
       "BootstrapData": {
@@ -2475,6 +2567,110 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WatchlistHandleOverviewData": {
+        "additionalProperties": true,
+        "properties": {
+          "candidate_mention_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistOverviewCluster"
+            },
+            "title": "Candidate Mention Clusters",
+            "type": "array"
+          },
+          "clusters_truncated": {
+            "default": false,
+            "title": "Clusters Truncated",
+            "type": "boolean"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/WatchlistOverviewMetrics"
+          },
+          "narrative_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistOverviewCluster"
+            },
+            "title": "Narrative Clusters",
+            "type": "array"
+          },
+          "query": {
+            "$ref": "#/components/schemas/WatchlistOverviewQuery"
+          },
+          "resolved_token_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistOverviewCluster"
+            },
+            "title": "Resolved Token Clusters",
+            "type": "array"
+          },
+          "risk_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risk Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "metrics"
+        ],
+        "title": "WatchlistHandleOverviewData",
+        "type": "object"
+      },
+      "WatchlistHandleRowOverview": {
+        "additionalProperties": true,
+        "properties": {
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "last_source_event_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Source Event At Ms"
+          },
+          "recent_signal_event_count": {
+            "default": 0,
+            "title": "Recent Signal Event Count",
+            "type": "integer"
+          },
+          "recent_source_event_count": {
+            "default": 0,
+            "title": "Recent Source Event Count",
+            "type": "integer"
+          },
+          "summary_is_stale": {
+            "default": false,
+            "title": "Summary Is Stale",
+            "type": "boolean"
+          },
+          "summary_status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Summary Status",
+            "type": "string"
+          },
+          "total_signal_event_count": {
+            "default": 0,
+            "title": "Total Signal Event Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "handle",
+          "summary_status"
+        ],
+        "title": "WatchlistHandleRowOverview",
+        "type": "object"
+      },
       "WatchlistHandleSummaryData": {
         "additionalProperties": true,
         "properties": {
@@ -2602,6 +2798,170 @@
           "query"
         ],
         "title": "WatchlistHandleTimelineData",
+        "type": "object"
+      },
+      "WatchlistHandlesOverviewData": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WatchlistHandleRowOverview"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "window": {
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window"
+        ],
+        "title": "WatchlistHandlesOverviewData",
+        "type": "object"
+      },
+      "WatchlistOverviewCluster": {
+        "additionalProperties": true,
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "resolved_token",
+              "candidate_mention",
+              "narrative"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          }
+        },
+        "required": [
+          "label",
+          "query",
+          "kind",
+          "source"
+        ],
+        "title": "WatchlistOverviewCluster",
+        "type": "object"
+      },
+      "WatchlistOverviewMetrics": {
+        "additionalProperties": true,
+        "properties": {
+          "candidate_mention_count": {
+            "default": 0,
+            "title": "Candidate Mention Count",
+            "type": "integer"
+          },
+          "last_source_event_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Source Event At Ms"
+          },
+          "narrative_count": {
+            "default": 0,
+            "title": "Narrative Count",
+            "type": "integer"
+          },
+          "resolved_token_count": {
+            "default": 0,
+            "title": "Resolved Token Count",
+            "type": "integer"
+          },
+          "signal_event_count": {
+            "default": 0,
+            "title": "Signal Event Count",
+            "type": "integer"
+          },
+          "source_event_count": {
+            "default": 0,
+            "title": "Source Event Count",
+            "type": "integer"
+          }
+        },
+        "title": "WatchlistOverviewMetrics",
+        "type": "object"
+      },
+      "WatchlistOverviewQuery": {
+        "additionalProperties": true,
+        "properties": {
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "signal",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "window": {
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle",
+          "scope",
+          "window"
+        ],
+        "title": "WatchlistOverviewQuery",
         "type": "object"
       },
       "WorkerStatusData": {
@@ -4520,6 +4880,58 @@
         ]
       }
     },
+    "/api/watchlist/handle/{handle}/overview": {
+      "get": {
+        "operationId": "watchlist_handle_overview_api_watchlist_handle__handle__overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handle",
+            "required": true,
+            "schema": {
+              "title": "Handle",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "signal",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_WatchlistHandleOverviewData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Watchlist Handle Overview",
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/watchlist/handle/{handle}/summary": {
       "get": {
         "operationId": "watchlist_handle_summary_api_watchlist_handle__handle__summary_get",
@@ -4631,6 +5043,27 @@
           }
         },
         "summary": "Watchlist Handle Timeline",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/watchlist/handles/overview": {
+      "get": {
+        "operationId": "watchlist_handles_overview_api_watchlist_handles_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_WatchlistHandlesOverviewData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Watchlist Handles Overview",
         "tags": [
           "api"
         ]
