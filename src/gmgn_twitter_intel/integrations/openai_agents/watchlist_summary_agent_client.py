@@ -5,9 +5,13 @@ import json
 import re
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
-from agents.models.openai_responses import OpenAIResponsesModel
+import jsonref
+from agents import Agent, ModelRetrySettings, ModelSettings, RunConfig, Runner, retry_policies
+from agents.agent_output import AgentOutputSchema, AgentOutputSchemaBase
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from pydantic import BaseModel, Field
+
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 
 BACKEND = "openai_agents_sdk"
 WORKFLOW_NAME = "gmgn-twitter-intel.watchlist_handle_summary"
@@ -31,6 +35,43 @@ class WatchlistHandleSummaryPayload(BaseModel):
     residual_risks: list[str] = Field(default_factory=list)
 
 
+class _WatchlistOutputSchema(AgentOutputSchemaBase):
+    """Strict + jsonref-flattened wrapper around WatchlistHandleSummaryPayload.
+
+    Same shape as pulse_decision_agent_client._JsonOutputSchema. Kept inline here
+    until PR 3 moves the shared helper into integrations/openai_agents/_shared.py.
+    """
+
+    def __init__(self) -> None:
+        self._output_type = WatchlistHandleSummaryPayload
+        self._schema = AgentOutputSchema(WatchlistHandleSummaryPayload, strict_json_schema=True)
+        raw = self._schema.json_schema()
+        self._flat = jsonref.replace_refs(raw, proxies=False, lazy_load=False)
+
+    @property
+    def output_type(self) -> type[BaseModel]:
+        return self._output_type
+
+    def is_plain_text(self) -> bool:
+        return self._schema.is_plain_text()
+
+    def name(self) -> str:
+        return self._schema.name()
+
+    def json_schema(self) -> dict[str, Any]:
+        return self._flat
+
+    def is_strict_json_schema(self) -> bool:
+        return True
+
+    def validate_json(self, json_str: str) -> Any:
+        text = str(json_str or "")
+        start = text.find("{")
+        end = text.rfind("}")
+        candidate = text[start : end + 1] if start != -1 and end > start else text
+        return self._schema.validate_json(candidate)
+
+
 class OpenAIAgentsWatchlistSummaryClient:
     provider = "openai"
 
@@ -43,6 +84,7 @@ class OpenAIAgentsWatchlistSummaryClient:
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 120.0,
         runner: Any | None = None,
+        safety_net: InstructorSafetyNet | None = None,
         trace_enabled: bool = True,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
@@ -62,6 +104,7 @@ class OpenAIAgentsWatchlistSummaryClient:
         self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
         self.max_turns = max(1, min(2, int(max_turns)))
         self._runner = runner or Runner
+        self._safety_net = safety_net
         self._model = None if runner is not None else self._build_model()
 
     @property
@@ -99,32 +142,54 @@ class OpenAIAgentsWatchlistSummaryClient:
         agent = Agent(
             name=AGENT_NAME,
             instructions=_instructions(),
+            output_type=_WatchlistOutputSchema(),
             tools=[],
             model=self._model,
+            model_settings=_model_settings(),
         )
-        result = await self._llm_gateway.run_with_limits(
-            "handle_summary",
-            "summary",
-            self.timeout_seconds,
-            lambda: self._runner.run(
-                agent,
-                input_payload,
-                max_turns=self.max_turns,
-                run_config=RunConfig(
-                    workflow_name=self.workflow_name,
-                    trace_id=audit["sdk_trace_id"],
-                    group_id=handle,
-                    trace_include_sensitive_data=self.trace_include_sensitive_data,
-                    tracing_disabled=not self.trace_enabled,
-                    trace_metadata=audit["trace_metadata"],
+        run_config = RunConfig(
+            workflow_name=self.workflow_name,
+            trace_id=audit["sdk_trace_id"],
+            group_id=handle,
+            trace_include_sensitive_data=self.trace_include_sensitive_data,
+            tracing_disabled=not self.trace_enabled,
+            trace_metadata=audit["trace_metadata"],
+        )
+        audit_extra: dict[str, Any] = {
+            "safety_net_used": False,
+            "safety_net_retries": 0,
+            "parse_mode": "strict",
+        }
+        if self._safety_net is not None:
+            final_output, audit_extra = await self._llm_gateway.run_with_limits(
+                "handle_summary",
+                "summary",
+                self.timeout_seconds,
+                lambda: self._safety_net.run_with_safety_net(
+                    agent=agent,
+                    input_payload=input_payload,
+                    run_config=run_config,
+                    pydantic_output_type=WatchlistHandleSummaryPayload,
                 ),
-            ),
-        )
-        payload = _coerce_summary_payload(result.final_output)
+            )
+        else:
+            result = await self._llm_gateway.run_with_limits(
+                "handle_summary",
+                "summary",
+                self.timeout_seconds,
+                lambda: self._runner.run(
+                    agent,
+                    input_payload,
+                    max_turns=self.max_turns,
+                    run_config=run_config,
+                ),
+            )
+            final_output = result.final_output
+        payload = _coerce_summary_payload(final_output)
         output_json = payload.model_dump(mode="json")
         return {
             **output_json,
-            "agent_run_audit": {**audit, "output_hash": _sha256(output_json)},
+            "agent_run_audit": {**audit, "output_hash": _sha256(output_json), **audit_extra},
         }
 
     async def aclose(self) -> None:
@@ -172,7 +237,7 @@ class OpenAIAgentsWatchlistSummaryClient:
         return input_payload, audit
 
     def _build_model(self):
-        return OpenAIResponsesModel(
+        return OpenAIChatCompletionsModel(
             model=self.model,
             openai_client=self._llm_gateway.openai_client(
                 model=self.model,
@@ -180,6 +245,22 @@ class OpenAIAgentsWatchlistSummaryClient:
                 timeout_s=self.timeout_seconds,
             ),
         )
+
+
+def _model_settings() -> ModelSettings:
+    return ModelSettings(
+        retry=ModelRetrySettings(
+            max_retries=2,
+            backoff={"initial_delay": 0.5, "max_delay": 4.0, "multiplier": 2.0, "jitter": True},
+            policy=retry_policies.any(
+                retry_policies.provider_suggested(),
+                retry_policies.retry_after(),
+                retry_policies.network_error(),
+                retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
+            ),
+        ),
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
 
 
 def _instructions() -> str:

@@ -4,8 +4,8 @@ import hashlib
 import json
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
-from agents.models.openai_responses import OpenAIResponsesModel
+from agents import Agent, ModelRetrySettings, ModelSettings, RunConfig, Runner, retry_policies
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
 from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
     AGENT_NAME,
@@ -19,6 +19,7 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     social_event_agent_instructions,
     social_event_extraction_from_payload,
 )
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 
 
 class OpenAIAgentsSocialEventClient:
@@ -33,6 +34,7 @@ class OpenAIAgentsSocialEventClient:
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
         runner: Any | None = None,
+        safety_net: InstructorSafetyNet | None = None,
         trace_enabled: bool = True,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
@@ -52,6 +54,7 @@ class OpenAIAgentsSocialEventClient:
         self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
         self.max_turns = max(1, min(2, int(max_turns)))
         self._runner = runner or Runner
+        self._safety_net = safety_net
         self._model = None if runner is not None else self._build_model()
 
     @property
@@ -70,28 +73,54 @@ class OpenAIAgentsSocialEventClient:
             output_type=SocialEventPayload,
             tools=[],
             model=self._model,
+            model_settings=_model_settings(),
         )
-        result = await self._llm_gateway.run_with_limits(
-            "enrichment",
-            "social_event",
-            self.timeout_seconds,
-            lambda: self._runner.run(
-                agent,
-                input_payload,
-                max_turns=self.max_turns,
-                run_config=RunConfig(
-                    workflow_name=self.workflow_name,
-                    trace_id=audit["sdk_trace_id"],
-                    group_id=str(event.get("event_id") or ""),
-                    trace_include_sensitive_data=self.trace_include_sensitive_data,
-                    tracing_disabled=not self.trace_enabled,
-                    trace_metadata=audit["trace_metadata"],
+        run_config = RunConfig(
+            workflow_name=self.workflow_name,
+            trace_id=audit["sdk_trace_id"],
+            group_id=str(event.get("event_id") or ""),
+            trace_include_sensitive_data=self.trace_include_sensitive_data,
+            tracing_disabled=not self.trace_enabled,
+            trace_metadata=audit["trace_metadata"],
+        )
+        audit_extra: dict[str, Any] = {
+            "safety_net_used": False,
+            "safety_net_retries": 0,
+            "parse_mode": "strict",
+        }
+        if self._safety_net is not None:
+            final_output, audit_extra = await self._llm_gateway.run_with_limits(
+                "enrichment",
+                "social_event",
+                self.timeout_seconds,
+                lambda: self._safety_net.run_with_safety_net(
+                    agent=agent,
+                    input_payload=input_payload,
+                    run_config=run_config,
+                    pydantic_output_type=SocialEventPayload,
                 ),
-            ),
-        )
-        payload = payload_from_output(result.final_output)
+            )
+        else:
+            result = await self._llm_gateway.run_with_limits(
+                "enrichment",
+                "social_event",
+                self.timeout_seconds,
+                lambda: self._runner.run(
+                    agent,
+                    input_payload,
+                    max_turns=self.max_turns,
+                    run_config=run_config,
+                ),
+            )
+            final_output = result.final_output
+        payload = payload_from_output(final_output)
         output_json = payload.model_dump(mode="json")
-        audit = {**audit, "output_hash": _sha256(output_json)}
+        # PR 1: safety_net audit lives in trace_metadata jsonb until PR 2 promotes columns.
+        audit = {
+            **audit,
+            "output_hash": _sha256(output_json),
+            "trace_metadata": {**audit["trace_metadata"], **audit_extra},
+        }
         return social_event_extraction_from_payload(
             payload,
             event_text=_event_text(event),
@@ -135,7 +164,7 @@ class OpenAIAgentsSocialEventClient:
         return input_payload, audit
 
     def _build_model(self):
-        return OpenAIResponsesModel(
+        return OpenAIChatCompletionsModel(
             model=self.model,
             openai_client=self._llm_gateway.openai_client(
                 model=self.model,
@@ -143,6 +172,23 @@ class OpenAIAgentsSocialEventClient:
                 timeout_s=self.timeout_seconds,
             ),
         )
+
+
+def _model_settings() -> ModelSettings:
+    return ModelSettings(
+        retry=ModelRetrySettings(
+            max_retries=2,
+            backoff={"initial_delay": 0.5, "max_delay": 4.0, "multiplier": 2.0, "jitter": True},
+            policy=retry_policies.any(
+                retry_policies.provider_suggested(),
+                retry_policies.retry_after(),
+                retry_policies.network_error(),
+                retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
+            ),
+        ),
+        # qwen3.6 reasoning variant - disable thinking to keep grammar enforced.
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
 
 
 def _event_text(event: dict) -> str:

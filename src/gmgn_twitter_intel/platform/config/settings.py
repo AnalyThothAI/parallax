@@ -76,6 +76,8 @@ class LlmConfig(BaseModel):
     trace_include_sensitive_data: bool = False
     pulse_agent_model: str | None = None
     watchlist_handle_summary_model: str | None = None
+    instructor_safety_net_enabled: bool = True
+    instructor_max_retries: int = 2
 
     @field_validator("provider", mode="before")
     @classmethod
