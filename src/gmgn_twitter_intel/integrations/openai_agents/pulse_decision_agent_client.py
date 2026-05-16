@@ -466,6 +466,9 @@ def _model_settings() -> ModelSettings:
         # Measured 2026-05-16 against big9er.com b8779: same prompt output drops
         # from 186 tokens to 10 tokens.
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        # SDK does not surface usage on RunResult unless explicitly requested.
+        # Required for cost dashboards + safety_net usage forwarding.
+        include_usage=True,
     )
 
 
