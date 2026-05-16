@@ -12,6 +12,7 @@ Design:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Any, cast
 
@@ -34,11 +35,15 @@ def _json_safe(value: Any, depth: int = 0) -> Any:
         return {str(k): _json_safe(v, depth + 1) for k, v in value.items() if v is not None}
     if isinstance(value, list | tuple):
         return [_json_safe(item, depth + 1) for item in value]
+    # Pydantic models
     dump = getattr(value, "model_dump", None)
     if callable(dump):
         data = dump(mode="json")
         if isinstance(data, dict):
             return _json_safe(data, depth + 1)
+    # agents.usage.Usage and similar dataclasses
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return _json_safe(dataclasses.asdict(value), depth + 1)
     return str(value)
 
 
