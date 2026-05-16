@@ -532,7 +532,11 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
         event = make_token_event("event-1", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
         with client.app.state.service.repositories() as repos:
-            HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+            HarnessSnapshotBuilder(
+                repos.harness,
+                registry=repos.registry,
+                market_ticks=repos.market_ticks,
+            ).materialize(
                 event=event.to_dict(),
                 extraction=SocialEventExtraction(
                     is_signal_event=True,

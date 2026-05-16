@@ -45,9 +45,7 @@ def test_market_tick_stream_worker_reuses_stateful_provider_and_replaces_subscri
     )
 
     asyncio.run(worker.run_once())
-    repos.token_capture_tiers.rows = [
-        tier_row(target_type="chain_token", target_id="solana:B", pricefeed_id="pf-B")
-    ]
+    repos.token_capture_tiers.rows = [tier_row(target_type="chain_token", target_id="solana:B", pricefeed_id="pf-B")]
     asyncio.run(worker.run_once())
 
     assert provider.replace_calls == [[("solana", "A")], [("solana", "B")]]

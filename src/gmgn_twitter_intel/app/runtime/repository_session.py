@@ -7,11 +7,9 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
     AssetProfileRepository,
-    AssetRepository,
     DiscoveryRepository,
     EnrichedEventRepository,
     IdentityEvidenceRepository,
-    MarketRepository,
     MarketTickRepository,
     RegistryRepository,
     TokenCaptureTierRepository,
@@ -45,7 +43,6 @@ class RepositorySession:
     evidence: EvidenceRepository
     entities: EntityRepository
     signals: SignalRepository
-    assets: AssetRepository
     asset_profiles: AssetProfileRepository
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
@@ -58,7 +55,6 @@ class RepositorySession:
     token_capture_tiers: TokenCaptureTierRepository
     token_intent_lookup: TokenIntentLookupRepository
     event_tokens: EventTokenProjectionQuery
-    market: MarketRepository
     token_radar: TokenRadarRepository
     token_factor_evaluations: TokenFactorEvaluationRepository
     token_targets: TokenTargetRepository
@@ -79,7 +75,6 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         evidence=EvidenceRepository(conn),
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
-        assets=AssetRepository(conn),
         asset_profiles=AssetProfileRepository(conn),
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),
@@ -92,7 +87,6 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_capture_tiers=TokenCaptureTierRepository(conn),
         token_intent_lookup=TokenIntentLookupRepository(conn),
         event_tokens=EventTokenProjectionQuery(conn),
-        market=MarketRepository(conn),
         token_radar=TokenRadarRepository(conn),
         token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),

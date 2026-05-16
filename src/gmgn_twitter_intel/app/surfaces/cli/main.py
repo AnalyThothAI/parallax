@@ -523,7 +523,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
         evidence = repos.evidence
         signals = repos.signals
-        assets = repos.assets
+        registry = repos.registry
+        market_ticks = repos.market_ticks
         enrichment = repos.enrichment
         harness = repos.harness
         notifications = repos.notifications
@@ -754,7 +755,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     "ok": True,
                     "data": settle_harness_snapshots(
                         harness=harness,
-                        assets=assets,
+                        registry=registry,
+                        market_ticks=market_ticks,
                         horizon=args.horizon,
                         limit=args.limit,
                         now_ms=args.now_ms,

@@ -241,9 +241,7 @@ class FakeRegistry:
         since_ms: int,
         limit: int,
     ) -> list[dict[str, Any]]:
-        self.calls.append(
-            {"projection_version": projection_version, "since_ms": since_ms, "limit": limit}
-        )
+        self.calls.append({"projection_version": projection_version, "since_ms": since_ms, "limit": limit})
         return list(self._targets)
 
 

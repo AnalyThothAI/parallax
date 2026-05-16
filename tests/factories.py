@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
+from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
@@ -101,14 +101,14 @@ def open_runtime(tmp_path):
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
-    assets = AssetRepository(conn)
+    registry = RegistryRepository(conn)
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
     )
-    return conn, ingest, signals, assets
+    return conn, ingest, signals, registry
 
 
 def token_event(

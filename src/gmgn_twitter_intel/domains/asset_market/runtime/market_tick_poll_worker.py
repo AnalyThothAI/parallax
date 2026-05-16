@@ -300,10 +300,7 @@ def _list_tier2_page(
 
 
 def _target_key_dicts(keys: set[tuple[str, str]]) -> list[dict[str, str]]:
-    return [
-        {"target_type": target_type, "target_id": target_id}
-        for target_type, target_id in sorted(keys)
-    ]
+    return [{"target_type": target_type, "target_id": target_id} for target_type, target_id in sorted(keys)]
 
 
 def _poll_targets(rows: Sequence[Mapping[str, Any]]) -> _PollTargets:

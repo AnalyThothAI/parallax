@@ -19,18 +19,20 @@ HORIZON_MS = {
     "24h": 24 * 60 * 60 * 1000,
 }
 BASELINE_VERSION = "benchmark-zero-v1"
+SETTLEMENT_ENTRY_LAG_MS = 60 * 60_000
 
 
 def materialize_market_ready_seeds(
     *,
     harness: Any,
     evidence: Any,
-    assets: Any,
+    registry: Any,
+    market_ticks: Any,
     limit: int = 100,
 ) -> dict[str, int]:
     rows = harness.pending_market_unavailable_social_events(limit=limit)
     counts = {"seeds_scanned": len(rows), "snapshots_written": 0, "still_blocked": 0, "errors": 0}
-    builder = HarnessSnapshotBuilder(harness, assets=assets)
+    builder = HarnessSnapshotBuilder(harness, registry=registry, market_ticks=market_ticks)
     for social_event in rows:
         try:
             event = evidence.events_by_ids([str(social_event["event_id"])]).get(str(social_event["event_id"]))
@@ -57,7 +59,8 @@ def materialize_market_ready_seeds(
 def settle_harness_snapshots(
     *,
     harness: Any,
-    assets: Any,
+    registry: Any,
+    market_ticks: Any,
     horizon: str,
     now_ms: int | None = None,
     limit: int = 100,
@@ -80,12 +83,29 @@ def settle_harness_snapshots(
                 continue
             asset_id = str(snapshot["asset"])
             decision_time_ms = int(snapshot["decision_time_ms"])
-            entry = assets.market_snapshot_at_or_before(asset_id, decision_time_ms)
-            exit_ = assets.market_snapshot_at_or_before(asset_id, decision_time_ms + horizon_ms)
+            target = registry.chain_token_market_target(asset_id)
+            if target is None:
+                harness.mark_snapshot_outcome_status(
+                    snapshot_id=str(snapshot["snapshot_id"]),
+                    outcome_status="missing_market",
+                )
+                counts["skipped_missing_market"] += 1
+                continue
+            entry = market_ticks.latest_at_or_before(
+                target_type=target["target_type"],
+                target_id=target["target_id"],
+                at_ms=decision_time_ms,
+                max_lag_ms=SETTLEMENT_ENTRY_LAG_MS,
+            )
+            exit_ = market_ticks.latest_at_or_before(
+                target_type=target["target_type"],
+                target_id=target["target_id"],
+                at_ms=decision_time_ms + horizon_ms,
+                max_lag_ms=horizon_ms,
+            )
             entry_price = _float_or_none(entry.get("price_usd")) if entry else None
             exit_price = _float_or_none(exit_.get("price_usd")) if exit_ else None
             gap_status = _market_gap_status(
-                asset_id=asset_id,
                 entry=entry,
                 exit_=exit_,
                 entry_price=entry_price,
@@ -130,13 +150,12 @@ def settle_harness_snapshots(
 
 def _market_gap_status(
     *,
-    asset_id: str | None,
     entry: dict[str, Any] | None,
     exit_: dict[str, Any] | None,
     entry_price: float | None,
     exit_price: float | None,
 ) -> str | None:
-    if asset_id is None or entry is None or entry_price is None:
+    if entry is None or entry_price is None:
         return "missing_market"
     if exit_ is None or exit_price is None:
         return "insufficient_market_data"

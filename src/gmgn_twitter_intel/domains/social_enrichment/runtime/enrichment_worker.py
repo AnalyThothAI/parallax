@@ -189,7 +189,11 @@ class EnrichmentWorker(WorkerBase):
                 finished_at_ms=finished_at_ms,
                 commit=False,
             )
-            materialized = HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+            materialized = HarnessSnapshotBuilder(
+                repos.harness,
+                registry=repos.registry,
+                market_ticks=repos.market_ticks,
+            ).materialize(
                 event=event,
                 extraction=result,
                 run_id=str(run["run_id"]),

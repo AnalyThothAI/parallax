@@ -1,4 +1,10 @@
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
+from decimal import Decimal
+from typing import Any
+
+from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
+from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
+from gmgn_twitter_intel.domains.asset_market.types.market_tick import MarketTick
+from gmgn_twitter_intel.domains.asset_market.types.market_tick_id import market_tick_id
 from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
@@ -20,7 +26,8 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
         migrate(conn)
         harness = HarnessRepository(conn)
         evidence = EvidenceRepository(conn)
-        assets = AssetRepository(conn)
+        registry = RegistryRepository(conn)
+        market_ticks = MarketTickRepository(conn)
         event = make_token_event(
             "event-1",
             symbol="BNB",
@@ -29,9 +36,9 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
             received_at_ms=1_000,
         )
         evidence.insert_event(event, is_watched=True)
-        asset_id = _upsert_asset_with_price(
-            assets,
-            symbol="BNB",
+        asset_id = _seed_market_ready_asset(
+            conn,
+            chain_id_input="eth",
             address=BNB,
             observed_at_ms=1_000,
             price=1.0,
@@ -62,13 +69,14 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
             raw_response={"ok": True},
         )
 
-        materialized = HarnessSnapshotBuilder(harness, assets=assets).materialize(
+        builder = HarnessSnapshotBuilder(harness, registry=registry, market_ticks=market_ticks)
+        materialized = builder.materialize(
             event=event.to_dict(),
             extraction=extraction,
             run_id="run-1",
             model_version="gpt-test",
         )
-        duplicate = HarnessSnapshotBuilder(harness, assets=assets).materialize(
+        duplicate = builder.materialize(
             event=event.to_dict(),
             extraction=extraction,
             run_id="run-1",
@@ -185,7 +193,8 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
         migrate(conn)
         harness = HarnessRepository(conn)
         evidence = EvidenceRepository(conn)
-        assets = AssetRepository(conn)
+        registry = RegistryRepository(conn)
+        market_ticks = MarketTickRepository(conn)
         event = make_token_event(
             "event-no-entry",
             symbol="BNB",
@@ -194,13 +203,11 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
             received_at_ms=5_000,
         )
         evidence.insert_event(event, is_watched=True)
-        assets.upsert_dex_asset(
-            chain="ethereum",
+        registry.upsert_chain_asset(
+            chain_id="eth",
             address=BNB,
-            symbol="BNB",
             observed_at_ms=event.received_at_ms,
-            event_id=event.event_id,
-            provider="test",
+            status="canonical",
         )
         extraction = SocialEventExtraction(
             is_signal_event=True,
@@ -228,7 +235,11 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
             raw_response={"ok": True},
         )
 
-        materialized = HarnessSnapshotBuilder(harness, assets=assets).materialize(
+        materialized = HarnessSnapshotBuilder(
+            harness,
+            registry=registry,
+            market_ticks=market_ticks,
+        ).materialize(
             event=event.to_dict(),
             extraction=extraction,
             run_id="run-no-entry",
@@ -243,26 +254,53 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
     assert "missing_entry_market" in materialized["seed"]["risks"]
 
 
-def _upsert_asset_with_price(
-    assets: AssetRepository,
+def _seed_market_ready_asset(
+    conn: Any,
     *,
-    symbol: str,
+    chain_id_input: str,
     address: str,
     observed_at_ms: int,
     price: float,
 ) -> str:
-    result = assets.upsert_dex_asset(
-        chain="ethereum",
+    registry = RegistryRepository(conn)
+    market_ticks = MarketTickRepository(conn)
+    asset = registry.upsert_chain_asset(
+        chain_id=chain_id_input,
         address=address,
-        symbol=symbol,
         observed_at_ms=observed_at_ms,
-        provider="test",
+        status="canonical",
     )
-    assets.insert_market_snapshot(
-        asset_id=str(result.asset["asset_id"]),
-        venue_id=str(result.venue["venue_id"]),
-        provider="test",
+    asset_id = str(asset["asset_id"])
+    target_chain = str(asset["chain_id"])
+    target_address = str(asset["address"])
+    target_id = f"{target_chain}:{target_address}"
+    tick_id = market_tick_id(
+        target_type="chain_token",
+        target_id=target_id,
+        source_provider="okx_dex_rest",
         observed_at_ms=observed_at_ms,
-        price_usd=price,
     )
-    return str(result.asset["asset_id"])
+    market_ticks.insert_tick(
+        MarketTick(
+            tick_id=tick_id,
+            target_type="chain_token",
+            target_id=target_id,
+            chain=target_chain,
+            token_address=target_address,
+            exchange=None,
+            instrument=None,
+            pricefeed_id=None,
+            source_tier="tier2_poll",
+            source_provider="okx_dex_rest",
+            observed_at_ms=observed_at_ms,
+            received_at_ms=observed_at_ms,
+            price_usd=Decimal(str(price)),
+            liquidity_usd=None,
+            volume_24h_usd=None,
+            market_cap_usd=None,
+            holders=None,
+            created_at_ms=observed_at_ms,
+        )
+    )
+    conn.commit()
+    return asset_id

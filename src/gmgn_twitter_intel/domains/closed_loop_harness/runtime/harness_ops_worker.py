@@ -45,14 +45,16 @@ class HarnessOpsWorker(WorkerBase):
             result["materialize"] = materialize_market_ready_seeds(
                 harness=repos.harness,
                 evidence=repos.evidence,
-                assets=repos.assets,
+                registry=repos.registry,
+                market_ticks=repos.market_ticks,
                 limit=self.batch_limit,
             )
         for horizon in self.horizons:
             with self._repository_session() as repos:
                 result["settlement"][horizon] = settle_harness_snapshots(
                     harness=repos.harness,
-                    assets=repos.assets,
+                    registry=repos.registry,
+                    market_ticks=repos.market_ticks,
                     horizon=horizon,
                     now_ms=now,
                     limit=self.batch_limit,

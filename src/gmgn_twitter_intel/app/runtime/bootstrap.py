@@ -22,7 +22,6 @@ from gmgn_twitter_intel.app.runtime.worker_scheduler import WorkerScheduler
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
@@ -73,7 +72,6 @@ class Runtime:
     evidence: Any | None = None
     entities: Any | None = None
     signals: Any | None = None
-    assets: Any | None = None
     enrichment: Any | None = None
     harness: Any | None = None
     notifications: Any | None = None
@@ -162,7 +160,6 @@ def _assemble_runtime(
     evidence = PooledRepository(db.api_pool, EvidenceRepository)
     entities = PooledRepository(db.api_pool, EntityRepository)
     signals = PooledRepository(db.api_pool, SignalRepository)
-    assets = PooledRepository(db.api_pool, AssetRepository)
     enrichment = PooledRepository(db.api_pool, EnrichmentRepository)
     harness = PooledRepository(db.api_pool, HarnessRepository)
     notifications = PooledRepository(db.api_pool, NotificationRepository)
@@ -208,7 +205,6 @@ def _assemble_runtime(
         evidence=evidence,
         entities=entities,
         signals=signals,
-        assets=assets,
         enrichment=enrichment,
         harness=harness,
         notifications=notifications,
@@ -305,9 +301,7 @@ def _construct_workers(
             wake_emitter=wake_bus,
             batch_size=workers.market_tick_poll.batch_size,
         )
-    if workers.event_anchor_backfill.enabled and (
-        message_cex_market is not None or dex_quote_market is not None
-    ):
+    if workers.event_anchor_backfill.enabled and (message_cex_market is not None or dex_quote_market is not None):
         constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(
             name="event_anchor_backfill",
             settings=workers.event_anchor_backfill,

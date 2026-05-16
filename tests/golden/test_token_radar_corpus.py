@@ -12,8 +12,8 @@ from tests.factories_token_radar import (
 
 
 def test_versa_symbol_and_ca_build_one_intent(tmp_path):
-    _, repos, ingest = open_token_radar_runtime(tmp_path)
-    insert_base_versa_asset(repos.assets, observed_at_ms=1_777_799_000_000)
+    conn, repos, ingest = open_token_radar_runtime(tmp_path)
+    insert_base_versa_asset(conn, observed_at_ms=1_777_799_000_000)
     event = make_token_event(
         text=f"很不错的一个项目，挺有格局的dev， $VERSA {VERSA_BASE_CA}",
         received_at_ms=1_777_800_000_000,

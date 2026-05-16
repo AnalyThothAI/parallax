@@ -119,7 +119,11 @@ def test_websocket_replay_includes_harness_state_for_social_event(tmp_path):
         event = make_event("seed-event", "toly", text="Grok DOG is getting scary good")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
         with client.app.state.service.repositories() as repos:
-            HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+            HarnessSnapshotBuilder(
+                repos.harness,
+                registry=repos.registry,
+                market_ticks=repos.market_ticks,
+            ).materialize(
                 event=event.to_dict(),
                 extraction=SocialEventExtraction(
                     is_signal_event=True,

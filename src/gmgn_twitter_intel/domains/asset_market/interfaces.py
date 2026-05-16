@@ -17,11 +17,9 @@ from .identity_evidence_policy import (
 )
 from .read_models.message_price_payload import message_price_payload
 from .repositories.asset_profile_repository import AssetProfileRepository
-from .repositories.asset_repository import AssetRepository
 from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.enriched_event_repository import EnrichedEventRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
-from .repositories.market_repository import MarketRepository
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
 from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
@@ -41,12 +39,10 @@ __all__ = [
     "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
     "EVIDENCE_TWEET_CONTRACT_MENTION",
     "AssetProfileRepository",
-    "AssetRepository",
     "DiscoveryRepository",
     "EnrichedEventCapture",
     "EnrichedEventRepository",
     "IdentityEvidenceRepository",
-    "MarketRepository",
     "MarketTickRepository",
     "RegistryRepository",
     "TokenCaptureTierRepository",

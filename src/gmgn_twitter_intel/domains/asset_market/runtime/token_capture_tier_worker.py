@@ -93,9 +93,7 @@ def project_once(
     tier1_keys = {(candidate.target_type, candidate.target_id) for candidate in tier1}
 
     tier2_pool = [
-        candidate
-        for candidate in candidates
-        if (candidate.target_type, candidate.target_id) not in tier1_keys
+        candidate for candidate in candidates if (candidate.target_type, candidate.target_id) not in tier1_keys
     ]
     tier2 = tier2_pool[:resolved_poll_limit]
     tier2_keys = {(candidate.target_type, candidate.target_id) for candidate in tier2}
@@ -136,8 +134,7 @@ def project_once(
         )
 
     active_keys = [
-        {"target_type": target_type, "target_id": target_id}
-        for target_type, target_id in (*tier1_keys, *tier2_keys)
+        {"target_type": target_type, "target_id": target_id} for target_type, target_id in (*tier1_keys, *tier2_keys)
     ]
     repos.token_capture_tiers.demote_absent_hot_rows(
         active_keys=active_keys,

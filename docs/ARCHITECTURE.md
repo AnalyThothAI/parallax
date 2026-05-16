@@ -2,7 +2,7 @@
 
 > **Scope.** Owns Python-service package boundaries, dependency direction, and conceptual data flow for `gmgn-twitter-intel`. Frontend (`web/`) architecture lives in `FRONTEND.md`. Public interface contracts live in `CONTRACTS.md`.
 
-The service is organised around domain packages, explicit integration adapters, platform infrastructure, and app surfaces. Boundaries are mechanically enforced by `tests/test_src_domain_architecture.py` and `tests/test_project_structure.py::test_project_uses_domain_package_src_layout`.
+The service is organised around domain packages, explicit integration adapters, platform infrastructure, and app surfaces. Boundaries are mechanically enforced by `tests/architecture/test_src_domain_architecture.py` and `tests/architecture/test_project_structure.py::test_project_uses_domain_package_src_layout`.
 
 ```
 GMGN public stream
@@ -191,9 +191,11 @@ types/config → repositories/queries → services/scoring → read_models/runti
 | `platform/*` | stdlib, third-party. **Never** imports `domains/`, `integrations/`, or `app/`. |
 | `integrations/*` | stdlib, third-party, `platform/*`. They wrap external APIs; they do not import `domains/` or `app/`. |
 
-Cross-domain imports MUST go through the target domain's `interfaces.py` (or `_constants.py` for leaf data). `tests/test_src_domain_architecture.py::test_cross_domain_imports_use_interfaces` enforces this.
+Cross-domain imports MUST go through the target domain's `interfaces.py` (or `_constants.py` for leaf data). `tests/architecture/test_src_domain_architecture.py::test_cross_domain_imports_use_interfaces` enforces this.
 
-Raw SQL (`conn.execute(...)`) lives ONLY in `repositories/`, `queries/`, `platform/db/`, or `app/runtime/` health checks. `tests/test_src_domain_architecture.py::test_raw_sql_is_owned_by_repositories_queries_or_app_runtime` enforces this.
+Raw SQL (`conn.execute(...)`) lives ONLY in `repositories/`, `queries/`, `platform/db/`, or `app/runtime/` health checks. `tests/architecture/test_src_domain_architecture.py::test_raw_sql_is_owned_by_repositories_queries_or_app_runtime` enforces this.
+
+Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` tables have no runtime writers. `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_tables_have_no_runtime_writers` enforces this; `test_legacy_asset_repository_is_not_imported` bans the deleted `AssetRepository` / `MarketRepository` classes. Closed-loop harness market reads now go through `RegistryRepository.chain_token_market_target(...)` + `MarketTickRepository.latest_at_or_before(...)` rather than `asset_market_snapshots`.
 
 Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
 

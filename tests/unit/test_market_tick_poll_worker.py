@@ -543,11 +543,7 @@ class FakeTokenCaptureTiers:
         rows = list(self.rows)
         if exclude_keys:
             excluded = {(item["target_type"], item["target_id"]) for item in exclude_keys}
-            rows = [
-                row
-                for row in rows
-                if (str(row["target_type"]), str(row["target_id"])) not in excluded
-            ]
+            rows = [row for row in rows if (str(row["target_type"]), str(row["target_id"])) not in excluded]
         if self.sort_fresh_targets_last:
             fresh = self.market_ticks.inserted_target_ids
             rows.sort(key=lambda row: (str(row["target_id"]) in fresh, str(row["target_id"])))

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
+from typing import Any
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.repositories.identity_evidence_repository import (
     IdentityEvidenceRepository,
 )
@@ -104,10 +104,10 @@ def open_token_radar_runtime(tmp_path):
     return conn, repos, ingest
 
 
-def insert_base_versa_asset(assets: AssetRepository, *, observed_at_ms: int | None = None) -> None:
+def insert_base_versa_asset(conn: Any, *, observed_at_ms: int | None = None) -> None:
     now_ms = observed_at_ms if observed_at_ms is not None else int(time.time() * 1000)
-    registry = RegistryRepository(assets.conn)
-    identity = IdentityEvidenceRepository(assets.conn)
+    registry = RegistryRepository(conn)
+    identity = IdentityEvidenceRepository(conn)
     asset = registry.upsert_chain_asset(
         chain_id="base",
         address=VERSA_BASE_CA,
@@ -132,4 +132,4 @@ def insert_base_versa_asset(assets: AssetRepository, *, observed_at_ms: int | No
         now_ms=now_ms,
         commit=False,
     )
-    assets.conn.commit()
+    conn.commit()

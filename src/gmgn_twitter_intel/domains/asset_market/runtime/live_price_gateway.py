@@ -218,10 +218,7 @@ class LivePriceGateway(WorkerBase):
     ) -> dict[tuple[str, str], dict[str, Any]]:
         if not targets:
             return {}
-        request = [
-            {"target_type": target["target_type"], "target_id": target["target_id"]}
-            for target in targets
-        ]
+        request = [{"target_type": target["target_type"], "target_id": target["target_id"]} for target in targets]
         with self.db.worker_session(self.name) as repos:
             return repos.market_ticks.latest_for_targets(
                 targets=request,
@@ -241,11 +238,7 @@ class LivePriceGateway(WorkerBase):
         quote_symbol = target.get("quote_symbol")
         price_basis = "usd" if price_usd is not None else "unavailable"
         if target["target_type"] == "cex_symbol" and quote_symbol:
-            price_basis = (
-                "quote_as_usd"
-                if str(quote_symbol).upper() in {"USD", "USDT", "USDC"}
-                else "quote"
-            )
+            price_basis = "quote_as_usd" if str(quote_symbol).upper() in {"USD", "USDT", "USDC"} else "quote"
         snapshot = LiveMarketSnapshot(
             target_type=str(target["target_type"]),
             target_id=str(target["target_id"]),

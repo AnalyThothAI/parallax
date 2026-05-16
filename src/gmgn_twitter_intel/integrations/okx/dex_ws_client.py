@@ -76,9 +76,7 @@ class OkxDexWebSocketMarketProvider:
                 self._set_connection_state("connecting")
                 websocket = await websockets.connect(self.url, ping_interval=20, close_timeout=5)
                 self._set_connection_state("authenticating")
-                await websocket.send(
-                    json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase))
-                )
+                await websocket.send(json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase)))
                 await _wait_for_login(websocket)
                 self._websocket = websocket
                 websocket = None

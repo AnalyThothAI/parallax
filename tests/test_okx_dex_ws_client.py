@@ -137,12 +137,8 @@ def test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnecting(mo
 
     async def scenario() -> None:
         await provider.ensure_connected()
-        await provider.replace_subscriptions(
-            [{"chainIndex": "1", "tokenContractAddress": "0xabc"}]
-        )
-        await provider.replace_subscriptions(
-            [{"chainIndex": "1", "tokenContractAddress": "0xdef"}]
-        )
+        await provider.replace_subscriptions([{"chainIndex": "1", "tokenContractAddress": "0xabc"}])
+        await provider.replace_subscriptions([{"chainIndex": "1", "tokenContractAddress": "0xdef"}])
         await provider.aclose()
 
     asyncio.run(scenario())
@@ -178,9 +174,7 @@ def test_okx_dex_ws_provider_reconnects_after_recv_failure(monkeypatch):
     )
 
     async def scenario() -> None:
-        await provider.replace_subscriptions(
-            [{"chainIndex": "1", "tokenContractAddress": "0xabc"}]
-        )
+        await provider.replace_subscriptions([{"chainIndex": "1", "tokenContractAddress": "0xabc"}])
         iterator = provider.iter_price_info().__aiter__()
         with pytest.raises(RuntimeError, match="connection closed"):
             await iterator.__anext__()

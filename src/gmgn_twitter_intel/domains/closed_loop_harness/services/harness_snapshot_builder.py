@@ -28,11 +28,16 @@ RISK_VERSION = "shadow-risk-v1"
 BASELINE_VERSION = "benchmark-zero-v1"
 HORIZONS = ("6h", "24h")
 
+ENTRY_MARKET_MAX_LAG_MS = 60 * 60_000
+BASELINE_MARKET_MAX_LAG_MS = 60 * 60_000
+RESOLVED_REGISTRY_STATUSES = ("candidate", "canonical")
+
 
 class HarnessSnapshotBuilder:
-    def __init__(self, harness: Any, *, assets: Any = None) -> None:
+    def __init__(self, harness: Any, *, registry: Any = None, market_ticks: Any = None) -> None:
         self.harness = harness
-        self.assets = assets
+        self.registry = registry
+        self.market_ticks = market_ticks
 
     def materialize(
         self,
@@ -87,16 +92,12 @@ class HarnessSnapshotBuilder:
         direction = _direction(extraction.direction_hint)
         resolved_assets = _resolved_candidate_assets(
             extraction.token_candidates,
-            self.assets,
-            event_id=event_id,
-            received_at_ms=received_at_ms,
-            commit=commit,
+            self.registry,
         )
         eligible_assets = [
             asset
             for asset in resolved_assets
-            if direction != 0
-            and _entry_market_ready(self.assets, asset_id=str(asset["asset"]), received_at_ms=received_at_ms)
+            if direction != 0 and self._entry_market_ready(asset_id=str(asset["asset"]), received_at_ms=received_at_ms)
         ]
         seed_status = _seed_status(
             resolved_count=len(resolved_assets),
@@ -213,16 +214,44 @@ class HarnessSnapshotBuilder:
         return cluster
 
     def _pricedness(self, *, asset: str, received_at_ms: int) -> float:
-        if self.assets is None:
+        if self.registry is None or self.market_ticks is None:
             return 0.0
-        current = self.assets.market_snapshot_at_or_before(asset, received_at_ms)
-        baseline = self.assets.market_snapshot_at_or_before(asset, max(0, received_at_ms - 30 * 60_000))
+        target = self.registry.chain_token_market_target(asset)
+        if target is None:
+            return 0.0
+        current = self.market_ticks.latest_at_or_before(
+            target_type=target["target_type"],
+            target_id=target["target_id"],
+            at_ms=received_at_ms,
+            max_lag_ms=BASELINE_MARKET_MAX_LAG_MS,
+        )
+        baseline = self.market_ticks.latest_at_or_before(
+            target_type=target["target_type"],
+            target_id=target["target_id"],
+            at_ms=max(0, received_at_ms - 30 * 60_000),
+            max_lag_ms=BASELINE_MARKET_MAX_LAG_MS,
+        )
         current_price = _float_or_none(current.get("price_usd")) if current else None
         baseline_price = _float_or_none(baseline.get("price_usd")) if baseline else None
         if current_price is None or not baseline_price:
             return 0.0
         pre_move = abs((current_price - baseline_price) / baseline_price)
         return max(0.0, min(pre_move / 0.20, 1.0))
+
+    def _entry_market_ready(self, *, asset_id: str, received_at_ms: int) -> bool:
+        if self.registry is None or self.market_ticks is None:
+            return False
+        target = self.registry.chain_token_market_target(asset_id)
+        if target is None:
+            return False
+        tick = self.market_ticks.latest_at_or_before(
+            target_type=target["target_type"],
+            target_id=target["target_id"],
+            at_ms=received_at_ms,
+            max_lag_ms=ENTRY_MARKET_MAX_LAG_MS,
+        )
+        price = _float_or_none(tick.get("price_usd")) if tick else None
+        return price is not None
 
     def _snapshot_and_decision(
         self,
@@ -289,88 +318,47 @@ class HarnessSnapshotBuilder:
 
 def _resolved_candidate_assets(
     candidates: list[SocialTokenCandidate],
-    assets: Any,
-    *,
-    event_id: str,
-    received_at_ms: int,
-    commit: bool,
+    registry: Any,
 ) -> list[dict[str, str]]:
-    if assets is None:
+    if registry is None:
         return []
     resolved: list[dict[str, str]] = []
     seen: set[str] = set()
     for candidate in candidates:
-        asset = _asset_for_candidate(
-            assets,
-            candidate,
-            event_id=event_id,
-            received_at_ms=received_at_ms,
-            commit=commit,
-        )
-        if asset is None or asset["asset_id"] in seen:
+        asset = _asset_for_candidate(registry, candidate)
+        if asset is None:
             continue
-        symbol = str(asset.get("canonical_symbol") or candidate.symbol or candidate.project_name or asset["asset_id"])
+        asset_id = str(asset["asset_id"])
+        if asset_id in seen:
+            continue
+        symbol = str(asset.get("symbol") or candidate.symbol or candidate.project_name or asset_id)
         display_symbol = symbol.strip().lstrip("$").upper() if symbol.isascii() else symbol
-        resolved.append({"asset": str(asset["asset_id"]), "symbol": display_symbol})
-        seen.add(str(asset["asset_id"]))
+        resolved.append({"asset": asset_id, "symbol": display_symbol})
+        seen.add(asset_id)
         if len(resolved) >= 3:
             break
     return resolved
 
 
 def _asset_for_candidate(
-    assets: Any,
+    registry: Any,
     candidate: SocialTokenCandidate,
-    *,
-    event_id: str,
-    received_at_ms: int,
-    commit: bool,
 ) -> dict[str, Any] | None:
     if candidate.address and candidate.chain:
-        result = assets.upsert_dex_asset(
-            chain=_asset_chain(candidate.chain),
+        matches = registry.find_assets_by_address(
+            chain_id=candidate.chain,
             address=candidate.address,
-            symbol=candidate.symbol or candidate.project_name or candidate.address,
-            observed_at_ms=received_at_ms,
-            event_id=event_id,
-            provider="social_event_extraction",
-            commit=commit,
         )
-        asset_result: dict[str, Any] | None = result.asset
-        return asset_result
+        for row in matches:
+            if str(row.get("status") or "") in RESOLVED_REGISTRY_STATUSES:
+                return dict(row)
+        return None
     if candidate.symbol:
-        candidates = _real_candidates(assets.candidates_for_symbol(candidate.symbol))
-        asset_ids = {str(row["asset_id"]): row for row in candidates if row.get("asset_id")}
-        if len(asset_ids) == 1:
-            return next(iter(asset_ids.values()))
+        matches = registry.find_assets_by_symbol_with_identity_metadata(candidate.symbol)
+        eligible = [row for row in matches if str(row.get("status") or "") in RESOLVED_REGISTRY_STATUSES]
+        if len(eligible) == 1:
+            return dict(eligible[0])
     return None
-
-
-def _asset_chain(chain: str) -> str:
-    normalized = chain.strip().lower()
-    aliases = {
-        "eth": "ethereum",
-        "sol": "solana",
-        "bnb": "bsc",
-    }
-    return aliases.get(normalized, normalized)
-
-
-def _real_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        candidate
-        for candidate in candidates
-        if str(candidate.get("identity_status") or "") == "resolved"
-        and not str(candidate.get("asset_id") or "").startswith(("asset:unresolved", "asset:ambiguous"))
-    ]
-
-
-def _entry_market_ready(assets: Any, *, asset_id: str, received_at_ms: int) -> bool:
-    if assets is None:
-        return False
-    snapshot = assets.market_snapshot_at_or_before(asset_id, received_at_ms)
-    price = _float_or_none(snapshot.get("price_usd")) if snapshot else None
-    return price is not None
 
 
 def _seed_status(*, resolved_count: int, eligible_count: int, direction: int) -> str:

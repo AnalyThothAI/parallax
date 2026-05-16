@@ -30,26 +30,16 @@ _TABLES = (
 
 def upgrade() -> None:
     for table in _TABLES:
-        op.execute(
-            f"ALTER TABLE {table} "
-            f"ADD COLUMN IF NOT EXISTS safety_net_used BOOLEAN NOT NULL DEFAULT FALSE"
-        )
-        op.execute(
-            f"ALTER TABLE {table} "
-            f"ADD COLUMN IF NOT EXISTS safety_net_retries INTEGER NOT NULL DEFAULT 0"
-        )
-        op.execute(
-            f"ALTER TABLE {table} "
-            f"ADD COLUMN IF NOT EXISTS parse_mode TEXT NOT NULL DEFAULT 'strict'"
-        )
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS safety_net_used BOOLEAN NOT NULL DEFAULT FALSE")
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS safety_net_retries INTEGER NOT NULL DEFAULT 0")
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS parse_mode TEXT NOT NULL DEFAULT 'strict'")
 
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_pulse_agent_run_steps_safety_net "
         "ON pulse_agent_run_steps(safety_net_used, started_at_ms DESC)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_model_runs_safety_net "
-        "ON model_runs(safety_net_used, finished_at_ms DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_model_runs_safety_net ON model_runs(safety_net_used, finished_at_ms DESC)"
     )
 
 

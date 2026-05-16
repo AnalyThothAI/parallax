@@ -117,6 +117,24 @@ TOKEN_RADAR_WRITE_OWNER_ALLOWLIST = {
     SRC / "domains/token_intel/repositories/token_radar_repository.py",
 }
 
+SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
+    "token_radar_rows": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
+    "token_capture_tier": {
+        SRC / "domains/asset_market/repositories/token_capture_tier_repository.py",
+    },
+    "pulse_candidates": {
+        SRC / "domains/pulse_lab/repositories/pulse_repository.py",
+    },
+    "pulse_agent_runs": {
+        SRC / "domains/pulse_lab/repositories/pulse_repository.py",
+    },
+    "pulse_agent_run_steps": {
+        SRC / "domains/pulse_lab/repositories/pulse_repository.py",
+    },
+}
+
+LEGACY_ASSET_TABLES = ("assets", "asset_aliases", "asset_venues", "asset_market_snapshots")
+
 
 @pytest.mark.architecture
 @pytest.mark.parametrize(("worker_key", "qualified_name"), EXPECTED_WORKERS.items())
@@ -275,14 +293,49 @@ def test_wake_bus_is_emit_only() -> None:
 
 
 @pytest.mark.architecture
-def test_read_model_single_writers() -> None:
-    write_pattern = re.compile(r"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+token_radar_rows\b", re.IGNORECASE)
+@pytest.mark.parametrize("table_name", sorted(SINGLE_WRITER_READ_MODELS))
+def test_read_model_single_writers(table_name: str) -> None:
+    allowlist = SINGLE_WRITER_READ_MODELS[table_name]
+    write_pattern = re.compile(
+        rf"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+{re.escape(table_name)}\b",
+        re.IGNORECASE,
+    )
     violations = [
-        f"{_rel(path)} writes token_radar_rows"
+        f"{_rel(path)} writes {table_name}"
         for path in SRC.rglob("*.py")
-        if path not in TOKEN_RADAR_WRITE_OWNER_ALLOWLIST
+        if path not in allowlist
         and "alembic/versions" not in path.as_posix()
         and write_pattern.search(path.read_text())
+    ]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+@pytest.mark.parametrize("table_name", LEGACY_ASSET_TABLES)
+def test_legacy_asset_tables_have_no_runtime_writers(table_name: str) -> None:
+    write_pattern = re.compile(
+        rf"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+{re.escape(table_name)}\b",
+        re.IGNORECASE,
+    )
+    violations = [
+        f"{_rel(path)} writes legacy table {table_name}"
+        for path in SRC.rglob("*.py")
+        if "alembic/versions" not in path.as_posix() and write_pattern.search(path.read_text())
+    ]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_legacy_asset_repository_is_not_imported() -> None:
+    forbidden_imports = re.compile(
+        r"\b(?:AssetRepository|MarketRepository|asset_repository|market_repository)\b",
+    )
+    violations = [
+        f"{_rel(path)} references legacy AssetRepository/MarketRepository"
+        for path in SRC.rglob("*.py")
+        if forbidden_imports.search(path.read_text())
     ]
 
     assert violations == []

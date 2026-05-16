@@ -317,11 +317,7 @@ class OpenAIAgentsPulseDecisionClient:
                 )
                 raw_output = result.final_output
                 audit_extra = {**audit_extra, "usage": _extract_usage(result)}
-            output = (
-                raw_output
-                if isinstance(raw_output, output_type)
-                else output_type.model_validate(raw_output)
-            )
+            output = raw_output if isinstance(raw_output, output_type) else output_type.model_validate(raw_output)
         except SafetyNetExhausted as exhausted:
             finished = int(time.time() * 1000)
             audit_extra = exhausted.audit_extra
