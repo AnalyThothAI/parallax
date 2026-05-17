@@ -10,6 +10,7 @@ from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runt
 from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _post_range, _scope, _target_type, _window
+from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
@@ -96,6 +97,7 @@ def search_inspect(
             targets=repos.token_targets,
             profiles=profiles,
             live_price_gateway=_worker_object(runtime, "live_price_gateway"),
+            market_candles=_market_candles_service(runtime),
         ).inspect(
             q,
             window=parsed_window,
@@ -132,6 +134,7 @@ def token_case(
                 targets=repos.token_targets,
                 profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
                 live_price_gateway=_worker_object(runtime, "live_price_gateway"),
+                market_candles=_market_candles_service(runtime),
             ).dossier(
                 target_type=parsed_target_type,
                 target_id=target_id,
@@ -207,7 +210,10 @@ def target_social_timeline(
     parsed_scope = _scope(scope)
     try:
         with runtime.repositories() as repos:
-            data = TokenTargetSocialTimelineService(targets=repos.token_targets).timeline(
+            data = TokenTargetSocialTimelineService(
+                targets=repos.token_targets,
+                market_candles=_market_candles_service(runtime),
+            ).timeline(
                 target_type=parsed_target_type,
                 target_id=target_id,
                 window=parsed_window,
@@ -218,3 +224,11 @@ def target_social_timeline(
     except TokenTargetCursorError:
         return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
     return _json({"ok": True, "data": data})
+
+
+def _market_candles_service(runtime: object) -> MarketCandlesService:
+    providers = getattr(getattr(runtime, "providers", None), "asset_market", None)
+    return MarketCandlesService(
+        cex_market=getattr(providers, "message_cex_market", None),
+        dex_candle_market=getattr(providers, "dex_candle_market", None),
+    )

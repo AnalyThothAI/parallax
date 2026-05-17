@@ -24,10 +24,18 @@ def normalize_token_case_scope(scope: str) -> tuple[str, str]:
 
 
 class TokenCaseService:
-    def __init__(self, *, targets: Any, profiles: Any, live_price_gateway: Any | None) -> None:
+    def __init__(
+        self,
+        *,
+        targets: Any,
+        profiles: Any,
+        live_price_gateway: Any | None,
+        market_candles: Any | None = None,
+    ) -> None:
         self.targets = targets
         self.profiles = profiles
         self.live_price_gateway = live_price_gateway
+        self.market_candles = market_candles
 
     def dossier(
         self,
@@ -43,7 +51,10 @@ class TokenCaseService:
         if target is None:
             raise TokenCaseTargetNotFound(target_id)
         service_scope, response_scope = normalize_token_case_scope(scope)
-        timeline = TokenTargetSocialTimelineService(targets=self.targets).timeline(
+        timeline = TokenTargetSocialTimelineService(
+            targets=self.targets,
+            market_candles=self.market_candles,
+        ).timeline(
             target_type=target_type,
             target_id=target_id,
             window=window,

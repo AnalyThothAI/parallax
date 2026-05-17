@@ -12,8 +12,9 @@ from .token_target_stage_builder import build_token_target_stages
 
 
 class TokenTargetSocialTimelineService:
-    def __init__(self, *, targets: Any) -> None:
+    def __init__(self, *, targets: Any, market_candles: Any | None = None) -> None:
         self.targets = targets
+        self.market_candles = market_candles
 
     def timeline(
         self,
@@ -42,6 +43,9 @@ class TokenTargetSocialTimelineService:
         has_more = len(rows) > len(page_rows)
         next_cursor = encode_target_cursor(page_rows[-1]) if has_more and page_rows else None
         stage_build = build_token_target_stages(page_rows)
+        market_candles = _market_candles(page_rows)
+        if self.market_candles is not None:
+            market_candles = self.market_candles.enrich_market_candles(market_candles, window=window)
         return {
             "query": {
                 "target_type": target_type,
@@ -51,7 +55,7 @@ class TokenTargetSocialTimelineService:
                 "bucket": bucket_label,
             },
             "summary": _summary(page_rows),
-            "market_candles": _market_candles(page_rows),
+            "market_candles": market_candles,
             "stages": stage_build.stages,
             "buckets": _buckets(
                 page_rows,

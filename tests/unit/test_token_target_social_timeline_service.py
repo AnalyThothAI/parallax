@@ -84,6 +84,40 @@ def test_cex_target_timeline_uses_pricefeed_market_candles():
     assert result["market_candles"]["native_market_id"] == "BTC-USDT"
 
 
+def test_target_timeline_enriches_market_candles_when_provider_is_wired():
+    market_candles = FakeMarketCandles()
+    service = TokenTargetSocialTimelineService(
+        targets=FakeTargets(
+            rows=[
+                timeline_row(
+                    target_type="CexToken",
+                    target_id="cex_token:BTC",
+                    symbol="BTC",
+                    provider="okx",
+                    native_market_id="BTC-USDT",
+                    quote_symbol="USDT",
+                    feed_type="cex_spot",
+                )
+            ]
+        ),
+        market_candles=market_candles,
+    )
+
+    result = service.timeline(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        window="1h",
+        scope="all",
+        limit=50,
+        now_ms=1_700_000_060_000,
+    )
+
+    assert market_candles.calls == [("1h", "CexToken", "BTC-USDT")]
+    assert result["market_candles"]["price_series_type"] == "ohlc"
+    assert result["market_candles"]["candle_status"] == "ready"
+    assert len(result["market_candles"]["candles"]) == 1
+
+
 def test_social_timeline_cursor_is_timestamp_and_event_id():
     targets = FakeTargets(
         rows=[
@@ -135,6 +169,20 @@ class FakeTargets:
                 row for row in rows if (int(row["received_at_ms"]), str(row["event_id"])) < (cursor_ms, cursor_event_id)
             ]
         return rows[:limit]
+
+
+class FakeMarketCandles:
+    def __init__(self):
+        self.calls = []
+
+    def enrich_market_candles(self, payload, *, window):
+        self.calls.append((window, payload["target_type"], payload["native_market_id"]))
+        return {
+            **payload,
+            "price_series_type": "ohlc",
+            "candle_status": "ready",
+            "candles": [{"time_ms": 1_700_000_000_000, "open": 1.0, "high": 2.0, "low": 0.9, "close": 1.5}],
+        }
 
 
 def timeline_row(
