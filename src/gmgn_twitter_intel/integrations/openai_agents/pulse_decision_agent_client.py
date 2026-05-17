@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import inspect
 import json
 import time
@@ -22,21 +21,13 @@ from agents import (
 )
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
-from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
-    BACKEND,
-    PULSE_DECISION_PROMPT_VERSION,
-    PULSE_DECISION_SCHEMA_VERSION,
-)
-from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import (
-    fetch_evidence_event_urls,
-)
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import pulse_harness_hash
-from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
-    load_decision_maker_prompt,
-    load_investigator_prompt,
+from gmgn_twitter_intel.domains.pulse_lab.providers import (
+    DEFAULT_PULSE_AGENT_HARNESS_CONTRACT,
+    PulseAgentHarnessContract,
+    PulseAgentToolRuntimeFactory,
+    PulseDecisionRuntime,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
-    BullBearView,
     DecisionRoute,
     FinalDecision,
     InvestigationReport,
@@ -59,8 +50,6 @@ from gmgn_twitter_intel.integrations.openai_agents.tools import (
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionDesk"
-
-_DEFAULT_INVESTIGATOR_BUDGETS: dict[str, int] = {"cex": 3, "meme": 5, "research_only": 3}
 
 
 @dataclass(frozen=True)
@@ -166,7 +155,8 @@ class OpenAIAgentsPulseDecisionClient:
         api_key: str,
         model: str,
         llm_gateway: Any,
-        db_pool: Any,
+        tool_runtime_factory: PulseAgentToolRuntimeFactory,
+        decision_runtime: PulseDecisionRuntime,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
         runner: Any | None = None,
@@ -185,10 +175,13 @@ class OpenAIAgentsPulseDecisionClient:
             raise ValueError("llm.pulse_agent_model or llm.model is required")
         if llm_gateway is None:
             raise ValueError("llm_gateway is required")
-        if db_pool is None:
-            raise ValueError("db_pool is required for Investigator tools")
+        if tool_runtime_factory is None:
+            raise ValueError("tool_runtime_factory is required for Investigator tools")
+        if decision_runtime is None:
+            raise ValueError("decision_runtime is required")
         self._llm_gateway = llm_gateway
-        self._db_pool = db_pool
+        self._tool_runtime_factory = tool_runtime_factory
+        self._decision_runtime = decision_runtime
         self.base_url = _api_base(base_url)
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
@@ -197,9 +190,7 @@ class OpenAIAgentsPulseDecisionClient:
         self._runner = runner or Runner
         self._safety_net = safety_net
         self._model = None if runner is not None else self._build_model()
-        self._investigator_max_tool_calls_by_route = dict(
-            investigator_max_tool_calls_by_route or _DEFAULT_INVESTIGATOR_BUDGETS
-        )
+        self._investigator_max_tool_calls_by_route = dict(investigator_max_tool_calls_by_route or {})
         self._decision_maker_enable_fallback_tool = bool(decision_maker_enable_fallback_tool)
         self._decision_maker_max_turns = max(1, int(decision_maker_max_turns))
         self._investigator_max_turns = max(1, int(investigator_max_turns))
@@ -207,6 +198,32 @@ class OpenAIAgentsPulseDecisionClient:
     @property
     def artifact_version_hash(self) -> str:
         return f"artifact:{self.model}"
+
+    @property
+    def harness_contract(self) -> PulseAgentHarnessContract:
+        decision_tools = ("get_target_recent_tweets",) if self._decision_maker_enable_fallback_tool else ()
+        route_budgets = (
+            dict(self._investigator_max_tool_calls_by_route)
+            or dict(DEFAULT_PULSE_AGENT_HARNESS_CONTRACT.route_tool_budgets)
+        )
+        return PulseAgentHarnessContract(
+            stage_names=("investigator", "decision_maker"),
+            max_turns_per_stage={
+                "investigator": self._investigator_max_turns,
+                "decision_maker": self._decision_maker_max_turns,
+            },
+            tool_names_by_stage={
+                "investigator": (
+                    "get_target_recent_tweets",
+                    "get_target_price_action",
+                    "get_official_token_profile",
+                ),
+                "decision_maker": decision_tools,
+            },
+            route_tool_budgets=route_budgets,
+            decision_maker_fallback_tool_enabled=self._decision_maker_enable_fallback_tool,
+            safety_net_enabled=self._safety_net is not None,
+        )
 
     def request_audit(
         self,
@@ -218,13 +235,17 @@ class OpenAIAgentsPulseDecisionClient:
         completeness: dict[str, Any],
         harness: dict[str, Any],
     ) -> dict[str, Any]:
-        return self._request_audit(
+        return self._decision_runtime.request_audit(
             context=context,
             run_id=run_id,
             job=job,
             route=route,
             completeness=completeness,
             harness=harness,
+            model=self.model,
+            artifact_version_hash=self.artifact_version_hash,
+            workflow_name=self.workflow_name,
+            agent_name=AGENT_NAME,
         )
 
     async def run_decision_pipeline(
@@ -237,22 +258,25 @@ class OpenAIAgentsPulseDecisionClient:
         completeness: dict[str, Any],
         harness: dict[str, Any],
     ) -> PulseDecisionAgentResult:
-        audit = self._request_audit(
+        audit = self._decision_runtime.request_audit(
             context=context,
             run_id=run_id,
             job=job,
             route=route,
             completeness=completeness,
             harness=harness,
+            model=self.model,
+            artifact_version_hash=self.artifact_version_hash,
+            workflow_name=self.workflow_name,
+            agent_name=AGENT_NAME,
         )
-        tool_budget = int(
-            self._investigator_max_tool_calls_by_route.get(str(route), _DEFAULT_INVESTIGATOR_BUDGETS.get(str(route), 3))
+        tool_budget = self._decision_runtime.tool_budget_for_route(
+            route=route,
+            budgets=self._investigator_max_tool_calls_by_route,
         )
+        tool_runtime = self._tool_runtime_factory(investigator_max_tool_calls=tool_budget)
         tool_ctx = PulseToolContext(
-            db_pool=self._db_pool,
-            tool_calls_count=0,
-            investigator_max_tool_calls=tool_budget,
-            contributed_event_ids=set(),
+            tool_runtime=tool_runtime,
         )
 
         # Stage 1: Investigator (multi-turn, with tools).
@@ -275,9 +299,13 @@ class OpenAIAgentsPulseDecisionClient:
         # Hallucination guard: bull/bear supporting_event_ids must come from
         # tool contributions or upstream context evidence.
         try:
-            self._validate_supporting_ids(investigation, tool_ctx=tool_ctx, context=context)
+            self._decision_runtime.validate_supporting_ids(
+                investigation,
+                tool_runtime=tool_runtime,
+                context=context,
+            )
         except ValueError as exc:
-            failed_step = _mark_step_failed(investigator_step, error=str(exc))
+            failed_step = self._decision_runtime.mark_step_failed(investigator_step, error=str(exc))
             stage_audits[-1] = failed_step
             raise PulseStageFailure(
                 f"investigator stage failed: {exc}",
@@ -302,14 +330,14 @@ class OpenAIAgentsPulseDecisionClient:
             )
         final = FinalDecision.model_validate(decision_step.response_json)
         try:
-            self._validate_final_evidence_ids(
+            self._decision_runtime.validate_final_evidence_ids(
                 final,
                 investigation=investigation,
-                tool_ctx=tool_ctx,
+                tool_runtime=tool_runtime,
                 context=context,
             )
         except ValueError as exc:
-            failed_step = _mark_step_failed(decision_step, error=str(exc))
+            failed_step = self._decision_runtime.mark_step_failed(decision_step, error=str(exc))
             stage_audits[-1] = failed_step
             raise PulseStageFailure(
                 f"decision_maker stage failed: {exc}",
@@ -317,10 +345,10 @@ class OpenAIAgentsPulseDecisionClient:
             ) from exc
 
         # Evidence URL enrichment (best-effort JOIN against events).
-        final = await self._enrich_evidence_urls(final)
+        final = self._decision_runtime.enrich_evidence_urls(final)
 
         PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
-        audit = {**audit, "output_hash": _sha256(final.model_dump(mode="json"))}
+        audit = self._decision_runtime.with_output_hash(audit, final=final)
         return PulseDecisionAgentResult(
             final_decision=final,
             run_audit=audit,
@@ -337,10 +365,14 @@ class OpenAIAgentsPulseDecisionClient:
         audit: dict[str, Any],
         tool_ctx: PulseToolContext,
     ) -> StageRunAudit:
-        prompt = load_investigator_prompt(route)
+        spec = self._decision_runtime.investigator_stage_spec(
+            route=route,
+            context=context,
+            completeness=completeness,
+        )
         agent = Agent[PulseToolContext](
             name=f"PulseInvestigator{_route_label(route)}",
-            instructions=prompt,
+            instructions=spec.prompt_text,
             output_type=_JsonOutputSchema(InvestigationReport),
             tools=[
                 get_target_recent_tweets,
@@ -350,14 +382,13 @@ class OpenAIAgentsPulseDecisionClient:
             model=self._model,
             model_settings=_model_settings(),
         )
-        input_payload = {"route": route, "context": context, "completeness": completeness}
         return await self._run_stage(
             stage="investigator",
             route=route,
             agent=agent,
             output_type=InvestigationReport,
-            input_payload=input_payload,
-            prompt=prompt,
+            input_payload=spec.input_payload,
+            prompt=spec.prompt_text,
             audit=audit,
             tool_ctx=tool_ctx,
             max_turns=self._investigator_max_turns,
@@ -374,29 +405,28 @@ class OpenAIAgentsPulseDecisionClient:
         audit: dict[str, Any],
         tool_ctx: PulseToolContext,
     ) -> StageRunAudit:
-        prompt = load_decision_maker_prompt(route)
+        spec = self._decision_runtime.decision_maker_stage_spec(
+            route=route,
+            context=context,
+            completeness=completeness,
+            investigation=investigation,
+        )
         tools = [get_target_recent_tweets] if self._decision_maker_enable_fallback_tool else []
         agent = Agent[PulseToolContext](
             name=f"PulseDecisionMaker{_route_label(route)}",
-            instructions=prompt,
+            instructions=spec.prompt_text,
             output_type=_JsonOutputSchema(FinalDecision),
             tools=tools,
             model=self._model,
             model_settings=_model_settings(),
         )
-        input_payload = {
-            "route": route,
-            "context": context,
-            "completeness": completeness,
-            "investigation": investigation.model_dump(mode="json"),
-        }
         return await self._run_stage(
             stage="decision_maker",
             route=route,
             agent=agent,
             output_type=FinalDecision,
-            input_payload=input_payload,
-            prompt=prompt,
+            input_payload=spec.input_payload,
+            prompt=spec.prompt_text,
             audit=audit,
             tool_ctx=tool_ctx,
             max_turns=self._decision_maker_max_turns,
@@ -545,131 +575,6 @@ class OpenAIAgentsPulseDecisionClient:
             parse_mode=str(audit_extra.get("parse_mode") or "strict"),
         )
 
-    def _validate_supporting_ids(
-        self,
-        investigation: InvestigationReport,
-        *,
-        tool_ctx: PulseToolContext,
-        context: dict[str, Any],
-    ) -> None:
-        """Reject Investigator output that cites event_ids the model invented.
-
-        Allowed ids = ``tool_ctx.contributed_event_ids`` (every event id any
-        tool actually returned) plus event ids the worker provided up-front in
-        ``context.evidence_event_ids`` / ``context.source_event_ids``.
-        """
-
-        allowed: set[str] = set(tool_ctx.contributed_event_ids)
-        for key in ("evidence_event_ids", "source_event_ids"):
-            values = context.get(key) if isinstance(context, dict) else None
-            if isinstance(values, list):
-                for value in values:
-                    if isinstance(value, str) and value.strip():
-                        allowed.add(value.strip())
-        for view_name in ("bull_observation", "bear_observation"):
-            view: BullBearView = getattr(investigation, view_name)
-            if view.strength == "absent":
-                continue
-            unknown = [eid for eid in view.supporting_event_ids if eid not in allowed]
-            if unknown:
-                preview = unknown[:5]
-                suffix = "..." if len(unknown) > 5 else ""
-                raise ValueError(
-                    f"{view_name}.supporting_event_ids contains unknown event ids "
-                    f"(not in tool contributions or context): {preview}{suffix}"
-                )
-
-    def _validate_final_evidence_ids(
-        self,
-        final: FinalDecision,
-        *,
-        investigation: InvestigationReport,
-        tool_ctx: PulseToolContext,
-        context: dict[str, Any],
-    ) -> None:
-        """Reject DecisionMaker evidence ids that are outside trusted inputs."""
-
-        allowed = _allowed_final_evidence_ids(
-            context=context,
-            tool_ctx=tool_ctx,
-            investigation=investigation,
-        )
-        fields = (
-            ("evidence_event_ids", final.evidence_event_ids),
-            ("bull_view.supporting_event_ids", final.bull_view.supporting_event_ids),
-            ("bear_view.supporting_event_ids", final.bear_view.supporting_event_ids),
-        )
-        for field_name, values in fields:
-            unknown = [eid for eid in values if eid not in allowed]
-            if unknown:
-                preview = unknown[:5]
-                suffix = "..." if len(unknown) > 5 else ""
-                raise ValueError(
-                    f"{field_name} contains unknown event ids "
-                    f"(not in context, tool contributions, or Investigator output): {preview}{suffix}"
-                )
-
-    async def _enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision:
-        """JOIN ``events`` to populate ``final.evidence_event_urls`` (best-effort).
-
-        Missing rows (event_id not found, no tweet_id, or DB error) are
-        silently skipped — Surface rendering treats a missing entry as
-        "no link available" rather than a hard failure.
-        """
-
-        event_ids = _final_url_event_ids(final)
-        if not event_ids:
-            return final.model_copy(update={"evidence_event_urls": {}})
-        urls = fetch_evidence_event_urls(self._db_pool, event_ids=event_ids)
-        return final.model_copy(update={"evidence_event_urls": urls})
-
-    def _request_audit(
-        self,
-        *,
-        context: dict[str, Any],
-        run_id: str,
-        job: dict[str, Any],
-        route: DecisionRoute,
-        completeness: dict[str, Any],
-        harness: dict[str, Any],
-    ) -> dict[str, Any]:
-        input_hash = _sha256({"context": context, "route": route, "completeness": completeness})
-        harness_hash = pulse_harness_hash(harness)
-        trace_metadata = {
-            "backend": BACKEND,
-            "run_id": str(run_id or ""),
-            "job_id": str(job.get("job_id") or ""),
-            "attempt_count": int(job.get("attempt_count") or 0),
-            "prompt_version": PULSE_DECISION_PROMPT_VERSION,
-            "schema_version": PULSE_DECISION_SCHEMA_VERSION,
-            "model": self.model,
-            "artifact_version_hash": self.artifact_version_hash,
-            "input_hash": input_hash,
-            "harness_version": str(harness.get("harness_version") or ""),
-            "harness_hash": harness_hash,
-            "candidate_id": _context_string(context, "candidate_id"),
-            "candidate_type": _context_string(context, "candidate_type"),
-            "subject_key": _context_string(context, "subject_key"),
-            "target_type": _context_string(context, "target_type"),
-            "target_id": _context_string(context, "target_id"),
-            "route": route,
-            "completeness": completeness,
-        }
-        return {
-            "backend": BACKEND,
-            "sdk_trace_id": _trace_id(run_id),
-            "workflow_name": self.workflow_name,
-            "agent_name": AGENT_NAME,
-            "prompt_version": PULSE_DECISION_PROMPT_VERSION,
-            "schema_version": PULSE_DECISION_SCHEMA_VERSION,
-            "artifact_version_hash": self.artifact_version_hash,
-            "trace_metadata": trace_metadata,
-            "input_hash": input_hash,
-            "harness_version": str(harness.get("harness_version") or ""),
-            "harness_hash": harness_hash,
-            "harness": harness,
-        }
-
     def _build_model(self):
         return OpenAIChatCompletionsModel(
             model=self.model,
@@ -792,11 +697,6 @@ def _api_base(base_url: str) -> str:
     return value if value.endswith("/v1") else f"{value}/v1"
 
 
-def _trace_id(run_id: str) -> str:
-    digest = hashlib.sha256(str(run_id or "").encode("utf-8")).hexdigest()[:24]
-    return f"trace_{digest}"
-
-
 def _group_id(context: Any) -> str | None:
     if not isinstance(context, dict):
         return None
@@ -814,30 +714,9 @@ def _context_string(context: dict[str, Any], key: str) -> str | None:
     return text or None
 
 
-def _sha256(value: Any) -> str:
-    payload = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
-    return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
-
-
 def _truncate(value: Any, *, limit: int = 4000) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
     return text[:limit]
-
-
-def _mark_step_failed(step: StageRunAudit, *, error: str) -> StageRunAudit:
-    """Return a copy of ``step`` flipped to ``failed`` with the given error.
-
-    Used when the Investigator stage's structured output passes Pydantic
-    validation but fails the worker-side hallucination guard.
-    """
-
-    return step.model_copy(
-        update={
-            "status": "failed",
-            "error": error[:1000],
-            "response_json": step.response_json,
-        }
-    )
 
 
 def _tool_count_metadata(before: int, tool_ctx: PulseToolContext) -> dict[str, int]:
@@ -847,43 +726,6 @@ def _tool_count_metadata(before: int, tool_ctx: PulseToolContext) -> dict[str, i
         "tool_calls_count_after": after,
         "tool_calls_count_delta": max(0, after - before),
     }
-
-
-def _allowed_final_evidence_ids(
-    *,
-    context: dict[str, Any],
-    tool_ctx: PulseToolContext,
-    investigation: InvestigationReport,
-) -> set[str]:
-    allowed: set[str] = set(tool_ctx.contributed_event_ids)
-    for key in ("evidence_event_ids", "source_event_ids"):
-        values = context.get(key) if isinstance(context, dict) else None
-        if isinstance(values, list):
-            for value in values:
-                if isinstance(value, str) and value.strip():
-                    allowed.add(value.strip())
-    for view in (investigation.bull_observation, investigation.bear_observation):
-        for value in view.supporting_event_ids:
-            if isinstance(value, str) and value.strip():
-                allowed.add(value.strip())
-    return allowed
-
-
-def _final_url_event_ids(final: FinalDecision) -> list[str]:
-    """Stable union of all final decision IDs that may be rendered as links."""
-
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in (
-        *final.evidence_event_ids,
-        *final.bull_view.supporting_event_ids,
-        *final.bear_view.supporting_event_ids,
-    ):
-        cleaned = str(value or "").strip()
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            result.append(cleaned)
-    return result
 
 
 def _with_tool_calls(input_payload: dict[str, Any], result_obj: Any) -> dict[str, Any]:
@@ -1076,8 +918,6 @@ def _public_slot_names(value: Any) -> tuple[str, ...]:
 
 __all__ = [
     "AGENT_NAME",
-    "PULSE_DECISION_PROMPT_VERSION",
-    "PULSE_DECISION_SCHEMA_VERSION",
     "WORKFLOW_NAME",
     "OpenAIAgentsPulseDecisionClient",
     "PulseDecisionAgentResult",

@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.surfaces.api.http import _payload_for_event as http_payload_for_event
-from gmgn_twitter_intel.app.surfaces.api.http import _recent_data
+from gmgn_twitter_intel.app.surfaces.api.routes_events import _payload_for_event as http_payload_for_event
+from gmgn_twitter_intel.app.surfaces.api.routes_events import _recent_data
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 
 

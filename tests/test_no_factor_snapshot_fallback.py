@@ -119,7 +119,7 @@ def test_frontend_runtime_has_no_legacy_signal_pulse_fallback_fields() -> None:
     assert offenders == []
 
 
-def test_no_runtime_market_overlay_fallbacks() -> None:
+def test_no_runtime_legacy_market_payload_fallbacks() -> None:
     backend_offenders = _matches(
         _python_runtime_files(),
         patterns=LEGACY_MARKET_OVERLAY_BACKEND_PATTERNS,

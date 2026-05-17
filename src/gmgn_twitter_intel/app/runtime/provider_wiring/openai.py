@@ -1,0 +1,183 @@
+from __future__ import annotations
+
+from typing import Any
+
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseAgentHarnessContract, PulseDecisionResult
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
+    PulseDecisionRuntimeService,
+)
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
+from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
+from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
+from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
+    OpenAIAgentsWatchlistSummaryClient,
+)
+from gmgn_twitter_intel.platform.config.settings import Settings
+
+
+class OpenAIPulseDecisionProvider:
+    def __init__(self, client: OpenAIAgentsPulseDecisionClient) -> None:
+        self._client = client
+
+    @property
+    def provider(self) -> str:
+        return self._client.provider
+
+    @property
+    def model(self) -> str:
+        return self._client.model
+
+    @property
+    def timeout_seconds(self) -> float:
+        return self._client.timeout_seconds
+
+    @property
+    def artifact_version_hash(self) -> str:
+        return self._client.artifact_version_hash
+
+    @property
+    def harness_contract(self) -> PulseAgentHarnessContract:
+        return self._client.harness_contract
+
+    def request_audit(
+        self,
+        *,
+        context: dict[str, Any],
+        run_id: str,
+        job: dict[str, Any],
+        route: DecisionRoute,
+        completeness: dict[str, Any],
+        harness: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._client.request_audit(
+            context=context,
+            run_id=run_id,
+            job=job,
+            route=route,
+            completeness=completeness,
+            harness=harness,
+        )
+
+    async def run_decision_pipeline(
+        self,
+        *,
+        context: dict[str, Any],
+        run_id: str,
+        job: dict[str, Any],
+        route: DecisionRoute,
+        completeness: dict[str, Any],
+        harness: dict[str, Any],
+    ) -> PulseDecisionResult:
+        result = await self._client.run_decision_pipeline(
+            context=context,
+            run_id=run_id,
+            job=job,
+            route=route,
+            completeness=completeness,
+            harness=harness,
+        )
+        return PulseDecisionResult(
+            final_decision=result.final_decision,
+            agent_run_audit=result.run_audit,
+            stage_audits=result.stage_audits,
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+def openai_social_event_provider(
+    settings: Settings,
+    *,
+    llm_gateway: object | None,
+) -> OpenAIAgentsSocialEventClient:
+    gateway = _require_llm_gateway(llm_gateway)
+    model = settings.llm_model or ""
+    return OpenAIAgentsSocialEventClient(
+        api_key=settings.llm_api_key or "",
+        model=model,
+        llm_gateway=gateway,
+        base_url=settings.llm_base_url,
+        timeout_seconds=settings.llm_timeout_seconds,
+        safety_net=_build_safety_net(settings, model=model),
+        trace_enabled=settings.llm_trace_enabled,
+        trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
+    )
+
+
+def openai_pulse_decision_provider(
+    settings: Settings,
+    *,
+    llm_gateway: object | None,
+    db_pool: Any | None,
+) -> OpenAIPulseDecisionProvider:
+    gateway = _require_llm_gateway(llm_gateway)
+    if db_pool is None:
+        raise RuntimeError("db_pool is required for OpenAIPulseDecisionProvider")
+    model = settings.pulse_agent_model or ""
+    investigator_budgets = dict(settings.workers.pulse_candidate.investigator_max_tool_calls)
+    return OpenAIPulseDecisionProvider(
+        OpenAIAgentsPulseDecisionClient(
+            api_key=settings.llm_api_key or "",
+            model=model,
+            llm_gateway=gateway,
+            tool_runtime_factory=lambda *, investigator_max_tool_calls: AgentToolRuntime(
+                db_pool=db_pool,
+                investigator_max_tool_calls=investigator_max_tool_calls,
+            ),
+            decision_runtime=PulseDecisionRuntimeService(db_pool=db_pool),
+            base_url=settings.llm_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
+            safety_net=_build_safety_net(settings, model=model),
+            trace_enabled=settings.llm_trace_enabled,
+            trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
+            investigator_max_tool_calls_by_route=investigator_budgets,
+        )
+    )
+
+
+def openai_watchlist_summary_provider(
+    settings: Settings,
+    *,
+    llm_gateway: object | None,
+) -> OpenAIAgentsWatchlistSummaryClient:
+    gateway = _require_llm_gateway(llm_gateway)
+    model = settings.watchlist_handle_summary_model or ""
+    return OpenAIAgentsWatchlistSummaryClient(
+        api_key=settings.llm_api_key or "",
+        model=model,
+        llm_gateway=gateway,
+        base_url=settings.llm_base_url,
+        timeout_seconds=settings.llm_timeout_seconds,
+        safety_net=_build_safety_net(settings, model=model),
+        trace_enabled=settings.llm_trace_enabled,
+        trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
+    )
+
+
+def _build_safety_net(settings: Settings, *, model: str) -> InstructorSafetyNet | None:
+    if not settings.llm.instructor_safety_net_enabled:
+        return None
+    return InstructorSafetyNet(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key or "",
+        model=model,
+        max_retries=int(settings.llm.instructor_max_retries),
+        enabled=True,
+    )
+
+
+def _require_llm_gateway(llm_gateway: object | None) -> object:
+    if llm_gateway is None:
+        raise RuntimeError("LLMGateway is required for configured OpenAI providers")
+    return llm_gateway
+
+
+__all__ = [
+    "OpenAIPulseDecisionProvider",
+    "openai_pulse_decision_provider",
+    "openai_social_event_provider",
+    "openai_watchlist_summary_provider",
+]

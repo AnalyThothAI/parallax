@@ -183,7 +183,7 @@ function searchInspectData(): SearchInspectData {
           peak_new_authors_per_bucket: 5,
           reproduction_rate: null,
         },
-        market_overlay: {},
+        market_candles: {},
         stages: tokenResult.timeline.stages,
         buckets: [
           {
@@ -234,7 +234,6 @@ function searchInspectData(): SearchInspectData {
         observed_at_ms: null,
         provider: null,
       },
-      radar_item: null,
       profile: {
         status: "ready",
         provider: "gmgn",
@@ -255,24 +254,6 @@ function searchInspectData(): SearchInspectData {
           raw_available: true,
           last_error: null,
         },
-      },
-      market_overlay: {
-        price_series_type: "ohlc",
-        candle_status: "ready",
-        candle_bar: "1H",
-        candles: [
-          {
-            time_ms: 1_700_000_000_000,
-            open: 0.007,
-            high: 0.008,
-            low: 0.006,
-            close: 0.0078,
-            volume: 1000,
-            volume_quote: null,
-            volume_usd: 7800,
-            confirmed: true,
-          },
-        ],
       },
       agent_brief: {
         ...tokenResult.agent_brief,

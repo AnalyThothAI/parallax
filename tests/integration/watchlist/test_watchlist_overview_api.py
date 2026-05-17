@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.app.surfaces.api.http import (
+from gmgn_twitter_intel.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
-    create_api_router,
 )
+from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 

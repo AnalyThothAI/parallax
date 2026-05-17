@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.bootstrap import _construct_workers
+import pytest
+
+from gmgn_twitter_intel.app.runtime import worker_factories
+from gmgn_twitter_intel.app.runtime.bootstrap import _assemble_runtime
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactorySpec, construct_workers
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
+from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 _UNSET = object()
@@ -22,7 +30,7 @@ def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_legacy_anchor_worker(
     db = FakeDB()
     providers = FakeProviders()
 
-    workers = _construct_workers(
+    workers = construct_workers(
         settings=_settings(),
         db=db,
         telemetry=object(),
@@ -72,7 +80,7 @@ def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_prov
         stream_dex_market=None,
     )
 
-    workers = _construct_workers(
+    workers = construct_workers(
         settings=_settings(),
         db=db,
         telemetry=object(),
@@ -89,12 +97,115 @@ def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_prov
     assert not isinstance(workers["event_anchor_backfill"], EventAnchorBackfillWorker)
 
 
-def _settings() -> Settings:
+def test_worker_factory_preserves_enabled_collector_injection() -> None:
+    db = FakeDB()
+    providers = FakeProviders()
+    collector = FakeCollector(name="collector", settings=SimpleNamespace(enabled=True), db=db, telemetry=object())
+
+    workers = construct_workers(
+        settings=_settings(collector_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=collector,
+        collector_enabled=True,
+        wake_bus=db.wake,
+    )
+
+    assert workers["collector"] is collector
+
+
+def test_bootstrap_runtime_preserves_enabled_collector_injection_and_attaches_upstream_client() -> None:
+    db = FakeDB()
+    created_clients: list[FakeUpstreamClient] = []
+
+    def upstream_client_factory(on_frame):
+        client = FakeUpstreamClient(on_frame=on_frame)
+        created_clients.append(client)
+        return client
+
+    runtime = _assemble_runtime(
+        settings=_settings(collector_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=FakeProviders(upstream_client_factory=upstream_client_factory),
+        start_collector=True,
+        llm_gateway=None,
+    )
+
+    assert runtime.start_collector is True
+    assert runtime.workers["collector"] is runtime.collector
+    assert created_clients == [runtime.collector.upstream_client]
+    assert runtime.collector.upstream_client is not None
+    assert runtime.collector.upstream_client.on_frame.__self__ is runtime.collector
+    assert runtime.collector.upstream_client.on_frame.__func__ is runtime.collector.handle_frame.__func__
+
+
+def test_worker_factory_wires_notification_workers_with_shared_local_wake_waiter() -> None:
+    db = FakeDB()
+    providers = FakeProviders()
+
+    workers = construct_workers(
+        settings=_settings(notifications_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["notification_rule"], NotificationWorker)
+    assert isinstance(workers["notification_delivery"], NotificationDeliveryWorker)
+    assert workers["notification_rule"].delivery_wake is workers["notification_delivery"].wake_waiter
+
+
+def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    def rogue_factory(ctx):
+        return {"token_radar_projection": ctx.collector}
+
+    specs = tuple(
+        WorkerFactorySpec(spec.name, spec.keys, rogue_factory if spec.name == "ingestion.py" else spec.factory)
+        for spec in worker_factories.worker_factory_specs()
+    )
+    monkeypatch.setattr(
+        worker_factories,
+        "worker_factory_specs",
+        lambda: specs,
+    )
+    db = FakeDB()
+    collector = FakeCollector(name="collector", settings=SimpleNamespace(enabled=True), db=db, telemetry=object())
+
+    with pytest.raises(KeyError, match="returned unowned workers"):
+        construct_workers(
+            settings=_settings(collector_enabled=True),
+            db=db,
+            telemetry=object(),
+            providers=FakeProviders(),
+            hub=SimpleNamespace(publish=lambda payload: None),
+            collector=collector,
+            collector_enabled=True,
+            wake_bus=object(),
+        )
+
+
+def _settings(*, collector_enabled: bool = False, notifications_enabled: bool = False) -> Settings:
     return Settings(
         ws_token="secret",
-        notifications={"enabled": False},
+        notifications={
+            "enabled": notifications_enabled,
+            "channels": {
+                "log": {
+                    "enabled": True,
+                    "provider": "log",
+                    "min_severity": "info",
+                }
+            },
+        },
         workers={
-            "collector": {"enabled": False},
+            "collector": {"enabled": collector_enabled},
             "market_tick_stream": {"enabled": True},
             "market_tick_poll": {"enabled": True},
             "event_anchor_backfill": {"enabled": True},
@@ -108,8 +219,8 @@ def _settings() -> Settings:
             "enrichment": {"enabled": False},
             "handle_summary": {"enabled": False},
             "harness_ops": {"enabled": False},
-            "notification_rule": {"enabled": False},
-            "notification_delivery": {"enabled": False},
+            "notification_rule": {"enabled": notifications_enabled},
+            "notification_delivery": {"enabled": notifications_enabled},
         },
     )
 
@@ -121,6 +232,7 @@ class FakeProviders:
         message_cex_market=_UNSET,
         dex_quote_market=_UNSET,
         stream_dex_market=_UNSET,
+        upstream_client_factory=None,
     ) -> None:
         self.asset_market = SimpleNamespace(
             message_cex_market=object() if message_cex_market is _UNSET else message_cex_market,
@@ -132,14 +244,33 @@ class FakeProviders:
         self.pulse_lab = SimpleNamespace(decision_provider=None)
         self.watchlist_intel = SimpleNamespace(summary_provider=None)
         self.social_enrichment = SimpleNamespace(event_enrichment=None)
+        self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
+        self.marketlane = SimpleNamespace(stock_quote_provider=None)
 
 
 class FakeDB:
     def __init__(self) -> None:
+        self.api_pool = object()
         self.wake = object()
+
+    def api_session(self):
+        raise AssertionError("api_session should not be opened by runtime assembly")
 
     def wake_emitter(self):
         return self.wake
 
     def wake_listener(self, worker_name, channels):
         return SimpleNamespace(worker_name=worker_name, channels=channels)
+
+
+class FakeCollector(WorkerBase):
+    async def run_once(self) -> WorkerResult:
+        return WorkerResult(skipped=1)
+
+
+class FakeUpstreamClient:
+    def __init__(self, *, on_frame) -> None:
+        self.on_frame = on_frame
+
+    async def run(self) -> None:
+        return None

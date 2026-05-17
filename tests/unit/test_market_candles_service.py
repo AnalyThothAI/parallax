@@ -4,10 +4,10 @@ from gmgn_twitter_intel.domains.asset_market.providers import MarketCandle
 from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 
 
-def test_market_candles_service_enriches_cex_overlay_with_ohlc_series():
+def test_market_candles_service_enriches_cex_payload_with_ohlc_series():
     service = MarketCandlesService(cex_market=FakeCexMarket(), dex_candle_market=None)
 
-    overlay = service.enrich_overlay(
+    market_candles = service.enrich_market_candles(
         {
             "target_type": "CexToken",
             "target_id": "cex_token:BONK",
@@ -17,20 +17,20 @@ def test_market_candles_service_enriches_cex_overlay_with_ohlc_series():
         window="24h",
     )
 
-    assert overlay["price_series_type"] == "ohlc"
-    assert overlay["candle_status"] == "ready"
-    assert overlay["candle_source"] == "okx_cex_candles"
-    assert overlay["candle_bar"] == "1H"
-    assert overlay["candles"][0]["open"] == 0.000027
-    assert overlay["candles"][0]["high"] == 0.0000285
-    assert overlay["candles"][0]["low"] == 0.0000268
-    assert overlay["candles"][0]["close"] == 0.0000281
+    assert market_candles["price_series_type"] == "ohlc"
+    assert market_candles["candle_status"] == "ready"
+    assert market_candles["candle_source"] == "okx_cex_candles"
+    assert market_candles["candle_bar"] == "1H"
+    assert market_candles["candles"][0]["open"] == 0.000027
+    assert market_candles["candles"][0]["high"] == 0.0000285
+    assert market_candles["candles"][0]["low"] == 0.0000268
+    assert market_candles["candles"][0]["close"] == 0.0000281
 
 
-def test_market_candles_service_enriches_dex_overlay_with_ohlc_series():
+def test_market_candles_service_enriches_dex_payload_with_ohlc_series():
     service = MarketCandlesService(cex_market=None, dex_candle_market=FakeDexMarket())
 
-    overlay = service.enrich_overlay(
+    market_candles = service.enrich_market_candles(
         {
             "target_type": "Asset",
             "target_id": "asset:eip155:56:erc20:0x8f32420f2e3728c49399b00dd0a796602d984444",
@@ -40,24 +40,24 @@ def test_market_candles_service_enriches_dex_overlay_with_ohlc_series():
         window="1h",
     )
 
-    assert overlay["price_series_type"] == "ohlc"
-    assert overlay["candle_status"] == "ready"
-    assert overlay["candle_source"] == "gmgn_dex_candles"
-    assert overlay["candle_bar"] == "5m"
-    assert overlay["candles"][0]["volume_usd"] == 625.0
+    assert market_candles["price_series_type"] == "ohlc"
+    assert market_candles["candle_status"] == "ready"
+    assert market_candles["candle_source"] == "gmgn_dex_candles"
+    assert market_candles["candle_bar"] == "5m"
+    assert market_candles["candles"][0]["volume_usd"] == 625.0
 
 
 def test_market_candles_service_keeps_anchor_line_when_provider_is_unavailable():
     service = MarketCandlesService(cex_market=None, dex_candle_market=None)
 
-    overlay = service.enrich_overlay(
+    market_candles = service.enrich_market_candles(
         {"target_type": "CexToken", "target_id": "cex_token:BONK", "native_market_id": "BONK-USDT"},
         window="24h",
     )
 
-    assert overlay["price_series_type"] == "anchor_line"
-    assert overlay["candle_status"] == "unsupported"
-    assert overlay["candles"] == []
+    assert market_candles["price_series_type"] == "anchor_line"
+    assert market_candles["candle_status"] == "unsupported"
+    assert market_candles["candles"] == []
 
 
 class FakeCexMarket:

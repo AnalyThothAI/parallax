@@ -115,7 +115,7 @@ class TargetPostsData(ApiSchema):
 class TargetSocialTimelineData(ApiSchema):
     query: JsonObject
     summary: JsonObject | None = None
-    market_overlay: JsonObject | None = None
+    market_candles: JsonObject | None = None
     stages: list[JsonObject] = Field(default_factory=list)
     buckets: list[JsonObject] = Field(default_factory=list)
     authors: list[JsonObject] = Field(default_factory=list)

@@ -13,15 +13,13 @@ from typing import Any
 
 import pytest
 
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
 from gmgn_twitter_intel.integrations.openai_agents.tools import (
     PulseToolContext,
     ToolBudgetExceeded,
     get_official_token_profile,
     get_target_price_action,
     get_target_recent_tweets,
-)
-from gmgn_twitter_intel.integrations.openai_agents.tools._context import (
-    _check_and_increment_budget,
 )
 from gmgn_twitter_intel.integrations.openai_agents.tools.official_profile import (
     _impl_get_official_token_profile,
@@ -87,7 +85,9 @@ class _FakePool:
 
 
 def _ctx(pool: Any, *, max_calls: int = 5) -> PulseToolContext:
-    return PulseToolContext(db_pool=pool, investigator_max_tool_calls=max_calls)
+    return PulseToolContext(
+        tool_runtime=AgentToolRuntime(db_pool=pool, investigator_max_tool_calls=max_calls)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -96,23 +96,23 @@ def _ctx(pool: Any, *, max_calls: int = 5) -> PulseToolContext:
 
 
 def test_budget_increments_and_raises_on_overflow() -> None:
-    ctx = PulseToolContext(db_pool=None, investigator_max_tool_calls=5)
+    ctx = _ctx(None, max_calls=5)
     for _ in range(5):
-        _check_and_increment_budget(ctx)
+        ctx.tool_runtime.get_target_recent_tweets(target_id="")
     assert ctx.tool_calls_count == 5
     with pytest.raises(ToolBudgetExceeded):
-        _check_and_increment_budget(ctx)
+        ctx.tool_runtime.get_target_recent_tweets(target_id="")
     assert ctx.tool_calls_count == 6
 
 
 def test_budget_three_call_route() -> None:
     """OQ-1: cex routes get budget=3."""
-    ctx = PulseToolContext(db_pool=None, investigator_max_tool_calls=3)
-    _check_and_increment_budget(ctx)
-    _check_and_increment_budget(ctx)
-    _check_and_increment_budget(ctx)
+    ctx = _ctx(None, max_calls=3)
+    ctx.tool_runtime.get_target_recent_tweets(target_id="")
+    ctx.tool_runtime.get_target_recent_tweets(target_id="")
+    ctx.tool_runtime.get_target_recent_tweets(target_id="")
     with pytest.raises(ToolBudgetExceeded):
-        _check_and_increment_budget(ctx)
+        ctx.tool_runtime.get_target_recent_tweets(target_id="")
 
 
 # ---------------------------------------------------------------------------

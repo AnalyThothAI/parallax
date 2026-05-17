@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
 
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
@@ -36,6 +38,46 @@ DOMAIN_CROSS_CUTTING_PREFIXES = (
     "gmgn_twitter_intel.platform.paths.",
 )
 SERVICE_RUNTIME_PARTS = {"services", "scoring", "runtime"}
+PROVIDER_WIRING_DIR = SRC_ROOT / "app" / "runtime" / "provider_wiring"
+PROVIDER_WIRING_FACADE = SRC_ROOT / "app" / "runtime" / "providers_wiring.py"
+OPENAI_AGENTS_DIR = SRC_ROOT / "integrations" / "openai_agents"
+PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
+    "gmgn_twitter_intel.app.runtime.provider_wiring",
+    "gmgn_twitter_intel.app.runtime.provider_wiring.types",
+}
+PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
+    "AssetMarketProviders",
+    "IngestionProviders",
+    "MarketlaneProviders",
+    "PulseLabProviders",
+    "SocialEnrichmentProviders",
+    "UpstreamClientFactory",
+    "WatchlistIntelProviders",
+    "WiredProviders",
+    "wire_asset_market_providers",
+    "wire_providers",
+}
+PROVIDER_WIRING_FAMILY_PREFIX = "gmgn_twitter_intel.app.runtime.provider_wiring."
+OPERATOR_CLI_PROVIDER_FAMILY_IMPORTS = {
+    (
+        SRC_ROOT / "app" / "surfaces" / "cli" / "commands" / "ops.py",
+        "gmgn_twitter_intel.app.runtime.provider_wiring.okx",
+    ),
+}
+FACADE_CONCRETE_EXPORTS = {
+    "BinanceWeb3DexProfileProvider",
+    "FallbackDexQuoteProvider",
+    "GmgnDexMarketProvider",
+    "OkxCexMarketProvider",
+    "OkxDexDiscoveryProvider",
+    "OkxDexQuoteProvider",
+    "OkxDexWebSocketMarketProviderAdapter",
+    "OkxProviderBundle",
+    "OpenAIPulseDecisionProvider",
+    "okx_chain_index",
+    "okx_chain_indexes_to_chain_ids",
+    "okx_index_to_chain_id",
+}
 SHIM_ALLOWED_FILES = {
     SRC_ROOT / "cli.py",
     SRC_ROOT / "__main__.py",
@@ -76,6 +118,17 @@ def _imports(path: Path) -> list[str]:
     return [item for item in imports if item.startswith("gmgn_twitter_intel.")]
 
 
+def _imported_names(path: Path) -> list[tuple[str, str, int]]:
+    names: list[tuple[str, str, int]] = []
+    for node in ast.walk(_parse(path)):
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        if not node.module.startswith("gmgn_twitter_intel."):
+            continue
+        names.extend((node.module, alias.name, node.lineno) for alias in node.names)
+    return names
+
+
 def _import_records(path: Path) -> list[tuple[str, int]]:
     records: list[tuple[str, int]] = []
     module = _module(path)
@@ -93,6 +146,41 @@ def _import_records(path: Path) -> list[tuple[str, int]]:
                 imported = node.module
             records.append((imported, node.lineno))
     return [(imported, lineno) for imported, lineno in records if imported.startswith("gmgn_twitter_intel.")]
+
+
+def _all_import_records(path: Path) -> list[tuple[str, int]]:
+    records: list[tuple[str, int]] = []
+    module = _module(path)
+    package_parts = module.split(".")[:-1]
+    for node in ast.walk(_parse(path)):
+        if isinstance(node, ast.Import):
+            records.extend((alias.name, node.lineno) for alias in node.names)
+        if isinstance(node, ast.ImportFrom):
+            if node.module is None:
+                continue
+            if node.level:
+                base = package_parts[: max(0, len(package_parts) - node.level + 1)]
+                imported = ".".join([*base, node.module])
+            else:
+                imported = node.module
+            records.append((imported, node.lineno))
+    return records
+
+
+def _all_exports(path: Path) -> set[str]:
+    for node in _parse(path).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+            continue
+        if not isinstance(node.value, ast.List):
+            continue
+        exports: set[str] = set()
+        for item in node.value.elts:
+            if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                exports.add(item.value)
+        return exports
+    return set()
 
 
 def _top_package(path: Path) -> str:
@@ -238,6 +326,23 @@ def test_repositories_and_queries_do_not_import_services_or_runtime() -> None:
     )
 
 
+def test_pulse_lab_services_do_not_import_runtime_worker_modules() -> None:
+    service_root = SRC_ROOT / "domains" / "pulse_lab" / "services"
+    runtime_prefix = "gmgn_twitter_intel.domains.pulse_lab.runtime."
+    offenders = [
+        (path.relative_to(ROOT).as_posix(), imported)
+        for path in service_root.rglob("*.py")
+        for imported in _imports(path)
+        if imported.startswith(runtime_prefix)
+    ]
+    _assert_no_offenders(
+        offenders,
+        invariant="pulse_lab services do not depend on runtime workers",
+        reason="Use-case services may be called by workers, but importing workers would recreate orchestration cycles.",
+        fix="Move shared domain types into domains/pulse_lab/types or a focused service module.",
+    )
+
+
 def test_raw_sql_is_owned_by_repositories_queries_or_app_runtime() -> None:
     offenders = [
         path.relative_to(ROOT).as_posix()
@@ -352,37 +457,134 @@ def test_app_runtime_app_does_not_import_integrations_or_domain_providers() -> N
 
 
 def test_service_provider_wiring_is_the_only_integration_provider_join_point() -> None:
-    wiring_path = SRC_ROOT / "app" / "runtime" / "providers_wiring.py"
     offenders: list[str] = []
-    if not wiring_path.is_file():
-        offenders.append(f"{wiring_path.relative_to(ROOT).as_posix()} missing")
+    if not PROVIDER_WIRING_FACADE.is_file():
+        offenders.append(f"{PROVIDER_WIRING_FACADE.relative_to(ROOT).as_posix()} missing")
+    if not PROVIDER_WIRING_DIR.is_dir():
+        offenders.append(f"{PROVIDER_WIRING_DIR.relative_to(ROOT).as_posix()} missing")
+    facade_integration_imports = [
+        f"{PROVIDER_WIRING_FACADE.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
+        for imported, lineno in _import_records(PROVIDER_WIRING_FACADE)
+        if imported.startswith("gmgn_twitter_intel.integrations.")
+    ]
+    offenders.extend(facade_integration_imports)
     for path in _python_files():
         imports = [imported for imported, _lineno in _import_records(path)]
         imports_integrations = any(imported.startswith("gmgn_twitter_intel.integrations.") for imported in imports)
         imports_domain_providers = any(
             imported.startswith("gmgn_twitter_intel.domains.") and ".providers" in imported for imported in imports
         )
-        if imports_integrations and imports_domain_providers and path != wiring_path:
+        allowed_adapter_protocol_import = (
+            OPENAI_AGENTS_DIR in path.parents
+            and "gmgn_twitter_intel.domains.pulse_lab.providers" in imports
+        )
+        if (
+            imports_integrations
+            and imports_domain_providers
+            and PROVIDER_WIRING_DIR not in path.parents
+            and not allowed_adapter_protocol_import
+        ):
             offenders.append(path.relative_to(ROOT).as_posix())
     _assert_no_offenders(
         offenders,
-        invariant="providers_wiring.py is the only service-process integration/provider join point",
+        invariant="provider_wiring package is the only service-process integration/provider join point",
         reason=(
             "Any other file that sees both concrete integrations and domain Provider contracts can become a "
-            "second composition root."
+            "second composition root. providers_wiring.py is a facade and must not import concrete integrations."
         ),
         fix=(
-            "Move the join into app/runtime/providers_wiring.py; CLI ops are intentionally outside this "
-            "service-runtime rule."
+            "Move the join into app/runtime/provider_wiring/** and keep app/runtime/providers_wiring.py to "
+            "facade exports only; CLI ops are intentionally outside this service-runtime rule."
         ),
     )
+
+
+def test_providers_wiring_facade_is_lazy_and_type_only() -> None:
+    offenders: list[str] = []
+    for imported, lineno in _import_records(PROVIDER_WIRING_FACADE):
+        if imported not in PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS:
+            offenders.append(f"{PROVIDER_WIRING_FACADE.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
+    exports = _all_exports(PROVIDER_WIRING_FACADE)
+    unexpected_exports = exports - PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS
+    missing_exports = PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS - exports
+    offenders.extend(f"unexpected facade export {name}" for name in sorted(unexpected_exports))
+    offenders.extend(f"missing facade export {name}" for name in sorted(missing_exports))
+    _assert_no_offenders(
+        offenders,
+        invariant="providers_wiring.py is a lazy public facade over provider_wiring package roots and types",
+        reason=(
+            "Importing the facade must not load concrete provider families or encourage monkeypatching concrete "
+            "adapters through the facade."
+        ),
+        fix=(
+            "Import only wire_providers/wire_asset_market_providers from app.runtime.provider_wiring and aggregate "
+            "types from app.runtime.provider_wiring.types; concrete adapters belong in their family modules."
+        ),
+    )
+
+
+def test_domains_and_surfaces_do_not_import_provider_family_modules_or_facade_concretes() -> None:
+    offenders: list[str] = []
+    scan_roots = (SRC_ROOT / "domains", SRC_ROOT / "app" / "surfaces")
+    for root in scan_roots:
+        for path in root.rglob("*.py"):
+            for imported, lineno in _import_records(path):
+                if imported.startswith(PROVIDER_WIRING_FAMILY_PREFIX):
+                    if (path, imported) in OPERATOR_CLI_PROVIDER_FAMILY_IMPORTS:
+                        continue
+                    offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
+            for module, name, lineno in _imported_names(path):
+                if module == "gmgn_twitter_intel.app.runtime.providers_wiring" and name in FACADE_CONCRETE_EXPORTS:
+                    offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports facade concrete {name}")
+    _assert_no_offenders(
+        offenders,
+        invariant="domains and surfaces do not bypass provider family ownership",
+        reason=(
+            "Domains should consume aggregate provider types only, while surfaces should not reach concrete runtime "
+            "provider wiring except explicit operator-only CLI commands."
+        ),
+        fix=(
+            "Import concrete provider helpers from their app/runtime/provider_wiring/<family>.py owner only for an "
+            "allowlisted operator CLI path; otherwise import aggregate types from providers_wiring.py."
+        ),
+    )
+
+
+def test_importing_providers_wiring_facade_does_not_load_concrete_integrations() -> None:
+    script = """
+import importlib
+import sys
+
+before = set(sys.modules)
+importlib.import_module("gmgn_twitter_intel.app.runtime.providers_wiring")
+loaded = sorted(
+    name for name in set(sys.modules) - before
+    if name.startswith("gmgn_twitter_intel.integrations.")
+)
+if loaded:
+    raise SystemExit("\\n".join(loaded))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    _assert_no_offenders(
+        [line for line in result.stderr.splitlines() + result.stdout.splitlines() if line.strip()],
+        invariant="providers_wiring facade import does not load concrete integrations",
+        reason="The facade should be cheap and side-effect-light; concrete integrations load only via family modules.",
+        fix="Remove eager concrete family imports from app/runtime/providers_wiring.py.",
+    )
+    assert result.returncode == 0
 
 
 def test_pulse_agent_route_policy_stays_in_domain() -> None:
     path = SRC_ROOT / "domains" / "pulse_lab" / "services" / "agent_routing.py"
     offenders = [
         f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
-        for imported, lineno in _import_records(path)
+        for imported, lineno in _all_import_records(path)
         if imported.startswith("agents") or imported.startswith("gmgn_twitter_intel.integrations.")
     ]
     _assert_no_offenders(
@@ -390,6 +592,26 @@ def test_pulse_agent_route_policy_stays_in_domain() -> None:
         invariant="pulse agent route policy stays in the domain",
         reason="Route/completeness policy is product behavior; importing OpenAI or an agent framework hides it.",
         fix="Move integration-specific code into integrations/openai_agents or app/runtime/providers_wiring.py.",
+    )
+
+
+def test_pulse_lab_domain_does_not_import_openai_sdk_primitives() -> None:
+    offenders: list[str] = []
+    forbidden_prefixes = ("agents", "openai")
+    for path in (SRC_ROOT / "domains" / "pulse_lab").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        for imported, lineno in _all_import_records(path):
+            if imported.startswith(forbidden_prefixes):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
+    _assert_no_offenders(
+        offenders,
+        invariant="pulse_lab domain stays independent of OpenAI SDK primitives",
+        reason=(
+            "Pulse domain services own prompts, tool query behavior, validation, and audit assembly; "
+            "SDK classes such as agents.Agent/Runner and openai clients belong in integrations/openai_agents."
+        ),
+        fix="Move SDK imports to integrations/openai_agents and inject domain provider protocols or services instead.",
     )
 
 
@@ -404,6 +626,24 @@ def test_openai_agent_integrations_do_not_import_repositories() -> None:
         invariant="OpenAI agent integrations do not import repositories",
         reason="The adapter may run stages, but persistence belongs to domain repositories and workers.",
         fix="Return typed values from the adapter and let the owning domain runtime persist them.",
+    )
+
+
+def test_openai_agent_integrations_do_not_import_pulse_queries_or_services() -> None:
+    offenders: list[str] = []
+    forbidden = (
+        "gmgn_twitter_intel.domains.pulse_lab.queries",
+        "gmgn_twitter_intel.domains.pulse_lab.services",
+    )
+    for path in (SRC_ROOT / "integrations" / "openai_agents").rglob("*.py"):
+        for imported, lineno in _import_records(path):
+            if imported.startswith(forbidden):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
+    _assert_no_offenders(
+        offenders,
+        invariant="OpenAI agent integrations depend only on Pulse provider protocols and types",
+        reason="Pulse tool queries, prompts, evidence validation, and audit assembly are domain behavior.",
+        fix="Inject pulse_lab service runtimes from app/runtime/provider_wiring/openai.py instead.",
     )
 
 

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime import providers_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market as asset_market_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import binance as binance_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import gmgn as gmgn_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import okx as okx_wiring
 from gmgn_twitter_intel.domains.asset_market.providers import MarketCapability, ProviderHealth
 from gmgn_twitter_intel.platform.config.settings import Settings
 
@@ -13,12 +17,12 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     gmgn = FakeGmgnProvider()
     binance = FakeBinanceProvider()
 
-    monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex)
-    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: discovery)
-    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: quote)
-    monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", lambda settings: stream)
-    monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", lambda settings: gmgn)
-    monkeypatch.setattr(providers_wiring, "_binance_web3_profile_market", lambda settings: binance)
+    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: cex)
+    monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: discovery)
+    monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: quote)
+    monkeypatch.setattr(okx_wiring, "okx_dex_ws_market", lambda settings: stream)
+    monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", lambda settings: gmgn)
+    monkeypatch.setattr(binance_wiring, "binance_web3_profile_market", lambda settings: binance)
 
     providers = providers_wiring.wire_providers(
         Settings(
@@ -39,7 +43,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     assert providers.sync_cex_market is cex
     assert providers.message_cex_market is cex
     assert providers.dex_discovery_market is not None
-    assert isinstance(providers.dex_quote_market, providers_wiring.FallbackDexQuoteProvider)
+    assert isinstance(providers.dex_quote_market, asset_market_wiring.FallbackDexQuoteProvider)
     assert providers.stream_dex_market is stream
     health = {entry.provider: entry for entry in providers.provider_health}
     assert health["okx"] == ProviderHealth(
@@ -78,10 +82,10 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
 
 
 def test_okx_stream_capability_comes_from_credentials_not_enabled_flag(monkeypatch) -> None:
-    monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: object())
-    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: FakeDiscoveryProvider())
-    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: FakeQuoteProvider())
-    monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", lambda settings: FakeStreamProvider())
+    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: object())
+    monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: FakeDiscoveryProvider())
+    monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: FakeQuoteProvider())
+    monkeypatch.setattr(okx_wiring, "okx_dex_ws_market", lambda settings: FakeStreamProvider())
 
     providers = providers_wiring.wire_providers(
         Settings(ws_token="secret", providers={"okx": {"cex_sync_enabled": False}}),

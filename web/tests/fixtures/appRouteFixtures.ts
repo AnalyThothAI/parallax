@@ -207,7 +207,7 @@ export function targetSocialTimelineFixture(
       top_author_share: 0,
       latest_seen_ms: null,
     },
-    market_overlay: {
+    market_candles: {
       price_series_type: "anchor_line",
       candle_status: "missing_market_id",
       candle_bar: "1H",

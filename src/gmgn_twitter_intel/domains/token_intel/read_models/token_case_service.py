@@ -69,7 +69,6 @@ class TokenCaseService:
             target=target,
             timeline=timeline,
             posts=posts,
-            radar_item=None,
             market_live=market_live,
             profile=profile,
         )

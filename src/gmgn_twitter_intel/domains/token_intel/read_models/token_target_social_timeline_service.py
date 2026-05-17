@@ -51,7 +51,7 @@ class TokenTargetSocialTimelineService:
                 "bucket": bucket_label,
             },
             "summary": _summary(page_rows),
-            "market_overlay": _market_overlay(page_rows),
+            "market_candles": _market_candles(page_rows),
             "stages": stage_build.stages,
             "buckets": _buckets(
                 page_rows,
@@ -95,7 +95,7 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _market_overlay(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _market_candles(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     for row in rows:
         target_type = row.get("target_type")
         if target_type == "Asset":

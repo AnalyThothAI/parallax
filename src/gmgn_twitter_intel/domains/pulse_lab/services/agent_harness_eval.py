@@ -102,7 +102,12 @@ def build_pulse_failed_eval_case(
     failure_reason: str,
 ) -> dict[str, Any]:
     return {
-        "eval_case_id": _stable_id("pulse-failed-eval-case", run_id, failure_reason, PULSE_DETERMINISTIC_GRADER_VERSION),
+        "eval_case_id": _stable_id(
+            "pulse-failed-eval-case",
+            run_id,
+            failure_reason,
+            PULSE_DETERMINISTIC_GRADER_VERSION,
+        ),
         "source_run_id": run_id,
         "harness_hash": harness_hash,
         "eval_type": "deterministic",

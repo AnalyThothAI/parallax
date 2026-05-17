@@ -54,10 +54,10 @@ contract. It contains:
 - `subject` — deterministic target identity selected by the resolver and asset
   identity ledger, plus target-market identity facts.
 - `market` — public market context for the social signal. It contains
-  compatibility-shaped `event_anchor`, `decision_latest`, and `readiness`
-  response keys generated from `enriched_events` and `market_ticks`; those names
-  are not internal market DB concepts or worker/runtime semantics. Market
-  remains context and gate input, not an alpha family.
+  `event_anchor`, `decision_latest`, and `readiness` response keys generated
+  from `enriched_events` and `market_ticks`; those names are not internal market
+  DB concepts or worker/runtime semantics. Market remains context and gate
+  input, not an alpha family.
 - `gates` — deterministic blockers, risk reasons, high-alert eligibility, and
   maximum decision. Identity readiness, CEX native-market identity, DEX
   market-cap / liquidity / holder floors, and market freshness are gates or

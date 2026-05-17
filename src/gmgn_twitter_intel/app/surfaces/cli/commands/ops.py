@@ -1,0 +1,658 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+from typing import Any
+
+from gmgn_twitter_intel.app.runtime.bootstrap import bootstrap
+from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
+from gmgn_twitter_intel.app.runtime.provider_wiring.okx import OkxCexMarketProvider
+from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers
+from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
+from gmgn_twitter_intel.app.runtime.worker_status import canonical_workers_status_payload
+from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
+from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
+from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
+from gmgn_twitter_intel.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
+from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
+    NasdaqTraderSymbolClient,
+    sync_us_equity_symbols,
+)
+from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
+    attribute_harness_credits,
+    settle_harness_snapshots,
+    update_harness_weights,
+)
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    require_token_factor_snapshot,
+)
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
+from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from gmgn_twitter_intel.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
+from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
+from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import reprocess_recent_token_intents
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
+from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
+from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
+from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
+from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
+from gmgn_twitter_intel.platform.config.settings import load_settings
+from gmgn_twitter_intel.platform.db.postgres_audit import ProjectionValidationAudit
+
+LEGACY_FACTOR_GATE_KEY = "_".join(("hard", "gates"))
+LEGACY_FACTOR_GATE_PRESENT_CODE = f"{LEGACY_FACTOR_GATE_KEY}_present"
+
+
+def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
+    settings = load_settings(require_ws_token=False)
+
+    if args.ops_command == "worker-status":
+        return 0, {"ok": True, "data": _worker_status_payload(settings)}
+
+    if args.ops_command == "refresh-asset-profiles":
+        data = _run_asset_profile_refresh_worker_once(settings, limit=args.limit, now_ms=_now_ms())
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "rebuild-token-profiles":
+        data = _run_token_profile_current_worker_once(settings, limit=args.limit, now_ms=_now_ms())
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "run-resolution-refresh":
+        data = _run_resolution_refresh_worker_once(
+            settings,
+            limit=args.limit,
+            reprocess_limit=args.reprocess_limit,
+            now_ms=_now_ms(),
+        )
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "reprocess-token-intents":
+        now_ms = _now_ms()
+        with repositories(settings) as repos:
+            reprocess = reprocess_recent_token_intents(
+                repos=repos,
+                now_ms=now_ms,
+                window=args.window,
+                limit=args.limit,
+                lookup_keys=args.lookup_key or None,
+            )
+        projection = _run_token_radar_projection_worker_once(
+            settings,
+            limit=args.projection_limit,
+            now_ms=now_ms,
+        )
+        return 0, {"ok": True, "data": {"reprocess": reprocess, "projection": projection}}
+
+    if args.ops_command == "rebuild-token-intents":
+        now_ms = _now_ms()
+        with repositories(settings) as repos:
+            data = rebuild_recent_token_intents(
+                repos=repos,
+                now_ms=now_ms,
+                window=args.window,
+                limit=args.limit,
+                projection_limit=args.projection_limit,
+            )
+        data["projection"] = _run_token_radar_projection_worker_once(
+            settings,
+            limit=args.projection_limit,
+            now_ms=now_ms,
+        )
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "rebuild-token-radar":
+        data = _run_token_radar_projection_worker_once(
+            settings,
+            windows=(args.window,),
+            scopes=(args.scope,),
+            limit=args.limit,
+            now_ms=_now_ms(),
+        )
+        return 0, {"ok": True, "data": data}
+
+    with repositories(settings) as repos:
+        if args.ops_command == "factor-diagnostics":
+            rows = repos.token_radar.latest_rows(
+                window=args.window,
+                scope=args.scope,
+                limit=args.limit,
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            )
+            data = factor_distribution_report(rows)
+            return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
+
+        if args.ops_command == "settle-token-factors":
+            data = settle_token_factor_scores(
+                repos=repos,
+                horizon=args.horizon,
+                window=args.window,
+                scope=args.scope,
+                generated_at_ms=args.now_ms if args.now_ms is not None else _now_ms(),
+                limit=args.limit,
+            )
+            return 0, {"ok": True, "data": data}
+
+        signals = repos.signals
+        registry = repos.registry
+        market_ticks = repos.market_ticks
+        enrichment = repos.enrichment
+        harness = repos.harness
+
+        if args.ops_command == "backfill-account-quality":
+            data = AccountQualityService(
+                signals=signals,
+                repository=AccountQualityRepository(signals.conn),
+            ).backfill_account_token_call_stats(limit=args.limit)
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "backfill-harness-jobs":
+            return 0, {"ok": True, "data": enrichment.enqueue_missing_watched_events(limit=args.limit)}
+
+        if args.ops_command == "settle-harness":
+            return (
+                0,
+                {
+                    "ok": True,
+                    "data": settle_harness_snapshots(
+                        harness=harness,
+                        registry=registry,
+                        market_ticks=market_ticks,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                        now_ms=args.now_ms,
+                    ),
+                },
+            )
+
+        if args.ops_command == "attribute-harness-credits":
+            return (
+                0,
+                {
+                    "ok": True,
+                    "data": attribute_harness_credits(
+                        harness=harness,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                    ),
+                },
+            )
+
+        if args.ops_command == "update-harness-weights":
+            return 0, {"ok": True, "data": update_harness_weights(harness=harness, limit=args.limit)}
+
+        if args.ops_command == "projection-status":
+            return 0, {"ok": True, "data": ProjectionRepository(signals.conn).status_summary()}
+
+        if args.ops_command == "validate-projections":
+            data = ProjectionValidationAudit(signals.conn).run(sample=args.sample)
+            return (0 if data.get("ok") else 1), {"ok": bool(data.get("ok")), "data": data}
+
+        if args.ops_command == "sync-okx-cex-universe":
+            inst_types = args.inst_type or ["SPOT", "SWAP"]
+            client = OkxCexClient(
+                base_url=settings.okx_cex_base_url,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            try:
+                data = sync_cex_routes(
+                    registry=repos.registry,
+                    cex_market=OkxCexMarketProvider(client),
+                    inst_types=inst_types,
+                    observed_at_ms=_now_ms(),
+                )
+            finally:
+                client.close()
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "sync-binance-cex-profiles":
+            client = BinanceCexProfileClient(
+                base_url=settings.binance_cex_base_url,
+                timeout_seconds=settings.binance_timeout_seconds,
+            )
+            try:
+                data = sync_cex_token_profiles(
+                    cex_token_profiles=repos.cex_token_profiles,
+                    profile_source=client,
+                    observed_at_ms=_now_ms(),
+                )
+            finally:
+                client.close()
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "sync-us-equity-symbols":
+            client = NasdaqTraderSymbolClient(timeout_seconds=settings.okx_timeout_seconds)
+            try:
+                data = sync_us_equity_symbols(
+                    registry=repos.registry,
+                    client=client,
+                    observed_at_ms=_now_ms(),
+                )
+            finally:
+                client.close()
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "sync-gmgn-directory":
+            client = GmgnDirectoryClient()
+            try:
+                data = _run_sync_gmgn_directory(
+                    client=client,
+                    repository=AccountQualityRepository(signals.conn),
+                    now_ms=_now_ms(),
+                    max_pages=args.max_pages,
+                )
+            except GmgnDirectoryError as exc:
+                return 1, {"ok": False, "error": str(exc)}
+            finally:
+                client.close()
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "audit-token-intent":
+            if not args.event_id and not args.intent_id:
+                parser.error("audit-token-intent requires --event-id or --intent-id")
+            data = _audit_token_intent(repos, event_id=args.event_id or None, intent_id=args.intent_id or None)
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "audit-token-radar":
+            data = _audit_token_radar(
+                repos,
+                window=args.window,
+                scope=args.scope,
+                limit=args.limit,
+                now_ms=_now_ms(),
+            )
+            return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
+
+    return 2, {"ok": False, "error": f"unknown ops command: {args.ops_command}"}
+
+
+def _run_sync_gmgn_directory(
+    *,
+    client: object,
+    repository: object,
+    now_ms: int,
+    max_pages: int,
+) -> dict:
+    upserted = 0
+    handles: list[str] = []
+    for entry in client.iter_entries(max_pages=max_pages):
+        repository.upsert_directory_entry(
+            handle=entry.handle,
+            gmgn_user_id=entry.gmgn_user_id,
+            user_tags=entry.user_tags,
+            platform_followers=entry.platform_followers,
+            observed_at_ms=now_ms,
+            commit=False,
+        )
+        upserted += 1
+        handles.append(entry.handle)
+    # single transaction: all-or-nothing for the full directory sync
+    repository.conn.commit()
+    return {
+        "upserted": upserted,
+        "first_handles": handles[:5],
+        "last_handles": handles[-5:],
+        "observed_at_ms": now_ms,
+    }
+
+
+def _worker_status_payload(settings: object) -> dict[str, Any]:
+    runtime = None
+    try:
+        runtime = bootstrap(settings, start_collector=False)
+        return {"workers": canonical_workers_status_payload(runtime)}
+    finally:
+        if runtime is not None:
+            asyncio.run(runtime.aclose())
+
+
+def _run_asset_profile_refresh_worker_once(settings: object, *, limit: int, now_ms: int) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    asset_market = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        asset_market = wire_asset_market_providers(settings, start_collector=True)
+        worker = AssetProfileRefreshWorker(
+            name="asset_profile_refresh",
+            settings=_worker_settings_with_overrides(settings.workers.asset_profile_refresh, batch_size=limit),
+            db=db,
+            telemetry=telemetry,
+            dex_profile_sources=asset_market.dex_profile_sources,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if asset_market is not None:
+            _close_asset_market_providers(asset_market)
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _run_token_profile_current_worker_once(settings: object, *, limit: int, now_ms: int) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        worker = TokenProfileCurrentWorker(
+            name="token_profile_current",
+            settings=_worker_settings_with_overrides(settings.workers.token_profile_current, batch_size=limit),
+            db=db,
+            telemetry=telemetry,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _run_resolution_refresh_worker_once(
+    settings: object,
+    *,
+    limit: int,
+    reprocess_limit: int,
+    now_ms: int,
+) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    asset_market = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        asset_market = wire_asset_market_providers(settings, start_collector=True)
+        worker = ResolutionRefreshWorker(
+            name="resolution_refresh",
+            settings=_worker_settings_with_overrides(
+                settings.workers.resolution_refresh,
+                batch_size=limit,
+                reprocess_limit=reprocess_limit,
+            ),
+            db=db,
+            telemetry=telemetry,
+            dex_discovery_market=asset_market.dex_discovery_market,
+            dex_quote_market=asset_market.dex_quote_market,
+            chain_ids=asset_market.discovery_chain_ids or settings.workers.resolution_refresh.chain_ids,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if asset_market is not None:
+            _close_asset_market_providers(asset_market)
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _run_token_radar_projection_worker_once(
+    settings: object,
+    *,
+    windows: tuple[str, ...] | None = None,
+    scopes: tuple[str, ...] | None = None,
+    limit: int,
+    now_ms: int,
+) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        worker_name = "token_radar_projection"
+        advisory_lock = None
+        worker = TokenRadarProjectionWorker(
+            name=worker_name,
+            settings=_worker_settings_with_overrides(settings.workers.token_radar_projection, batch_size=limit),
+            db=db,
+            telemetry=telemetry,
+            wake_bus=db.wake_emitter(),
+            wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
+        )
+        try:
+            lock_key = _effective_worker_advisory_lock_key(worker)
+            advisory_lock = db.acquire_advisory_lock_connection(
+                worker_name,
+                lock_key,
+            )
+            return worker.rebuild_once(now_ms=now_ms, windows=windows, scopes=scopes, limit=limit)
+        finally:
+            if advisory_lock is not None:
+                _release_advisory_lock_connection(advisory_lock)
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:
+    dump = getattr(config, "model_dump", None)
+    values = dict(dump()) if dump is not None else dict(vars(config))
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _close_db_bundle(db: object) -> None:
+    for name in ("api_pool", "worker_pool", "tool_pool", "wake_pool"):
+        pool = getattr(db, name, None)
+        close = getattr(pool, "close", None)
+        if close:
+            close()
+
+
+def _release_advisory_lock_connection(connection: object) -> None:
+    release = getattr(connection, "release", None)
+    close = getattr(connection, "close", None)
+    releaser = release or close
+    if releaser is not None:
+        releaser()
+
+
+def _effective_worker_advisory_lock_key(worker: object) -> int:
+    resolve = getattr(worker, "_advisory_lock_key", None)
+    key = resolve() if callable(resolve) else getattr(worker, "SINGLE_WRITER_KEY", None)
+    if key is None:
+        raise RuntimeError("token_radar_projection advisory lock key is required")
+    return int(key)
+
+
+def _close_asset_market_providers(asset_market: object) -> None:
+    seen: set[int] = set()
+    for name in (
+        "sync_cex_market",
+        "message_cex_market",
+        "dex_discovery_market",
+        "dex_quote_market",
+        "dex_candle_market",
+        "stream_dex_market",
+    ):
+        provider = getattr(asset_market, name, None)
+        if provider is None or id(provider) in seen:
+            continue
+        seen.add(id(provider))
+        close = getattr(provider, "close", None)
+        if close:
+            close()
+    for source in tuple(getattr(asset_market, "dex_profile_sources", ()) or ()):
+        provider = getattr(source, "market", None)
+        if provider is None or id(provider) in seen:
+            continue
+        seen.add(id(provider))
+        close = getattr(provider, "close", None)
+        if close:
+            close()
+
+
+def _audit_token_intent(repos: object, *, event_id: str | None, intent_id: str | None) -> dict:
+    if intent_id:
+        intents = [repos.token_intents.get(intent_id)]
+        intents = [item for item in intents if item]
+    else:
+        intents = repos.token_intents.intents_for_event(str(event_id))
+    intent_ids = [str(item["intent_id"]) for item in intents]
+    evidence = []
+    resolutions = []
+    for current_intent_id in intent_ids:
+        evidence.extend(repos.token_intents.evidence_links_for_intent(current_intent_id))
+        resolution = repos.intent_resolutions.active_resolution_for_intent(current_intent_id)
+        if resolution:
+            resolutions.append(resolution)
+    return {
+        "event_id": event_id,
+        "intent_id": intent_id,
+        "intents": intents,
+        "intent_evidence": evidence,
+        "active_resolutions": resolutions,
+    }
+
+
+def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, now_ms: int) -> dict:
+    rows = repos.token_radar.latest_rows(
+        window=window,
+        scope=scope,
+        limit=limit,
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+    )
+    _source_query = TokenRadarSourceQuery(repos.conn)
+    source_current_window_rows = _source_query.source_count(
+        since_ms=now_ms - WINDOW_MS[window],
+        scope=scope,
+    )
+    source_max_resolution_ms = _source_query.max_resolution_ms()
+    source_max_market_tick_observed_at_ms = _source_query.max_market_tick_observed_at_ms()
+    return {
+        "window": window,
+        "scope": scope,
+        "limit": limit,
+        **_audit_token_radar_rows(
+            rows,
+            now_ms=now_ms,
+            source_current_window_rows=source_current_window_rows,
+            source_max_resolution_ms=source_max_resolution_ms,
+            source_max_market_tick_observed_at_ms=source_max_market_tick_observed_at_ms,
+        ),
+    }
+
+
+def _audit_token_radar_rows(
+    rows: list[dict],
+    *,
+    now_ms: int,
+    source_current_window_rows: int,
+    source_max_resolution_ms: int | None,
+    source_max_market_tick_observed_at_ms: int | None,
+) -> dict:
+    violations: list[dict] = []
+    required = set(TOKEN_RADAR_FACTOR_FAMILIES)
+    required_blocks = ("gates", "data_health", "normalization", "composite")
+    if not rows and source_current_window_rows:
+        violations.append({"code": "empty_projection_rows"})
+    for index, row in enumerate(rows):
+        projection_version = row.get("projection_version")
+        if projection_version != TOKEN_RADAR_PROJECTION_VERSION:
+            violations.append({"row": index, "code": "wrong_projection_version", "value": projection_version})
+        factor_version = row.get("factor_version")
+        if factor_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+            violations.append({"row": index, "code": "wrong_factor_version", "value": factor_version})
+        factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+        if not factor_snapshot:
+            violations.append({"row": index, "code": "missing_factor_snapshot"})
+        elif factor_snapshot.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
+            violations.append(
+                {
+                    "row": index,
+                    "code": "wrong_factor_snapshot_version",
+                    "value": factor_snapshot.get("schema_version"),
+                }
+            )
+        else:
+            try:
+                require_token_factor_snapshot(factor_snapshot, field_name="factor_snapshot_json")
+            except ValueError as exc:
+                violations.append(
+                    {
+                        "row": index,
+                        "code": "invalid_factor_snapshot_contract",
+                        "error": str(exc),
+                    }
+                )
+        families = factor_snapshot.get("families") if isinstance(factor_snapshot.get("families"), dict) else {}
+        missing = sorted(required - set(families))
+        extra = sorted(set(families) - required)
+        if missing:
+            violations.append({"row": index, "code": "missing_factor_families", "families": missing})
+        if extra:
+            violations.append({"row": index, "code": "extra_factor_families", "families": extra})
+        if LEGACY_FACTOR_GATE_KEY in factor_snapshot:
+            violations.append({"row": index, "code": LEGACY_FACTOR_GATE_PRESENT_CODE})
+        violations.extend(
+            {"row": index, "code": "missing_factor_snapshot_block", "block": block_name}
+            for block_name in required_blocks
+            if not isinstance(factor_snapshot.get(block_name), dict)
+        )
+        for family in sorted(required & set(families)):
+            block = families.get(family) if isinstance(families.get(family), dict) else {}
+            if "score" not in block:
+                violations.append({"row": index, "family": family, "code": "missing_family_score"})
+            if not block.get("data_health"):
+                violations.append({"row": index, "family": family, "code": "missing_family_data_health"})
+            if not isinstance(block.get("facts"), dict):
+                violations.append({"row": index, "family": family, "code": "missing_family_facts"})
+            if not isinstance(block.get("factors"), dict):
+                violations.append({"row": index, "family": family, "code": "missing_family_factors"})
+        composite = factor_snapshot.get("composite") if isinstance(factor_snapshot.get("composite"), dict) else {}
+        if "rank_score" not in composite:
+            violations.append({"row": index, "code": "missing_composite_rank_score"})
+        recommended_decision = composite.get("recommended_decision")
+        if not recommended_decision:
+            violations.append({"row": index, "code": "missing_composite_decision"})
+        elif row.get("decision") and row.get("decision") != recommended_decision:
+            violations.append(
+                {
+                    "row": index,
+                    "code": "decision_mismatch",
+                    "row_decision": row.get("decision"),
+                    "factor_decision": recommended_decision,
+                }
+            )
+        for field in ("attention_json", "market_json", "price_json", "score_json"):
+            payload = row.get(field) if isinstance(row.get(field), dict) else {}
+            if payload:
+                violations.append({"row": index, "code": "legacy_runtime_payload", "field": field})
+        gates = factor_snapshot.get("gates") if isinstance(factor_snapshot.get("gates"), dict) else {}
+        if row.get("decision") == "high_alert" and gates.get("eligible_for_high_alert") is not True:
+            violations.append({"row": index, "code": "high_alert_without_gate_eligibility"})
+    social_lag_ms = max(0, int(now_ms) - int(source_max_resolution_ms)) if source_max_resolution_ms else None
+    market_lag_ms = None
+    if source_max_market_tick_observed_at_ms:
+        market_lag_ms = max(0, int(now_ms) - int(source_max_market_tick_observed_at_ms))
+    return {
+        "ok": not violations,
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "row_count": len(rows),
+        "violations": violations,
+        "source_current_window_rows": source_current_window_rows,
+        "source_max_resolution_ms": source_max_resolution_ms,
+        "source_max_market_tick_observed_at_ms": source_max_market_tick_observed_at_ms,
+        "social_lag_ms": social_lag_ms,
+        "market_lag_ms": market_lag_ms,
+    }
+
+
+def _now_ms() -> int:
+    import time
+
+    return int(time.time() * 1000)

@@ -24,6 +24,10 @@ from agents import Agent, ToolCallItem
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
     build_pulse_harness_manifest,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
+    PulseDecisionRuntimeService,
+)
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     FinalDecision,
@@ -140,11 +144,16 @@ def _build_client(
     enable_fallback_tool: bool = True,
     safety_net: Any | None = None,
 ) -> OpenAIAgentsPulseDecisionClient:
+    pool = db_pool or FakeDbPool()
     return OpenAIAgentsPulseDecisionClient(
         api_key="sk-test",
         model="gpt-test",
         llm_gateway=FakeGateway(),
-        db_pool=db_pool or FakeDbPool(),
+        tool_runtime_factory=lambda *, investigator_max_tool_calls: AgentToolRuntime(
+            db_pool=pool,
+            investigator_max_tool_calls=investigator_max_tool_calls,
+        ),
+        decision_runtime=PulseDecisionRuntimeService(db_pool=pool),
         runner=runner,
         safety_net=safety_net,
         investigator_max_tool_calls_by_route=investigator_budgets,
@@ -428,7 +437,9 @@ def test_safety_net_strict_success_preserves_sdk_tool_calls_and_budget_counts() 
             }, result
 
     client = _build_client(FakeRunner([]), safety_net=FakeSafetyNet())
-    tool_ctx = PulseToolContext(db_pool=FakeDbPool(), investigator_max_tool_calls=5)
+    tool_ctx = PulseToolContext(
+        tool_runtime=AgentToolRuntime(db_pool=FakeDbPool(), investigator_max_tool_calls=5)
+    )
     audit = client.request_audit(
         context=_context(evidence_event_ids=["evt-1"]),
         run_id="run-1",
@@ -957,7 +968,7 @@ def test_evidence_event_urls_db_error_degrades_silently() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_pulse_harness_manifest_advertises_two_stages_and_tools_enabled() -> None:
+def test_pulse_harness_manifest_advertises_two_stages_and_stage_tools() -> None:
     manifest = build_pulse_harness_manifest(
         provider="openai",
         model="gpt-test",
@@ -967,5 +978,7 @@ def test_pulse_harness_manifest_advertises_two_stages_and_tools_enabled() -> Non
 
     runtime = manifest["runtime"]
     assert runtime["stages"] == ["investigator", "decision_maker"]
-    assert runtime["tools_enabled"] is True
+    assert "tools_enabled" not in runtime
+    assert runtime["tool_names_by_stage"]["investigator"]
     assert runtime["max_turns_per_stage"] == {"investigator": 5, "decision_maker": 3}
+    assert "tool_contract" not in manifest["contracts"]

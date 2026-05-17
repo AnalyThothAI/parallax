@@ -11,7 +11,13 @@ from gmgn_twitter_intel.domains.notifications.services.notification_rules import
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_harness_repository import PulseHarnessRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
@@ -54,15 +60,17 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     assert scan["asset_enqueued"] == 1
     assert run["processed"] == 1
 
-    candidate = repos.pulse.candidate_upserts[0]
+    candidate = repos.pulse_candidates.candidate_upserts[0]
     decision = candidate["decision_json"]
     assert {"narrative_archetype", "narrative_thesis_zh", "bull_view", "bear_view", "playbook"} <= set(decision)
     assert decision["evidence_event_urls"] == {"event-1": "https://x.com/toly/status/1"}
-    assert [step["stage"] for step in repos.pulse.agent_run_steps] == ["investigator", "decision_maker"]
-    assert repos.pulse.agent_run_steps[0]["input_json"]["tool_calls"]
+    assert [step["stage"] for step in repos.pulse_runs.agent_run_steps] == ["investigator", "decision_maker"]
+    assert repos.pulse_runs.agent_run_steps[0]["input_json"]["tool_calls"]
 
     pulse_read = _PulseReadAdapter(repos)
-    detail = SignalPulseService(pulse=pulse_read).candidate(candidate_id=candidate["candidate_id"])
+    detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_read).candidate(
+        candidate_id=candidate["candidate_id"]
+    )
     assert detail is not None
     assert detail["decision"]["playbook"]["has_playbook"] is True
     assert detail["decision"]["bull_view"]["strength"] == "moderate"
@@ -102,8 +110,9 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         assert scan["asset_enqueued"] == 1
         assert run["processed"] == 1
 
-        repo = PulseRepository(conn)
-        page = repo.list_candidates(window="1h", scope="all", status="trade_candidate", limit=10)
+        pulse_read = PulseReadRepository(conn)
+        pulse_runs = PulseRunsRepository(conn)
+        page = pulse_read.list_candidates(window="1h", scope="all", status="trade_candidate", limit=10)
         assert len(page["items"]) == 1
         stored = page["items"][0]
         ids = {"candidate_id": stored["candidate_id"], "run_id": stored["agent_run_id"]}
@@ -111,25 +120,28 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         decision = stored["decision_json"]
         assert {"narrative_archetype", "narrative_thesis_zh", "bull_view", "bear_view", "playbook"} <= set(decision)
 
-        steps = repo.list_agent_run_steps(ids["run_id"])
+        steps = pulse_runs.list_agent_run_steps(ids["run_id"])
         steps_by_stage = {step["stage"]: step for step in steps}
         assert set(steps_by_stage) == {"investigator", "decision_maker"}
         assert steps_by_stage["investigator"]["input_json"]["tool_calls"]
 
-        detail = SignalPulseService(pulse=repo).candidate(candidate_id=ids["candidate_id"])
+        detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs).candidate(
+            candidate_id=ids["candidate_id"]
+        )
         assert detail is not None
         assert detail["decision"]["playbook"]["has_playbook"] is True
         assert detail["decision"]["bull_view"]["strength"] == "moderate"
         assert detail["stages"]["investigator"]["response"]["narrative_archetype_candidate"] == "社交扩散"
         assert detail["stages"]["decision_maker"]["response"]["recommendation"] == "trade_candidate"
 
-        notifications = _notification_engine(repo).evaluate(now_ms=NOW_MS)
+        notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
         pulse_notifications = [item for item in notifications if item.rule_id == "signal_pulse_candidate"]
         assert len(pulse_notifications) == 1
         notification = pulse_notifications[0]
         signature = notification.payload["notification_signature"]
         assert signature.startswith("sha256:")
-        assert notification.dedup_key == f"signal_pulse_candidate:{ids['candidate_id']}:{signature}"
+        external_identity = notification.payload.get("external_push_signature") or "in_app"
+        assert notification.dedup_key == f"signal_pulse_candidate:{signature}:{external_identity}"
         body = notification.body
         assert "叙事" in body
         assert "看多" in body
@@ -303,15 +315,15 @@ class _PulseReadAdapter:
         self._repos = repos
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
-        return self._repos.pulse.candidates.get(candidate_id)
+        return self._repos.pulse_candidates.candidates.get(candidate_id)
 
     def list_agent_run_steps(self, run_id: str) -> list[dict[str, Any]]:
-        return [step for step in self._repos.pulse.agent_run_steps if step.get("run_id") == run_id]
+        return [step for step in self._repos.pulse_runs.agent_run_steps if step.get("run_id") == run_id]
 
     def list_candidates(self, **kwargs: Any) -> dict[str, Any]:
         rows = [
             row
-            for row in self._repos.pulse.candidates.values()
+            for row in self._repos.pulse_candidates.candidates.values()
             if row.get("window") == kwargs.get("window") and row.get("scope") == kwargs.get("scope")
         ]
         return {"items": rows, "next_cursor": None}
@@ -345,7 +357,12 @@ class _RealWorkerRepos:
         token_target_rows: list[dict[str, Any]],
     ) -> None:
         self.conn = conn
-        self.pulse = PulseRepository(conn)
+        self.pulse_jobs = PulseJobsRepository(conn)
+        self.pulse_admission = PulseAdmissionRepository(conn)
+        self.pulse_candidates = PulseCandidatesRepository(conn)
+        self.pulse_runs = PulseRunsRepository(conn)
+        self.pulse_harness = PulseHarnessRepository(conn)
+        self.pulse_playbooks = PulsePlaybooksRepository(conn)
         self.token_radar = _StaticRows(rows=token_radar_rows)
         self.token_targets = _StaticRows(rows=token_target_rows)
         self.harness = _EmptyHarness()

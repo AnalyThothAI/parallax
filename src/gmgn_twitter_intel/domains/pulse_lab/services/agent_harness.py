@@ -92,11 +92,6 @@ def build_pulse_harness_manifest(
                 "abstain",
             ],
             "validators_enabled": _stable_strings(validators_enabled) or list(_DEFAULT_VALIDATORS_ENABLED),
-            "tool_contract": {
-                "stage": "investigator",
-                "budget_owner": "harness",
-                "evidence_ids_must_resolve_to_context": True,
-            },
         },
         "gate_policy": {
             "gate_version": PULSE_GATE_VERSION,

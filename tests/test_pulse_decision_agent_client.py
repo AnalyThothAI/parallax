@@ -16,6 +16,10 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
+    PulseDecisionRuntimeService,
+)
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     InvestigationReport,
@@ -39,6 +43,10 @@ class _FakeGateway:
     def openai_client(self, *, model, base_url, timeout_s):
         self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
         return object()
+
+
+def _tool_runtime_factory(*, investigator_max_tool_calls: int):
+    return AgentToolRuntime(db_pool=object(), investigator_max_tool_calls=investigator_max_tool_calls)
 
 
 def test_extract_usage_recursively_returns_json_safe_payload() -> None:
@@ -123,7 +131,8 @@ def test_pulse_client_normalizes_openai_root_base_url_before_building_model() ->
         api_key="sk-test",
         model="gpt-test",
         llm_gateway=gateway,
-        db_pool=object(),
+        tool_runtime_factory=_tool_runtime_factory,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
         base_url="https://api.openai.com",
     )
 
@@ -132,13 +141,23 @@ def test_pulse_client_normalizes_openai_root_base_url_before_building_model() ->
     ]
 
 
-def test_pulse_client_requires_db_pool() -> None:
+def test_pulse_client_requires_injected_runtimes() -> None:
     import pytest
 
-    with pytest.raises(ValueError, match="db_pool is required"):
+    with pytest.raises(ValueError, match="tool_runtime_factory is required"):
         OpenAIAgentsPulseDecisionClient(
             api_key="sk-test",
             model="gpt-test",
             llm_gateway=_FakeGateway(),
-            db_pool=None,
+            tool_runtime_factory=None,  # type: ignore[arg-type]
+            decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+        )
+
+    with pytest.raises(ValueError, match="decision_runtime is required"):
+        OpenAIAgentsPulseDecisionClient(
+            api_key="sk-test",
+            model="gpt-test",
+            llm_gateway=_FakeGateway(),
+            tool_runtime_factory=_tool_runtime_factory,
+            decision_runtime=None,  # type: ignore[arg-type]
         )

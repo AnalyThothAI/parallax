@@ -108,7 +108,7 @@ def _v2_stage_audits(
     tool_calls = (
         investigator_tool_calls
         if investigator_tool_calls is not None
-        else [{"name": "lookup_recent_mentions", "args": {}}]
+        else [{"name": "get_target_recent_tweets", "args": {}}]
     )
     response = investigator_response if investigator_response is not None else {
         "narrative_archetype_candidate": "kol-ignition",
@@ -292,9 +292,28 @@ def test_harness_manifest_records_operational_contract() -> None:
         "pydantic_final_decision_schema",
         "runtime_evidence_id_subset",
     ]
+    assert "tool_contract" not in manifest["contracts"]
     assert manifest["eval_metadata"]["deterministic_grader_version"] == PULSE_DETERMINISTIC_GRADER_VERSION
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-v1"
     assert "schema_validation_failed" in manifest["failure_taxonomy"]["codes"]
+
+
+def test_harness_manifest_allows_empty_decision_maker_tool_list() -> None:
+    manifest = build_pulse_harness_manifest(
+        provider="openai",
+        model="gpt-5-mini",
+        artifact_version_hash="artifact:gpt-5-mini",
+        timeout_seconds=20.0,
+        tool_names_by_stage={
+            "investigator": ("get_target_recent_tweets",),
+            "decision_maker": (),
+        },
+    )
+
+    runtime = manifest["runtime"]
+    assert "tools_enabled" not in runtime
+    assert runtime["tool_names_by_stage"]["investigator"] == ["get_target_recent_tweets"]
+    assert runtime["tool_names_by_stage"]["decision_maker"] == []
 
 
 def test_harness_hash_changes_with_operational_contract_fields() -> None:

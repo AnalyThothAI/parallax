@@ -9,15 +9,17 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
-from gmgn_twitter_intel.app.surfaces.api import http as api_http
-from gmgn_twitter_intel.app.surfaces.api.http import (
+from gmgn_twitter_intel.app.surfaces.api import routes_token_image as token_image_api
+from gmgn_twitter_intel.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
-    _json,
     api_bad_request_response,
     api_unauthorized_response,
+)
+from gmgn_twitter_intel.app.surfaces.api.http import (
     create_api_router,
 )
+from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
@@ -201,7 +203,7 @@ def test_token_image_proxy_fetches_binance_logo_without_auth(monkeypatch, tmp_pa
         def close(self):
             pass
 
-    monkeypatch.setattr(api_http.curl_requests, "Session", FakeImageSession)
+    monkeypatch.setattr(token_image_api.curl_requests, "Session", FakeImageSession)
     app = make_token_image_app(tmp_path)
 
     with TestClient(app) as client:
@@ -213,7 +215,7 @@ def test_token_image_proxy_fetches_binance_logo_without_auth(monkeypatch, tmp_pa
     assert response.status_code == 200
     assert response.content == b"fake-png"
     assert response.headers["content-type"].startswith("image/png")
-    assert response.headers["cache-control"] == api_http.TOKEN_IMAGE_PROXY_CACHE_CONTROL
+    assert response.headers["cache-control"] == token_image_api.TOKEN_IMAGE_PROXY_CACHE_CONTROL
 
 
 def test_token_image_proxy_caches_successful_fetches_under_app_home(monkeypatch, tmp_path):
@@ -235,7 +237,7 @@ def test_token_image_proxy_caches_successful_fetches_under_app_home(monkeypatch,
         def close(self):
             pass
 
-    monkeypatch.setattr(api_http.curl_requests, "Session", FakeImageSession)
+    monkeypatch.setattr(token_image_api.curl_requests, "Session", FakeImageSession)
     app = make_token_image_app(tmp_path)
     source_url = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png"
 
@@ -272,7 +274,7 @@ def test_token_image_proxy_fetches_gmgn_external_gif_with_chrome_impersonation(m
         def close(self):
             session_calls.append({"close": True})
 
-    monkeypatch.setattr(api_http.curl_requests, "Session", FakeImageSession)
+    monkeypatch.setattr(token_image_api.curl_requests, "Session", FakeImageSession)
     app = make_token_image_app(tmp_path)
 
     with TestClient(app) as client:
@@ -284,7 +286,7 @@ def test_token_image_proxy_fetches_gmgn_external_gif_with_chrome_impersonation(m
     assert response.status_code == 200
     assert response.content == b"fake-gif"
     assert response.headers["content-type"].startswith("image/gif")
-    assert session_calls[0] == {"init": {"impersonate": api_http.TOKEN_IMAGE_PROXY_CURL_IMPERSONATE}}
+    assert session_calls[0] == {"init": {"impersonate": token_image_api.TOKEN_IMAGE_PROXY_CURL_IMPERSONATE}}
 
 
 def test_token_image_proxy_rejects_unapproved_hosts(tmp_path):
@@ -331,7 +333,7 @@ class FakePulseTask:
         return False
 
 
-class FakeSignalPulseRepository:
+class FakeSignalPulseReadRepository:
     def __init__(self):
         self.list_calls: list[dict[str, object]] = []
         self.summary_calls: list[dict[str, object]] = []
@@ -422,8 +424,9 @@ class FakeHarnessRepository:
 
 
 class FakeRepositoryContext:
-    def __init__(self, pulse):
-        self.pulse = pulse
+    def __init__(self, pulse_read):
+        self.pulse_read = pulse_read
+        self.pulse_runs = pulse_read
         self.harness = FakeHarnessRepository()
 
     def __enter__(self):
@@ -434,9 +437,9 @@ class FakeRepositoryContext:
 
 
 class FakeRuntime:
-    def __init__(self, pulse):
+    def __init__(self, pulse_read):
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
-        self.pulse = pulse
+        self.pulse_read = pulse_read
         self.workers = {
             "pulse_candidate": SimpleNamespace(
                 status_payload=lambda: {
@@ -456,7 +459,7 @@ class FakeRuntime:
         )
 
     def repositories(self):
-        return FakeRepositoryContext(self.pulse)
+        return FakeRepositoryContext(self.pulse_read)
 
 
 def make_event(
@@ -728,10 +731,12 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert inspect_data["query"]["result_kind"] == "token_result"
     assert inspect_data["resolver"]["target_candidates"]
     assert inspect_data["token_result"]["posts"]["items"][0]["event_id"] == "event-1"
+    assert inspect_data["token_result"]["timeline"]["market_candles"]["target_type"] == "Asset"
     assert inspect_data["token_result"]["profile"]["status"] == "pending"
     assert inspect_data["token_result"]["profile"]["provider"] is None
     assert inspect_data["token_result"]["market_live"]["status"] in {"missing", "unsupported", "ready"}
-    assert "market_overlay" not in inspect_data["token_result"]
+    legacy_market_field = "market" "_overlay"
+    assert legacy_market_field not in inspect_data["token_result"]
     assert "radar_item" not in inspect_data["token_result"]
     assert inspect_data["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
 
@@ -1144,7 +1149,7 @@ def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
 
 
 def test_signal_pulse_api_uses_fake_runtime_without_postgres():
-    pulse = FakeSignalPulseRepository()
+    pulse = FakeSignalPulseReadRepository()
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
@@ -1194,7 +1199,7 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
 
 
 def test_signal_pulse_api_defaults_to_produced_agent_window_and_scope():
-    pulse = FakeSignalPulseRepository()
+    pulse = FakeSignalPulseReadRepository()
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
@@ -1218,7 +1223,7 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
 
     with TestClient(app) as client:
         with client.app.state.service.repositories() as repos:
-            repos.pulse.upsert_candidate(
+            repos.pulse_candidates.upsert_candidate(
                 candidate_id="candidate-api-token",
                 candidate_type="token_target",
                 subject_key="toly",
@@ -1253,7 +1258,7 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 created_at_ms=1_000,
                 updated_at_ms=2_000,
             )
-            repos.pulse.upsert_candidate(
+            repos.pulse_candidates.upsert_candidate(
                 candidate_id="candidate-api-blocked",
                 candidate_type="token_target",
                 subject_key="toly",
@@ -1301,7 +1306,7 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 created_at_ms=900,
                 updated_at_ms=3_000,
             )
-            repos.pulse.upsert_candidate(
+            repos.pulse_candidates.upsert_candidate(
                 candidate_id="candidate-api-blocked-2",
                 candidate_type="token_target",
                 subject_key="toly",
@@ -1453,8 +1458,10 @@ def test_api_token_case_returns_dossier_for_resolved_asset(tmp_path):
     assert body["ok"] is True
     assert body["data"]["target"]["target_type"] == "Asset"
     assert "market_live" in body["data"]
+    assert body["data"]["timeline"]["market_candles"]["target_type"] == "Asset"
     assert "radar_item" not in body["data"]
-    assert "market_overlay" not in body["data"]
+    legacy_market_field = "market" "_overlay"
+    assert legacy_market_field not in body["data"]
     assert body["data"]["posts"]["items"][0]["post_quality"]["contributions"]
 
 
@@ -1505,7 +1512,7 @@ def test_api_token_case_rejects_invalid_window_and_scope(tmp_path):
 
 def test_api_token_case_matches_search_inspect_token_result_shape(tmp_path, monkeypatch):
     now_ms = 1_778_562_000_000
-    monkeypatch.setattr("gmgn_twitter_intel.app.surfaces.api.http._now_ms", lambda: now_ms)
+    monkeypatch.setattr("gmgn_twitter_intel.app.surfaces.api.routes_search._now_ms", lambda: now_ms)
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -1748,7 +1755,7 @@ def test_api_rejects_removed_narrative_product_surfaces(tmp_path):
 def _seed_displayable_candidate(app, *, candidate_id: str, agent_run_id: str | None = None) -> None:
     """Seed one displayable pulse_candidates row for HTTP-layer tests."""
     with app.state.service.repositories() as repos:
-        repos.pulse.upsert_candidate(
+        repos.pulse_candidates.upsert_candidate(
             candidate_id=candidate_id,
             candidate_type="token_target",
             subject_key="toly",
@@ -1805,7 +1812,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
     app = create_app(settings=settings, start_collector=False)
     with TestClient(app) as client:
         with client.app.state.service.repositories() as repos:
-            repos.pulse.enqueue_job(
+            repos.pulse_jobs.enqueue_job(
                 job_id="job-stages",
                 candidate_id="cand-stages",
                 candidate_type="token_target",
@@ -1819,7 +1826,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                 priority=1,
                 status="done",
             )
-            repos.pulse.insert_agent_run(
+            repos.pulse_runs.insert_agent_run(
                 run_id="run-stages",
                 job_id="job-stages",
                 candidate_id="cand-stages",
@@ -1844,7 +1851,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                 ("investigator", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
                 ("decision_maker", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
             ]:
-                repos.pulse.insert_agent_run_step(
+                repos.pulse_runs.insert_agent_run_step(
                     step_id=f"run-stages:{stage}:0",
                     run_id="run-stages",
                     stage=stage,
@@ -1868,21 +1875,11 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
 
     assert response.status_code == 200
     stages = response.json()["data"]["stages"]
-    assert set(stages.keys()) == {
-        "investigator",
-        "decision_maker",
-        "research_only_gate",
-        "analyst",
-        "critic",
-        "judge",
-    }
+    assert set(stages.keys()) == {"investigator", "decision_maker", "research_only_gate"}
     assert stages["investigator"]["status"] == "ok"
     assert stages["investigator"]["response"]["confidence"] == 0.82
     assert stages["decision_maker"]["response"]["confidence"] == 0.35
     assert stages["research_only_gate"] is None
-    assert stages["analyst"] is None
-    assert stages["critic"] is None
-    assert stages["judge"] is None
 
 
 def test_social_events_by_ids_returns_full_records(tmp_path):

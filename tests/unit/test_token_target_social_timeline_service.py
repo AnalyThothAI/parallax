@@ -6,6 +6,8 @@ from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_time
     TokenTargetSocialTimelineService,
 )
 
+LEGACY_MARKET_FIELD = "market" "_overlay"
+
 
 def test_token_target_timeline_reads_rows_by_target_identity():
     service = TokenTargetSocialTimelineService(
@@ -35,8 +37,9 @@ def test_token_target_timeline_reads_rows_by_target_identity():
     assert result["query"]["target_id"] == "asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"
     assert result["summary"]["posts"] == 1
     assert result["summary"]["authors"] == 1
-    assert result["market_overlay"]["target_type"] == "Asset"
-    assert result["market_overlay"]["chain_id"] == "eip155:1"
+    assert LEGACY_MARKET_FIELD not in result
+    assert result["market_candles"]["target_type"] == "Asset"
+    assert result["market_candles"]["chain_id"] == "eip155:1"
     assert result["stages"][0]["phase"] == "seed"
     assert result["stages"][0]["representative_event_ids"] == ["event-1"]
     assert result["posts"][0]["target_id"] == "asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"
@@ -49,7 +52,7 @@ def test_token_target_timeline_reads_rows_by_target_identity():
     assert result["buckets"][0]["price"]["price_usd"] == 1.23
 
 
-def test_cex_target_timeline_uses_pricefeed_market_overlay():
+def test_cex_target_timeline_uses_pricefeed_market_candles():
     service = TokenTargetSocialTimelineService(
         targets=FakeTargets(
             rows=[
@@ -75,9 +78,10 @@ def test_cex_target_timeline_uses_pricefeed_market_overlay():
         now_ms=1_700_000_060_000,
     )
 
-    assert result["market_overlay"]["target_type"] == "CexToken"
-    assert result["market_overlay"]["provider"] == "okx"
-    assert result["market_overlay"]["native_market_id"] == "BTC-USDT"
+    assert LEGACY_MARKET_FIELD not in result
+    assert result["market_candles"]["target_type"] == "CexToken"
+    assert result["market_candles"]["provider"] == "okx"
+    assert result["market_candles"]["native_market_id"] == "BTC-USDT"
 
 
 def test_social_timeline_cursor_is_timestamp_and_event_id():

@@ -14,50 +14,30 @@ from loguru import logger
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
-    AGENT_NAME,
-    BACKEND,
-    PULSE_DECISION_PROMPT_VERSION,
-    PULSE_DECISION_SCHEMA_VERSION,
     PULSE_GATE_VERSION,
-    PULSE_PLAYBOOK_VERSION,
     PULSE_VERSION,
-    WORKFLOW_NAME,
 )
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
-    PULSE_AGENT_STRATEGY,
-    PULSE_FAILURE_TAXONOMY_VERSION,
-    build_pulse_harness_manifest,
-    pulse_harness_hash,
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import (
+    ESCALATION_EDGE_EVENTS,
+    PulseAdmissionPolicy,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness_eval import (
-    build_pulse_failed_eval_case,
-    build_pulse_deterministic_eval_case,
-    grade_pulse_deterministic_eval_case,
-)
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
-from gmgn_twitter_intel.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
     gate_pulse_candidate_from_factor_snapshot,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
+    PulseCandidateJobService,
+    _compact_error,
+    _context_with_gate,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_edge_events import (
     build_pulse_edge_state,
     diff_pulse_edge_events,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import (
-    ESCALATION_EDGE_EVENTS,
-    PulseAdmissionPolicy,
-)
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
-    BullBearView,
-    FinalDecision,
-    PulseStageFailure,
-    StageRunAudit,
-    TradePlaybook,
-)
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     require_token_factor_snapshot,
@@ -73,52 +53,6 @@ PULSE_TARGET_EDGE_BUDGET_PER_HOUR = 3
 PULSE_FAILURE_CIRCUIT_PER_HOUR = 3
 PULSE_FAILURE_CIRCUIT_REASONS = ("schema_validation_failed", "unknown_evidence_id")
 ADVISORY_LOCK_KEY = 2026051502
-
-_PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
-
-
-@dataclass(frozen=True)
-class PulseCandidateContext:
-    candidate_id: str
-    candidate_type: str
-    subject_key: str
-    window: str
-    scope: str
-    trigger_signature: str
-    timeline_signature: str
-    priority: int
-    target_type: str | None
-    target_id: str | None
-    symbol: str | None
-    factor_snapshot: dict[str, Any]
-    selected_posts: list[dict[str, Any]]
-    gate_result: dict[str, Any] | None
-    edge_state: dict[str, Any] | None
-    edge_events: tuple[str, ...]
-    source_event_ids: list[str]
-    evidence_event_ids: list[str]
-
-    def agent_context(self) -> dict[str, Any]:
-        return {
-            "pulse_version": PULSE_VERSION,
-            "candidate_id": self.candidate_id,
-            "candidate_type": self.candidate_type,
-            "subject_key": self.subject_key,
-            "target_type": self.target_type,
-            "target_id": self.target_id,
-            "symbol": self.symbol,
-            "window": self.window,
-            "scope": self.scope,
-            "trigger_signature": self.trigger_signature,
-            "timeline_signature": self.timeline_signature,
-            "factor_snapshot": self.factor_snapshot,
-            "gate_result": self.gate_result or {},
-            "edge_state": self.edge_state or {},
-            "edge_events": list(self.edge_events),
-            "selected_posts": self.selected_posts,
-            "source_event_ids": self.source_event_ids,
-            "evidence_event_ids": self.evidence_event_ids,
-        }
 
 
 @dataclass(frozen=True)
@@ -151,6 +85,14 @@ class PulseCandidateWorker(WorkerBase):
         self.max_attempts = max(1, int(getattr(settings, "max_attempts", 3) or 3))
         self.trigger_thresholds = trigger_thresholds or _trigger_thresholds_from_settings(settings)
         self.gate_thresholds = gate_thresholds or _gate_thresholds_from_settings(settings)
+        self.job_service = PulseCandidateJobService(
+            name=name,
+            settings=settings,
+            db=db,
+            decision_client=decision_client,
+            gate_func=gate_func,
+            gate_thresholds=self.gate_thresholds,
+        )
 
     async def on_close(self) -> None:
         close = getattr(self.decision_client, "aclose", None)
@@ -220,14 +162,14 @@ class PulseCandidateWorker(WorkerBase):
         for _ in range(self.batch_size):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             with self._repository_session() as repos:
-                job = repos.pulse.claim_due_job(now_ms=resolved_now_ms)
+                job = repos.pulse_jobs.claim_due_job(now_ms=resolved_now_ms)
             if job is None:
                 break
             result["claimed"] += 1
             context = _context_from_job(job)
             if context is None:
                 with self._repository_session() as repos:
-                    repos.pulse.mark_job_failed(
+                    repos.pulse_jobs.mark_job_failed(
                         job,
                         "pulse_candidate_context_missing",
                         now_ms=resolved_now_ms,
@@ -236,8 +178,8 @@ class PulseCandidateWorker(WorkerBase):
                 result["failed"] += 1
                 continue
             try:
-                await self._run_job(job, context, now_ms=resolved_now_ms)
-            except Exception as exc:  # pragma: no cover - _run_job records failure before re-raising
+                await self.job_service.run_job(job, context, now_ms=resolved_now_ms)
+            except Exception as exc:  # pragma: no cover - job service records failure before re-raising
                 logger.warning(
                     "pulse candidate job failed: job_id={} error={}",
                     job.get("job_id"),
@@ -318,7 +260,7 @@ class PulseCandidateWorker(WorkerBase):
         )
 
     def _enqueue_if_due(self, repos: Any, context: PulseCandidateContext, *, now_ms: int) -> bool:
-        existing_job = _call_optional(repos.pulse, "job_for_candidate", context.candidate_id)
+        existing_job = _call_optional(repos.pulse_jobs, "job_for_candidate", context.candidate_id)
         gate = self.gate_func(
             factor_snapshot=context.factor_snapshot,
             thresholds=self.gate_thresholds,
@@ -337,7 +279,7 @@ class PulseCandidateWorker(WorkerBase):
             pulse_version=PULSE_VERSION,
             gate_version=PULSE_GATE_VERSION,
         )
-        existing_edge = _call_optional(repos.pulse, "edge_state_by_candidate", context.candidate_id) or {}
+        existing_edge = _call_optional(repos.pulse_admission, "edge_state_by_candidate", context.candidate_id) or {}
         previous_state = _mapping(existing_edge.get("last_processed_state_json"))
         edge_events = diff_pulse_edge_events(previous_state, edge_state)
         hour_bucket_ms = now_ms // 3_600_000 * 3_600_000
@@ -358,363 +300,49 @@ class PulseCandidateWorker(WorkerBase):
             recent_failure_count=recent_failure_count,
         )
         context = _context_with_gate(context, gate, edge_state=edge_state, edge_events=decision.edge_events)
-        claim = repos.pulse.claim_pulse_admission(
-            candidate_id=context.candidate_id,
-            target_type=context.target_type,
-            target_id=context.target_id,
-            hour_bucket_ms=hour_bucket_ms,
-            now_ms=now_ms,
-            target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
-            candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
-            job_payload={
-                "candidate_id": context.candidate_id,
-                "candidate_type": context.candidate_type,
-                "subject_key": context.subject_key,
-                "window": context.window,
-                "scope": context.scope,
-                "trigger_signature": context.trigger_signature,
-                "timeline_signature": context.timeline_signature,
-                "priority": context.priority,
-                "target_type": context.target_type,
-                "target_id": context.target_id,
-                "context_json": context.agent_context(),
-                "max_attempts": self.max_attempts,
-                "next_run_at_ms": now_ms,
-                "now_ms": now_ms,
-            },
-            edge_state=edge_state,
-            edge_events=decision.edge_events,
-            admission_action=decision.action,
-            admission_reason=decision.reason,
-        )
-        return bool(claim.accepted)
-
-    async def _run_job(self, job: dict[str, Any], context: PulseCandidateContext, *, now_ms: int) -> None:
-        run_id = _prefixed_id(
-            "pulse-run",
-            str(job.get("job_id") or ""),
-            str(job.get("trigger_signature") or ""),
-            str(job.get("timeline_signature") or ""),
-            str(job.get("attempt_count") or 0),
-            str(now_ms),
-        )
-        gate = self.gate_func(
-            factor_snapshot=context.factor_snapshot,
-            thresholds=self.gate_thresholds,
-        )
-        context = _context_with_gate(context, gate)
-        agent_context = context.agent_context()
-        route = route_decision_context(agent_context)
-        completeness = compute_completeness(context.factor_snapshot, route=route)
-        completeness_json = {
-            "route": completeness.route,
-            "score": completeness.score,
-            "hard_blocked": completeness.hard_blocked,
-            "missing_fields": list(completeness.missing_fields),
-            "stale_fields": list(completeness.stale_fields),
-            "blockers": list(completeness.blockers),
-        }
-        provider = getattr(self.decision_client, "provider", "openai")
-        model = getattr(self.decision_client, "model", "")
-        artifact_version_hash = _artifact_hash(self.decision_client)
-        harness = build_pulse_harness_manifest(
-            provider=provider,
-            model=model,
-            artifact_version_hash=artifact_version_hash,
-            timeout_seconds=float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0),
-            **_harness_contract_from_client(self.decision_client),
-        )
-        harness_hash = pulse_harness_hash(harness)
-        audit: dict[str, Any] | None = None
-        try:
-            audit = self.decision_client.request_audit(
-                context=agent_context,
-                run_id=run_id,
-                job=job,
-                route=route,
-                completeness=completeness_json,
-                harness=harness,
+        with _transaction(repos.conn):
+            claim = repos.pulse_admission.claim_pulse_admission(
+                candidate_id=context.candidate_id,
+                target_type=context.target_type,
+                target_id=context.target_id,
+                hour_bucket_ms=hour_bucket_ms,
+                now_ms=now_ms,
+                target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
+                candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+                edge_state=edge_state,
+                edge_events=decision.edge_events,
+                admission_action=decision.action,
+                admission_reason=decision.reason,
+                commit=False,
             )
-            with self._repository_session() as repos, _transaction(repos.conn):
-                repos.pulse.upsert_agent_harness_version(
-                    harness_version=str(harness["harness_version"]),
-                    harness_hash=harness_hash,
-                    strategy=PULSE_AGENT_STRATEGY,
-                    provider=provider,
-                    model=model,
-                    prompt_version=PULSE_DECISION_PROMPT_VERSION,
-                    schema_version=PULSE_DECISION_SCHEMA_VERSION,
-                    manifest_json=harness,
-                    created_at_ms=now_ms,
-                    commit=False,
-                )
-                repos.pulse.insert_agent_run(
-                    run_id=run_id,
-                    job_id=str(job["job_id"]),
-                    candidate_id=context.candidate_id,
-                    provider=provider,
-                    model=model,
-                    backend=str(audit.get("backend") or BACKEND),
-                    sdk_trace_id=audit.get("sdk_trace_id"),
-                    workflow_name=str(audit.get("workflow_name") or WORKFLOW_NAME),
-                    agent_name=str(audit.get("agent_name") or AGENT_NAME),
-                    artifact_version_hash=str(
-                        audit.get("artifact_version_hash") or _artifact_hash(self.decision_client)
-                    ),
-                    prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
-                    schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
-                    harness_version=str(harness["harness_version"]),
-                    harness_hash=harness_hash,
-                    input_hash=str(audit.get("input_hash") or _stable_hash(agent_context)),
-                    trace_metadata_json=audit.get("trace_metadata") or {},
-                    usage_json=audit.get("usage") or {},
-                    status="running",
-                    outcome="running",
-                    decision_route=route,
-                    decision_stage_count=0,
-                    request_json=agent_context,
-                    started_at_ms=now_ms,
-                    commit=False,
-                )
-            if completeness.hard_blocked:
-                gate_step_started_at_ms = _now_ms()
-                final_decision = _abstain_decision(
-                    route=route,
-                    reason=(completeness.blockers[0] if completeness.blockers else "data_completeness_blocked"),
-                    summary_zh="数据完整度不足，未进入资产决策。",
-                    residual_risks=list(completeness.blockers),
-                )
-                gate_step_finished_at_ms = _now_ms()
-                stage_audits: tuple[StageRunAudit, ...] = (
-                    StageRunAudit(
-                        stage="research_only_gate",
-                        route=route,
-                        attempt_index=0,
-                        input_json={"context": agent_context, "completeness": completeness_json},
-                        prompt_text="deterministic completeness gate",
-                        response_json=final_decision.model_dump(mode="json"),
-                        trace_metadata_json=audit.get("trace_metadata") or {},
-                        usage_json={},
-                        latency_ms=max(0, gate_step_finished_at_ms - gate_step_started_at_ms),
-                        started_at_ms=gate_step_started_at_ms,
-                        finished_at_ms=gate_step_finished_at_ms,
-                        status="skipped",
-                        error=None,
-                    ),
-                )
-                result_audit = audit
-            else:
-                timeout_seconds = max(0.1, float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0))
-                try:
-                    result = await asyncio.wait_for(
-                        self.decision_client.run_decision_pipeline(
-                            context=agent_context,
-                            run_id=run_id,
-                            job=job,
-                            route=route,
-                            completeness=completeness_json,
-                            harness=harness,
-                        ),
-                        timeout=timeout_seconds,
-                    )
-                except TimeoutError as exc:
-                    raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
-                final_decision = result.final_decision
-                stage_audits = result.stage_audits
-                result_audit = result.agent_run_audit or audit
-            finished_at_ms = _now_ms()
-            decision_fields = candidate_fields_from_decision(final_decision, stage_count=len(stage_audits))
-            decision_fields.pop("score_band", None)
-            outcome = _run_outcome(final_decision, completeness_blocked=completeness.hard_blocked)
-            investigation_tool_calls_count = _investigation_tool_calls_count(stage_audits)
-            run_usage_json = dict(result_audit.get("usage") or _aggregate_stage_usage(stage_audits))
-            run_usage_json["investigation_tool_calls_count"] = investigation_tool_calls_count
-            with self._repository_session() as repos, _transaction(repos.conn):
-                for stage_audit in stage_audits:
-                    repos.pulse.insert_agent_run_step(
-                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
-                        run_id=run_id,
-                        stage=stage_audit.stage,
-                        route=stage_audit.route,
-                        attempt_index=stage_audit.attempt_index,
-                        provider=getattr(self.decision_client, "provider", "openai"),
-                        model=getattr(self.decision_client, "model", ""),
-                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
-                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
-                        input_json=stage_audit.input_json,
-                        prompt_text=stage_audit.prompt_text,
-                        response_json=stage_audit.response_json,
-                        trace_metadata_json=stage_audit.trace_metadata_json,
-                        usage_json=stage_audit.usage_json,
-                        latency_ms=stage_audit.latency_ms,
-                        status=stage_audit.status,
-                        error=stage_audit.error,
-                        started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
-                        finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=finished_at_ms),
-                        created_at_ms=finished_at_ms,
-                        safety_net_used=stage_audit.safety_net_used,
-                        safety_net_retries=stage_audit.safety_net_retries,
-                        parse_mode=stage_audit.parse_mode,
-                        commit=False,
-                    )
-                repos.pulse.finish_agent_run(
-                    run_id,
-                    "done",
-                    response_json=final_decision.model_dump(mode="json"),
-                    output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
-                    usage_json=run_usage_json,
-                    outcome=outcome,
-                    decision_route=route,
-                    decision_stage_count=len(stage_audits),
-                    finished_at_ms=finished_at_ms,
-                    commit=False,
-                )
-                eval_case = build_pulse_deterministic_eval_case(
-                    run_id=run_id,
-                    harness_hash=harness_hash,
-                    context=agent_context,
-                    route=route,
-                    completeness=completeness_json,
-                    final_decision=final_decision,
-                    stage_audits=tuple(stage_audits),
-                )
-                stored_eval_case = repos.pulse.insert_agent_eval_case(
-                    **eval_case,
-                    status="active",
-                    created_at_ms=finished_at_ms,
-                    commit=False,
-                )
-                eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
-                repos.pulse.upsert_agent_eval_result(
-                    **eval_result,
-                    created_at_ms=finished_at_ms,
-                    commit=False,
-                )
-                repos.pulse.upsert_candidate(
-                    candidate_id=context.candidate_id,
-                    candidate_type=context.candidate_type,
-                    subject_key=context.subject_key,
-                    target_type=context.target_type,
-                    target_id=context.target_id,
-                    symbol=context.symbol,
-                    window=context.window,
-                    scope=context.scope,
-                    pulse_status=gate.pulse_status,
-                    verdict=gate.verdict,
-                    social_phase=_social_phase_from_snapshot(context.factor_snapshot),
-                    candidate_score=gate.candidate_score,
-                    score_band=gate.score_band,
-                    trigger_signature=context.trigger_signature,
-                    timeline_signature=context.timeline_signature,
-                    factor_snapshot_json=context.factor_snapshot,
-                    gate_json=gate.to_json(),
-                    **decision_fields,
-                    gate_reasons_json=gate.gate_reasons,
-                    risk_reasons_json=gate.risk_reasons,
-                    evidence_event_ids_json=list(final_decision.evidence_event_ids or context.evidence_event_ids),
-                    source_event_ids_json=context.source_event_ids,
-                    last_edge_events_json=list(context.edge_events),
-                    agent_run_id=run_id,
-                    pulse_version=PULSE_VERSION,
-                    gate_version=PULSE_GATE_VERSION,
-                    prompt_version=PULSE_DECISION_PROMPT_VERSION,
-                    schema_version=PULSE_DECISION_SCHEMA_VERSION,
-                    updated_at_ms=finished_at_ms,
-                    commit=False,
-                )
-                if gate.pulse_status in _PLAYBOOK_STATUSES:
-                    repos.pulse.upsert_playbook_snapshot(
-                        **_playbook_snapshot_payload(
-                            context=context,
-                            gate=gate,
-                            final_decision=final_decision,
-                            now_ms=now_ms,
-                        ),
-                        commit=False,
-                    )
-                repos.pulse.mark_edge_run_finished(
-                    candidate_id=context.candidate_id,
-                    agent_run_id=run_id,
-                    processed_state_json=context.edge_state or {},
-                    edge_events_json=list(context.edge_events),
-                    finished_at_ms=finished_at_ms,
-                    commit=False,
-                )
-                repos.pulse.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
-        except Exception as exc:
-            failed_at_ms = _now_ms()
-            failure_reason = _normalized_failure_reason(exc)
-            compact_error = _compact_error(exc)
-            failed_audits: tuple[StageRunAudit, ...] = ()
-            if isinstance(exc, PulseStageFailure):
-                failed_audits = exc.audits
-            with self._repository_session() as repos, _transaction(repos.conn):
-                for stage_audit in failed_audits:
-                    repos.pulse.insert_agent_run_step(
-                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
-                        run_id=run_id,
-                        stage=stage_audit.stage,
-                        route=stage_audit.route,
-                        attempt_index=stage_audit.attempt_index,
-                        provider=getattr(self.decision_client, "provider", "openai"),
-                        model=getattr(self.decision_client, "model", ""),
-                        prompt_version=str(audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION),
-                        schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
-                        input_json=stage_audit.input_json,
-                        prompt_text=stage_audit.prompt_text,
-                        response_json=stage_audit.response_json,
-                        trace_metadata_json=stage_audit.trace_metadata_json,
-                        usage_json=stage_audit.usage_json,
-                        latency_ms=stage_audit.latency_ms,
-                        status=stage_audit.status,
-                        error=stage_audit.error,
-                        started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
-                        finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
-                        created_at_ms=failed_at_ms,
-                        safety_net_used=stage_audit.safety_net_used,
-                        safety_net_retries=stage_audit.safety_net_retries,
-                        parse_mode=stage_audit.parse_mode,
-                        commit=False,
-                    )
-                if audit is not None:
-                    repos.pulse.finish_agent_run(
-                        run_id,
-                        "failed",
-                        error=compact_error,
-                        outcome="failed",
-                        trace_metadata_json_patch={"failure_reason": failure_reason},
-                        finished_at_ms=failed_at_ms,
-                        commit=False,
-                    )
-                    eval_case = build_pulse_failed_eval_case(
-                        run_id=run_id,
-                        harness_hash=harness_hash,
-                        context=agent_context,
-                        route=route,
-                        completeness=completeness_json,
-                        stage_audits=failed_audits,
-                        failure_reason=failure_reason,
-                    )
-                    stored_eval_case = repos.pulse.insert_agent_eval_case(
-                        **eval_case,
-                        status="active",
-                        created_at_ms=failed_at_ms,
-                        commit=False,
-                    )
-                    eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
-                    repos.pulse.upsert_agent_eval_result(
-                        **eval_result,
-                        created_at_ms=failed_at_ms,
-                        commit=False,
-                    )
-                repos.pulse.mark_job_failed(
-                    job,
-                    compact_error,
-                    now_ms=failed_at_ms,
-                    failure_reason=failure_reason,
-                    commit=False,
-                )
-            raise
+            if not claim.accepted:
+                return False
+            job = repos.pulse_jobs.enqueue_job(
+                candidate_id=context.candidate_id,
+                candidate_type=context.candidate_type,
+                subject_key=context.subject_key,
+                window=context.window,
+                scope=context.scope,
+                trigger_signature=context.trigger_signature,
+                timeline_signature=context.timeline_signature,
+                priority=context.priority,
+                target_type=context.target_type,
+                target_id=context.target_id,
+                context_json=context.agent_context(),
+                max_attempts=self.max_attempts,
+                next_run_at_ms=now_ms,
+                now_ms=now_ms,
+                commit=False,
+            )
+            repos.pulse_admission.mark_edge_job_enqueued(
+                candidate_id=context.candidate_id,
+                processed_state_json=edge_state,
+                edge_events_json=list(decision.edge_events),
+                job_id=str(job.get("job_id") or ""),
+                processed_at_ms=now_ms,
+                commit=False,
+            )
+            return True
 
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
@@ -723,107 +351,6 @@ class PulseCandidateWorker(WorkerBase):
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
             yield repos
-
-
-def _harness_contract_from_client(client: Any) -> dict[str, Any]:
-    fallback_enabled = bool(getattr(client, "decision_maker_enable_fallback_tool", True))
-    if not hasattr(client, "decision_maker_enable_fallback_tool") and hasattr(
-        client,
-        "_decision_maker_enable_fallback_tool",
-    ):
-        fallback_enabled = bool(getattr(client, "_decision_maker_enable_fallback_tool"))
-    return {
-        "stage_names": tuple(
-            _stable_strings(
-                _attr_or_default(
-                    client,
-                    ("stage_names", "_stage_names"),
-                    ("investigator", "decision_maker"),
-                )
-            )
-        ),
-        "max_turns_per_stage": _harness_max_turns_per_stage(client),
-        "tool_names_by_stage": _harness_tool_names_by_stage(client, fallback_enabled=fallback_enabled),
-        "route_tool_budgets": _harness_route_tool_budgets(client),
-        "safety_net_enabled": _harness_safety_net_enabled(client),
-        "validators_enabled": tuple(
-            _stable_strings(
-                _attr_or_default(
-                    client,
-                    ("validators_enabled", "_validators_enabled"),
-                    (
-                        "pydantic_final_decision_schema",
-                        "runtime_evidence_id_subset",
-                        "deterministic_completeness_gate",
-                    ),
-                )
-            )
-        ),
-        "failure_taxonomy_version": str(
-            _attr_or_default(
-                client,
-                ("failure_taxonomy_version", "_failure_taxonomy_version"),
-                PULSE_FAILURE_TAXONOMY_VERSION,
-            )
-            or PULSE_FAILURE_TAXONOMY_VERSION
-        ),
-    }
-
-
-def _harness_max_turns_per_stage(client: Any) -> dict[str, int]:
-    configured = _attr_or_default(client, ("max_turns_per_stage", "_max_turns_per_stage"), None)
-    if isinstance(configured, dict):
-        return {str(key): max(1, safe_int(value)) for key, value in configured.items()}
-    return {
-        "investigator": max(1, safe_int(getattr(client, "investigator_max_turns", None)) or safe_int(
-            getattr(client, "_investigator_max_turns", None)
-        ) or 5),
-        "decision_maker": max(1, safe_int(getattr(client, "decision_maker_max_turns", None)) or safe_int(
-            getattr(client, "_decision_maker_max_turns", None)
-        ) or 3),
-    }
-
-
-def _harness_tool_names_by_stage(client: Any, *, fallback_enabled: bool) -> dict[str, tuple[str, ...]]:
-    configured = _attr_or_default(client, ("tool_names_by_stage", "_tool_names_by_stage"), None)
-    if isinstance(configured, dict):
-        return {str(stage): tuple(_stable_strings(names)) for stage, names in configured.items()}
-    decision_tools = ("get_target_recent_tweets",) if fallback_enabled else ()
-    return {
-        "investigator": (
-            "get_target_recent_tweets",
-            "get_target_price_action",
-            "get_official_token_profile",
-        ),
-        "decision_maker": decision_tools,
-    }
-
-
-def _harness_route_tool_budgets(client: Any) -> dict[str, int]:
-    configured = _attr_or_default(
-        client,
-        ("route_tool_budgets", "investigator_max_tool_calls_by_route", "_investigator_max_tool_calls_by_route"),
-        None,
-    )
-    if isinstance(configured, dict):
-        return {str(key): max(0, safe_int(value)) for key, value in configured.items()}
-    return {"cex": 3, "meme": 5, "research_only": 3}
-
-
-def _harness_safety_net_enabled(client: Any) -> bool:
-    configured = _attr_or_default(client, ("safety_net_enabled", "_safety_net_enabled"), None)
-    if configured is not None:
-        return bool(configured)
-    return getattr(client, "_safety_net", None) is not None
-
-
-def _attr_or_default(target: Any, names: tuple[str, ...], default: Any) -> Any:
-    for name in names:
-        if hasattr(target, name):
-            value = getattr(target, name)
-            if value is not None:
-                return value
-    return default
 
 
 def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds | None = None) -> bool:
@@ -852,51 +379,6 @@ def _gate_thresholds_from_settings(settings: Any) -> PulseGateThresholds:
         high_info_rejection_min=int(getattr(config, "high_info_rejection_min", 30) or 30),
         high_conviction_min=int(getattr(config, "high_conviction_min", 78) or 78),
     )
-
-
-def _stage_finished_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
-    value = stage_audit.finished_at_ms
-    if value is not None:
-        return int(value)
-    return int(fallback_finished_at_ms)
-
-
-def _stage_started_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
-    value = stage_audit.started_at_ms
-    if value is not None:
-        return int(value)
-    finished_at_ms = _stage_finished_at_ms(stage_audit, fallback_finished_at_ms=fallback_finished_at_ms)
-    return max(0, finished_at_ms - int(stage_audit.latency_ms or 0))
-
-
-def _aggregate_stage_usage(stage_audits: tuple[StageRunAudit, ...]) -> dict[str, Any]:
-    totals: dict[str, int | float] = {}
-    for stage_audit in stage_audits:
-        for key, value in stage_audit.usage_json.items():
-            if isinstance(value, bool) or not isinstance(value, int | float):
-                continue
-            totals[key] = totals.get(key, 0) + value
-    return totals
-
-
-def _investigation_tool_calls_count(stage_audits: tuple[StageRunAudit, ...]) -> int:
-    """Count investigator-stage tool invocations from stage 0 ``input_json.tool_calls``.
-
-    Stored on the run-level ``usage_json`` so eval / observability can read it
-    without a dedicated column. Returns 0 when audits are empty or the first
-    stage isn't the investigator (defensive — keeps the metric monotonic and
-    never raises on partial data).
-    """
-    if not stage_audits:
-        return 0
-    investigator = stage_audits[0]
-    if investigator.stage != "investigator":
-        return 0
-    payload = investigator.input_json if isinstance(investigator.input_json, dict) else None
-    tool_calls = payload.get("tool_calls") if payload else None
-    if isinstance(tool_calls, list):
-        return len(tool_calls)
-    return 0
 
 
 def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
@@ -946,32 +428,6 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
         source_event_ids=_stable_strings(context.get("source_event_ids")),
         evidence_event_ids=_stable_strings(context.get("evidence_event_ids")),
     )
-
-
-def _compact_error(exc: Exception, *, limit: int = 500) -> str:
-    text = " ".join(str(exc).split())
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit]}..."
-
-
-def _normalized_failure_reason(exc: Exception) -> str:
-    text = str(exc).lower()
-    if "unknown evidence" in text or "unknown final evidence" in text:
-        return "unknown_evidence_id"
-    if "model_validate" in text or "validation" in text or "schema" in text:
-        return "schema_validation_failed"
-    if "budget exceeded" in text:
-        return "tool_budget_exceeded"
-    if isinstance(exc, TimeoutError) or "timed out" in text:
-        return "timeout"
-    if "rate limit" in text or "429" in text:
-        return "provider_rate_limited"
-    if "provider unavailable" in text or "503" in text:
-        return "provider_unavailable"
-    if "stale_running_timeout" in text:
-        return "stale_running_timeout"
-    return "unexpected_exception"
 
 
 def _asset_candidate_id(
@@ -1054,7 +510,7 @@ def _recent_target_failure_count(
 ) -> int:
     if set(edge_events) & ESCALATION_EDGE_EVENTS:
         return 0
-    count_func = getattr(repos.pulse, "recent_target_failure_count", None)
+    count_func = getattr(repos.pulse_admission, "recent_target_failure_count", None)
     if count_func is None:
         return 0
     return safe_int(
@@ -1065,112 +521,6 @@ def _recent_target_failure_count(
             reasons=PULSE_FAILURE_CIRCUIT_REASONS,
         )
     )
-
-
-def _active_job_blocks_reenqueue(existing_job: dict[str, Any] | None) -> bool:
-    if not existing_job:
-        return False
-    status = _clean(existing_job.get("status"))
-    if status in {"pending", "running"}:
-        return True
-    if status == "failed":
-        attempt_count = safe_int(existing_job.get("attempt_count"))
-        max_attempts = safe_int(existing_job.get("max_attempts")) or 3
-        return attempt_count < max_attempts
-    return False
-
-
-def _playbook_snapshot_payload(
-    *,
-    context: PulseCandidateContext,
-    gate: PulseGateResult,
-    final_decision: FinalDecision,
-    now_ms: int,
-) -> dict[str, Any]:
-    horizon = context.window
-    return {
-        "playbook_id": _stable_id("pulse-playbook", context.candidate_id, horizon, PULSE_PLAYBOOK_VERSION),
-        "candidate_id": context.candidate_id,
-        "target_type": context.target_type,
-        "target_id": context.target_id,
-        "horizon": horizon,
-        "decision_time_ms": now_ms,
-        "playbook_status": "shadow_only",
-        "side": _playbook_side(gate.pulse_status),
-        "setup": {
-            "pulse_status": gate.pulse_status,
-            "recommendation": final_decision.recommendation,
-            "confidence": final_decision.confidence,
-            "candidate_score": gate.candidate_score,
-            "score_band": gate.score_band,
-            "summary_zh": final_decision.summary_zh,
-        },
-        "confirmation": {
-            "invalidation_conditions": list(final_decision.invalidation_conditions),
-        },
-        "invalidation": {
-            "invalidation_conditions": list(final_decision.invalidation_conditions),
-        },
-        "risk": {
-            "residual_risks": list(final_decision.residual_risks),
-            "risk_reasons": gate.risk_reasons,
-            "hard_risks": gate.hard_risks,
-        },
-        "entry_market": _entry_market(context.factor_snapshot),
-        "playbook_version": PULSE_PLAYBOOK_VERSION,
-        "outcome_status": "pending",
-        "created_at_ms": now_ms,
-    }
-
-
-def _abstain_decision(
-    *,
-    route: str,
-    reason: str,
-    summary_zh: str,
-    residual_risks: list[str],
-) -> FinalDecision:
-    return FinalDecision(
-        route=route,
-        recommendation="abstain",
-        confidence=0.0,
-        abstain_reason=reason,
-        summary_zh=summary_zh,
-        narrative_archetype="unclear",
-        narrative_thesis_zh=(
-            "当前数据完整度不足，无法形成可靠叙事判断；本次仅记录确定性门控结果，"
-            "等待更多事实信号后再评估。"
-        ),
-        bull_view=BullBearView(strength="absent"),
-        bear_view=BullBearView(strength="absent"),
-        playbook=TradePlaybook(
-            has_playbook=False,
-            watch_signals=[],
-            exit_triggers=[],
-            monitoring_horizon="1h",
-        ),
-        invalidation_conditions=[],
-        residual_risks=residual_risks or [reason],
-        evidence_event_ids=[],
-    )
-
-
-def _run_outcome(final_decision: FinalDecision, *, completeness_blocked: bool) -> str:
-    if final_decision.recommendation == "abstain":
-        if completeness_blocked:
-            return "abstain_insufficient_data"
-        return "abstain"
-    return "completed"
-
-
-def _playbook_side(status: str) -> str:
-    if status == "trade_candidate":
-        return "LONG_BIAS"
-    if status == "risk_rejected_high_info":
-        return "RISK_OFF"
-    if status == "blocked_low_information":
-        return "FLAT"
-    return "OBSERVE_ONLY"
 
 
 def _target_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -1213,35 +563,6 @@ def _score_bucket(score: int | float | None) -> str:
     return f"{lower}-{lower + 9}"
 
 
-def _context_with_gate(
-    context: PulseCandidateContext,
-    gate: PulseGateResult,
-    *,
-    edge_state: dict[str, Any] | None = None,
-    edge_events: list[str] | tuple[str, ...] | None = None,
-) -> PulseCandidateContext:
-    return PulseCandidateContext(
-        candidate_id=context.candidate_id,
-        candidate_type=context.candidate_type,
-        subject_key=context.subject_key,
-        window=context.window,
-        scope=context.scope,
-        trigger_signature=context.trigger_signature,
-        timeline_signature=context.timeline_signature,
-        priority=context.priority,
-        target_type=context.target_type,
-        target_id=context.target_id,
-        symbol=context.symbol,
-        factor_snapshot=context.factor_snapshot,
-        selected_posts=context.selected_posts,
-        gate_result=gate.to_json(),
-        edge_state=edge_state if edge_state is not None else context.edge_state,
-        edge_events=tuple(edge_events if edge_events is not None else context.edge_events),
-        source_event_ids=context.source_event_ids,
-        evidence_event_ids=context.evidence_event_ids,
-    )
-
-
 def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
     snapshot = row.get("factor_snapshot_json")
     try:
@@ -1249,27 +570,6 @@ def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
     except ValueError:
         return None
     return _mapping(_jsonable(valid_snapshot))
-
-
-def _social_phase_from_snapshot(factor_snapshot: dict[str, Any]) -> str:
-    semantic_facts = _mapping(_nested(factor_snapshot, "families", "semantic_catalyst", "facts"))
-    timing_facts = _mapping(_nested(factor_snapshot, "families", "timing_risk", "facts"))
-    return (
-        _clean(semantic_facts.get("phase"))
-        or _clean(semantic_facts.get("dominant_phase"))
-        or _clean(timing_facts.get("phase"))
-        or "unknown"
-    )
-
-
-def _entry_market(factor_snapshot: dict[str, Any]) -> dict[str, Any]:
-    subject = _mapping(factor_snapshot.get("subject"))
-    data_health = _mapping(factor_snapshot.get("data_health"))
-    return {
-        "target_market_type": subject.get("target_market_type"),
-        "market_data_health": data_health.get("market"),
-        "identity_data_health": data_health.get("identity"),
-    }
 
 
 def _nested(data: dict[str, Any], *keys: str) -> Any:
@@ -1292,10 +592,6 @@ def _transaction(conn: Any) -> AbstractContextManager[Any]:
     if hasattr(conn, "transaction"):
         return cast(AbstractContextManager[Any], conn.transaction())
     return nullcontext()
-
-
-def _artifact_hash(client: Any) -> str:
-    return str(getattr(client, "artifact_version_hash", "") or f"artifact:{getattr(client, 'model', '')}")
 
 
 def _mapping(value: Any) -> dict[str, Any]:

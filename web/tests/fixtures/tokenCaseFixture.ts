@@ -56,7 +56,7 @@ export function tokenCaseFixture(): TokenCaseDossier {
         peak_new_authors_per_bucket: 4,
         reproduction_rate: 1.7,
       },
-      market_overlay: {
+      market_candles: {
         target_type: "Asset",
         target_id: "asset:solana:token:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
         chain_id: "solana",

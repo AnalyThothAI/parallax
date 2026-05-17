@@ -13,7 +13,8 @@ import yaml
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
-from gmgn_twitter_intel.cli import build_parser, main
+from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
+from gmgn_twitter_intel.cli import main
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
@@ -444,7 +445,7 @@ def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, mo
 
 
 def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypatch):
-    from gmgn_twitter_intel.app.surfaces.cli import main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     events: list[tuple] = []
     configured_lock_key = 909090
@@ -499,10 +500,10 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
             )
         )
     )
-    monkeypatch.setattr(cli_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
-    monkeypatch.setattr(cli_module, "TokenRadarProjectionWorker", FakeWorker)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
+    monkeypatch.setattr(ops_module, "TokenRadarProjectionWorker", FakeWorker)
 
-    result = cli_module._run_token_radar_projection_worker_once(
+    result = ops_module._run_token_radar_projection_worker_once(
         settings,
         windows=("1h",),
         scopes=("all",),
@@ -579,7 +580,7 @@ def test_init_creates_runtime_config(tmp_path, monkeypatch):
 
 
 def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
-    from gmgn_twitter_intel.app.surfaces.cli.main import _run_sync_gmgn_directory
+    from gmgn_twitter_intel.app.surfaces.cli.commands.ops import _run_sync_gmgn_directory
     from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryEntry
 
     class FakeClient:
@@ -638,7 +639,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     import io
     import json
 
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -656,9 +657,9 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
         def close(self):
             pass
 
-    monkeypatch.setattr(cli_module, "_run_sync_gmgn_directory", fake_runner)
-    monkeypatch.setattr(cli_module, "GmgnDirectoryClient", FakeClient)
-    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    monkeypatch.setattr(ops_module, "_run_sync_gmgn_directory", fake_runner)
+    monkeypatch.setattr(ops_module, "GmgnDirectoryClient", FakeClient)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     conn = connect_postgres_test(read_only=False)
     try:
@@ -668,7 +669,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
 
     stdout = io.StringIO()
-    code = cli_module.main(
+    code = main(
         ["ops", "sync-gmgn-directory", "--max-pages", "3"],
         stdout=stdout,
     )
@@ -690,7 +691,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
 
 
 def test_cli_ops_factor_diagnostics_reads_latest_token_radar_rows(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
     from gmgn_twitter_intel.domains.token_intel.interfaces import (
         TOKEN_FACTOR_SNAPSHOT_VERSION,
         TOKEN_RADAR_FACTOR_FAMILIES,
@@ -727,10 +728,10 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_rows(monkeypatch, t
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     stdout = io.StringIO()
 
-    code = cli_module.main(
+    code = main(
         ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "7"],
         stdout=stdout,
     )
@@ -748,7 +749,7 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_rows(monkeypatch, t
 
 
 def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -765,11 +766,11 @@ def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(m
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
-    monkeypatch.setattr(cli_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
     stdout = io.StringIO()
 
-    code = cli_module.main(
+    code = main(
         [
             "ops",
             "settle-token-factors",
@@ -799,7 +800,7 @@ def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(m
 
 
 def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -816,12 +817,12 @@ def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, t
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
-    monkeypatch.setattr(cli_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
-    monkeypatch.setattr(cli_module, "_now_ms", lambda: 9_999)
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 9_999)
     stdout = io.StringIO()
 
-    code = cli_module.main(
+    code = main(
         ["ops", "settle-token-factors", "--window", "1h", "--scope", "all", "--horizon", "1h", "--now-ms", "0"],
         stdout=stdout,
     )
@@ -832,7 +833,7 @@ def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, t
 
 
 def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -849,19 +850,15 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
         captured["start_collector"] = start_collector
         return SimpleNamespace(dex_profile_sources=())
 
-    def fail_full_wire_providers(*_args, **_kwargs):
-        raise AssertionError("refresh-asset-profiles must not wire LLM providers")
-
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
-    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(cli_module, "wire_providers", fail_full_wire_providers, raising=False)
-    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fake_wire_asset_market_providers, raising=False)
-    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
     stdout = io.StringIO()
 
-    code = cli_module.main(
+    code = main(
         ["ops", "refresh-asset-profiles", "--limit", "3"],
         stdout=stdout,
     )
@@ -887,7 +884,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
 
 
 def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_session(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     captured = {}
 
@@ -934,13 +931,13 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
-    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fake_wire_asset_market_providers, raising=False)
-    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
     stdout = io.StringIO()
 
-    code = cli_module.main(["ops", "run-resolution-refresh", "--limit", "3"], stdout=stdout)
+    code = main(["ops", "run-resolution-refresh", "--limit", "3"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
@@ -951,7 +948,7 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
 
 
 def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     captured: dict[str, object] = {}
     closed: list[str] = []
@@ -1003,14 +1000,14 @@ def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tm
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
-    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fail_wire_asset_market_providers, raising=False)
-    monkeypatch.setattr(cli_module, "TokenProfileCurrentWorker", FakeWorker)
-    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fail_wire_asset_market_providers)
+    monkeypatch.setattr(ops_module, "TokenProfileCurrentWorker", FakeWorker)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
     stdout = io.StringIO()
 
-    code = cli_module.main(["ops", "rebuild-token-profiles", "--limit", "3"], stdout=stdout)
+    code = main(["ops", "rebuild-token-profiles", "--limit", "3"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
@@ -1022,7 +1019,7 @@ def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tm
 
 
 def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     closed: list[str] = []
 
@@ -1044,11 +1041,11 @@ def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(mon
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fake_wire_asset_market_providers, raising=False)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
 
     try:
-        cli_module.main(["ops", "refresh-asset-profiles"], stdout=io.StringIO())
+        main(["ops", "refresh-asset-profiles"], stdout=io.StringIO())
     except RuntimeError as exc:
         assert str(exc) == "provider wiring failed"
     else:
@@ -1061,7 +1058,7 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
     import io
     import json
 
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
     from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryError
 
     def boom(*, client, repository, now_ms, max_pages):
@@ -1074,8 +1071,8 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
         def close(self):
             self.closed = True
 
-    monkeypatch.setattr(cli_module, "_run_sync_gmgn_directory", boom)
-    monkeypatch.setattr(cli_module, "GmgnDirectoryClient", FakeClient)
+    monkeypatch.setattr(ops_module, "_run_sync_gmgn_directory", boom)
+    monkeypatch.setattr(ops_module, "GmgnDirectoryClient", FakeClient)
     write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
     conn = connect_postgres_test(read_only=False)
     try:
@@ -1085,14 +1082,14 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
     monkeypatch.setenv("HOME", str(tmp_path))
 
     stdout = io.StringIO()
-    code = cli_module.main(["ops", "sync-gmgn-directory"], stdout=stdout)
+    code = main(["ops", "sync-gmgn-directory"], stdout=stdout)
 
     assert code == 1
     assert json.loads(stdout.getvalue()) == {"ok": False, "error": "Cloudflare 403"}
 
 
 def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypatch):
-    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     closed = {"value": False}
     captured = {}
@@ -1183,11 +1180,11 @@ def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypa
         captured["start_collector"] = start_collector
         return FakeRuntime()
 
-    monkeypatch.setattr(cli_module, "load_settings", lambda require_ws_token=False: SimpleNamespace(ws_token="secret"))
-    monkeypatch.setattr(cli_module, "bootstrap", fake_bootstrap, raising=False)
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace(ws_token="secret"))
+    monkeypatch.setattr(ops_module, "bootstrap", fake_bootstrap)
 
     stdout = io.StringIO()
-    code = cli_module.main(["ops", "worker-status"], stdout=stdout)
+    code = main(["ops", "worker-status"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert code == 0

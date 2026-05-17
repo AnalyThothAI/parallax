@@ -14,13 +14,13 @@ from loguru import logger
 from gmgn_twitter_intel.app.runtime.bootstrap import Runtime, bootstrap
 from gmgn_twitter_intel.app.runtime.telemetry import PROMETHEUS_CONTENT_TYPE
 from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
-from gmgn_twitter_intel.app.surfaces.api.http import (
+from gmgn_twitter_intel.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
     api_bad_request_response,
     api_unauthorized_response,
-    create_api_router,
 )
+from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 from gmgn_twitter_intel.app.surfaces.api.schemas import StatusData
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check

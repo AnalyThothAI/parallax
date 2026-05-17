@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, fields, is_dataclass
 from threading import Thread
-from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
@@ -15,44 +14,21 @@ from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
 from gmgn_twitter_intel.app.runtime.providers_wiring import WiredProviders, wire_providers
 from gmgn_twitter_intel.app.runtime.repository_session import PooledRepository
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
-from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
-from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.app.runtime.worker_factories import construct_workers
 from gmgn_twitter_intel.app.runtime.worker_scheduler import WorkerScheduler
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
-from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
     TickLookup,
 )
-from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository, HarnessService
-from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
+from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
-from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
-from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
-from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from gmgn_twitter_intel.domains.social_enrichment.interfaces import EnrichmentRepository
-from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
-from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
-from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
-from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import HandleSummaryTriggerConfig
 from gmgn_twitter_intel.platform.config.settings import Settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
@@ -186,7 +162,7 @@ def _assemble_runtime(
         upstream_client=None,
     )
     wake_bus = db.wake_emitter()
-    runtime_workers = _construct_workers(
+    runtime_workers = construct_workers(
         settings=settings,
         db=db,
         telemetry=telemetry,
@@ -227,226 +203,6 @@ def _assemble_runtime(
         factory = providers.ingestion.upstream_client_factory
         collector.upstream_client = factory(collector.handle_frame) if factory is not None else None
     return runtime
-
-
-def _construct_workers(
-    *,
-    settings: Settings,
-    db: DBPoolBundle,
-    telemetry: TelemetryRegistry,
-    providers: WiredProviders,
-    hub: PublicWebSocketHub,
-    collector: CollectorService,
-    collector_enabled: bool,
-    wake_bus: Any,
-) -> dict[str, Any]:
-    workers = settings.workers
-    constructed: dict[str, WorkerBase] = {
-        name: _DisabledWorker(
-            name=name,
-            settings=_worker_settings(settings, name, enabled=False),
-            db=db,
-            telemetry=telemetry,
-        )
-        for name in CANONICAL_WORKER_NAMES
-    }
-    delivery_wake = _LocalWakeWaiter()
-    asset_market = providers.asset_market
-    message_cex_market = getattr(asset_market, "message_cex_market", None)
-    dex_quote_market = getattr(asset_market, "dex_quote_market", None)
-    dex_profile_sources = tuple(getattr(asset_market, "dex_profile_sources", ()) or ())
-    dex_discovery_market = getattr(asset_market, "dex_discovery_market", None)
-    stream_dex_market = getattr(asset_market, "stream_dex_market", None)
-
-    if collector_enabled:
-        constructed["collector"] = collector
-    if workers.harness_ops.enabled:
-        constructed["harness_ops"] = HarnessOpsWorker(
-            name="harness_ops",
-            settings=workers.harness_ops,
-            db=db,
-            telemetry=telemetry,
-        )
-    if workers.token_radar_projection.enabled:
-        worker_name = "token_radar_projection"
-        constructed["token_radar_projection"] = TokenRadarProjectionWorker(
-            name=worker_name,
-            settings=workers.token_radar_projection,
-            db=db,
-            telemetry=telemetry,
-            wake_bus=wake_bus,
-            wake_waiter=db.wake_listener(worker_name, workers.token_radar_projection.wakes_on),
-        )
-    if workers.token_profile_current.enabled:
-        constructed["token_profile_current"] = TokenProfileCurrentWorker(
-            name="token_profile_current",
-            settings=workers.token_profile_current,
-            db=db,
-            telemetry=telemetry,
-        )
-    if workers.token_capture_tier.enabled:
-        constructed["token_capture_tier"] = TokenCaptureTierWorker(
-            name="token_capture_tier",
-            settings=workers.token_capture_tier,
-            pool_bundle=db,
-            telemetry=telemetry,
-            batch_size=workers.token_capture_tier.batch_size,
-            ws_limit=workers.token_capture_tier.ws_limit,
-            poll_limit=workers.token_capture_tier.poll_limit,
-        )
-    if workers.market_tick_stream.enabled and stream_dex_market is not None:
-        constructed["market_tick_stream"] = MarketTickStreamWorker(
-            name="market_tick_stream",
-            settings=workers.market_tick_stream,
-            pool_bundle=db,
-            telemetry=telemetry,
-            stream_dex_market=stream_dex_market,
-            wake_emitter=wake_bus,
-            subscription_limit=workers.market_tick_stream.subscription_limit,
-        )
-    if workers.market_tick_poll.enabled and (message_cex_market is not None or dex_quote_market is not None):
-        constructed["market_tick_poll"] = MarketTickPollWorker(
-            name="market_tick_poll",
-            settings=workers.market_tick_poll,
-            pool_bundle=db,
-            telemetry=telemetry,
-            providers=asset_market,
-            wake_emitter=wake_bus,
-            batch_size=workers.market_tick_poll.batch_size,
-        )
-    if workers.event_anchor_backfill.enabled and (message_cex_market is not None or dex_quote_market is not None):
-        constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(
-            name="event_anchor_backfill",
-            settings=workers.event_anchor_backfill,
-            pool_bundle=db,
-            telemetry=telemetry,
-            providers=asset_market,
-            wake_emitter=wake_bus,
-            batch_size=workers.event_anchor_backfill.batch_size,
-            concurrency=workers.event_anchor_backfill.concurrency,
-            min_age_ms=workers.event_anchor_backfill.min_age_ms,
-        )
-    if workers.pulse_candidate.enabled and settings.pulse_agent_configured:
-        worker_name = "pulse_candidate"
-        constructed["pulse_candidate"] = PulseCandidateWorker(
-            name=worker_name,
-            settings=workers.pulse_candidate,
-            db=db,
-            telemetry=telemetry,
-            decision_client=providers.pulse_lab.decision_provider,
-            wake_waiter=db.wake_listener(worker_name, workers.pulse_candidate.wakes_on),
-        )
-    if (
-        workers.handle_summary.enabled
-        and settings.watchlist_handle_summary_configured
-        and providers.watchlist_intel.summary_provider is not None
-    ):
-        constructed["handle_summary"] = HandleSummaryWorker(
-            name="handle_summary",
-            settings=workers.handle_summary,
-            db=db,
-            telemetry=telemetry,
-            provider=providers.watchlist_intel.summary_provider,
-            handles=settings.handles,
-        )
-    if settings.notifications.enabled and workers.notification_rule.enabled:
-        constructed["notification_rule"] = NotificationWorker(
-            name="notification_rule",
-            settings=workers.notification_rule,
-            db=db,
-            telemetry=telemetry,
-            rule_engine_factory=lambda repos: _notification_rule_engine(settings, repos),
-            publisher=hub,
-            delivery_channels=settings.notifications.channels,
-            delivery_max_attempts=workers.notification_delivery.max_attempts,
-            delivery_wake=delivery_wake,
-        )
-    if (
-        settings.notifications.enabled
-        and workers.notification_delivery.enabled
-        and any(
-            channel.enabled and (channel.provider == "log" or channel.url)
-            for channel in settings.notifications.channels.values()
-        )
-    ):
-        constructed["notification_delivery"] = NotificationDeliveryWorker(
-            name="notification_delivery",
-            settings=workers.notification_delivery,
-            db=db,
-            telemetry=telemetry,
-            channels=settings.notifications.channels,
-            wake_waiter=delivery_wake,
-        )
-    if workers.asset_profile_refresh.enabled and dex_profile_sources:
-        constructed["asset_profile_refresh"] = AssetProfileRefreshWorker(
-            name="asset_profile_refresh",
-            settings=workers.asset_profile_refresh,
-            db=db,
-            telemetry=telemetry,
-            dex_profile_sources=dex_profile_sources,
-        )
-    if workers.resolution_refresh.enabled and dex_discovery_market is not None:
-        constructed["resolution_refresh"] = ResolutionRefreshWorker(
-            name="resolution_refresh",
-            settings=workers.resolution_refresh,
-            db=db,
-            telemetry=telemetry,
-            dex_discovery_market=dex_discovery_market,
-            dex_quote_market=dex_quote_market,
-            chain_ids=workers.resolution_refresh.chain_ids,
-            wake_bus=wake_bus,
-        )
-    if workers.live_price_gateway.enabled:
-        constructed["live_price_gateway"] = LivePriceGateway(
-            name="live_price_gateway",
-            pool_bundle=db,
-            telemetry=telemetry,
-            providers=asset_market,
-            interval_seconds=workers.live_price_gateway.interval_seconds,
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            on_live_market_update=hub.publish,
-        )
-    if workers.enrichment.enabled and settings.llm_configured:
-        constructed["enrichment"] = EnrichmentWorker(
-            name="enrichment",
-            settings=workers.enrichment,
-            db=db,
-            telemetry=telemetry,
-            client=providers.social_enrichment.event_enrichment,
-            publisher=hub,
-            watchlist_summary_config=HandleSummaryTriggerConfig(
-                signal_threshold=workers.handle_summary.signal_threshold,
-                time_threshold_ms=workers.handle_summary.time_threshold_ms,
-                min_interval_ms=workers.handle_summary.min_interval_ms,
-                input_limit=workers.handle_summary.input_limit,
-                window_days=workers.handle_summary.window_days,
-                max_attempts=workers.handle_summary.max_attempts,
-            )
-            if workers.handle_summary.enabled
-            else None,
-        )
-
-    result: dict[str, WorkerBase] = {}
-    for name, worker in constructed.items():
-        if isinstance(worker, WorkerBase):
-            result[name] = worker
-            continue
-        raise TypeError(f"worker:{name}:expected WorkerBase, got {type(worker).__name__}")
-    return result
-
-
-def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRuleEngine:
-    return NotificationRuleEngine(
-        settings=settings,
-        evidence=repos.evidence,
-        account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(
-            token_radar=repos.token_radar,
-            profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
-        ),
-        harness=HarnessService(repos.harness),
-        pulse=repos.pulse,
-    )
 
 
 class _PooledIngestStore:
@@ -543,48 +299,6 @@ def _prepared_value(prepared: Any, key: str) -> Any:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-class _DisabledWorker(WorkerBase):
-    async def run_once(self) -> WorkerResult:
-        return WorkerResult(skipped=1, notes={"reason": "disabled"})
-
-
-class _LocalWakeWaiter:
-    def __init__(self) -> None:
-        self._event = asyncio.Event()
-
-    def wake(self) -> None:
-        self._event.set()
-
-    async def async_wait(self, timeout: float) -> bool:  # noqa: ASYNC109 - mirrors WakeWaiter.async_wait(timeout).
-        try:
-            await asyncio.wait_for(self._event.wait(), timeout=max(0.0, float(timeout)))
-        except TimeoutError:
-            return False
-        self._event.clear()
-        return True
-
-
-def _worker_settings(settings: Settings, name: str, *, enabled: bool) -> Any:
-    config_name = "handle_summary" if name == "handle_summary" else name
-    config = getattr(settings.workers, config_name, None)
-    if config is None:
-        return SimpleNamespace(enabled=enabled)
-    if getattr(config, "enabled", True) == enabled:
-        return config
-    values = _object_values(config)
-    values["enabled"] = enabled
-    return SimpleNamespace(**values)
-
-
-def _object_values(value: Any) -> dict[str, Any]:
-    dump = getattr(value, "model_dump", None)
-    if dump is not None:
-        return dict(dump())
-    if hasattr(value, "__dict__"):
-        return dict(vars(value))
-    return {"enabled": bool(getattr(value, "enabled", True))}
 
 
 async def _maybe_await(value: Any) -> Any:

@@ -18,18 +18,28 @@ describe("buildSearchCaseView", () => {
     expect(view.evidence.value).toBe("12 events");
   });
 
-  it("falls back to the timeline market overlay for dossier-shaped token results", () => {
+  it("reads token market facts from market_live instead of market candle metadata", () => {
     const data = searchInspectFixture();
-    delete data.token_result!.market_overlay;
-    data.token_result!.timeline.market_overlay = {
-      chain_id: "solana",
-      address: "FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
-      provider: "timeline_overlay",
+    data.token_result!.market_live = {
+      status: "ready",
+      target_type: "Asset",
+      target_id: "asset:solana:rkc",
+      price_usd: 0.0078,
+      market_cap_usd: 51_000_000,
+      liquidity_usd: null,
+      holders: null,
+      observed_at_ms: 1_700_000_000_000,
+      provider: "live-market",
+    };
+    data.token_result!.timeline.market_candles = {
+      price_series_type: "anchor_line",
+      provider: "candles-identity",
     };
 
     const view = buildSearchCaseView(data);
 
-    expect(view.subtitle).toContain("solana");
+    expect(view.market.detail).toBe("live-market");
+    expect(view.market.value).toBe("$51M");
   });
 
   it("builds topic buckets outside the route component", () => {
@@ -90,24 +100,16 @@ function searchInspectFixture(): SearchInspectData {
           bull: { evidence_event_ids: [], thesis_zh: "thesis", triggers_zh: [] },
         },
       },
-      market_overlay: {
-        price_series_type: "ohlc",
-        decision_latest: {
-          market_cap_usd: 51_000_000,
-          price_usd: 0.0078,
-          provider: "okx_dex_ws_price_info",
-        },
-      },
       market_live: {
-        status: "missing",
+        status: "ready",
         target_type: "Asset",
         target_id: "asset:solana:rkc",
-        price_usd: null,
-        market_cap_usd: null,
+        price_usd: 0.0078,
+        market_cap_usd: 51_000_000,
         liquidity_usd: null,
         holders: null,
-        observed_at_ms: null,
-        provider: null,
+        observed_at_ms: 1_700_000_000_000,
+        provider: "okx_dex_ws_price_info",
       },
       posts: {
         has_more: false,
@@ -133,7 +135,6 @@ function searchInspectFixture(): SearchInspectData {
         links: { website_url: "https://rock.example" },
         provider: "gmgn",
       },
-      radar_item: null,
       target: {
         reason: "CANONICAL_SYMBOL_MATCH",
         source: "asset_identity_current",
@@ -149,6 +150,17 @@ function searchInspectFixture(): SearchInspectData {
         has_more: false,
         next_cursor: null,
         posts: [],
+        market_candles: {
+          price_series_type: "ohlc",
+          candle_status: "ready",
+          candle_bar: "1H",
+          candles: [],
+          target_type: "Asset",
+          target_id: "asset:solana:rkc",
+          chain_id: "solana",
+          address: "Rkc111111111111111111111111111111111111111",
+          symbol: "RKC",
+        },
         query: {
           bucket: "1h",
           scope: "all",

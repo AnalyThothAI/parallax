@@ -1489,8 +1489,8 @@ export interface components {
             } | null;
             /** Has More */
             has_more?: boolean | null;
-            /** Market Overlay */
-            market_overlay?: {
+            /** Market Candles */
+            market_candles?: {
                 [key: string]: unknown;
             } | null;
             /** Next Cursor */

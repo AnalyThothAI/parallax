@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.app.surfaces.cli import main as cli_main
-from gmgn_twitter_intel.cli import _audit_token_radar_rows
+from gmgn_twitter_intel.app.surfaces.cli.commands import ops as cli_ops
+from gmgn_twitter_intel.app.surfaces.cli.commands.ops import _audit_token_radar_rows
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
@@ -342,11 +342,11 @@ def test_audit_token_radar_rows_rejects_high_alert_when_gate_is_not_eligible():
 
 def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch):
     runtime_version = "token_factor_snapshot_runtime_test"
-    monkeypatch.setattr(cli_main, "TOKEN_FACTOR_SNAPSHOT_VERSION", runtime_version)
+    monkeypatch.setattr(cli_ops, "TOKEN_FACTOR_SNAPSHOT_VERSION", runtime_version)
     snapshot = factor_snapshot()
     snapshot["schema_version"] = runtime_version
 
-    audit = cli_main._audit_token_radar_rows(
+    audit = cli_ops._audit_token_radar_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,

@@ -20,7 +20,7 @@ def test_token_agent_brief_summarizes_project_propagation_and_bull_bear_views():
             "top_author_share": 0.22,
             "duplicate_text_share": 0.12,
         },
-        "market_overlay": {"target_type": "Asset", "symbol": "RKC"},
+        "market_candles": {"target_type": "Asset", "symbol": "RKC"},
         "stages": [
             stage("seed", "ev_401", posts=8, authors=4),
             stage("ignition", "ev_433", posts=21, authors=9),
@@ -37,7 +37,6 @@ def test_token_agent_brief_summarizes_project_propagation_and_bull_bear_views():
         target={"symbol": "RKC", "target_type": "Asset", "target_id": "asset:solana:rkc"},
         timeline=timeline,
         posts={"items": posts},
-        radar_item=None,
     )
 
     assert brief["schema_version"] == "search_agent_brief_v1"

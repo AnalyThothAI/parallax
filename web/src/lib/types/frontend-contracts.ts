@@ -396,10 +396,7 @@ export type TokenCaseDossier = {
   market_live: LiveMarketSnapshot;
 };
 
-export type SearchTokenResult = TokenCaseDossier & {
-  radar_item?: Record<string, unknown> | null;
-  market_overlay?: (Record<string, unknown> & TokenTimelineMarketOverlay) | null;
-};
+export type SearchTokenResult = TokenCaseDossier;
 
 export type SearchTopicResult = {
   summary: {
@@ -1065,7 +1062,7 @@ export type CatalystComponents = {
   avg_followup_quality?: number;
 };
 
-export type TokenTimelineMarketOverlay = {
+export type TokenTimelineMarketCandles = {
   target_type?: string | null;
   target_id?: string | null;
   chain_id?: string | null;
@@ -1076,6 +1073,13 @@ export type TokenTimelineMarketOverlay = {
   native_market_id?: string | null;
   quote_symbol?: string | null;
   feed_type?: string | null;
+  price_series_type?: "anchor_line" | "ohlc" | string | null;
+  candle_status?: "ready" | "empty" | "unsupported" | "missing_target" | "missing_identity" | "missing_market_id" | "error" | string | null;
+  candle_source?: string | null;
+  candle_bar?: string | null;
+  candle_error?: string | null;
+  candles?: MarketCandle[];
+  [key: string]: unknown;
 };
 
 export type MarketCandle = {
@@ -1134,7 +1138,7 @@ export type TokenSocialTimelineData = {
     peak_new_authors_per_bucket: number;
     reproduction_rate: number | null;
   };
-  market_overlay?: TokenTimelineMarketOverlay | null;
+  market_candles?: TokenTimelineMarketCandles | null;
   stages: TokenTimelineStage[];
   buckets: TokenTimelineBucket[];
   authors: TokenTimelineAuthor[];

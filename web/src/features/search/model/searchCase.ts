@@ -140,21 +140,16 @@ function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): Se
     narrative: agentNarrative(result.agent_brief.project_summary.one_liner),
     resolver: resolverFact(data),
     resultKind: data.query.result_kind,
-    subtitle: identityLine(target, searchMarketOverlay(result)),
+    subtitle: identityLine(target, searchMarketCandles(result)),
     title: target.symbol ? `$${target.symbol}` : shortTarget(target.target_id),
   };
 }
 
 function marketFact(result: SearchTokenResult): SearchCaseFact {
-  const overlay = searchMarketOverlay(result);
-  const decisionLatest = asRecord(overlay.decision_latest);
-  const radar = asRecord(result.radar_item);
-  const market = asRecord(radar.market);
-  const radarLatest = asRecord(market.decision_latest);
-  const marketCap =
-    numberValue(decisionLatest.market_cap_usd) ?? numberValue(radarLatest.market_cap_usd);
-  const price = numberValue(decisionLatest.price_usd) ?? numberValue(radarLatest.price_usd);
-  const provider = stringValue(decisionLatest.provider ?? radarLatest.provider ?? overlay.provider);
+  const marketLive = asRecord(result.market_live);
+  const marketCap = numberValue(marketLive.market_cap_usd);
+  const price = numberValue(marketLive.price_usd);
+  const provider = stringValue(marketLive.provider);
   const isDex = result.target.target_type === "Asset";
   return {
     detail: provider === "-" ? "market source unavailable" : provider,
@@ -169,8 +164,8 @@ function marketFact(result: SearchTokenResult): SearchCaseFact {
   };
 }
 
-function searchMarketOverlay(result: SearchTokenResult): Record<string, unknown> {
-  return asRecord(result.market_overlay ?? result.timeline.market_overlay);
+function searchMarketCandles(result: SearchTokenResult): Record<string, unknown> {
+  return asRecord(result.timeline.market_candles);
 }
 
 function resolverFact(data: SearchInspectData): SearchCaseFact {
@@ -223,10 +218,10 @@ function emptyFact(label: string, source: SearchCaseSource): SearchCaseFact {
   };
 }
 
-function identityLine(candidate: SearchTargetCandidate, marketOverlay: Record<string, unknown>) {
-  const chain = candidate.chain_id ?? stringValue(marketOverlay.chain_id);
-  const address = candidate.address ?? stringValue(marketOverlay.address);
-  const nativeMarket = stringValue(marketOverlay.native_market_id);
+function identityLine(candidate: SearchTargetCandidate, marketCandles: Record<string, unknown>) {
+  const chain = candidate.chain_id ?? stringValue(marketCandles.chain_id);
+  const address = candidate.address ?? stringValue(marketCandles.address);
+  const nativeMarket = stringValue(marketCandles.native_market_id);
   if (candidate.target_type === "CexToken" && nativeMarket !== "-") {
     return `${nativeMarket} · ${candidate.target_id}`;
   }

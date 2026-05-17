@@ -7,7 +7,7 @@ import pytest
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 
 
-class FakePulseRepository:
+class FakePulseReadRepository:
     def __init__(
         self,
         *,
@@ -71,6 +71,11 @@ class FakePulseRepository:
         return list(self.agent_run_steps.get(run_id, []))
 
 
+
+
+def _service(pulse_read: Any, *, harness: Any | None = None, pulse_runs: Any | None = None) -> SignalPulseService:
+    return SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs or pulse_read, harness=harness)
+
 class FakeHarnessRepository:
     def __init__(self, coverage: float | None):
         self.coverage = coverage
@@ -80,9 +85,9 @@ class FakeHarnessRepository:
 
 
 def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
 
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).pulse(
+    result = _service(pulse, harness=FakeHarnessRepository(None)).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -157,7 +162,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         verdict="trade_candidate",
         market_status="stale",
     )
-    pulse = FakePulseRepository(
+    pulse = FakePulseReadRepository(
         pages={
             "token_watch": {"items": [visible, blocked], "next_cursor": "next-page"},
             None: {"items": [visible, blocked, trade], "next_cursor": None},
@@ -176,7 +181,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         },
     )
 
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(0.75)).pulse(
+    result = _service(pulse, harness=FakeHarnessRepository(0.75)).pulse(
         window="5m",
         scope="all",
         status="token_watch",
@@ -319,7 +324,7 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
         verdict="trade_candidate",
         market_status=None,
     )
-    pulse = FakePulseRepository(
+    pulse = FakePulseReadRepository(
         pages={None: {"items": [fresh], "next_cursor": "after-first-visible"}},
         health={
             "candidate_count": 3,
@@ -335,7 +340,7 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
         },
     )
 
-    result = SignalPulseService(pulse=pulse).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -433,10 +438,10 @@ def test_candidate_returns_full_item() -> None:
         verdict="token_watch",
         market_status="fresh",
     )
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows = {"cand-1": row}
 
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-1")
+    result = _service(pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-1")
 
     assert result is not None
     assert result["candidate_id"] == "cand-1"
@@ -448,7 +453,7 @@ def test_candidate_returns_full_item() -> None:
 
 
 def test_candidate_includes_stages_from_run_steps() -> None:
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-1"] = _candidate_row(
         "pulse-1",
         pulse_status="token_watch",
@@ -480,7 +485,7 @@ def test_candidate_includes_stages_from_run_steps() -> None:
         },
     ]
 
-    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-1")
+    item = _service(pulse).candidate(candidate_id="pulse-1")
 
     assert item is not None
     stages = item["stages"]
@@ -491,7 +496,7 @@ def test_candidate_includes_stages_from_run_steps() -> None:
 
 
 def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-2"] = _candidate_row(
         "pulse-2",
         pulse_status="token_watch",
@@ -523,7 +528,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
         },
     ]
 
-    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-2")
+    item = _service(pulse).candidate(candidate_id="pulse-2")
 
     assert item is not None
     assert item["stages"]["investigator"]["status"] == "ok"
@@ -531,7 +536,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
 
 
 def test_candidate_stages_absent_when_no_run() -> None:
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-3"] = _candidate_row(
         "pulse-3",
         pulse_status="token_watch",
@@ -540,7 +545,7 @@ def test_candidate_stages_absent_when_no_run() -> None:
     )
     pulse.candidate_rows["pulse-3"]["agent_run_id"] = None
 
-    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-3")
+    item = _service(pulse).candidate(candidate_id="pulse-3")
 
     assert item is not None
     assert item["stages"] == {
@@ -551,7 +556,7 @@ def test_candidate_stages_absent_when_no_run() -> None:
 
 
 def test_candidate_stages_only_expose_v2_public_contract() -> None:
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-1"] = _candidate_row(
         "pulse-1",
         pulse_status="token_watch",
@@ -583,7 +588,7 @@ def test_candidate_stages_only_expose_v2_public_contract() -> None:
         },
     ]
 
-    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-1")
+    item = _service(pulse).candidate(candidate_id="pulse-1")
 
     assert item is not None
     assert set(item["stages"]) == {"investigator", "decision_maker", "research_only_gate"}
@@ -609,9 +614,9 @@ def test_default_listing_hides_abstain_decisions() -> None:
         "residual_risks": ["market context missing"],
         "evidence_event_ids": [],
     }
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
 
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).pulse(
+    result = _service(pulse, harness=FakeHarnessRepository(None)).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -627,7 +632,7 @@ def test_default_listing_hides_abstain_decisions() -> None:
 
 
 def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
-    pulse = FakePulseRepository(
+    pulse = FakePulseReadRepository(
         health={
             "candidate_count": 4,
             "blocked_low_information_count": 0,
@@ -646,7 +651,7 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
         }
     )
 
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).pulse(
+    result = _service(pulse, harness=FakeHarnessRepository(None)).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -664,9 +669,9 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
 
 
 def test_candidate_returns_none_when_missing() -> None:
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows = {}
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="ghost")
+    result = _service(pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="ghost")
     assert result is None
 
 
@@ -677,9 +682,9 @@ def test_candidate_returns_none_when_blocked() -> None:
         verdict="blocked_low_information",
         market_status=None,
     )
-    pulse = FakePulseRepository()
+    pulse = FakePulseReadRepository()
     pulse.candidate_rows = {"cand-blocked": row}
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-blocked")
+    result = _service(pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-blocked")
     assert result is None
 
 
@@ -691,12 +696,12 @@ def test_signal_pulse_missing_factor_snapshot_does_not_fallback_to_legacy_runtim
         market_status="fresh",
     )
     row["factor_snapshot_json"] = {}
-    pulse = FakePulseRepository(
+    pulse = FakePulseReadRepository(
         pages={None: {"items": [row], "next_cursor": None}},
         health={"candidate_count": 1, "summary": {"token_watch": 1}},
     )
 
-    result = SignalPulseService(pulse=pulse).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,
@@ -725,8 +730,8 @@ def test_signal_pulse_item_contains_factor_snapshot_contract_without_legacy_disp
         "top_risks": ["旧风险"],
     }
 
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
-    item = SignalPulseService(pulse=pulse).pulse(
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
+    item = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,
@@ -756,8 +761,8 @@ def test_signal_pulse_fact_card_does_not_fallback_to_legacy_market_context() -> 
     row["factor_snapshot_json"]["data_health"].pop("market")
     row["market_context_json"] = {"market_status": "fresh"}
 
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
-    item = SignalPulseService(pulse=pulse).pulse(
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
+    item = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,
@@ -792,8 +797,8 @@ def test_signal_pulse_fact_card_reads_market_facts_from_factor_snapshot_market()
         "volume_24h_usd": 888_000_000,
     }
 
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
-    item = SignalPulseService(pulse=pulse).pulse(
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
+    item = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,
@@ -841,8 +846,8 @@ def test_signal_pulse_fact_card_prefers_decision_latest_and_ignores_top_level_ma
         "volume_24h_usd": 4_600_000,
     }
 
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
-    item = SignalPulseService(pulse=pulse).pulse(
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
+    item = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,
@@ -874,9 +879,9 @@ def test_signal_pulse_rejects_v1_factor_snapshot_with_hard_gates() -> None:
         "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
         "composite": {"rank_score": 82},
     }
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
 
-    result = SignalPulseService(pulse=pulse).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,
@@ -907,9 +912,9 @@ def test_signal_pulse_rejects_malformed_v3_snapshot_shape(mutate, match: str) ->
         market_status="fresh",
     )
     mutate(row["factor_snapshot_json"])
-    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
+    pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
 
-    result = SignalPulseService(pulse=pulse).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="all",
         status=None,

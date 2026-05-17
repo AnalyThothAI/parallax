@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from typing import Any
+
+from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared import (
+    _json,
+    _normalize_subject,
+    _normalize_symbol,
+    _now_ms,
+    _row,
+)
+
+
+class PulseCandidatesRepository:
+    def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
+        self.conn = conn
+        self.running_timeout_ms = int(running_timeout_ms)
+
+    def upsert_candidate(
+        self,
+        *,
+        candidate_id: str,
+        candidate_type: str,
+        subject_key: str,
+        window: str,
+        scope: str,
+        pulse_status: str,
+        verdict: str,
+        social_phase: str,
+        candidate_score: float,
+        score_band: str,
+        trigger_signature: str,
+        timeline_signature: str,
+        pulse_version: str,
+        gate_version: str,
+        prompt_version: str,
+        schema_version: str,
+        factor_snapshot_json: dict[str, Any],
+        gate_json: dict[str, Any],
+        decision_route: str,
+        decision_recommendation: str,
+        decision_confidence: float,
+        decision_stage_count: int,
+        decision_json: dict[str, Any],
+        target_type: str | None = None,
+        target_id: str | None = None,
+        symbol: str | None = None,
+        decision_abstain_reason: str | None = None,
+        gate_reasons_json: list[Any] | None = None,
+        risk_reasons_json: list[Any] | None = None,
+        evidence_event_ids_json: list[Any] | None = None,
+        source_event_ids_json: list[Any] | None = None,
+        last_edge_events_json: list[Any] | None = None,
+        agent_run_id: str | None = None,
+        created_at_ms: int | None = None,
+        updated_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        now = int(updated_at_ms if updated_at_ms is not None else _now_ms())
+        created = int(created_at_ms if created_at_ms is not None else now)
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_candidates(
+              candidate_id, candidate_type, subject_key, target_type, target_id, symbol,
+              "window", scope, pulse_status, verdict, social_phase,
+              candidate_score, score_band, trigger_signature, timeline_signature,
+              factor_snapshot_json, gate_json, decision_route, decision_recommendation,
+              decision_confidence, decision_abstain_reason, decision_stage_count, decision_json,
+              gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
+              last_edge_events_json, agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
+              created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s
+            )
+            ON CONFLICT(candidate_id) DO UPDATE SET
+              candidate_type = excluded.candidate_type,
+              subject_key = excluded.subject_key,
+              target_type = excluded.target_type,
+              target_id = excluded.target_id,
+              symbol = excluded.symbol,
+              "window" = excluded."window",
+              scope = excluded.scope,
+              pulse_status = excluded.pulse_status,
+              verdict = excluded.verdict,
+              social_phase = excluded.social_phase,
+              candidate_score = excluded.candidate_score,
+              score_band = excluded.score_band,
+              trigger_signature = excluded.trigger_signature,
+              timeline_signature = excluded.timeline_signature,
+              factor_snapshot_json = excluded.factor_snapshot_json,
+              gate_json = excluded.gate_json,
+              decision_route = excluded.decision_route,
+              decision_recommendation = excluded.decision_recommendation,
+              decision_confidence = excluded.decision_confidence,
+              decision_abstain_reason = excluded.decision_abstain_reason,
+              decision_stage_count = excluded.decision_stage_count,
+              decision_json = excluded.decision_json,
+              gate_reasons_json = excluded.gate_reasons_json,
+              risk_reasons_json = excluded.risk_reasons_json,
+              evidence_event_ids_json = excluded.evidence_event_ids_json,
+              source_event_ids_json = excluded.source_event_ids_json,
+              last_edge_events_json = excluded.last_edge_events_json,
+              agent_run_id = excluded.agent_run_id,
+              pulse_version = excluded.pulse_version,
+              gate_version = excluded.gate_version,
+              prompt_version = excluded.prompt_version,
+              schema_version = excluded.schema_version,
+              updated_at_ms = excluded.updated_at_ms
+            RETURNING *
+            """,
+            (
+                candidate_id,
+                candidate_type,
+                _normalize_subject(subject_key),
+                target_type,
+                target_id,
+                _normalize_symbol(symbol),
+                window,
+                scope,
+                pulse_status,
+                verdict,
+                social_phase,
+                float(candidate_score),
+                score_band,
+                trigger_signature,
+                timeline_signature,
+                _json(factor_snapshot_json),
+                _json(gate_json),
+                decision_route,
+                decision_recommendation,
+                float(decision_confidence),
+                decision_abstain_reason,
+                max(0, int(decision_stage_count)),
+                _json(decision_json),
+                _json(gate_reasons_json or []),
+                _json(risk_reasons_json or []),
+                _json(evidence_event_ids_json or []),
+                _json(source_event_ids_json or []),
+                _json(last_edge_events_json or []),
+                agent_run_id,
+                pulse_version,
+                gate_version,
+                prompt_version,
+                schema_version,
+                created,
+                now,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+

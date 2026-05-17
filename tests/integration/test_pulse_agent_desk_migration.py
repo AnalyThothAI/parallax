@@ -19,11 +19,13 @@ stage CHECK 改"):
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from alembic import command
 from psycopg import errors as psycopg_errors
 
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
@@ -39,8 +41,12 @@ def _alembic_config_with_dsn():
     return config
 
 
-def _seed_run_and_job(repo: PulseRepository, *, run_id: str) -> None:
-    repo.enqueue_job(
+def _pulse_repos(conn) -> SimpleNamespace:
+    return SimpleNamespace(jobs=PulseJobsRepository(conn), runs=PulseRunsRepository(conn))
+
+
+def _seed_run_and_job(repo: SimpleNamespace, *, run_id: str) -> None:
+    repo.jobs.enqueue_job(
         job_id=f"job-{run_id}",
         candidate_id=f"candidate-{run_id}",
         candidate_type="token_target",
@@ -53,7 +59,7 @@ def _seed_run_and_job(repo: PulseRepository, *, run_id: str) -> None:
         next_run_at_ms=1_000,
         now_ms=900,
     )
-    repo.insert_agent_run(
+    repo.runs.insert_agent_run(
         run_id=run_id,
         job_id=f"job-{run_id}",
         candidate_id=f"candidate-{run_id}",
@@ -82,11 +88,11 @@ def test_stage_check_admits_new_stages_and_rejects_legacy(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         reset_postgres_schema(conn)
-        repo = PulseRepository(conn)
+        repo = _pulse_repos(conn)
         _seed_run_and_job(repo, run_id="run-stage-check")
 
         for accepted_stage in ("investigator", "decision_maker", "research_only_gate"):
-            step = repo.insert_agent_run_step(
+            step = repo.runs.insert_agent_run_step(
                 step_id=f"run-stage-check:{accepted_stage}:0",
                 run_id="run-stage-check",
                 stage=accepted_stage,
@@ -107,7 +113,7 @@ def test_stage_check_admits_new_stages_and_rejects_legacy(tmp_path) -> None:
 
         for legacy_stage in ("analyst", "critic", "judge"):
             try:
-                repo.insert_agent_run_step(
+                repo.runs.insert_agent_run_step(
                     step_id=f"run-stage-check:{legacy_stage}:0",
                     run_id="run-stage-check",
                     stage=legacy_stage,
@@ -150,9 +156,9 @@ def test_not_valid_preserves_legacy_rows_and_blocks_new_writes(tmp_path) -> None
         command.downgrade(config, _PREVIOUS_REVISION)
         conn.commit()
 
-        repo = PulseRepository(conn)
+        repo = _pulse_repos(conn)
         _seed_run_and_job(repo, run_id="run-legacy")
-        legacy_step = repo.insert_agent_run_step(
+        legacy_step = repo.runs.insert_agent_run_step(
             step_id="run-legacy:analyst:0",
             run_id="run-legacy",
             stage="analyst",
@@ -174,11 +180,11 @@ def test_not_valid_preserves_legacy_rows_and_blocks_new_writes(tmp_path) -> None
         command.upgrade(config, _REVISION)
         conn.commit()
 
-        legacy_rows = repo.list_agent_run_steps("run-legacy")
+        legacy_rows = repo.runs.list_agent_run_steps("run-legacy")
         assert [row["stage"] for row in legacy_rows] == ["analyst"]
 
         try:
-            repo.insert_agent_run_step(
+            repo.runs.insert_agent_run_step(
                 step_id="run-legacy:analyst:1",
                 run_id="run-legacy",
                 stage="analyst",
@@ -201,7 +207,7 @@ def test_not_valid_preserves_legacy_rows_and_blocks_new_writes(tmp_path) -> None
             raise AssertionError("New INSERT with stage='analyst' should have violated the CHECK constraint")
 
         # Sanity: the new CHECK still admits the new stage names after the upgrade.
-        new_step = repo.insert_agent_run_step(
+        new_step = repo.runs.insert_agent_run_step(
             step_id="run-legacy:investigator:0",
             run_id="run-legacy",
             stage="investigator",
@@ -351,10 +357,10 @@ def test_downgrade_to_0049_preserves_historical_v2_stage_rows(tmp_path) -> None:
         command.upgrade(config, _REVISION)
         conn.commit()
 
-        repo = PulseRepository(conn)
+        repo = _pulse_repos(conn)
         _seed_run_and_job(repo, run_id="run-v2-rollback")
         for offset, stage in enumerate(("investigator", "decision_maker")):
-            repo.insert_agent_run_step(
+            repo.runs.insert_agent_run_step(
                 step_id=f"run-v2-rollback:{stage}:0",
                 run_id="run-v2-rollback",
                 stage=stage,
@@ -377,11 +383,11 @@ def test_downgrade_to_0049_preserves_historical_v2_stage_rows(tmp_path) -> None:
         command.downgrade(config, _ROLLBACK_REVISION)
         conn.commit()
 
-        rows = repo.list_agent_run_steps("run-v2-rollback")
+        rows = repo.runs.list_agent_run_steps("run-v2-rollback")
         assert [row["stage"] for row in rows] == ["investigator", "decision_maker"]
 
         try:
-            repo.insert_agent_run_step(
+            repo.runs.insert_agent_run_step(
                 step_id="run-v2-rollback:investigator:1",
                 run_id="run-v2-rollback",
                 stage="investigator",

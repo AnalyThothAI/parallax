@@ -10,7 +10,11 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdate, DexMarketStreamTarget
+from gmgn_twitter_intel.domains.asset_market.providers import (
+    DexMarketFactUpdate,
+    DexMarketStreamProvider,
+    DexMarketStreamTarget,
+)
 from gmgn_twitter_intel.domains.asset_market.types import (
     MarketTick,
     MarketTickSourceProvider,
@@ -31,7 +35,7 @@ class MarketTickStreamWorker(WorkerBase):
         self,
         *,
         pool_bundle: Any | None = None,
-        stream_dex_market: Any | None = None,
+        stream_dex_market: DexMarketStreamProvider | None = None,
         wake_emitter: Any | None = None,
         wake_bus: Any | None = None,
         subscription_limit: int = DEFAULT_SUBSCRIPTION_LIMIT,
@@ -85,7 +89,8 @@ class MarketTickStreamWorker(WorkerBase):
                 notes={"targets_selected": len(rows), "stream_targets": 0},
             )
 
-        stream_result = await self._stream_and_persist_ticks(targets)
+        stream_dex_market = self.stream_dex_market
+        stream_result = await self._stream_and_persist_ticks(targets, stream_dex_market=stream_dex_market)
 
         return WorkerResult(
             processed=stream_result.inserted,
@@ -104,12 +109,17 @@ class MarketTickStreamWorker(WorkerBase):
             rows = repos.token_capture_tiers.list_by_tier(1, limit=self.subscription_limit)
         return [dict(row) for row in rows]
 
-    async def _stream_and_persist_ticks(self, targets: list[DexMarketStreamTarget]) -> _StreamPersistResult:
+    async def _stream_and_persist_ticks(
+        self,
+        targets: list[DexMarketStreamTarget],
+        *,
+        stream_dex_market: DexMarketStreamProvider,
+    ) -> _StreamPersistResult:
         target_by_key = {_target_key(target.chain_id, target.address): target for target in targets}
         ticks: list[MarketTick] = []
         skipped = 0
-        await self.stream_dex_market.replace_subscriptions(targets)
-        iterator = self.stream_dex_market.iter_price_info().__aiter__()
+        await stream_dex_market.replace_subscriptions(targets)
+        iterator = stream_dex_market.iter_price_info().__aiter__()
         deadline = time.monotonic() + self.stream_cycle_seconds
         try:
             while True:

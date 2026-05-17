@@ -14,6 +14,7 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
+WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 
 
 def _legacy_anchor_worker_key() -> str:
@@ -132,17 +133,32 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/asset_market/repositories/token_capture_tier_repository.py",
     },
     "pulse_candidates": {
-        SRC / "domains/pulse_lab/repositories/pulse_repository.py",
+        SRC / "domains/pulse_lab/repositories/pulse_candidates_repository.py",
     },
     "pulse_agent_runs": {
-        SRC / "domains/pulse_lab/repositories/pulse_repository.py",
+        SRC / "domains/pulse_lab/repositories/pulse_jobs_repository.py",
+        SRC / "domains/pulse_lab/repositories/pulse_runs_repository.py",
     },
     "pulse_agent_run_steps": {
-        SRC / "domains/pulse_lab/repositories/pulse_repository.py",
+        SRC / "domains/pulse_lab/repositories/pulse_runs_repository.py",
     },
 }
 
 LEGACY_ASSET_TABLES = ("assets", "asset_aliases", "asset_venues", "asset_market_snapshots")
+EXPECTED_WORKER_FACTORY_FILES = {
+    "__init__.py",
+    "asset_market.py",
+    "enrichment.py",
+    "harness.py",
+    "ingestion.py",
+    "notifications.py",
+    "pulse.py",
+    "token_intel.py",
+    "watchlist.py",
+}
+BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
+    "gmgn_twitter_intel.domains.ingestion.runtime.collector_service",
+}
 
 
 @pytest.mark.architecture
@@ -155,7 +171,6 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
 
 @pytest.mark.architecture
 def test_worker_registry_matches_workers_yaml_schema() -> None:
-    from gmgn_twitter_intel.app.runtime import bootstrap
     from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES, CANONICAL_WORKER_NAMES
     from gmgn_twitter_intel.app.runtime.worker_scheduler import _START_PRIORITY
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings
@@ -166,10 +181,49 @@ def test_worker_registry_matches_workers_yaml_schema() -> None:
 
     assert CANONICAL_WORKER_CLASSES == EXPECTED_WORKERS
     assert set(CANONICAL_WORKER_NAMES) == expected_keys
-    assert set(bootstrap.CANONICAL_WORKER_NAMES) == expected_keys
     assert set(_START_PRIORITY) == expected_keys
     assert settings_keys == expected_keys
     assert docs_keys == expected_keys
+
+
+@pytest.mark.architecture
+def test_worker_construction_is_split_into_domain_factories() -> None:
+    from gmgn_twitter_intel.app.runtime.worker_factories import worker_factory_specs
+    from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+
+    bootstrap_path = SRC / "app/runtime/bootstrap.py"
+    bootstrap_tree = _parse(bootstrap_path)
+    bootstrap_text = bootstrap_path.read_text(encoding="utf-8")
+    bootstrap_functions = {
+        node.name for node in ast.walk(bootstrap_tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    expected_worker_modules = {
+        qualified_name.rpartition(".")[0]
+        for key, qualified_name in EXPECTED_WORKERS.items()
+        if key != "collector"
+    }
+    bootstrap_runtime_worker_imports = sorted(
+        module
+        for module in _imported_modules(bootstrap_tree)
+        if module in expected_worker_modules and module not in BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST
+    )
+    worker_factory_files = {path.name for path in WORKER_FACTORIES.glob("*.py")}
+    factory_runtime_worker_imports = set()
+    if WORKER_FACTORIES.exists():
+        for path in WORKER_FACTORIES.glob("*.py"):
+            factory_runtime_worker_imports.update(_imported_modules(_parse(path)))
+    specs = worker_factory_specs()
+    owned_keys = [key for spec in specs for key in spec.keys]
+
+    assert worker_factory_files == EXPECTED_WORKER_FACTORY_FILES
+    assert {spec.name for spec in specs} == EXPECTED_WORKER_FACTORY_FILES - {"__init__.py"}
+    assert set(owned_keys) == set(CANONICAL_WORKER_NAMES)
+    assert len(owned_keys) == len(set(owned_keys))
+    assert "_construct_workers" not in bootstrap_functions
+    assert bootstrap_runtime_worker_imports == []
+    for worker_key in set(EXPECTED_WORKERS) - {"collector"}:
+        assert f'constructed["{worker_key}"]' not in bootstrap_text
+    assert sorted(expected_worker_modules - factory_runtime_worker_imports) == []
 
 
 @pytest.mark.architecture
@@ -385,6 +439,16 @@ def _module_file(qualified_name: str) -> str:
 
 def _parse(path: Path) -> ast.AST:
     return ast.parse(path.read_text(), filename=str(path))
+
+
+def _imported_modules(tree: ast.AST) -> set[str]:
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        if isinstance(node, ast.ImportFrom) and node.module:
+            modules.add(node.module)
+    return modules
 
 
 def _opens_db_session(node: ast.With | ast.AsyncWith) -> bool:

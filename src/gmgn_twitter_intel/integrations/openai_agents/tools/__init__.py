@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from gmgn_twitter_intel.integrations.openai_agents.tools._context import (
-    PulseToolContext,
-    ToolBudgetExceeded,
-    _check_and_increment_budget,
-)
+from gmgn_twitter_intel.domains.pulse_lab.providers import ToolBudgetExceeded
+from gmgn_twitter_intel.integrations.openai_agents.tools._context import PulseToolContext
 from gmgn_twitter_intel.integrations.openai_agents.tools.official_profile import (
     get_official_token_profile,
 )
@@ -39,7 +36,6 @@ __all__ = [
     "PulseToolContext",
     "ToolBudgetExceeded",
     "ToolResult",
-    "_check_and_increment_budget",
     "get_official_token_profile",
     "get_target_price_action",
     "get_target_recent_tweets",

@@ -3,17 +3,38 @@ from __future__ import annotations
 import base64
 import inspect
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories import pulse_repository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_harness_repository import PulseHarnessRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import (
+    PulseReadRepository,
+    _candidate_handle_filter_clause,
+)
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+
+
+def _repo_bundle(conn: Any, *, running_timeout_ms: int = 300_000) -> SimpleNamespace:
+    return SimpleNamespace(
+        jobs=PulseJobsRepository(conn, running_timeout_ms=running_timeout_ms),
+        admission=PulseAdmissionRepository(conn, running_timeout_ms=running_timeout_ms),
+        candidates=PulseCandidatesRepository(conn),
+        runs=PulseRunsRepository(conn, running_timeout_ms=running_timeout_ms),
+        harness=PulseHarnessRepository(conn),
+        read=PulseReadRepository(conn),
+        playbooks=PulsePlaybooksRepository(conn),
+    )
 
 
 def _job_payload(candidate_id: str, *, window: str = "1h", scope: str = "all") -> dict[str, Any]:
@@ -46,8 +67,8 @@ def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-claim",
             candidate_id="candidate-claim",
             candidate_type="token_target",
@@ -61,8 +82,8 @@ def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
             now_ms=900,
         )
 
-        assert repo.claim_due_job(now_ms=999) is None
-        claimed = repo.claim_due_job(now_ms=1_000)
+        assert repo.jobs.claim_due_job(now_ms=999) is None
+        claimed = repo.jobs.claim_due_job(now_ms=1_000)
     finally:
         conn.close()
 
@@ -77,7 +98,7 @@ def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
+        repo = _repo_bundle(conn)
         current_state = {
             "candidate_id": "candidate-edge",
             "candidate_type": "token_target",
@@ -87,31 +108,31 @@ def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path
             "hard_risks": [],
         }
 
-        observed = repo.record_edge_observation(
+        observed = repo.admission.record_edge_observation(
             candidate_id="candidate-edge",
             current_state_json=current_state,
             edge_signature="sha256:first",
             observed_at_ms=1_700_000_000_000,
         )
-        first_budget = repo.claim_edge_budget(
+        first_budget = repo.admission.claim_edge_budget(
             candidate_id="candidate-edge",
             hour_bucket_ms=1_699_999_200_000,
             now_ms=1_700_000_000_000,
             max_enqueues=2,
         )
-        second_budget = repo.claim_edge_budget(
+        second_budget = repo.admission.claim_edge_budget(
             candidate_id="candidate-edge",
             hour_bucket_ms=1_699_999_200_000,
             now_ms=1_700_000_100_000,
             max_enqueues=2,
         )
-        third_budget = repo.claim_edge_budget(
+        third_budget = repo.admission.claim_edge_budget(
             candidate_id="candidate-edge",
             hour_bucket_ms=1_699_999_200_000,
             now_ms=1_700_000_200_000,
             max_enqueues=2,
         )
-        repo.mark_edge_job_enqueued(
+        repo.admission.mark_edge_job_enqueued(
             candidate_id="candidate-edge",
             processed_state_json=current_state,
             edge_events_json=["pulse_status_changed"],
@@ -119,15 +140,15 @@ def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path
             processed_at_ms=1_700_000_000_123,
             commit=True,
         )
-        enqueued_edge = repo.edge_state_by_candidate("candidate-edge")
-        repo.mark_edge_run_finished(
+        enqueued_edge = repo.admission.edge_state_by_candidate("candidate-edge")
+        repo.admission.mark_edge_run_finished(
             candidate_id="candidate-edge",
             agent_run_id="run-edge",
             processed_state_json=current_state,
             edge_events_json=["pulse_status_changed"],
             finished_at_ms=1_700_000_000_456,
         )
-        finished_edge = repo.edge_state_by_candidate("candidate-edge")
+        finished_edge = repo.admission.edge_state_by_candidate("candidate-edge")
     finally:
         conn.close()
 
@@ -149,8 +170,8 @@ def test_claim_pulse_admission_rejects_target_without_candidate_budget_consumpti
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        first = repo.claim_pulse_admission(
+        repo = _repo_bundle(conn)
+        first = repo.admission.claim_pulse_admission(
             candidate_id="cand-1",
             target_type="Asset",
             target_id="asset-1",
@@ -158,11 +179,10 @@ def test_claim_pulse_admission_rejects_target_without_candidate_budget_consumpti
             now_ms=3_600_001,
             target_limit=0,
             candidate_limit=3,
-            job_payload=_job_payload("cand-1"),
             edge_state={"score_band": "70-79"},
             edge_events=["pulse_status_changed"],
         )
-        job = repo.job_for_candidate("cand-1")
+        job = repo.jobs.job_for_candidate("cand-1")
         candidate_budget_count = _run_budget_count(
             conn,
             "pulse_candidate_run_budget",
@@ -182,8 +202,8 @@ def test_claim_pulse_admission_rejects_candidate_without_target_budget_consumpti
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        claim = repo.claim_pulse_admission(
+        repo = _repo_bundle(conn)
+        claim = repo.admission.claim_pulse_admission(
             candidate_id="cand-candidate-budget",
             target_type="Asset",
             target_id="asset-1",
@@ -191,7 +211,6 @@ def test_claim_pulse_admission_rejects_candidate_without_target_budget_consumpti
             now_ms=3_600_001,
             target_limit=3,
             candidate_limit=0,
-            job_payload=_job_payload("cand-candidate-budget"),
             edge_state={"score_band": "70-79"},
             edge_events=["pulse_status_changed"],
         )
@@ -201,7 +220,7 @@ def test_claim_pulse_admission_rejects_candidate_without_target_budget_consumpti
             "target_type = %s AND target_id = %s",
             ("Asset", "asset-1"),
         )
-        job = repo.job_for_candidate("cand-candidate-budget")
+        job = repo.jobs.job_for_candidate("cand-candidate-budget")
     finally:
         conn.close()
 
@@ -215,8 +234,8 @@ def test_claim_pulse_admission_caps_same_target_across_candidates_windows_and_sc
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        first = repo.claim_pulse_admission(
+        repo = _repo_bundle(conn)
+        first = repo.admission.claim_pulse_admission(
             candidate_id="cand-target-a",
             target_type="Asset",
             target_id="asset-1",
@@ -224,11 +243,10 @@ def test_claim_pulse_admission_caps_same_target_across_candidates_windows_and_sc
             now_ms=3_600_001,
             target_limit=1,
             candidate_limit=3,
-            job_payload=_job_payload("cand-target-a", window="1h", scope="all"),
             edge_state={"score_band": "70-79"},
             edge_events=["pulse_status_changed"],
         )
-        second = repo.claim_pulse_admission(
+        second = repo.admission.claim_pulse_admission(
             candidate_id="cand-target-b",
             target_type="Asset",
             target_id="asset-1",
@@ -236,7 +254,6 @@ def test_claim_pulse_admission_caps_same_target_across_candidates_windows_and_sc
             now_ms=3_600_100,
             target_limit=1,
             candidate_limit=3,
-            job_payload=_job_payload("cand-target-b", window="4h", scope="matched"),
             edge_state={"score_band": "80-89"},
             edge_events=["pulse_status_changed"],
         )
@@ -252,8 +269,7 @@ def test_claim_pulse_admission_caps_same_target_across_candidates_windows_and_sc
             "candidate_id = %s",
             ("cand-target-b",),
         )
-        first_job = repo.job_for_candidate("cand-target-a")
-        second_job = repo.job_for_candidate("cand-target-b")
+        second_job = repo.jobs.job_for_candidate("cand-target-b")
     finally:
         conn.close()
 
@@ -262,7 +278,6 @@ def test_claim_pulse_admission_caps_same_target_across_candidates_windows_and_sc
     assert second.reason == "target_budget_exhausted"
     assert target_budget_count == 1
     assert second_candidate_budget_count == 0
-    assert first_job is not None
     assert second_job is None
 
 
@@ -270,10 +285,10 @@ def test_claim_pulse_admission_enqueues_without_marking_processed_until_run_fini
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
+        repo = _repo_bundle(conn)
         edge_state = {"pulse_status": "token_watch", "score_band": "70-79"}
 
-        claim = repo.claim_pulse_admission(
+        claim = repo.admission.claim_pulse_admission(
             candidate_id="cand-processed",
             target_type="Asset",
             target_id="asset-1",
@@ -281,28 +296,34 @@ def test_claim_pulse_admission_enqueues_without_marking_processed_until_run_fini
             now_ms=3_600_001,
             target_limit=3,
             candidate_limit=3,
-            job_payload=_job_payload("cand-processed"),
             edge_state=edge_state,
             edge_events=["pulse_status_changed"],
         )
-        enqueued_edge = repo.edge_state_by_candidate("cand-processed")
-        repo.mark_edge_run_finished(
+        job = repo.jobs.enqueue_job(**_job_payload("cand-processed"))
+        repo.admission.mark_edge_job_enqueued(
+            candidate_id="cand-processed",
+            processed_state_json=edge_state,
+            edge_events_json=["pulse_status_changed"],
+            job_id=str(job["job_id"]),
+            processed_at_ms=3_600_001,
+        )
+        enqueued_edge = repo.admission.edge_state_by_candidate("cand-processed")
+        repo.admission.mark_edge_run_finished(
             candidate_id="cand-processed",
             agent_run_id="run-processed",
             processed_state_json=edge_state,
             edge_events_json=["pulse_status_changed"],
             finished_at_ms=3_600_500,
         )
-        finished_edge = repo.edge_state_by_candidate("cand-processed")
+        finished_edge = repo.admission.edge_state_by_candidate("cand-processed")
     finally:
         conn.close()
 
     assert claim.accepted is True
-    assert claim.job is not None
     assert enqueued_edge is not None
     assert enqueued_edge["latest_observed_state_json"] == edge_state
     assert enqueued_edge["last_processed_state_json"] == {}
-    assert enqueued_edge["last_job_id"] == claim.job["job_id"]
+    assert enqueued_edge["last_job_id"] == job["job_id"]
     assert enqueued_edge["last_edge_events_json"] == ["pulse_status_changed"]
     assert finished_edge is not None
     assert finished_edge["last_processed_state_json"] == edge_state
@@ -313,8 +334,8 @@ def test_enqueue_job_preserves_active_retry_state_on_signature_churn(tmp_path) -
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        first = repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        first = repo.jobs.enqueue_job(
             candidate_id="candidate-1",
             candidate_type="token_target",
             subject_key="asset-1",
@@ -331,7 +352,7 @@ def test_enqueue_job_preserves_active_retry_state_on_signature_churn(tmp_path) -
             next_run_at_ms=1_800_000,
             now_ms=1_700_000,
         )
-        second = repo.enqueue_job(
+        second = repo.jobs.enqueue_job(
             candidate_id="candidate-1",
             candidate_type="token_target",
             subject_key="asset-1",
@@ -361,8 +382,8 @@ def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> 
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-fail",
             candidate_id="candidate-fail",
             candidate_type="token_target",
@@ -376,12 +397,12 @@ def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> 
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        first_claim = repo.claim_due_job(now_ms=1_000)
-        first_failure = repo.mark_job_failed(first_claim, "model unavailable", now_ms=2_000)
-        second_claim = repo.claim_due_job(now_ms=first_failure["next_run_at_ms"])
-        second_failure = repo.mark_job_failed(second_claim, "model unavailable again", now_ms=3_000)
+        first_claim = repo.jobs.claim_due_job(now_ms=1_000)
+        first_failure = repo.jobs.mark_job_failed(first_claim, "model unavailable", now_ms=2_000)
+        second_claim = repo.jobs.claim_due_job(now_ms=first_failure["next_run_at_ms"])
+        second_failure = repo.jobs.mark_job_failed(second_claim, "model unavailable again", now_ms=3_000)
 
-        repo.enqueue_job(
+        repo.jobs.enqueue_job(
             job_id="job-success",
             candidate_id="candidate-success",
             candidate_type="token_target",
@@ -394,8 +415,8 @@ def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> 
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        success_claim = repo.claim_due_job(now_ms=1_000)
-        success = repo.mark_job_succeeded("job-success", now_ms=4_000)
+        success_claim = repo.jobs.claim_due_job(now_ms=1_000)
+        success = repo.jobs.mark_job_succeeded("job-success", now_ms=4_000)
     finally:
         conn.close()
 
@@ -415,8 +436,8 @@ def test_reenqueue_dead_job_resets_attempts_and_is_claimable(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-reenqueue",
             candidate_id="candidate-reenqueue",
             candidate_type="token_target",
@@ -430,10 +451,10 @@ def test_reenqueue_dead_job_resets_attempts_and_is_claimable(tmp_path) -> None:
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        first_claim = repo.claim_due_job(now_ms=1_000)
-        dead = repo.mark_job_failed(first_claim, "exhausted", now_ms=1_100)
+        first_claim = repo.jobs.claim_due_job(now_ms=1_000)
+        dead = repo.jobs.mark_job_failed(first_claim, "exhausted", now_ms=1_100)
 
-        repo.enqueue_job(
+        repo.jobs.enqueue_job(
             job_id="job-reenqueue-new",
             candidate_id="candidate-reenqueue",
             candidate_type="token_target",
@@ -447,7 +468,7 @@ def test_reenqueue_dead_job_resets_attempts_and_is_claimable(tmp_path) -> None:
             next_run_at_ms=1_200,
             now_ms=1_200,
         )
-        claimed = repo.claim_due_job(now_ms=1_200)
+        claimed = repo.jobs.claim_due_job(now_ms=1_200)
     finally:
         conn.close()
 
@@ -465,8 +486,8 @@ def test_claim_due_job_recovers_stale_running_without_exceeding_max_attempts(tmp
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn, running_timeout_ms=100)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn, running_timeout_ms=100)
+        repo.jobs.enqueue_job(
             job_id="job-stale",
             candidate_id="candidate-stale",
             candidate_type="token_target",
@@ -481,9 +502,9 @@ def test_claim_due_job_recovers_stale_running_without_exceeding_max_attempts(tmp
             now_ms=900,
         )
 
-        first_claim = repo.claim_due_job(now_ms=1_000)
-        early_reclaim = repo.claim_due_job(now_ms=1_050)
-        stale_reclaim = repo.claim_due_job(now_ms=1_201)
+        first_claim = repo.jobs.claim_due_job(now_ms=1_000)
+        early_reclaim = repo.jobs.claim_due_job(now_ms=1_050)
+        stale_reclaim = repo.jobs.claim_due_job(now_ms=1_201)
     finally:
         conn.close()
 
@@ -500,8 +521,8 @@ def test_claim_due_job_marks_exhausted_stale_running_dead(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn, running_timeout_ms=100)
-        enqueued = repo.enqueue_job(
+        repo = _repo_bundle(conn, running_timeout_ms=100)
+        enqueued = repo.jobs.enqueue_job(
             job_id="job-stale-dead",
             candidate_id="candidate-stale-dead",
             candidate_type="token_target",
@@ -516,8 +537,8 @@ def test_claim_due_job_marks_exhausted_stale_running_dead(tmp_path) -> None:
             now_ms=900,
         )
 
-        first_claim = repo.claim_due_job(now_ms=1_000)
-        stale_reclaim = repo.claim_due_job(now_ms=1_201)
+        first_claim = repo.jobs.claim_due_job(now_ms=1_000)
+        stale_reclaim = repo.jobs.claim_due_job(now_ms=1_201)
         stored = conn.execute(
             "SELECT * FROM pulse_agent_jobs WHERE job_id = %s",
             (enqueued["job_id"],),
@@ -536,8 +557,8 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-run",
             candidate_id="candidate-run",
             candidate_type="token_target",
@@ -550,7 +571,7 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        run = repo.insert_agent_run(
+        run = repo.runs.insert_agent_run(
             run_id="run-1",
             job_id="job-run",
             candidate_id="candidate-run",
@@ -574,7 +595,7 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             request_json={"messages": [{"role": "user", "content": "inspect"}]},
             started_at_ms=1_100,
         )
-        finished = repo.finish_agent_run(
+        finished = repo.runs.finish_agent_run(
             "run-1",
             "done",
             response_json={"verdict": "token_watch"},
@@ -602,7 +623,7 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
 
 
 def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_outcome(tmp_path) -> None:
-    signature = inspect.signature(PulseRepository.finish_agent_run)
+    signature = inspect.signature(PulseRunsRepository.finish_agent_run)
     assert signature.parameters["outcome"].default is inspect.Parameter.empty
     assert signature.parameters["outcome"].kind is inspect.Parameter.KEYWORD_ONLY
 
@@ -624,7 +645,7 @@ def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_
     assert row is not None
     assert row["column_default"] is None
     with pytest.raises(TypeError):
-        PulseRepository.finish_agent_run(  # type: ignore[call-arg]
+        PulseRunsRepository.finish_agent_run(  # type: ignore[call-arg]
             object(),
             "run-missing-outcome",
             "done",
@@ -635,8 +656,8 @@ def test_agent_harness_version_round_trip(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        inserted = repo.upsert_agent_harness_version(
+        repo = _repo_bundle(conn)
+        inserted = repo.harness.upsert_agent_harness_version(
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-1",
             strategy="signal_pulse_decision",
@@ -647,7 +668,7 @@ def test_agent_harness_version_round_trip(tmp_path) -> None:
             manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
             created_at_ms=1_000,
         )
-        fetched = repo.agent_harness_version("sha256:harness-1")
+        fetched = repo.harness.agent_harness_version("sha256:harness-1")
     finally:
         conn.close()
 
@@ -661,8 +682,8 @@ def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        first = repo.upsert_agent_harness_version(
+        repo = _repo_bundle(conn)
+        first = repo.harness.upsert_agent_harness_version(
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-a",
             strategy="signal_pulse_decision",
@@ -673,7 +694,7 @@ def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp
             manifest_json={"runtime": {"timeout_seconds": 30}},
             created_at_ms=1_000,
         )
-        second = repo.upsert_agent_harness_version(
+        second = repo.harness.upsert_agent_harness_version(
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-b",
             strategy="signal_pulse_decision",
@@ -684,8 +705,8 @@ def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp
             manifest_json={"runtime": {"timeout_seconds": 120}},
             created_at_ms=2_000,
         )
-        fetched_first = repo.agent_harness_version("sha256:harness-a")
-        fetched_second = repo.agent_harness_version("sha256:harness-b")
+        fetched_first = repo.harness.agent_harness_version("sha256:harness-a")
+        fetched_second = repo.harness.agent_harness_version("sha256:harness-b")
     finally:
         conn.close()
 
@@ -701,8 +722,8 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-stale-run",
             candidate_id="candidate-stale-run",
             candidate_type="token_target",
@@ -715,7 +736,7 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.upsert_agent_harness_version(
+        repo.harness.upsert_agent_harness_version(
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-stale",
             strategy="signal_pulse_decision",
@@ -726,7 +747,7 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
             manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
             created_at_ms=1_000,
         )
-        repo.insert_agent_run(
+        repo.runs.insert_agent_run(
             run_id="run-stale",
             job_id="job-stale-run",
             candidate_id="candidate-stale-run",
@@ -750,7 +771,7 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
             started_at_ms=1_000,
         )
 
-        updated = repo.mark_stale_agent_runs_failed(
+        updated = repo.jobs.mark_stale_agent_runs_failed(
             now_ms=11_000,
             stale_before_ms=5_000,
         )
@@ -771,8 +792,8 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-target-failure",
             candidate_id="candidate-target-failure",
             candidate_type="token_target",
@@ -787,7 +808,7 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.insert_agent_run(
+        repo.runs.insert_agent_run(
             run_id="run-target-failure",
             job_id="job-target-failure",
             candidate_id="candidate-target-failure",
@@ -812,13 +833,13 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
             finished_at_ms=1_300,
         )
 
-        count = repo.recent_target_failure_count(
+        count = repo.admission.recent_target_failure_count(
             target_type="Asset",
             target_id="asset-1",
             since_ms=1_000,
             reasons=("unknown_evidence_id", "schema_validation_failed"),
         )
-        ignored_reason_count = repo.recent_target_failure_count(
+        ignored_reason_count = repo.admission.recent_target_failure_count(
             target_type="Asset",
             target_id="asset-1",
             since_ms=1_000,
@@ -835,8 +856,8 @@ def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-harness-run",
             candidate_id="candidate-harness-run",
             candidate_type="token_target",
@@ -849,7 +870,7 @@ def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.upsert_agent_harness_version(
+        repo.harness.upsert_agent_harness_version(
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-run",
             strategy="signal_pulse_decision",
@@ -860,7 +881,7 @@ def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
             manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
             created_at_ms=1_000,
         )
-        run = repo.insert_agent_run(
+        run = repo.runs.insert_agent_run(
             run_id="run-harness",
             job_id="job-harness-run",
             candidate_id="candidate-harness-run",
@@ -892,8 +913,8 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-run-step",
             candidate_id="candidate-run-step",
             candidate_type="token_target",
@@ -906,7 +927,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.insert_agent_run(
+        repo.runs.insert_agent_run(
             run_id="run-step",
             job_id="job-run-step",
             candidate_id="candidate-run-step",
@@ -927,7 +948,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             request_json={"target": "asset:sol"},
             started_at_ms=1_100,
         )
-        step = repo.insert_agent_run_step(
+        step = repo.runs.insert_agent_run_step(
             step_id="run-step:investigator:0",
             run_id="run-step",
             stage="investigator",
@@ -949,7 +970,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             finished_at_ms=1_451,
             created_at_ms=1_451,
         )
-        steps = repo.list_agent_run_steps("run-step")
+        steps = repo.runs.list_agent_run_steps("run-step")
     finally:
         conn.close()
 
@@ -964,8 +985,8 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.enqueue_job(
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
             job_id="job-eval",
             candidate_id="candidate-eval",
             candidate_type="token_target",
@@ -978,7 +999,7 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.upsert_agent_harness_version(
+        repo.harness.upsert_agent_harness_version(
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-eval",
             strategy="signal_pulse_decision",
@@ -989,7 +1010,7 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
             created_at_ms=1_000,
         )
-        repo.insert_agent_run(
+        repo.runs.insert_agent_run(
             run_id="run-eval",
             job_id="job-eval",
             candidate_id="candidate-eval",
@@ -1012,7 +1033,7 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             started_at_ms=1_100,
             finished_at_ms=1_300,
         )
-        case = repo.insert_agent_eval_case(
+        case = repo.harness.insert_agent_eval_case(
             eval_case_id="eval-case-run-eval",
             source_run_id="run-eval",
             harness_hash="sha256:harness-eval",
@@ -1025,7 +1046,7 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             status="active",
             created_at_ms=1_400,
         )
-        result = repo.upsert_agent_eval_result(
+        result = repo.harness.upsert_agent_eval_result(
             eval_result_id="eval-result-run-eval",
             eval_case_id=case["eval_case_id"],
             harness_hash="sha256:harness-eval",
@@ -1035,8 +1056,8 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             details_json={"violations": []},
             created_at_ms=1_500,
         )
-        cases = repo.list_agent_eval_cases(source_run_id="run-eval")
-        results = repo.list_agent_eval_results(eval_case_id=case["eval_case_id"])
+        cases = repo.harness.list_agent_eval_cases(source_run_id="run-eval")
+        results = repo.harness.list_agent_eval_results(eval_case_id=case["eval_case_id"])
     finally:
         conn.close()
 
@@ -1050,12 +1071,12 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(**_candidate_payload("candidate-newer", updated_at_ms=3_000))
-        repo.upsert_candidate(
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(**_candidate_payload("candidate-newer", updated_at_ms=3_000))
+        repo.candidates.upsert_candidate(
             **_candidate_payload("candidate-older", symbol="PEPE", subject_key="pepewhale", updated_at_ms=2_000)
         )
-        repo.upsert_candidate(
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-blocked",
                 pulse_status="blocked_low_information",
@@ -1065,17 +1086,17 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
             )
         )
 
-        first_page = repo.list_candidates(window="1h", scope="global", status="token_watch", limit=1)
-        second_page = repo.list_candidates(
+        first_page = repo.read.list_candidates(window="1h", scope="global", status="token_watch", limit=1)
+        second_page = repo.read.list_candidates(
             window="1h",
             scope="global",
             status="token_watch",
             limit=1,
             cursor=first_page["next_cursor"],
         )
-        blocked = repo.list_candidates(window="1h", scope="global", status="blocked_low_information", limit=10)
-        handle_filtered = repo.list_candidates(window="1h", scope="global", handle="@pepewhale", limit=10)
-        query_filtered = repo.list_candidates(window="1h", scope="global", q="pep", limit=10)
+        blocked = repo.read.list_candidates(window="1h", scope="global", status="blocked_low_information", limit=10)
+        handle_filtered = repo.read.list_candidates(window="1h", scope="global", handle="@pepewhale", limit=10)
+        query_filtered = repo.read.list_candidates(window="1h", scope="global", q="pep", limit=10)
     finally:
         conn.close()
 
@@ -1096,7 +1117,7 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
 
 
 def test_upsert_candidate_signature_uses_factor_snapshot_contract() -> None:
-    signature = inspect.signature(PulseRepository.upsert_candidate)
+    signature = inspect.signature(PulseCandidatesRepository.upsert_candidate)
 
     assert "factor_snapshot_json" in signature.parameters
     assert "decision_json" in signature.parameters
@@ -1114,7 +1135,7 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_decision(tmp_path) -
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        row = PulseRepository(conn).upsert_candidate(
+        row = _repo_bundle(conn).candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-factor-snapshot",
                 factor_snapshot_json={
@@ -1172,7 +1193,7 @@ def test_candidate_upsert_rejects_missing_decision_fields(tmp_path) -> None:
         payload = _candidate_payload("candidate-missing-decision", updated_at_ms=3_000)
         del payload["decision_json"]
         try:
-            PulseRepository(conn).upsert_candidate(**payload)
+            _repo_bundle(conn).candidates.upsert_candidate(**payload)
         except TypeError as exc:
             error = str(exc)
         else:
@@ -1186,7 +1207,7 @@ def test_candidate_upsert_rejects_missing_decision_fields(tmp_path) -> None:
 def test_pulse_summary_reads_market_fresh_count_from_factor_snapshot_contract() -> None:
     conn = FakePulseSummaryConn()
 
-    summary = PulseRepository(conn).pulse_summary(window="1h", scope="global")
+    summary = _repo_bundle(conn).read.pulse_summary(window="1h", scope="global")
 
     assert summary["market_ready_rate"] == 1.0
     assert "factor_snapshot_json #>> '{data_health,market}' = 'ready'" in conn.summary_sql
@@ -1198,8 +1219,8 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-fresh-factor",
                 factor_snapshot_json={
@@ -1208,7 +1229,7 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
                 updated_at_ms=3_000,
             )
         )
-        repo.upsert_candidate(
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-stale-factor",
                 factor_snapshot_json={
@@ -1218,7 +1239,7 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
             )
         )
 
-        summary = repo.pulse_summary(window="1h", scope="global")
+        summary = repo.read.pulse_summary(window="1h", scope="global")
     finally:
         conn.close()
 
@@ -1237,8 +1258,8 @@ def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
             make_event("event-other", author_handle="otheralpha", received_at_ms=1_100),
             is_watched=True,
         )
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-watch-source",
                 symbol="PEPE",
@@ -1248,7 +1269,7 @@ def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
                 updated_at_ms=3_000,
             )
         )
-        repo.upsert_candidate(
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-other-source",
                 symbol="BONK",
@@ -1259,8 +1280,8 @@ def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
             )
         )
 
-        filtered = repo.list_candidates(window="1h", scope="global", handle="@traderpow", limit=10)
-        summary = repo.pulse_summary(window="1h", scope="global", handle="@traderpow")
+        filtered = repo.read.list_candidates(window="1h", scope="global", handle="@traderpow", limit=10)
+        summary = repo.read.pulse_summary(window="1h", scope="global", handle="@traderpow")
     finally:
         conn.close()
 
@@ -1270,7 +1291,7 @@ def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
 
 
 def test_candidate_handle_filter_clause_checks_source_event_authors() -> None:
-    clause, params = pulse_repository._candidate_handle_filter_clause("candidate", "@TraderPow")
+    clause, params = _candidate_handle_filter_clause("candidate", "@TraderPow")
 
     assert "candidate.subject_key" in clause
     assert "candidate.source_event_ids_json" in clause
@@ -1285,15 +1306,15 @@ def test_list_candidates_ignores_malformed_structured_cursor(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(**_candidate_payload("candidate-cursor", updated_at_ms=3_000))
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(**_candidate_payload("candidate-cursor", updated_at_ms=3_000))
         cursor = base64.urlsafe_b64encode(
             json.dumps({"updated_at_ms": {}, "candidate_id": "x"}).encode("utf-8")
         ).decode("ascii")
 
-        result = repo.list_candidates(window="1h", scope="global", limit=10, cursor=cursor)
-        invalid_base64 = repo.list_candidates(window="1h", scope="global", limit=10, cursor="not-a-valid-cursor")
-        non_ascii = repo.list_candidates(window="1h", scope="global", limit=10, cursor="☃")
+        result = repo.read.list_candidates(window="1h", scope="global", limit=10, cursor=cursor)
+        invalid_base64 = repo.read.list_candidates(window="1h", scope="global", limit=10, cursor="not-a-valid-cursor")
+        non_ascii = repo.read.list_candidates(window="1h", scope="global", limit=10, cursor="☃")
     finally:
         conn.close()
 
@@ -1306,8 +1327,8 @@ def test_list_candidates_preserves_token_target_risk_enum_semantics(tmp_path) ->
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-risk-token",
                 candidate_type="token_target",
@@ -1319,7 +1340,7 @@ def test_list_candidates_preserves_token_target_risk_enum_semantics(tmp_path) ->
             )
         )
 
-        risk = repo.list_candidates(window="1h", scope="global", status="risk_rejected_high_info", limit=10)
+        risk = repo.read.list_candidates(window="1h", scope="global", status="risk_rejected_high_info", limit=10)
     finally:
         conn.close()
 
@@ -1350,8 +1371,8 @@ def test_get_health_counts_candidates_blocked_low_information_and_dead_jobs(tmp_
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-trade",
                 pulse_status="trade_candidate",
@@ -1359,7 +1380,7 @@ def test_get_health_counts_candidates_blocked_low_information_and_dead_jobs(tmp_
                 updated_at_ms=3_000,
             )
         )
-        repo.upsert_candidate(
+        repo.candidates.upsert_candidate(
             **_candidate_payload(
                 "candidate-low-info",
                 pulse_status="blocked_low_information",
@@ -1368,7 +1389,7 @@ def test_get_health_counts_candidates_blocked_low_information_and_dead_jobs(tmp_
                 updated_at_ms=2_000,
             )
         )
-        repo.enqueue_job(
+        repo.jobs.enqueue_job(
             job_id="job-dead",
             candidate_id="candidate-dead-job",
             candidate_type="token_target",
@@ -1382,9 +1403,9 @@ def test_get_health_counts_candidates_blocked_low_information_and_dead_jobs(tmp_
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        claimed = repo.claim_due_job(now_ms=1_000)
-        repo.mark_job_failed(claimed, "exhausted", now_ms=1_500)
-        health = repo.get_health(window="1h", scope="global")
+        claimed = repo.jobs.claim_due_job(now_ms=1_000)
+        repo.jobs.mark_job_failed(claimed, "exhausted", now_ms=1_500)
+        health = repo.read.get_health(window="1h", scope="global")
     finally:
         conn.close()
 
@@ -1397,9 +1418,9 @@ def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> Non
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        repo = PulseRepository(conn)
-        repo.upsert_candidate(**_candidate_payload("candidate-playbook", updated_at_ms=3_000))
-        snapshot = repo.upsert_playbook_snapshot(
+        repo = _repo_bundle(conn)
+        repo.candidates.upsert_candidate(**_candidate_payload("candidate-playbook", updated_at_ms=3_000))
+        snapshot = repo.playbooks.upsert_playbook_snapshot(
             playbook_id="playbook-1",
             candidate_id="candidate-playbook",
             target_type="cex_token",
@@ -1417,7 +1438,7 @@ def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> Non
             outcome_status="pending",
             created_at_ms=3_100,
         )
-        outcome = repo.upsert_playbook_outcome(
+        outcome = repo.playbooks.upsert_playbook_outcome(
             playbook_id="playbook-1",
             settled_at_ms=4_000,
             actual_return=0.12,
@@ -1445,7 +1466,7 @@ def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> Non
     assert outcome["outcome_json"] == {"label": "worked"}
 
 
-def test_repository_session_exposes_pulse_repository(tmp_path) -> None:
+def test_repository_session_exposes_focused_pulse_repositories(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -1453,7 +1474,13 @@ def test_repository_session_exposes_pulse_repository(tmp_path) -> None:
     finally:
         conn.close()
 
-    assert isinstance(repos.pulse, PulseRepository)
+    assert isinstance(repos.pulse_jobs, PulseJobsRepository)
+    assert isinstance(repos.pulse_admission, PulseAdmissionRepository)
+    assert isinstance(repos.pulse_candidates, PulseCandidatesRepository)
+    assert isinstance(repos.pulse_runs, PulseRunsRepository)
+    assert isinstance(repos.pulse_harness, PulseHarnessRepository)
+    assert isinstance(repos.pulse_read, PulseReadRepository)
+    assert isinstance(repos.pulse_playbooks, PulsePlaybooksRepository)
 
 
 def _candidate_payload(

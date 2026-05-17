@@ -457,7 +457,7 @@ function searchInspectData(url: URL) {
         selected_target: dossier.target,
         reasons: ["e2e_token_case_fixture"],
       },
-      token_result: { ...dossier, radar_item: null, market_overlay: null },
+      token_result: dossier,
       ambiguous_result: null,
       topic_result: null,
     };
@@ -694,7 +694,7 @@ function timelineData() {
         price_change_from_start_pct: 0.14,
       },
     ],
-    market_overlay: {
+    market_candles: {
       target_type: "Asset",
       target_id: TARGET_ID,
       chain_id: "eip155:1",

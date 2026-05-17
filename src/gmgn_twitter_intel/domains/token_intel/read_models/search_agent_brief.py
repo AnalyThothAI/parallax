@@ -10,11 +10,9 @@ def build_token_agent_brief(
     target: dict[str, Any],
     timeline: dict[str, Any],
     posts: dict[str, Any] | list[dict[str, Any]],
-    radar_item: dict[str, Any] | None,
     market_live: dict[str, Any] | None = None,
     profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    del radar_item
     post_items = _post_items(posts)
     summary = _dict(timeline.get("summary"))
     stages = [_dict(item) for item in _list(timeline.get("stages"))]
@@ -266,11 +264,11 @@ def _token_data_gaps(
     profile: dict[str, Any] | None,
 ) -> list[str]:
     gaps: list[str] = []
-    overlay = _dict(timeline.get("market_overlay"))
-    if not _has_ready_candles(overlay):
+    market_candles = _dict(timeline.get("market_candles"))
+    if not _has_ready_candles(market_candles):
         gaps.append("K 线未接入 token-case；当前展示事件 tick 与最新 tick")
-    if not overlay:
-        gaps.append("缺市场 overlay")
+    if not market_candles:
+        gaps.append("缺市场 K 线锚点")
     live = _dict(market_live)
     if not _has_value(live.get("holders")):
         gaps.append("缺 holders")
@@ -281,8 +279,8 @@ def _token_data_gaps(
     return gaps
 
 
-def _has_ready_candles(overlay: dict[str, Any]) -> bool:
-    return overlay.get("candle_status") == "ready" and bool(_list(overlay.get("candles")))
+def _has_ready_candles(market_candles: dict[str, Any]) -> bool:
+    return market_candles.get("candle_status") == "ready" and bool(_list(market_candles.get("candles")))
 
 
 def _has_project_profile(profile: dict[str, Any] | None) -> bool:

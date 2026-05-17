@@ -700,7 +700,8 @@ def _overview_clusters(events: list[dict[str, Any]]) -> dict[str, Any]:
             cluster["count"] += 1
 
     for item in events:
-        social_event = item.get("social_event") if isinstance(item.get("social_event"), dict) else {}
+        raw_social_event = item.get("social_event")
+        social_event = raw_social_event if isinstance(raw_social_event, dict) else {}
         for candidate in _list(social_event.get("token_candidates")):
             symbol = _candidate_symbol(candidate)
             if not symbol:

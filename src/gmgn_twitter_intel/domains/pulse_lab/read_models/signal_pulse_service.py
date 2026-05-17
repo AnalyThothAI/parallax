@@ -15,8 +15,9 @@ ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "tim
 
 
 class SignalPulseService:
-    def __init__(self, *, pulse: Any, harness: Any | None = None):
-        self.pulse_repository = pulse
+    def __init__(self, *, pulse_read: Any, pulse_runs: Any, harness: Any | None = None):
+        self.pulse_read_repository = pulse_read
+        self.pulse_runs_repository = pulse_runs
         self.harness = harness
 
     def pulse(
@@ -31,7 +32,7 @@ class SignalPulseService:
         cursor: str | None,
         agent_worker_running: bool,
     ) -> dict[str, Any]:
-        page = self.pulse_repository.list_candidates(
+        page = self.pulse_read_repository.list_candidates(
             window=window,
             scope=scope,
             status=status,
@@ -42,7 +43,7 @@ class SignalPulseService:
             displayable_only=True,
         )
         page_rows = [row for row in _rows(page) if _is_displayable(row)]
-        aggregate = self.pulse_repository.pulse_summary(window=window, scope=scope, q=q, handle=handle)
+        aggregate = self.pulse_read_repository.pulse_summary(window=window, scope=scope, q=q, handle=handle)
         candidate_count = int(aggregate.get("candidate_count") or 0)
         result_health = {
             "pulse_ready": candidate_count > 0,
@@ -70,7 +71,7 @@ class SignalPulseService:
         }
 
     def candidate(self, *, candidate_id: str) -> dict[str, Any] | None:
-        row = self.pulse_repository.candidate_by_id(candidate_id)
+        row = self.pulse_read_repository.candidate_by_id(candidate_id)
         if row is None:
             return None
         if not _is_displayable(row):
@@ -88,7 +89,7 @@ class SignalPulseService:
         if not run_id:
             return empty
         try:
-            steps = self.pulse_repository.list_agent_run_steps(str(run_id))
+            steps = self.pulse_runs_repository.list_agent_run_steps(str(run_id))
         except Exception:
             return empty
         by_stage: dict[str, dict[str, Any]] = {}

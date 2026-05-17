@@ -1,6 +1,23 @@
 import pytest
 
-from gmgn_twitter_intel.cli import build_parser
+from gmgn_twitter_intel import cli
+from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
+
+
+def test_root_cli_exports_only_main():
+    assert cli.__all__ == ["main"]
+    assert not hasattr(cli, "build_parser")
+
+
+def test_cli_repository_dependencies_are_neutral():
+    from gmgn_twitter_intel.app.surfaces.cli import dependencies
+    from gmgn_twitter_intel.app.surfaces.cli.commands import db, ops, read_models
+
+    assert not hasattr(db, "_postgres_connection")
+    assert not hasattr(db, "_repositories")
+    assert db.postgres_connection is dependencies.postgres_connection
+    assert ops.repositories is dependencies.repositories
+    assert read_models.repositories is dependencies.repositories
 
 
 def test_search_accepts_positional_query_and_cursor():

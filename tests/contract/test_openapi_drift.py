@@ -23,6 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 OPENAPI_PATH = ROOT / "docs" / "generated" / "openapi.json"
 OPENAPI_TS_PATH = ROOT / "web" / "src" / "lib" / "types" / "openapi.ts"
+FRONTEND_CONTRACTS_PATH = ROOT / "web" / "src" / "lib" / "types" / "frontend-contracts.ts"
 
 
 @pytest.mark.contract
@@ -163,3 +164,19 @@ def test_signal_pulse_stages_openapi_type_has_no_index_signature() -> None:
     section = text.split("/** SignalPulseStages */", 1)[1].split("/** SocialEventDetail */", 1)[0]
 
     assert "[key: string]" not in section
+
+
+@pytest.mark.contract
+def test_market_candles_contract_has_no_legacy_market_payload_field() -> None:
+    """Search and timeline contracts expose market_candles only."""
+    openapi_text = OPENAPI_PATH.read_text(encoding="utf-8")
+    openapi_ts_text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
+    frontend_contracts_text = FRONTEND_CONTRACTS_PATH.read_text(encoding="utf-8")
+    legacy_field = "market" "_overlay"
+
+    assert "market_candles" in openapi_text
+    assert "market_candles" in openapi_ts_text
+    assert "market_candles" in frontend_contracts_text
+    assert legacy_field not in openapi_text
+    assert legacy_field not in openapi_ts_text
+    assert legacy_field not in frontend_contracts_text

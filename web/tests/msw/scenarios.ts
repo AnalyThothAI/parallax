@@ -80,7 +80,7 @@ function tokenCaseSearchInspectFixture(q: string) {
       selected_target: dossier.target,
       reasons: ["msw_token_case_fixture"],
     },
-    token_result: { ...dossier, radar_item: null, market_overlay: null },
+    token_result: dossier,
     topic_result: null,
     ambiguous_result: null,
   });

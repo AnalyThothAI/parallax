@@ -20,7 +20,13 @@ from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_reposit
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_harness_repository import PulseHarnessRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
@@ -64,7 +70,13 @@ class RepositorySession:
     enrichment: EnrichmentRepository
     harness: HarnessRepository
     notifications: NotificationRepository
-    pulse: PulseRepository
+    pulse_jobs: PulseJobsRepository
+    pulse_admission: PulseAdmissionRepository
+    pulse_candidates: PulseCandidatesRepository
+    pulse_runs: PulseRunsRepository
+    pulse_harness: PulseHarnessRepository
+    pulse_read: PulseReadRepository
+    pulse_playbooks: PulsePlaybooksRepository
     watchlist_intel: WatchlistIntelRepository
 
     def unit_of_work(self):
@@ -97,7 +109,13 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         enrichment=EnrichmentRepository(conn),
         harness=HarnessRepository(conn),
         notifications=NotificationRepository(conn),
-        pulse=PulseRepository(conn),
+        pulse_jobs=PulseJobsRepository(conn),
+        pulse_admission=PulseAdmissionRepository(conn),
+        pulse_candidates=PulseCandidatesRepository(conn),
+        pulse_runs=PulseRunsRepository(conn),
+        pulse_harness=PulseHarnessRepository(conn),
+        pulse_read=PulseReadRepository(conn),
+        pulse_playbooks=PulsePlaybooksRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
     )
 

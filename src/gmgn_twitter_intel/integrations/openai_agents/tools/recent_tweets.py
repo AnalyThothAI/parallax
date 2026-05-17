@@ -1,30 +1,14 @@
-"""``get_target_recent_tweets``: fetch 24h tweets for a Pulse target.
-
-Ranked by ``token_intent_resolutions.resolution_status`` (EXACT > UNIQUE_BY_CONTEXT
-> AMBIGUOUS) and ``confidence``; tweets that did not pass attribution carry no
-weight and are omitted.
-
-The tweet URL is constructed deterministically from ``events.author_handle`` and
-``events.tweet_id`` matching :func:`canonical_tweet_url`.
-"""
+"""OpenAI SDK wrapper for the Pulse recent-tweets tool."""
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from agents import RunContextWrapper, function_tool
 
-from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_target_recent_tweets
-from gmgn_twitter_intel.integrations.openai_agents.tools._context import (
-    PulseToolContext,
-    _check_and_increment_budget,
-)
+from gmgn_twitter_intel.integrations.openai_agents.tools._context import PulseToolContext
 
-_MAX_RESULT_BYTES = 4 * 1024
 _DEFAULT_LIMIT = 15
-_MIN_LIMIT = 1
-_MAX_LIMIT = 30
 
 
 def _impl_get_target_recent_tweets(
@@ -33,44 +17,8 @@ def _impl_get_target_recent_tweets(
     target_id: str,
     limit: int = _DEFAULT_LIMIT,
 ) -> dict[str, Any]:
-    """Pure implementation; exposed for unit tests.
-
-    Mirrors the SDK-decorated tool but takes the unwrapped ``PulseToolContext``
-    directly so tests don't need to construct a ``RunContextWrapper``.
-    """
-    _check_and_increment_budget(ctx_payload)
-    pool = ctx_payload.db_pool
-    target = str(target_id or "").strip()
-    bounded_limit = max(_MIN_LIMIT, min(int(limit), _MAX_LIMIT))
-    if not target:
-        return {
-            "data": {"target_id": "", "tweets": []},
-            "contributed_event_ids": [],
-        }
-
-    payload = fetch_target_recent_tweets(pool, target_id=target, limit=bounded_limit)
-    if "error" in payload:
-        return {"data": {"error": payload["error"]}, "contributed_event_ids": []}
-
-    tweets = list(payload.get("tweets") or [])
-    event_ids = [str(tweet.get("event_id")) for tweet in tweets if isinstance(tweet, dict) and tweet.get("event_id")]
-    data: dict[str, Any] = {**payload, "tweets": tweets}
-    truncated = False
-    while (
-        len(json.dumps(data).encode("utf-8")) > _MAX_RESULT_BYTES and tweets
-    ):
-        tweets.pop()
-        if event_ids:
-            event_ids.pop()
-        data["tweets"] = tweets
-        truncated = True
-    if truncated:
-        data["truncated"] = True
-
-    for eid in event_ids:
-        ctx_payload.contributed_event_ids.add(eid)
-
-    return {"data": data, "contributed_event_ids": event_ids}
+    """Pure SDK-adapter implementation; exposed for unit tests."""
+    return ctx_payload.tool_runtime.get_target_recent_tweets(target_id=target_id, limit=limit)
 
 
 @function_tool

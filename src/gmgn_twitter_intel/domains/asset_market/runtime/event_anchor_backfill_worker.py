@@ -34,7 +34,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -43,6 +43,9 @@ from gmgn_twitter_intel.domains.asset_market.services.event_market_capture impor
     EventMarketCaptureService,
 )
 from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture, MarketTick
+
+if TYPE_CHECKING:
+    from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
 
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_CONCURRENCY = 8
@@ -95,7 +98,7 @@ class EventAnchorBackfillWorker(WorkerBase):
                 message_cex_market=message_cex_market,
             )
             capture_service = EventMarketCaptureService(
-                providers=resolved_providers,
+                providers=cast("AssetMarketProviders", resolved_providers),
                 now_ms=lambda: int(self.clock()),
             )
         self._capture_service = capture_service

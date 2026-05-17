@@ -97,10 +97,9 @@ Token Radar market contract:
 - `/api/token-radar` rows expose a single `market` block from
   `factor_snapshot_json`. The block contains `event_anchor`, `decision_latest`,
   and `readiness`.
-- `market.event_anchor` and `market.decision_latest` are compatibility-shaped
-  public response keys generated from `enriched_events` and `market_ticks`.
-  They are not internal market concepts, DB tables, worker names, or provider
-  runtime semantics.
+- `market.event_anchor` and `market.decision_latest` are public response keys
+  generated from `enriched_events` and `market_ticks`. They are not internal
+  market concepts, DB tables, worker names, or provider runtime semantics.
 - `/api/token-radar` rows may expose a `radar` block with projection-row
   metadata for UI sorting and audit display: `lane`, `rank`, `listed_at_ms`,
   `computed_at_ms`, and `source_max_received_at_ms`. `listed_at_ms` is derived
@@ -258,7 +257,9 @@ Search V2 contract:
     status block such as `pending`, `missing`, `unsupported`, or `error`.
   - `data.timeline`: target social timeline for the requested window/scope,
     with propagation stages, authors, posts, cascade metadata, and a normalized
-    query block.
+    query block. `data.timeline.market_candles` is the market identity and
+    candle-readiness payload; clients must not expect a separate legacy market
+    payload field.
   - `data.posts`: the initial recent post page for the same target/window/scope.
     Additional pages use `/api/target-posts` with the returned `next_cursor`.
   - `data.agent_brief`: deterministic `search_agent_brief_v1` project summary,
@@ -375,10 +376,10 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
   reasons. Identity, market freshness, CEX native-market identity, DEX holder /
   liquidity / market-cap floors, and data availability live here or in
   `data_health`; they do not score alpha.
-- `market`: explicit public market context with compatibility-shaped
-  `event_anchor`, `decision_latest`, and `readiness` response keys generated
-  from `enriched_events` and `market_ticks`. It remains context/gate input, not
-  an alpha family.
+- `market`: explicit public market context with `event_anchor`,
+  `decision_latest`, and `readiness` response keys generated from
+  `enriched_events` and `market_ticks`. It remains context/gate input, not an
+  alpha family.
 - `data_health`: explicit readiness for identity, market, social, and alpha.
 - `families`: social attention families only: `social_heat`,
   `social_propagation`, `semantic_catalyst`, and `timing_risk`.

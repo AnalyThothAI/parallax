@@ -217,12 +217,23 @@ turns a factor snapshot into a route, writes an agent run, short-circuits
 research-only or hard-blocked rows to an abstain decision, and otherwise calls
 the configured `PulseDecisionProvider`.
 
-OpenAI-specific stage execution lives only under `integrations/openai_agents/`.
+OpenAI-specific SDK execution lives only under `integrations/openai_agents/`.
 Signal Pulse uses the two-stage `Investigator -> DecisionMaker` harness, with
-`research_only_gate` for deterministic hard-blocks. The adapter returns domain
-values; it does not own routing, persistence, product thresholds, or SQL.
-`app/runtime/providers_wiring.py` is the composition point that binds the
-concrete adapter to the `pulse_lab` provider protocol.
+`research_only_gate` for deterministic hard-blocks. Pulse-specific orchestration
+is domain-owned: `domains/pulse_lab/services/pulse_decision_runtime.py` loads
+stage prompts, builds stage input contracts, assembles request audit hashes,
+validates cited evidence ids, and enriches final evidence URLs;
+`domains/pulse_lab/services/agent_tool_runtime.py` owns tool query behavior,
+budgets, truncation, and contributed event ids. The OpenAI adapter wraps Agent / Runner /
+`function_tool`, schema parsing, usage/tool-call extraction, safety net, and SDK
+errors only. It may import Pulse provider protocols/types, but not Pulse
+queries or services.
+The harness manifest's `runtime.tool_names_by_stage` is the only tool contract:
+"tools enabled" means a stage has a non-empty tool list; there is no separate
+boolean flag.
+`app/runtime/provider_wiring/openai.py` is the composition point that creates the
+domain runtimes and injects them into the concrete adapter bound to the
+`pulse_lab` provider protocol.
 
 The audit ledger is PostgreSQL: `pulse_agent_runs` records the final outcome and
 route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,

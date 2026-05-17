@@ -147,6 +147,10 @@ disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operat
 module = ["alembic.*", "loguru.*", "psycopg.*", "apprise.*", "curl_cffi.*", "websockets.*", "openai_agents.*", "solders.*", "eth_hash.*", "eth_utils.*", "testcontainers.*", "yaml"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "jsonref"
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
 source = ["src/gmgn_twitter_intel"]

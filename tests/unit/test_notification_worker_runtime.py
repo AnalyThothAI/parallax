@@ -9,11 +9,13 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
 from tests.unit.test_notification_rules import (
-    FakePulse,
     NOW_MS,
+    FakePulse,
     _signal_pulse_notifications,
-    engine as notification_rule_engine,
     pulse_candidate,
+)
+from tests.unit.test_notification_rules import (
+    engine as notification_rule_engine,
 )
 
 

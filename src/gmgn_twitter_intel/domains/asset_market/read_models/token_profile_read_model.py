@@ -140,7 +140,12 @@ def _payload(row: dict[str, Any]) -> dict[str, Any]:
 def _quality_flags(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)):
         return []
-    return [_clean(item) for item in value if _clean(item)]
+    result: list[str] = []
+    for item in value:
+        cleaned = _clean(item)
+        if cleaned:
+            result.append(cleaned)
+    return result
 
 
 def _clean(value: Any) -> str | None:

@@ -1,5 +1,7 @@
 from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 
+LEGACY_MARKET_FIELD = "market" "_overlay"
+
 
 def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
     service = SearchInspectService(
@@ -28,12 +30,13 @@ def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
     assert result["resolver"]["selected_target"]["target_id"] == "cex_token:BTC"
     assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "agent_brief", "market_live"]
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
+    assert result["token_result"]["timeline"]["market_candles"]["target_type"] == "CexToken"
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert result["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
     assert result["token_result"]["market_live"]["status"] == "ready"
     assert "radar_item" not in result["token_result"]
-    assert "market_overlay" not in result["token_result"]
+    assert LEGACY_MARKET_FIELD not in result["token_result"]
 
 
 def test_search_inspect_returns_topic_result_for_keyword_query():

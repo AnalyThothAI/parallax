@@ -144,8 +144,11 @@ class LivePriceGateway(WorkerBase):
         }
         active_targets = await asyncio.to_thread(self._active_targets, now_ms=received_at_ms)
         result["targets_selected"] = len(active_targets)
-        market_targets = [_market_target_from_row(row) for row in active_targets]
-        market_targets = [target for target in market_targets if target is not None]
+        market_targets: list[dict[str, Any]] = []
+        for row in active_targets:
+            target = _market_target_from_row(row)
+            if target is not None:
+                market_targets.append(target)
         if not market_targets:
             return result
         latest_by_target = await asyncio.to_thread(
@@ -220,11 +223,15 @@ class LivePriceGateway(WorkerBase):
             return {}
         request = [{"target_type": target["target_type"], "target_id": target["target_id"]} for target in targets]
         with self.db.worker_session(self.name) as repos:
-            return repos.market_ticks.latest_for_targets(
+            latest_rows = repos.market_ticks.latest_for_targets(
                 targets=request,
                 max_age_ms=int(self.target_ttl_seconds * 1000),
                 now_ms=int(now_ms),
             )
+        return {
+            (str(target_type), str(target_id)): dict(row)
+            for (target_type, target_id), row in latest_rows.items()
+        }
 
     def _payload_from_tick(
         self,

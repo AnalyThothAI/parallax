@@ -295,8 +295,10 @@ def _list_tier2_page(
     exclude_keys: list[dict[str, str]],
 ) -> list[Mapping[str, Any]]:
     if exclude_keys:
-        return repos.token_capture_tiers.list_by_tier(2, limit=limit, exclude_keys=exclude_keys)
-    return repos.token_capture_tiers.list_by_tier(2, limit=limit)
+        rows = repos.token_capture_tiers.list_by_tier(2, limit=limit, exclude_keys=exclude_keys)
+    else:
+        rows = repos.token_capture_tiers.list_by_tier(2, limit=limit)
+    return [dict(row) for row in rows]
 
 
 def _target_key_dicts(keys: set[tuple[str, str]]) -> list[dict[str, str]]:

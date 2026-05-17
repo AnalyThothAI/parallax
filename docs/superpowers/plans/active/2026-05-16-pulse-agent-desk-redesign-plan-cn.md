@@ -515,7 +515,7 @@ grep -rn "pulse_stage_prompts\|_ROUTE_FOCUS\|_STAGE_FOCUS" src/ tests/
   - 写入 final.evidence_event_urls
 - [ ] `agent_harness.build_pulse_harness_manifest` 更新：
   - `stages: ["investigator", "decision_maker"]`
-  - `runtime.tools_enabled: true`
+  - `runtime.tool_names_by_stage` 是唯一工具契约；“tools enabled” 表示该 stage 工具列表非空，没有单独 bool
   - 自然 bump `harness_hash`（grader v2 通过 harness_hash 隔离 v1 case）
 
 **Tests:**

@@ -2857,7 +2857,7 @@
             ],
             "title": "Has More"
           },
-          "market_overlay": {
+          "market_candles": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -2867,7 +2867,7 @@
                 "type": "null"
               }
             ],
-            "title": "Market Overlay"
+            "title": "Market Candles"
           },
           "next_cursor": {
             "anyOf": [
