@@ -49,6 +49,12 @@ class TokenRadarRepository:
             return False
         for row in rows:
             _validate_factor_contract(row)
+        listed_at_by_key = self._listed_at_by_identity(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+            rows=rows,
+        )
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
@@ -67,7 +73,7 @@ class TokenRadarRepository:
                   lane, rank, intent_id, event_id, target_type, target_id, pricefeed_id, intent_json,
                   asset_json, primary_venue_json, target_json, factor_snapshot_json, factor_version,
                   decision, data_health_json,
-                  source_event_ids_json, created_at_ms
+                  source_event_ids_json, listed_at_ms, created_at_ms
                 )
                 VALUES (
                   %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
@@ -75,7 +81,7 @@ class TokenRadarRepository:
                   %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(intent_json)s, %(asset_json)s,
                   %(primary_venue_json)s, %(target_json)s, %(factor_snapshot_json)s, %(factor_version)s,
                   %(decision)s, %(data_health_json)s,
-                  %(source_event_ids_json)s, %(created_at_ms)s
+                  %(source_event_ids_json)s, %(listed_at_ms)s, %(created_at_ms)s
                 )
                 """,
                 _json_payload(
@@ -85,6 +91,7 @@ class TokenRadarRepository:
                         "window": window,
                         "scope": scope,
                         "computed_at_ms": computed_at_ms,
+                        "listed_at_ms": listed_at_by_key.get(_identity_key(row), int(computed_at_ms)),
                     }
                 ),
             )
@@ -122,21 +129,8 @@ class TokenRadarRepository:
               ) latest_ranked
               WHERE lane_rank <= %s
             )
-            SELECT
-              ranked.*,
-              listed.listed_at_ms
+            SELECT ranked.*
             FROM ranked
-            LEFT JOIN LATERAL (
-              SELECT history.computed_at_ms AS listed_at_ms
-              FROM token_radar_rows history
-              WHERE history.projection_version = ranked.projection_version
-                AND history."window" = ranked."window"
-                AND history.scope = ranked.scope
-                AND COALESCE(history.target_type, '') = COALESCE(ranked.target_type, '')
-                AND COALESCE(history.target_id, history.intent_id) = COALESCE(ranked.target_id, ranked.intent_id)
-              ORDER BY history.computed_at_ms ASC
-              LIMIT 1
-            ) listed ON TRUE
             ORDER BY lane DESC, rank ASC
             LIMIT %s
             """,
@@ -152,6 +146,50 @@ class TokenRadarRepository:
             ),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def _listed_at_by_identity(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], int]:
+        identities = list(dict.fromkeys(_identity_key(row) for row in rows))
+        if not identities:
+            return {}
+        target_type_keys = [target_type for target_type, _ in identities]
+        identity_ids = [identity_id for _, identity_id in identities]
+        rows = self.conn.execute(
+            """
+            WITH requested(target_type_key, identity_id) AS (
+              SELECT *
+              FROM unnest(%s::text[], %s::text[])
+            )
+            SELECT
+              requested.target_type_key,
+              requested.identity_id,
+              first_seen.listed_at_ms
+            FROM requested
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(history.listed_at_ms, history.computed_at_ms) AS listed_at_ms
+              FROM token_radar_rows history
+              WHERE history.projection_version = %s
+                AND history."window" = %s
+                AND history.scope = %s
+                AND COALESCE(history.target_type, '') = requested.target_type_key
+                AND COALESCE(history.target_id, history.intent_id) = requested.identity_id
+              ORDER BY history.computed_at_ms ASC
+              LIMIT 1
+            ) first_seen ON true
+            """,
+            (target_type_keys, identity_ids, projection_version, window, scope),
+        ).fetchall()
+        return {
+            (str(row["target_type_key"]), str(row["identity_id"])): int(row["listed_at_ms"])
+            for row in rows
+            if row.get("listed_at_ms") is not None
+        }
 
     def mark_coverage(
         self,
@@ -263,6 +301,12 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
         payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
         out[key] = Jsonb(_json_ready(payload))
     return out
+
+
+def _identity_key(row: dict[str, Any]) -> tuple[str, str]:
+    target_type = str(row.get("target_type") or "")
+    identity_id = str(row.get("target_id") or row.get("intent_id") or "")
+    return (target_type, identity_id)
 
 
 def _now_ms() -> int:

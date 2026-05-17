@@ -245,6 +245,42 @@ def test_replace_rows_insert_uses_factor_snapshot_columns_without_legacy_score_c
     assert "score_json" not in conn.insert_sql
 
 
+def test_replace_rows_insert_materializes_listed_at_ms():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+
+    TokenRadarRepository(conn).replace_rows(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        computed_at_ms=1_778_000_000_000,
+        rows=[row],
+        commit=False,
+    )
+
+    assert "listed_at_ms" in conn.insert_sql
+    assert conn.insert_params["listed_at_ms"] == 1_778_000_000_000
+
+
+def test_replace_rows_listed_at_lookup_uses_ordered_index_seek():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+
+    TokenRadarRepository(conn).replace_rows(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        computed_at_ms=1_778_000_000_000,
+        rows=[row],
+        commit=False,
+    )
+
+    assert "LEFT JOIN LATERAL" in conn.listed_sql
+    assert "ORDER BY history.computed_at_ms ASC" in conn.listed_sql
+    assert "MIN(history.computed_at_ms)" not in conn.listed_sql
+    assert "GROUP BY requested.target_type_key" not in conn.listed_sql
+
+
 def test_replace_rows_requires_factor_snapshot_json_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
@@ -498,6 +534,20 @@ def test_latest_rows_limits_each_lane_independently():
     assert conn.params[-2:] == (8, 16)
 
 
+def test_latest_rows_reads_materialized_listed_at_without_history_lateral():
+    conn = FakeConn()
+
+    TokenRadarRepository(conn).latest_rows(
+        window="1h",
+        scope="all",
+        limit=50,
+        projection_version="token-radar-v13-social-attention",
+    )
+
+    assert "LEFT JOIN LATERAL" not in conn.sql
+    assert "token_radar_rows history" not in conn.sql
+
+
 def test_replace_rows_rejects_stale_projection_writer():
     conn = FakeStaleReplaceConn(existing_computed_at_ms=1_700_000_100_000)
 
@@ -533,14 +583,20 @@ class FakeConn:
 
 
 class FakeReplaceConn:
-    insert_sql = ""
-    delete_sql = ""
-    delete_params = ()
+    def __init__(self) -> None:
+        self.insert_sql = ""
+        self.insert_params = {}
+        self.delete_sql = ""
+        self.delete_params = ()
+        self.listed_sql = ""
 
     def execute(self, sql, params=None):
         text = str(sql)
+        if "WITH requested(target_type_key, identity_id)" in text:
+            self.listed_sql = text
         if "INSERT INTO token_radar_rows" in text:
             self.insert_sql = text
+            self.insert_params = dict(params or {})
         if "DELETE FROM token_radar_rows" in text:
             self.delete_sql = text
             self.delete_params = params or ()
@@ -548,6 +604,9 @@ class FakeReplaceConn:
 
     def fetchone(self):
         return {"computed_at_ms": None}
+
+    def fetchall(self):
+        return []
 
 
 class FakeStaleReplaceConn:

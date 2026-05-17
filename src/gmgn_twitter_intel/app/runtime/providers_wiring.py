@@ -268,11 +268,20 @@ class FallbackDexQuoteProvider:
 
     def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]:
         requests = list(tokens)
-        primary_quotes = self._primary.token_quotes(requests)
+        try:
+            primary_quotes = self._primary.token_quotes(requests)
+        except Exception:
+            if self._fallback is None:
+                raise
+            primary_quotes = []
+            missing = requests
+        else:
+            missing = []
         by_key = {
             _quote_key(quote.chain_id, quote.address): quote for quote in primary_quotes if _quote_has_price(quote)
         }
-        missing = [token for token in requests if _quote_key(token.chain_id, token.address) not in by_key]
+        if not missing:
+            missing = [token for token in requests if _quote_key(token.chain_id, token.address) not in by_key]
         if missing and self._fallback is not None:
             fallback_quotes = self._fallback.token_quotes(missing)
             for fallback_quote in fallback_quotes:

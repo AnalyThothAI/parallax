@@ -17,9 +17,12 @@ class EventTokenProjectionQuery:
         ids = tuple(dict.fromkeys(str(item).strip() for item in event_ids if str(item or "").strip()))
         if not ids:
             return {}
-        placeholders = ",".join("%s" for _ in ids)
         rows = self.conn.execute(
-            f"""
+            """
+            WITH requested_events(event_id, request_rank) AS MATERIALIZED (
+              SELECT event_id, request_rank
+              FROM unnest(%s::text[]) WITH ORDINALITY AS requested(event_id, request_rank)
+            )
             SELECT
               tir.resolution_id,
               tir.intent_id,
@@ -54,7 +57,12 @@ class EventTokenProjectionQuery:
                   ELSE NULL
                 END
               ) AS market_tick_lag_ms
-            FROM token_intent_resolutions tir
+            FROM requested_events
+            JOIN token_intent_resolutions tir
+              ON tir.event_id = requested_events.event_id
+             AND tir.is_current = TRUE
+             AND tir.target_type IN ('Asset', 'CexToken')
+             AND tir.target_id IS NOT NULL
             JOIN events
               ON events.event_id = tir.event_id
             LEFT JOIN registry_assets
@@ -99,30 +107,41 @@ class EventTokenProjectionQuery:
             LEFT JOIN market_ticks event_tick
               ON event_tick.tick_id = event_market_capture.tick_id
             LEFT JOIN LATERAL (
+              SELECT
+                CASE
+                  WHEN tir.target_type = 'Asset'
+                    AND registry_assets.chain_id IS NOT NULL
+                    AND registry_assets.address IS NOT NULL
+                    THEN 'chain_token'
+                  WHEN tir.target_type = 'CexToken'
+                    AND price_feeds.provider IS NOT NULL
+                    AND price_feeds.native_market_id IS NOT NULL
+                    THEN 'cex_symbol'
+                  ELSE NULL
+                END AS target_type,
+                CASE
+                  WHEN tir.target_type = 'Asset'
+                    AND registry_assets.chain_id IS NOT NULL
+                    AND registry_assets.address IS NOT NULL
+                    THEN registry_assets.chain_id || ':' || registry_assets.address
+                  WHEN tir.target_type = 'CexToken'
+                    AND price_feeds.provider IS NOT NULL
+                    AND price_feeds.native_market_id IS NOT NULL
+                    THEN price_feeds.provider || ':' || price_feeds.native_market_id
+                  ELSE NULL
+                END AS target_id
+            ) market_target ON true
+            LEFT JOIN LATERAL (
               SELECT market_ticks.*
               FROM market_ticks
-              WHERE (
-                  tir.target_type = 'Asset'
-                  AND registry_assets.asset_id IS NOT NULL
-                  AND market_ticks.target_type = 'chain_token'
-                  AND market_ticks.target_id = registry_assets.chain_id || ':' || registry_assets.address
-                )
-                 OR (
-                  tir.target_type = 'CexToken'
-                  AND price_feeds.pricefeed_id IS NOT NULL
-                  AND market_ticks.target_type = 'cex_symbol'
-                  AND market_ticks.target_id = price_feeds.provider || ':' || price_feeds.native_market_id
-                )
+              WHERE market_ticks.target_type = market_target.target_type
+                AND market_ticks.target_id = market_target.target_id
               ORDER BY market_ticks.observed_at_ms DESC, market_ticks.received_at_ms DESC, market_ticks.tick_id DESC
               LIMIT 1
             ) latest_tick ON event_tick.tick_id IS NULL
-            WHERE tir.event_id IN ({placeholders})
-              AND tir.is_current = TRUE
-              AND tir.target_type IN ('Asset', 'CexToken')
-              AND tir.target_id IS NOT NULL
-            ORDER BY tir.event_id, tir.decision_time_ms, tir.resolution_id
+            ORDER BY requested_events.request_rank, tir.decision_time_ms, tir.resolution_id
             """,
-            ids,
+            (list(ids),),
         ).fetchall()
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:

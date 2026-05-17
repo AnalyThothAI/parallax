@@ -76,16 +76,30 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
             }
         },
         okx_dex={},
+        cex_profiles={
+            "cex_token:BTC": {
+                "cex_token_id": "cex_token:BTC",
+                "base_symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "logo_source": "binance_marketing_symbol_list",
+                "logo_observed_at_ms": 9_000,
+            }
+        },
     )
 
     result = module.rebuild_token_profile_current_once(repos=repos, now_ms=10_000, limit=100)
 
     assert result["selected"] == 3
-    assert result["ready"] == 2
-    assert result["unsupported"] == 1
-    assert result["with_logo"] == 2
-    assert result["source_provider"] == {"gmgn_dex_profile": 1, "gmgn_stream_snapshot": 1}
+    assert result["ready"] == 3
+    assert result["unsupported"] == 0
+    assert result["with_logo"] == 3
+    assert result["source_provider"] == {
+        "cex_token_icon_static": 1,
+        "gmgn_dex_profile": 1,
+        "gmgn_stream_snapshot": 1,
+    }
     assert [row["target_id"] for row in repos.token_profiles.rows] == ["asset:gmgn", "asset:stream", "cex_token:BTC"]
+    assert repos.token_profiles.rows[2]["logo_url"] == "https://bin.bnbstatic.com/btc.png"
     assert repos.token_profiles.commits == [False, False, False]
     assert repos.conn.commits == 1
 
@@ -123,13 +137,14 @@ class FakeSession:
 
 
 class FakeRepos:
-    def __init__(self, *, targets, gmgn_openapi, gmgn_stream, okx_dex) -> None:
+    def __init__(self, *, targets, gmgn_openapi, gmgn_stream, okx_dex, cex_profiles=None) -> None:
         self.conn = FakeConn()
         self.source_query = FakeSourceQuery(
             targets=targets,
             gmgn_openapi=gmgn_openapi,
             gmgn_stream=gmgn_stream,
             okx_dex=okx_dex,
+            cex_profiles=cex_profiles or {},
         )
         self.token_profiles = FakeTokenProfiles()
 
@@ -143,11 +158,12 @@ class FakeConn:
 
 
 class FakeSourceQuery:
-    def __init__(self, *, targets, gmgn_openapi, gmgn_stream, okx_dex) -> None:
+    def __init__(self, *, targets, gmgn_openapi, gmgn_stream, okx_dex, cex_profiles) -> None:
         self.targets = targets
         self.gmgn_openapi = gmgn_openapi
         self.gmgn_stream = gmgn_stream
         self.okx_dex = okx_dex
+        self.cex_profiles = cex_profiles
 
     def recent_profile_targets(self, **kwargs):
         return self.targets
@@ -160,6 +176,13 @@ class FakeSourceQuery:
 
     def okx_dex_profiles(self, asset_ids):
         return {asset_id: self.okx_dex[asset_id] for asset_id in asset_ids if asset_id in self.okx_dex}
+
+    def cex_token_profiles(self, cex_token_ids):
+        return {
+            cex_token_id: self.cex_profiles[cex_token_id]
+            for cex_token_id in cex_token_ids
+            if cex_token_id in self.cex_profiles
+        }
 
 
 class FakeTokenProfiles:

@@ -105,6 +105,41 @@ def test_asset_market_quote_provider_prefers_gmgn_facts_and_falls_back_to_okx(mo
     assert okx_quote_provider.quote_requests == [[("eip155:1", "0xokx")]]
 
 
+def test_asset_market_quote_provider_uses_okx_when_gmgn_primary_raises(monkeypatch) -> None:
+    okx_quote = providers_wiring.DexTokenQuote(
+        chain_id="eip155:1",
+        address="0xokx",
+        observed_at_ms=2,
+        price_usd=1.0,
+        raw={"source_provider": "okx_dex_rest"},
+        market_cap_usd=None,
+        liquidity_usd=None,
+        volume_24h_usd=None,
+        holders=None,
+    )
+    okx_quote_provider = FakeDexQuoteProvider([okx_quote])
+    gmgn_provider = FailingGmgnDexMarketProvider()
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: FakeDexDiscoveryProvider())
+    monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: okx_quote_provider)
+    monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", lambda settings: gmgn_provider)
+
+    providers = providers_wiring.wire_providers(
+        _settings_with_okx_and_gmgn(),
+        start_collector=True,
+    ).asset_market
+
+    quotes = providers.dex_quote_market.token_quotes(
+        [
+            DexTokenQuoteRequest(chain_id="eip155:1", address="0xokx"),
+        ]
+    )
+
+    assert [(quote.address, quote.price_usd) for quote in quotes] == [("0xokx", 1.0)]
+    assert gmgn_provider.quote_requests == [[("eip155:1", "0xokx")]]
+    assert okx_quote_provider.quote_requests == [[("eip155:1", "0xokx")]]
+
+
 def test_okx_dex_ws_market_provider_is_wired_separately_from_discovery_and_gmgn(monkeypatch) -> None:
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: FakeDexDiscoveryProvider())
     monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: FakeDexQuoteProvider())
@@ -513,6 +548,14 @@ class FakeGmgnDexMarketProvider:
 
     def token_profile(self, *, chain_id: str, address: str):
         return None
+
+
+class FailingGmgnDexMarketProvider(FakeGmgnDexMarketProvider):
+    def token_quotes(self, tokens):
+        self.quote_requests.append([(token.chain_id, token.address) for token in tokens])
+        raise providers_wiring.DexProviderTemporarilyUnavailable(
+            "GET /v1/token/info blocked by Cloudflare challenge HTTP 403"
+        )
 
 
 class FakeDexStreamProvider:

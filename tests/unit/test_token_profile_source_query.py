@@ -84,6 +84,36 @@ def test_okx_dex_profiles_reads_exact_address_logos_and_not_symbol_candidates():
     assert "okx_dex_symbol_candidate" not in sql
 
 
+def test_cex_token_profiles_reads_existing_icon_facts_only():
+    conn = _Conn(
+        rows=[
+            {
+                "cex_token_id": "cex_token:BTC",
+                "base_symbol": "BTC",
+                "logo_url": "https://bin.bnbstatic.com/btc.png",
+                "logo_source": "binance_marketing_symbol_list",
+            }
+        ]
+    )
+
+    rows = TokenProfileSourceQuery(conn).cex_token_profiles(["cex_token:BTC", "cex_token:BTC"])
+
+    assert rows == {
+        "cex_token:BTC": {
+            "cex_token_id": "cex_token:BTC",
+            "base_symbol": "BTC",
+            "logo_url": "https://bin.bnbstatic.com/btc.png",
+            "logo_source": "binance_marketing_symbol_list",
+        }
+    }
+    sql = conn.sqls[-1]
+    params = conn.params[-1]
+    assert "FROM cex_tokens" in sql
+    assert "logo_url IS NOT NULL" in sql
+    assert "status IN ('candidate', 'canonical')" in sql
+    assert params == (["cex_token:BTC"],)
+
+
 class _Conn:
     def __init__(self, *, rows: list[dict]) -> None:
         self.rows = rows

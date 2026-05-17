@@ -145,6 +145,28 @@ class TokenProfileSourceQuery:
             if (selected := select_okx_dex_source(rows)) is not None
         }
 
+    def cex_token_profiles(self, cex_token_ids: list[str]) -> dict[str, dict[str, Any]]:
+        requested = _dedupe(cex_token_ids)
+        if not requested:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT
+              cex_token_id,
+              base_symbol,
+              logo_url,
+              logo_source,
+              logo_observed_at_ms,
+              updated_at_ms
+            FROM cex_tokens
+            WHERE cex_token_id = ANY(%s)
+              AND status IN ('candidate', 'canonical')
+              AND logo_url IS NOT NULL
+            """,
+            (requested,),
+        ).fetchall()
+        return {str(row["cex_token_id"]): dict(row) for row in rows}
+
     def _identity_evidence_rows(
         self,
         *,

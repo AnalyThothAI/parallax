@@ -395,6 +395,95 @@ class HarnessRepository:
             "snapshots": snapshots,
         }
 
+    def harness_for_events(self, event_ids: tuple[str, ...]) -> dict[str, dict[str, Any] | None]:
+        ids = _event_ids(event_ids)
+        if not ids:
+            return {}
+        social_events = self._social_events_for_events(ids)
+        seeds = self._attention_seeds_for_events(ids)
+        clusters = self._clusters_for_events(ids)
+        snapshots = self._snapshots_for_events(ids)
+        payloads: dict[str, dict[str, Any] | None] = {}
+        for event_id in ids:
+            social_event = social_events.get(event_id)
+            seed = seeds.get(event_id)
+            event_clusters = clusters.get(event_id, [])
+            event_snapshots = snapshots.get(event_id, [])
+            if social_event is None and seed is None and not event_clusters and not event_snapshots:
+                payloads[event_id] = None
+                continue
+            payloads[event_id] = {
+                "social_event": social_event,
+                "attention_seed": seed,
+                "clusters": event_clusters,
+                "snapshots": event_snapshots,
+            }
+        return payloads
+
+    def _social_events_for_events(self, event_ids: list[str]) -> dict[str, dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM social_event_extractions
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id, extraction_id
+            """,
+            (event_ids,),
+        ).fetchall()
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            item = self._decode_social_event(dict(row))
+            grouped.setdefault(str(item["event_id"]), item)
+        return grouped
+
+    def _attention_seeds_for_events(self, event_ids: list[str]) -> dict[str, dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM attention_seeds
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id, seed_id
+            """,
+            (event_ids,),
+        ).fetchall()
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            item = self._decode_seed(dict(row))
+            grouped.setdefault(str(item["event_id"]), item)
+        return grouped
+
+    def _clusters_for_events(self, event_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM event_clusters
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id, first_seen_at_ms DESC
+            """,
+            (event_ids,),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            item = self._decode_cluster(dict(row))
+            grouped.setdefault(str(item["event_id"]), []).append(item)
+        return grouped
+
+    def _snapshots_for_events(self, event_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM harness_snapshots
+            WHERE source_event_id = ANY(%s)
+            ORDER BY source_event_id, decision_time_ms DESC, horizon ASC
+            """,
+            (event_ids,),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            item = self._decode_snapshot(dict(row))
+            grouped.setdefault(str(item["source_event_id"]), []).append(item)
+        return grouped
+
     def seed_links_for_token(
         self,
         *,
@@ -943,6 +1032,10 @@ def _json_loads(value: Any, default: Any) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return default
+
+
+def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
+    return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
 
 
 def _snapshot_asset_match_clauses(

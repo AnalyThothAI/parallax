@@ -104,6 +104,25 @@ class SignalRepository:
         rows.sort(key=lambda item: (item["alert_type"], item["normalized_value"]))
         return rows
 
+    def alerts_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
+        ids = _event_ids(event_ids)
+        if not ids:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT 'account_token' AS alert_type, *
+            FROM account_token_alerts
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id, alert_type, normalized_value
+            """,
+            (ids,),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            item = dict(row)
+            grouped.setdefault(str(item["event_id"]), []).append(item)
+        return grouped
+
     def _account_token_alerts(self, *, since_ms: int, limit: int, handles: set[str] | None) -> list[dict[str, Any]]:
         clauses = ["received_at_ms >= %s"]
         params: list[Any] = [since_ms]
@@ -131,3 +150,7 @@ def _id(*parts: str) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
+    return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]

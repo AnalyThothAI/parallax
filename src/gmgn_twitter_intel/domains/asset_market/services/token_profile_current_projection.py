@@ -10,6 +10,7 @@ from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
 GMGN_DEX_PROFILE_PROVIDER = "gmgn_dex_profile"
 GMGN_STREAM_PROFILE_PROVIDER = "gmgn_stream_snapshot"
 OKX_DEX_PROFILE_PROVIDER = "okx_dex_evidence"
+CEX_TOKEN_ICON_PROVIDER = "cex_token_icon_static"
 
 STATUS_READY = "ready"
 STATUS_MISSING = "missing"
@@ -24,10 +25,18 @@ def project_token_profile_current(
     gmgn_stream: dict[str, Any] | None,
     okx_dex: dict[str, Any] | None,
     computed_at_ms: int,
+    cex_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     target_type = _clean(target.get("target_type"))
     target_id = _clean(target.get("target_id"))
     if target_type == "CexToken":
+        if _cex_profile_ready(cex_profile):
+            return _cex_token_icon_row(
+                target_type=target_type,
+                target_id=target_id,
+                source=cex_profile or {},
+                computed_at_ms=computed_at_ms,
+            )
         return _status_row(
             target_type=target_type,
             target_id=target_id,
@@ -185,6 +194,32 @@ def _okx_dex_row(
     )
 
 
+def _cex_token_icon_row(
+    *,
+    target_type: str | None,
+    target_id: str | None,
+    source: dict[str, Any],
+    computed_at_ms: int,
+) -> dict[str, Any]:
+    source_ref = _clean(source.get("logo_source")) or CEX_TOKEN_ICON_PROVIDER
+    cex_token_id = _clean(source.get("cex_token_id")) or target_id
+    return _ready_row(
+        target_type=target_type,
+        target_id=target_id,
+        profile_provider=CEX_TOKEN_ICON_PROVIDER,
+        source_kind="cex_tokens",
+        source_ref=f"{source_ref}:{cex_token_id}" if cex_token_id else source_ref,
+        symbol=source.get("base_symbol"),
+        logo_url=source.get("logo_url"),
+        source_payload={
+            "base_symbol": _clean(source.get("base_symbol")),
+            "logo_source": _clean(source.get("logo_source")),
+        },
+        observed_at_ms=_int_or_none(source.get("logo_observed_at_ms")),
+        computed_at_ms=computed_at_ms,
+    )
+
+
 def _ready_row(
     *,
     target_type: str | None,
@@ -280,6 +315,10 @@ def _openapi_ready(row: dict[str, Any] | None) -> bool:
 
 def _gmgn_stream_ready(row: dict[str, Any] | None) -> bool:
     return bool(row and _valid_logo_url(_raw(row).get("i")))
+
+
+def _cex_profile_ready(row: dict[str, Any] | None) -> bool:
+    return bool(row and _valid_logo_url(row.get("logo_url")))
 
 
 def _valid_logo_url(value: Any) -> bool:

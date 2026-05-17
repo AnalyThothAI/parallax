@@ -129,6 +129,18 @@ def test_event_token_projection_falls_back_to_latest_market_tick_when_event_capt
     }
 
 
+def test_event_token_projection_uses_sargable_market_target_for_latest_tick() -> None:
+    conn = _FakeConn([])
+
+    EventTokenProjectionQuery(conn).for_events(("event-1", "event-2"))
+
+    assert "requested_events(event_id, request_rank)" in conn.sql
+    assert "market_target" in conn.sql
+    assert "market_ticks.target_type = market_target.target_type" in conn.sql
+    assert "market_ticks.target_id = market_target.target_id" in conn.sql
+    assert "OR (" not in conn.sql
+
+
 def test_event_token_projection_omits_unresolved_public_rows() -> None:
     conn = _FakeConn(
         [

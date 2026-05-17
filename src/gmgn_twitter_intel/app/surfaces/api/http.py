@@ -870,7 +870,12 @@ def _request_token(request: Request) -> str | None:
     return token.strip() if token else None
 
 
-def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
+def _payload_for_event(
+    repos: Any,
+    event: dict[str, Any],
+    *,
+    token_resolutions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     event_id = str(event["event_id"])
     return {
         "type": "event",
@@ -878,9 +883,32 @@ def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
         "entities": repos.entities.entities_for_event(event_id),
         "alerts": repos.signals.alerts_for_event(event_id),
         "token_intents": repos.token_intents.intents_for_event(event_id),
-        "token_resolutions": repos.event_tokens.for_event(event_id),
+        "token_resolutions": (
+            token_resolutions if token_resolutions is not None else repos.event_tokens.for_event(event_id)
+        ),
         "harness": repos.harness.harness_for_event(event_id),
     }
+
+
+def _payloads_for_events(repos: Any, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    event_ids = tuple(str(event["event_id"]) for event in events)
+    entities_by_event = repos.entities.entities_for_events(event_ids)
+    alerts_by_event = repos.signals.alerts_for_events(event_ids)
+    intents_by_event = repos.token_intents.intents_for_events(event_ids)
+    token_resolutions_by_event = repos.event_tokens.for_events(event_ids)
+    harness_by_event = repos.harness.harness_for_events(event_ids)
+    return [
+        {
+            "type": "event",
+            "event": event,
+            "entities": entities_by_event.get(str(event["event_id"]), []),
+            "alerts": alerts_by_event.get(str(event["event_id"]), []),
+            "token_intents": intents_by_event.get(str(event["event_id"]), []),
+            "token_resolutions": token_resolutions_by_event.get(str(event["event_id"]), []),
+            "harness": harness_by_event.get(str(event["event_id"])),
+        }
+        for event in events
+    ]
 
 
 def _watchlist_handle_summary_config(runtime: Any) -> HandleSummaryTriggerConfig:
@@ -971,7 +999,7 @@ def _recent_data(
         )
         return {
             "events": events,
-            "items": [_payload_for_event(repos, event) for event in events],
+            "items": _payloads_for_events(repos, events),
         }
 
 

@@ -68,6 +68,25 @@ class EntityRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def entities_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
+        ids = _event_ids(event_ids)
+        if not ids:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM event_entities
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id, entity_type, normalized_value
+            """,
+            (ids,),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            item = dict(row)
+            grouped.setdefault(str(item["event_id"]), []).append(item)
+        return grouped
+
     def find_by_ca(
         self,
         value: str,
@@ -145,3 +164,7 @@ def _entity_id(event_id: str, entity: ExtractedEntity) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
+    return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]

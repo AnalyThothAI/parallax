@@ -37,9 +37,11 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
     query = getattr(repos, "source_query", None) or TokenProfileSourceQuery(repos.conn)
     targets = query.recent_profile_targets(now_ms=now_ms, limit=limit)
     asset_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "Asset"]
+    cex_token_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "CexToken"]
     gmgn_openapi = query.gmgn_openapi_profiles(asset_ids)
     gmgn_stream = query.gmgn_stream_profiles(asset_ids)
     okx_dex = query.okx_dex_profiles(asset_ids)
+    cex_profiles = query.cex_token_profiles(cex_token_ids)
     result = _empty_result(now_ms=now_ms)
     result["selected"] = len(targets)
 
@@ -50,6 +52,7 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
             gmgn_openapi=gmgn_openapi.get(target_id),
             gmgn_stream=gmgn_stream.get(target_id),
             okx_dex=okx_dex.get(target_id),
+            cex_profile=cex_profiles.get(target_id),
             computed_at_ms=now_ms,
         )
         repos.token_profiles.upsert_current(row, commit=False)

@@ -122,6 +122,7 @@ def test_project_token_profile_current_returns_cex_unsupported_without_symbol_ma
         gmgn_openapi=None,
         gmgn_stream=None,
         okx_dex=okx_row(logo_url="https://okx.example/btc.png", symbol="BTC", observed_at_ms=3_000),
+        cex_profile=None,
         computed_at_ms=10_000,
     )
 
@@ -131,6 +132,34 @@ def test_project_token_profile_current_returns_cex_unsupported_without_symbol_ma
     assert row["profile_provider"] is None
     assert row["logo_url"] is None
     assert row["quality_flags"] == ["cex_profile_unsupported"]
+
+
+def test_project_token_profile_current_uses_cex_token_icon_source():
+    row = project_token_profile_current(
+        target={"target_type": "CexToken", "target_id": "cex_token:BTC"},
+        gmgn_openapi=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        cex_profile={
+            "cex_token_id": "cex_token:BTC",
+            "base_symbol": "BTC",
+            "logo_url": "https://bin.bnbstatic.com/btc.png",
+            "logo_source": "binance_marketing_symbol_list",
+            "logo_observed_at_ms": 9_000,
+        },
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["target_type"] == "CexToken"
+    assert row["target_id"] == "cex_token:BTC"
+    assert row["profile_provider"] == "cex_token_icon_static"
+    assert row["source_kind"] == "cex_tokens"
+    assert row["source_ref"] == "binance_marketing_symbol_list:cex_token:BTC"
+    assert row["symbol"] == "BTC"
+    assert row["logo_url"] == "https://bin.bnbstatic.com/btc.png"
+    assert row["quality_flags"] == []
+    assert row["observed_at_ms"] == 9_000
 
 
 def test_select_okx_dex_source_ignores_symbol_candidates():

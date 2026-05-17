@@ -67,6 +67,25 @@ class TokenIntentRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def intents_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
+        ids = _event_ids(event_ids)
+        if not ids:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM token_intents
+            WHERE event_id = ANY(%s)
+            ORDER BY event_id, created_at_ms, intent_id
+            """,
+            (ids,),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            item = dict(row)
+            grouped.setdefault(str(item["event_id"]), []).append(item)
+        return grouped
+
     def evidence_links_for_intent(self, intent_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -111,3 +130,7 @@ def _payload(item: Any) -> dict[str, Any]:
         payload = {slot: getattr(item, slot) for slot in item.__slots__ if slot != "evidence_links"}
     payload.pop("evidence_links", None)
     return payload
+
+
+def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
+    return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
