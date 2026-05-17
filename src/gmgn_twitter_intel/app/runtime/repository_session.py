@@ -10,6 +10,7 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     CexTokenProfileRepository,
     DiscoveryRepository,
     EnrichedEventRepository,
+    EventAnchorBackfillJobRepository,
     IdentityEvidenceRepository,
     MarketTickRepository,
     RegistryRepository,
@@ -61,6 +62,7 @@ class RepositorySession:
     discovery: DiscoveryRepository
     market_ticks: MarketTickRepository
     enriched_events: EnrichedEventRepository
+    event_anchor_jobs: EventAnchorBackfillJobRepository
     token_capture_tiers: TokenCaptureTierRepository
     token_intent_lookup: TokenIntentLookupRepository
     event_tokens: EventTokenProjectionQuery
@@ -100,6 +102,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         discovery=DiscoveryRepository(conn),
         market_ticks=MarketTickRepository(conn),
         enriched_events=EnrichedEventRepository(conn),
+        event_anchor_jobs=EventAnchorBackfillJobRepository(conn),
         token_capture_tiers=TokenCaptureTierRepository(conn),
         token_intent_lookup=TokenIntentLookupRepository(conn),
         event_tokens=EventTokenProjectionQuery(conn),

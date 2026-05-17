@@ -145,7 +145,11 @@ def _assemble_runtime(
     enrichment = PooledRepository(db.api_pool, EnrichmentRepository)
     harness = PooledRepository(db.api_pool, HarnessRepository)
     notifications = PooledRepository(db.api_pool, NotificationRepository)
-    ingest = _PooledIngestStore(db, providers=providers.asset_market)
+    ingest = _PooledIngestStore(
+        db,
+        providers=providers.asset_market,
+        event_anchor_active_window_ms=workers.event_anchor_backfill.active_window_ms,
+    )
     hub = PublicWebSocketHub(
         token=settings.ws_token,
         repository_session=db.api_session,
@@ -212,8 +216,10 @@ class _PooledIngestStore:
         *,
         providers: Any,
         now_ms: Any = None,
+        event_anchor_active_window_ms: int = 300_000,
     ):
         self.db = db
+        self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
         self._capture_service = EventMarketCaptureService(
             providers=providers,
             now_ms=now_ms or _now_ms,
@@ -229,7 +235,10 @@ class _PooledIngestStore:
         prefetched_ticks: dict[tuple[str, str], Any] = {}
         resolutions: list[Any] = []
         with self.db.worker_session("collector") as repos:
-            ingest = _ingest_service_for_repos(repos)
+            ingest = _ingest_service_for_repos(
+                repos,
+                event_anchor_active_window_ms=self.event_anchor_active_window_ms,
+            )
             if ingest.event_already_exists(prepared):
                 return ingest.duplicate_result(prepared)
             ingest.prepare_registry_for_resolution(prepared)
@@ -266,7 +275,10 @@ class _PooledIngestStore:
         ]
 
         with self.db.worker_session("collector") as repos:
-            ingest = _ingest_service_for_repos(repos)
+            ingest = _ingest_service_for_repos(
+                repos,
+                event_anchor_active_window_ms=self.event_anchor_active_window_ms,
+            )
             return ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=captures)
 
     def event_token_resolutions(self, event_id: str) -> list[dict[str, Any]]:
@@ -274,7 +286,11 @@ class _PooledIngestStore:
             return repos.event_tokens.for_event(str(event_id))
 
 
-def _ingest_service_for_repos(repos: Any) -> IngestService:
+def _ingest_service_for_repos(
+    repos: Any,
+    *,
+    event_anchor_active_window_ms: int = 300_000,
+) -> IngestService:
     return IngestService(
         evidence=repos.evidence,
         entities=repos.entities,
@@ -288,6 +304,8 @@ def _ingest_service_for_repos(repos: Any) -> IngestService:
         intent_resolutions=getattr(repos, "intent_resolutions", None),
         market_ticks=getattr(repos, "market_ticks", None),
         enriched_events=getattr(repos, "enriched_events", None),
+        event_anchor_jobs=getattr(repos, "event_anchor_jobs", None),
+        event_anchor_active_window_ms=event_anchor_active_window_ms,
     )
 
 

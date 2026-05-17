@@ -30,7 +30,7 @@ notification_rule, notification_delivery
 | `token_capture_tier` (`TokenCaptureTierWorker`) | `asset_market` | `domains/asset_market/runtime/token_capture_tier_worker.py` | active Token Radar live market targets | `token_capture_tier` | poll | none | `interval_seconds` |
 | `market_tick_stream` (`MarketTickStreamWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_stream_worker.py` | `token_capture_tier(tier=1)`, OKX DEX WS | `market_ticks(source_tier='tier1_ws')` | provider-driven (WS) | `market_tick_written` | bounded stream cycle |
 | `market_tick_poll` (`MarketTickPollWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_poll_worker.py` | `token_capture_tier(tier=2)`, OKX DEX/CEX REST quotes | `market_ticks(source_tier='tier2_poll')` | poll | `market_tick_written` | `interval_seconds` |
-| `event_anchor_backfill` (`EventAnchorBackfillWorker`) | `asset_market` | `domains/asset_market/runtime/event_anchor_backfill_worker.py` | `enriched_events` pending rows | `market_ticks`, `enriched_events` async backfill transition | poll | `market_tick_written` | `interval_seconds` |
+| `event_anchor_backfill` (`EventAnchorBackfillWorker`) | `asset_market` | `domains/asset_market/runtime/event_anchor_backfill_worker.py` | due `event_anchor_backfill_jobs`, event-adjacent `market_ticks`, quote providers inside the lag budget | `market_ticks`, narrow `enriched_events` lifecycle transition, `event_anchor_backfill_jobs` status | poll | `market_tick_written` | `interval_seconds` |
 | `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | latest `market_ticks` per target | in-process latest cache and WebSocket fan-out only | poll | none | `interval_seconds` |
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
@@ -67,11 +67,12 @@ the runtime invariants are:
   Tier 2 DEX quotes (`GMGN OpenAPI REST` primary, `OKX DEX REST`
   fallback). It is the only worker that calls the CEX quote provider in
   the steady-state poll path.
-- `event_anchor_backfill` shares the Tier 2 provider stack but writes
-  `market_ticks` and the narrow `enriched_events` async-backfill
-  transition for events whose ingest path found no fresh tick. It is the
-  only worker permitted to update `enriched_events` after the ingest
-  transaction.
+- `event_anchor_backfill` shares the Tier 2 provider stack but consumes
+  `event_anchor_backfill_jobs`, not `enriched_events` as a retry queue. It
+  first attaches an already persisted tick near event time, calls providers
+  only inside the configured anchor lag budget, and terminalizes expired or
+  unavailable anchors. It is the only worker permitted to update
+  `enriched_events` after the ingest transaction.
 - `live_price_gateway` reads the latest `market_ticks` fan-out per
   target. It does not own an upstream WebSocket or REST client and never
   writes `market_ticks`.

@@ -130,6 +130,38 @@ class MarketTickRepository:
         ).fetchone()
         return cast("dict[str, Any] | None", row)
 
+    def nearest_around(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        at_ms: int,
+        max_lag_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            """
+            SELECT *
+            FROM market_ticks
+            WHERE target_type = %(target_type)s
+              AND target_id = %(target_id)s
+              AND observed_at_ms >= %(min_observed_at_ms)s
+              AND observed_at_ms <= %(max_observed_at_ms)s
+            ORDER BY ABS(observed_at_ms - %(at_ms)s) ASC,
+                     observed_at_ms ASC,
+                     received_at_ms ASC,
+                     tick_id ASC
+            LIMIT 1
+            """,
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "at_ms": int(at_ms),
+                "min_observed_at_ms": int(at_ms) - int(max_lag_ms),
+                "max_observed_at_ms": int(at_ms) + int(max_lag_ms),
+            },
+        ).fetchone()
+        return cast("dict[str, Any] | None", row)
+
     def latest_for_target(
         self,
         *,

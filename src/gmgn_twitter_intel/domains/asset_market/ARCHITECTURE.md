@@ -17,7 +17,8 @@ or read-model projection.
 | Stage | Code owner | Persisted facts | Invariant |
 |-------|------------|-----------------|-----------|
 | Asset identity evidence | `identity_evidence_policy.py`, `repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
-| Event market capture | `services/event_market_capture.py`, ingest runtime | `market_ticks(source_tier='tier3_inline')`, `enriched_events` | Ingest captures the event-adjacent market sample outside the DB transaction, then commits event facts and tick facts together. |
+| Event market capture | `services/event_market_capture.py`, ingest runtime | `market_ticks(source_tier='tier3_inline')`, `enriched_events`; `event_anchor_backfill_jobs` control rows for missing anchors | Ingest captures an event-adjacent market sample from existing ticks only, then commits event facts and tick facts together. Missing anchors are queued in the control plane, not by scanning fact rows. |
+| Event anchor backfill | `runtime/event_anchor_backfill_worker.py`, `repositories/event_anchor_backfill_job_repository.py` | `market_ticks`, narrow `enriched_events` lifecycle updates, `event_anchor_backfill_jobs` control state | Consumes due jobs, first attaches a persisted tick near event time, calls providers only inside the anchor lag budget, and terminalizes expired or unavailable anchors. |
 | Market capture tier projection | `runtime/token_capture_tier_worker.py`, `repositories/token_capture_tier_repository.py` | `token_capture_tier` | Active Token Radar targets are ranked into stream, poll, or inline-only capture tiers. This table is a rebuildable control plane, not a market fact. |
 | Tier 1 market stream | `runtime/market_tick_stream_worker.py` | `market_ticks(source_tier='tier1_ws')` | Stream targets come from `token_capture_tier(tier=1)`. Provider IO never holds a DB session. |
 | Tier 2 market poll | `runtime/market_tick_poll_worker.py` | `market_ticks(source_tier='tier2_poll')` | Poll targets come from `token_capture_tier(tier=2)`. DEX and CEX provider calls run outside DB sessions. |
@@ -101,6 +102,9 @@ cross-domain inventory.
 
 - Provider raw frames never reach `factor_snapshot_json`. Token Radar
   projection reads `market_ticks` and `enriched_events`, not provider clients.
+- `event_anchor_backfill_jobs` is worker control state. Product surfaces and
+  Token Radar never read it; they read the terminal or ready event-anchor fact
+  in `enriched_events`.
 - Identity evidence and asset identity selection never feed scoring
   families. They are gates and `data_health` inputs only.
 - `LivePriceGateway` may fan out raw frames to WS for recent display, but

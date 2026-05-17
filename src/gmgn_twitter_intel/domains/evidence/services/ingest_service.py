@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     EVIDENCE_TWEET_CONTRACT_MENTION,
     EnrichedEventCapture,
     EnrichedEventRepository,
+    EventAnchorBackfillJobRepository,
     IdentityEvidenceRepository,
     MarketTickRepository,
     RegistryRepository,
@@ -39,6 +40,8 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     build_token_intents,
     token_intent_resolution_id,
 )
+
+DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS = 300_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +72,8 @@ class IngestService:
         intent_resolutions: IntentResolutionRepository | None = None,
         market_ticks: MarketTickRepository | None = None,
         enriched_events: EnrichedEventRepository | None = None,
+        event_anchor_jobs: EventAnchorBackfillJobRepository | None = None,
+        event_anchor_active_window_ms: int = DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS,
     ) -> None:
         self.evidence = evidence
         self.entities = entities
@@ -82,6 +87,8 @@ class IngestService:
         self.intent_resolutions = intent_resolutions or IntentResolutionRepository(evidence.conn)
         self.market_ticks = market_ticks or MarketTickRepository(evidence.conn)
         self.enriched_events = enriched_events or EnrichedEventRepository(evidence.conn)
+        self.event_anchor_jobs = event_anchor_jobs or EventAnchorBackfillJobRepository(evidence.conn)
+        self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
 
     def insert_raw_frame(self, **kwargs: Any) -> bool:
         result: bool = self.evidence.insert_raw_frame(**kwargs)
@@ -205,6 +212,10 @@ class IngestService:
                 if tick is not None:
                     self.market_ticks.insert_tick(tick)
                 self.enriched_events.insert_capture(capture)
+                self.event_anchor_jobs.enqueue_for_capture(
+                    capture,
+                    active_window_ms=self.event_anchor_active_window_ms,
+                )
             token_resolutions = self.intent_resolutions.resolutions_for_event(prepared.event_id)
             alerts = self._insert_token_alerts(
                 prepared.raw_event,

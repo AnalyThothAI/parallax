@@ -341,6 +341,41 @@ def test_enriched_events_pending_backfill_to_async_backfill_transition_succeeds(
     assert row["tick_lag_ms"] == 100
 
 
+def test_enriched_events_pending_backfill_to_terminal_unavailable_transition_succeeds(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _seed_pending_backfill_row(conn)
+        conn.execute(
+            """
+            UPDATE enriched_events
+            SET capture_method = 'unavailable',
+                capture_reason = 'backfill_expired'
+            WHERE event_id = 'event-async'
+              AND intent_id = 'intent-async'
+              AND capture_method = 'unavailable'
+              AND capture_reason = 'pending_backfill'
+              AND tick_id IS NULL
+            """
+        )
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT capture_method, capture_reason, tick_id, tick_lag_ms
+            FROM enriched_events
+            WHERE event_id = 'event-async' AND intent_id = 'intent-async'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["capture_method"] == "unavailable"
+    assert row["capture_reason"] == "backfill_expired"
+    assert row["tick_id"] is None
+    assert row["tick_lag_ms"] is None
+
+
 def test_enriched_events_other_updates_are_rejected_by_trigger(tmp_path):
     import pytest
     from psycopg.errors import RaiseException
@@ -391,6 +426,37 @@ def test_pending_backfill_partial_index_present(tmp_path):
         conn.close()
 
     assert "idx_enriched_events_pending_backfill" in indexes
+
+
+def test_event_anchor_backfill_jobs_control_plane_table_present(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        tables = {
+            row["tablename"]
+            for row in conn.execute(
+                """
+                SELECT tablename
+                FROM pg_tables
+                WHERE schemaname = 'public'
+                """
+            ).fetchall()
+        }
+        indexes = {
+            row["indexname"]
+            for row in conn.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public' AND tablename = 'event_anchor_backfill_jobs'
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert "event_anchor_backfill_jobs" in tables
+    assert "idx_event_anchor_backfill_jobs_due" in indexes
 
 
 def _seed_pending_backfill_row(conn) -> None:
