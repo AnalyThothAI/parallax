@@ -9,6 +9,7 @@ import {
 import type { TokenFlowItem } from "@lib/types";
 
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
+import { tokenImageUrl } from "./tokenImageUrl";
 
 export type TokenRadarCompactCase = ReturnType<typeof buildTokenRadarCompactCase>;
 
@@ -21,7 +22,7 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     externalLinks: compactExternalLinks(item, tokenCase.actions),
     label: tokenCase.label,
     listed: compactListedAt(item),
-    logoUrl: item.profile?.identity?.logo_url ?? null,
+    logoUrl: tokenImageUrl(item.profile?.identity?.logo_url),
     markTone: tokenCase.decision.tone,
     market: {
       ...tokenCase.market,

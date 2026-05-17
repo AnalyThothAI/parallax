@@ -41,6 +41,27 @@ describe("TokenProfileCard", () => {
     expect(screen.getByText("@zcash")).toBeInTheDocument();
   });
 
+  it("uses the token image proxy for Binance-hosted logos", () => {
+    const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png";
+    const profile = readyProfile();
+    render(
+      <TokenProfileCard
+        profile={{
+          ...profile,
+          identity: {
+            ...profile.identity!,
+            logo_url: logoUrl,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Zcash logo" })).toHaveAttribute(
+      "src",
+      `/api/token-image?url=${encodeURIComponent(logoUrl)}`,
+    );
+  });
+
   it("renders pending, missing, and error states", () => {
     const { rerender } = render(<TokenProfileCard compact profile={stateProfile("pending")} />);
     expect(screen.getByText("profile pending")).toBeInTheDocument();

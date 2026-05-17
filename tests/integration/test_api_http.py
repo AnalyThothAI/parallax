@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+from gmgn_twitter_intel.app.surfaces.api import http as api_http
 from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
     ApiUnauthorized,
@@ -182,6 +183,136 @@ def test_api_json_response_encodes_decimal_payloads():
     response = _json({"ok": True, "data": {"price": Decimal("1.23")}})
 
     assert json.loads(response.body) == {"ok": True, "data": {"price": 1.23}}
+
+
+def test_token_image_proxy_fetches_binance_logo_without_auth(monkeypatch, tmp_path):
+    class FakeImageSession:
+        def __init__(self, **_kwargs):
+            pass
+
+        def get(self, url, **_kwargs):
+            return SimpleNamespace(
+                content=b"fake-png",
+                headers={"content-type": "image/png", "content-length": "8"},
+                status_code=200,
+                url=url,
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(api_http.curl_requests, "Session", FakeImageSession)
+    app = make_token_image_app(tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-image",
+            params={"url": "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png"},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"fake-png"
+    assert response.headers["content-type"].startswith("image/png")
+    assert response.headers["cache-control"] == api_http.TOKEN_IMAGE_PROXY_CACHE_CONTROL
+
+
+def test_token_image_proxy_caches_successful_fetches_under_app_home(monkeypatch, tmp_path):
+    session_calls: list[str] = []
+
+    class FakeImageSession:
+        def __init__(self, **_kwargs):
+            pass
+
+        def get(self, url, **_kwargs):
+            session_calls.append(url)
+            return SimpleNamespace(
+                content=b"fake-png",
+                headers={"content-type": "image/png", "content-length": "8"},
+                status_code=200,
+                url=url,
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(api_http.curl_requests, "Session", FakeImageSession)
+    app = make_token_image_app(tmp_path)
+    source_url = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png"
+
+    with TestClient(app) as client:
+        miss = client.get("/api/token-image", params={"url": source_url})
+        hit = client.get("/api/token-image", params={"url": source_url})
+
+    cache_files = sorted((tmp_path / "cache" / "token-images").iterdir())
+    assert miss.status_code == 200
+    assert hit.status_code == 200
+    assert miss.content == hit.content == b"fake-png"
+    assert session_calls == [source_url]
+    assert len(cache_files) == 1
+    assert cache_files[0].suffix == ".png"
+    assert cache_files[0].read_bytes() == b"fake-png"
+
+
+def test_token_image_proxy_fetches_gmgn_external_gif_with_chrome_impersonation(monkeypatch, tmp_path):
+    session_calls: list[dict[str, object]] = []
+
+    class FakeImageSession:
+        def __init__(self, **kwargs):
+            session_calls.append({"init": kwargs})
+
+        def get(self, url, **kwargs):
+            session_calls.append({"get": {"url": url, **kwargs}})
+            return SimpleNamespace(
+                content=b"fake-gif",
+                headers={"content-type": "image/gif", "content-length": "8"},
+                status_code=200,
+                url=url,
+            )
+
+        def close(self):
+            session_calls.append({"close": True})
+
+    monkeypatch.setattr(api_http.curl_requests, "Session", FakeImageSession)
+    app = make_token_image_app(tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-image",
+            params={"url": "https://gmgn.ai/external-res/75864d15bdf7017b16529090ea5960d9.gif"},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"fake-gif"
+    assert response.headers["content-type"].startswith("image/gif")
+    assert session_calls[0] == {"init": {"impersonate": api_http.TOKEN_IMAGE_PROXY_CURL_IMPERSONATE}}
+
+
+def test_token_image_proxy_rejects_unapproved_hosts(tmp_path):
+    app = make_token_image_app(tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-image",
+            params={"url": "https://example.test/btc.png"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_image_url", "field": "url"}
+
+
+def make_token_image_app(app_home) -> FastAPI:
+    app = FastAPI()
+    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
+    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.state.service = SimpleNamespace(
+        settings=SimpleNamespace(
+            app_home=app_home,
+            ws_token="secret",
+            handles=(),
+            replay_limit=25,
+        )
+    )
+    return app
 
 
 def make_settings(tmp_path) -> Settings:

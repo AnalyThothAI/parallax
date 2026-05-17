@@ -1,4 +1,5 @@
 import type { TokenProfileBlock } from "@lib/types";
+import { tokenImageUrl } from "@shared/model/tokenImageUrl";
 import clsx from "clsx";
 import { ExternalLink, Globe, MessageCircle, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -35,7 +36,7 @@ export function TokenProfileCard({ profile, compact = false }: TokenProfileCardP
   const name = cleanText(identity.name) ?? cleanText(identity.symbol) ?? "Unknown";
   const symbol = cleanText(identity.symbol);
   const description = cleanText(identity.description);
-  const logoUrl = cleanText(identity.logo_url);
+  const logoUrl = tokenImageUrl(identity.logo_url);
   const provider = cleanText(profile.provider) ?? cleanText(source.provider);
   const twitterUsername = twitterUsernameText(linksBlock.twitter_username);
 

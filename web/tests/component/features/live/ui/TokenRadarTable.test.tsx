@@ -232,9 +232,14 @@ describe("TokenRadarTable rows", () => {
   });
 
   it("renders CEX venue links directly without a profile abstraction", () => {
+    const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/opn.png";
     renderTokenRadarTable([cexToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $OPN" });
+    expect(row.querySelector(".radar-token-logo")).toHaveAttribute(
+      "src",
+      `/api/token-image?url=${encodeURIComponent(logoUrl)}`,
+    );
     expect(within(row).getByRole("link", { name: "X" })).toHaveAttribute(
       "href",
       "https://x.com/opn",
@@ -519,10 +524,11 @@ function cexToken(): TokenFlowItem {
     },
     profile: {
       status: "ready",
-      provider: "okx",
+      provider: "binance_cex_profile",
       identity: {
         symbol: "OPN",
         name: "Open Protocol",
+        logo_url: "https://bin.bnbstatic.com/image/admin_mgs_image_upload/opn.png",
       },
       links: {
         twitter_username: "opn",

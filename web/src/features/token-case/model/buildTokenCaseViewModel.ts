@@ -6,6 +6,7 @@ import type {
   TokenCaseTone,
   TokenCaseViewModel,
 } from "@shared/model/tokenCaseViewModel";
+import { tokenImageUrl } from "@shared/model/tokenImageUrl";
 import {
   buildTokenPostEventMarket,
   cleanText,
@@ -67,7 +68,7 @@ export function buildTokenCaseViewModel({
       searchHref: `/search?q=${encodeURIComponent(symbol ? `$${symbol}` : target.target_id)}`,
     },
     hero: {
-      logoUrl: cleanText(profileIdentity?.logo_url),
+      logoUrl: tokenImageUrl(profileIdentity?.logo_url),
       title,
       subtitle: heroSubtitle(dossier),
       contractLabel: target.address
