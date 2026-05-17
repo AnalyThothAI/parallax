@@ -195,6 +195,24 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `event_anchor_backfill_jobs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `event_id` | `TEXT` | False | `None` |
+| `intent_id` | `TEXT` | False | `None` |
+| `resolution_id` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `t_event_ms` | `BIGINT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `next_run_at_ms` | `BIGINT` | False | `None` |
+| `active_until_ms` | `BIGINT` | False | `None` |
+| `attempt_count` | `BIGINT` | False | `0` |
+| `last_reason` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `event_entities`
 
 | Column | Type | Nullable | Default |

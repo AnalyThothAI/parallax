@@ -31,8 +31,9 @@ are wrong too.
 1. **Facts-first persistence.** `events`, `event_entities`, `token_evidence`,
    `token_intents`, `token_intent_lookup_keys`, `token_intent_resolutions`,
    `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
-   `market_ticks`, and `enriched_events` are the business fact tables. Every other
-   persisted table is a derived read model that can be rebuilt from these
+   `market_ticks`, and `enriched_events` are the business fact tables. Control
+   plane tables such as `event_anchor_backfill_jobs` own worker scheduling state
+   and are not product truth. Every derived read model can be rebuilt from the
    facts.
 2. **Append-only market tick facts.** Market data from any provider is
    normalised into `MarketTick`
@@ -42,8 +43,10 @@ are wrong too.
 3. **Event projections are committed with events.** `enriched_events` rows
    are event projection rows committed in the same ingest transaction as
    `events`. Inline ingest capture writes Tier 3 `market_ticks` and the
-   corresponding enriched event rows; downstream readers do not reconstruct
-   event market context from provider frames.
+   corresponding enriched event rows; when an event anchor is missing, ingest
+   enqueues a short-lived `event_anchor_backfill_jobs` control-plane row.
+   Downstream readers do not reconstruct event market context from provider
+   frames or worker job state.
 4. **Public event token mentions are projections.** HTTP recent, WebSocket
    replay/live event payloads, and watchlist timelines read token mentions
    through the shared event-token projection over `token_intent_resolutions`,
@@ -286,8 +289,8 @@ and `docs/superpowers/plans/active/2026-05-16-price-pipeline-throughput-recovery
 | Tier 1 price stream | OKX DEX WS | none | `market_ticks(source_tier='tier1_ws')` | `chain_token` only; CEX symbols never enter Tier 1 |
 | Tier 2 DEX poll | GMGN OpenAPI REST | OKX DEX REST | `market_ticks(source_tier='tier2_poll')` | No GMGN price WS in the official skills repo |
 | Tier 2 CEX poll | OKX CEX REST | none | `market_ticks(source_tier='tier2_poll')` | CEX WS intentionally out of this pass |
-| Event anchor DEX backfill | GMGN OpenAPI REST | OKX DEX REST | `market_ticks`, narrow `enriched_events` update | Same `dex_quote_market` provider stack as Tier 2 |
-| Event anchor CEX backfill | OKX CEX REST | none | `market_ticks`, narrow `enriched_events` update | Same `message_cex_market` provider as Tier 2 |
+| Event anchor DEX backfill | GMGN OpenAPI REST | OKX DEX REST | `market_ticks`, narrow `enriched_events` lifecycle update; `event_anchor_backfill_jobs` control state | Same `dex_quote_market` provider stack as Tier 2 |
+| Event anchor CEX backfill | OKX CEX REST | none | `market_ticks`, narrow `enriched_events` lifecycle update; `event_anchor_backfill_jobs` control state | Same `message_cex_market` provider as Tier 2 |
 | Frontend `/ws` | latest `market_ticks` read model | none | no facts | `LivePriceGateway` fan-out only; no upstream provider calls |
 
 Consequences for code review:
@@ -295,6 +298,10 @@ Consequences for code review:
 - Only `MarketTickStreamWorker`, `MarketTickPollWorker`, ingest inline Tier 3
   capture, and `EventAnchorBackfillWorker` may write `market_ticks`. The
   inventory in `WORKERS.md` lists every runtime writer.
+- `EventAnchorBackfillWorker` consumes `event_anchor_backfill_jobs`; it must not
+  page directly through `enriched_events` as a retry queue. `enriched_events`
+  records only event-anchor fact lifecycle: pending, ready, or terminal
+  unavailable.
 - `LivePriceGateway` reads the latest `market_ticks` fan-out; it does not
   hold its own upstream WebSocket or REST clients.
 - GMGN's public WebSocket is consumed only by the `collector` social

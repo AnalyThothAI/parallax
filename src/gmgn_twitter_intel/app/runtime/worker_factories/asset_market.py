@@ -84,6 +84,8 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             batch_size=workers.event_anchor_backfill.batch_size,
             concurrency=workers.event_anchor_backfill.concurrency,
             min_age_ms=workers.event_anchor_backfill.min_age_ms,
+            active_window_ms=workers.event_anchor_backfill.active_window_ms,
+            max_anchor_lag_ms=workers.event_anchor_backfill.max_anchor_lag_ms,
         )
     if workers.asset_profile_refresh.enabled and dex_profile_sources:
         constructed["asset_profile_refresh"] = AssetProfileRefreshWorker(

@@ -125,13 +125,13 @@ Reason: deleting `harness_ops` while leaving API payloads, or adding EvidencePac
 - `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
 - `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`
 - `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
+- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
+- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
 - `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
 - `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py`
 - `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
 - `src/gmgn_twitter_intel/domains/pulse_lab/repositories/__init__.py`
-- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_agent_eval_repository.py` (rename/delete)
+- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_harness_repository.py` (rename/delete)
 - `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
 - `src/gmgn_twitter_intel/integrations/openai_agents/social_event_agent_client.py`
 - `src/gmgn_twitter_intel/integrations/openai_agents/watchlist_summary_agent_client.py`
@@ -350,15 +350,15 @@ Keep `social_event_extractions`.
 Rename Pulse agent runtime tables and columns away from harness vocabulary:
 
 ```sql
-ALTER TABLE pulse_agent_runtime_versions RENAME TO pulse_agent_runtime_versions;
-ALTER TABLE pulse_agent_runtime_versions RENAME COLUMN runtime_hash TO runtime_hash;
-ALTER TABLE pulse_agent_runtime_versions RENAME COLUMN runtime_version TO runtime_version;
+ALTER TABLE pulse_agent_harness_versions RENAME TO pulse_agent_runtime_versions;
+ALTER TABLE pulse_agent_runtime_versions RENAME COLUMN harness_hash TO runtime_hash;
+ALTER TABLE pulse_agent_runtime_versions RENAME COLUMN harness_version TO runtime_version;
 
-ALTER TABLE pulse_agent_runs RENAME COLUMN runtime_version TO runtime_version;
-ALTER TABLE pulse_agent_runs RENAME COLUMN runtime_hash TO runtime_hash;
+ALTER TABLE pulse_agent_runs RENAME COLUMN harness_version TO runtime_version;
+ALTER TABLE pulse_agent_runs RENAME COLUMN harness_hash TO runtime_hash;
 
-ALTER TABLE pulse_agent_eval_cases RENAME COLUMN runtime_hash TO runtime_hash;
-ALTER TABLE pulse_agent_eval_results RENAME COLUMN runtime_hash TO runtime_hash;
+ALTER TABLE pulse_agent_eval_cases RENAME COLUMN harness_hash TO runtime_hash;
+ALTER TABLE pulse_agent_eval_results RENAME COLUMN harness_hash TO runtime_hash;
 ```
 
 Create Pulse production outcome tables:
@@ -435,22 +435,22 @@ Downgrade can recreate table names only if cheap, but does not need to preserve 
 
 #### Rename repository
 
-- Rename `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_agent_eval_repository.py` to `pulse_agent_eval_repository.py`.
-- Rename class `PulseAgentEvalRepository` to `PulseAgentEvalRepository`.
+- Rename `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_harness_repository.py` to `pulse_agent_eval_repository.py`.
+- Rename class `PulseHarnessRepository` to `PulseAgentEvalRepository`.
 - Rename methods:
-  - `upsert_agent_runtime_version` -> `upsert_agent_runtime_version`
-  - `agent_runtime_version` -> `agent_runtime_version`
-- Rename parameters and row keys from `runtime_hash`/`runtime_version` to `runtime_hash`/`runtime_version`.
+  - `upsert_agent_harness_version` -> `upsert_agent_runtime_version`
+  - `agent_harness_version` -> `agent_runtime_version`
+- Rename parameters and row keys from `harness_hash`/`harness_version` to `runtime_hash`/`runtime_version`.
 
-#### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
+#### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
 
 - Rename file to `agent_runtime_manifest.py`.
 - Rename exported constants:
-  - `PULSE_AGENT_RUNTIME_VERSION` -> `PULSE_AGENT_RUNTIME_VERSION`
+  - `PULSE_AGENT_HARNESS_VERSION` -> `PULSE_AGENT_RUNTIME_VERSION`
   - `PULSE_AGENT_STRATEGY` can remain if meaningful, otherwise `PULSE_AGENT_RUNTIME_STRATEGY`.
 - Rename functions:
-  - `build_pulse_runtime_manifest` -> `build_pulse_agent_runtime_manifest`
-  - `pulse_runtime_hash` -> `pulse_runtime_hash`
+  - `build_pulse_harness_manifest` -> `build_pulse_agent_runtime_manifest`
+  - `pulse_harness_hash` -> `pulse_runtime_hash`
 
 #### Call sites
 

@@ -23,6 +23,7 @@ AUTO_GENERATED = {
     "pulse-agent-desk-decisions.md",
 }
 GENERATED_REPORTS = {
+    "backend-architecture-audit-2026-05-17.md",
     "duplicate-token-audit.md",
     "duplicate-token-audit-applied.md",
     "frontend-test-ownership.md",

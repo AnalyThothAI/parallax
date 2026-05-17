@@ -46,6 +46,111 @@ def test_run_once_no_pending_rows_emits_zero_counts() -> None:
     assert wake.emitted == []
 
 
+def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
+    row = _pending_row(event_id="evt-expired", target_type="chain_token", target_id="solana:OLD")
+    row["active_until_ms"] = NOW_MS - 1
+    db = _FakeDB(pending_rows=[], expired_rows=[row])
+    wake = _RecordingWakeEmitter()
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_StubCaptureService(),
+        wake_emitter=wake,
+        batch_size=10,
+        concurrency=2,
+        min_age_ms=100,
+        clock=lambda: NOW_MS,
+        settings=_settings(),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.skipped == 0
+    assert result.notes["expired_jobs"] == 1
+    assert result.notes["terminal_failures"] == 1
+    assert db.terminal_captures == [("evt-expired", "intent-evt-expired", "backfill_expired")]
+    assert db.terminal_jobs == [("evt-expired", "intent-evt-expired", "expired", "backfill_expired")]
+    assert db.provider_calls == 0
+    assert wake.emitted == []
+
+
+def test_run_once_reconciles_jobs_when_anchor_fact_is_already_ready() -> None:
+    db = _FakeDB(pending_rows=[], ready_jobs=6)
+    wake = _RecordingWakeEmitter()
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_StubCaptureService(),
+        wake_emitter=wake,
+        batch_size=10,
+        concurrency=2,
+        min_age_ms=100,
+        clock=lambda: NOW_MS,
+        settings=_settings(),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.skipped == 0
+    assert result.notes["ready_jobs_reconciled"] == 6
+    assert db.ready_job_calls == [{"limit": 10, "now_ms": NOW_MS}]
+    assert db.provider_calls == 0
+    assert wake.emitted == []
+
+
+def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
+    rows = [_pending_row(event_id="event-job", target_type="chain_token", target_id="solana:JOB")]
+    db = _FakeDB(pending_rows=rows, forbid_enriched_event_queue_scan=True)
+    wake = _RecordingWakeEmitter()
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_UnavailableService("provider_no_quote"),
+        wake_emitter=wake,
+        batch_size=10,
+        concurrency=2,
+        min_age_ms=100,
+        clock=lambda: NOW_MS,
+        settings=_settings(),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.notes["pending_selected"] == 1
+    assert result.notes["terminal_failures"] == 1
+    assert db.terminal_captures == [("event-job", "intent-event-job", "provider_no_quote")]
+    assert db.terminal_jobs == [("event-job", "intent-event-job", "failed", "provider_no_quote")]
+    assert db.rescheduled_jobs == []
+    assert wake.emitted == []
+
+
+def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
+    row = _pending_row(event_id="evt-rate", target_type="chain_token", target_id="solana:RATE")
+    row["attempt_count"] = 0
+    row["active_until_ms"] = NOW_MS + 60_000
+    db = _FakeDB(pending_rows=[row])
+    wake = _RecordingWakeEmitter()
+    worker = EventAnchorBackfillWorker(
+        pool_bundle=db,
+        capture_service=_UnavailableService("rate_limited"),
+        wake_emitter=wake,
+        batch_size=10,
+        concurrency=2,
+        min_age_ms=100,
+        clock=lambda: NOW_MS,
+        settings=_settings(max_attempts=3),
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.notes["rescheduled_jobs"] == 1
+    assert db.rescheduled_jobs == [("evt-rate", "intent-evt-rate", "rate_limited")]
+    assert db.terminal_captures == []
+    assert db.terminal_jobs == []
+    assert wake.emitted == []
+
+
 def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_and_wakes() -> None:
     rows = [_pending_row(event_id="event-1", target_type="chain_token", target_id="solana:AAA")]
     quote = DexTokenQuote(
@@ -176,7 +281,7 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
     assert wake.emitted == [("cex_symbol", "OKX:BTC-USDT")]
 
 
-def test_run_once_unavailable_capture_is_skipped_and_not_wake_emitted() -> None:
+def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None:
     rows = [_pending_row(event_id="evt-unavailable", target_type="chain_token", target_id="solana:NOPE")]
 
     class _Service:
@@ -214,13 +319,16 @@ def test_run_once_unavailable_capture_is_skipped_and_not_wake_emitted() -> None:
     result = asyncio.run(worker.run_once())
 
     assert result.processed == 0
-    assert result.skipped == 1
+    assert result.skipped == 0
     assert result.notes["pending_selected"] == 1
     assert result.notes["ticks_inserted"] == 0
     assert result.notes["captures_attached"] == 0
+    assert result.notes["terminal_failures"] == 1
     assert result.notes["skipped_reasons"] == {"provider_no_quote": 1}
     assert db.inserted_ticks == []
     assert db.attached_captures == []
+    assert db.terminal_captures == [("evt-unavailable", "intent-evt-unavailable", "provider_no_quote")]
+    assert db.terminal_jobs == [("evt-unavailable", "intent-evt-unavailable", "failed", "provider_no_quote")]
     assert wake.emitted == []
 
 
@@ -295,14 +403,17 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
     assert wake.emitted == [("chain_token", "solana:SECOND")]
 
 
-def _settings() -> Any:
+def _settings(*, max_attempts: int = 3) -> Any:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=1.0,
         timeout_seconds=120.0,
         batch_size=10,
         concurrency=4,
+        max_attempts=max_attempts,
         min_age_ms=100,
+        active_window_ms=300_000,
+        max_anchor_lag_ms=60_000,
     )
 
 
@@ -337,6 +448,29 @@ class _StubCaptureService:
         raise AssertionError("capture_service should not be called when no pending rows")
 
 
+class _UnavailableService:
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+
+    def capture_backfill_quote(self, **kwargs: Any):
+        from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
+
+        capture = EnrichedEventCapture(
+            event_id=kwargs["event_id"],
+            intent_id=kwargs["intent_id"],
+            resolution_id=kwargs["resolution_id"],
+            target_type=kwargs["resolution"]["target_type"],
+            target_id=kwargs["resolution"]["target_id"],
+            t_event_ms=int(kwargs["event_ms"]),
+            tick_id=None,
+            tick_lag_ms=None,
+            capture_method="unavailable",
+            capture_reason=self.reason,
+            created_at_ms=NOW_MS,
+        )
+        return CaptureResult(tick=None, capture=capture)
+
+
 class _RecordingWakeEmitter:
     def __init__(self) -> None:
         self.emitted: list[tuple[str, str]] = []
@@ -350,13 +484,26 @@ class _FakeDB:
         self,
         *,
         pending_rows: list[dict[str, Any]],
+        expired_rows: list[dict[str, Any]] | None = None,
+        ready_jobs: int = 0,
         attach_results: list[bool] | None = None,
+        forbid_enriched_event_queue_scan: bool = False,
     ) -> None:
         self._pending_rows = pending_rows
+        self._expired_rows = list(expired_rows or [])
+        self._ready_jobs = ready_jobs
         self._attach_results = list(attach_results) if attach_results is not None else None
+        self.forbid_enriched_event_queue_scan = forbid_enriched_event_queue_scan
         self.list_calls: list[dict[str, Any]] = []
+        self.expired_list_calls: list[dict[str, Any]] = []
+        self.ready_job_calls: list[dict[str, Any]] = []
         self.inserted_ticks: list[MarketTick] = []
         self.attached_captures: list[EnrichedEventCapture] = []
+        self.terminal_captures: list[tuple[str, str, str]] = []
+        self.terminal_jobs: list[tuple[str, str, str, str]] = []
+        self.rescheduled_jobs: list[tuple[str, str, str]] = []
+        self.done_jobs: list[tuple[str, str]] = []
+        self.provider_calls = 0
 
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
@@ -377,6 +524,7 @@ class _FakeRepos:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
         self.enriched_events = _FakeEnrichedEventRepo(db)
+        self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
         self.market_ticks = _FakeMarketTickRepo(db)
         self.conn = SimpleNamespace(commit=lambda: None)
 
@@ -386,6 +534,8 @@ class _FakeEnrichedEventRepo:
         self._db = db
 
     def list_pending_backfill(self, *, limit: int, now_ms: int, min_age_ms: int) -> list[dict[str, Any]]:
+        if self._db.forbid_enriched_event_queue_scan:
+            raise AssertionError("worker must read event_anchor_backfill_jobs, not enriched_events pending rows")
         self._db.list_calls.append({"limit": limit, "now_ms": now_ms, "min_age_ms": min_age_ms})
         return list(self._db._pending_rows)
 
@@ -395,10 +545,54 @@ class _FakeEnrichedEventRepo:
             return True
         return self._db._attach_results.pop(0)
 
+    def mark_backfill_terminal(self, *, event_id: str, intent_id: str, reason: str) -> bool:
+        self._db.terminal_captures.append((event_id, intent_id, reason))
+        return True
+
+
+class _FakeEventAnchorJobRepo:
+    def __init__(self, db: _FakeDB) -> None:
+        self._db = db
+
+    def list_due(self, *, limit: int, now_ms: int, min_age_ms: int) -> list[dict[str, Any]]:
+        self._db.list_calls.append({"limit": limit, "now_ms": now_ms, "min_age_ms": min_age_ms})
+        return list(self._db._pending_rows)
+
+    def list_expired(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+        self._db.expired_list_calls.append({"limit": limit, "now_ms": now_ms})
+        return list(self._db._expired_rows)
+
+    def mark_ready_jobs_done(self, *, limit: int, now_ms: int) -> int:
+        self._db.ready_job_calls.append({"limit": limit, "now_ms": now_ms})
+        return self._db._ready_jobs
+
+    def mark_done(self, *, event_id: str, intent_id: str, now_ms: int) -> bool:
+        self._db.done_jobs.append((event_id, intent_id))
+        return True
+
+    def mark_terminal(self, *, event_id: str, intent_id: str, status: str, reason: str, now_ms: int) -> bool:
+        self._db.terminal_jobs.append((event_id, intent_id, status, reason))
+        return True
+
+    def reschedule(
+        self,
+        *,
+        event_id: str,
+        intent_id: str,
+        reason: str,
+        now_ms: int,
+        next_run_at_ms: int,
+    ) -> bool:
+        self._db.rescheduled_jobs.append((event_id, intent_id, reason))
+        return True
+
 
 class _FakeMarketTickRepo:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
+
+    def nearest_around(self, **_: Any) -> dict[str, Any] | None:
+        return None
 
     def insert_ticks(self, ticks: Any) -> int:
         materialized = list(ticks)

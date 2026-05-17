@@ -20,6 +20,7 @@ from .repositories.asset_profile_repository import AssetProfileRepository
 from .repositories.cex_token_profile_repository import CexTokenProfileRepository
 from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.enriched_event_repository import EnrichedEventRepository
+from .repositories.event_anchor_backfill_job_repository import EventAnchorBackfillJobRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
@@ -45,6 +46,7 @@ __all__ = [
     "DiscoveryRepository",
     "EnrichedEventCapture",
     "EnrichedEventRepository",
+    "EventAnchorBackfillJobRepository",
     "IdentityEvidenceRepository",
     "MarketTickRepository",
     "RegistryRepository",

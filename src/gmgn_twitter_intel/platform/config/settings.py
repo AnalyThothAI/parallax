@@ -405,6 +405,8 @@ class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=50, ge=1)
     concurrency: int = Field(default=8, ge=1)
     min_age_ms: int = Field(default=250, ge=0)
+    active_window_ms: int = Field(default=300_000, ge=1)
+    max_anchor_lag_ms: int = Field(default=60_000, ge=1)
 
 
 class LivePriceGatewayWorkerSettings(PerWorkerSettings):
@@ -1030,6 +1032,8 @@ event_anchor_backfill:
   batch_size: 50
   concurrency: 8
   min_age_ms: 250
+  active_window_ms: 300000
+  max_anchor_lag_ms: 60000
 token_capture_tier:
   enabled: true
   interval_seconds: 30.0
