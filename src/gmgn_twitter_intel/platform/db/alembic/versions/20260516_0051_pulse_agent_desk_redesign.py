@@ -31,7 +31,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE pulse_candidates DROP COLUMN narrative_type")
+    op.execute("ALTER TABLE pulse_candidates DROP COLUMN IF EXISTS narrative_type")
 
     op.execute("ALTER TABLE pulse_agent_run_steps DROP CONSTRAINT pulse_agent_run_steps_stage_check")
     op.execute(
@@ -45,7 +45,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE pulse_candidates ADD COLUMN narrative_type TEXT NOT NULL DEFAULT 'direct_token'")
+    op.execute("ALTER TABLE pulse_candidates ADD COLUMN IF NOT EXISTS narrative_type TEXT NOT NULL DEFAULT 'direct_token'")
 
     op.execute("ALTER TABLE pulse_agent_run_steps DROP CONSTRAINT pulse_agent_run_steps_stage_check")
     op.execute(
