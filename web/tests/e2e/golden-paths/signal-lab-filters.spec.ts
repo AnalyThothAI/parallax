@@ -15,6 +15,16 @@ test("cold Signal Pulse load preserves filters and opens pulse detail", async ({
   await expect(page).toHaveURL(/\/signal-lab\/pulse\/pulse-bnb/);
   await expect(page.getByRole("heading", { name: "$BNB" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "AGENT 推理栏" })).toBeVisible();
+  const decisionSurface = page.getByRole("region", { name: "v2 decision surface" });
+  await expect(decisionSurface).toBeVisible();
+  await expect(decisionSurface).toContainText("KOL 扩散");
+  await expect(decisionSurface).toContainText("Bull · strong");
+  await expect(decisionSurface).toContainText("Bear · weak");
+  await expect(decisionSurface).toContainText("监控窗口 · 30m");
+  await expect(decisionSurface.getByRole("link", { name: "event-upeg-1" })).toHaveAttribute(
+    "href",
+    "https://x.com/upeg/status/1",
+  );
   await expect(page.getByRole("region", { name: "source events" })).toContainText(
     "$UPEG watched account evidence",
   );

@@ -153,6 +153,25 @@ export type StageRailItem =
     };
 export type ResearchOnlyGateView = { status: string; abstainReason: string } | null;
 export type GateAgentMismatch = { gateLabel: string; agentLabel: string; note: string } | null;
+export type DecisionViewSide = {
+  strength: string;
+  thesis: string;
+  supportingEventIds: string[];
+};
+export type DecisionSurfaceView = {
+  route: string;
+  recommendation: string;
+  confidenceLabel: string;
+  narrative: { archetype: string; thesis: string } | null;
+  bull: DecisionViewSide | null;
+  bear: DecisionViewSide | null;
+  playbook: {
+    monitoringHorizon: string;
+    watchSignals: string[];
+    exitTriggers: string[];
+  } | null;
+  evidenceLinks: Array<{ eventId: string; url: string }>;
+};
 export type ReplayMeta = {
   pulseVersion: string;
   gateVersion: string;
@@ -167,8 +186,10 @@ export type AgentRailView = {
   totalLatencyMs: number;
   model: string;
   mismatch: GateAgentMismatch;
+  decisionSurface: DecisionSurfaceView | null;
   railItems: StageRailItem[];
   isLegacy: boolean;
+  hasLegacyStages: boolean;
   researchOnlyGate: ResearchOnlyGateView;
   replay: ReplayMeta;
 };
@@ -851,14 +872,15 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
   const investigator = stages.investigator ?? null;
   const decisionMaker = stages.decision_maker ?? null;
   const hasV2 = Boolean(investigator || decisionMaker);
-  const legacyStages: Array<{ stageName: "analyst" | "critic" | "judge"; payload: SignalPulseStagePayload }> =
-    [];
-  if (!hasV2) {
-    if (stages.analyst) legacyStages.push({ stageName: "analyst", payload: stages.analyst });
-    if (stages.critic) legacyStages.push({ stageName: "critic", payload: stages.critic });
-    if (stages.judge) legacyStages.push({ stageName: "judge", payload: stages.judge });
-  }
-  const isLegacy = legacyStages.length > 0;
+  const legacyStages: Array<{
+    stageName: "analyst" | "critic" | "judge";
+    payload: SignalPulseStagePayload;
+  }> = [];
+  if (stages.analyst) legacyStages.push({ stageName: "analyst", payload: stages.analyst });
+  if (stages.critic) legacyStages.push({ stageName: "critic", payload: stages.critic });
+  if (stages.judge) legacyStages.push({ stageName: "judge", payload: stages.judge });
+  const hasLegacyStages = legacyStages.length > 0;
+  const isLegacy = !hasV2 && hasLegacyStages;
 
   const railItems: StageRailItem[] = [];
   if (kind !== "research_only") {
@@ -879,14 +901,15 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
           summary: stagePreviewSummary(decisionMaker),
         });
       }
-    } else if (isLegacy) {
+    }
+    if (hasLegacyStages) {
       for (const { stageName, payload } of legacyStages) {
         railItems.push({
           kind: "legacy",
           stageName,
           status: payload.status ?? "skipped",
           latencyMs: payload.latency_ms ?? null,
-          summary: stagePreviewSummary(payload),
+          summary: "历史 v1 响应体未解析；仅保留 stage 审计元数据。",
         });
       }
     }
@@ -908,8 +931,10 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
     totalLatencyMs,
     model,
     mismatch: detectMismatch(item),
+    decisionSurface: buildDecisionSurface(item),
     railItems,
     isLegacy,
+    hasLegacyStages,
     researchOnlyGate:
       kind === "research_only" && stages.research_only_gate
         ? {
@@ -929,6 +954,70 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
       candidateId: item.candidate_id,
       agentRunId: item.agent_run_id ?? "-",
     },
+  };
+}
+
+function buildDecisionSurface(item: SignalPulseItem): DecisionSurfaceView | null {
+  const decision = item.decision;
+  const narrativeArchetype = stringValue(decision.narrative_archetype) ?? "";
+  const narrativeThesis = stringValue(decision.narrative_thesis_zh) ?? "";
+  const narrative =
+    narrativeArchetype || narrativeThesis
+      ? { archetype: narrativeArchetype || "—", thesis: narrativeThesis || "—" }
+      : null;
+  const bull = buildDecisionSide(decision.bull_view);
+  const bear = buildDecisionSide(decision.bear_view);
+  const playbook = buildDecisionPlaybook(decision.playbook);
+  const evidenceLinks = Object.entries(decision.evidence_event_urls ?? {})
+    .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
+    .map(([eventId, url]) => ({ eventId, url }));
+
+  if (!narrative && !bull && !bear && !playbook && evidenceLinks.length === 0) {
+    return null;
+  }
+
+  return {
+    route: stringValue(decision.route) ?? "—",
+    recommendation: stringValue(decision.recommendation) ?? "—",
+    confidenceLabel: formatConfidence(decision.confidence),
+    narrative,
+    bull,
+    bear,
+    playbook,
+    evidenceLinks,
+  };
+}
+
+function buildDecisionSide(value: unknown): DecisionViewSide | null {
+  const payload = record(value);
+  const strength = stringValue(payload.strength) ?? "";
+  const thesis = stringValue(payload.thesis_zh) ?? "";
+  const supportingEventIds = stringList(payload.supporting_event_ids);
+  if ((!strength && !thesis && supportingEventIds.length === 0) || strength === "absent") {
+    return null;
+  }
+  return {
+    strength: strength || "—",
+    thesis: thesis || "—",
+    supportingEventIds,
+  };
+}
+
+function buildDecisionPlaybook(value: unknown): DecisionSurfaceView["playbook"] {
+  const payload = record(value);
+  if (payload.has_playbook !== true) {
+    return null;
+  }
+  const monitoringHorizon = stringValue(payload.monitoring_horizon) ?? "";
+  const watchSignals = stringList(payload.watch_signals);
+  const exitTriggers = stringList(payload.exit_triggers);
+  if (!monitoringHorizon && watchSignals.length === 0 && exitTriggers.length === 0) {
+    return null;
+  }
+  return {
+    monitoringHorizon: monitoringHorizon || "—",
+    watchSignals,
+    exitTriggers,
   };
 }
 
@@ -952,7 +1041,7 @@ function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
   return {
     gateLabel: `策略门：${scoreBandLabel(item.score_band)} (score ${item.candidate_score ?? 0})`,
     agentLabel: `Agent：${recommendation ?? "-"} · 置信度 ${confidence.toFixed(2)}`,
-    note: "综合排名将该资产推到 top 区间，但三阶段 Agent 在 Critic 处收窄了置信度。详见下方 Critic 卡片。",
+    note: "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对调研、决策和证据链接。",
   };
 }
 
@@ -1095,6 +1184,12 @@ function numOrNull(value: unknown): number | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.length ? value : null;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function record(value: unknown): Record<string, unknown> {

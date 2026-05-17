@@ -138,6 +138,7 @@ def _build_client(
     db_pool: Any | None = None,
     investigator_budgets: dict[str, int] | None = None,
     enable_fallback_tool: bool = True,
+    safety_net: Any | None = None,
 ) -> OpenAIAgentsPulseDecisionClient:
     return OpenAIAgentsPulseDecisionClient(
         api_key="sk-test",
@@ -145,6 +146,7 @@ def _build_client(
         llm_gateway=FakeGateway(),
         db_pool=db_pool or FakeDbPool(),
         runner=runner,
+        safety_net=safety_net,
         investigator_max_tool_calls_by_route=investigator_budgets,
         decision_maker_enable_fallback_tool=enable_fallback_tool,
     )
@@ -153,6 +155,7 @@ def _build_client(
 def _context(
     *,
     evidence_event_ids: list[str] | None = None,
+    source_event_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     ctx: dict[str, Any] = {
         "candidate_id": "candidate-1",
@@ -163,6 +166,8 @@ def _context(
     }
     if evidence_event_ids is not None:
         ctx["evidence_event_ids"] = evidence_event_ids
+    if source_event_ids is not None:
+        ctx["source_event_ids"] = source_event_ids
     return ctx
 
 
@@ -332,6 +337,45 @@ def test_investigator_uses_configured_max_turns_and_carries_tool_context() -> No
     assert investigator_call["context"] is decision_call["context"]
 
 
+def test_tool_budget_counts_are_recorded_for_investigator_and_decision_fallback() -> None:
+    class CountingRunner(FakeRunner):
+        async def run(self, agent, input, *, max_turns, run_config, context=None):
+            if isinstance(context, PulseToolContext):
+                if agent.name == "PulseInvestigatorMeme":
+                    context.tool_calls_count += 2
+                elif agent.name == "PulseDecisionMakerMeme":
+                    context.tool_calls_count += 1
+            return await super().run(agent, input, max_turns=max_turns, run_config=run_config, context=context)
+
+    runner = CountingRunner(
+        [
+            FakeRunResult(final_output=_investigation()),
+            FakeRunResult(final_output=_final_decision()),
+        ]
+    )
+    client = _build_client(runner)
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_context(evidence_event_ids=["evt-1"]),
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={"score": 1.0, "missing_fields": []},
+            harness=_harness(),
+        )
+    )
+
+    investigator_meta = result.stage_audits[0].trace_metadata_json
+    decision_meta = result.stage_audits[1].trace_metadata_json
+    assert investigator_meta["tool_calls_count_before"] == 0
+    assert investigator_meta["tool_calls_count_after"] == 2
+    assert investigator_meta["tool_calls_count_delta"] == 2
+    assert decision_meta["tool_calls_count_before"] == 2
+    assert decision_meta["tool_calls_count_after"] == 3
+    assert decision_meta["tool_calls_count_delta"] == 1
+
+
 def test_decision_maker_fallback_tool_disabled_when_flag_false() -> None:
     runner = FakeRunner(
         [
@@ -354,6 +398,69 @@ def test_decision_maker_fallback_tool_disabled_when_flag_false() -> None:
 
     decision_call = runner.calls[1]
     assert decision_call["agent"].tools == []
+
+
+def test_safety_net_strict_success_preserves_sdk_tool_calls_and_budget_counts() -> None:
+    class FakeSafetyNet:
+        async def run_with_safety_net(
+            self,
+            *,
+            agent,
+            input_payload,
+            run_config,
+            pydantic_output_type,
+            context=None,
+            max_turns,
+            return_result=False,
+        ):
+            assert return_result is True
+            if isinstance(context, PulseToolContext):
+                context.tool_calls_count += 1
+            result = FakeRunResult(
+                final_output=_investigation(),
+                new_items=[_tool_call_item("get_target_recent_tweets")],
+            )
+            return result.final_output, {
+                "safety_net_used": False,
+                "safety_net_retries": 0,
+                "parse_mode": "strict",
+                "usage": {"total_tokens": 42},
+            }, result
+
+    client = _build_client(FakeRunner([]), safety_net=FakeSafetyNet())
+    tool_ctx = PulseToolContext(db_pool=FakeDbPool(), investigator_max_tool_calls=5)
+    audit = client.request_audit(
+        context=_context(evidence_event_ids=["evt-1"]),
+        run_id="run-1",
+        job={},
+        route="meme",
+        completeness={"score": 1.0, "missing_fields": []},
+        harness=_harness(),
+    )
+
+    stage = asyncio.run(
+        client._run_stage(
+            stage="investigator",
+            route="meme",
+            agent=Agent[PulseToolContext](name="PulseInvestigatorMeme", instructions=""),
+            output_type=InvestigationReport,
+            input_payload={
+                "route": "meme",
+                "context": _context(evidence_event_ids=["evt-1"]),
+                "completeness": {"score": 1.0, "missing_fields": []},
+            },
+            prompt="prompt",
+            audit=audit,
+            tool_ctx=tool_ctx,
+            max_turns=5,
+        )
+    )
+
+    assert stage.status == "ok"
+    assert stage.input_json["tool_calls"][0]["tool_name"] == "get_target_recent_tweets"
+    assert stage.trace_metadata_json["tool_calls_count_before"] == 0
+    assert stage.trace_metadata_json["tool_calls_count_after"] == 1
+    assert stage.trace_metadata_json["tool_calls_count_delta"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +556,22 @@ def test_hallucination_guard_accepts_ids_from_tool_contributions() -> None:
         return FakeRunner(
             [
                 FakeRunResult(final_output=_investigation(bull_ids=["evt-tool"])),
-                FakeRunResult(final_output=_final_decision(evidence_event_ids=["evt-tool"])),
+                FakeRunResult(
+                    final_output=_final_decision(evidence_event_ids=["evt-tool"]).model_copy(
+                        update={
+                            "bull_view": BullBearView(
+                                strength="moderate",
+                                thesis_zh="社交关注度抬升提供主题动能。",
+                                supporting_event_ids=["evt-tool"],
+                            ),
+                            "bear_view": BullBearView(
+                                strength="weak",
+                                thesis_zh="深度仍然有限,需警惕回撤。",
+                                supporting_event_ids=["evt-tool"],
+                            ),
+                        }
+                    )
+                ),
             ]
         )
 
@@ -477,6 +599,123 @@ def test_hallucination_guard_accepts_ids_from_tool_contributions() -> None:
         )
 
     asyncio.run(_seed_then_run())
+
+
+def test_final_evidence_guard_rejects_unknown_final_evidence_event_ids() -> None:
+    runner = FakeRunner(
+        [
+            FakeRunResult(final_output=_investigation(bull_ids=["evt-1"])),
+            FakeRunResult(final_output=_final_decision(evidence_event_ids=["evt-unknown"])),
+        ]
+    )
+    client = _build_client(runner)
+
+    with pytest.raises(PulseStageFailure) as exc_info:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_context(evidence_event_ids=["evt-1"]),
+                run_id="run-1",
+                job={},
+                route="meme",
+                completeness={"score": 1.0, "missing_fields": []},
+                harness=_harness(),
+            )
+        )
+
+    failure = exc_info.value
+    assert [audit.stage for audit in failure.audits] == ["investigator", "decision_maker"]
+    decision_audit = failure.audits[1]
+    assert decision_audit.status == "failed"
+    assert "unknown event ids" in (decision_audit.error or "")
+    assert "evidence_event_ids" in (decision_audit.error or "")
+
+
+def test_final_evidence_guard_rejects_unknown_bull_and_bear_supporting_ids() -> None:
+    final = _final_decision(evidence_event_ids=["evt-1"])
+    final = final.model_copy(
+        update={
+            "bull_view": BullBearView(
+                strength="moderate",
+                thesis_zh="社交关注度抬升提供主题动能。",
+                supporting_event_ids=["evt-unknown-bull"],
+            ),
+            "bear_view": BullBearView(
+                strength="weak",
+                thesis_zh="深度仍然有限,需警惕回撤。",
+                supporting_event_ids=["evt-unknown-bear"],
+            ),
+        }
+    )
+    runner = FakeRunner(
+        [
+            FakeRunResult(final_output=_investigation(bull_ids=["evt-1"])),
+            FakeRunResult(final_output=final),
+        ]
+    )
+    client = _build_client(runner)
+
+    with pytest.raises(PulseStageFailure) as exc_info:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_context(evidence_event_ids=["evt-1"]),
+                run_id="run-1",
+                job={},
+                route="meme",
+                completeness={"score": 1.0, "missing_fields": []},
+                harness=_harness(),
+            )
+        )
+
+    decision_audit = exc_info.value.audits[1]
+    assert decision_audit.status == "failed"
+    assert "bull_view.supporting_event_ids" in (decision_audit.error or "")
+
+
+def test_final_evidence_guard_accepts_context_tool_and_investigator_ids() -> None:
+    final = _final_decision(evidence_event_ids=["evt-context", "evt-source", "evt-tool", "evt-investigator"])
+    final = final.model_copy(
+        update={
+            "bull_view": BullBearView(
+                strength="moderate",
+                thesis_zh="社交关注度抬升提供主题动能。",
+                supporting_event_ids=["evt-tool"],
+            ),
+            "bear_view": BullBearView(
+                strength="weak",
+                thesis_zh="深度仍然有限,需警惕回撤。",
+                supporting_event_ids=["evt-investigator"],
+            ),
+        }
+    )
+    runner = FakeRunner(
+        [
+            FakeRunResult(final_output=_investigation(bull_ids=["evt-investigator"])),
+            FakeRunResult(final_output=final),
+        ]
+    )
+    client = _build_client(runner)
+
+    async def _seed_then_run():
+        original_run = runner.run
+
+        async def wrapped(agent, input, *, max_turns, run_config, context=None):
+            if agent.name == "PulseInvestigatorMeme" and isinstance(context, PulseToolContext):
+                context.contributed_event_ids.add("evt-tool")
+                context.contributed_event_ids.add("evt-investigator")
+            return await original_run(agent, input, max_turns=max_turns, run_config=run_config, context=context)
+
+        runner.run = wrapped  # type: ignore[method-assign]
+        return await client.run_decision_pipeline(
+            context=_context(evidence_event_ids=["evt-context"], source_event_ids=["evt-source"]),
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={"score": 1.0, "missing_fields": []},
+            harness=_harness(),
+        )
+
+    result = asyncio.run(_seed_then_run())
+    assert result.final_decision.evidence_event_ids == ["evt-context", "evt-source", "evt-tool", "evt-investigator"]
 
 
 # ---------------------------------------------------------------------------
@@ -533,7 +772,7 @@ def test_evidence_event_urls_enriched_from_events_table() -> None:
 
     result = asyncio.run(
         client.run_decision_pipeline(
-            context=_context(evidence_event_ids=["evt-1"]),
+            context=_context(evidence_event_ids=["evt-1", "evt-2", "evt-3"]),
             run_id="run-1",
             job={},
             route="meme",
@@ -547,7 +786,140 @@ def test_evidence_event_urls_enriched_from_events_table() -> None:
         "evt-1": "https://x.com/alice/status/111",
         "evt-2": "https://x.com/bob/status/222",
     }
+    query = db_pool.conn.queries[-1][0]
+    assert "canonical_url" in query
+    assert "event_payload_json" not in query
     # evt-3 missing tweet_id → omitted, surface card degrades to "no link".
+
+
+def test_evidence_event_urls_prefers_canonical_url_from_payload() -> None:
+    db_pool = FakeDbPool(
+        event_rows=[
+            {
+                "event_id": "evt-1",
+                "author_handle": "alice",
+                "tweet_id": "111",
+                "canonical_url": "https://x.com/canonical/status/999",
+            },
+        ]
+    )
+    runner = FakeRunner(
+        [
+            FakeRunResult(final_output=_investigation(bull_ids=["evt-1"])),
+            FakeRunResult(final_output=_final_decision(evidence_event_ids=["evt-1"])),
+        ]
+    )
+    client = _build_client(runner, db_pool=db_pool)
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_context(evidence_event_ids=["evt-1"]),
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={"score": 1.0, "missing_fields": []},
+            harness=_harness(),
+        )
+    )
+
+    assert result.final_decision.evidence_event_urls == {
+        "evt-1": "https://x.com/canonical/status/999",
+    }
+
+
+def test_evidence_event_urls_overwrite_model_supplied_urls_on_db_error() -> None:
+    class _ExplodingPool:
+        @contextmanager
+        def connection(self):
+            raise RuntimeError("connection refused")
+            yield  # pragma: no cover -- unreachable
+
+    final = _final_decision(evidence_event_ids=["evt-1"]).model_copy(
+        update={"evidence_event_urls": {"evt-1": "https://evil.example/forged"}}
+    )
+    runner = FakeRunner(
+        [
+            FakeRunResult(final_output=_investigation(bull_ids=["evt-1"])),
+            FakeRunResult(final_output=final),
+        ]
+    )
+    client = _build_client(runner, db_pool=_ExplodingPool())
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_context(evidence_event_ids=["evt-1"]),
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={"score": 1.0, "missing_fields": []},
+            harness=_harness(),
+        )
+    )
+
+    assert result.final_decision.evidence_event_urls == {}
+
+
+def test_evidence_event_urls_include_bull_and_bear_supporting_ids() -> None:
+    final = _final_decision(evidence_event_ids=[]).model_copy(
+        update={
+            "evidence_event_ids": [],
+            "bull_view": BullBearView(
+                strength="moderate",
+                thesis_zh="社交关注度抬升提供主题动能。",
+                supporting_event_ids=["evt-bull"],
+            ),
+            "bear_view": BullBearView(
+                strength="weak",
+                thesis_zh="流动性偏薄,需要警惕波动。",
+                supporting_event_ids=["evt-bear"],
+            ),
+        }
+    )
+    db_pool = FakeDbPool(
+        event_rows=[
+            {
+                "event_id": "evt-bull",
+                "author_handle": "alice",
+                "tweet_id": "111",
+                "canonical_url": "https://x.com/alice/status/111",
+            },
+            {
+                "event_id": "evt-bear",
+                "author_handle": "bob",
+                "tweet_id": "222",
+                "canonical_url": "https://x.com/bob/status/222",
+            },
+        ]
+    )
+    runner = FakeRunner(
+        [
+            FakeRunResult(
+                final_output=_investigation(
+                    bull_ids=["evt-bull"],
+                    bear_strength="weak",
+                    bear_ids=["evt-bear"],
+                )
+            ),
+            FakeRunResult(final_output=final),
+        ]
+    )
+    client = _build_client(runner, db_pool=db_pool)
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_context(evidence_event_ids=["evt-bull", "evt-bear"]),
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={"score": 1.0, "missing_fields": []},
+            harness=_harness(),
+        )
+    )
+
+    assert result.final_decision.evidence_event_urls == {
+        "evt-bull": "https://x.com/alice/status/111",
+        "evt-bear": "https://x.com/bob/status/222",
+    }
 
 
 def test_evidence_event_urls_db_error_degrades_silently() -> None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
+
 PULSE_VERSION = "signal-pulse-v3-factor-snapshot"
 PULSE_DECISION_SCHEMA_VERSION = "pulse-decision-v2"
 PULSE_DECISION_PROMPT_VERSION = "pulse-decision-prompt-v2"
@@ -82,4 +84,5 @@ __all__ = [
     "ScoreBand",
     "SocialPhase",
     "TargetType",
+    "contains_trading_execution_instruction",
 ]

@@ -48,17 +48,10 @@ diagnostic command results.
 
 ## Claude-only protocol
 
-When the `superpowers:` skills are available, use them in this order:
-
-1. `brainstorming` — clarify intent before writing any spec.
-2. `writing-plans` — produce the spec / plan; iterate with the user.
-3. `using-git-worktrees` — set up `.worktrees/<slug>/` once the plan is approved.
-4. `test-driven-development` — write the failing test before each implementation slice.
-5. `executing-plans` or `subagent-driven-development` — drive the plan to completion.
-6. `verification-before-completion` — run the verification commands and capture output.
-7. `requesting-code-review` — surface the diff and the verification artefact for review.
-8. `finishing-a-development-branch` — decide on merge / PR / cleanup.
-
-Process skills take priority over implementation skills when both could apply.
+When `superpowers:` skills are available, use the workflow chain:
+`brainstorming` → `writing-plans` → `using-git-worktrees` →
+`test-driven-development` → `executing-plans` / `subagent-driven-development` →
+`verification-before-completion` → `requesting-code-review` →
+`finishing-a-development-branch`. Process skills take priority.
 
 CLI surface: `uv run gmgn-twitter-intel --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).

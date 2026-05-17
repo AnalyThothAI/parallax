@@ -6,6 +6,7 @@ import time
 from typing import Any
 from urllib.parse import quote
 
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import contains_trading_execution_instruction
 from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
@@ -361,27 +362,28 @@ class NotificationRuleEngine:
         scopes = rule.scopes or DEFAULT_SIGNAL_PULSE_SCOPES
         statuses = set(rule.statuses or DEFAULT_SIGNAL_PULSE_STATUSES) & set(DEFAULT_SIGNAL_PULSE_STATUSES)
         for scope in scopes:
-            cursor = None
-            for _ in range(MAX_SIGNAL_PULSE_NOTIFICATION_PAGES):
-                page = self.pulse.list_candidates(
-                    window=window,
-                    scope=scope,
-                    status=None,
-                    limit=self._limit(),
-                    cursor=cursor,
-                    displayable_only=True,
-                )
-                for row in page.get("items", []) if isinstance(page, dict) else []:
-                    if not isinstance(row, dict):
-                        continue
-                    candidate_id = str(row.get("candidate_id") or "")
-                    if not candidate_id or candidate_id in seen:
-                        continue
-                    seen.add(candidate_id)
-                    rows.append(row)
-                cursor = page.get("next_cursor") if isinstance(page, dict) else None
-                if not cursor:
-                    break
+            for status in sorted(statuses):
+                cursor = None
+                for _ in range(MAX_SIGNAL_PULSE_NOTIFICATION_PAGES):
+                    page = self.pulse.list_candidates(
+                        window=window,
+                        scope=scope,
+                        status=status,
+                        limit=self._limit(),
+                        cursor=cursor,
+                        displayable_only=True,
+                    )
+                    for row in page.get("items", []) if isinstance(page, dict) else []:
+                        if not isinstance(row, dict):
+                            continue
+                        candidate_id = str(row.get("candidate_id") or "")
+                        if not candidate_id or candidate_id in seen:
+                            continue
+                        seen.add(candidate_id)
+                        rows.append(row)
+                    cursor = page.get("next_cursor") if isinstance(page, dict) else None
+                    if not cursor:
+                        break
 
         candidates: list[NotificationCandidate] = []
         for row in rows:
@@ -516,7 +518,14 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
         "bull_strength": bull_view.get("strength") if isinstance(bull_view, dict) else None,
         "bear_strength": bear_view.get("strength") if isinstance(bear_view, dict) else None,
         "narrative_archetype": decision.get("narrative_archetype") or "",
-        "has_playbook": bool(playbook.get("has_playbook")) if isinstance(playbook, dict) else False,
+        "playbook_has_playbook": bool(playbook.get("has_playbook")) if isinstance(playbook, dict) else False,
+        "playbook_monitoring_horizon": playbook.get("monitoring_horizon") if isinstance(playbook, dict) else None,
+        "playbook_watch_signal_count": len(_safe_signature_list(playbook.get("watch_signals")))
+        if isinstance(playbook, dict)
+        else 0,
+        "playbook_exit_trigger_count": len(_safe_signature_list(playbook.get("exit_triggers")))
+        if isinstance(playbook, dict)
+        else 0,
         "gates": _dict(factor_snapshot.get("gates")),
     }
     return _stable_hash(payload)
@@ -665,6 +674,20 @@ def _list(value: Any) -> list[Any]:
 
 def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
+def _safe_signature_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    safe: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        text = item.strip()
+        if not text or contains_trading_execution_instruction(text):
+            continue
+        safe.append(text)
+    return safe
 
 
 def _stable_hash(payload: Any) -> str:

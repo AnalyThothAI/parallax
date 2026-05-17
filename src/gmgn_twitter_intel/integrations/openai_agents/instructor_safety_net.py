@@ -96,8 +96,11 @@ class SafetyNetExhausted(Exception):
 class InstructorSafetyNet:
     """Wraps Runner.run with an Instructor-based reask fallback.
 
-    ``run_with_safety_net`` returns ``(final_output, audit_extra)``. ``audit_extra``
-    always contains:
+    ``run_with_safety_net`` returns ``(final_output, audit_extra)`` by default.
+    Callers that need the SDK ``RunResult`` for tool-call audit can pass
+    ``return_result=True`` to receive ``(final_output, audit_extra, result)``;
+    Instructor reasks return ``None`` for that third value. ``audit_extra`` always
+    contains:
       - ``safety_net_used`` (bool)
       - ``safety_net_retries`` (int)
       - ``parse_mode`` (str: 'strict' | 'instructor_reask' | 'instructor_failed')
@@ -150,7 +153,8 @@ class InstructorSafetyNet:
         pydantic_output_type: type[BaseModel] | None = None,
         context: Any = None,
         max_turns: int = 1,
-    ) -> tuple[Any, dict[str, Any]]:
+        return_result: bool = False,
+    ) -> tuple[Any, dict[str, Any]] | tuple[Any, dict[str, Any], Any | None]:
         run_kwargs: dict[str, Any] = {
             "run_config": run_config,
             "max_turns": int(max_turns) if max_turns and int(max_turns) >= 1 else 1,
@@ -163,12 +167,15 @@ class InstructorSafetyNet:
                 input_payload,
                 **run_kwargs,
             )
-            return result.final_output, {
+            audit_extra = {
                 "safety_net_used": False,
                 "safety_net_retries": 0,
                 "parse_mode": "strict",
                 "usage": _extract_sdk_usage(result),
             }
+            if return_result:
+                return result.final_output, audit_extra, result
+            return result.final_output, audit_extra
         except (ModelBehaviorError, ValidationError) as exc:
             if not self._enabled or pydantic_output_type is None:
                 raise
@@ -197,12 +204,15 @@ class InstructorSafetyNet:
                     },
                     original=reask_exc,
                 ) from reask_exc
-            return obj, {
+            audit_extra = {
                 "safety_net_used": True,
                 "safety_net_retries": self._max_retries,
                 "parse_mode": "instructor_reask",
                 "usage": _extract_instructor_usage(obj),
             }
+            if return_result:
+                return obj, audit_extra, None
+            return obj, audit_extra
 
     @staticmethod
     def _rebuild_messages(agent: Agent, input_payload: Any, error_text: str) -> list[dict[str, str]]:

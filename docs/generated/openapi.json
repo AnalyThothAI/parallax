@@ -1678,6 +1678,33 @@
         "title": "SearchInspectData",
         "type": "object"
       },
+      "SignalPulseBullBearView": {
+        "additionalProperties": true,
+        "properties": {
+          "strength": {
+            "title": "Strength",
+            "type": "string"
+          },
+          "supporting_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Event Ids",
+            "type": "array"
+          },
+          "thesis_zh": {
+            "title": "Thesis Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strength",
+          "thesis_zh",
+          "supporting_event_ids"
+        ],
+        "title": "SignalPulseBullBearView",
+        "type": "object"
+      },
       "SignalPulseData": {
         "additionalProperties": true,
         "properties": {
@@ -1703,10 +1730,21 @@
             ],
             "title": "Has More"
           },
+          "health": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
           "items": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/SignalPulseItem"
             },
             "title": "Items",
             "type": "array"
@@ -1733,6 +1771,17 @@
               }
             ],
             "title": "Query"
+          },
+          "returned_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned Count"
           },
           "summary": {
             "anyOf": [
@@ -1761,9 +1810,178 @@
         "title": "SignalPulseData",
         "type": "object"
       },
+      "SignalPulseDecision": {
+        "additionalProperties": true,
+        "properties": {
+          "abstain_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abstain Reason"
+          },
+          "bear_view": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseBullBearView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bull_view": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseBullBearView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "evidence_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Event Ids",
+            "type": "array"
+          },
+          "evidence_event_urls": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence Event Urls",
+            "type": "object"
+          },
+          "invalidation_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Invalidation Conditions",
+            "type": "array"
+          },
+          "narrative_archetype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrative Archetype"
+          },
+          "narrative_thesis_zh": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrative Thesis Zh"
+          },
+          "playbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulsePlaybook"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation"
+          },
+          "residual_risks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Residual Risks",
+            "type": "array"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          },
+          "summary_zh": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Zh"
+          }
+        },
+        "required": [
+          "route",
+          "recommendation",
+          "confidence",
+          "summary_zh",
+          "abstain_reason",
+          "narrative_archetype",
+          "narrative_thesis_zh",
+          "bull_view",
+          "bear_view",
+          "playbook",
+          "evidence_event_ids",
+          "evidence_event_urls",
+          "invalidation_conditions",
+          "residual_risks"
+        ],
+        "title": "SignalPulseDecision",
+        "type": "object"
+      },
       "SignalPulseItem": {
         "additionalProperties": true,
         "properties": {
+          "agent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Run Id"
+          },
           "candidate_id": {
             "anyOf": [
               {
@@ -1774,6 +1992,56 @@
               }
             ],
             "title": "Candidate Id"
+          },
+          "candidate_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Score"
+          },
+          "candidate_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Type"
+          },
+          "created_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At Ms"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Event Ids",
+            "type": "array"
           },
           "fact_card": {
             "anyOf": [
@@ -1787,7 +2055,7 @@
             ],
             "title": "Fact Card"
           },
-          "recommendation": {
+          "factor_snapshot": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -1797,7 +2065,143 @@
                 "type": "null"
               }
             ],
-            "title": "Recommendation"
+            "title": "Factor Snapshot"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate"
+          },
+          "gate_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gate Reasons",
+            "type": "array"
+          },
+          "gate_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Version"
+          },
+          "last_edge_events": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Last Edge Events",
+            "type": "array"
+          },
+          "playbooks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Playbooks",
+            "type": "array"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "pulse_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pulse Status"
+          },
+          "pulse_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pulse Version"
+          },
+          "risk_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risk Reasons",
+            "type": "array"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "score_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Band"
+          },
+          "social_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Social Phase"
+          },
+          "source_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Event Ids",
+            "type": "array"
           },
           "stages": {
             "anyOf": [
@@ -1809,18 +2213,7 @@
               }
             ]
           },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "target": {
+          "subject": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -1830,10 +2223,122 @@
                 "type": "null"
               }
             ],
-            "title": "Target"
+            "title": "Subject"
+          },
+          "subject_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Key"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "updated_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At Ms"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
           }
         },
         "title": "SignalPulseItem",
+        "type": "object"
+      },
+      "SignalPulsePlaybook": {
+        "additionalProperties": true,
+        "properties": {
+          "exit_triggers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exit Triggers",
+            "type": "array"
+          },
+          "has_playbook": {
+            "title": "Has Playbook",
+            "type": "boolean"
+          },
+          "monitoring_horizon": {
+            "title": "Monitoring Horizon",
+            "type": "string"
+          },
+          "watch_signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Watch Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "has_playbook",
+          "watch_signals",
+          "exit_triggers",
+          "monitoring_horizon"
+        ],
+        "title": "SignalPulsePlaybook",
         "type": "object"
       },
       "SignalPulseStagePayload": {

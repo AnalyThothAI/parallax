@@ -55,6 +55,8 @@ class FakePulse:
             for item in self.items
             if item.get("window") == kwargs.get("window") and item.get("scope") == kwargs.get("scope")
         ]
+        if kwargs.get("status") is not None:
+            rows = [item for item in rows if item.get("pulse_status") == kwargs.get("status")]
         if kwargs.get("displayable_only"):
             rows = [
                 item
@@ -499,14 +501,15 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     }
     assert all(item.source_id != "blocked" for item in candidates)
     assert pulse.calls[0]["displayable_only"] is True
-    assert candidates[0].payload["candidate_id"] == "trade"
-    assert "decision" in candidates[0].payload
-    assert "agent_recommendation" not in candidates[0].payload
-    assert "gate" in candidates[0].payload
-    assert "factor_snapshot" in candidates[0].payload
-    assert "top_risks" not in candidates[0].payload
-    assert "confirmation_triggers_zh" not in candidates[0].payload
-    assert "kind" not in candidates[0].payload
+    trade = next(item for item in candidates if item.source_id == "trade")
+    assert trade.payload["candidate_id"] == "trade"
+    assert "decision" in trade.payload
+    assert "agent_recommendation" not in trade.payload
+    assert "gate" in trade.payload
+    assert "factor_snapshot" in trade.payload
+    assert "top_risks" not in trade.payload
+    assert "confirmation_triggers_zh" not in trade.payload
+    assert "kind" not in trade.payload
 
 
 def test_signal_pulse_dedup_key_uses_candidate_signature():
@@ -646,6 +649,83 @@ def test_signal_pulse_signature_changes_when_bull_strength_changes():
     )
 
 
+def test_signal_pulse_signature_changes_on_playbook_structure_not_raw_text():
+    base = pulse_candidate("watch", status="token_watch")
+    base["decision_json"] = {
+        **base["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "4h",
+            "watch_signals": ["新增独立作者"],
+            "exit_triggers": ["讨论降温"],
+        },
+    }
+    raw_text_changed = pulse_candidate("watch", status="token_watch")
+    raw_text_changed["decision_json"] = {
+        **raw_text_changed["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "4h",
+            "watch_signals": ["另一种安全说法"],
+            "exit_triggers": ["另一个安全触发"],
+        },
+    }
+    horizon_changed = pulse_candidate("watch", status="token_watch")
+    horizon_changed["decision_json"] = {
+        **horizon_changed["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "24h",
+            "watch_signals": ["新增独立作者"],
+            "exit_triggers": ["讨论降温"],
+        },
+    }
+    count_changed = pulse_candidate("watch", status="token_watch")
+    count_changed["decision_json"] = {
+        **count_changed["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "4h",
+            "watch_signals": ["新增独立作者", "watched_mentions 增长"],
+            "exit_triggers": ["讨论降温"],
+        },
+    }
+
+    base_sig = _only_pulse_notification(base).payload["notification_signature"]
+
+    assert _only_pulse_notification(raw_text_changed).payload["notification_signature"] == base_sig
+    assert _only_pulse_notification(horizon_changed).payload["notification_signature"] != base_sig
+    assert _only_pulse_notification(count_changed).payload["notification_signature"] != base_sig
+
+
+def test_signal_pulse_signature_counts_only_safe_playbook_entries():
+    base = pulse_candidate("watch", status="token_watch")
+    base["decision_json"] = {
+        **base["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "4h",
+            "watch_signals": ["新增独立作者"],
+            "exit_triggers": ["讨论降温"],
+        },
+    }
+    unsafe_extra = pulse_candidate("watch", status="token_watch")
+    unsafe_extra["decision_json"] = {
+        **unsafe_extra["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "4h",
+            "watch_signals": ["新增独立作者", "建议买入"],
+            "exit_triggers": ["讨论降温", "设置止损"],
+        },
+    }
+
+    assert (
+        _only_pulse_notification(base).payload["notification_signature"]
+        == _only_pulse_notification(unsafe_extra).payload["notification_signature"]
+    )
+
+
 def test_signal_pulse_rule_can_be_disabled():
     notifications = NotificationsConfig(rules={"signal_pulse_candidate": NotificationRuleConfig(enabled=False)})
 
@@ -714,12 +794,55 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
         {
             "window": "5m",
             "scope": "all",
-            "status": None,
+            "status": "token_watch",
             "limit": 50,
             "cursor": None,
             "displayable_only": True,
         }
     ]
+
+
+def test_signal_pulse_candidate_rule_paginates_with_status_filter_at_source():
+    class StatusAwarePulse:
+        def __init__(self):
+            self.calls = []
+
+        def list_candidates(self, **kwargs):
+            self.calls.append(kwargs)
+            status = kwargs.get("status")
+            if status == "trade_candidate":
+                return {
+                    "items": [pulse_candidate("trade-only", status="trade_candidate", symbol="TRADE")],
+                    "next_cursor": None,
+                }
+            if status is None:
+                return {
+                    "items": [pulse_candidate(f"watch-{idx}", status="token_watch") for idx in range(100)],
+                    "next_cursor": None,
+                }
+            return {"items": [], "next_cursor": None}
+
+    notifications = NotificationsConfig(
+        rules={
+            "signal_pulse_candidate": {
+                "enabled": True,
+                "channels": ["in_app"],
+                "window": "1h",
+                "scopes": ["all"],
+                "statuses": ["trade_candidate"],
+            }
+        }
+    )
+    pulse = StatusAwarePulse()
+
+    candidates = [
+        item
+        for item in engine(pulse=pulse, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert [call["status"] for call in pulse.calls] == ["trade_candidate"]
+    assert [item.source_id for item in candidates] == ["trade-only"]
 
 
 def test_signal_pulse_low_liquidity_factor_snapshot_cannot_emit_high_notification():
@@ -843,7 +966,8 @@ def test_signal_pulse_notifications_follow_candidate_pages():
     ]
 
     assert [item.source_id for item in candidates] == ["page-1", "page-2", "page-3"]
-    assert [call["cursor"] for call in pulse.calls[:3]] == [None, "1", "2"]
+    token_watch_calls = [call for call in pulse.calls if call["status"] == "token_watch"]
+    assert [call["cursor"] for call in token_watch_calls[:3]] == [None, "1", "2"]
 
 
 def _only_pulse_notification(row: dict):

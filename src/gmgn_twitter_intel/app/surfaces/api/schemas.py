@@ -164,16 +164,6 @@ class NotificationReadAllData(ApiSchema):
     updated_count: int
 
 
-class SignalPulseData(ApiSchema):
-    query: JsonObject | None = None
-    summary: JsonObject | None = None
-    items: list[JsonObject] = Field(default_factory=list)
-    next_cursor: str | None = None
-    has_more: bool | None = None
-    total_count: int | None = None
-    agent_worker_running: bool | None = None
-
-
 class SignalPulseStagePayload(ApiSchema):
     stage: str | None = None
     route: str | None = None
@@ -198,13 +188,81 @@ class SignalPulseStages(ApiSchema):
     judge: SignalPulseStagePayload | None = None
 
 
+class SignalPulseBullBearView(ApiSchema):
+    strength: str
+    thesis_zh: str
+    supporting_event_ids: list[str]
+
+
+class SignalPulsePlaybook(ApiSchema):
+    has_playbook: bool
+    watch_signals: list[str]
+    exit_triggers: list[str]
+    monitoring_horizon: str
+
+
+class SignalPulseDecision(ApiSchema):
+    route: str | None
+    recommendation: str | None
+    confidence: float | None
+    summary_zh: str | None
+    abstain_reason: str | None
+    narrative_archetype: str | None
+    narrative_thesis_zh: str | None
+    bull_view: SignalPulseBullBearView | None
+    bear_view: SignalPulseBullBearView | None
+    playbook: SignalPulsePlaybook | None
+    evidence_event_ids: list[str]
+    evidence_event_urls: dict[str, str]
+    invalidation_conditions: list[str]
+    residual_risks: list[str]
+
+
 class SignalPulseItem(ApiSchema):
     candidate_id: str | None = None
-    status: str | None = None
-    target: JsonObject | None = None
+    candidate_type: str | None = None
+    subject_key: str | None = None
+    subject: JsonObject | None = None
+    target_type: str | None = None
+    target_id: str | None = None
+    symbol: str | None = None
+    window: str | None = None
+    scope: str | None = None
+    pulse_status: str | None = None
+    verdict: str | None = None
+    social_phase: str | None = None
+    candidate_score: float | None = None
+    score_band: str | None = None
+    gate_reasons: list[str] = Field(default_factory=list)
+    risk_reasons: list[str] = Field(default_factory=list)
+    last_edge_events: list[str] = Field(default_factory=list)
+    evidence_event_ids: list[str] = Field(default_factory=list)
+    source_event_ids: list[str] = Field(default_factory=list)
+    factor_snapshot: JsonObject | None = None
+    decision: SignalPulseDecision | None = None
+    gate: JsonObject | None = None
     fact_card: JsonObject | None = None
-    recommendation: JsonObject | None = None
+    agent_run_id: str | None = None
+    pulse_version: str | None = None
+    gate_version: str | None = None
+    prompt_version: str | None = None
+    schema_version: str | None = None
+    created_at_ms: int | None = None
+    updated_at_ms: int | None = None
+    playbooks: list[JsonObject] = Field(default_factory=list)
     stages: SignalPulseStages | None = None
+
+
+class SignalPulseData(ApiSchema):
+    query: JsonObject | None = None
+    health: JsonObject | None = None
+    summary: JsonObject | None = None
+    items: list[SignalPulseItem] = Field(default_factory=list)
+    next_cursor: str | None = None
+    has_more: bool | None = None
+    total_count: int | None = None
+    returned_count: int | None = None
+    agent_worker_running: bool | None = None
 
 
 class SocialEventDetail(ApiSchema):

@@ -267,14 +267,14 @@ def _insert_radar_row(
         """
         INSERT INTO token_radar_rows(
           row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
-          lane, rank, intent_id, event_id, asset_id, intent_json, asset_json, primary_venue_json,
+          lane, rank, intent_id, event_id, intent_json, asset_json, primary_venue_json,
           attention_json, resolution_json, market_json, score_json, decision, data_health_json,
           source_event_ids_json, created_at_ms, target_type, target_id, pricefeed_id, target_json,
           price_json, factor_snapshot_json, factor_version
         )
         VALUES (
           %s, 'token-radar-v13-social-attention', '24h', 'all', %s, %s,
-          'all', %s, %s, %s, %s, %s, %s, NULL,
+          'all', %s, %s, %s, %s, %s, NULL,
           %s, %s, %s, %s, 'watch', %s,
           %s, %s, 'Asset', %s, NULL, %s,
           %s, %s, 'token_factor_snapshot_v3_social_attention'
@@ -287,7 +287,6 @@ def _insert_radar_row(
             rank,
             intent_id,
             event_id,
-            asset_id,
             Jsonb({"intent_id": intent_id}),
             Jsonb({"asset_id": asset_id, "symbol": symbol}),
             Jsonb({}),

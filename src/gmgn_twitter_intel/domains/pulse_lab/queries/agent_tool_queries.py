@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 
 def fetch_target_recent_tweets(pool: Any, *, target_id: str, limit: int) -> dict[str, Any]:
@@ -228,16 +231,28 @@ def fetch_evidence_event_urls(pool: Any, *, event_ids: list[str]) -> dict[str, s
     try:
         with pool.connection() as conn:
             cur = conn.execute(
-                f"SELECT event_id, author_handle, tweet_id FROM events WHERE event_id IN ({placeholders})",
+                f"""
+                SELECT
+                  event_id,
+                  author_handle,
+                  tweet_id,
+                  canonical_url
+                FROM events
+                WHERE event_id IN ({placeholders})
+                """,
                 tuple(event_ids),
             )
             rows = cur.fetchall()
-    except Exception:
+    except Exception as exc:
+        _logger.warning("fetch_evidence_event_urls_failed err=%s", str(exc)[:300])
         return {}
     urls: dict[str, str] = {}
     for row in rows:
         event_id = row.get("event_id")
-        url = _build_tweet_url(row.get("author_handle"), row.get("tweet_id"))
+        canonical_url = row.get("canonical_url")
+        url = canonical_url.strip() if isinstance(canonical_url, str) else ""
+        if not url:
+            url = _build_tweet_url(row.get("author_handle"), row.get("tweet_id")) or ""
         if event_id and url:
             urls[str(event_id)] = url
     return urls
