@@ -509,7 +509,7 @@
 - [ ] Step 4: Add migration rollback-after-v2-rows test.
 
   Flow:
-  - Upgrade to `20260516_0050`.
+  - Upgrade to `20260516_0051`.
   - Insert `investigator` / `decision_maker` rows.
   - Downgrade to `20260516_0049`.
   - Assert downgrade succeeds because the old constraint is also `NOT VALID`.

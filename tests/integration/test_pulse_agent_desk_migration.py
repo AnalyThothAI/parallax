@@ -28,8 +28,8 @@ from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
 
-_REVISION = "20260516_0050"
-_PREVIOUS_REVISION = "20260516_0049"
+_REVISION = "20260516_0051"
+_PREVIOUS_REVISION = "20260516_0050"
 
 
 def _alembic_config_with_dsn():

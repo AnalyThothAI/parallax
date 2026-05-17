@@ -96,8 +96,8 @@ uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upg
 结果：exit 0。日志显示成功执行：
 
 ```text
-Running downgrade 20260516_0050 -> 20260516_0049
-Running upgrade 20260516_0049 -> 20260516_0050
+Running downgrade 20260516_0051 -> 20260516_0050
+Running upgrade 20260516_0050 -> 20260516_0051
 ```
 
 ### Grep 防御
