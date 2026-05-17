@@ -1242,6 +1242,8 @@ export interface components {
         SignalPulseStages: {
             analyst?: components["schemas"]["SignalPulseStagePayload"] | null;
             critic?: components["schemas"]["SignalPulseStagePayload"] | null;
+            decision_maker?: components["schemas"]["SignalPulseStagePayload"] | null;
+            investigator?: components["schemas"]["SignalPulseStagePayload"] | null;
             judge?: components["schemas"]["SignalPulseStagePayload"] | null;
             research_only_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
         } & {

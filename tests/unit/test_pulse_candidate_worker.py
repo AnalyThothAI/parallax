@@ -13,9 +13,16 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     PulseCandidateWorker,
     _asset_candidate_id,
     _asset_trigger_metrics,
+    _investigation_tool_calls_count,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure, StageRunAudit
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BullBearView,
+    FinalDecision,
+    PulseStageFailure,
+    StageRunAudit,
+    TradePlaybook,
+)
 
 NOW_MS = 1_800_000
 
@@ -316,13 +323,13 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             self.run_calls += 1
             failed_audit = StageRunAudit(
-                stage="analyst",
+                stage="investigator",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake analyst prompt",
-                response_json={"raw_output": "**Analyst Report:** prose only"},
-                trace_metadata_json={"stage": "analyst"},
+                prompt_text="fake investigator prompt",
+                response_json={"raw_output": "**Investigation Report:** prose only"},
+                trace_metadata_json={"stage": "investigator"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -341,10 +348,10 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
     assert result["failed"] == 1
     assert len(repos.pulse.agent_run_steps) == 1
     step = repos.pulse.agent_run_steps[0]
-    assert step["stage"] == "analyst"
+    assert step["stage"] == "investigator"
     assert step["status"] == "failed"
     assert step["error"] == "ModelBehaviorError: invalid JSON"
-    assert step["response_json"] == {"raw_output": "**Analyst Report:** prose only"}
+    assert step["response_json"] == {"raw_output": "**Investigation Report:** prose only"}
     assert step["started_at_ms"] == NOW_MS - 42
     assert step["finished_at_ms"] == NOW_MS
     assert step["usage_json"] == {"input_tokens": 11}
@@ -760,18 +767,37 @@ class FakeClient:
         harness: dict[str, Any],
     ) -> PulseDecisionResult:
         self.run_calls += 1
+        evidence_ids = context.get("source_event_ids") or ["event-1"]
         final_decision = FinalDecision(
             route=route,  # type: ignore[arg-type]
             recommendation=self.recommendation,
             confidence=0.7,
             abstain_reason=None,
             summary_zh="因子快照显示信号值得继续观察。",
+            narrative_archetype="社交扩散",
+            narrative_thesis_zh="当前独立作者与社交热度同步抬升，链上质量尚可，适合继续观察扩散是否持续。",
+            bull_view=BullBearView(
+                strength="moderate",
+                thesis_zh="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                supporting_event_ids=list(evidence_ids),
+            ),
+            bear_view=BullBearView(
+                strength="weak",
+                thesis_zh="价格响应和流动性确认仍不足，热度可能快速降温。",
+                supporting_event_ids=list(evidence_ids),
+            ),
+            playbook=TradePlaybook(
+                has_playbook=True,
+                watch_signals=["关注独立作者是否继续扩散"],
+                exit_triggers=["独立作者讨论快速降温"],
+                monitoring_horizon="4h",
+            ),
             invalidation_conditions=["独立作者数回落。"],
             residual_risks=["价格响应仍可能变化。"],
-            evidence_event_ids=context.get("source_event_ids") or ["event-1"],
+            evidence_event_ids=list(evidence_ids),
         )
         stage_audit = StageRunAudit(
-            stage="judge",
+            stage="decision_maker",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
             input_json={"context": context, "completeness": completeness},
@@ -997,3 +1023,53 @@ def _source_event() -> dict[str, Any]:
         "semantic_novelty_hint": 0.67,
         "summary_zh": "生态发布正在获得关注",
     }
+
+
+# ---------------------------------------------------------------------------
+# _investigation_tool_calls_count helper
+# ---------------------------------------------------------------------------
+
+
+def _stage_audit(stage: str, *, tool_calls: Any | None = None) -> StageRunAudit:
+    payload: dict[str, Any] = {"context": {}, "completeness": {}}
+    if tool_calls is not None:
+        payload["tool_calls"] = tool_calls
+    return StageRunAudit(
+        stage=stage,  # type: ignore[arg-type]
+        route="meme",
+        attempt_index=0,
+        input_json=payload,
+        prompt_text="prompt",
+        response_json={},
+        trace_metadata_json={},
+        usage_json={},
+        latency_ms=1,
+        status="ok",
+        error=None,
+    )
+
+
+def test_investigation_tool_calls_count_returns_zero_when_no_audits() -> None:
+    assert _investigation_tool_calls_count(()) == 0
+
+
+def test_investigation_tool_calls_count_reads_stage_zero_input_json() -> None:
+    audit = _stage_audit("investigator", tool_calls=[{"name": "fetch"}, {"name": "lookup"}])
+    decision = _stage_audit("decision_maker")
+    assert _investigation_tool_calls_count((audit, decision)) == 2
+
+
+def test_investigation_tool_calls_count_zero_when_tool_calls_missing() -> None:
+    audit = _stage_audit("investigator")
+    assert _investigation_tool_calls_count((audit,)) == 0
+
+
+def test_investigation_tool_calls_count_zero_when_tool_calls_not_list() -> None:
+    audit = _stage_audit("investigator", tool_calls="not-a-list")
+    assert _investigation_tool_calls_count((audit,)) == 0
+
+
+def test_investigation_tool_calls_count_zero_when_stage_zero_is_not_investigator() -> None:
+    # research_only_gate path (completeness hard-blocked) puts gate audit at index 0
+    audit = _stage_audit("research_only_gate", tool_calls=[{"name": "noop"}])
+    assert _investigation_tool_calls_count((audit,)) == 0

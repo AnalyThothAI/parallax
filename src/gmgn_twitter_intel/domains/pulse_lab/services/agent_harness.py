@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
 
 PULSE_AGENT_HARNESS_VERSION = "pulse-decision-harness-v1"
 PULSE_AGENT_STRATEGY = "signal_pulse_decision"
-PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-harness-v1"
+PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-harness-v2"
 
 
 def build_pulse_harness_manifest(
@@ -28,8 +28,9 @@ def build_pulse_harness_manifest(
         "runtime": {
             "framework": "openai-agents-python",
             "orchestration": "sequential_stage_runner",
-            "stages": ["analyst", "critic", "judge"],
-            "max_turns_per_stage": 1,
+            "stages": ["investigator", "decision_maker"],
+            "max_turns_per_stage": {"investigator": 5, "decision_maker": 3},
+            "tools_enabled": True,
             "timeout_seconds": float(timeout_seconds),
         },
         "model": {

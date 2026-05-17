@@ -105,16 +105,24 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
     bundle = DBPoolBundle.create(FakeSettings())
 
     assert isinstance(bundle.api_pool, FakePool)
-    assert [item["application_name"] for item in created] == ["gmgn_api", "gmgn_worker", "gmgn_wake"]
+    assert [item["application_name"] for item in created] == [
+        "gmgn_api",
+        "gmgn_worker",
+        "gmgn_agent_tools",
+        "gmgn_wake",
+    ]
     assert created[0]["statement_timeout_seconds"] == 5.0
     assert created[1]["statement_timeout_seconds"] == 30.0
     assert created[1]["idle_in_transaction_session_timeout_seconds"] == 60.0
-    assert created[2]["statement_timeout_seconds"] is None
-    assert created[2]["keepalives"] is True
-    assert created[2]["keepalives_idle"] > 0
-    assert created[2]["keepalives_interval"] > 0
-    assert created[2]["keepalives_count"] > 0
+    assert created[2]["statement_timeout_seconds"] == 5.0
+    assert created[2]["read_only"] is True
     assert created[2]["max_size"] == 3
+    assert created[3]["statement_timeout_seconds"] is None
+    assert created[3]["keepalives"] is True
+    assert created[3]["keepalives_idle"] > 0
+    assert created[3]["keepalives_interval"] > 0
+    assert created[3]["keepalives_count"] > 0
+    assert created[3]["max_size"] == 3
 
 
 def test_api_session_yields_repositories_and_records_pool_wait(monkeypatch) -> None:

@@ -509,53 +509,141 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert "kind" not in candidates[0].payload
 
 
-def test_signal_pulse_dedup_key_uses_candidate_edge_signature():
+def test_signal_pulse_dedup_key_uses_candidate_signature():
+    """Dedup key still embeds the signature; signature is now driven by stable decision dimensions."""
     watch_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS, evidence_ids=["event-1"])
-    changed_signature_row = pulse_candidate(
-        "watch",
-        status="token_watch",
-        updated_at_ms=NOW_MS + 60_000,
-        evidence_ids=["event-1", "event-2"],
-        edge_events=["score_band_crossed"],
-    )
+    # Different status changes pulse_status → signature changes
     trade_row = pulse_candidate("watch", status="trade_candidate", updated_at_ms=NOW_MS)
 
     watch = _only_pulse_notification(watch_row)
-    changed_signature = _only_pulse_notification(changed_signature_row)
     trade = _only_pulse_notification(trade_row)
 
-    assert watch.payload["notification_signature"] != changed_signature.payload["notification_signature"]
-    assert watch.dedup_key != changed_signature.dedup_key
     assert watch.dedup_key == f"signal_pulse_candidate:watch:{watch.payload['notification_signature']}"
     assert trade.dedup_key == f"signal_pulse_candidate:watch:{trade.payload['notification_signature']}"
+    assert watch.payload["notification_signature"] != trade.payload["notification_signature"]
 
 
-def test_signal_pulse_signature_changes_on_meaningful_state_changes():
+def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
+    """v2 signature must change when any stable decision dimension shifts."""
     base = pulse_candidate("watch", status="token_watch", score_band="watch", risks=["public_stream_coverage"])
     gate_changed = pulse_candidate("watch")
     gate_changed["factor_snapshot_json"] = {
         **gate_changed["factor_snapshot_json"],
         "gates": {**gate_changed["factor_snapshot_json"]["gates"], "max_decision": "alert"},
     }
+    # decision-route shift
+    route_changed = pulse_candidate("watch")
+    route_changed["decision_route"] = "cex"
+    # narrative_archetype shift (in decision_json)
+    archetype_changed = pulse_candidate("watch")
+    archetype_changed["decision_json"] = {
+        **archetype_changed["decision_json"],
+        "narrative_archetype": "vc_endorsed_launch",
+    }
+    # bull_view.strength absent → strong
+    bull_changed = pulse_candidate("watch")
+    bull_changed["decision_json"] = {
+        **bull_changed["decision_json"],
+        "bull_view": {"strength": "strong", "thesis_zh": "x", "supporting_event_ids": []},
+    }
+    # has_playbook flip
+    playbook_added = pulse_candidate("watch")
+    playbook_added["decision_json"] = {
+        **playbook_added["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "4h",
+            "watch_signals": ["a"],
+            "exit_triggers": ["b"],
+        },
+    }
 
     signatures = {
         "base": _only_pulse_notification(base).payload["notification_signature"],
-        "high_conviction": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
+        "score_band": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
             "notification_signature"
         ],
         "gate": _only_pulse_notification(gate_changed).payload["notification_signature"],
-        "recommendation": _only_pulse_notification(
-            pulse_candidate("watch", recommendation_summary="新增独立作者确认")
-        ).payload["notification_signature"],
-        "edge_events": _only_pulse_notification(pulse_candidate("watch", edge_events=["hard_risk_added"])).payload[
-            "notification_signature"
-        ],
-        "new_source": _only_pulse_notification(
-            pulse_candidate("watch", evidence_ids=["event-1", "event-9"], source_ids=["event-1", "event-9"])
-        ).payload["notification_signature"],
+        "route": _only_pulse_notification(route_changed).payload["notification_signature"],
+        "narrative_archetype": _only_pulse_notification(archetype_changed).payload["notification_signature"],
+        "bull_strength": _only_pulse_notification(bull_changed).payload["notification_signature"],
+        "has_playbook": _only_pulse_notification(playbook_added).payload["notification_signature"],
     }
 
     assert len(set(signatures.values())) == len(signatures)
+
+
+def test_signal_pulse_signature_does_not_change_for_free_text_only_change():
+    """Free-text changes (thesis_zh / narrative_thesis_zh / summary_zh) MUST NOT
+    bump the signature — otherwise minor agent paraphrasing would re-page users.
+    """
+    base = pulse_candidate("watch", status="token_watch")
+    base_sig = _only_pulse_notification(base).payload["notification_signature"]
+
+    # Only summary_zh / narrative_thesis_zh / bull_view.thesis_zh differ
+    paraphrased = pulse_candidate("watch", status="token_watch", recommendation_summary="完全不同的文字描述")
+    paraphrased["decision_json"] = {
+        **paraphrased["decision_json"],
+        "narrative_thesis_zh": "另一段完全不同的叙事文字。",
+        "bull_view": {
+            "strength": "moderate",
+            "thesis_zh": "原始 thesis 改成了完全不同的文字",
+            "supporting_event_ids": ["event-1"],
+        },
+    }
+    # Add same bull_view to base so structure matches, only thesis_zh differs
+    base["decision_json"] = {
+        **base["decision_json"],
+        "bull_view": {
+            "strength": "moderate",
+            "thesis_zh": "原始 thesis",
+            "supporting_event_ids": ["event-1"],
+        },
+    }
+    base_sig_with_bull = _only_pulse_notification(base).payload["notification_signature"]
+    paraphrased_sig = _only_pulse_notification(paraphrased).payload["notification_signature"]
+
+    assert paraphrased_sig == base_sig_with_bull
+    # And neither matches the pre-bull base (because adding bull strength is a stable shift)
+    assert paraphrased_sig != base_sig
+
+
+def test_signal_pulse_signature_does_not_change_for_evidence_or_edge_event_churn():
+    """Adding new evidence ids / edge events MUST NOT bump signature when stable
+    decision dimensions are unchanged. These are noisy churn fields.
+    """
+    base = pulse_candidate("watch", status="token_watch", evidence_ids=["event-1"], source_ids=["event-1"])
+    churned = pulse_candidate(
+        "watch",
+        status="token_watch",
+        evidence_ids=["event-1", "event-9", "event-10"],
+        source_ids=["event-1", "event-9"],
+        edge_events=["hard_risk_added", "score_band_crossed"],
+        updated_at_ms=NOW_MS + 600_000,
+    )
+
+    assert (
+        _only_pulse_notification(base).payload["notification_signature"]
+        == _only_pulse_notification(churned).payload["notification_signature"]
+    )
+
+
+def test_signal_pulse_signature_changes_when_bull_strength_changes():
+    base = pulse_candidate("watch", status="token_watch")
+    base["decision_json"] = {
+        **base["decision_json"],
+        "bull_view": {"strength": "absent", "thesis_zh": "", "supporting_event_ids": []},
+    }
+    bumped = pulse_candidate("watch", status="token_watch")
+    bumped["decision_json"] = {
+        **bumped["decision_json"],
+        "bull_view": {"strength": "strong", "thesis_zh": "升级", "supporting_event_ids": []},
+    }
+
+    assert (
+        _only_pulse_notification(base).payload["notification_signature"]
+        != _only_pulse_notification(bumped).payload["notification_signature"]
+    )
 
 
 def test_signal_pulse_rule_can_be_disabled():
@@ -669,12 +757,12 @@ def test_signal_pulse_eligible_token_watch_can_emit_high_notification():
 
     assert candidate.severity == "high"
     assert candidate.symbol == "BOV"
-    assert "- **Status:** token watch" in candidate.body
-    assert "- **Gate:** clear" in candidate.body
-    assert "- **Market:** dex · market ready" in candidate.body
-    assert "- **Alpha:** social heat 82 · social propagation 78" in candidate.body
-    assert "- **Social:** 6 mentions · 4 authors · watched 1" in candidate.body
-    assert "链上质量达标" in candidate.body
+    # New SurfaceCard body: header always present, links always present
+    assert "## $BOV" in candidate.body
+    assert "Signal Pulse" in candidate.body
+    assert "### 🔗 链接" in candidate.body
+    assert "[X 搜索]" in candidate.body
+    assert "Pulse: `pulse-watch`" in candidate.body
 
 
 def test_signal_pulse_notification_requires_non_empty_factor_snapshot():
@@ -833,7 +921,6 @@ def pulse_candidate(
         "pulse_status": status,
         "verdict": status,
         "social_phase": "ignition",
-        "narrative_type": "direct_token",
         "candidate_score": candidate_score,
         "score_band": score_band,
         "radar_score_json": radar_score or {"heat": {"score": 82}},

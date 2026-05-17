@@ -1243,6 +1243,19 @@ export type TokenFactorSnapshot = {
   };
 };
 
+export type BullBearView = {
+  strength: "absent" | "weak" | "moderate" | "strong";
+  thesis_zh: string;
+  supporting_event_ids: string[];
+};
+
+export type TradePlaybook = {
+  has_playbook: boolean;
+  watch_signals: string[];
+  exit_triggers: string[];
+  monitoring_horizon: "1h" | "4h" | "24h";
+};
+
 export type PulseDecision = {
   route: "cex" | "meme" | "research_only" | string;
   recommendation:
@@ -1259,9 +1272,16 @@ export type PulseDecision = {
   invalidation_conditions: string[];
   residual_risks: string[];
   evidence_event_ids?: string[];
+  // v2 新字段 — 全部可选 + 缺时前端 fallback 显示 "—"
+  narrative_archetype?: string;
+  narrative_thesis_zh?: string;
+  bull_view?: BullBearView | null;
+  bear_view?: BullBearView | null;
+  playbook?: TradePlaybook | null;
+  evidence_event_urls?: Record<string, string>;
 };
 
-export type SignalPulseStageName = "analyst" | "critic" | "judge" | "research_only_gate";
+export type SignalPulseStageName = "investigator" | "decision_maker" | "research_only_gate";
 
 export type SignalPulseStagePayload = {
   stage: SignalPulseStageName | string | null;
@@ -1277,10 +1297,14 @@ export type SignalPulseStagePayload = {
 };
 
 export type SignalPulseStages = {
-  analyst: SignalPulseStagePayload | null;
-  critic: SignalPulseStagePayload | null;
-  judge: SignalPulseStagePayload | null;
-  research_only_gate: SignalPulseStagePayload | null;
+  // v2 新 stage 名
+  investigator?: SignalPulseStagePayload | null;
+  decision_maker?: SignalPulseStagePayload | null;
+  research_only_gate?: SignalPulseStagePayload | null;
+  // Legacy v1 stage data (老 audit 行)，前端 fallback 渲染为 LegacyStageCard
+  analyst?: SignalPulseStagePayload | null;
+  critic?: SignalPulseStagePayload | null;
+  judge?: SignalPulseStagePayload | null;
 };
 
 export type SignalPulseItem = {
@@ -1295,7 +1319,6 @@ export type SignalPulseItem = {
   pulse_status: SignalPulseStatus;
   verdict?: string | null;
   social_phase?: string | null;
-  narrative_type?: string | null;
   candidate_score?: number | null;
   score_band?: string | null;
   last_edge_events: string[];

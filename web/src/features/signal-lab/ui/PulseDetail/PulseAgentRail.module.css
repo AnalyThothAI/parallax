@@ -198,6 +198,14 @@
   font-style: italic;
 }
 
+.legacyNotice {
+  color: var(--opportunity-ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-style: italic;
+  margin-top: 4px !important;
+}
+
 .replay {
   padding: 0;
   background: transparent;

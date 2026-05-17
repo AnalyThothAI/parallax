@@ -420,7 +420,13 @@ class OpenAIPulseDecisionProvider:
         await self._client.aclose()
 
 
-def wire_providers(settings: Settings, *, start_collector: bool, llm_gateway: object | None = None) -> WiredProviders:
+def wire_providers(
+    settings: Settings,
+    *,
+    start_collector: bool,
+    llm_gateway: object | None = None,
+    db_pool: Any | None = None,
+) -> WiredProviders:
     return WiredProviders(
         ingestion=IngestionProviders(
             upstream_client_factory=_gmgn_upstream_factory(settings) if start_collector else None,
@@ -432,7 +438,11 @@ def wire_providers(settings: Settings, *, start_collector: bool, llm_gateway: ob
             else None,
         ),
         pulse_lab=PulseLabProviders(
-            decision_provider=_openai_pulse_decision_provider(settings, llm_gateway=llm_gateway)
+            decision_provider=_openai_pulse_decision_provider(
+                settings,
+                llm_gateway=llm_gateway,
+                db_pool=db_pool,
+            )
             if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
             else None,
         ),
@@ -703,19 +713,29 @@ def _openai_social_event_provider(settings: Settings, *, llm_gateway: object | N
     )
 
 
-def _openai_pulse_decision_provider(settings: Settings, *, llm_gateway: object | None) -> OpenAIPulseDecisionProvider:
+def _openai_pulse_decision_provider(
+    settings: Settings,
+    *,
+    llm_gateway: object | None,
+    db_pool: Any | None,
+) -> OpenAIPulseDecisionProvider:
     gateway = _require_llm_gateway(llm_gateway)
+    if db_pool is None:
+        raise RuntimeError("db_pool is required for OpenAIPulseDecisionProvider")
     model = settings.pulse_agent_model or ""
+    investigator_budgets = dict(settings.workers.pulse_candidate.investigator_max_tool_calls)
     return OpenAIPulseDecisionProvider(
         OpenAIAgentsPulseDecisionClient(
             api_key=settings.llm_api_key or "",
             model=model,
             llm_gateway=gateway,
+            db_pool=db_pool,
             base_url=settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             safety_net=_build_safety_net(settings, model=model),
             trace_enabled=settings.llm_trace_enabled,
             trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
+            investigator_max_tool_calls_by_route=investigator_budgets,
         )
     )
 

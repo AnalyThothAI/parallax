@@ -71,7 +71,6 @@ function minimalPulseItem() {
     pulse_status: "token_watch",
     verdict: "token_watch",
     social_phase: "ignition",
-    narrative_type: "direct_token",
     candidate_score: 0.82,
     score_band: "watch",
     evidence_event_ids: [],

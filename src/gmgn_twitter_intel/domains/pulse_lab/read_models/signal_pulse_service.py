@@ -81,10 +81,12 @@ class SignalPulseService:
 
     def _stages_for(self, run_id: Any) -> dict[str, Any]:
         empty: dict[str, dict[str, Any] | None] = {
+            "investigator": None,
+            "decision_maker": None,
+            "research_only_gate": None,
             "analyst": None,
             "critic": None,
             "judge": None,
-            "research_only_gate": None,
         }
         if not run_id:
             return empty
@@ -160,7 +162,6 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "pulse_status": row.get("pulse_status"),
         "verdict": row.get("verdict"),
         "social_phase": row.get("social_phase"),
-        "narrative_type": row.get("narrative_type"),
         "candidate_score": row.get("candidate_score"),
         "score_band": row.get("score_band"),
         "gate_reasons": _list(row.get("gate_reasons_json")),
@@ -195,6 +196,7 @@ def _int_dict(value: Any) -> dict[str, int]:
 def _decision(row: dict[str, Any]) -> dict[str, Any]:
     decision = _dict(row.get("decision_json"))
     return {
+        # v1 retained fields
         "route": row.get("decision_route") or decision.get("route"),
         "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
         "confidence": row.get("decision_confidence"),
@@ -204,6 +206,50 @@ def _decision(row: dict[str, Any]) -> dict[str, Any]:
         "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
         "residual_risks": _string_list(decision.get("residual_risks")),
         "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
+        # v2 new fields (consumed by SurfaceCard UI)
+        "narrative_archetype": decision.get("narrative_archetype") or "",
+        "narrative_thesis_zh": decision.get("narrative_thesis_zh") or "",
+        "bull_view": _bull_bear_view(decision.get("bull_view")),
+        "bear_view": _bull_bear_view(decision.get("bear_view")),
+        "playbook": _playbook(decision.get("playbook")),
+        "evidence_event_urls": _string_string_map(decision.get("evidence_event_urls")),
+    }
+
+
+def _bull_bear_view(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    strength = value.get("strength")
+    if strength not in ("absent", "weak", "moderate", "strong"):
+        return None
+    return {
+        "strength": strength,
+        "thesis_zh": str(value.get("thesis_zh") or ""),
+        "supporting_event_ids": _string_list(value.get("supporting_event_ids")),
+    }
+
+
+def _playbook(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    horizon = value.get("monitoring_horizon")
+    if horizon not in ("1h", "4h", "24h"):
+        return None
+    return {
+        "has_playbook": bool(value.get("has_playbook")),
+        "watch_signals": _string_list(value.get("watch_signals")),
+        "exit_triggers": _string_list(value.get("exit_triggers")),
+        "monitoring_horizon": horizon,
+    }
+
+
+def _string_string_map(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(k): str(v)
+        for k, v in value.items()
+        if isinstance(k, str) and isinstance(v, str)
     }
 
 

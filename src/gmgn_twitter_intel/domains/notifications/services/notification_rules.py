@@ -22,9 +22,6 @@ SIGNAL_PULSE_SEVERITY = {
     "trade_candidate": "critical",
     "risk_rejected_high_info": "warning",
 }
-ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
-
-
 class NotificationRuleEngine:
     def __init__(
         self,
@@ -498,21 +495,29 @@ def _alert_dedup_key(
 
 
 def _pulse_notification_signature(row: dict[str, Any]) -> str:
-    evidence_ids = _list(row.get("evidence_event_ids_json"))
-    source_ids = _list(row.get("source_event_ids_json"))
-    edge_events = _list(row.get("last_edge_events_json"))
+    """Hash only stable decision dimensions to avoid:
+    - free-text micro-changes (thesis_zh / narrative_thesis_zh / summary_zh) triggering duplicate notifications
+    - bull/bear strength changes failing to trigger refresh
+
+    Drops: edge_events, evidence/source event ids, factor_snapshot fingerprint, free text.
+    """
+    decision = _pulse_decision(row)
     factor_snapshot = _dict(row.get("factor_snapshot_json"))
+    bull_view = decision.get("bull_view") or {}
+    bear_view = decision.get("bear_view") or {}
+    playbook = decision.get("playbook") or {}
     payload = {
         "pulse_version": row.get("pulse_version"),
         "candidate_id": row.get("candidate_id"),
         "pulse_status": row.get("pulse_status"),
         "score_band": row.get("score_band"),
+        "decision_route": decision.get("route"),
+        "decision_recommendation": decision.get("recommendation"),
+        "bull_strength": bull_view.get("strength") if isinstance(bull_view, dict) else None,
+        "bear_strength": bear_view.get("strength") if isinstance(bear_view, dict) else None,
+        "narrative_archetype": decision.get("narrative_archetype") or "",
+        "has_playbook": bool(playbook.get("has_playbook")) if isinstance(playbook, dict) else False,
         "gates": _dict(factor_snapshot.get("gates")),
-        "decision": _pulse_decision(row),
-        "edge_events": edge_events,
-        "factor_snapshot_fingerprint": _short_hash(factor_snapshot),
-        "latest_evidence_event_id_bucket": _event_id_bucket([*evidence_ids, *source_ids]),
-        "source_event_fingerprint": _short_hash(_stable_list(source_ids)),
     }
     return _stable_hash(payload)
 
@@ -524,7 +529,6 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
         "pulse_status": row.get("pulse_status"),
         "score_band": row.get("score_band"),
         "social_phase": row.get("social_phase"),
-        "narrative_type": row.get("narrative_type"),
         "decision": _pulse_decision(row),
         "gate": _dict(factor_snapshot.get("gates")),
         "factor_snapshot": factor_snapshot,
@@ -540,31 +544,16 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
 
 
 def _pulse_body(row: dict[str, Any]) -> str:
-    snapshot = _dict(row.get("factor_snapshot_json"))
+    from gmgn_twitter_intel.domains.notifications.services.pulse_surface_card import render_pulse_surface_card
+
     decision = _pulse_decision(row)
-    subject = _dict(snapshot.get("subject"))
-    symbol = _symbol(row.get("symbol") or subject.get("symbol"))
-    display = f"${symbol}" if symbol else str(row.get("subject_key") or row.get("candidate_id") or "Signal Pulse")
-    market = _market_fact_line(snapshot)
-    alpha = _alpha_fact_line(snapshot)
-    social = _social_fact_line(snapshot)
-    blocked_reasons = _list(_nested(snapshot, "gates", "blocked_reasons"))
-    summary = _compact_text(
-        decision.get("summary_zh"),
-        limit=240,
+    snapshot = _dict(row.get("factor_snapshot_json"))
+    return render_pulse_surface_card(
+        row=row,
+        decision=decision,
+        factor_snapshot=snapshot,
+        asset_profile=None,  # phase 1 skips asset_profile lookup; surface card uses row-borne fields
     )
-    lines = [
-        f"## {display} Signal Pulse",
-        "",
-        f"- **Status:** {str(row.get('pulse_status') or '').replace('_', ' ')}",
-        f"- **Gate:** {_human_reasons(blocked_reasons) if blocked_reasons else 'clear'}",
-        f"- **Market:** {market}",
-        f"- **Alpha:** {alpha}",
-        f"- **Social:** {social}",
-    ]
-    if summary:
-        lines.extend(["", summary])
-    return "\n".join(lines)
 
 
 def _signal_pulse_severity(
@@ -602,99 +591,14 @@ def _has_resolved_pulse_target(row: dict[str, Any], factor_snapshot: dict[str, A
     return bool(target_type and target_id and target_type.lower() != "unresolved")
 
 
-def _market_fact_line(snapshot: dict[str, Any]) -> str:
-    subject = _dict(snapshot.get("subject"))
-    data_health = _dict(snapshot.get("data_health"))
-    target_market_type = str(subject.get("target_market_type") or "unknown").strip()
-    market_health = str(data_health.get("market") or "unknown").strip()
-    return f"{target_market_type} · market {market_health}"
-
-
-def _alpha_fact_line(snapshot: dict[str, Any]) -> str:
-    scores = _alpha_family_scores(snapshot)
-    strongest = sorted(scores.items(), key=lambda item: _int(item[1]), reverse=True)[:2]
-    if not strongest:
-        return "none"
-    return " · ".join(f"{family.replace('_', ' ')} {_int(score)}" for family, score in strongest)
-
-
-def _social_fact_line(snapshot: dict[str, Any]) -> str:
-    attention = _family_facts(snapshot, "social_heat")
-    quality = _family_facts(snapshot, "social_propagation")
-    mentions = _int(attention.get("mentions_1h"))
-    authors = _int(quality.get("independent_authors") or attention.get("unique_authors"))
-    watched = _int(attention.get("watched_mentions"))
-    return f"{mentions} mentions · {authors} authors · watched {watched}"
-
-
-def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
-    families = _dict(snapshot.get("families"))
-    payload = _dict(families.get(family))
-    return _dict(payload.get("facts"))
-
-
 def _valid_factor_snapshot(value: Any) -> bool:
     return is_token_factor_snapshot(value)
-
-
-def _alpha_family_scores(snapshot: dict[str, Any]) -> dict[str, Any]:
-    composite_scores = _dict(_dict(snapshot.get("composite")).get("family_scores"))
-    if composite_scores:
-        return {
-            family: composite_scores.get(family)
-            for family in ALPHA_FAMILIES
-            if composite_scores.get(family) is not None
-        }
-    families = _dict(snapshot.get("families"))
-    return {
-        family: _dict(families.get(family)).get("score")
-        for family in ALPHA_FAMILIES
-        if _dict(families.get(family)).get("score") is not None
-    }
-
-
-def _human_reasons(reasons: list[Any]) -> str:
-    values = [str(reason).strip().replace("_", " ") for reason in reasons if str(reason).strip()]
-    return ", ".join(values) if values else "clear"
-
-
-def _money(value: Any) -> str:
-    amount = float(_int(value))
-    if amount >= 1_000_000_000:
-        return f"${amount / 1_000_000_000:.1f}b"
-    if amount >= 1_000_000:
-        return f"${amount / 1_000_000:.1f}m"
-    if amount >= 1_000:
-        return f"${amount / 1_000:.1f}k"
-    return f"${amount:.0f}"
-
-
-def _nested(data: dict[str, Any], outer: str, inner: str) -> Any:
-    value = data.get(outer)
-    return value.get(inner) if isinstance(value, dict) else None
-
-
-def _event_id_bucket(values: list[Any]) -> str:
-    stable = _stable_list(values)
-    if not stable:
-        return ""
-    return _short_hash(stable[-1])
-
-
-def _stable_list(values: list[Any]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        item = str(value or "").strip()
-        if item and item not in seen:
-            seen.add(item)
-            result.append(item)
-    return result
 
 
 def _pulse_decision(row: dict[str, Any]) -> dict[str, Any]:
     decision = _dict(row.get("decision_json"))
     return {
+        # v1 retained fields
         "route": row.get("decision_route") or decision.get("route"),
         "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
         "confidence": row.get("decision_confidence"),
@@ -704,6 +608,50 @@ def _pulse_decision(row: dict[str, Any]) -> dict[str, Any]:
         "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
         "residual_risks": _string_list(decision.get("residual_risks")),
         "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
+        # v2 new fields (consumed by SurfaceCard renderer + signature)
+        "narrative_archetype": decision.get("narrative_archetype") or "",
+        "narrative_thesis_zh": decision.get("narrative_thesis_zh") or "",
+        "bull_view": _bull_bear_view(decision.get("bull_view")),
+        "bear_view": _bull_bear_view(decision.get("bear_view")),
+        "playbook": _playbook(decision.get("playbook")),
+        "evidence_event_urls": _string_string_map(decision.get("evidence_event_urls")),
+    }
+
+
+def _bull_bear_view(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    strength = value.get("strength")
+    if strength not in ("absent", "weak", "moderate", "strong"):
+        return None
+    return {
+        "strength": strength,
+        "thesis_zh": str(value.get("thesis_zh") or ""),
+        "supporting_event_ids": _string_list(value.get("supporting_event_ids")),
+    }
+
+
+def _playbook(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    horizon = value.get("monitoring_horizon")
+    if horizon not in ("1h", "4h", "24h"):
+        return None
+    return {
+        "has_playbook": bool(value.get("has_playbook")),
+        "watch_signals": _string_list(value.get("watch_signals")),
+        "exit_triggers": _string_list(value.get("exit_triggers")),
+        "monitoring_horizon": horizon,
+    }
+
+
+def _string_string_map(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(k): str(v)
+        for k, v in value.items()
+        if isinstance(k, str) and isinstance(v, str)
     }
 
 
@@ -722,11 +670,6 @@ def _string_list(value: Any) -> list[str]:
 def _stable_hash(payload: Any) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _short_hash(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:16]
 
 
 def _int(value: Any) -> int:

@@ -241,7 +241,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "pulse_status": "token_watch",
             "verdict": "token_watch",
             "social_phase": "ignition",
-            "narrative_type": "direct_token",
             "candidate_score": 0.82,
             "score_band": "watch",
             "gate_reasons": ["fresh_attention"],
@@ -260,6 +259,12 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "invalidation_conditions": ["讨论快速降温。"],
                 "residual_risks": ["价格响应仍可能变化。"],
                 "evidence_event_ids": ["event-1"],
+                "narrative_archetype": "",
+                "narrative_thesis_zh": "",
+                "bull_view": None,
+                "bear_view": None,
+                "playbook": None,
+                "evidence_event_urls": {},
             },
             "gate": {
                 "eligible_for_high_alert": True,
@@ -369,7 +374,6 @@ def _candidate_row(
         "pulse_status": pulse_status,
         "verdict": verdict,
         "social_phase": "ignition",
-        "narrative_type": "direct_token",
         "candidate_score": 0.82,
         "score_band": "watch",
         "thesis_json": {
@@ -453,7 +457,7 @@ def test_candidate_includes_stages_from_run_steps() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "analyst",
+            "stage": "investigator",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -464,18 +468,7 @@ def test_candidate_includes_stages_from_run_steps() -> None:
             "response_json": {"confidence": 0.82, "recommendation": "trade_candidate"},
         },
         {
-            "stage": "critic",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 200,
-            "finished_at_ms": 350,
-            "latency_ms": 150,
-            "attempt_index": 0,
-            "response_json": {"confidence_ceiling": 0.45, "should_abstain": False},
-        },
-        {
-            "stage": "judge",
+            "stage": "decision_maker",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -491,10 +484,9 @@ def test_candidate_includes_stages_from_run_steps() -> None:
 
     assert item is not None
     stages = item["stages"]
-    assert stages["analyst"]["response"]["confidence"] == 0.82
-    assert stages["analyst"]["latency_ms"] == 100
-    assert stages["critic"]["response"]["confidence_ceiling"] == 0.45
-    assert stages["judge"]["response"]["confidence"] == 0.35
+    assert stages["investigator"]["response"]["confidence"] == 0.82
+    assert stages["investigator"]["latency_ms"] == 100
+    assert stages["decision_maker"]["response"]["confidence"] == 0.35
     assert stages.get("research_only_gate") is None
 
 
@@ -508,7 +500,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "analyst",
+            "stage": "investigator",
             "route": "meme",
             "status": "failed",
             "model": "qwen3.6",
@@ -519,7 +511,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
             "response_json": None,
         },
         {
-            "stage": "analyst",
+            "stage": "investigator",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -534,8 +526,8 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
     item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-2")
 
     assert item is not None
-    assert item["stages"]["analyst"]["status"] == "ok"
-    assert item["stages"]["analyst"]["response"]["confidence"] == 0.7
+    assert item["stages"]["investigator"]["status"] == "ok"
+    assert item["stages"]["investigator"]["response"]["confidence"] == 0.7
 
 
 def test_candidate_stages_absent_when_no_run() -> None:
@@ -552,11 +544,65 @@ def test_candidate_stages_absent_when_no_run() -> None:
 
     assert item is not None
     assert item["stages"] == {
+        "investigator": None,
+        "decision_maker": None,
+        "research_only_gate": None,
         "analyst": None,
         "critic": None,
         "judge": None,
-        "research_only_gate": None,
     }
+
+
+def test_candidate_includes_legacy_agent_stages_for_placeholder_rendering() -> None:
+    pulse = FakePulseRepository()
+    pulse.candidate_rows["pulse-legacy"] = _candidate_row(
+        "pulse-legacy",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    pulse.agent_run_steps["run-1"] = [
+        {
+            "stage": "analyst",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 100,
+            "finished_at_ms": 200,
+            "latency_ms": 100,
+            "attempt_index": 0,
+            "response_json": {"summary_zh": "Analyst legacy summary."},
+        },
+        {
+            "stage": "critic",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 210,
+            "finished_at_ms": 300,
+            "latency_ms": 90,
+            "attempt_index": 0,
+            "response_json": {"summary_zh": "Critic legacy summary."},
+        },
+        {
+            "stage": "judge",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 310,
+            "finished_at_ms": 450,
+            "latency_ms": 140,
+            "attempt_index": 0,
+            "response_json": {"summary_zh": "Judge legacy summary."},
+        },
+    ]
+
+    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-legacy")
+
+    assert item is not None
+    assert item["stages"]["analyst"]["response"]["summary_zh"] == "Analyst legacy summary."
+    assert item["stages"]["critic"]["latency_ms"] == 90
+    assert item["stages"]["judge"]["status"] == "ok"
 
 
 def test_default_listing_hides_abstain_decisions() -> None:

@@ -122,7 +122,12 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
 
         if settings.llm_configured or settings.pulse_agent_configured or settings.watchlist_handle_summary_configured:
             llm_gateway = LLMGateway.create(settings)
-        providers = wire_providers(settings, start_collector=start_collector, llm_gateway=llm_gateway)
+        providers = wire_providers(
+            settings,
+            start_collector=start_collector,
+            llm_gateway=llm_gateway,
+            db_pool=db.tool_pool,
+        )
         runtime = _assemble_runtime(
             settings=settings,
             db=db,
@@ -139,7 +144,7 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             for error in _cleanup_provider_roots_sync(llm_gateway):
                 exc.add_note(f"llm gateway cleanup failed: {type(error).__name__}: {error}")
         if db is not None:
-            _close_db_pools(db.api_pool, db.worker_pool, db.wake_pool)
+            _close_db_pools(db.api_pool, db.worker_pool, db.tool_pool, db.wake_pool)
         raise
     return runtime
 

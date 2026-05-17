@@ -3,6 +3,7 @@ import {
   GATE_AGENT_MISMATCH_CONFIDENCE,
 } from "@features/signal-lab/model/pulseDetail";
 import {
+  tittyLegacyStages,
   tittyPulseFixture,
   tittySourceEventsFixture,
   TITTY_NOW_MS,
@@ -147,14 +148,38 @@ describe("buildPulseDetailView", () => {
     expect(view.evidence.concentration.topAuthorShare).toBeCloseTo(0.6);
   });
 
-  it("captures agent stage deltas and mismatch", () => {
-    expect(view.agent.analyst?.confidence).toBe(0.82);
-    expect(view.agent.critic?.confidenceCeiling).toBe(0.45);
-    expect(view.agent.critic?.ceilingDeltaFromAnalyst).toBeCloseTo(0.45 - 0.82);
-    expect(view.agent.judge?.confidence).toBe(0.35);
-    expect(view.agent.judge?.belowCeiling).toBe(true);
+  it("builds v2 stage rail with investigator + decision_maker entries", () => {
+    expect(view.agent.kind).toBe("stages");
+    expect(view.agent.isLegacy).toBe(false);
+    expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
+      "investigator",
+      "decision_maker",
+    ]);
+    const decision = view.agent.railItems.find((entry) => entry.kind === "decision_maker");
+    expect(decision?.status).toBe("ok");
+    expect(decision?.summary).toMatch(/TITTY/);
     expect(view.agent.mismatch?.agentLabel).toMatch(/0\.35/);
     expect(view.agent.replay.pulseVersion).toBe("pulse-decision-harness-v1");
+  });
+
+  it("falls back to legacy stage rail when only analyst/critic/judge are present", () => {
+    const legacy = buildPulseDetailView({
+      item: { ...tittyPulseFixture, stages: tittyLegacyStages },
+      sourceEvents: tittySourceEventsFixture,
+      now: TITTY_NOW_MS,
+    });
+    expect(legacy.agent.isLegacy).toBe(true);
+    const kinds = legacy.agent.railItems.map((entry) => entry.kind);
+    expect(kinds).toEqual(["legacy", "legacy", "legacy"]);
+    const legacyEntries = legacy.agent.railItems.filter(
+      (entry): entry is Extract<typeof entry, { kind: "legacy" }> => entry.kind === "legacy",
+    );
+    expect(legacyEntries.map((entry) => entry.stageName)).toEqual([
+      "analyst",
+      "critic",
+      "judge",
+    ]);
+    expect(legacyEntries[0].summary).toMatch(/Analyst legacy summary/);
   });
 
   it("handles abstain, research-only, and failed stage edge cases", () => {
@@ -185,9 +210,8 @@ describe("buildPulseDetailView", () => {
           confidence: 0,
         },
         stages: {
-          analyst: null,
-          critic: null,
-          judge: null,
+          investigator: null,
+          decision_maker: null,
           research_only_gate: {
             stage: "research_only_gate",
             route: "research_only",
@@ -206,7 +230,7 @@ describe("buildPulseDetailView", () => {
       now: TITTY_NOW_MS,
     });
     expect(researchOnly.agent.kind).toBe("research_only");
-    expect(researchOnly.agent.analyst).toBeNull();
+    expect(researchOnly.agent.railItems).toEqual([]);
     expect(researchOnly.agent.researchOnlyGate?.abstainReason).toBe("no_target_resolved");
 
     const failed = buildPulseDetailView({
@@ -214,15 +238,22 @@ describe("buildPulseDetailView", () => {
         ...tittyPulseFixture,
         stages: {
           ...tittyPulseFixture.stages!,
-          analyst: { ...tittyPulseFixture.stages!.analyst!, status: "failed", response: null },
+          investigator: {
+            ...tittyPulseFixture.stages!.investigator!,
+            status: "failed",
+            response: null,
+            error: "investigator timed out",
+          },
         },
       },
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
-    expect(failed.agent.analyst?.status).toBe("failed");
-    expect(failed.agent.analyst?.confidence).toBeNull();
-    expect(failed.agent.critic?.ceilingDeltaFromAnalyst).toBeNull();
+    const failedInvestigator = failed.agent.railItems.find(
+      (entry) => entry.kind === "investigator",
+    );
+    expect(failedInvestigator?.status).toBe("failed");
+    expect(failedInvestigator?.summary).toMatch(/timed out/);
   });
 });
 

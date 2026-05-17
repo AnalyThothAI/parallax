@@ -23,7 +23,7 @@ export function useLiveRadarRouteData({
   const assetFlowQuery = useTokenRadarQuery({ token, window, scope, limit: 48 });
   const lastReadyFrames = useRef(new Map<string, RadarFrame>());
   const cacheKey = `${window}:${scope}`;
-  const projectionStatus = assetFlowQuery.data?.data?.projection.status ?? null;
+  const projectionStatus = assetFlowQuery.data?.data?.projection?.status ?? null;
   const projectionPending = projectionStatus === "pending";
   const parsed = useMemo(
     () => parseTokenRadarItems(assetFlowQuery.data?.data, window, scope),

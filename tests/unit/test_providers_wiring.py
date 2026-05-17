@@ -272,19 +272,45 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
 
 def test_openai_providers_receive_llm_gateway() -> None:
     gateway = FakeGateway()
+    db_pool = object()
 
     providers = providers_wiring.wire_providers(
         _settings_with_all_llm_models(),
         start_collector=True,
         llm_gateway=gateway,
+        db_pool=db_pool,
     )
 
     assert providers.social_enrichment.event_enrichment is not None
     assert providers.social_enrichment.event_enrichment._llm_gateway is gateway
     assert providers.pulse_lab.decision_provider is not None
     assert providers.pulse_lab.decision_provider._client._llm_gateway is gateway
+    assert providers.pulse_lab.decision_provider._client._db_pool is db_pool
     assert providers.watchlist_intel.summary_provider is not None
     assert providers.watchlist_intel.summary_provider._llm_gateway is gateway
+
+
+def test_openai_pulse_provider_uses_configured_investigator_tool_budgets() -> None:
+    settings = _settings_with_all_llm_models()
+    settings.workers.pulse_candidate.investigator_max_tool_calls = {
+        "cex": 2,
+        "meme": 4,
+        "research_only": 1,
+    }
+
+    providers = providers_wiring.wire_providers(
+        settings,
+        start_collector=True,
+        llm_gateway=FakeGateway(),
+        db_pool=object(),
+    )
+
+    assert providers.pulse_lab.decision_provider is not None
+    assert providers.pulse_lab.decision_provider._client._investigator_max_tool_calls_by_route == {
+        "cex": 2,
+        "meme": 4,
+        "research_only": 1,
+    }
 
 
 def test_openai_provider_wiring_requires_llm_gateway() -> None:
@@ -293,6 +319,17 @@ def test_openai_provider_wiring_requires_llm_gateway() -> None:
             _settings_with_all_llm_models(),
             start_collector=True,
             llm_gateway=None,
+            db_pool=object(),
+        )
+
+
+def test_openai_pulse_provider_wiring_requires_db_pool() -> None:
+    with pytest.raises(RuntimeError, match="db_pool is required"):
+        providers_wiring.wire_providers(
+            _settings_with_all_llm_models(),
+            start_collector=True,
+            llm_gateway=FakeGateway(),
+            db_pool=None,
         )
 
 

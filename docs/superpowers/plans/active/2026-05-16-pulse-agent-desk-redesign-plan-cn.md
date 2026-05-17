@@ -14,7 +14,7 @@
 
 ## Status
 
-- **Status**: Draft v2, awaiting implementation
+- **Status**: Implementation complete; local verification passed 2026-05-17. See `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-verification-cn.md`.
 - **Date**: 2026-05-16
 - **Owning spec**: `docs/superpowers/specs/active/2026-05-16-pulse-agent-desk-redesign-cn.md` (v2)
 - **Worktree**: `.worktrees/pulse-agent-desk-redesign/`

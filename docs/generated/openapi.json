@@ -1977,6 +1977,26 @@
               }
             ]
           },
+          "decision_maker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "investigator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "judge": {
             "anyOf": [
               {

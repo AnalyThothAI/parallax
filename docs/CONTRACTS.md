@@ -297,13 +297,63 @@ Signal Pulse `decision` blocks are the runtime contract for agent output:
   "recommendation": "watchlist",
   "confidence": 0.72,
   "abstain_reason": null,
-  "stage_count": 3,
+  "stage_count": 2,
   "summary_zh": "社交热度有效，但 DEX floor 仍需继续确认。",
+  "narrative_archetype": "kol-ignition",
+  "narrative_thesis_zh": "独立作者扩散到第三方 KOL，价格未跟上但叙事处于点火期。",
+  "bull_view": {
+    "strength": "moderate",
+    "thesis_zh": "watched/independent 作者比扩大，叙事尚未饱和。",
+    "supporting_event_ids": ["event-1"]
+  },
+  "bear_view": {
+    "strength": "weak",
+    "thesis_zh": "DEX 流动性仍在最低阈值附近，扩散后续可能熄火。",
+    "supporting_event_ids": ["event-2"]
+  },
+  "playbook": {
+    "has_playbook": true,
+    "watch_signals": ["独立作者 4h 仍上升", "DEX 流动性翻倍"],
+    "exit_triggers": ["watched-author 比例回落", "DEX 流动性跌破入场水平"],
+    "monitoring_horizon": "4h"
+  },
+  "evidence_event_urls": {"event-1": "https://x.com/foo/status/123"},
   "invalidation_conditions": ["market response stale or liquidity below floor"],
   "residual_risks": ["单一 KOL 驱动，缺少多源确认"],
   "evidence_event_ids": ["event-1"]
 }
 ```
+
+Decision block field semantics (v2, set in plan 2026-05-16):
+
+- `stage_count` is now `2` for the standard `investigator → decision_maker`
+  path and `1` for hard-blocked research-only short-circuits. Older runs
+  prior to the v2 hard cut may still report `3` (`analyst / critic /
+  judge`); readers must treat the value as opaque and never assume an
+  exact stage count.
+- `narrative_archetype` is a short (≤ 20 chars) free-text tag the
+  DecisionMaker assigns to the run; empty string when no archetype
+  applies. Phase 2 may tighten to a Literal enum.
+- `narrative_thesis_zh` is a 30–300 char one-paragraph thesis written by
+  the DecisionMaker. Required for non-abstain decisions.
+- `bull_view` / `bear_view` are symmetric two-sided opinions
+  (`{strength, thesis_zh, supporting_event_ids}`). `strength` is one of
+  `absent | weak | moderate | strong`; `absent` requires empty
+  `thesis_zh` and empty `supporting_event_ids` so UI can degrade
+  deterministically.
+- `playbook` carries the monitoring instructions (not order
+  instructions): `has_playbook` is `false` for abstain/ignore — in that
+  case both `watch_signals` and `exit_triggers` must be empty.
+  `monitoring_horizon` is one of `1h | 4h | 24h`. The playbook never
+  contains price targets, sizing, stop-loss, take-profit, or any other
+  trading execution language; see `RELIABILITY.md` Pulse Agent Audit
+  Ledger.
+- `evidence_event_urls` is an optional `{event_id: url}` map populated
+  for the events listed in `evidence_event_ids` so frontends can
+  hyperlink without a separate lookup.
+- `high_conviction` decisions additionally require
+  `len(evidence_event_ids) >= 3` and both `bull_view.strength` and
+  `bear_view.strength` to be `moderate` or `strong`.
 
 Default Signal Pulse listings hide rows where
 `decision.recommendation = "abstain"`. Abstain is decision semantics, not a
