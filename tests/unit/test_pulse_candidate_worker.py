@@ -14,6 +14,7 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     _asset_candidate_id,
     _asset_trigger_metrics,
     _investigation_tool_calls_count,
+    _run_outcome,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
@@ -98,6 +99,31 @@ def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcu
     assert result["asset_enqueued"] == 0
     assert result["asset_skipped"] == 1
     assert repos.pulse.jobs == []
+
+
+def test_critic_veto_abstain_maps_to_generic_abstain_outcome() -> None:
+    final_decision = FinalDecision(
+        route="meme",
+        recommendation="abstain",
+        confidence=0.0,
+        abstain_reason="critic_veto",
+        summary_zh="证据不足,暂不形成交易候选。",
+        narrative_archetype="unclear",
+        narrative_thesis_zh="当前数据完整度不足，无法形成可靠叙事判断；等待更多事实信号后再评估。",
+        bull_view=BullBearView(strength="absent"),
+        bear_view=BullBearView(strength="absent"),
+        playbook=TradePlaybook(
+            has_playbook=False,
+            watch_signals=[],
+            exit_triggers=[],
+            monitoring_horizon="1h",
+        ),
+        invalidation_conditions=[],
+        residual_risks=["critic_veto"],
+        evidence_event_ids=[],
+    )
+
+    assert _run_outcome(final_decision, completeness_blocked=False) == "abstain"
 
 
 def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> None:

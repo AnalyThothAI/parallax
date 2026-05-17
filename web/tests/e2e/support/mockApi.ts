@@ -537,6 +537,34 @@ function pulseItem() {
       abstain_reason: null,
       stage_count: 3,
       summary_zh: "BNB social pulse is live for e2e.",
+      narrative_archetype: "KOL 扩散",
+      narrative_thesis_zh:
+        "Watched-account seed followed by public amplification on $BNB; keep the thesis tied to fresh independent authors.",
+      bull_view: {
+        strength: "strong",
+        thesis_zh:
+          "Watched-account seed and public amplification align within the same pulse window.",
+        supporting_event_ids: ["event-upeg-1"],
+      },
+      bear_view: {
+        strength: "weak",
+        thesis_zh:
+          "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
+        supporting_event_ids: ["event-upeg-2"],
+      },
+      playbook: {
+        has_playbook: true,
+        monitoring_horizon: "30m",
+        watch_signals: [
+          "Independent author count keeps rising",
+          "GMGN liquidity holds above guardrail",
+        ],
+        exit_triggers: ["No fresh independent authors", "Liquidity drops below guardrail"],
+      },
+      evidence_event_urls: {
+        "event-upeg-1": "https://x.com/upeg/status/1",
+        "event-upeg-2": "https://x.com/upeg/status/2",
+      },
       invalidation_conditions: [],
       residual_risks: [],
       evidence_event_ids: ["event-upeg-1", "event-upeg-2"],

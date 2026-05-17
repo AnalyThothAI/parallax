@@ -3,20 +3,29 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests.postgres_test_utils import prepare_postgres_database
+from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GENERATED = REPO_ROOT / "docs" / "generated"
-AUTO_GENERATED = {"db-schema.md", "cli-help.md", "score-versions.md", "ws-protocol.md"}
+AUTO_GENERATED = {
+    "db-schema.md",
+    "cli-help.md",
+    "score-versions.md",
+    "ws-protocol.md",
+    "pulse-agent-desk-decisions.md",
+}
 GENERATED_REPORTS = {
     "duplicate-token-audit.md",
     "duplicate-token-audit-applied.md",
     "frontend-test-ownership.md",
-    "pulse-agent-desk-decisions.md",
 }
 EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS
 HEADER_MARKER = "AUTO-GENERATED"
@@ -43,7 +52,17 @@ def test_generated_files_have_header_marker() -> None:
     reason="uv or make not available in this environment",
 )
 def test_make_docs_generated_clean_diff() -> None:
-    proc = subprocess.run(["make", "docs-generated"], cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    prepare_postgres_database()
+    env = os.environ.copy()
+    env["GMGN_TEST_POSTGRES_DSN"] = _test_postgres_dsn()
+    proc = subprocess.run(
+        ["make", "docs-generated"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
     if proc.returncode != 0:
         pytest.skip(f"make docs-generated failed (likely Postgres unreachable): {proc.stderr}")
     diff = subprocess.run(

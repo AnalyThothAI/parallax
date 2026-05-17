@@ -974,8 +974,6 @@ def _run_outcome(final_decision: FinalDecision, *, completeness_blocked: bool) -
     if final_decision.recommendation == "abstain":
         if completeness_blocked:
             return "abstain_insufficient_data"
-        if final_decision.abstain_reason == "critic_veto":
-            return "abstain_critic_veto"
         return "abstain"
     return "completed"
 

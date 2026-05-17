@@ -7,6 +7,7 @@
 .rail > header,
 .stage,
 .mismatch,
+.decisionSurface,
 .replay {
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -25,6 +26,7 @@
 
 .rail > header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
@@ -67,10 +69,125 @@
 }
 
 .mismatch p,
-.stage > p {
+.stage > p,
+.decisionSurface p {
   color: var(--ash);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.decisionSurface {
+  display: grid;
+  gap: 9px;
+  border-left: 3px solid var(--agent);
+  overflow-wrap: anywhere;
+}
+
+.decisionSurface > header {
+  display: grid;
+  gap: 7px;
+}
+
+.decisionSurface h3 {
+  color: var(--bone);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.decisionMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.decisionMetrics span {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  color: var(--agent-ink);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.decisionMetrics b {
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.narrative,
+.decisionSide,
+.playbook,
+.evidenceLinks,
+.listBlock {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.narrative strong {
+  color: var(--bone);
+  font-size: 12px;
+}
+
+.decisionSides {
+  display: grid;
+  gap: 8px;
+}
+
+.decisionSide {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.decisionSide h4,
+.listBlock h4,
+.evidenceLinks h4 {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.eventIds {
+  color: var(--dim) !important;
+  font-family: var(--mono);
+  font-size: 10px !important;
+}
+
+.playbook {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.playbook > span {
+  color: var(--agent-ink);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.listBlock ul,
+.evidenceLinks ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 16px;
+}
+
+.listBlock li,
+.evidenceLinks li {
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.evidenceLinks {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.evidenceLinks a {
+  color: var(--info-ink);
+  overflow-wrap: anywhere;
 }
 
 .stage {

@@ -8,9 +8,38 @@ import {
   tittySourceEventsFixture,
   TITTY_NOW_MS,
 } from "@features/signal-lab/test/fixtures";
+import type { SignalPulseItem } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
 describe("buildPulseDetailView", () => {
+  const withDecisionSurface = (): SignalPulseItem => ({
+    ...tittyPulseFixture,
+    decision: {
+      ...tittyPulseFixture.decision,
+      narrative_archetype: "KOL 扩散",
+      narrative_thesis_zh: "独立作者扩散把讨论推到二级账号，链上流动性仍偏薄，需要观察后续承接。",
+      bull_view: {
+        strength: "moderate",
+        thesis_zh: "多个独立账号在同一窗口提及，社交热度具备继续扩散的条件。",
+        supporting_event_ids: [tittySourceEventsFixture[0].event_id],
+      },
+      bear_view: {
+        strength: "weak",
+        thesis_zh: "流动性偏薄且传播集中，若后续缺少新作者容易快速降温。",
+        supporting_event_ids: [tittySourceEventsFixture[1].event_id],
+      },
+      playbook: {
+        has_playbook: true,
+        watch_signals: ["新增独立作者继续扩散", "流动性不再下降"],
+        exit_triggers: ["社交热度回落", "流动性继续抽离"],
+        monitoring_horizon: "4h",
+      },
+      evidence_event_urls: {
+        [tittySourceEventsFixture[0].event_id]: "https://x.com/moontoklisting/status/1",
+      },
+    },
+  });
+
   const view = buildPulseDetailView({
     item: tittyPulseFixture,
     sourceEvents: tittySourceEventsFixture,
@@ -162,6 +191,82 @@ describe("buildPulseDetailView", () => {
     expect(view.agent.replay.pulseVersion).toBe("pulse-decision-harness-v1");
   });
 
+  it("exposes v2 decision surface fields for the agent rail", () => {
+    const decisionView = buildPulseDetailView({
+      item: withDecisionSurface(),
+      sourceEvents: tittySourceEventsFixture,
+      now: TITTY_NOW_MS,
+    });
+
+    expect(decisionView.agent.decisionSurface).toMatchObject({
+      route: "meme",
+      recommendation: "trade_candidate",
+      confidenceLabel: "0.35",
+      narrative: {
+        archetype: "KOL 扩散",
+        thesis: "独立作者扩散把讨论推到二级账号，链上流动性仍偏薄，需要观察后续承接。",
+      },
+      bull: {
+        strength: "moderate",
+        thesis: "多个独立账号在同一窗口提及，社交热度具备继续扩散的条件。",
+      },
+      bear: {
+        strength: "weak",
+        thesis: "流动性偏薄且传播集中，若后续缺少新作者容易快速降温。",
+      },
+      playbook: {
+        monitoringHorizon: "4h",
+        watchSignals: ["新增独立作者继续扩散", "流动性不再下降"],
+        exitTriggers: ["社交热度回落", "流动性继续抽离"],
+      },
+      evidenceLinks: [
+        {
+          eventId: tittySourceEventsFixture[0].event_id,
+          url: "https://x.com/moontoklisting/status/1",
+        },
+      ],
+    });
+  });
+
+  it("does not render a decision playbook when has_playbook is false", () => {
+    const decisionView = buildPulseDetailView({
+      item: {
+        ...withDecisionSurface(),
+        decision: {
+          ...withDecisionSurface().decision,
+          playbook: {
+            has_playbook: false,
+            watch_signals: ["should stay hidden"],
+            exit_triggers: ["should stay hidden"],
+            monitoring_horizon: "4h",
+          },
+        },
+      },
+      sourceEvents: tittySourceEventsFixture,
+      now: TITTY_NOW_MS,
+    });
+
+    expect(decisionView.agent.decisionSurface?.playbook).toBeNull();
+  });
+
+  it("does not render absent bull or bear views as decision-side cards", () => {
+    const decisionView = buildPulseDetailView({
+      item: {
+        ...withDecisionSurface(),
+        decision: {
+          ...withDecisionSurface().decision,
+          bull_view: { strength: "absent", thesis_zh: "", supporting_event_ids: [] },
+          bear_view: { strength: "absent", thesis_zh: "", supporting_event_ids: [] },
+        },
+      },
+      sourceEvents: tittySourceEventsFixture,
+      now: TITTY_NOW_MS,
+    });
+
+    expect(decisionView.agent.decisionSurface?.bull).toBeNull();
+    expect(decisionView.agent.decisionSurface?.bear).toBeNull();
+  });
+
   it("falls back to legacy stage rail when only analyst/critic/judge are present", () => {
     const legacy = buildPulseDetailView({
       item: { ...tittyPulseFixture, stages: tittyLegacyStages },
@@ -174,12 +279,29 @@ describe("buildPulseDetailView", () => {
     const legacyEntries = legacy.agent.railItems.filter(
       (entry): entry is Extract<typeof entry, { kind: "legacy" }> => entry.kind === "legacy",
     );
-    expect(legacyEntries.map((entry) => entry.stageName)).toEqual([
-      "analyst",
-      "critic",
-      "judge",
+    expect(legacyEntries.map((entry) => entry.stageName)).toEqual(["analyst", "critic", "judge"]);
+    expect(legacyEntries[0].summary).toBe("历史 v1 响应体未解析；仅保留 stage 审计元数据。");
+  });
+
+  it("renders v2 stages and legacy placeholders for mixed stage rows", () => {
+    const mixed = buildPulseDetailView({
+      item: {
+        ...tittyPulseFixture,
+        stages: { ...(tittyPulseFixture.stages ?? {}), ...tittyLegacyStages },
+      },
+      sourceEvents: tittySourceEventsFixture,
+      now: TITTY_NOW_MS,
+    });
+
+    expect(mixed.agent.isLegacy).toBe(false);
+    expect(mixed.agent.hasLegacyStages).toBe(true);
+    expect(mixed.agent.railItems.map((entry) => entry.kind)).toEqual([
+      "investigator",
+      "decision_maker",
+      "legacy",
+      "legacy",
+      "legacy",
     ]);
-    expect(legacyEntries[0].summary).toMatch(/Analyst legacy summary/);
   });
 
   it("handles abstain, research-only, and failed stage edge cases", () => {

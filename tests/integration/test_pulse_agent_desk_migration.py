@@ -30,6 +30,7 @@ from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
 
 _REVISION = "20260516_0051"
 _PREVIOUS_REVISION = "20260516_0050"
+_ROLLBACK_REVISION = "20260516_0049"
 
 
 def _alembic_config_with_dsn():
@@ -331,5 +332,74 @@ def test_upgrade_downgrade_upgrade_cycle_drops_and_restores_narrative_type(tmp_p
         assert [(row["candidate_id"], row["social_phase"]) for row in rows] == [
             ("candidate-cycle", "ignition")
         ]
+    finally:
+        conn.close()
+
+
+def test_downgrade_to_0049_preserves_historical_v2_stage_rows(tmp_path) -> None:
+    """Rollback to 0049 must not validate away rows written by the v2 stage taxonomy."""
+
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        reset_postgres_schema(conn)
+        config = _alembic_config_with_dsn()
+
+        # Head includes 0052; step back to 0049, then explicitly exercise the 0051 upgrade.
+        command.downgrade(config, _ROLLBACK_REVISION)
+        conn.commit()
+        command.upgrade(config, _REVISION)
+        conn.commit()
+
+        repo = PulseRepository(conn)
+        _seed_run_and_job(repo, run_id="run-v2-rollback")
+        for offset, stage in enumerate(("investigator", "decision_maker")):
+            repo.insert_agent_run_step(
+                step_id=f"run-v2-rollback:{stage}:0",
+                run_id="run-v2-rollback",
+                stage=stage,
+                route="meme",
+                attempt_index=0,
+                provider="openai",
+                model="gpt-5-mini",
+                prompt_version=f"pulse-{stage}-v2",
+                schema_version="pulse_decision_v2",
+                input_json={"stage": stage, "tool_calls": [{"tool_name": "get_target_recent_tweets"}]}
+                if stage == "investigator"
+                else {"stage": stage},
+                prompt_text=f"{stage} prompt",
+                response_json={"stage": stage, "ok": True},
+                started_at_ms=1_200 + offset,
+                finished_at_ms=1_210 + offset,
+                created_at_ms=1_210 + offset,
+            )
+
+        command.downgrade(config, _ROLLBACK_REVISION)
+        conn.commit()
+
+        rows = repo.list_agent_run_steps("run-v2-rollback")
+        assert [row["stage"] for row in rows] == ["investigator", "decision_maker"]
+
+        try:
+            repo.insert_agent_run_step(
+                step_id="run-v2-rollback:investigator:1",
+                run_id="run-v2-rollback",
+                stage="investigator",
+                route="meme",
+                attempt_index=1,
+                provider="openai",
+                model="gpt-5-mini",
+                prompt_version="pulse-investigator-v2",
+                schema_version="pulse_decision_v2",
+                input_json={"stage": "investigator"},
+                prompt_text="investigator prompt",
+                response_json={"stage": "investigator", "ok": True},
+                started_at_ms=1_300,
+                finished_at_ms=1_301,
+                created_at_ms=1_301,
+            )
+        except psycopg_errors.CheckViolation:
+            conn.rollback()
+        else:
+            raise AssertionError("New INSERT with stage='investigator' should violate the restored legacy CHECK")
     finally:
         conn.close()

@@ -23,6 +23,8 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import contains_trading_execution_instruction
+
 # 字符上限
 _MAX_BODY_CHARS = 2500
 
@@ -62,7 +64,7 @@ def render_pulse_surface_card(
 
     header = _render_header(row=row, decision=decision)
     playbook = _render_playbook(decision)
-    links = _render_links(row=row, decision=decision)
+    links = _render_links(row=row, decision=decision, factor_snapshot=factor_snapshot, asset_profile=asset_profile)
     narrative = _render_narrative(decision)
     bull = _render_view("看多", decision.get("bull_view"), decision=decision)
     bear = _render_view("看空", decision.get("bear_view"), decision=decision)
@@ -90,7 +92,7 @@ def render_pulse_surface_card(
 
     # Tier 3: drop narrative
     body = _join_sections([*always_head, *always_tail])
-    return body
+    return _cap_body(body)
 
 
 def _render_header(*, row: dict[str, Any], decision: dict[str, Any]) -> str:
@@ -114,7 +116,7 @@ def _render_header(*, row: dict[str, Any], decision: dict[str, Any]) -> str:
 
 def _render_narrative(decision: dict[str, Any]) -> str:
     archetype = str(decision.get("narrative_archetype") or "").strip()
-    thesis = str(decision.get("narrative_thesis_zh") or "").strip()
+    thesis = _safe_text(decision.get("narrative_thesis_zh"))
     if not (archetype or thesis):
         return ""
     lines = ["### 📖 叙事"]
@@ -132,7 +134,7 @@ def _render_view(zh_label: str, view: Any, *, decision: dict[str, Any]) -> str:
     if strength == "absent" or not strength:
         return ""
     label_zh = _STRENGTH_LABELS_ZH.get(strength, strength)
-    thesis = str(view.get("thesis_zh") or "").strip()
+    thesis = _safe_text(view.get("thesis_zh"))
     if not thesis:
         return ""
     icon = "🟢" if zh_label == "看多" else "🔴"
@@ -162,21 +164,29 @@ def _render_playbook(decision: dict[str, Any]) -> str:
         return ""
     horizon = playbook.get("monitoring_horizon") or "—"
     lines = [f"### 🎯 Playbook （监控窗口 {horizon}）"]
-    watch = playbook.get("watch_signals") or []
-    if isinstance(watch, list) and watch:
+    watch = _safe_list(playbook.get("watch_signals"))
+    if watch:
         lines.append("**关注信号**:")
-        lines.extend(f"- {str(s).strip()}" for s in watch if str(s).strip())
-    exits = playbook.get("exit_triggers") or []
-    if isinstance(exits, list) and exits:
+        lines.extend(f"- {s}" for s in watch)
+    exits = _safe_list(playbook.get("exit_triggers"))
+    if exits:
         lines.append("**退场触发**:")
-        lines.extend(f"- {str(s).strip()}" for s in exits if str(s).strip())
+        lines.extend(f"- {s}" for s in exits)
     return "\n".join(lines)
 
 
-def _render_links(*, row: dict[str, Any], decision: dict[str, Any]) -> str:
+def _render_links(
+    *,
+    row: dict[str, Any],
+    decision: dict[str, Any],
+    factor_snapshot: dict[str, Any],
+    asset_profile: dict[str, Any],
+) -> str:
     symbol = _symbol(row.get("symbol"))
-    chain = _chain(row.get("chain"))
-    address = row.get("address") or ""
+    snapshot_subject = _dict(factor_snapshot.get("subject"))
+    profile_identity = _dict(asset_profile.get("identity"))
+    chain = _chain(row.get("chain") or snapshot_subject.get("chain") or profile_identity.get("chain"))
+    address = row.get("address") or snapshot_subject.get("address") or profile_identity.get("address") or ""
     candidate_id = row.get("candidate_id") or ""
     parts = ["### 🔗 链接"]
     if chain and address:
@@ -211,8 +221,36 @@ def _chain(value: Any) -> str | None:
     return text or None
 
 
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _safe_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or contains_trading_execution_instruction(text):
+        return ""
+    return text
+
+
+def _safe_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    safe: list[str] = []
+    for value in values:
+        text = _safe_text(value)
+        if text:
+            safe.append(text)
+    return safe
+
+
 def _join_sections(sections: list[str]) -> str:
     return "\n\n".join(s for s in sections if s)
+
+
+def _cap_body(body: str) -> str:
+    if len(body) <= _MAX_BODY_CHARS:
+        return body
+    return body[: _MAX_BODY_CHARS - 3].rstrip() + "..."
 
 
 __all__ = ["render_pulse_surface_card"]

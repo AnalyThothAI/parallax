@@ -76,3 +76,66 @@ def test_openapi_ts_matches_committed_artefact(tmp_path: Path) -> None:
             f"Frontend OpenAPI types drifted from {OPENAPI_TS_PATH.relative_to(ROOT)}.\n"
             "Run `make regen-contract` to update the committed artefacts."
         )
+
+
+@pytest.mark.contract
+def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
+    """The OpenAPI item contract should expose the fields emitted by SignalPulseService."""
+    schema = json.loads(OPENAPI_PATH.read_text(encoding="utf-8"))
+    props = schema["components"]["schemas"]["SignalPulseItem"]["properties"]
+
+    expected = {
+        "candidate_id",
+        "candidate_type",
+        "subject_key",
+        "subject",
+        "target_type",
+        "target_id",
+        "symbol",
+        "window",
+        "scope",
+        "pulse_status",
+        "verdict",
+        "social_phase",
+        "candidate_score",
+        "score_band",
+        "gate_reasons",
+        "risk_reasons",
+        "last_edge_events",
+        "evidence_event_ids",
+        "source_event_ids",
+        "factor_snapshot",
+        "decision",
+        "gate",
+        "fact_card",
+        "agent_run_id",
+        "pulse_version",
+        "gate_version",
+        "prompt_version",
+        "schema_version",
+        "created_at_ms",
+        "updated_at_ms",
+        "playbooks",
+        "stages",
+    }
+    assert expected <= set(props)
+    assert "status" not in props
+    assert "target" not in props
+
+    decision = schema["components"]["schemas"]["SignalPulseDecision"]
+    assert {
+        "route",
+        "recommendation",
+        "confidence",
+        "summary_zh",
+        "abstain_reason",
+        "narrative_archetype",
+        "narrative_thesis_zh",
+        "bull_view",
+        "bear_view",
+        "playbook",
+        "evidence_event_ids",
+        "evidence_event_urls",
+        "invalidation_conditions",
+        "residual_risks",
+    } <= set(decision["required"])

@@ -1164,22 +1164,37 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SignalPulseBullBearView */
+        SignalPulseBullBearView: {
+            /** Strength */
+            strength: string;
+            /** Supporting Event Ids */
+            supporting_event_ids: string[];
+            /** Thesis Zh */
+            thesis_zh: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** SignalPulseData */
         SignalPulseData: {
             /** Agent Worker Running */
             agent_worker_running?: boolean | null;
             /** Has More */
             has_more?: boolean | null;
-            /** Items */
-            items?: {
+            /** Health */
+            health?: {
                 [key: string]: unknown;
-            }[];
+            } | null;
+            /** Items */
+            items?: components["schemas"]["SignalPulseItem"][];
             /** Next Cursor */
             next_cursor?: string | null;
             /** Query */
             query?: {
                 [key: string]: unknown;
             } | null;
+            /** Returned Count */
+            returned_count?: number | null;
             /** Summary */
             summary?: {
                 [key: string]: unknown;
@@ -1189,25 +1204,125 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SignalPulseDecision */
+        SignalPulseDecision: {
+            /** Abstain Reason */
+            abstain_reason: string | null;
+            bear_view: components["schemas"]["SignalPulseBullBearView"] | null;
+            bull_view: components["schemas"]["SignalPulseBullBearView"] | null;
+            /** Confidence */
+            confidence: number | null;
+            /** Evidence Event Ids */
+            evidence_event_ids: string[];
+            /** Evidence Event Urls */
+            evidence_event_urls: {
+                [key: string]: string;
+            };
+            /** Invalidation Conditions */
+            invalidation_conditions: string[];
+            /** Narrative Archetype */
+            narrative_archetype: string | null;
+            /** Narrative Thesis Zh */
+            narrative_thesis_zh: string | null;
+            playbook: components["schemas"]["SignalPulsePlaybook"] | null;
+            /** Recommendation */
+            recommendation: string | null;
+            /** Residual Risks */
+            residual_risks: string[];
+            /** Route */
+            route: string | null;
+            /** Summary Zh */
+            summary_zh: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** SignalPulseItem */
         SignalPulseItem: {
+            /** Agent Run Id */
+            agent_run_id?: string | null;
             /** Candidate Id */
             candidate_id?: string | null;
+            /** Candidate Score */
+            candidate_score?: number | null;
+            /** Candidate Type */
+            candidate_type?: string | null;
+            /** Created At Ms */
+            created_at_ms?: number | null;
+            decision?: components["schemas"]["SignalPulseDecision"] | null;
+            /** Evidence Event Ids */
+            evidence_event_ids?: string[];
             /** Fact Card */
             fact_card?: {
                 [key: string]: unknown;
             } | null;
-            /** Recommendation */
-            recommendation?: {
+            /** Factor Snapshot */
+            factor_snapshot?: {
                 [key: string]: unknown;
             } | null;
+            /** Gate */
+            gate?: {
+                [key: string]: unknown;
+            } | null;
+            /** Gate Reasons */
+            gate_reasons?: string[];
+            /** Gate Version */
+            gate_version?: string | null;
+            /** Last Edge Events */
+            last_edge_events?: string[];
+            /** Playbooks */
+            playbooks?: {
+                [key: string]: unknown;
+            }[];
+            /** Prompt Version */
+            prompt_version?: string | null;
+            /** Pulse Status */
+            pulse_status?: string | null;
+            /** Pulse Version */
+            pulse_version?: string | null;
+            /** Risk Reasons */
+            risk_reasons?: string[];
+            /** Schema Version */
+            schema_version?: string | null;
+            /** Scope */
+            scope?: string | null;
+            /** Score Band */
+            score_band?: string | null;
+            /** Social Phase */
+            social_phase?: string | null;
+            /** Source Event Ids */
+            source_event_ids?: string[];
             stages?: components["schemas"]["SignalPulseStages"] | null;
-            /** Status */
-            status?: string | null;
-            /** Target */
-            target?: {
+            /** Subject */
+            subject?: {
                 [key: string]: unknown;
             } | null;
+            /** Subject Key */
+            subject_key?: string | null;
+            /** Symbol */
+            symbol?: string | null;
+            /** Target Id */
+            target_id?: string | null;
+            /** Target Type */
+            target_type?: string | null;
+            /** Updated At Ms */
+            updated_at_ms?: number | null;
+            /** Verdict */
+            verdict?: string | null;
+            /** Window */
+            window?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalPulsePlaybook */
+        SignalPulsePlaybook: {
+            /** Exit Triggers */
+            exit_triggers: string[];
+            /** Has Playbook */
+            has_playbook: boolean;
+            /** Monitoring Horizon */
+            monitoring_horizon: string;
+            /** Watch Signals */
+            watch_signals: string[];
         } & {
             [key: string]: unknown;
         };

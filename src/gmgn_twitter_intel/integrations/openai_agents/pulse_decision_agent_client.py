@@ -301,6 +301,20 @@ class OpenAIAgentsPulseDecisionClient:
                 audits=tuple(stage_audits),
             )
         final = FinalDecision.model_validate(decision_step.response_json)
+        try:
+            self._validate_final_evidence_ids(
+                final,
+                investigation=investigation,
+                tool_ctx=tool_ctx,
+                context=context,
+            )
+        except ValueError as exc:
+            failed_step = _mark_step_failed(decision_step, error=str(exc))
+            stage_audits[-1] = failed_step
+            raise PulseStageFailure(
+                f"decision_maker stage failed: {exc}",
+                audits=tuple(stage_audits),
+            ) from exc
 
         # Evidence URL enrichment (best-effort JOIN against events).
         final = await self._enrich_evidence_urls(final)
@@ -414,6 +428,7 @@ class OpenAIAgentsPulseDecisionClient:
         started = int(time.time() * 1000)
         raw_output: Any = None
         result_obj: Any = None
+        tool_calls_count_before = int(getattr(tool_ctx, "tool_calls_count", 0) or 0)
         audit_extra: dict[str, Any] = {
             "safety_net_used": False,
             "safety_net_retries": 0,
@@ -422,7 +437,7 @@ class OpenAIAgentsPulseDecisionClient:
         }
         try:
             if self._safety_net is not None:
-                final_output, audit_extra = await self._llm_gateway.run_with_limits(
+                final_output, audit_extra, result_obj = await self._llm_gateway.run_with_limits(
                     "pulse_candidate",
                     stage,
                     self.timeout_seconds,
@@ -433,6 +448,7 @@ class OpenAIAgentsPulseDecisionClient:
                         pydantic_output_type=output_type,
                         context=tool_ctx,
                         max_turns=max_turns,
+                        return_result=True,
                     ),
                 )
                 raw_output = final_output
@@ -455,7 +471,11 @@ class OpenAIAgentsPulseDecisionClient:
         except SafetyNetExhausted as exhausted:
             finished = int(time.time() * 1000)
             audit_extra = exhausted.audit_extra
-            trace_metadata_failed = {**base_trace_metadata, **audit_extra}
+            trace_metadata_failed = {
+                **base_trace_metadata,
+                **audit_extra,
+                **_tool_count_metadata(tool_calls_count_before, tool_ctx),
+            }
             return StageRunAudit(
                 stage=stage,
                 route=route,
@@ -477,7 +497,11 @@ class OpenAIAgentsPulseDecisionClient:
         except Exception as exc:
             finished = int(time.time() * 1000)
             status: StageStatus = "timeout" if isinstance(exc, TimeoutError) else "failed"
-            trace_metadata_failed = {**base_trace_metadata, **audit_extra}
+            trace_metadata_failed = {
+                **base_trace_metadata,
+                **audit_extra,
+                **_tool_count_metadata(tool_calls_count_before, tool_ctx),
+            }
             return StageRunAudit(
                 stage=stage,
                 route=route,
@@ -497,7 +521,11 @@ class OpenAIAgentsPulseDecisionClient:
                 parse_mode=str(audit_extra.get("parse_mode") or "strict"),
             )
         finished = int(time.time() * 1000)
-        trace_metadata_ok = {**base_trace_metadata, **audit_extra}
+        trace_metadata_ok = {
+            **base_trace_metadata,
+            **audit_extra,
+            **_tool_count_metadata(tool_calls_count_before, tool_ctx),
+        }
         return StageRunAudit(
             stage=stage,
             route=route,
@@ -551,6 +579,36 @@ class OpenAIAgentsPulseDecisionClient:
                     f"(not in tool contributions or context): {preview}{suffix}"
                 )
 
+    def _validate_final_evidence_ids(
+        self,
+        final: FinalDecision,
+        *,
+        investigation: InvestigationReport,
+        tool_ctx: PulseToolContext,
+        context: dict[str, Any],
+    ) -> None:
+        """Reject DecisionMaker evidence ids that are outside trusted inputs."""
+
+        allowed = _allowed_final_evidence_ids(
+            context=context,
+            tool_ctx=tool_ctx,
+            investigation=investigation,
+        )
+        fields = (
+            ("evidence_event_ids", final.evidence_event_ids),
+            ("bull_view.supporting_event_ids", final.bull_view.supporting_event_ids),
+            ("bear_view.supporting_event_ids", final.bear_view.supporting_event_ids),
+        )
+        for field_name, values in fields:
+            unknown = [eid for eid in values if eid not in allowed]
+            if unknown:
+                preview = unknown[:5]
+                suffix = "..." if len(unknown) > 5 else ""
+                raise ValueError(
+                    f"{field_name} contains unknown event ids "
+                    f"(not in context, tool contributions, or Investigator output): {preview}{suffix}"
+                )
+
     async def _enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision:
         """JOIN ``events`` to populate ``final.evidence_event_urls`` (best-effort).
 
@@ -559,11 +617,10 @@ class OpenAIAgentsPulseDecisionClient:
         "no link available" rather than a hard failure.
         """
 
-        if not final.evidence_event_ids:
-            return final
-        urls = fetch_evidence_event_urls(self._db_pool, event_ids=list(final.evidence_event_ids))
-        if not urls:
-            return final
+        event_ids = _final_url_event_ids(final)
+        if not event_ids:
+            return final.model_copy(update={"evidence_event_urls": {}})
+        urls = fetch_evidence_event_urls(self._db_pool, event_ids=event_ids)
         return final.model_copy(update={"evidence_event_urls": urls})
 
     def _request_audit(
@@ -781,6 +838,52 @@ def _mark_step_failed(step: StageRunAudit, *, error: str) -> StageRunAudit:
             "response_json": step.response_json,
         }
     )
+
+
+def _tool_count_metadata(before: int, tool_ctx: PulseToolContext) -> dict[str, int]:
+    after = int(getattr(tool_ctx, "tool_calls_count", 0) or 0)
+    return {
+        "tool_calls_count_before": before,
+        "tool_calls_count_after": after,
+        "tool_calls_count_delta": max(0, after - before),
+    }
+
+
+def _allowed_final_evidence_ids(
+    *,
+    context: dict[str, Any],
+    tool_ctx: PulseToolContext,
+    investigation: InvestigationReport,
+) -> set[str]:
+    allowed: set[str] = set(tool_ctx.contributed_event_ids)
+    for key in ("evidence_event_ids", "source_event_ids"):
+        values = context.get(key) if isinstance(context, dict) else None
+        if isinstance(values, list):
+            for value in values:
+                if isinstance(value, str) and value.strip():
+                    allowed.add(value.strip())
+    for view in (investigation.bull_observation, investigation.bear_observation):
+        for value in view.supporting_event_ids:
+            if isinstance(value, str) and value.strip():
+                allowed.add(value.strip())
+    return allowed
+
+
+def _final_url_event_ids(final: FinalDecision) -> list[str]:
+    """Stable union of all final decision IDs that may be rendered as links."""
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in (
+        *final.evidence_event_ids,
+        *final.bull_view.supporting_event_ids,
+        *final.bear_view.supporting_event_ids,
+    ):
+        cleaned = str(value or "").strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return result
 
 
 def _with_tool_calls(input_payload: dict[str, Any], result_obj: Any) -> dict[str, Any]:

@@ -42,7 +42,7 @@
   - Validate final evidence IDs against the same allowlist as Investigator evidence.
   - Add tool-call count audit metadata for observability only.
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/queries/agent_tool_queries.py`
-  - Prefer canonical event URLs from `events.event_payload_json->>'url'` when enriching evidence links.
+  - Prefer canonical event URLs from `events.canonical_url` when enriching evidence links.
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
   - Stop producing new `abstain_critic_veto` outcomes.
 - Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
@@ -90,7 +90,7 @@
 - Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
 - Test: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 
-- [ ] Step 1: Add a failing unit test for the safety-net strict-success path.
+- [x] Step 1: Add a failing unit test for the safety-net strict-success path.
 
   Test shape:
 
@@ -105,7 +105,7 @@
 
   Expected before implementation: `tool_calls` is `[]` or absent because `result_obj` is `None`.
 
-- [ ] Step 2: Preserve backwards compatibility in `InstructorSafetyNet.run_with_safety_net`.
+- [x] Step 2: Preserve backwards compatibility in `InstructorSafetyNet.run_with_safety_net`.
 
   Implementation rule:
   - Add keyword-only parameter `return_result: bool = False`.
@@ -113,7 +113,7 @@
   - When `return_result=True`, return `(final_output, audit_extra, result)` on strict SDK success.
   - When instructor reask is used, return `(obj, audit_extra, None)` because there is no valid SDK `RunResult` to extract.
 
-- [ ] Step 3: Call safety net with `return_result=True` from `OpenAIAgentsPulseDecisionClient._run_stage`.
+- [x] Step 3: Call safety net with `return_result=True` from `OpenAIAgentsPulseDecisionClient._run_stage`.
 
   Implementation rule:
   - Unpack `final_output, audit_extra, result_obj`.
@@ -124,7 +124,7 @@
     - `tool_calls_count_after`
     - `tool_calls_count_delta`
 
-- [ ] Step 4: Add an observability-only test for DecisionMaker fallback budget.
+- [x] Step 4: Add an observability-only test for DecisionMaker fallback budget.
 
   Test shape:
 
@@ -138,7 +138,7 @@
       # Do not assert a new independent fallback budget.
   ```
 
-- [ ] Step 5: Run targeted tests.
+- [x] Step 5: Run targeted tests.
 
   ```bash
   uv run pytest tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py -q
@@ -156,14 +156,14 @@
 - Test: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 - Test: `tests/unit/integrations/openai_agents/tools/test_tools.py` or a new query-focused unit test if that is the local pattern.
 
-- [ ] Step 1: Add failing tests for final evidence allowlist.
+- [x] Step 1: Add failing tests for final evidence allowlist.
 
   Test cases:
   - `FinalDecision.evidence_event_ids=["unrelated-event"]` fails when the ID is not in context, tool contributions, or Investigator supporting IDs.
   - `FinalDecision.bull_view.supporting_event_ids=["unrelated-event"]` fails the same way.
   - IDs from `context.evidence_event_ids`, `context.source_event_ids`, `tool_ctx.contributed_event_ids`, and `InvestigationReport` supporting IDs pass.
 
-- [ ] Step 2: Add `_validate_final_evidence_ids()`.
+- [x] Step 2: Add `_validate_final_evidence_ids()`.
 
   Implementation rule:
   - Allowed IDs are:
@@ -178,17 +178,17 @@
     - `final.bear_view.supporting_event_ids`
   - On unknown IDs, mark the DecisionMaker step failed with `_mark_step_failed(...)` and raise `PulseStageFailure`, mirroring the Investigator guard.
 
-- [ ] Step 3: Call `_validate_final_evidence_ids()` immediately after `FinalDecision.model_validate(...)` and before `_enrich_evidence_urls(...)`.
+- [x] Step 3: Call `_validate_final_evidence_ids()` immediately after `FinalDecision.model_validate(...)` and before `_enrich_evidence_urls(...)`.
 
-- [ ] Step 4: Prefer canonical event URLs.
+- [x] Step 4: Prefer canonical event URLs.
 
   Implementation rule in `fetch_evidence_event_urls()`:
-  - Select `event_payload_json->>'url'` as `canonical_url`.
+  - Select `events.canonical_url`.
   - Return `canonical_url` when non-empty.
   - Fall back to the existing `https://x.com/{author_handle}/status/{tweet_id}` builder only when canonical URL is absent.
   - Keep DB errors best-effort, but add a warning log so schema/tool-pool problems are visible.
 
-- [ ] Step 5: Run targeted tests.
+- [x] Step 5: Run targeted tests.
 
   ```bash
   uv run pytest tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py tests/unit/integrations/openai_agents/tools/test_tools.py -q
@@ -206,7 +206,7 @@
 - Test: `tests/unit/test_notification_rules.py`
 - Test: `tests/unit/domains/notifications/test_pulse_surface_card.py`
 
-- [ ] Step 1: Add failing pagination test.
+- [x] Step 1: Add failing pagination test.
 
   Test shape:
 
@@ -219,7 +219,7 @@
       # Assert the trade_candidate notification is emitted.
   ```
 
-- [ ] Step 2: Push status filtering into `list_candidates`.
+- [x] Step 2: Push status filtering into `list_candidates`.
 
   Implementation rule:
   - Loop `for scope in scopes` and `for status in sorted(statuses)`.
@@ -227,7 +227,7 @@
   - Keep the `seen` set so candidates duplicated across scopes/statuses are still emitted once.
   - Keep the post-query status guard as a defensive assertion, but it should no longer be the primary filter.
 
-- [ ] Step 3: Add SurfaceCard safety tests.
+- [x] Step 3: Add SurfaceCard safety tests.
 
   Test cases:
   - `narrative_thesis_zh` containing forbidden execution language is not rendered.
@@ -236,7 +236,7 @@
   - final body length is always `<= 2500`.
   - GMGN link is rendered from `factor_snapshot.subject.chain/address` when `row.chain/address` are missing.
 
-- [ ] Step 4: Harden `render_pulse_surface_card`.
+- [x] Step 4: Harden `render_pulse_surface_card`.
 
   Implementation rule:
   - Import and use `contains_trading_execution_instruction` from `gmgn_twitter_intel.domains.pulse_lab.types.agent_decision`.
@@ -254,7 +254,7 @@
     return body if len(body) <= _MAX_BODY_CHARS else body[: _MAX_BODY_CHARS - 3].rstrip() + "..."
     ```
 
-- [ ] Step 5: Include stable playbook structure in notification signature.
+- [x] Step 5: Include stable playbook structure in notification signature.
 
   Implementation rule:
   - Continue excluding free text.
@@ -264,7 +264,7 @@
     - counts of safe `watch_signals` and `exit_triggers`
   - Do not hash raw thesis text.
 
-- [ ] Step 6: Run targeted tests.
+- [x] Step 6: Run targeted tests.
 
   ```bash
   uv run pytest tests/unit/test_notification_rules.py tests/unit/domains/notifications/test_pulse_surface_card.py -q
@@ -282,7 +282,7 @@
 - Modify after generation: `web/src/lib/types/openapi.ts`
 - Test: `tests/contract/test_openapi_drift.py`
 
-- [ ] Step 1: Add schema classes for the v2 decision surface.
+- [x] Step 1: Add schema classes for the v2 decision surface.
 
   Minimum schema classes:
   - `SignalPulseBullBearView`
@@ -306,22 +306,22 @@
   - `invalidation_conditions`
   - `residual_risks`
 
-- [ ] Step 2: Change `SignalPulseData.items` from `list[JsonObject]` to `list[SignalPulseItem]`.
+- [x] Step 2: Change `SignalPulseData.items` from `list[JsonObject]` to `list[SignalPulseItem]`.
 
-- [ ] Step 3: Add missing list metadata fields to `SignalPulseData`.
+- [x] Step 3: Add missing list metadata fields to `SignalPulseData`.
 
   Required fields:
   - `health: JsonObject | None`
   - `returned_count: int | None`
 
-- [ ] Step 4: Change `SignalPulseItem`.
+- [x] Step 4: Change `SignalPulseItem`.
 
   Implementation rule:
   - Replace old `recommendation` field with `decision: SignalPulseDecision | None`.
   - Keep broad `JsonObject` fields for existing large nested objects to avoid over-modeling.
   - Keep `stages: SignalPulseStages | None`.
 
-- [ ] Step 5: Regenerate contracts.
+- [x] Step 5: Regenerate contracts.
 
   ```bash
   make regen-contract
@@ -342,7 +342,7 @@
 - Test: `web/tests/unit/features/signal-lab/pulseDetail.test.ts`
 - Test: `web/tests/component/features/signal-lab/ui/PulseAgentRail.test.tsx`
 
-- [ ] Step 1: Add `DecisionSurfaceView` to `pulseDetail.ts`.
+- [x] Step 1: Add `DecisionSurfaceView` to `pulseDetail.ts`.
 
   Shape:
 
@@ -363,21 +363,21 @@
   };
   ```
 
-- [ ] Step 2: Add `decisionSurface: DecisionSurfaceView | null` to `AgentRailView`.
+- [x] Step 2: Add `decisionSurface: DecisionSurfaceView | null` to `AgentRailView`.
 
   Implementation rule:
   - Build it from `item.decision`.
   - Return `null` only when no v2 fields are present.
   - Do not parse legacy analyst/critic/judge response bodies.
 
-- [ ] Step 3: Fix mixed v2 + legacy stage visibility.
+- [x] Step 3: Fix mixed v2 + legacy stage visibility.
 
   KISS rule:
   - Always render v2 stages if present.
   - Also append legacy placeholder cards if legacy stage rows exist.
   - `isLegacy` should mean "only legacy stages exist"; add `hasLegacyStages` if the UI needs a notice for mixed rows.
 
-- [ ] Step 4: Replace stale mismatch copy.
+- [x] Step 4: Replace stale mismatch copy.
 
   New note:
 
@@ -385,7 +385,7 @@
   "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对调研、决策和证据链接。"
   ```
 
-- [ ] Step 5: Render `DecisionSurfaceCard` in `PulseAgentRail.tsx`.
+- [x] Step 5: Render `DecisionSurfaceCard` in `PulseAgentRail.tsx`.
 
   Placement:
   - After mismatch.
@@ -398,7 +398,7 @@
   - playbook watch/exit lists when present
   - evidence links as normal anchors
 
-- [ ] Step 6: Add minimal CSS.
+- [x] Step 6: Add minimal CSS.
 
   Constraints:
   - No nested cards inside cards.
@@ -406,7 +406,7 @@
   - No new hero or decorative layout.
   - Ensure long Chinese/URLs wrap.
 
-- [ ] Step 7: Add tests.
+- [x] Step 7: Add tests.
 
   Test cases:
   - `buildPulseDetailView` exposes narrative, bull/bear, playbook, and evidence links.
@@ -415,7 +415,7 @@
   - mixed v2+legacy rows render v2 stages and legacy placeholders.
   - mismatch copy no longer mentions three-stage/Critic.
 
-- [ ] Step 8: Run frontend targeted tests.
+- [x] Step 8: Run frontend targeted tests.
 
   ```bash
   cd web
@@ -435,7 +435,7 @@
 - Modify: `docs/generated/pulse-agent-desk-decisions.md`
 - Modify: `tests/integration/test_docs_generated.py`
 
-- [ ] Step 1: Create `scripts/regen_pulse_agent_desk_decisions.py`.
+- [x] Step 1: Create `scripts/regen_pulse_agent_desk_decisions.py`.
 
   Implementation rule:
   - Write deterministic Markdown.
@@ -447,7 +447,7 @@
     - live canary remains release gate
   - Do not read runtime DB.
 
-- [ ] Step 2: Add Makefile target.
+- [x] Step 2: Add Makefile target.
 
   Change:
 
@@ -460,9 +460,9 @@
   	@uv run python scripts/regen_pulse_agent_desk_decisions.py
   ```
 
-- [ ] Step 3: Move `pulse-agent-desk-decisions.md` from `GENERATED_REPORTS` to `AUTO_GENERATED` in `tests/integration/test_docs_generated.py`.
+- [x] Step 3: Move `pulse-agent-desk-decisions.md` from `GENERATED_REPORTS` to `AUTO_GENERATED` in `tests/integration/test_docs_generated.py`.
 
-- [ ] Step 4: Run docs generation.
+- [x] Step 4: Run docs generation.
 
   ```bash
   make docs-generated
@@ -480,9 +480,9 @@
 - Modify: `tests/integration/test_pulse_agent_desk_migration.py`
 - Optional helper: `tests/postgres_test_utils.py` only if an existing helper is missing.
 
-- [ ] Step 1: Keep the existing synthetic E2E if useful, but rename its test/docstring so it is not presented as the only full E2E.
+- [x] Step 1: Keep the existing synthetic E2E if useful, but rename its test/docstring so it is not presented as the only full E2E.
 
-- [ ] Step 2: Add one real Postgres integration test.
+- [x] Step 2: Add one real Postgres integration test.
 
   Required setup:
   - Use `connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)`.
@@ -500,13 +500,13 @@
   - notification dedup key contains the stable signature.
   - notification body contains v2 decision surface and evidence URL.
 
-- [ ] Step 3: Add a read-only tool pool integration test.
+- [x] Step 3: Add a read-only tool pool integration test.
 
   Required assertions:
   - A pool/connection created with `read_only=True` rejects an `INSERT`.
   - Tool query functions can read seeded rows through a read-only connection.
 
-- [ ] Step 4: Add migration rollback-after-v2-rows test.
+- [x] Step 4: Add migration rollback-after-v2-rows test.
 
   Flow:
   - Upgrade to `20260516_0051`.
@@ -515,7 +515,7 @@
   - Assert downgrade succeeds because the old constraint is also `NOT VALID`.
   - Assert historical v2 rows remain queryable.
 
-- [ ] Step 5: Run integration tests.
+- [x] Step 5: Run integration tests.
 
   ```bash
   uv run pytest tests/integration/test_pulse_desk_e2e.py tests/integration/test_pulse_agent_desk_migration.py -q
@@ -531,7 +531,7 @@
 - Modify: `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-verification-cn.md`
 - Optional modify: `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-plan-cn.md`
 
-- [ ] Step 1: Run full local gates.
+- [x] Step 1: Run full local gates.
 
   ```bash
   uv run ruff check .
@@ -544,14 +544,14 @@
   uv run alembic upgrade head
   ```
 
-- [ ] Step 2: Verify generated artefacts are clean.
+- [x] Step 2: Verify generated artefacts are clean.
 
   ```bash
   git diff -- docs/generated/openapi.json web/src/lib/types/openapi.ts docs/generated/pulse-agent-desk-decisions.md
   uv run pytest tests/contract -m contract tests/integration/test_docs_generated.py -q
   ```
 
-- [ ] Step 3: Run frontend browser smoke after implementation.
+- [x] Step 3: Run frontend browser smoke after implementation.
 
   Required checks:
   - Pulse detail page loads.
@@ -562,6 +562,8 @@
 
 - [ ] Step 4: Run 30-minute canary before full release.
 
+  Status: not run locally. Keep this as the release canary gate after merge/deploy.
+
   Required evidence:
   - stage distribution SQL output
   - sample `input_json.tool_calls` from investigator stage
@@ -570,7 +572,7 @@
   - detail page screenshot
   - error count / timeout count
 
-- [ ] Step 5: Update verification doc honestly.
+- [x] Step 5: Update verification doc honestly.
 
   Rule:
   - Mark local gates complete only after commands pass.

@@ -8,7 +8,7 @@
 make docs-generated
 ```
 
-This runs four scripts in sequence:
+This runs five scripts in sequence:
 
 | File | Source | Script |
 |------|--------|--------|
@@ -16,5 +16,6 @@ This runs four scripts in sequence:
 | `cli-help.md` | `gmgn-twitter-intel --help` recursively | `scripts/regen_cli_help.py` |
 | `score-versions.md` | grep `score_version=` literals in `src/` | `scripts/regen_score_versions.py` |
 | `ws-protocol.md` | extract message-type union from `src/gmgn_twitter_intel/api/ws.py` | `scripts/regen_ws_protocol.py` |
+| `pulse-agent-desk-decisions.md` | Pulse Agent Desk OQ + hardening decision constants | `scripts/regen_pulse_agent_desk_decisions.py` |
 
 CI verifies that `make docs-generated` produces no diff against the committed tree.

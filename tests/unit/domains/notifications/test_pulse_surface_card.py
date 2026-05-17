@@ -261,6 +261,26 @@ def test_missing_chain_address_drops_gmgn_link_only():
     assert "Pulse: `pulse-x`" in body
 
 
+def test_gmgn_link_uses_factor_snapshot_subject_when_row_chain_address_missing():
+    body = render_pulse_surface_card(
+        row={"candidate_id": "pulse-x", "subject_key": "asset:foo", "symbol": "PEPE"},
+        decision=_decision(),
+        factor_snapshot={"subject": {"chain": "solana", "address": "So11111111111111111111111111111111111111112"}},
+    )
+
+    assert "[GMGN](https://gmgn.ai/solana/token/So11111111111111111111111111111111111111112)" in body
+
+
+def test_gmgn_link_uses_asset_profile_identity_when_row_and_snapshot_missing_chain_address():
+    body = render_pulse_surface_card(
+        row={"candidate_id": "pulse-x", "subject_key": "asset:foo", "symbol": "PEPE"},
+        decision=_decision(),
+        asset_profile={"identity": {"chain": "base", "address": "0xbase"}},
+    )
+
+    assert "[GMGN](https://gmgn.ai/base/token/0xbase)" in body
+
+
 def test_evidence_id_list_capped_at_five():
     many_ids = [f"evt-bull-{i}" for i in range(10)]
     url_map = {f"evt-bull-{i}": f"https://x.com/u/status/{i}" for i in range(10)}
@@ -287,3 +307,61 @@ def test_strength_label_mapping(strength: str, zh: str):
     body = render_pulse_surface_card(row=_row(), decision=decision)
 
     assert f"### 🟢 看多（{zh}）" in body
+
+
+def test_narrative_thesis_with_execution_language_is_not_rendered():
+    body = render_pulse_surface_card(
+        row=_row(),
+        decision=_decision(narrative_thesis_zh="建议买入并设置止损"),
+    )
+
+    assert "### 📖 叙事" in body
+    assert "建议买入" not in body
+    assert "止损" not in body
+
+
+def test_bull_and_bear_theses_with_execution_language_are_not_rendered():
+    body = render_pulse_surface_card(
+        row=_row(),
+        decision=_decision(
+            bull_thesis="go long with leverage",
+            bear_thesis="open short if momentum fades",
+        ),
+    )
+
+    assert "### 🟢 看多" not in body
+    assert "### 🔴 看空" not in body
+    assert "go long" not in body
+    assert "open short" not in body
+
+
+def test_playbook_filters_execution_language_entries():
+    body = render_pulse_surface_card(
+        row=_row(),
+        decision=_decision(
+            watch_signals=["新增独立作者", "建议买入"],
+            exit_triggers=["讨论降温", "设置止损"],
+        ),
+    )
+
+    assert "新增独立作者" in body
+    assert "讨论降温" in body
+    assert "建议买入" not in body
+    assert "设置止损" not in body
+
+
+def test_body_has_final_hard_cap_after_degradation():
+    huge_safe_entry = "安全观察信号" * 1000
+    body = render_pulse_surface_card(
+        row=_row(),
+        decision=_decision(
+            narrative_thesis_zh="叙事",
+            bull_thesis="看多理由",
+            bear_thesis="看空理由",
+            watch_signals=[huge_safe_entry],
+            exit_triggers=[huge_safe_entry],
+        ),
+    )
+
+    assert len(body) <= 2500
+    assert body.endswith("...")
