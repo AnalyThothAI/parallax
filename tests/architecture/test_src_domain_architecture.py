@@ -407,13 +407,58 @@ def test_openai_agent_integrations_do_not_import_repositories() -> None:
     )
 
 
-def test_pulse_stage_prompts_do_not_contain_execution_language() -> None:
-    prompt_path = SRC_ROOT / "integrations" / "openai_agents" / "pulse_stage_prompts.py"
-    text = prompt_path.read_text(encoding="utf-8")
-    offenders = [prompt_path.relative_to(ROOT).as_posix()] if contains_trading_execution_instruction(text) else []
+def test_pulse_prompts_do_not_contain_execution_language() -> None:
+    """Pulse Agent Desk v2 (plan 2026-05-16) moved prompts from
+    ``integrations/openai_agents/pulse_stage_prompts.py`` (deleted) to
+    per-role markdown files under
+    ``domains/pulse_lab/prompts/{investigator,decision_maker}.md``.
+
+    Those markdown prompts deliberately enumerate every forbidden
+    execution term inside an explicit anti-injection / "do not produce"
+    section so the LLM knows what to refuse — that enumeration itself
+    triggers ``contains_trading_execution_instruction`` and is the only
+    expected source of matches. Scan each prompt with those guidance
+    sections stripped; any remaining match indicates a real prompt drift.
+
+    Lines stripped from the scan:
+
+    - Lines containing an explicit forbidden marker (``禁止``, ``不允许``,
+      ``绝对禁止``, ``forbidden``, ``do not``, ``✗``, ``错误``).
+    - Lines under a ``## Forbidden`` / ``## 禁止`` heading until the next
+      ``##`` heading.
+    """
+
+    forbidden_markers = ("禁止", "不允许", "forbidden", "do not", "✗", "错误", "must not")
+    prompts_dir = SRC_ROOT / "domains" / "pulse_lab" / "prompts"
+    offenders: list[str] = []
+    for prompt_path in sorted(prompts_dir.glob("*.md")):
+        text = prompt_path.read_text(encoding="utf-8")
+        scrubbed_lines: list[str] = []
+        in_forbidden_block = False
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("##"):
+                heading_lower = stripped.lower()
+                in_forbidden_block = (
+                    "forbidden" in heading_lower
+                    or "禁止" in stripped
+                    or "anti-injection" in heading_lower
+                    or "anti injection" in heading_lower
+                )
+                # Heading line itself never carries the offending example text.
+                continue
+            if in_forbidden_block:
+                continue
+            lowered = line.lower()
+            if any(marker in lowered or marker in line for marker in forbidden_markers):
+                continue
+            scrubbed_lines.append(line)
+        scrubbed = "\n".join(scrubbed_lines)
+        if contains_trading_execution_instruction(scrubbed):
+            offenders.append(prompt_path.relative_to(ROOT).as_posix())
     _assert_no_offenders(
         offenders,
-        invariant="Pulse stage prompts avoid trading execution language",
+        invariant="Pulse prompts avoid trading execution language outside explicit forbidden-word guidance",
         reason="Signal Pulse is research and monitoring only; prompts must not ask for orders or position advice.",
         fix="Rewrite prompts to discuss observation, confidence, invalidation, and residual risk only.",
     )

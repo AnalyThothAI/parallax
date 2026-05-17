@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Literal
 
 PULSE_VERSION = "signal-pulse-v3-factor-snapshot"
-PULSE_DECISION_SCHEMA_VERSION = "pulse_decision_v2"
-PULSE_DECISION_PROMPT_VERSION = "pulse-decision-v1"
+PULSE_DECISION_SCHEMA_VERSION = "pulse-decision-v2"
+PULSE_DECISION_PROMPT_VERSION = "pulse-decision-prompt-v2"
 PULSE_GATE_VERSION = "pulse-factor-gate-v2-edge-state"
 PULSE_PLAYBOOK_VERSION = "shadow-playbook-v1"
 BACKEND = "openai_agents_sdk"

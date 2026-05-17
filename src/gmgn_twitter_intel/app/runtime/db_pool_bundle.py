@@ -25,6 +25,7 @@ class DBPoolBundle:
     api_pool: Any
     worker_pool: Any
     wake_pool: Any
+    tool_pool: Any | None = None
     telemetry: TelemetryRegistry | None = field(default_factory=TelemetryRegistry)
 
     @classmethod
@@ -50,6 +51,15 @@ class DBPoolBundle:
                 statement_timeout_seconds=_WORKER_STATEMENT_TIMEOUT_SECONDS,
                 idle_in_transaction_session_timeout_seconds=_WORKER_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS,
             )
+            tool_pool = create_pool(
+                dsn,
+                min_size=0,
+                max_size=3,
+                connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
+                application_name="gmgn_agent_tools",
+                statement_timeout_seconds=_API_STATEMENT_TIMEOUT_SECONDS,
+                read_only=True,
+            )
             wake_pool = create_pool(
                 dsn,
                 min_size=1,
@@ -63,7 +73,7 @@ class DBPoolBundle:
                 keepalives_count=_WAKE_KEEPALIVES_COUNT,
             )
         except Exception:
-            for pool in (locals().get("api_pool"), locals().get("worker_pool")):
+            for pool in (locals().get("api_pool"), locals().get("worker_pool"), locals().get("tool_pool")):
                 close = getattr(pool, "close", None)
                 if close:
                     close()
@@ -72,6 +82,7 @@ class DBPoolBundle:
             api_pool=api_pool,
             worker_pool=worker_pool,
             wake_pool=wake_pool,
+            tool_pool=tool_pool,
             telemetry=telemetry if telemetry is not None else TelemetryRegistry(),
         )
 

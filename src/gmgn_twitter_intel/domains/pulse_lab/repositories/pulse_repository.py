@@ -596,7 +596,6 @@ class PulseRepository:
         pulse_status: str,
         verdict: str,
         social_phase: str,
-        narrative_type: str,
         candidate_score: float,
         score_band: str,
         trigger_signature: str,
@@ -632,7 +631,7 @@ class PulseRepository:
             """
             INSERT INTO pulse_candidates(
               candidate_id, candidate_type, subject_key, target_type, target_id, symbol,
-              "window", scope, pulse_status, verdict, social_phase, narrative_type,
+              "window", scope, pulse_status, verdict, social_phase,
               candidate_score, score_band, trigger_signature, timeline_signature,
               factor_snapshot_json, gate_json, decision_route, decision_recommendation,
               decision_confidence, decision_abstain_reason, decision_stage_count, decision_json,
@@ -644,7 +643,7 @@ class PulseRepository:
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s
             )
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
@@ -657,7 +656,6 @@ class PulseRepository:
               pulse_status = excluded.pulse_status,
               verdict = excluded.verdict,
               social_phase = excluded.social_phase,
-              narrative_type = excluded.narrative_type,
               candidate_score = excluded.candidate_score,
               score_band = excluded.score_band,
               trigger_signature = excluded.trigger_signature,
@@ -695,7 +693,6 @@ class PulseRepository:
                 pulse_status,
                 verdict,
                 social_phase,
-                narrative_type,
                 float(candidate_score),
                 score_band,
                 trigger_signature,

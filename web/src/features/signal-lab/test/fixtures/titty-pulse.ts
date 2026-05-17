@@ -9,6 +9,51 @@ const evidenceIds = [
 ];
 
 const stages: SignalPulseStages = {
+  investigator: {
+    stage: "investigator",
+    route: "meme",
+    status: "ok",
+    model: "qwen3.6",
+    started_at_ms: 1778726642689 - 14702,
+    finished_at_ms: 1778726642689 - 6122,
+    latency_ms: 8580,
+    attempt_index: 0,
+    response: {
+      summary_zh:
+        "TITTY 在 1h 内呈现高社交热度爆发，cache100x 主导传播，市值约 $114K，流动性偏薄。",
+    },
+    error: null,
+  },
+  decision_maker: {
+    stage: "decision_maker",
+    route: "meme",
+    status: "ok",
+    model: "qwen3.6",
+    started_at_ms: 1778726642689 - 6122,
+    finished_at_ms: 1778726642689,
+    latency_ms: 6122,
+    attempt_index: 0,
+    response: {
+      route: "meme",
+      confidence: 0.35,
+      summary_zh:
+        "TITTY 社交热度强但流动性浅、营销集中、缺少定性催化数据；建议以 trade_candidate 路由，置信度被关键风险压低。",
+      abstain_reason: null,
+      recommendation: "trade_candidate",
+      residual_risks: ["thin liquidity", "marketing concentration", "unknown holder distribution"],
+      invalidation_conditions: [
+        "liquidity drops by more than 20%",
+        "social heat score falls below 50",
+      ],
+      evidence_event_ids: evidenceIds,
+    },
+    error: null,
+  },
+  research_only_gate: null,
+};
+
+// Legacy v1 stage fixture（老历史 run），用于占位卡渲染测试
+export const tittyLegacyStages: SignalPulseStages = {
   analyst: {
     stage: "analyst",
     route: "meme",
@@ -19,16 +64,8 @@ const stages: SignalPulseStages = {
     latency_ms: 3704,
     attempt_index: 0,
     response: {
-      route: "meme",
-      confidence: 0.82,
-      summary_zh:
-        "TITTY shows unusually high social heat and early meme-token speculation potential.",
+      summary_zh: "Analyst legacy summary placeholder.",
       recommendation: "trade_candidate",
-      evidence: [
-        "social heat score is 91 with an abnormal burst profile",
-        "three independent authors appeared inside the pulse window",
-        "market cap is near $114K with roughly $31K liquidity",
-      ],
     },
     error: null,
   },
@@ -41,21 +78,7 @@ const stages: SignalPulseStages = {
     finished_at_ms: 1778726642689 - 6122,
     latency_ms: 4876,
     attempt_index: 0,
-    response: {
-      route: "meme",
-      should_abstain: false,
-      confidence_ceiling: 0.45,
-      weaknesses: [
-        "propagation leans on cache100x, which posts 3 of 5 selected events",
-        "semantic catalyst coverage is missing",
-        "volume is far larger than market cap and may be churn",
-      ],
-      missing_fact_impacts: [
-        "liquidity depth is unknown",
-        "holder distribution is unknown",
-        "contract ownership status is unknown",
-      ],
-    },
+    response: { summary_zh: "Critic legacy summary placeholder." },
     error: null,
   },
   judge: {
@@ -67,20 +90,7 @@ const stages: SignalPulseStages = {
     finished_at_ms: 1778726642689,
     latency_ms: 6122,
     attempt_index: 0,
-    response: {
-      route: "meme",
-      confidence: 0.35,
-      summary_zh:
-        "TITTY has strong social heat but shallow liquidity, concentrated marketing, and missing qualitative catalyst data.",
-      abstain_reason: null,
-      recommendation: "trade_candidate",
-      residual_risks: ["thin liquidity", "marketing concentration", "unknown holder distribution"],
-      invalidation_conditions: [
-        "liquidity drops by more than 20%",
-        "social heat score falls below 50",
-      ],
-      evidence_event_ids: evidenceIds,
-    },
+    response: { summary_zh: "Judge legacy summary placeholder." },
     error: null,
   },
   research_only_gate: null,
@@ -98,7 +108,6 @@ export const tittyPulseFixture: SignalPulseItem = {
   pulse_status: "trade_candidate",
   verdict: "trade_candidate",
   social_phase: "ignition",
-  narrative_type: "direct_token",
   candidate_score: 82,
   score_band: "high_conviction",
   last_edge_events: ["pulse_status_changed"],

@@ -125,38 +125,32 @@ export type EvidenceView = {
   concentration: AuthorConcentrationBar;
   abstainCallout: string | null;
 };
-export type AnalystView = {
+export type InvestigatorView = {
   status: string;
-  latencyMs: number;
-  model: string;
-  recommendation: string;
-  confidence: number | null;
+  latencyMs: number | null;
   summary: string;
-  evidence: string[];
-} | null;
-export type CriticView = {
+};
+export type DecisionMakerView = {
   status: string;
-  latencyMs: number;
-  model: string;
-  shouldAbstain: boolean;
-  confidenceCeiling: number | null;
-  ceilingDeltaFromAnalyst: number | null;
-  weaknesses: string[];
-  missingFactImpacts: string[];
-} | null;
-export type JudgeView = {
-  status: string;
-  latencyMs: number;
-  model: string;
-  route: string;
-  recommendation: string;
-  confidence: number | null;
-  belowCeiling: boolean;
-  abstainReason: string | null;
+  latencyMs: number | null;
   summary: string;
-  residualRisks: string[];
-  invalidationConditions: string[];
-} | null;
+};
+export type LegacyStageView = {
+  stageName: "analyst" | "critic" | "judge";
+  status: string;
+  latencyMs: number | null;
+  summary: string;
+};
+export type StageRailItem =
+  | { kind: "investigator"; status: string; latencyMs: number | null; summary: string }
+  | { kind: "decision_maker"; status: string; latencyMs: number | null; summary: string }
+  | {
+      kind: "legacy";
+      stageName: "analyst" | "critic" | "judge";
+      status: string;
+      latencyMs: number | null;
+      summary: string;
+    };
 export type ResearchOnlyGateView = { status: string; abstainReason: string } | null;
 export type GateAgentMismatch = { gateLabel: string; agentLabel: string; note: string } | null;
 export type ReplayMeta = {
@@ -173,9 +167,8 @@ export type AgentRailView = {
   totalLatencyMs: number;
   model: string;
   mismatch: GateAgentMismatch;
-  analyst: AnalystView;
-  critic: CriticView;
-  judge: JudgeView;
+  railItems: StageRailItem[];
+  isLegacy: boolean;
   researchOnlyGate: ResearchOnlyGateView;
   replay: ReplayMeta;
 };
@@ -855,20 +848,68 @@ function buildConcentration(
 function buildAgent(item: SignalPulseItem): AgentRailView {
   const stages = item.stages ?? emptyStages();
   const kind = item.decision.route === "research_only" ? "research_only" : "stages";
-  const analyst = buildAnalyst(stages.analyst);
-  const critic = buildCritic(stages.critic, analyst);
-  const judge = buildJudge(stages.judge, critic);
+  const investigator = stages.investigator ?? null;
+  const decisionMaker = stages.decision_maker ?? null;
+  const hasV2 = Boolean(investigator || decisionMaker);
+  const legacyStages: Array<{ stageName: "analyst" | "critic" | "judge"; payload: SignalPulseStagePayload }> =
+    [];
+  if (!hasV2) {
+    if (stages.analyst) legacyStages.push({ stageName: "analyst", payload: stages.analyst });
+    if (stages.critic) legacyStages.push({ stageName: "critic", payload: stages.critic });
+    if (stages.judge) legacyStages.push({ stageName: "judge", payload: stages.judge });
+  }
+  const isLegacy = legacyStages.length > 0;
+
+  const railItems: StageRailItem[] = [];
+  if (kind !== "research_only") {
+    if (hasV2) {
+      if (investigator) {
+        railItems.push({
+          kind: "investigator",
+          status: investigator.status ?? "skipped",
+          latencyMs: investigator.latency_ms ?? null,
+          summary: stagePreviewSummary(investigator),
+        });
+      }
+      if (decisionMaker) {
+        railItems.push({
+          kind: "decision_maker",
+          status: decisionMaker.status ?? "skipped",
+          latencyMs: decisionMaker.latency_ms ?? null,
+          summary: stagePreviewSummary(decisionMaker),
+        });
+      }
+    } else if (isLegacy) {
+      for (const { stageName, payload } of legacyStages) {
+        railItems.push({
+          kind: "legacy",
+          stageName,
+          status: payload.status ?? "skipped",
+          latencyMs: payload.latency_ms ?? null,
+          summary: stagePreviewSummary(payload),
+        });
+      }
+    }
+  }
+
+  const totalLatencyMs =
+    (investigator?.latency_ms ?? 0) +
+    (decisionMaker?.latency_ms ?? 0) +
+    legacyStages.reduce((sum, entry) => sum + (entry.payload.latency_ms ?? 0), 0);
+  const model =
+    decisionMaker?.model ??
+    investigator?.model ??
+    legacyStages[legacyStages.length - 1]?.payload.model ??
+    legacyStages[0]?.payload.model ??
+    "-";
+
   return {
     kind,
-    totalLatencyMs:
-      (stages.analyst?.latency_ms ?? 0) +
-      (stages.critic?.latency_ms ?? 0) +
-      (stages.judge?.latency_ms ?? 0),
-    model: stages.judge?.model ?? stages.analyst?.model ?? "-",
+    totalLatencyMs,
+    model,
     mismatch: detectMismatch(item),
-    analyst: kind === "research_only" ? null : analyst,
-    critic: kind === "research_only" ? null : critic,
-    judge: kind === "research_only" ? null : judge,
+    railItems,
+    isLegacy,
     researchOnlyGate:
       kind === "research_only" && stages.research_only_gate
         ? {
@@ -891,62 +932,14 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
   };
 }
 
-function buildAnalyst(stage: SignalPulseStagePayload | null): AnalystView {
-  if (!stage) {
-    return null;
-  }
+function stagePreviewSummary(stage: SignalPulseStagePayload): string {
   const response = record(stage.response);
-  return {
-    status: stage.status ?? "skipped",
-    latencyMs: stage.latency_ms ?? 0,
-    model: stage.model ?? "-",
-    recommendation: stringValue(response.recommendation) ?? "-",
-    confidence: numOrNull(response.confidence),
-    summary: stringValue(response.summary_zh) ?? "",
-    evidence: stringList(response.evidence),
-  };
-}
-
-function buildCritic(stage: SignalPulseStagePayload | null, analyst: AnalystView): CriticView {
-  if (!stage) {
-    return null;
-  }
-  const response = record(stage.response);
-  const ceiling = numOrNull(response.confidence_ceiling);
-  const analystConfidence = analyst?.confidence ?? null;
-  return {
-    status: stage.status ?? "skipped",
-    latencyMs: stage.latency_ms ?? 0,
-    model: stage.model ?? "-",
-    shouldAbstain: Boolean(response.should_abstain),
-    confidenceCeiling: ceiling,
-    ceilingDeltaFromAnalyst:
-      ceiling != null && analystConfidence != null ? ceiling - analystConfidence : null,
-    weaknesses: stringList(response.weaknesses),
-    missingFactImpacts: stringList(response.missing_fact_impacts),
-  };
-}
-
-function buildJudge(stage: SignalPulseStagePayload | null, critic: CriticView): JudgeView {
-  if (!stage) {
-    return null;
-  }
-  const response = record(stage.response);
-  const confidence = numOrNull(response.confidence);
-  const ceiling = critic?.confidenceCeiling ?? null;
-  return {
-    status: stage.status ?? "skipped",
-    latencyMs: stage.latency_ms ?? 0,
-    model: stage.model ?? "-",
-    route: stringValue(response.route) ?? "-",
-    recommendation: stringValue(response.recommendation) ?? "-",
-    confidence,
-    belowCeiling: confidence != null && ceiling != null && confidence <= ceiling,
-    abstainReason: stringValue(response.abstain_reason),
-    summary: stringValue(response.summary_zh) ?? "",
-    residualRisks: stringList(response.residual_risks),
-    invalidationConditions: stringList(response.invalidation_conditions),
-  };
+  const summary =
+    stringValue(response.summary_zh) ??
+    stringValue(response.summary) ??
+    stringValue(response.recommendation) ??
+    stringValue(stage.error);
+  return summary ?? "—";
 }
 
 function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
@@ -1046,7 +1039,14 @@ function authorRunIndex(
 }
 
 function emptyStages(): SignalPulseStages {
-  return { analyst: null, critic: null, judge: null, research_only_gate: null };
+  return {
+    investigator: null,
+    decision_maker: null,
+    research_only_gate: null,
+    analyst: null,
+    critic: null,
+    judge: null,
+  };
 }
 
 function formatConfidence(value: number | null | undefined): string {
@@ -1095,12 +1095,6 @@ function numOrNull(value: unknown): number | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.length ? value : null;
-}
-
-function stringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-    : [];
 }
 
 function record(value: unknown): Record<string, unknown> {

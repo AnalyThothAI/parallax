@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { AgentRailView, AnalystView, CriticView, JudgeView } from "../../model/pulseDetail";
+import type { AgentRailView, StageRailItem } from "../../model/pulseDetail";
 
 import styles from "./PulseAgentRail.module.css";
 
@@ -16,6 +16,11 @@ export function PulseAgentRail({ agent }: Props) {
         <p>
           {agent.model} · 总耗时 {formatSeconds(agent.totalLatencyMs)}
         </p>
+        {agent.isLegacy ? (
+          <p className={styles.legacyNotice} data-testid="legacy-stage-notice">
+            此运行为旧版三阶段（analyst/critic/judge）数据，仅展示占位卡
+          </p>
+        ) : null}
       </header>
       {agent.mismatch ? (
         <section className={styles.mismatch}>
@@ -31,19 +36,16 @@ export function PulseAgentRail({ agent }: Props) {
           subtitle="确定性"
           status={agent.researchOnlyGate?.status ?? "skipped"}
         >
-          <Metric label="弃判原因" value={agent.researchOnlyGate?.abstainReason || "（未设置）"} />
+          <Metric label="弃判原因" value={agent.researchOnlyGate?.abstainReason || "—"} />
         </StageCard>
       ) : (
         <>
-          <StageCard title="阶段 1 · 分析" tone="info" status={agent.analyst?.status ?? "skipped"}>
-            <AnalystBody analyst={agent.analyst} />
-          </StageCard>
-          <StageCard title="阶段 2 · 评审" tone="warn" status={agent.critic?.status ?? "skipped"}>
-            <CriticBody critic={agent.critic} />
-          </StageCard>
-          <StageCard title="阶段 3 · 终裁" tone="agent" status={agent.judge?.status ?? "skipped"}>
-            <JudgeBody judge={agent.judge} />
-          </StageCard>
+          {agent.railItems.map((item, index) => (
+            <RailEntry key={railKey(item, index)} item={item} />
+          ))}
+          {agent.railItems.length === 0 ? (
+            <p className={styles.skipped}>（暂无 stage 数据）</p>
+          ) : null}
         </>
       )}
       <details className={styles.replay}>
@@ -61,95 +63,56 @@ export function PulseAgentRail({ agent }: Props) {
   );
 }
 
-function AnalystBody({ analyst }: { analyst: AnalystView }) {
-  if (!analyst) {
-    return <p className={styles.skipped}>（阶段被跳过或不可用）</p>;
+function RailEntry({ item }: { item: StageRailItem }) {
+  if (item.kind === "investigator") {
+    return (
+      <StageCard title="阶段 1 · 调研" tone="info" status={item.status}>
+        <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
+      </StageCard>
+    );
   }
+  if (item.kind === "decision_maker") {
+    return (
+      <StageCard title="阶段 2 · 决策" tone="agent" status={item.status}>
+        <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
+      </StageCard>
+    );
+  }
+  return (
+    <StageCard
+      title={`Legacy · ${item.stageName}`}
+      tone="neutral"
+      status={item.status}
+      subtitle="历史 v1 数据"
+    >
+      <LegacyBody summary={item.summary} latencyMs={item.latencyMs} />
+    </StageCard>
+  );
+}
+
+function railKey(item: StageRailItem, index: number): string {
+  if (item.kind === "legacy") return `legacy-${item.stageName}-${index}`;
+  return `${item.kind}-${index}`;
+}
+
+function SimpleBody({ summary, latencyMs }: { summary: string; latencyMs: number | null }) {
   return (
     <>
       <div className={styles.kpis}>
-        <Metric label="建议" value={analyst.recommendation} />
-        <Metric label="置信度" value={formatConf(analyst.confidence)} tone="info" />
+        <Metric label="耗时" value={formatLatency(latencyMs)} tone="info" />
       </div>
-      <p>{analyst.summary || "（无摘要）"}</p>
-      <BulletGroup
-        label={`论据 (${analyst.evidence.length})`}
-        items={analyst.evidence}
-        tone="neutral"
-      />
+      <p>{summary || "—"}</p>
     </>
   );
 }
 
-function CriticBody({ critic }: { critic: CriticView }) {
-  if (!critic) {
-    return <p className={styles.skipped}>（阶段被跳过或不可用）</p>;
-  }
+function LegacyBody({ summary, latencyMs }: { summary: string; latencyMs: number | null }) {
   return (
     <>
       <div className={styles.kpis}>
-        <Metric
-          label="是否弃判"
-          value={critic.shouldAbstain ? "是" : "否"}
-          tone={critic.shouldAbstain ? "risk" : "neutral"}
-        />
-        <Metric
-          label="置信度上限"
-          value={formatConf(critic.confidenceCeiling)}
-          delta={
-            critic.ceilingDeltaFromAnalyst != null
-              ? formatDelta(critic.ceilingDeltaFromAnalyst)
-              : null
-          }
-          tone="warn"
-        />
+        <Metric label="耗时" value={formatLatency(latencyMs)} tone="neutral" />
       </div>
-      <BulletGroup
-        label={`Critic 列出的弱点 (${critic.weaknesses.length})`}
-        items={critic.weaknesses}
-        tone="warn"
-      />
-      <BulletGroup
-        label={`缺数据影响 (${critic.missingFactImpacts.length})`}
-        items={critic.missingFactImpacts}
-        tone="risk"
-      />
-    </>
-  );
-}
-
-function JudgeBody({ judge }: { judge: JudgeView }) {
-  if (!judge) {
-    return <p className={styles.skipped}>（阶段被跳过或不可用）</p>;
-  }
-  return (
-    <>
-      <div className={styles.kpis}>
-        <Metric label="路由" value={judge.route} tone="info" />
-        <Metric label="建议" value={judge.recommendation} tone="agent" />
-        <Metric
-          label="置信度"
-          value={formatConf(judge.confidence)}
-          delta={judge.belowCeiling ? "低于 Critic 上限" : null}
-          tone="risk"
-        />
-        <Metric
-          label="弃判原因"
-          value={judge.abstainReason ?? "—"}
-          tone={judge.abstainReason ? "warn" : "neutral"}
-        />
-      </div>
-      <p>{judge.summary || "（无摘要）"}</p>
-      <BulletGroup
-        label={`残留风险 (${judge.residualRisks.length})`}
-        items={judge.residualRisks}
-        tone="risk"
-      />
-      <BulletGroup
-        label={`失效条件 (${judge.invalidationConditions.length})`}
-        items={judge.invalidationConditions}
-        tone="warn"
-      />
+      <p>{summary || "—"}</p>
     </>
   );
 }
@@ -182,12 +145,10 @@ function StageCard({
 }
 
 function Metric({
-  delta,
   label,
   tone = "neutral",
   value,
 }: {
-  delta?: string | null;
   label: string;
   tone?: "info" | "warn" | "risk" | "agent" | "neutral";
   value: string;
@@ -195,10 +156,7 @@ function Metric({
   return (
     <dl className={styles.metric} data-tone={tone}>
       <dt>{label}</dt>
-      <dd>
-        {value}
-        {delta ? <small> · {delta}</small> : null}
-      </dd>
+      <dd>{value}</dd>
     </dl>
   );
 }
@@ -212,38 +170,10 @@ function Meta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BulletGroup({
-  items,
-  label,
-  tone,
-}: {
-  items: string[];
-  label: string;
-  tone: "warn" | "risk" | "neutral";
-}) {
-  if (!items.length) {
-    return <p className={styles.empty}>{label} · （无条目）</p>;
-  }
-  return (
-    <section className={styles.bullets} data-tone={tone}>
-      <h4>{label}</h4>
-      <ul>
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function formatConf(value: number | null): string {
-  if (value === null) return "n/a";
-  return value.toFixed(2);
-}
-
-function formatDelta(value: number): string {
-  const sign = value > 0 ? "↑" : "↓";
-  return `${sign} ${Math.abs(value).toFixed(2)}`;
+function formatLatency(value: number | null): string {
+  if (value == null) return "—";
+  if (value < 1000) return `${value}ms`;
+  return `${(value / 1000).toFixed(1)}s`;
 }
 
 function formatSeconds(ms: number): string {

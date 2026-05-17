@@ -53,6 +53,7 @@ def create_pool(
     keepalives_idle: int | None = None,
     keepalives_interval: int | None = None,
     keepalives_count: int | None = None,
+    read_only: bool = False,
 ) -> ConnectionPool:
     dsn = local_docker_host_dsn(dsn)
     kwargs: dict[str, Any] = {
@@ -65,6 +66,7 @@ def create_pool(
     options = _postgres_runtime_options(
         statement_timeout_seconds=statement_timeout_seconds,
         idle_in_transaction_session_timeout_seconds=idle_in_transaction_session_timeout_seconds,
+        read_only=read_only,
     )
     if options:
         kwargs["options"] = options
@@ -89,6 +91,7 @@ def _postgres_runtime_options(
     *,
     statement_timeout_seconds: float | None,
     idle_in_transaction_session_timeout_seconds: float | None,
+    read_only: bool = False,
 ) -> str:
     options: list[str] = []
     if statement_timeout_seconds is not None:
@@ -97,6 +100,8 @@ def _postgres_runtime_options(
         options.append(
             f"-c idle_in_transaction_session_timeout={_seconds_to_ms(idle_in_transaction_session_timeout_seconds)}"
         )
+    if read_only:
+        options.append("-c default_transaction_read_only=on")
     return " ".join(options)
 
 

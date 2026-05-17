@@ -521,7 +521,6 @@ function pulseItem() {
     pulse_status: "trade_candidate",
     verdict: "trade_candidate",
     social_phase: "ignition",
-    narrative_type: "direct_token",
     candidate_score: 88,
     score_band: "trade",
     last_edge_events: ["pulse_status_changed"],
@@ -555,34 +554,19 @@ function pulseItem() {
       unique_authors: 3,
     },
     stages: {
-      analyst: {
-        stage: "analyst",
+      investigator: {
+        stage: "investigator",
         status: "ok",
         model: "gpt-5.2",
         attempt_index: 0,
-        latency_ms: 410,
+        latency_ms: 690,
         response: {
-          recommendation: "trade_candidate",
-          confidence: 0.82,
-          summary_zh: "Watched-account seed followed by public amplification.",
-          evidence: ["event-upeg-1", "event-upeg-2"],
+          summary_zh:
+            "Watched-account seed followed by public amplification on $BNB; market cap thin but liquidity adequate.",
         },
       },
-      critic: {
-        stage: "critic",
-        status: "ok",
-        model: "gpt-5.2",
-        attempt_index: 0,
-        latency_ms: 280,
-        response: {
-          confidence_ceiling: 0.74,
-          should_abstain: false,
-          weaknesses: ["Thin liquidity requires sizing discipline."],
-          missing_fact_impacts: [],
-        },
-      },
-      judge: {
-        stage: "judge",
+      decision_maker: {
+        stage: "decision_maker",
         status: "ok",
         model: "gpt-5.2",
         attempt_index: 0,

@@ -7,8 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 DecisionRoute = Literal["cex", "meme", "research_only"]
 DecisionRecommendation = Literal["high_conviction", "trade_candidate", "watchlist", "ignore", "abstain"]
-StageName = Literal["analyst", "critic", "judge", "research_only_gate"]
+StageName = Literal["investigator", "decision_maker", "research_only_gate"]
 StageStatus = Literal["ok", "failed", "timeout", "skipped"]
+
+BullBearStrength = Literal["absent", "weak", "moderate", "strong"]
+MonitoringHorizon = Literal["1h", "4h", "24h"]
 
 _FORBIDDEN_EXECUTION_RE = re.compile(
     r"买入|卖出|开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|"
@@ -19,62 +22,133 @@ _FORBIDDEN_EXECUTION_RE = re.compile(
 )
 
 
-class AnalystOpinion(BaseModel):
+class BullBearView(BaseModel):
+    """Symmetric bull-or-bear opinion attached to InvestigationReport / FinalDecision.
+
+    `strength="absent"` means the side is intentionally empty (no evidence at
+    all). All other strengths must carry a non-empty thesis and at least one
+    supporting event id so downstream UI cannot render a blank bullet.
+    """
+
     model_config = ConfigDict(extra="ignore")
 
-    route: DecisionRoute
-    recommendation: Literal["trade_candidate", "watchlist", "ignore"]
-    confidence: float = Field(ge=0, le=1)
-    summary_zh: str
-    evidence: list[str]
-
-    @field_validator("confidence", mode="after")
-    @classmethod
-    def _clamp_confidence(cls, value: float) -> float:
-        return max(0.0, min(1.0, float(value)))
-
-    @field_validator("summary_zh", mode="after")
-    @classmethod
-    def _strip_summary(cls, value: str) -> str:
-        return _clean_text(value)
+    strength: BullBearStrength
+    thesis_zh: str = ""
+    supporting_event_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _reject_execution_language(self) -> AnalystOpinion:
+    def _absent_must_be_empty(self) -> BullBearView:
+        if self.strength == "absent":
+            if _clean_text(self.thesis_zh):
+                raise ValueError("strength=absent requires empty thesis_zh")
+            if self.supporting_event_ids:
+                raise ValueError("strength=absent requires empty supporting_event_ids")
+        else:
+            if not _clean_text(self.thesis_zh):
+                raise ValueError("strength != absent requires non-empty thesis_zh")
+            if not self.supporting_event_ids:
+                raise ValueError("strength != absent requires at least one supporting_event_id")
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
 
-class CritiqueReport(BaseModel):
+class TradePlaybook(BaseModel):
+    """Simplified v2 playbook: no sizing, no target price, no execution levels.
+
+    `has_playbook=False` reserves the consistent shape for abstain / ignore
+    surfaces; when False both watch_signals and exit_triggers must be empty
+    so SurfaceCard rendering can degrade deterministically.
+    """
+
     model_config = ConfigDict(extra="ignore")
 
-    route: DecisionRoute
-    weaknesses: list[str]
-    missing_fact_impacts: list[str]
-    confidence_ceiling: float = Field(ge=0, le=1)
-    should_abstain: bool
-
-    @field_validator("confidence_ceiling", mode="after")
-    @classmethod
-    def _clamp_ceiling(cls, value: float) -> float:
-        return max(0.0, min(1.0, float(value)))
+    has_playbook: bool
+    watch_signals: list[str] = Field(default_factory=list)
+    exit_triggers: list[str] = Field(default_factory=list)
+    monitoring_horizon: MonitoringHorizon
 
     @model_validator(mode="after")
-    def _reject_execution_language(self) -> CritiqueReport:
+    def _consistency(self) -> TradePlaybook:
+        if self.has_playbook is False and (self.watch_signals or self.exit_triggers):
+            raise ValueError(
+                "has_playbook=false requires empty watch_signals and exit_triggers",
+            )
+        _reject_execution_language(self.model_dump(mode="json"))
+        return self
+
+
+class InvestigationReport(BaseModel):
+    """Phase-1 Investigator stage output.
+
+    `narrative_archetype_candidate` is free-text in phase 1 (≤ 20 chars). Phase
+    2 may tighten to a Literal enum. `narrative_observation_zh` is the
+    investigator's compact prose summary (30-300 chars). No markdown_report,
+    no tool_call_summary — tool metadata lives in
+    `pulse_agent_run_steps.input_json.tool_calls` (worker-side, P1-1).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    narrative_archetype_candidate: str = ""
+    narrative_observation_zh: str
+    bull_observation: BullBearView
+    bear_observation: BullBearView
+    data_gaps: list[str] = Field(default_factory=list)
+
+    @field_validator("narrative_archetype_candidate", mode="after")
+    @classmethod
+    def _archetype_len(cls, value: str) -> str:
+        cleaned = _clean_text(value)
+        if len(cleaned) > 20:
+            raise ValueError("narrative_archetype_candidate exceeds 20 chars")
+        return cleaned
+
+    @field_validator("narrative_observation_zh", mode="after")
+    @classmethod
+    def _observation_len(cls, value: str) -> str:
+        cleaned = _clean_text(value)
+        if not (30 <= len(cleaned) <= 300):
+            raise ValueError("narrative_observation_zh must be 30-300 chars")
+        return cleaned
+
+    @model_validator(mode="after")
+    def _archetype_observation_consistency(self) -> InvestigationReport:
+        archetype_present = bool(self.narrative_archetype_candidate.strip())
+        bull_present = self.bull_observation.strength != "absent"
+        bear_present = self.bear_observation.strength != "absent"
+        if archetype_present and not (bull_present or bear_present):
+            raise ValueError(
+                "non-empty archetype requires at least one non-absent observation",
+            )
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
 
 class FinalDecision(BaseModel):
+    """v2 strict schema: extends v1 with narrative + bull/bear + playbook.
+
+    `abstain_reason` defaults to None so abstain validation runs in the model
+    validator (v1 had it required at schema level). All v2-specific hard
+    constraints live in `_validate_decision` so a single failure surfaces a
+    descriptive message.
+    """
+
     model_config = ConfigDict(extra="ignore")
 
     route: DecisionRoute
     recommendation: DecisionRecommendation
     confidence: float = Field(ge=0, le=1)
-    abstain_reason: str | None
+    abstain_reason: str | None = None
     summary_zh: str
-    invalidation_conditions: list[str]
-    residual_risks: list[str]
-    evidence_event_ids: list[str]
+    narrative_archetype: str = ""
+    narrative_thesis_zh: str
+    bull_view: BullBearView
+    bear_view: BullBearView
+    playbook: TradePlaybook
+    evidence_event_urls: dict[str, str] = Field(default_factory=dict)
+    invalidation_conditions: list[str] = Field(default_factory=list)
+    residual_risks: list[str] = Field(default_factory=list)
+    evidence_event_ids: list[str] = Field(default_factory=list)
 
     @field_validator("confidence", mode="after")
     @classmethod
@@ -85,6 +159,22 @@ class FinalDecision(BaseModel):
     @classmethod
     def _strip_summary(cls, value: str) -> str:
         return _clean_text(value)
+
+    @field_validator("narrative_thesis_zh", mode="after")
+    @classmethod
+    def _strip_narrative(cls, value: str) -> str:
+        cleaned = _clean_text(value)
+        if not (30 <= len(cleaned) <= 300):
+            raise ValueError("narrative_thesis_zh must be 30-300 chars")
+        return cleaned
+
+    @field_validator("narrative_archetype", mode="after")
+    @classmethod
+    def _archetype_len(cls, value: str) -> str:
+        cleaned = _clean_text(value)
+        if len(cleaned) > 20:
+            raise ValueError("narrative_archetype exceeds 20 chars")
+        return cleaned
 
     @field_validator("evidence_event_ids", mode="after")
     @classmethod
@@ -100,10 +190,23 @@ class FinalDecision(BaseModel):
 
     @model_validator(mode="after")
     def _validate_decision(self) -> FinalDecision:
-        if self.recommendation == "abstain" and not _clean_text(self.abstain_reason or ""):
-            raise ValueError("abstain_reason is required when recommendation is abstain")
-        if self.recommendation != "abstain" and not (self.evidence_event_ids or self.residual_risks):
+        if self.recommendation == "abstain":
+            if not _clean_text(self.abstain_reason or ""):
+                raise ValueError("abstain_reason is required when recommendation is abstain")
+            if self.playbook.has_playbook:
+                raise ValueError("recommendation=abstain requires playbook.has_playbook=false")
+        elif not (self.evidence_event_ids or self.residual_risks):
             raise ValueError("non-abstain decisions require evidence_event_ids or residual_risks")
+        if self.recommendation == "high_conviction":
+            if self.bull_view.strength not in ("moderate", "strong"):
+                raise ValueError("high_conviction requires bull_view.strength >= moderate")
+            if self.bear_view.strength not in ("moderate", "strong"):
+                raise ValueError("high_conviction requires bear_view.strength >= moderate")
+            if len(self.evidence_event_ids) < 3:
+                raise ValueError("high_conviction requires evidence_event_ids >= 3")
+            archetype_clean = self.narrative_archetype.strip()
+            if not archetype_clean or archetype_clean.lower() == "unclear":
+                raise ValueError("high_conviction requires non-empty narrative_archetype")
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
@@ -177,15 +280,18 @@ def _reject_execution_language(value: Any) -> None:
 
 
 __all__ = [
-    "AnalystOpinion",
-    "CritiqueReport",
+    "BullBearStrength",
+    "BullBearView",
     "DecisionRecommendation",
     "DecisionRoute",
     "FinalDecision",
+    "InvestigationReport",
+    "MonitoringHorizon",
     "PulseDecisionPayload",
     "PulseStageFailure",
     "StageName",
     "StageRunAudit",
     "StageStatus",
+    "TradePlaybook",
     "contains_trading_execution_instruction",
 ]

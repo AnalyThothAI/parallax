@@ -47,6 +47,7 @@ class FakeDB:
     def __init__(self) -> None:
         self.api_pool = FakePool()
         self.worker_pool = FakePool()
+        self.tool_pool = FakePool()
         self.wake_pool = FakePool()
 
     @contextmanager
@@ -166,7 +167,7 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_clien
     monkeypatch.setattr(
         bootstrap_module,
         "wire_providers",
-        lambda settings, *, start_collector, llm_gateway=None: fake_wired_providers(
+        lambda settings, *, start_collector, llm_gateway=None, db_pool=None: fake_wired_providers(
             settings,
             start_collector=start_collector,
             llm_gateway=llm_gateway,
@@ -334,6 +335,7 @@ def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, t
     assert async_provider.closed == 1
     assert db.api_pool.closed is True
     assert db.worker_pool.closed is True
+    assert db.tool_pool.closed is True
     assert db.wake_pool.closed is True
 
 

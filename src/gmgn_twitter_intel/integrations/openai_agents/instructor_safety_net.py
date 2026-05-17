@@ -148,13 +148,20 @@ class InstructorSafetyNet:
         input_payload: Any,
         run_config: RunConfig | None = None,
         pydantic_output_type: type[BaseModel] | None = None,
+        context: Any = None,
+        max_turns: int = 1,
     ) -> tuple[Any, dict[str, Any]]:
+        run_kwargs: dict[str, Any] = {
+            "run_config": run_config,
+            "max_turns": int(max_turns) if max_turns and int(max_turns) >= 1 else 1,
+        }
+        if context is not None:
+            run_kwargs["context"] = context
         try:
             result = await Runner.run(
                 agent,
                 input_payload,
-                run_config=run_config,
-                max_turns=1,
+                **run_kwargs,
             )
             return result.final_output, {
                 "safety_net_used": False,

@@ -188,10 +188,14 @@ class SignalPulseStagePayload(ApiSchema):
 
 
 class SignalPulseStages(ApiSchema):
+    investigator: SignalPulseStagePayload | None = None
+    decision_maker: SignalPulseStagePayload | None = None
+    research_only_gate: SignalPulseStagePayload | None = None
+    # Legacy v1 stage rows stay visible so the frontend can render placeholder
+    # audit cards for historical runs without parsing old response_json shapes.
     analyst: SignalPulseStagePayload | None = None
     critic: SignalPulseStagePayload | None = None
     judge: SignalPulseStagePayload | None = None
-    research_only_gate: SignalPulseStagePayload | None = None
 
 
 class SignalPulseItem(ApiSchema):

@@ -62,11 +62,15 @@ MCP / FastMCP is optional control / query infrastructure only. `/ws` is the prod
 ## Pulse Agent Audit Ledger
 
 Signal Pulse agent decisions must be replayable from PostgreSQL. Every worker
-run writes `pulse_agent_runs`; every Analyst / Critic / Judge stage, plus
-research-only short-circuits, writes `pulse_agent_run_steps`.
-`pulse_agent_run_steps.prompt_text` is operational audit data and must never
-include secrets, cookies, auth headers, raw `.env` values, or private provider
-credentials. Rows with insufficient data finish as abstain decisions instead of
+run writes `pulse_agent_runs`; every stage writes one
+`pulse_agent_run_steps` row. The runtime stage enum is now
+`investigator | decision_maker | research_only_gate` (plan 2026-05-16
+hard cut; the prior `analyst / critic / judge` stages are no longer
+accepted by the schema CHECK constraint and exist only in historical
+rows). `pulse_agent_run_steps.prompt_text` is operational audit data
+and must never include secrets, cookies, auth headers, raw `.env`
+values, or private provider credentials. Rows with insufficient data
+finish as abstain decisions written via `research_only_gate` instead of
 inventing confidence or a display status.
 
 ## Market tick capture lanes

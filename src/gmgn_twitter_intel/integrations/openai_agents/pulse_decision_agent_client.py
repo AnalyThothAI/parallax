@@ -17,6 +17,7 @@ from agents import (
     ModelSettings,
     RunConfig,
     Runner,
+    ToolCallItem,
     retry_policies,
 )
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
@@ -26,12 +27,19 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_DECISION_PROMPT_VERSION,
     PULSE_DECISION_SCHEMA_VERSION,
 )
+from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import (
+    fetch_evidence_event_urls,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import pulse_harness_hash
+from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
+    load_decision_maker_prompt,
+    load_investigator_prompt,
+)
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
-    AnalystOpinion,
-    CritiqueReport,
+    BullBearView,
     DecisionRoute,
     FinalDecision,
+    InvestigationReport,
     PulseDecisionPayload,
     PulseStageFailure,
     StageName,
@@ -42,10 +50,17 @@ from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import 
     InstructorSafetyNet,
     SafetyNetExhausted,
 )
-from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
+from gmgn_twitter_intel.integrations.openai_agents.tools import (
+    PulseToolContext,
+    get_official_token_profile,
+    get_target_price_action,
+    get_target_recent_tweets,
+)
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
-AGENT_NAME = "PulseDecisionPipeline"
+AGENT_NAME = "PulseDecisionDesk"
+
+_DEFAULT_INVESTIGATOR_BUDGETS: dict[str, int] = {"cex": 3, "meme": 5, "research_only": 3}
 
 
 @dataclass(frozen=True)
@@ -63,17 +78,38 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
     - jsonref flattens any $ref/$defs to avoid llama.cpp #21228 silent fail-open
       (server fingerprint b8779 silently falls back to free-form text when the
       grammar conversion hits an unresolved $ref).
+    - Dict-typed fields (``evidence_event_urls: dict[str, str]``) would
+      otherwise emit ``additionalProperties: {"type": "string"}`` which the
+      SDK strict validator rejects. We pre-coerce those to
+      ``additionalProperties: false`` *before* handing the type to
+      ``AgentOutputSchema`` so the LLM is told not to invent extra keys.
+      ``FinalDecision.evidence_event_urls`` is worker-filled post-LLM, so
+      stripping it from the model-side schema is the right semantics anyway.
     - validate_json keeps tolerant extraction for occasional prose-before-json
       stray output.
     """
 
     def __init__(self, output_type: type[Any]) -> None:
         self._output_type = output_type
-        self._schema = AgentOutputSchema(output_type, strict_json_schema=True)
+        # Use the non-strict AgentOutputSchema first to obtain the raw Pydantic
+        # JSON schema, then walk + clean before re-wrapping. We synthesise a
+        # ``is_strict_json_schema()`` -> True so the SDK still emits
+        # ``response_format.strict=true`` on the wire.
+        self._schema = AgentOutputSchema(output_type, strict_json_schema=False)
         raw = self._schema.json_schema()
+        cleaned = _coerce_dict_additional_properties_to_false(raw)
         # proxies=False / lazy_load=False produces a plain dict; otherwise json.dumps
-        # raises when it hits the jsonref proxy objects.
-        self._flat = jsonref.replace_refs(raw, proxies=False, lazy_load=False)
+        # raises when it hits the jsonref proxy objects. jsonref leaves the
+        # ``$defs`` block in place after replacement, so drop it explicitly —
+        # llama.cpp grammar conversion (issue #21228) silently fails open if
+        # any $ref or $defs slips through.
+        replaced = jsonref.replace_refs(cleaned, proxies=False, lazy_load=False)
+        flattened = _strip_defs(replaced)
+        # Strict-mode requires every object property be required + no extra
+        # keys. Apply that recursively so the wire payload mirrors the
+        # legacy ``ensure_strict_json_schema`` shape (minus the dict-typed
+        # additionalProperties rejection that broke FinalDecision).
+        self._flat = _force_strict_object_shape(flattened)
 
     @property
     def output_type(self) -> type[Any]:
@@ -101,6 +137,27 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
 
 
 class OpenAIAgentsPulseDecisionClient:
+    """Two-stage Investigator → DecisionMaker pulse decision client.
+
+    Stage 1 (Investigator): multi-turn Agent run with 3 investigator tools
+    (`get_target_recent_tweets`, `get_target_price_action`,
+    `get_official_token_profile`); produces an :class:`InvestigationReport`.
+    Each tool call increments ``PulseToolContext.tool_calls_count`` and the
+    SDK raises :class:`ToolBudgetExceeded` once
+    ``investigator_max_tool_calls`` (per-route) is hit; the worker treats that
+    as a stage failure.
+
+    Stage 2 (DecisionMaker): single-turn Agent run, optionally exposing the
+    tweets tool as a fallback when ``decision_maker_enable_fallback_tool`` is
+    True (OQ-2); produces a :class:`FinalDecision`.
+
+    The provider Protocol contract (``run_decision_pipeline`` / ``request_audit``
+    signatures) is unchanged from the previous Analyst/Critic/Judge pipeline so
+    wiring + read-models keep compiling. The harness manifest carries
+    ``stages: ["investigator", "decision_maker"]`` which bumps
+    ``harness_hash`` and isolates v2 eval cases from v1.
+    """
+
     provider = "openai"
 
     def __init__(
@@ -109,6 +166,7 @@ class OpenAIAgentsPulseDecisionClient:
         api_key: str,
         model: str,
         llm_gateway: Any,
+        db_pool: Any,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
         runner: Any | None = None,
@@ -116,6 +174,10 @@ class OpenAIAgentsPulseDecisionClient:
         trace_enabled: bool = True,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
+        investigator_max_tool_calls_by_route: dict[str, int] | None = None,
+        decision_maker_enable_fallback_tool: bool = True,
+        decision_maker_max_turns: int = 3,
+        investigator_max_turns: int = 5,
     ) -> None:
         self.api_key = api_key
         self.model = str(model or "").strip()
@@ -123,7 +185,10 @@ class OpenAIAgentsPulseDecisionClient:
             raise ValueError("llm.pulse_agent_model or llm.model is required")
         if llm_gateway is None:
             raise ValueError("llm_gateway is required")
+        if db_pool is None:
+            raise ValueError("db_pool is required for Investigator tools")
         self._llm_gateway = llm_gateway
+        self._db_pool = db_pool
         self.base_url = _api_base(base_url)
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
@@ -132,6 +197,12 @@ class OpenAIAgentsPulseDecisionClient:
         self._runner = runner or Runner
         self._safety_net = safety_net
         self._model = None if runner is not None else self._build_model()
+        self._investigator_max_tool_calls_by_route = dict(
+            investigator_max_tool_calls_by_route or _DEFAULT_INVESTIGATOR_BUDGETS
+        )
+        self._decision_maker_enable_fallback_tool = bool(decision_maker_enable_fallback_tool)
+        self._decision_maker_max_turns = max(1, int(decision_maker_max_turns))
+        self._investigator_max_turns = max(1, int(investigator_max_turns))
 
     @property
     def artifact_version_hash(self) -> str:
@@ -174,114 +245,175 @@ class OpenAIAgentsPulseDecisionClient:
             completeness=completeness,
             harness=harness,
         )
-        stage_audits: list[StageRunAudit] = []
-        analyst = await self._run_stage(
-            stage="analyst",
-            route=route,
-            output_type=AnalystOpinion,
-            input_json={"route": route, "context": context, "completeness": completeness},
-            run_id=run_id,
-            audit=audit,
+        tool_budget = int(
+            self._investigator_max_tool_calls_by_route.get(str(route), _DEFAULT_INVESTIGATOR_BUDGETS.get(str(route), 3))
         )
-        stage_audits.append(analyst)
-        if analyst.status != "ok":
-            raise PulseStageFailure(
-                f"analyst stage {analyst.status}: {analyst.error}",
-                audits=tuple(stage_audits),
-            )
-        analyst_output = AnalystOpinion.model_validate(analyst.response_json)
-        critic = await self._run_stage(
-            stage="critic",
-            route=route,
-            output_type=CritiqueReport,
-            input_json={
-                "route": route,
-                "context": context,
-                "completeness": completeness,
-                "analyst": analyst_output.model_dump(mode="json"),
-            },
-            run_id=run_id,
-            audit=audit,
+        tool_ctx = PulseToolContext(
+            db_pool=self._db_pool,
+            tool_calls_count=0,
+            investigator_max_tool_calls=tool_budget,
+            contributed_event_ids=set(),
         )
-        stage_audits.append(critic)
-        if critic.status != "ok":
-            raise PulseStageFailure(
-                f"critic stage {critic.status}: {critic.error}",
-                audits=tuple(stage_audits),
-            )
-        critic_output = CritiqueReport.model_validate(critic.response_json)
-        if critic_output.should_abstain:
-            final = FinalDecision(
-                route=route,
-                recommendation="abstain",
-                confidence=critic_output.confidence_ceiling,
-                abstain_reason="critic_veto",
-                summary_zh=analyst_output.summary_zh,
-                invalidation_conditions=list(critic_output.missing_fact_impacts),
-                residual_risks=list(critic_output.weaknesses),
-                evidence_event_ids=[],
-            )
-            PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
-            return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
 
-        judge = await self._run_stage(
-            stage="judge",
+        # Stage 1: Investigator (multi-turn, with tools).
+        investigator_step = await self._run_investigator(
             route=route,
-            output_type=FinalDecision,
-            input_json={
-                "route": route,
-                "context": context,
-                "completeness": completeness,
-                "analyst": analyst_output.model_dump(mode="json"),
-                "critic": critic_output.model_dump(mode="json"),
-            },
+            context=context,
+            completeness=completeness,
             run_id=run_id,
             audit=audit,
+            tool_ctx=tool_ctx,
         )
-        stage_audits.append(judge)
-        if judge.status != "ok":
+        stage_audits: list[StageRunAudit] = [investigator_step]
+        if investigator_step.status != "ok":
             raise PulseStageFailure(
-                f"judge stage {judge.status}: {judge.error}",
+                f"investigator stage {investigator_step.status}: {investigator_step.error}",
                 audits=tuple(stage_audits),
             )
-        final = FinalDecision.model_validate(judge.response_json)
-        if final.confidence > critic_output.confidence_ceiling:
-            final = final.model_copy(update={"confidence": critic_output.confidence_ceiling})
+        investigation = InvestigationReport.model_validate(investigator_step.response_json)
+
+        # Hallucination guard: bull/bear supporting_event_ids must come from
+        # tool contributions or upstream context evidence.
+        try:
+            self._validate_supporting_ids(investigation, tool_ctx=tool_ctx, context=context)
+        except ValueError as exc:
+            failed_step = _mark_step_failed(investigator_step, error=str(exc))
+            stage_audits[-1] = failed_step
+            raise PulseStageFailure(
+                f"investigator stage failed: {exc}",
+                audits=tuple(stage_audits),
+            ) from exc
+
+        # Stage 2: DecisionMaker (single/few turn, optional fallback tool).
+        decision_step = await self._run_decision_maker(
+            route=route,
+            context=context,
+            completeness=completeness,
+            investigation=investigation,
+            run_id=run_id,
+            audit=audit,
+            tool_ctx=tool_ctx,
+        )
+        stage_audits.append(decision_step)
+        if decision_step.status != "ok":
+            raise PulseStageFailure(
+                f"decision_maker stage {decision_step.status}: {decision_step.error}",
+                audits=tuple(stage_audits),
+            )
+        final = FinalDecision.model_validate(decision_step.response_json)
+
+        # Evidence URL enrichment (best-effort JOIN against events).
+        final = await self._enrich_evidence_urls(final)
+
         PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
         audit = {**audit, "output_hash": _sha256(final.model_dump(mode="json"))}
-        return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
+        return PulseDecisionAgentResult(
+            final_decision=final,
+            run_audit=audit,
+            stage_audits=tuple(stage_audits),
+        )
+
+    async def _run_investigator(
+        self,
+        *,
+        route: DecisionRoute,
+        context: dict[str, Any],
+        completeness: dict[str, Any],
+        run_id: str,
+        audit: dict[str, Any],
+        tool_ctx: PulseToolContext,
+    ) -> StageRunAudit:
+        prompt = load_investigator_prompt(route)
+        agent = Agent[PulseToolContext](
+            name=f"PulseInvestigator{_route_label(route)}",
+            instructions=prompt,
+            output_type=_JsonOutputSchema(InvestigationReport),
+            tools=[
+                get_target_recent_tweets,
+                get_target_price_action,
+                get_official_token_profile,
+            ],
+            model=self._model,
+            model_settings=_model_settings(),
+        )
+        input_payload = {"route": route, "context": context, "completeness": completeness}
+        return await self._run_stage(
+            stage="investigator",
+            route=route,
+            agent=agent,
+            output_type=InvestigationReport,
+            input_payload=input_payload,
+            prompt=prompt,
+            audit=audit,
+            tool_ctx=tool_ctx,
+            max_turns=self._investigator_max_turns,
+        )
+
+    async def _run_decision_maker(
+        self,
+        *,
+        route: DecisionRoute,
+        context: dict[str, Any],
+        completeness: dict[str, Any],
+        investigation: InvestigationReport,
+        run_id: str,
+        audit: dict[str, Any],
+        tool_ctx: PulseToolContext,
+    ) -> StageRunAudit:
+        prompt = load_decision_maker_prompt(route)
+        tools = [get_target_recent_tweets] if self._decision_maker_enable_fallback_tool else []
+        agent = Agent[PulseToolContext](
+            name=f"PulseDecisionMaker{_route_label(route)}",
+            instructions=prompt,
+            output_type=_JsonOutputSchema(FinalDecision),
+            tools=tools,
+            model=self._model,
+            model_settings=_model_settings(),
+        )
+        input_payload = {
+            "route": route,
+            "context": context,
+            "completeness": completeness,
+            "investigation": investigation.model_dump(mode="json"),
+        }
+        return await self._run_stage(
+            stage="decision_maker",
+            route=route,
+            agent=agent,
+            output_type=FinalDecision,
+            input_payload=input_payload,
+            prompt=prompt,
+            audit=audit,
+            tool_ctx=tool_ctx,
+            max_turns=self._decision_maker_max_turns,
+        )
 
     async def _run_stage(
         self,
         *,
         stage: StageName,
         route: DecisionRoute,
+        agent: Agent[PulseToolContext],
         output_type: type[Any],
-        input_json: dict[str, Any],
-        run_id: str,
+        input_payload: dict[str, Any],
+        prompt: str,
         audit: dict[str, Any],
+        tool_ctx: PulseToolContext,
+        max_turns: int,
     ) -> StageRunAudit:
-        prompt = pulse_stage_prompt(route=route, stage=stage, output_type=output_type)
-        agent = Agent(
-            name=_stage_agent_name(route=route, stage=stage),
-            instructions=prompt,
-            output_type=_JsonOutputSchema(output_type),
-            tools=[],
-            model=self._model,
-            model_settings=_model_settings(),
-        )
-        stage_input = json.dumps(input_json, ensure_ascii=False, sort_keys=True)
+        stage_input = json.dumps(input_payload, ensure_ascii=False, sort_keys=True)
         base_trace_metadata = {**audit["trace_metadata"], "stage": stage, "route": route}
         run_config = RunConfig(
             workflow_name=self.workflow_name,
             trace_id=audit["sdk_trace_id"],
-            group_id=_group_id(input_json.get("context")),
+            group_id=_group_id(input_payload.get("context")),
             trace_include_sensitive_data=self.trace_include_sensitive_data,
             tracing_disabled=not self.trace_enabled,
             trace_metadata=base_trace_metadata,
         )
         started = int(time.time() * 1000)
         raw_output: Any = None
+        result_obj: Any = None
         audit_extra: dict[str, Any] = {
             "safety_net_used": False,
             "safety_net_retries": 0,
@@ -299,24 +431,26 @@ class OpenAIAgentsPulseDecisionClient:
                         input_payload=stage_input,
                         run_config=run_config,
                         pydantic_output_type=output_type,
+                        context=tool_ctx,
+                        max_turns=max_turns,
                     ),
                 )
                 raw_output = final_output
             else:
-                # Legacy path (tests pass runner=FakeRunner()).
-                result = await self._llm_gateway.run_with_limits(
+                result_obj = await self._llm_gateway.run_with_limits(
                     "pulse_candidate",
                     stage,
                     self.timeout_seconds,
                     lambda: self._runner.run(
                         agent,
                         stage_input,
-                        max_turns=1,
+                        max_turns=max_turns,
                         run_config=run_config,
+                        context=tool_ctx,
                     ),
                 )
-                raw_output = result.final_output
-                audit_extra = {**audit_extra, "usage": _extract_usage(result)}
+                raw_output = getattr(result_obj, "final_output", None)
+                audit_extra = {**audit_extra, "usage": _extract_usage(result_obj)}
             output = raw_output if isinstance(raw_output, output_type) else output_type.model_validate(raw_output)
         except SafetyNetExhausted as exhausted:
             finished = int(time.time() * 1000)
@@ -326,7 +460,7 @@ class OpenAIAgentsPulseDecisionClient:
                 stage=stage,
                 route=route,
                 attempt_index=0,
-                input_json=input_json,
+                input_json=_with_tool_calls(input_payload, result_obj),
                 prompt_text=prompt,
                 response_json=None,
                 trace_metadata_json=trace_metadata_failed,
@@ -348,7 +482,7 @@ class OpenAIAgentsPulseDecisionClient:
                 stage=stage,
                 route=route,
                 attempt_index=0,
-                input_json=input_json,
+                input_json=_with_tool_calls(input_payload, result_obj),
                 prompt_text=prompt,
                 response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
                 trace_metadata_json=trace_metadata_failed,
@@ -368,7 +502,7 @@ class OpenAIAgentsPulseDecisionClient:
             stage=stage,
             route=route,
             attempt_index=0,
-            input_json=input_json,
+            input_json=_with_tool_calls(input_payload, result_obj),
             prompt_text=prompt,
             response_json=output.model_dump(mode="json"),
             trace_metadata_json=trace_metadata_ok,
@@ -382,6 +516,55 @@ class OpenAIAgentsPulseDecisionClient:
             safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
             parse_mode=str(audit_extra.get("parse_mode") or "strict"),
         )
+
+    def _validate_supporting_ids(
+        self,
+        investigation: InvestigationReport,
+        *,
+        tool_ctx: PulseToolContext,
+        context: dict[str, Any],
+    ) -> None:
+        """Reject Investigator output that cites event_ids the model invented.
+
+        Allowed ids = ``tool_ctx.contributed_event_ids`` (every event id any
+        tool actually returned) plus event ids the worker provided up-front in
+        ``context.evidence_event_ids`` / ``context.source_event_ids``.
+        """
+
+        allowed: set[str] = set(tool_ctx.contributed_event_ids)
+        for key in ("evidence_event_ids", "source_event_ids"):
+            values = context.get(key) if isinstance(context, dict) else None
+            if isinstance(values, list):
+                for value in values:
+                    if isinstance(value, str) and value.strip():
+                        allowed.add(value.strip())
+        for view_name in ("bull_observation", "bear_observation"):
+            view: BullBearView = getattr(investigation, view_name)
+            if view.strength == "absent":
+                continue
+            unknown = [eid for eid in view.supporting_event_ids if eid not in allowed]
+            if unknown:
+                preview = unknown[:5]
+                suffix = "..." if len(unknown) > 5 else ""
+                raise ValueError(
+                    f"{view_name}.supporting_event_ids contains unknown event ids "
+                    f"(not in tool contributions or context): {preview}{suffix}"
+                )
+
+    async def _enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision:
+        """JOIN ``events`` to populate ``final.evidence_event_urls`` (best-effort).
+
+        Missing rows (event_id not found, no tweet_id, or DB error) are
+        silently skipped — Surface rendering treats a missing entry as
+        "no link available" rather than a hard failure.
+        """
+
+        if not final.evidence_event_ids:
+            return final
+        urls = fetch_evidence_event_urls(self._db_pool, event_ids=list(final.evidence_event_ids))
+        if not urls:
+            return final
+        return final.model_copy(update={"evidence_event_urls": urls})
 
     def _request_audit(
         self,
@@ -459,19 +642,90 @@ def _model_settings() -> ModelSettings:
         # qwen3.6 is a reasoning variant; if the server-side enable_thinking flag
         # stays on, llama.cpp grammar enforcement breaks (issue #20345) and the
         # model emits <think> tokens. Disable via chat_template_kwargs in extra_body.
-        # Measured 2026-05-16 against big9er.com b8779: same prompt output drops
-        # from 186 tokens to 10 tokens.
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         # SDK does not surface usage on RunResult unless explicitly requested.
-        # Required for cost dashboards + safety_net usage forwarding.
         include_usage=True,
     )
 
 
-def _stage_agent_name(*, route: DecisionRoute, stage: StageName) -> str:
-    route_label = {"cex": "Cex", "meme": "Meme", "research_only": "ResearchOnly"}[route]
-    stage_label = {"analyst": "Analyst", "critic": "Critic", "judge": "Judge", "research_only_gate": "Gate"}[stage]
-    return f"{route_label}{stage_label}"
+def _strip_defs(schema: Any) -> Any:
+    """Drop the top-level ``$defs`` / ``definitions`` blocks.
+
+    ``jsonref.replace_refs`` substitutes ``$ref`` pointers in-place but leaves
+    the original definitions section behind. llama.cpp grammar conversion
+    (issue #21228) silently fails open if any reference syntax slips through,
+    so remove the now-orphaned definitions explicitly.
+    """
+
+    if not isinstance(schema, dict):
+        return schema
+    cleaned = {key: value for key, value in schema.items() if key not in ("$defs", "definitions")}
+    return cleaned
+
+
+def _coerce_dict_additional_properties_to_false(schema: Any) -> Any:
+    """Recursively replace ``additionalProperties: <object>`` with ``False``.
+
+    Pydantic emits ``additionalProperties: {"type": "string"}`` for
+    ``dict[str, str]`` typed fields. The openai-agents-python strict
+    validator rejects that; coerce to ``False`` (i.e. tell the LLM there are
+    no additional keys allowed). For our use case
+    (``evidence_event_urls`` is worker-filled), the model should never emit
+    this field anyway.
+    """
+
+    if isinstance(schema, dict):
+        result: dict[str, Any] = {}
+        for key, value in schema.items():
+            if key == "additionalProperties" and isinstance(value, dict):
+                result[key] = False
+            else:
+                result[key] = _coerce_dict_additional_properties_to_false(value)
+        return result
+    if isinstance(schema, list):
+        return [_coerce_dict_additional_properties_to_false(item) for item in schema]
+    return schema
+
+
+def _force_strict_object_shape(schema: Any) -> Any:
+    """Apply strict-mode requirements without delegating to the SDK validator.
+
+    Mirrors ``agents.strict_schema.ensure_strict_json_schema``:
+    - every object gets ``additionalProperties: false`` if not already set
+    - every object's ``required`` list contains every property name
+    - recurses into ``$defs``, ``properties``, ``items``, ``anyOf``, ``allOf``
+    """
+
+    if isinstance(schema, dict):
+        new = dict(schema)
+        if new.get("type") == "object":
+            new.setdefault("additionalProperties", False)
+            properties = new.get("properties")
+            if isinstance(properties, dict):
+                new["required"] = list(properties.keys())
+                new["properties"] = {
+                    name: _force_strict_object_shape(prop) for name, prop in properties.items()
+                }
+        for key in ("items",):
+            if key in new:
+                new[key] = _force_strict_object_shape(new[key])
+        for key in ("$defs", "definitions"):
+            if key in new and isinstance(new[key], dict):
+                new[key] = {
+                    name: _force_strict_object_shape(def_schema)
+                    for name, def_schema in new[key].items()
+                }
+        for key in ("anyOf", "allOf", "oneOf"):
+            if key in new and isinstance(new[key], list):
+                new[key] = [_force_strict_object_shape(variant) for variant in new[key]]
+        return new
+    if isinstance(schema, list):
+        return [_force_strict_object_shape(item) for item in schema]
+    return schema
+
+
+def _route_label(route: DecisionRoute) -> str:
+    return {"cex": "Cex", "meme": "Meme", "research_only": "ResearchOnly"}.get(str(route), "Cex")
 
 
 def _api_base(base_url: str) -> str:
@@ -511,6 +765,98 @@ def _sha256(value: Any) -> str:
 def _truncate(value: Any, *, limit: int = 4000) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
     return text[:limit]
+
+
+def _mark_step_failed(step: StageRunAudit, *, error: str) -> StageRunAudit:
+    """Return a copy of ``step`` flipped to ``failed`` with the given error.
+
+    Used when the Investigator stage's structured output passes Pydantic
+    validation but fails the worker-side hallucination guard.
+    """
+
+    return step.model_copy(
+        update={
+            "status": "failed",
+            "error": error[:1000],
+            "response_json": step.response_json,
+        }
+    )
+
+
+def _with_tool_calls(input_payload: dict[str, Any], result_obj: Any) -> dict[str, Any]:
+    """Return a copy of ``input_payload`` with a ``tool_calls`` summary attached.
+
+    The summary is a list of ``{tool_name, args, result_summary}`` dicts derived
+    from the SDK ``RunResult.new_items`` (preferred) or ``raw_responses``. We
+    keep this in ``StageRunAudit.input_json`` rather than its own column so v1
+    eval cases stay schema-compatible.
+    """
+
+    summary = _extract_tool_calls(result_obj)
+    if not summary:
+        return dict(input_payload)
+    return {**input_payload, "tool_calls": summary}
+
+
+def _extract_tool_calls(result_obj: Any) -> list[dict[str, Any]]:
+    if result_obj is None:
+        return []
+    items = getattr(result_obj, "new_items", None) or []
+    summary: list[dict[str, Any]] = []
+    # Track tool_call_id → entry to attach matching outputs.
+    by_call_id: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if isinstance(item, ToolCallItem) or _looks_like(item, "tool_call_item"):
+            entry = {
+                "tool_name": _safe_get(item, "tool_name") or _safe_raw_attr(item, "name"),
+                "args": _safe_raw_attr(item, "arguments"),
+                "result_summary": None,
+            }
+            summary.append(entry)
+            call_id = _safe_get(item, "call_id") or _safe_raw_attr(item, "call_id") or _safe_raw_attr(item, "id")
+            if call_id:
+                by_call_id[str(call_id)] = entry
+        elif _looks_like(item, "tool_call_output_item"):
+            call_id = _safe_raw_attr(item, "call_id") or _safe_get(item, "call_id")
+            target = by_call_id.get(str(call_id)) if call_id else None
+            if target is None and summary:
+                target = summary[-1]
+            if target is not None:
+                target["result_summary"] = _summarise_output(getattr(item, "output", None))
+    return summary
+
+
+def _looks_like(item: Any, type_name: str) -> bool:
+    return getattr(item, "type", None) == type_name
+
+
+def _safe_get(item: Any, name: str) -> Any:
+    try:
+        value = getattr(item, name, None)
+    except Exception:
+        return None
+    return value
+
+
+def _safe_raw_attr(item: Any, name: str) -> Any:
+    raw = getattr(item, "raw_item", None)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw.get(name)
+    return getattr(raw, name, None)
+
+
+def _summarise_output(value: Any, *, limit: int = 400) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value[:limit]
+    try:
+        encoded = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+    except (TypeError, ValueError):
+        encoded = str(value)
+    return encoded[:limit]
 
 
 def _extract_usage(result: Any) -> dict[str, Any]:

@@ -866,7 +866,6 @@
 | `pulse_status` | `TEXT` | False | `None` |
 | `verdict` | `TEXT` | False | `None` |
 | `social_phase` | `TEXT` | False | `None` |
-| `narrative_type` | `TEXT` | False | `None` |
 | `candidate_score` | `DOUBLE PRECISION` | False | `None` |
 | `score_band` | `TEXT` | False | `None` |
 | `trigger_signature` | `TEXT` | False | `None` |

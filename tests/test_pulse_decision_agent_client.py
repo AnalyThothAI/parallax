@@ -1,164 +1,44 @@
+"""SDK plumbing tests for the rewritten two-stage pulse decision client.
+
+Coverage focus:
+- ``_JsonOutputSchema`` strict + jsonref flattening (qwen3.6 / llama.cpp).
+- ``_extract_usage`` reflective object → dict serialization.
+- Base URL normalization on construction.
+
+The full Investigator → DecisionMaker pipeline (happy path, failure modes,
+hallucination guard, tool budget, evidence URL enrichment, harness manifest)
+is covered in
+``tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py``.
+"""
+
 from __future__ import annotations
 
-import asyncio
 import json
 from types import SimpleNamespace
 
-import pytest
-
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
-    AnalystOpinion,
-    CritiqueReport,
     FinalDecision,
+    InvestigationReport,
 )
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
-    PulseStageFailure,
     _extract_usage,
     _JsonOutputSchema,
 )
-from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
 
 
-class FakeRunner:
-    def __init__(self, outputs: list[object]):
-        self.outputs = list(outputs)
-        self.calls: list[dict[str, object]] = []
-
-    async def run(self, starting_agent, input, *, max_turns, run_config):
-        self.calls.append(
-            {
-                "agent": starting_agent,
-                "input": input,
-                "max_turns": max_turns,
-                "run_config": run_config,
-            }
-        )
-        return SimpleNamespace(final_output=self.outputs.pop(0))
-
-
-class FakeGateway:
+class _FakeGateway:
     trace_export_enabled = True
 
     def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
         self.openai_client_calls: list[dict[str, object]] = []
 
     async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        self.calls.append({"worker_name": worker_name, "stage": stage, "timeout_s": timeout_s})
         return await coro_factory()
 
     def openai_client(self, *, model, base_url, timeout_s):
         self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
         return object()
-
-
-def test_stage_runner_calls_analyst_critic_judge_in_order() -> None:
-    gateway = FakeGateway()
-    runner = FakeRunner(
-        [
-            _analyst(),
-            _critic(),
-            _judge(),
-        ]
-    )
-    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", llm_gateway=gateway, runner=runner)
-
-    result = asyncio.run(
-        client.run_decision_pipeline(
-            context=_context(),
-            run_id="run-1",
-            job={"job_id": "job-1", "attempt_count": 2},
-            route="meme",
-            completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
-        )
-    )
-
-    assert [call["agent"].name for call in runner.calls] == ["MemeAnalyst", "MemeCritic", "MemeJudge"]
-    assert [call["worker_name"] for call in gateway.calls] == ["pulse_candidate", "pulse_candidate", "pulse_candidate"]
-    assert [call["stage"] for call in gateway.calls] == ["analyst", "critic", "judge"]
-    assert result.final_decision.recommendation == "trade_candidate"
-    assert [audit.stage for audit in result.stage_audits] == ["analyst", "critic", "judge"]
-    assert result.run_audit["agent_name"] == "PulseDecisionPipeline"
-    assert result.run_audit["prompt_version"] == "pulse-decision-v1"
-    assert result.run_audit["schema_version"] == "pulse_decision_v2"
-
-
-def test_each_stage_uses_max_turns_one_and_no_tools() -> None:
-    runner = FakeRunner([_analyst(route="cex"), _critic(route="cex"), _judge(route="cex")])
-    client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
-    )
-
-    asyncio.run(
-        client.run_decision_pipeline(
-            context=_context(),
-            run_id="run-1",
-            job={},
-            route="cex",
-            completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(model="gpt-test"),
-        )
-    )
-
-    assert [call["max_turns"] for call in runner.calls] == [1, 1, 1]
-    assert all(call["agent"].tools == [] for call in runner.calls)
-    assert [call["agent"].name for call in runner.calls] == ["CexAnalyst", "CexCritic", "CexJudge"]
-
-
-def test_critic_veto_returns_abstain_final_decision_without_judge() -> None:
-    runner = FakeRunner(
-        [
-            _analyst(),
-            _critic(should_abstain=True, confidence_ceiling=0.2),
-        ]
-    )
-    client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
-    )
-
-    result = asyncio.run(
-        client.run_decision_pipeline(
-            context=_context(),
-            run_id="run-1",
-            job={},
-            route="meme",
-            completeness={"score": 0.7, "missing_fields": ["holders"]},
-            harness=_harness(),
-        )
-    )
-
-    assert len(runner.calls) == 2
-    assert result.final_decision.recommendation == "abstain"
-    assert result.final_decision.confidence == 0.2
-    assert result.final_decision.abstain_reason == "critic_veto"
-    assert [audit.stage for audit in result.stage_audits] == ["analyst", "critic"]
-
-
-def test_stage_audit_contains_prompt_input_output_and_latency() -> None:
-    runner = FakeRunner([_analyst(), _critic(), _judge()])
-    client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
-    )
-
-    result = asyncio.run(
-        client.run_decision_pipeline(
-            context=_context(),
-            run_id="run-1",
-            job={},
-            route="meme",
-            completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
-        )
-    )
-
-    first = result.stage_audits[0]
-    assert first.input_json["route"] == "meme"
-    assert first.prompt_text
-    assert first.response_json["recommendation"] == "watchlist"
-    assert first.latency_ms >= 0
-    assert first.status == "ok"
 
 
 def test_extract_usage_recursively_returns_json_safe_payload() -> None:
@@ -214,50 +94,8 @@ def test_extract_usage_serializes_pure_slotted_usage_objects() -> None:
     }
 
 
-def test_runner_rejects_execution_language_in_final_output() -> None:
-    runner = FakeRunner(
-        [
-            _analyst(),
-            _critic(),
-            {
-                **_judge().model_dump(mode="json"),
-                "summary_zh": "可以买入并设置止损。",
-            },
-        ]
-    )
-    client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
-    )
-
-    with pytest.raises(PulseStageFailure) as exc_info:
-        asyncio.run(
-            client.run_decision_pipeline(
-                context=_context(),
-                run_id="run-1",
-                job={},
-                route="meme",
-                completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
-            )
-        )
-
-    failure = exc_info.value
-    assert [audit.stage for audit in failure.audits] == ["analyst", "critic", "judge"]
-    judge_audit = failure.audits[-1]
-    assert judge_audit.status == "failed"
-    assert "trading execution" in (judge_audit.error or "")
-
-
-def test_stage_prompt_embeds_output_schema_and_demands_json_only() -> None:
-    prompt = pulse_stage_prompt(route="meme", stage="analyst", output_type=AnalystOpinion)
-    assert "Return ONLY a JSON object" in prompt
-    assert '"properties"' in prompt
-    assert "recommendation" in prompt
-    assert "confidence" in prompt
-
-
 def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
-    schema = _JsonOutputSchema(AnalystOpinion)
+    schema = _JsonOutputSchema(InvestigationReport)
     assert schema.is_strict_json_schema() is True
     assert schema.is_plain_text() is False
     flat = schema.json_schema()
@@ -268,36 +106,24 @@ def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
     assert "$ref" not in serialized
     assert "$defs" not in serialized
     # Expose underlying Pydantic class for InstructorSafetyNet fallback path.
-    assert schema.output_type is AnalystOpinion
+    assert schema.output_type is InvestigationReport
 
 
-def test_json_output_schema_parses_plain_json_object() -> None:
-    schema = _JsonOutputSchema(AnalystOpinion)
-    raw = '{"route":"meme","recommendation":"watchlist","confidence":0.5,"summary_zh":"x","evidence":["event-1"]}'
-    result = schema.validate_json(raw)
-    assert result.route == "meme"
-    assert result.recommendation == "watchlist"
-
-
-def test_json_output_schema_extracts_embedded_json_object_from_prose() -> None:
-    schema = _JsonOutputSchema(AnalystOpinion)
-    raw = (
-        "Sure, here is the analysis:\n"
-        '{"route":"meme","recommendation":"watchlist","confidence":0.5,'
-        '"summary_zh":"x","evidence":["event-1"]}\n'
-        "Hope this helps!"
-    )
-    result = schema.validate_json(raw)
-    assert result.recommendation == "watchlist"
+def test_json_output_schema_final_decision_also_flattens_refs() -> None:
+    schema = _JsonOutputSchema(FinalDecision)
+    serialized = json.dumps(schema.json_schema())
+    assert "$ref" not in serialized
+    assert "$defs" not in serialized
 
 
 def test_pulse_client_normalizes_openai_root_base_url_before_building_model() -> None:
-    gateway = FakeGateway()
+    gateway = _FakeGateway()
 
     OpenAIAgentsPulseDecisionClient(
         api_key="sk-test",
         model="gpt-test",
         llm_gateway=gateway,
+        db_pool=object(),
         base_url="https://api.openai.com",
     )
 
@@ -306,92 +132,13 @@ def test_pulse_client_normalizes_openai_root_base_url_before_building_model() ->
     ]
 
 
-def test_stage_failure_carries_collected_audits_when_analyst_raises() -> None:
-    class _RaisingRunner:
-        def __init__(self) -> None:
-            self.calls: list[dict[str, object]] = []
+def test_pulse_client_requires_db_pool() -> None:
+    import pytest
 
-        async def run(self, starting_agent, input, *, max_turns, run_config):
-            self.calls.append({"agent": starting_agent})
-            raise RuntimeError("model parse error")
-
-    runner = _RaisingRunner()
-    client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test", model="gpt-test", llm_gateway=FakeGateway(), runner=runner
-    )
-
-    with pytest.raises(PulseStageFailure) as exc_info:
-        asyncio.run(
-            client.run_decision_pipeline(
-                context=_context(),
-                run_id="run-1",
-                job={},
-                route="meme",
-                completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
-            )
+    with pytest.raises(ValueError, match="db_pool is required"):
+        OpenAIAgentsPulseDecisionClient(
+            api_key="sk-test",
+            model="gpt-test",
+            llm_gateway=_FakeGateway(),
+            db_pool=None,
         )
-
-    failure = exc_info.value
-    assert len(failure.audits) == 1
-    audit = failure.audits[0]
-    assert audit.stage == "analyst"
-    assert audit.status == "failed"
-    assert "model parse error" in (audit.error or "")
-    assert audit.prompt_text  # captured even on failure
-
-
-def _context() -> dict[str, object]:
-    return {
-        "candidate_id": "candidate-1",
-        "candidate_type": "token_target",
-        "subject_key": "asset:pepe",
-        "target_type": "Asset",
-        "target_id": "asset:pepe",
-        "factor_snapshot": {"schema_version": "token_factor_snapshot_v3_social_attention"},
-        "selected_posts": [{"event_id": "event-1", "text": "PEPE volume rising"}],
-    }
-
-
-def _harness(*, model: str = "gpt-test") -> dict[str, object]:
-    return {
-        "harness_version": "pulse-decision-harness-v1",
-        "strategy": "signal_pulse_decision",
-        "runtime": {"stages": ["analyst", "critic", "judge"], "max_turns_per_stage": 1},
-        "model": {"provider": "openai", "model": model, "artifact_version_hash": f"artifact:{model}"},
-        "contracts": {"prompt_version": "pulse-decision-v1", "schema_version": "pulse_decision_v2"},
-        "eval_metadata": {"deterministic_grader_version": "pulse-deterministic-harness-v1"},
-    }
-
-
-def _analyst(*, route: str = "meme") -> AnalystOpinion:
-    return AnalystOpinion(
-        route=route,
-        recommendation="watchlist",
-        confidence=0.62,
-        summary_zh="社交热度有效。",
-        evidence=["event-1"],
-    )
-
-
-def _critic(*, route: str = "meme", should_abstain: bool = False, confidence_ceiling: float = 0.55) -> CritiqueReport:
-    return CritiqueReport(
-        route=route,
-        weaknesses=["liquidity thin"],
-        missing_fact_impacts=[],
-        confidence_ceiling=confidence_ceiling,
-        should_abstain=should_abstain,
-    )
-
-
-def _judge(*, route: str = "meme") -> FinalDecision:
-    return FinalDecision(
-        route=route,
-        recommendation="trade_candidate",
-        confidence=0.55,
-        abstain_reason=None,
-        summary_zh="社交与市场事实共振。",
-        invalidation_conditions=["attention fades"],
-        residual_risks=["liquidity thin"],
-        evidence_event_ids=["event-1"],
-    )

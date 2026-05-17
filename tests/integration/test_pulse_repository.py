@@ -663,17 +663,17 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             started_at_ms=1_100,
         )
         step = repo.insert_agent_run_step(
-            step_id="run-step:analyst:0",
+            step_id="run-step:investigator:0",
             run_id="run-step",
-            stage="analyst",
+            stage="investigator",
             route="meme",
             attempt_index=0,
             provider="openai",
             model="gpt-5-mini",
-            prompt_version="meme-analyst-v1",
+            prompt_version="meme-investigator-v1",
             schema_version="pulse_decision_v1",
             input_json={"factor_snapshot": {"schema_version": "token_factor_snapshot_v3_social_attention"}},
-            prompt_text="Analyze meme token facts only.",
+            prompt_text="Investigate meme token facts only.",
             response_json={"recommendation": "watchlist", "confidence": 0.42},
             trace_metadata_json={"trace_id": "trace-step"},
             usage_json={"input_tokens": 123, "output_tokens": 45},
@@ -688,9 +688,9 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
     finally:
         conn.close()
 
-    assert step["step_id"] == "run-step:analyst:0"
+    assert step["step_id"] == "run-step:investigator:0"
     assert steps == [step]
-    assert steps[0]["prompt_text"] == "Analyze meme token facts only."
+    assert steps[0]["prompt_text"] == "Investigate meme token facts only."
     assert steps[0]["input_json"]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert steps[0]["response_json"] == {"recommendation": "watchlist", "confidence": 0.42}
 
@@ -1050,7 +1050,6 @@ def test_list_candidates_preserves_token_target_risk_enum_semantics(tmp_path) ->
                 verdict="risk_rejected_high_info",
                 score_band="speculative",
                 social_phase="unknown",
-                narrative_type="risk_event",
                 updated_at_ms=2_000,
             )
         )
@@ -1068,7 +1067,6 @@ def test_list_candidates_preserves_token_target_risk_enum_semantics(tmp_path) ->
             "verdict": item["verdict"],
             "score_band": item["score_band"],
             "social_phase": item["social_phase"],
-            "narrative_type": item["narrative_type"],
         }
         for item in risk["items"]
     ] == [
@@ -1079,7 +1077,6 @@ def test_list_candidates_preserves_token_target_risk_enum_semantics(tmp_path) ->
             "verdict": "risk_rejected_high_info",
             "score_band": "speculative",
             "social_phase": "unknown",
-            "narrative_type": "risk_event",
         }
     ]
 
@@ -1204,7 +1201,6 @@ def _candidate_payload(
     verdict: str | None = None,
     score_band: str = "watch",
     social_phase: str = "ignition",
-    narrative_type: str = "direct_token",
     source_event_ids: list[str] | None = None,
     evidence_event_ids: list[str] | None = None,
     factor_snapshot_json: dict[str, Any] | None = None,
@@ -1230,7 +1226,6 @@ def _candidate_payload(
         "pulse_status": pulse_status,
         "verdict": resolved_verdict,
         "social_phase": social_phase,
-        "narrative_type": narrative_type,
         "candidate_score": 0.82,
         "score_band": score_band,
         "trigger_signature": f"trigger:{candidate_id}",

@@ -46,7 +46,13 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_edge_events import (
     pulse_edge_signature,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure, StageRunAudit
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BullBearView,
+    FinalDecision,
+    PulseStageFailure,
+    StageRunAudit,
+    TradePlaybook,
+)
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     require_token_factor_snapshot,
@@ -510,6 +516,9 @@ class PulseCandidateWorker(WorkerBase):
             decision_fields = candidate_fields_from_decision(final_decision, stage_count=len(stage_audits))
             decision_fields.pop("score_band", None)
             outcome = _run_outcome(final_decision, completeness_blocked=completeness.hard_blocked)
+            investigation_tool_calls_count = _investigation_tool_calls_count(stage_audits)
+            run_usage_json = dict(result_audit.get("usage") or _aggregate_stage_usage(stage_audits))
+            run_usage_json["investigation_tool_calls_count"] = investigation_tool_calls_count
             with self._repository_session() as repos, _transaction(repos.conn):
                 for stage_audit in stage_audits:
                     repos.pulse.insert_agent_run_step(
@@ -543,7 +552,7 @@ class PulseCandidateWorker(WorkerBase):
                     "done",
                     response_json=final_decision.model_dump(mode="json"),
                     output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
-                    usage_json=result_audit.get("usage") or _aggregate_stage_usage(stage_audits),
+                    usage_json=run_usage_json,
                     outcome=outcome,
                     decision_route=route,
                     decision_stage_count=len(stage_audits),
@@ -583,7 +592,6 @@ class PulseCandidateWorker(WorkerBase):
                     pulse_status=gate.pulse_status,
                     verdict=gate.verdict,
                     social_phase=_social_phase_from_snapshot(context.factor_snapshot),
-                    narrative_type=_narrative_type_from_context(context),
                     candidate_score=gate.candidate_score,
                     score_band=gate.score_band,
                     trigger_signature=context.trigger_signature,
@@ -726,6 +734,26 @@ def _aggregate_stage_usage(stage_audits: tuple[StageRunAudit, ...]) -> dict[str,
                 continue
             totals[key] = totals.get(key, 0) + value
     return totals
+
+
+def _investigation_tool_calls_count(stage_audits: tuple[StageRunAudit, ...]) -> int:
+    """Count investigator-stage tool invocations from stage 0 ``input_json.tool_calls``.
+
+    Stored on the run-level ``usage_json`` so eval / observability can read it
+    without a dedicated column. Returns 0 when audits are empty or the first
+    stage isn't the investigator (defensive — keeps the metric monotonic and
+    never raises on partial data).
+    """
+    if not stage_audits:
+        return 0
+    investigator = stage_audits[0]
+    if investigator.stage != "investigator":
+        return 0
+    payload = investigator.input_json if isinstance(investigator.input_json, dict) else None
+    tool_calls = payload.get("tool_calls") if payload else None
+    if isinstance(tool_calls, list):
+        return len(tool_calls)
+    return 0
 
 
 def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
@@ -923,6 +951,19 @@ def _abstain_decision(
         confidence=0.0,
         abstain_reason=reason,
         summary_zh=summary_zh,
+        narrative_archetype="unclear",
+        narrative_thesis_zh=(
+            "当前数据完整度不足，无法形成可靠叙事判断；本次仅记录确定性门控结果，"
+            "等待更多事实信号后再评估。"
+        ),
+        bull_view=BullBearView(strength="absent"),
+        bear_view=BullBearView(strength="absent"),
+        playbook=TradePlaybook(
+            has_playbook=False,
+            watch_signals=[],
+            exit_triggers=[],
+            monitoring_horizon="1h",
+        ),
         invalidation_conditions=[],
         residual_risks=residual_risks or [reason],
         evidence_event_ids=[],
@@ -1036,10 +1077,6 @@ def _social_phase_from_snapshot(factor_snapshot: dict[str, Any]) -> str:
         or _clean(timing_facts.get("phase"))
         or "unknown"
     )
-
-
-def _narrative_type_from_context(context: PulseCandidateContext) -> str:
-    return "direct_token"
 
 
 def _entry_market(factor_snapshot: dict[str, Any]) -> dict[str, Any]:

@@ -242,7 +242,6 @@ class FakeSignalPulseRepository:
                     "pulse_status": "token_watch",
                     "verdict": "token_watch",
                     "social_phase": "ignition",
-                    "narrative_type": "direct_token",
                     "candidate_score": 0.84,
                     "score_band": "watch",
                     "factor_snapshot_json": _pulse_factor_snapshot(),
@@ -1100,7 +1099,6 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 pulse_status="token_watch",
                 verdict="token_watch",
                 social_phase="ignition",
-                narrative_type="direct_token",
                 candidate_score=0.84,
                 score_band="watch",
                 trigger_signature="trigger-api-token",
@@ -1136,7 +1134,6 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 pulse_status="blocked_low_information",
                 verdict="blocked_low_information",
                 social_phase="unknown",
-                narrative_type="unknown",
                 candidate_score=0.1,
                 score_band="blocked",
                 trigger_signature="trigger-api-blocked",
@@ -1185,7 +1182,6 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 pulse_status="blocked_low_information",
                 verdict="blocked_low_information",
                 social_phase="unknown",
-                narrative_type="unknown",
                 candidate_score=0.1,
                 score_band="blocked",
                 trigger_signature="trigger-api-blocked-2",
@@ -1630,7 +1626,6 @@ def _seed_displayable_candidate(app, *, candidate_id: str, agent_run_id: str | N
             pulse_status="token_watch",
             verdict="token_watch",
             social_phase="ignition",
-            narrative_type="direct_token",
             candidate_score=0.82,
             score_band="watch",
             trigger_signature="trigger-sig",
@@ -1715,9 +1710,8 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
         _seed_displayable_candidate(client.app, candidate_id="cand-stages", agent_run_id="run-stages")
         with client.app.state.service.repositories() as repos:
             for stage, response_json, started_at_ms, finished_at_ms in [
-                ("analyst", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
-                ("critic", {"confidence_ceiling": 0.45, "should_abstain": False}, 200, 350),
-                ("judge", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
+                ("investigator", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
+                ("decision_maker", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
             ]:
                 repos.pulse.insert_agent_run_step(
                     step_id=f"run-stages:{stage}:0",
@@ -1743,10 +1737,21 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
 
     assert response.status_code == 200
     stages = response.json()["data"]["stages"]
-    assert set(stages.keys()) == {"analyst", "critic", "judge", "research_only_gate"}
-    assert stages["analyst"]["status"] == "ok"
-    assert stages["analyst"]["response"]["confidence"] == 0.82
-    assert stages["judge"]["response"]["confidence"] == 0.35
+    assert set(stages.keys()) == {
+        "investigator",
+        "decision_maker",
+        "research_only_gate",
+        "analyst",
+        "critic",
+        "judge",
+    }
+    assert stages["investigator"]["status"] == "ok"
+    assert stages["investigator"]["response"]["confidence"] == 0.82
+    assert stages["decision_maker"]["response"]["confidence"] == 0.35
+    assert stages["research_only_gate"] is None
+    assert stages["analyst"] is None
+    assert stages["critic"] is None
+    assert stages["judge"] is None
 
 
 def test_social_events_by_ids_returns_full_records(tmp_path):
