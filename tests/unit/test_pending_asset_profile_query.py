@@ -152,6 +152,18 @@ def test_pending_asset_profile_query_prioritizes_current_radar_assets(tmp_path):
             rank=1,
             computed_at_ms=1_700_000_029_000,
         )
+        _insert_radar_coverage(conn, window="24h", scope="all", computed_at_ms=1_700_000_029_000)
+        _insert_radar_row(
+            conn,
+            row_id="radar-newer-history-not-published",
+            event_id="event-old-radar",
+            intent_id="intent-old-radar",
+            asset_id=None,
+            target_id="asset:not-current-radar",
+            symbol="STALE",
+            rank=1,
+            computed_at_ms=1_700_000_029_500,
+        )
         conn.commit()
 
         rows = PendingAssetProfileQuery(conn).pending_rows(
@@ -290,6 +302,22 @@ def _insert_radar_row(
             Jsonb({}),
             Jsonb({}),
         ),
+    )
+
+
+def _insert_radar_coverage(conn: Any, *, window: str, scope: str, computed_at_ms: int) -> None:
+    conn.execute(
+        """
+        INSERT INTO token_radar_projection_coverage(
+          projection_version, "window", scope, status, reason, source_rows, row_count,
+          computed_at_ms, started_at_ms, finished_at_ms, error, updated_at_ms
+        )
+        VALUES (
+          'token-radar-v13-social-attention', %s, %s, 'ready', NULL, 1, 1,
+          %s, %s, %s, NULL, %s
+        )
+        """,
+        (window, scope, computed_at_ms, computed_at_ms, computed_at_ms, computed_at_ms),
     )
 
 

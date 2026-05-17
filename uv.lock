@@ -810,6 +810,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "solders" },
+    { name = "tenacity" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
 ]
@@ -829,7 +830,7 @@ requires-dist = [
     { name = "aiolimiter", specifier = ">=1.2.1" },
     { name = "alembic", specifier = ">=1.18.0" },
     { name = "apprise", specifier = ">=1.10.0" },
-    { name = "curl-cffi", specifier = ">=0.11,<0.15" },
+    { name = "curl-cffi", specifier = ">=0.14,<0.15" },
     { name = "eth-hash", extras = ["pycryptodome"], specifier = ">=0.8.0" },
     { name = "eth-utils", specifier = ">=5.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
@@ -845,6 +846,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "solders", specifier = ">=0.26.0" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
     { name = "websockets", specifier = ">=12.0" },
 ]

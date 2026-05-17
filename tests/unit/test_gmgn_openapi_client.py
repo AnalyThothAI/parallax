@@ -4,11 +4,15 @@ import httpx
 import pytest
 from curl_cffi import CurlOpt
 
-import gmgn_twitter_intel.integrations.gmgn.openapi_client as gmgn_openapi_client_module
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import CURL_IPRESOLVE_V4, GmgnOpenApiClient
+from gmgn_twitter_intel.integrations.gmgn.openapi_client import (
+    CURL_IPRESOLVE_V4,
+    GmgnOpenApiClient,
+    GmgnOpenApiProviderUnavailableError,
+    GmgnOpenApiTransientError,
+)
 
 
-def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():
+def test_gmgn_openapi_client_fetches_token_info_with_normal_auth():
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -55,29 +59,26 @@ def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():
         transport=httpx.MockTransport(handler),
     )
     try:
-        first = client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
-        second = client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+        lookup = client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
     finally:
         client.close()
 
-    assert first.info == second.info
-    assert first.info is not None
-    assert first.info.symbol == "SOL"
-    assert first.info.decimals == 9
-    assert first.info.price == 150.5
-    assert first.info.market_cap == 150500.0
-    assert first.info.liquidity == 2500000.25
-    assert first.info.holder_count == 12345
-    assert first.info.circulating_supply == 1000.0
-    assert first.info.website == "https://solana.com"
-    assert first.info.twitter_username == "solana"
-    assert first.info.telegram == "https://t.me/solana"
-    assert first.info.gmgn_url == "https://gmgn.ai/sol/token/So11111111111111111111111111111111111111112"
-    assert first.info.geckoterminal_url.startswith("https://www.geckoterminal.com/")
-    assert first.info.description == "Layer 1"
-    assert first.info.pool == {"exchange": "raydium", "pool_address": "pool-1"}
-    assert first.cache_status == "miss"
-    assert second.cache_status == "hit"
+    assert lookup.info is not None
+    assert lookup.info.symbol == "SOL"
+    assert lookup.info.decimals == 9
+    assert lookup.info.price == 150.5
+    assert lookup.info.market_cap == 150500.0
+    assert lookup.info.liquidity == 2500000.25
+    assert lookup.info.holder_count == 12345
+    assert lookup.info.circulating_supply == 1000.0
+    assert lookup.info.website == "https://solana.com"
+    assert lookup.info.twitter_username == "solana"
+    assert lookup.info.telegram == "https://t.me/solana"
+    assert lookup.info.gmgn_url == "https://gmgn.ai/sol/token/So11111111111111111111111111111111111111112"
+    assert lookup.info.geckoterminal_url.startswith("https://www.geckoterminal.com/")
+    assert lookup.info.description == "Layer 1"
+    assert lookup.info.pool == {"exchange": "raydium", "pool_address": "pool-1"}
+    assert lookup.cache_status == "miss"
     assert requests[0].content == b""
     assert len(requests) == 1
 
@@ -144,60 +145,97 @@ def test_gmgn_openapi_client_force_ipv4_sets_curl_ipresolve(monkeypatch):
 
     assert sessions == [
         {
-            "impersonate": "chrome",
+            "impersonate": "chrome142",
             "curl_options": {CurlOpt.IPRESOLVE: CURL_IPRESOLVE_V4},
         }
     ]
 
 
-def test_gmgn_openapi_client_throttles_openapi_requests(monkeypatch):
-    requests: list[str] = []
-
+def test_gmgn_openapi_client_identifies_cloudflare_challenge_response():
     def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(str(request.url.params["address"]))
         return httpx.Response(
-            200,
-            json={
-                "code": 0,
-                "data": {
-                    "address": str(request.url.params["address"]),
-                    "symbol": "TEST",
-                    "price": "1",
-                },
-            },
+            403,
+            text='<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>cf-chl</body></html>',
+            headers={"content-type": "text/html; charset=UTF-8", "server": "cloudflare"},
         )
-
-    clock = {"value": 100.0}
-    sleeps: list[float] = []
-
-    def monotonic() -> float:
-        return clock["value"]
-
-    def sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-        clock["value"] += seconds
-
-    monkeypatch.setattr(gmgn_openapi_client_module.time, "monotonic", monotonic)
-    monkeypatch.setattr(gmgn_openapi_client_module.time, "sleep", sleep)
 
     client = GmgnOpenApiClient(
         api_key="gmgn-test",
         base_url="https://openapi.example.test",
         transport=httpx.MockTransport(handler),
-        min_request_interval_seconds=0.5,
     )
     try:
-        client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
-        clock["value"] += 0.1
-        client.lookup_token_info(chain="sol", address="DezXAZ8z7PnrnRJjz3FjN9xQ9uK5a5n5xbHGbQHpump")
+        with pytest.raises(GmgnOpenApiProviderUnavailableError, match="Cloudflare challenge"):
+            client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
     finally:
         client.close()
 
-    assert requests == [
-        "So11111111111111111111111111111111111111112",
-        "DezXAZ8z7PnrnRJjz3FjN9xQ9uK5a5n5xbHGbQHpump",
-    ]
-    assert sleeps == [pytest.approx(0.4)]
+
+def test_gmgn_openapi_client_classifies_rate_limit_as_provider_unavailable():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            json={
+                "code": 429,
+                "error": "RATE_LIMIT_BANNED",
+                "message": "retry later",
+            },
+        )
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(GmgnOpenApiProviderUnavailableError, match="provider unavailable"):
+            client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+    finally:
+        client.close()
+
+
+def test_gmgn_openapi_client_uses_rate_limit_reset_as_provider_cooldown():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            json={
+                "code": 429,
+                "error": "RATE_LIMIT_BANNED",
+                "message": "retry later",
+                "reset_at": 4_102_444_800,
+            },
+            headers={"x-ratelimit-reset": "1000"},
+        )
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(GmgnOpenApiProviderUnavailableError) as exc_info:
+            client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+    finally:
+        client.close()
+
+    assert exc_info.value.cooldown_seconds is not None
+    assert exc_info.value.cooldown_seconds > 0
+
+
+def test_gmgn_openapi_client_classifies_non_json_5xx_as_transient():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="service unavailable", headers={"content-type": "text/html"})
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(GmgnOpenApiTransientError, match="HTTP 503"):
+            client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+    finally:
+        client.close()
 
 
 def test_gmgn_openapi_client_maps_internal_solana_chain_to_openapi_sol():

@@ -21,6 +21,7 @@ describe("buildTokenCaseViewModel", () => {
       "watched",
       "readiness",
     ]);
+    expect(vm.hero.logoUrl).toBe("https://example.test/hansa.png");
     expect(vm.propagation.stages).toHaveLength(3);
     expect(vm.timeline.items[0].quality.scoreLabel).toMatch(/PQ/);
     expect(vm.market.status).toBe("missing");

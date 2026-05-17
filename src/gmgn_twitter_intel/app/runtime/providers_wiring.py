@@ -11,6 +11,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     CexTicker,
     DexMarketFactUpdate,
     DexMarketStreamProvider,
+    DexProviderTemporarilyUnavailable,
     DexTokenCandidate,
     DexTokenDiscoveryProvider,
     DexTokenProfile,
@@ -26,7 +27,8 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
+from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient, GmgnOpenApiProviderUnavailableError
+from gmgn_twitter_intel.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
 from gmgn_twitter_intel.integrations.marketlane import MarketlaneQuoteProvider
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
@@ -174,14 +176,14 @@ class OkxDexQuoteProvider:
 
 
 class GmgnDexMarketProvider:
-    def __init__(self, client: GmgnOpenApiClient) -> None:
-        self._client = client
+    def __init__(self, gateway: GmgnOpenApiGateway) -> None:
+        self._gateway = gateway
 
     def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]:
         observed_at_ms = int(time.time() * 1000)
         quotes: list[DexTokenQuote] = []
         for token in tokens:
-            lookup = self._client.lookup_token_info(chain=token.chain_id, address=token.address)
+            lookup = self._lookup_token_info(chain_id=token.chain_id, address=token.address)
             info = lookup.info
             if info is None:
                 continue
@@ -209,6 +211,10 @@ class GmgnDexMarketProvider:
         return quotes
 
     def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]:
+        try:
+            candles = self._gateway.token_kline(chain=chain_id, address=address, resolution=bar, limit=limit)
+        except GmgnOpenApiProviderUnavailableError as exc:
+            raise DexProviderTemporarilyUnavailable(str(exc)) from exc
         return [
             MarketCandle(
                 time_ms=candle.time_ms,
@@ -222,11 +228,11 @@ class GmgnDexMarketProvider:
                 confirmed=None,
                 raw=candle.raw,
             )
-            for candle in self._client.token_kline(chain=chain_id, address=address, resolution=bar, limit=limit)
+            for candle in candles
         ]
 
     def token_profile(self, *, chain_id: str, address: str) -> DexTokenProfile | None:
-        info = self._client.lookup_token_info(chain=chain_id, address=address).info
+        info = self._lookup_token_info(chain_id=chain_id, address=address).info
         if info is None:
             return None
         return DexTokenProfile(
@@ -245,8 +251,14 @@ class GmgnDexMarketProvider:
             raw=info.raw,
         )
 
+    def _lookup_token_info(self, *, chain_id: str, address: str):
+        try:
+            return self._gateway.lookup_token_info(chain=chain_id, address=address)
+        except GmgnOpenApiProviderUnavailableError as exc:
+            raise DexProviderTemporarilyUnavailable(str(exc)) from exc
+
     def close(self) -> None:
-        self._client.close()
+        self._gateway.close()
 
 
 class FallbackDexQuoteProvider:
@@ -628,11 +640,13 @@ def _okx_dex_quote_market(settings: Settings) -> OkxDexQuoteProvider:
 
 def _gmgn_dex_market(settings: Settings) -> GmgnDexMarketProvider:
     return GmgnDexMarketProvider(
-        GmgnOpenApiClient(
-            api_key=settings.gmgn_api_key or "",
-            base_url=settings.gmgn_openapi_base_url,
-            timeout_seconds=settings.gmgn_timeout_seconds,
-            cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
+        GmgnOpenApiGateway(
+            GmgnOpenApiClient(
+                api_key=settings.gmgn_api_key or "",
+                base_url=settings.gmgn_openapi_base_url,
+                timeout_seconds=settings.gmgn_timeout_seconds,
+            ),
+            token_info_cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
         )
     )
 

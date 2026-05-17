@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -11,6 +12,7 @@ from curl_cffi import requests as curl_requests
 from eth_utils import is_address
 
 CURL_IPRESOLVE_V4 = 1
+DEFAULT_CURL_IMPERSONATE = "chrome142"
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +67,16 @@ class GmgnOpenApiError(RuntimeError):
     pass
 
 
+class GmgnOpenApiProviderUnavailableError(GmgnOpenApiError):
+    def __init__(self, message: str, *, cooldown_seconds: float | None = None) -> None:
+        super().__init__(message)
+        self.cooldown_seconds = cooldown_seconds
+
+
+class GmgnOpenApiTransientError(GmgnOpenApiError):
+    pass
+
+
 class GmgnOpenApiClient:
     def __init__(
         self,
@@ -72,25 +84,20 @@ class GmgnOpenApiClient:
         api_key: str,
         base_url: str = "https://openapi.gmgn.ai",
         timeout_seconds: float = 5.0,
-        cache_ttl_seconds: int = 60,
         force_ipv4: bool = True,
-        min_request_interval_seconds: float = 0.12,
+        curl_impersonate: str = DEFAULT_CURL_IMPERSONATE,
         transport: httpx.BaseTransport | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
-        self.cache_ttl_seconds = max(0, int(cache_ttl_seconds))
-        self._cache: dict[tuple[str, str], tuple[float, GmgnTokenInfo | None]] = {}
         self._timeout_seconds = timeout_seconds
-        self._min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
-        self._last_request_monotonic = 0.0
         self._headers = {"X-APIKEY": api_key, "Content-Type": "application/json"}
         self._curl_session: curl_requests.Session | None = None
         self._httpx_client: httpx.Client | None = None
         resolved_transport = transport
         if resolved_transport is None and force_ipv4:
             self._curl_session = curl_requests.Session(
-                impersonate="chrome",
+                impersonate=curl_impersonate,
                 curl_options={CurlOpt.IPRESOLVE: CURL_IPRESOLVE_V4},
             )
         else:
@@ -110,15 +117,8 @@ class GmgnOpenApiClient:
     def lookup_token_info(self, *, chain: str, address: str) -> GmgnTokenInfoLookup:
         api_chain = _api_chain(chain)
         api_address = _api_address(chain=api_chain, address=address)
-        key = (api_chain, api_address)
-        cached = self._cache.get(key)
-        now = time.time()
-        if cached and now - cached[0] <= self.cache_ttl_seconds:
-            return GmgnTokenInfoLookup(info=cached[1], cache_status="hit")
-
         data = self._request("GET", "/v1/token/info", {"chain": api_chain, "address": api_address})
         info = _token_info_from_response(chain=chain, address=api_address, data=data)
-        self._cache[key] = (now, info)
         return GmgnTokenInfoLookup(info=info, cache_status="miss")
 
     def token_kline(
@@ -161,45 +161,64 @@ class GmgnOpenApiClient:
             "timestamp": str(int(time.time())),
             "client_id": str(uuid.uuid4()),
         }
-        self._throttle()
         response = self._send(method, path, query)
         text = response["text"]
         try:
             payload = response["json"]()
         except ValueError as exc:
-            raise GmgnOpenApiError(f"{method} {path} returned non-json HTTP {response['status_code']}") from exc
+            message = _non_json_error_message(method=method, path=path, response=response)
+            if _is_provider_unavailable_non_json(response):
+                raise GmgnOpenApiProviderUnavailableError(
+                    message,
+                    cooldown_seconds=_provider_cooldown_seconds(response=response, payload=None),
+                ) from exc
+            if _is_transient_status(response["status_code"]):
+                raise GmgnOpenApiTransientError(message) from exc
+            raise GmgnOpenApiError(message) from exc
         if not isinstance(payload, dict):
             raise GmgnOpenApiError(f"{method} {path} returned invalid envelope")
         if payload.get("code") != 0:
             message = payload.get("message") or payload.get("error") or text
+            if _is_provider_unavailable_payload(response=response, payload=payload):
+                raise GmgnOpenApiProviderUnavailableError(
+                    f"{method} {path} provider unavailable: {message}",
+                    cooldown_seconds=_provider_cooldown_seconds(response=response, payload=payload),
+                )
+            if _is_transient_status(response["status_code"]):
+                raise GmgnOpenApiTransientError(f"{method} {path} transient HTTP {response['status_code']}: {message}")
             raise GmgnOpenApiError(f"{method} {path} failed: {message}")
         return payload.get("data")
 
-    def _throttle(self) -> None:
-        if self._min_request_interval_seconds <= 0:
-            return
-        now = time.monotonic()
-        next_allowed = self._last_request_monotonic + self._min_request_interval_seconds
-        wait_seconds = next_allowed - now
-        if wait_seconds > 0:
-            time.sleep(wait_seconds)
-            now = time.monotonic()
-        self._last_request_monotonic = now
-
     def _send(self, method: str, path: str, query: dict[str, str]) -> dict[str, Any]:
         if self._httpx_client is not None:
-            response = self._httpx_client.request(method, path, params=query)
-            return {"status_code": response.status_code, "text": response.text, "json": response.json}
+            try:
+                response = self._httpx_client.request(method, path, params=query)
+            except httpx.HTTPError as exc:
+                raise GmgnOpenApiTransientError(f"{method} {path} transient network error: {exc}") from exc
+            return {
+                "status_code": response.status_code,
+                "headers": response.headers,
+                "text": response.text,
+                "json": response.json,
+            }
         if self._curl_session is None:
             raise GmgnOpenApiError("GMGN HTTP client is not initialized")
-        response = self._curl_session.request(
-            method,
-            f"{self.base_url}{path}",
-            params=query,
-            headers=self._headers,
-            timeout=self._timeout_seconds,
-        )
-        return {"status_code": response.status_code, "text": response.text, "json": response.json}
+        try:
+            response = self._curl_session.request(
+                method,
+                f"{self.base_url}{path}",
+                params=query,
+                headers=self._headers,
+                timeout=self._timeout_seconds,
+            )
+        except Exception as exc:
+            raise GmgnOpenApiTransientError(f"{method} {path} transient network error: {exc}") from exc
+        return {
+            "status_code": response.status_code,
+            "headers": response.headers,
+            "text": response.text,
+            "json": response.json,
+        }
 
 
 def _token_info_from_response(*, chain: str, address: str, data: Any) -> GmgnTokenInfo | None:
@@ -256,6 +275,83 @@ def _api_chain(chain: str) -> str:
     if normalized == "solana":
         return "sol"
     return normalized
+
+
+def _non_json_error_message(*, method: str, path: str, response: dict[str, Any]) -> str:
+    status_code = response["status_code"]
+    if _is_provider_unavailable_non_json(response):
+        return f"{method} {path} blocked by Cloudflare challenge HTTP {status_code}"
+    if _is_transient_status(status_code):
+        return f"{method} {path} transient HTTP {status_code}"
+    return f"{method} {path} returned non-json HTTP {status_code}"
+
+
+def _is_provider_unavailable_non_json(response: dict[str, Any]) -> bool:
+    return _is_cloudflare_challenge(str(response.get("text") or ""))
+
+
+def _is_cloudflare_challenge(text: str) -> bool:
+    normalized = text.lower()
+    return "just a moment" in normalized or "cf-chl" in normalized or "cloudflare" in normalized
+
+
+def _is_provider_unavailable_payload(*, response: dict[str, Any], payload: dict[str, Any]) -> bool:
+    if int(response["status_code"]) == 429:
+        return True
+    api_error = str(payload.get("error") or "").strip().upper()
+    return api_error in {"RATE_LIMIT_EXCEEDED", "RATE_LIMIT_BANNED", "ERROR_RATE_LIMIT_BLOCKED"}
+
+
+def _is_transient_status(status_code: int) -> bool:
+    return int(status_code) in {408, 409, 500, 502, 503, 504}
+
+
+def _provider_cooldown_seconds(*, response: dict[str, Any], payload: dict[str, Any] | None) -> float | None:
+    reset_at = _reset_at_from_payload(payload) or _reset_at_from_headers(response.get("headers"))
+    if reset_at is None:
+        return None
+    return max(0.0, reset_at - time.time())
+
+
+def _reset_at_from_payload(payload: dict[str, Any] | None) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        value = float(payload.get("reset_at"))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _reset_at_from_headers(headers: Any) -> float | None:
+    if headers is None:
+        return None
+    raw = _header_value(headers, "x-ratelimit-reset") or _header_value(headers, "retry-after")
+    if not raw:
+        return None
+    text = str(raw).strip()
+    try:
+        value = float(text)
+    except ValueError:
+        try:
+            return parsedate_to_datetime(text).timestamp()
+        except (TypeError, ValueError, OSError):
+            return None
+    if value <= 0:
+        return None
+    if value < 10_000_000:
+        return time.time() + value
+    return value
+
+
+def _header_value(headers: Any, key: str) -> str | None:
+    getter = getattr(headers, "get", None)
+    if getter is None:
+        return None
+    value = getter(key)
+    if value is None:
+        value = getter(key.upper())
+    return str(value) if value is not None else None
 
 
 def _api_address(*, chain: str, address: str) -> str:

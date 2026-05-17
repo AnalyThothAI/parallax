@@ -26,11 +26,33 @@ cut must create `workers.yaml` before starting the service; rerun
 `uv run gmgn-twitter-intel init --force` only when you intentionally
 want to rewrite the default config files.
 
+For real data, edit the operator-owned files in `~/.gmgn-twitter-intel/`
+instead of adding repository-local `.env` files or editing generated examples.
+`config.yaml` must point at the live PostgreSQL store and contain the provider
+credentials/endpoints needed by the enabled data lanes, including GMGN OpenAPI
+for exact token profiles and OKX provider settings for discovery, market data,
+or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
+terminal output, docs, tests, and commits.
+
 Use `uv run gmgn-twitter-intel config` to inspect both config paths and
 the effective worker settings. Use
 `uv run gmgn-twitter-intel ops worker-status` to inspect the canonical
 worker status map and queue depths without starting the upstream
 collector.
+
+Useful live-data smoke checks:
+
+```bash
+uv run gmgn-twitter-intel config
+uv run gmgn-twitter-intel ops worker-status
+uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 5
+uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
+```
+
+The first command confirms the real config paths. The profile refresh command
+exercises the GMGN exact-token profile lane that feeds `asset_profiles.logo_url`
+for DEX token icons; provider blocks or rate limits should surface as explicit
+diagnostic results, not as fake token profile facts.
 
 The full CLI surface is documented by `uv run gmgn-twitter-intel --help`.
 Treat that output as the source of truth — do not enumerate commands

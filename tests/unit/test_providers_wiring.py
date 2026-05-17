@@ -12,6 +12,7 @@ from gmgn_twitter_intel.app.runtime.providers_wiring import (
 )
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuoteRequest
 from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
+from gmgn_twitter_intel.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
 from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
 from gmgn_twitter_intel.platform.config.settings import Settings
 
@@ -343,6 +344,15 @@ def test_okx_dex_quote_provider_maps_token_price_batch_to_quotes() -> None:
     ]
 
 
+def test_gmgn_dex_market_wires_gateway_not_raw_openapi_client() -> None:
+    provider = providers_wiring._gmgn_dex_market(Settings(gmgn={"api_key": "gmgn-test"}))
+    try:
+        assert isinstance(provider._gateway, GmgnOpenApiGateway)
+        assert isinstance(provider._gateway._client, GmgnOpenApiClient)
+    finally:
+        provider.close()
+
+
 def test_gmgn_dex_market_provider_maps_token_info_to_quote_and_profile() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/token/info"
@@ -375,7 +385,7 @@ def test_gmgn_dex_market_provider_maps_token_info_to_quote_and_profile() -> None
         base_url="https://openapi.example.test",
         transport=httpx.MockTransport(handler),
     )
-    provider = GmgnDexMarketProvider(client)
+    provider = GmgnDexMarketProvider(GmgnOpenApiGateway(client))
     try:
         quotes = provider.token_quotes(
             [DexTokenQuoteRequest(chain_id="eip155:1", address="0xf280b16ef293d8e534e370794ef26bf312694126")]

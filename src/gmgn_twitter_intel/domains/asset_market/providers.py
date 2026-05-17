@@ -23,6 +23,10 @@ class ProviderHealth:
     last_error: str | None = None
 
 
+class DexProviderTemporarilyUnavailable(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class CexTicker:
     inst_id: str
@@ -158,6 +162,7 @@ __all__ = [
     "DexMarketFactUpdate",
     "DexMarketStreamProvider",
     "DexMarketStreamTarget",
+    "DexProviderTemporarilyUnavailable",
     "DexTokenCandidate",
     "DexTokenCandleProvider",
     "DexTokenDiscoveryProvider",

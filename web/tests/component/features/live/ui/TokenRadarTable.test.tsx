@@ -39,6 +39,10 @@ describe("TokenRadarTable rows", () => {
       "href",
       "https://gmgn.ai/eth/token/0x1111111111111111111111111111111111111111",
     );
+    expect(row.querySelector(".radar-token-logo")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/troll.png",
+    );
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
     expect(within(row).getByText("eth · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
@@ -471,6 +475,7 @@ function mixedFreshnessToken(): TokenFlowItem {
       identity: {
         symbol: "TROLL",
         name: "Troll Protocol",
+        logo_url: "https://cdn.example.test/troll.png",
       },
       links: {
         website_url: "https://troll.example",

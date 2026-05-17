@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenProfile
+from gmgn_twitter_intel.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenProfile
 from gmgn_twitter_intel.domains.asset_market.queries.pending_asset_profile_query import PendingAssetProfileQuery
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_repository import (
     ERROR_REFRESH_MS,
@@ -36,6 +36,10 @@ def refresh_asset_profiles_once(
                 chain_id=str(row["chain_id"]),
                 address=str(row["address"]),
             )
+        except DexProviderTemporarilyUnavailable as exc:
+            result["provider_blocked"] = 1
+            result["last_error"] = str(exc)[:500]
+            break
         except Exception as exc:
             _write_error_profile(repos=repos, row=row, exc=exc, now_ms=now_ms)
             result["error"] += 1

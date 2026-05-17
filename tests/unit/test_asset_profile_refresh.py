@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenProfile
+from gmgn_twitter_intel.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenProfile
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_repository import (
     ERROR_REFRESH_MS,
     GMGN_DEX_PROFILE_PROVIDER,
@@ -58,9 +58,12 @@ def test_refresh_asset_profiles_writes_ready_profile_and_calls_provider_with_exa
     }
     assert provider.calls == [("eip155:1", "0xAbC")]
     assert repos.conn.params == (
-        GMGN_DEX_PROFILE_PROVIDER,
-        "token_radar_v5_identity_resolver",
+        "token-radar-v13-social-attention",
+        "token-radar-v13-social-attention",
         10_000 - 24 * 60 * 60 * 1000,
+        50,
+        "token_radar_v5_identity_resolver",
+        GMGN_DEX_PROFILE_PROVIDER,
         10_000,
         5,
     )
@@ -161,6 +164,54 @@ def test_refresh_asset_profiles_writes_error_row_and_continues_when_provider_rai
     assert repos.asset_profiles.status_profiles[0]["next_refresh_at_ms"] == 30_000 + ERROR_REFRESH_MS
     assert len(repos.asset_profiles.status_profiles[0]["last_error"]) == 500
     assert repos.asset_profiles.ready_profiles[0]["asset_id"] == "asset:eip155:1:erc20:0xgood"
+
+
+def test_refresh_asset_profiles_stops_batch_without_polluting_profiles_when_provider_is_blocked():
+    repos = FakeRepos(
+        rows=[
+            {
+                "asset_id": "asset:eip155:8453:erc20:0xblocked",
+                "chain_id": "eip155:8453",
+                "address": "0xblocked",
+            },
+            {
+                "asset_id": "asset:eip155:8453:erc20:0xuntried",
+                "chain_id": "eip155:8453",
+                "address": "0xuntried",
+            },
+        ]
+    )
+    provider = SequencedProfileProvider(
+        [
+            DexProviderTemporarilyUnavailable("GET /v1/token/info blocked by Cloudflare challenge HTTP 403"),
+            DexTokenProfile(
+                chain_id="eip155:8453",
+                address="0xuntried",
+                symbol="UNTRIED",
+                name=None,
+                logo_url=None,
+                banner_url=None,
+                website=None,
+                twitter_username=None,
+                telegram=None,
+                gmgn_url=None,
+                geckoterminal_url=None,
+                description=None,
+                raw={},
+            ),
+        ]
+    )
+
+    result = refresh_asset_profiles_once(repos=repos, dex_profile_market=provider, now_ms=35_000, limit=10)
+
+    assert result["selected"] == 2
+    assert result["provider_blocked"] == 1
+    assert result["last_error"] == "GET /v1/token/info blocked by Cloudflare challenge HTTP 403"
+    assert result["error"] == 0
+    assert result["ready"] == 0
+    assert provider.calls == [("eip155:8453", "0xblocked")]
+    assert repos.asset_profiles.status_profiles == []
+    assert repos.asset_profiles.ready_profiles == []
 
 
 def test_refresh_asset_profiles_returns_skipped_when_provider_is_none_without_db_access():

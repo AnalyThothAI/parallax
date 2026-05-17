@@ -8,7 +8,7 @@ dependencies = [
     "aiolimiter>=1.2.1",
     "alembic>=1.18.0",
     "apprise>=1.10.0",
-    "curl-cffi>=0.11,<0.15",
+    "curl-cffi>=0.14,<0.15",
     "eth-hash[pycryptodome]>=0.8.0",
     "eth-utils>=5.0.0",
     "fastapi>=0.115.0",
@@ -24,6 +24,7 @@ dependencies = [
     "pydantic>=2.8.0",
     "pyyaml>=6.0.3",
     "solders>=0.26.0",
+    "tenacity>=9.1.4",
     "uvicorn[standard]>=0.30.0",
     "websockets>=12.0",
 ]

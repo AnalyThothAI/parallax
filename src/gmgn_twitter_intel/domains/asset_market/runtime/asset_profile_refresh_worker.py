@@ -6,7 +6,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenProfile
+from gmgn_twitter_intel.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenProfile
 from gmgn_twitter_intel.domains.asset_market.services.asset_profile_refresh import (
     fetch_asset_profile,
     select_due_asset_profile_rows,
@@ -34,7 +34,7 @@ class AssetProfileRefreshWorker(WorkerBase):
         result = await asyncio.to_thread(self._refresh_once, observed_at_ms)
         return WorkerResult(
             processed=int(result.get("ready") or 0) + int(result.get("missing") or 0),
-            failed=int(result.get("error") or 0),
+            failed=int(result.get("error") or 0) + int(result.get("provider_blocked") or 0),
             skipped=int(result.get("skipped") or 0),
             notes={"result": result},
         )
@@ -63,6 +63,10 @@ class AssetProfileRefreshWorker(WorkerBase):
         for row in rows:
             try:
                 profile = fetch_asset_profile(dex_profile_market=self.dex_profile_market, row=row)
+            except DexProviderTemporarilyUnavailable as exc:
+                result["provider_blocked"] = 1
+                result["last_error"] = str(exc)[:500]
+                break
             except Exception as exc:
                 with self.db.worker_session(self.name) as repos:
                     write_error_asset_profile(repos=repos, row=row, exc=exc, now_ms=now_ms)

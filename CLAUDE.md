@@ -14,6 +14,18 @@ runtime writer and are rebuildable. `NOTIFY` is a wake hint; every
 listener re-reads DB and runs a bounded `interval_seconds` catch-up.
 Provider raw frames are inputs, not facts.
 
+## Runtime config for real data
+
+Live-data runs use the operator-owned files in `~/.gmgn-twitter-intel/`:
+`config.yaml` for application/provider/credential/storage settings and
+`workers.yaml` for worker runtime knobs. Do not assume repository fixtures,
+example YAML, or `.env` files are the active runtime config. Before debugging
+provider data, Token Radar rows, asset profiles, or missing icons against real
+data, run `uv run gmgn-twitter-intel config` and confirm the reported
+`config_path` / `workers_config_path` point at `~/.gmgn-twitter-intel/`.
+Never print or copy secret values; report only redacted booleans, paths, and
+diagnostic command results.
+
 ## Where to read what
 
 | Need | File |

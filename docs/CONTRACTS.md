@@ -9,6 +9,11 @@ These surfaces change only with a versioned spec — refactors must preserve the
 The service has two operator-owned YAML files in
 `~/.gmgn-twitter-intel/`.
 
+Runtime config is not loaded from repository fixtures, generated docs, or
+repo-local `.env` files. The `config` CLI command is the supported way to
+confirm the active `config_path` and `workers_config_path` before any
+real-data investigation.
+
 ### Application Config (`config.yaml`)
 
 `config.yaml` owns application, provider, credential, and public-surface
@@ -24,6 +29,11 @@ settings. It must not contain worker runtime knobs.
 - Optional market-related groups (OKX, GMGN OpenAPI, Marketlane) for identity
   discovery, route sync, market tick capture, cache-only live price fan-out,
   and request-time US equity quote snapshots.
+- `gmgn` — GMGN OpenAPI key/base URL/timeout/cache settings. The exact-token
+  profile lane uses this group to write persisted `asset_profiles` facts,
+  including DEX token `logo_url`.
+- `providers.okx` — OKX CEX/DEX REST and DEX WebSocket endpoints plus
+  credentials where required by the enabled provider lane.
 
 Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`,
 `lease_ms`, `max_attempts`, advisory-lock, timeout, wake-channel, Pulse

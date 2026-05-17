@@ -371,6 +371,12 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "trace_include_sensitive_data": settings.llm_trace_include_sensitive_data,
                     },
                     "providers": {
+                        "gmgn": {
+                            "configured": settings.gmgn_configured,
+                            "openapi_base_url": settings.gmgn_openapi_base_url,
+                            "timeout_seconds": settings.gmgn_timeout_seconds,
+                            "token_info_cache_ttl_seconds": settings.gmgn_token_info_cache_ttl_seconds,
+                        },
                         "okx": {
                             "cex_base_url": settings.okx_cex_base_url,
                             "cex_sync_enabled": settings.okx_cex_sync_enabled,

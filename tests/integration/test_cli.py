@@ -118,6 +118,7 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     }
     if ws_token is not None:
         payload["ws_token"] = ws_token
+    payload["gmgn"] = {"api_key": "gmgn-test", "openapi_base_url": "https://openapi.gmgn.ai"}
     if llm:
         payload["llm"] = {"provider": "openai", "api_key": "sk-test", "model": "gpt-test"}
     path = app_home / "config.yaml"
@@ -216,6 +217,16 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
         self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
         self.assertEqual(payload["data"]["enrichment"]["provider"], "openai")
+        self.assertEqual(
+            payload["data"]["providers"]["gmgn"],
+            {
+                "configured": True,
+                "openapi_base_url": "https://openapi.gmgn.ai",
+                "timeout_seconds": 5.0,
+                "token_info_cache_ttl_seconds": 60,
+            },
+        )
+        self.assertNotIn("gmgn-test", stdout.getvalue())
         self.assertEqual(payload["data"]["store"]["engine"], "postgresql")
         self.assertIn("postgres_dsn", payload["data"]["store"])
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])

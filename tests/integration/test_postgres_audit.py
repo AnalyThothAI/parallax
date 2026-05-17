@@ -20,7 +20,7 @@ def test_operational_audit_reports_counts_fk_checks_and_projection_schema(tmp_pa
     assert payload["migration_version"] == latest_migration_version()
     assert payload["migration_status"] == "ready"
     assert payload["counts"]["events"] == 0
-    assert payload["counts"]["assets"] == 0
+    assert payload["counts"]["registry_assets"] == 0
     assert payload["projection_schema"]["projection_offsets"] is True
     assert payload["projection_schema"]["token_radar_rows"] is True
     assert payload["foreign_key_checks"]["token_radar_rows_missing_intents"] == 0

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenProfile
+from gmgn_twitter_intel.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenProfile
 from gmgn_twitter_intel.domains.asset_market.runtime import asset_profile_refresh_worker as module
 
 
@@ -55,6 +55,32 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
         }
     ]
     assert db.session_names == ["asset_profile_refresh", "asset_profile_refresh"]
+
+
+def test_asset_profile_refresh_worker_reports_provider_block_without_writing_token_error(monkeypatch):
+    row = {"asset_id": "asset-1", "chain_id": "solana", "address": "abc"}
+    writes: list[str] = []
+
+    def fake_fetch_asset_profile(**kwargs):
+        raise DexProviderTemporarilyUnavailable("GET /v1/token/info blocked by Cloudflare challenge HTTP 403")
+
+    monkeypatch.setattr(module, "select_due_asset_profile_rows", lambda **_: [row])
+    monkeypatch.setattr(module, "fetch_asset_profile", fake_fetch_asset_profile)
+    monkeypatch.setattr(module, "write_error_asset_profile", lambda **_: writes.append("error"))
+    worker = module.AssetProfileRefreshWorker(
+        name="asset_profile_refresh",
+        settings=worker_settings(),
+        db=FakeDB(),
+        telemetry=object(),
+        dex_profile_market=object(),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert result.failed == 1
+    assert result.notes["result"]["provider_blocked"] == 1
+    assert result.notes["result"]["error"] == 0
+    assert writes == []
 
 
 def test_asset_profile_refresh_worker_close_does_not_close_shared_profile_provider():
