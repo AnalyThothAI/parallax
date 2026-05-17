@@ -30,7 +30,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worke
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
-from gmgn_twitter_intel.domains.asset_market.services.cex_token_icon_sync import sync_cex_token_icons
+from gmgn_twitter_intel.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
@@ -58,7 +58,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
-from gmgn_twitter_intel.integrations.binance.cex_icon_client import BinanceCexIconClient
+from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
@@ -221,7 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_projections.add_argument("--sample", type=int, default=100)
     sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
-    ops_subcommands.add_parser("sync-cex-token-icons", help="sync static CEX token icons into cex_tokens")
+    ops_subcommands.add_parser("sync-binance-cex-profiles", help="sync Binance CEX token profiles")
     ops_subcommands.add_parser("sync-us-equity-symbols", help="sync Nasdaq Trader US equity symbols")
     sync_gmgn_directory = ops_subcommands.add_parser(
         "sync-gmgn-directory",
@@ -236,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_resolution_refresh.add_argument("--reprocess-limit", type=int, default=500)
     refresh_asset_profiles = ops_subcommands.add_parser(
         "refresh-asset-profiles",
-        help="refresh due GMGN token profile facts",
+        help="refresh due DEX token profile facts",
     )
     refresh_asset_profiles.add_argument("--limit", type=int, default=50)
     rebuild_token_profiles = ops_subcommands.add_parser(
@@ -393,6 +393,12 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                             "dex_base_url": settings.okx_dex_base_url,
                             "dex_chain_indexes": list(settings.okx_dex_chain_indexes),
                             "dex_configured": settings.okx_dex_configured,
+                        },
+                        "binance": {
+                            "enabled": settings.binance_enabled,
+                            "web3_base_url": settings.binance_web3_base_url,
+                            "cex_base_url": settings.binance_cex_base_url,
+                            "timeout_seconds": settings.binance_timeout_seconds,
                         },
                     },
                     "notifications": {
@@ -837,12 +843,15 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
-        if command == "ops" and args.ops_command == "sync-cex-token-icons":
-            client = BinanceCexIconClient(timeout_seconds=settings.okx_timeout_seconds)
+        if command == "ops" and args.ops_command == "sync-binance-cex-profiles":
+            client = BinanceCexProfileClient(
+                base_url=settings.binance_cex_base_url,
+                timeout_seconds=settings.binance_timeout_seconds,
+            )
             try:
-                data = sync_cex_token_icons(
-                    registry=repos.registry,
-                    icon_source=client,
+                data = sync_cex_token_profiles(
+                    cex_token_profiles=repos.cex_token_profiles,
+                    profile_source=client,
                     observed_at_ms=_now_ms(),
                 )
             finally:
@@ -955,7 +964,7 @@ def _run_asset_profile_refresh_worker_once(settings: object, *, limit: int, now_
             settings=_worker_settings_with_overrides(settings.workers.asset_profile_refresh, batch_size=limit),
             db=db,
             telemetry=telemetry,
-            dex_profile_market=asset_market.dex_profile_market,
+            dex_profile_sources=asset_market.dex_profile_sources,
         )
         result = asyncio.run(worker.run_once(now_ms=now_ms))
         return dict(result.notes.get("result") or {})
@@ -1106,10 +1115,17 @@ def _close_asset_market_providers(asset_market: object) -> None:
         "dex_discovery_market",
         "dex_quote_market",
         "dex_candle_market",
-        "dex_profile_market",
         "stream_dex_market",
     ):
         provider = getattr(asset_market, name, None)
+        if provider is None or id(provider) in seen:
+            continue
+        seen.add(id(provider))
+        close = getattr(provider, "close", None)
+        if close:
+            close()
+    for source in tuple(getattr(asset_market, "dex_profile_sources", ()) or ()):
+        provider = getattr(source, "market", None)
         if provider is None or id(provider) in seen:
             continue
         seen.add(id(provider))

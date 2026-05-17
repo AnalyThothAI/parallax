@@ -11,6 +11,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     CexTicker,
     DexMarketFactUpdate,
     DexMarketStreamProvider,
+    DexProfileSource,
     DexProviderTemporarilyUnavailable,
     DexTokenCandidate,
     DexTokenDiscoveryProvider,
@@ -26,6 +27,7 @@ from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtoco
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider, PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
+from gmgn_twitter_intel.integrations.binance.web3_token_client import BinanceWeb3TokenClient
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
 from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient, GmgnOpenApiProviderUnavailableError
 from gmgn_twitter_intel.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
@@ -57,7 +59,7 @@ class AssetMarketProviders:
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
     dex_quote_market: DexTokenQuoteProvider | None = None
     dex_candle_market: object | None = None
-    dex_profile_market: object | None = None
+    dex_profile_sources: tuple[DexProfileSource, ...] = ()
     stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
     provider_health: tuple[ProviderHealth, ...] = ()
@@ -259,6 +261,34 @@ class GmgnDexMarketProvider:
 
     def close(self) -> None:
         self._gateway.close()
+
+
+class BinanceWeb3DexProfileProvider:
+    def __init__(self, client: BinanceWeb3TokenClient) -> None:
+        self._client = client
+
+    def token_profile(self, *, chain_id: str, address: str) -> DexTokenProfile | None:
+        metadata = self._client.token_metadata(chain_id=chain_id, address=address)
+        if metadata is None:
+            return None
+        return DexTokenProfile(
+            chain_id=metadata.chain_id,
+            address=_normalize_address(metadata.address),
+            symbol=metadata.symbol,
+            name=metadata.name,
+            logo_url=metadata.logo_url,
+            banner_url=None,
+            website=metadata.website,
+            twitter_username=metadata.twitter_username,
+            telegram=metadata.telegram,
+            gmgn_url=None,
+            geckoterminal_url=None,
+            description=metadata.description,
+            raw=metadata.raw,
+        )
+
+    def close(self) -> None:
+        self._client.close()
 
 
 class FallbackDexQuoteProvider:
@@ -502,9 +532,15 @@ def okx_chain_index(chain_id: Any) -> str | None:
 def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
     okx_bundle: OkxProviderBundle | None = None
     gmgn_dex_market: object | None = None
+    binance_profile_market: BinanceWeb3DexProfileProvider | None = None
     try:
         okx_bundle = _wire_okx_provider_bundle(settings)
         gmgn_dex_market = _gmgn_dex_market(settings) if settings.gmgn_configured else None
+        binance_profile_market = _binance_web3_profile_market(settings) if settings.binance_enabled else None
+        dex_profile_sources = _dex_profile_sources(
+            gmgn_dex_market=gmgn_dex_market,
+            binance_profile_market=binance_profile_market,
+        )
         return AssetMarketProviders(
             sync_cex_market=okx_bundle.sync_cex_market,
             message_cex_market=okx_bundle.message_cex_market,
@@ -514,10 +550,10 @@ def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
                 fallback=okx_bundle.dex_quote_market,
             ),
             dex_candle_market=gmgn_dex_market,
-            dex_profile_market=gmgn_dex_market,
+            dex_profile_sources=dex_profile_sources,
             stream_dex_market=okx_bundle.stream_dex_market,
             discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
-            provider_health=(okx_bundle.health, _gmgn_provider_health(settings)),
+            provider_health=(okx_bundle.health, _gmgn_provider_health(settings), _binance_provider_health(settings)),
         )
     except Exception as exc:
         _close_partial_providers(
@@ -528,6 +564,7 @@ def _wire_asset_market(settings: Settings) -> AssetMarketProviders:
             getattr(okx_bundle, "dex_quote_market", None),
             getattr(okx_bundle, "stream_dex_market", None),
             gmgn_dex_market,
+            binance_profile_market,
         )
         raise
 
@@ -595,6 +632,28 @@ def _gmgn_provider_health(settings: Settings) -> ProviderHealth:
         else frozenset()
     )
     return ProviderHealth(provider="gmgn", capabilities=capabilities, configured=settings.gmgn_configured)
+
+
+def _binance_provider_health(settings: Settings) -> ProviderHealth:
+    capabilities = (
+        frozenset({MarketCapability.PROFILE_CEX, MarketCapability.PROFILE_DEX_EXACT})
+        if settings.binance_enabled
+        else frozenset()
+    )
+    return ProviderHealth(provider="binance", capabilities=capabilities, configured=settings.binance_enabled)
+
+
+def _dex_profile_sources(
+    *,
+    gmgn_dex_market: object | None,
+    binance_profile_market: BinanceWeb3DexProfileProvider | None,
+) -> tuple[DexProfileSource, ...]:
+    sources: list[DexProfileSource] = []
+    if _has_token_profile(gmgn_dex_market):
+        sources.append(DexProfileSource(provider="gmgn_dex_profile", market=cast(Any, gmgn_dex_market)))
+    if binance_profile_market is not None:
+        sources.append(DexProfileSource(provider="binance_web3_profile", market=binance_profile_market))
+    return tuple(sources)
 
 
 def _wire_marketlane(settings: Settings) -> MarketlaneProviders:
@@ -666,6 +725,15 @@ def _gmgn_dex_market(settings: Settings) -> GmgnDexMarketProvider:
                 timeout_seconds=settings.gmgn_timeout_seconds,
             ),
             token_info_cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
+        )
+    )
+
+
+def _binance_web3_profile_market(settings: Settings) -> BinanceWeb3DexProfileProvider:
+    return BinanceWeb3DexProfileProvider(
+        BinanceWeb3TokenClient(
+            base_url=settings.binance_web3_base_url,
+            timeout_seconds=settings.binance_timeout_seconds,
         )
     )
 
@@ -856,6 +924,10 @@ def _has_token_quotes(value: object | None) -> bool:
     return callable(getattr(value, "token_quotes", None))
 
 
+def _has_token_profile(value: object | None) -> bool:
+    return callable(getattr(value, "token_profile", None))
+
+
 def _quote_key(chain_id: Any, address: Any) -> tuple[str, str]:
     return (str(chain_id).strip(), _normalize_address(address))
 
@@ -878,6 +950,7 @@ def _number_from_mapping(payload: dict[str, Any], *keys: str) -> float | None:
 
 __all__ = [
     "AssetMarketProviders",
+    "BinanceWeb3DexProfileProvider",
     "FallbackDexQuoteProvider",
     "GmgnDexMarketProvider",
     "IngestionProviders",

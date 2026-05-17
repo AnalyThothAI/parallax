@@ -598,7 +598,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert inspect_data["resolver"]["target_candidates"]
     assert inspect_data["token_result"]["posts"]["items"][0]["event_id"] == "event-1"
     assert inspect_data["token_result"]["profile"]["status"] == "pending"
-    assert inspect_data["token_result"]["profile"]["provider"] == "gmgn_dex_profile"
+    assert inspect_data["token_result"]["profile"]["provider"] is None
     assert inspect_data["token_result"]["market_live"]["status"] in {"missing", "unsupported", "ready"}
     assert "market_overlay" not in inspect_data["token_result"]
     assert "radar_item" not in inspect_data["token_result"]
@@ -607,7 +607,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert asset_flow.status_code == 200
     assert asset_flow.json()["data"]["targets"][0]["target"]["symbol"] == "PEPE"
     assert asset_flow.json()["data"]["targets"][0]["profile"]["status"] == "pending"
-    assert asset_flow.json()["data"]["targets"][0]["profile"]["provider"] == "gmgn_dex_profile"
+    assert asset_flow.json()["data"]["targets"][0]["profile"]["provider"] is None
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"

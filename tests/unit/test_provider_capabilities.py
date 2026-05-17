@@ -11,12 +11,14 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     quote = FakeQuoteProvider()
     stream = FakeStreamProvider()
     gmgn = FakeGmgnProvider()
+    binance = FakeBinanceProvider()
 
     monkeypatch.setattr(providers_wiring, "_okx_cex_market", lambda settings: cex)
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", lambda settings: discovery)
     monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", lambda settings: quote)
     monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", lambda settings: stream)
     monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", lambda settings: gmgn)
+    monkeypatch.setattr(providers_wiring, "_binance_web3_profile_market", lambda settings: binance)
 
     providers = providers_wiring.wire_providers(
         Settings(
@@ -59,6 +61,16 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
                 MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
                 MarketCapability.CANDLES_DEX_EXACT,
+            }
+        ),
+        configured=True,
+    )
+    assert health["binance"] == ProviderHealth(
+        provider="binance",
+        capabilities=frozenset(
+            {
+                MarketCapability.PROFILE_CEX,
+                MarketCapability.PROFILE_DEX_EXACT,
             }
         ),
         configured=True,
@@ -110,5 +122,10 @@ class FakeGmgnProvider:
     def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
         return []
 
+    def token_profile(self, *, chain_id: str, address: str):
+        return None
+
+
+class FakeBinanceProvider:
     def token_profile(self, *, chain_id: str, address: str):
         return None

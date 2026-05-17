@@ -125,7 +125,7 @@ class FakeProviders:
         self.asset_market = SimpleNamespace(
             message_cex_market=object() if message_cex_market is _UNSET else message_cex_market,
             dex_quote_market=object() if dex_quote_market is _UNSET else dex_quote_market,
-            dex_profile_market=None,
+            dex_profile_sources=(),
             dex_discovery_market=None,
             stream_dex_market=object() if stream_dex_market is _UNSET else stream_dex_market,
         )

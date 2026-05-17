@@ -7,6 +7,7 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
     AssetProfileRepository,
+    CexTokenProfileRepository,
     DiscoveryRepository,
     EnrichedEventRepository,
     IdentityEvidenceRepository,
@@ -44,6 +45,7 @@ class RepositorySession:
     entities: EntityRepository
     signals: SignalRepository
     asset_profiles: AssetProfileRepository
+    cex_token_profiles: CexTokenProfileRepository
     token_profiles: TokenProfileCurrentRepository
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
@@ -76,6 +78,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
         asset_profiles=AssetProfileRepository(conn),
+        cex_token_profiles=CexTokenProfileRepository(conn),
         token_profiles=TokenProfileCurrentRepository(conn),
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),

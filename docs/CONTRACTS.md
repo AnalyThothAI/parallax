@@ -26,14 +26,17 @@ settings. It must not contain worker runtime knobs.
 - `llm` — optional LLM provider config: credentials, provider/base URL,
   default model, Pulse model override, Watchlist handle-summary model
   override, timeout, and tracing/export settings.
-- Optional market-related groups (OKX, GMGN OpenAPI, Marketlane) for identity
-  discovery, route sync, market tick capture, cache-only live price fan-out,
-  and request-time US equity quote snapshots.
+- Optional market-related groups (OKX, GMGN OpenAPI, Binance, Marketlane) for
+  identity discovery, route sync, profile source refresh, market tick capture,
+  cache-only live price fan-out, and request-time US equity quote snapshots.
 - `gmgn` — GMGN OpenAPI key/base URL/timeout/cache settings. The exact-token
   profile lane uses this group to write persisted GMGN source
   `asset_profiles` facts, including DEX token `logo_url`.
 - `providers.okx` — OKX CEX/DEX REST and DEX WebSocket endpoints plus
   credentials where required by the enabled provider lane.
+- `providers.binance` — Binance Web3 metadata and Binance CEX profile endpoint
+  settings. Binance DEX metadata writes `asset_profiles`; Binance CEX profiles
+  write `cex_token_profiles`.
 
 Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`,
 `lease_ms`, `max_attempts`, advisory-lock, timeout, wake-channel, Pulse
@@ -277,9 +280,10 @@ and includes the effective `workers` settings loaded from `workers.yaml`.
 `ops worker-status` bootstraps the runtime without the upstream
 collector and returns the canonical worker map plus queue depths where
 queue tables exist. `ops refresh-asset-profiles` is the one-shot
-operator path for due GMGN exact-token profile source refreshes; it returns an
-explicit skipped result when the GMGN profile provider is not
-configured. `ops rebuild-token-profiles` rebuilds canonical
+operator path for due DEX profile source refreshes; it returns an explicit
+skipped result when no profile source is configured. `ops
+sync-binance-cex-profiles` refreshes the Binance CEX profile source cache for
+existing routed CEX tokens. `ops rebuild-token-profiles` rebuilds canonical
 `token_profile_current` rows from persisted source facts without wiring
 upstream providers.
 

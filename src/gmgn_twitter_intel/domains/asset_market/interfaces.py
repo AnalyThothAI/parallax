@@ -17,6 +17,7 @@ from .identity_evidence_policy import (
 )
 from .read_models.message_price_payload import message_price_payload
 from .repositories.asset_profile_repository import AssetProfileRepository
+from .repositories.cex_token_profile_repository import CexTokenProfileRepository
 from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.enriched_event_repository import EnrichedEventRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
@@ -40,6 +41,7 @@ __all__ = [
     "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
     "EVIDENCE_TWEET_CONTRACT_MENTION",
     "AssetProfileRepository",
+    "CexTokenProfileRepository",
     "DiscoveryRepository",
     "EnrichedEventCapture",
     "EnrichedEventRepository",

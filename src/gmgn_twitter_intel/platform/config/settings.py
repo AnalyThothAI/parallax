@@ -317,6 +317,20 @@ class OkxProviderConfig(BaseModel):
         return str(value or "wss://wsdex.okx.com/ws/v6/dex").strip()
 
 
+class BinanceProviderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    web3_base_url: str = "https://web3.binance.com"
+    cex_base_url: str = "https://www.binance.com"
+    timeout_seconds: float = 15.0
+
+    @field_validator("web3_base_url", "cex_base_url", mode="before")
+    @classmethod
+    def parse_base_url(cls, value: Any) -> str:
+        return str(value or "").strip().rstrip("/")
+
+
 class MarketlaneProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -329,6 +343,7 @@ class ProvidersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     okx: OkxProviderConfig = Field(default_factory=OkxProviderConfig)
+    binance: BinanceProviderConfig = Field(default_factory=BinanceProviderConfig)
     marketlane: MarketlaneProviderConfig = Field(default_factory=MarketlaneProviderConfig)
 
 
@@ -763,6 +778,22 @@ class Settings(BaseModel):
         )
 
     @property
+    def binance_enabled(self) -> bool:
+        return bool(self.providers.binance.enabled)
+
+    @property
+    def binance_web3_base_url(self) -> str:
+        return self.providers.binance.web3_base_url
+
+    @property
+    def binance_cex_base_url(self) -> str:
+        return self.providers.binance.cex_base_url
+
+    @property
+    def binance_timeout_seconds(self) -> float:
+        return self.providers.binance.timeout_seconds
+
+    @property
     def marketlane_enabled(self) -> bool:
         return bool(self.providers.marketlane.enabled)
 
@@ -916,6 +947,11 @@ providers:
     dex_api_key:
     dex_secret_key:
     dex_passphrase:
+    timeout_seconds: 15
+  binance:
+    enabled: true
+    web3_base_url: "https://web3.binance.com"
+    cex_base_url: "https://www.binance.com"
     timeout_seconds: 15
 
 upstream:

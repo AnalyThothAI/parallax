@@ -44,13 +44,14 @@ def test_public_read_paths_do_not_call_profile_providers() -> None:
     assert violations == []
 
 
-def test_no_binance_profile_runtime_source_was_introduced() -> None:
+def test_no_cex_token_registry_icon_compatibility_path_remains() -> None:
     violations: list[str] = []
     for path in SRC.rglob("*.py"):
+        if "/platform/db/alembic/versions/" in path.as_posix():
+            continue
         for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            text = line.lower()
-            if "binance" in text and "profile" in text:
-                violations.append(f"{path.relative_to(SRC).as_posix()}:{index}")
+            if "cex_tokens.logo" in line or "update_cex_token_icon" in line or "cex_token_icon_static" in line:
+                violations.append(f"{path.relative_to(SRC).as_posix()}:{index}:{line.strip()}")
 
     assert violations == []
 

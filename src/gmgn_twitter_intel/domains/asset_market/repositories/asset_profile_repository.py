@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json, postgres_safe_text
 
 GMGN_DEX_PROFILE_PROVIDER = "gmgn_dex_profile"
+BINANCE_WEB3_PROFILE_PROVIDER = "binance_web3_profile"
 READY_REFRESH_MS = 6 * 60 * 60 * 1000
 MISSING_REFRESH_MS = 15 * 60 * 1000
 ERROR_REFRESH_MS = 15 * 60 * 1000

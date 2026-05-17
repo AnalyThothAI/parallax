@@ -233,8 +233,8 @@ Radar scoring snapshots. The runtime profile lane is:
 ```
 resolved Asset(chain,address)
   → AssetProfileRefreshWorker
-  → dex_profile_market.token_profile(...)
-  → asset_profiles (GMGN source cache)
+  → dex_profile_sources[].token_profile(...)
+  → asset_profiles (GMGN OpenAPI + Binance Web3 source caches)
   → TokenProfileCurrentWorker
   → token_profile_current
   → TokenProfileReadModel
@@ -247,8 +247,10 @@ HTTP handlers, CLI read commands, Token Radar projection, Search read models,
 and frontend components read persisted `token_profile_current` through
 `TokenProfileReadModel`. The current profile projection only marks rows
 `ready` when the selected source has a usable logo; it also promotes exact
-GMGN stream snapshot icons and exact OKX DEX evidence already stored in
-PostgreSQL; it does not use request-time fallback or symbol-only CEX matching.
+GMGN stream snapshot icons, exact OKX DEX evidence, and Binance CEX profile
+source-cache rows already stored in PostgreSQL; it does not use request-time
+fallback or symbol-only CEX matching. `cex_tokens` remains identity/routing
+only; CEX profile data lives in `cex_token_profiles`.
 Official links and descriptions must be visible without running a narrative
 agent; future narrative jobs may consume profile facts, but they do not own
 official profile data.

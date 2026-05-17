@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import httpx
 import pytest
 
@@ -21,6 +23,7 @@ def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_r
     okx_created: list[FakeDexDiscoveryProvider] = []
     okx_quote_created: list[FakeDexQuoteProvider] = []
     gmgn_created: list[FakeGmgnDexMarketProvider] = []
+    binance_created: list[FakeBinanceWeb3ProfileProvider] = []
 
     def fake_okx(settings: Settings) -> FakeDexDiscoveryProvider:
         provider = FakeDexDiscoveryProvider()
@@ -37,9 +40,15 @@ def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_r
         gmgn_created.append(provider)
         return provider
 
+    def fake_binance(settings: Settings) -> FakeBinanceWeb3ProfileProvider:
+        provider = FakeBinanceWeb3ProfileProvider()
+        binance_created.append(provider)
+        return provider
+
     monkeypatch.setattr(providers_wiring, "_okx_dex_discovery_market", fake_okx)
     monkeypatch.setattr(providers_wiring, "_okx_dex_quote_market", fake_okx_quote)
     monkeypatch.setattr(providers_wiring, "_gmgn_dex_market", fake_gmgn)
+    monkeypatch.setattr(providers_wiring, "_binance_web3_profile_market", fake_binance)
 
     providers = providers_wiring.wire_providers(
         _settings_with_okx_and_gmgn(),
@@ -50,12 +59,16 @@ def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_r
     assert providers.dex_quote_market is not None
     assert isinstance(providers.dex_quote_market, providers_wiring.FallbackDexQuoteProvider)
     assert providers.dex_candle_market is gmgn_created[0]
-    assert providers.dex_profile_market is gmgn_created[0]
+    assert [(source.provider, source.market) for source in providers.dex_profile_sources] == [
+        ("gmgn_dex_profile", gmgn_created[0]),
+        ("binance_web3_profile", binance_created[0]),
+    ]
     assert providers.dex_discovery_market is not providers.dex_quote_market
     assert not hasattr(providers.dex_discovery_market, "token_quotes")
     assert len(okx_created) == 1
     assert len(okx_quote_created) == 1
     assert len(gmgn_created) == 1
+    assert len(binance_created) == 1
 
 
 def test_asset_market_quote_provider_prefers_gmgn_facts_and_falls_back_to_okx(monkeypatch) -> None:
@@ -481,6 +494,26 @@ def test_gmgn_dex_market_provider_maps_token_info_to_quote_and_profile() -> None
     assert profile.twitter_username == "MascotAsteroid"
 
 
+def test_binance_web3_dex_profile_provider_maps_metadata_to_domain_profile() -> None:
+    client = FakeBinanceWeb3Client()
+    provider = providers_wiring.BinanceWeb3DexProfileProvider(client)
+
+    profile = provider.token_profile(chain_id="eip155:56", address="0xabc")
+
+    assert profile is not None
+    assert profile.chain_id == "eip155:56"
+    assert profile.address == "0xabc"
+    assert profile.symbol == "ABC"
+    assert profile.name == "ABC Token"
+    assert profile.logo_url == "https://bin.bnbstatic.com/images/abc.png"
+    assert profile.website == "https://abc.example"
+    assert profile.twitter_username == "abc"
+    assert profile.telegram == "https://t.me/abc"
+    assert profile.description == "profile"
+    assert profile.raw == {"source_provider": "binance_web3_profile"}
+    assert client.calls == [("eip155:56", "0xabc")]
+
+
 class FakeOkxDexClient:
     def __init__(self) -> None:
         self.search_requests: list[dict[str, object]] = []
@@ -517,6 +550,27 @@ class FakeOkxDexClient:
         ]
 
 
+class FakeBinanceWeb3Client:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def token_metadata(self, *, chain_id: str, address: str):
+        self.calls.append((chain_id, address))
+        return SimpleNamespace(
+            chain_id="eip155:56",
+            address="0xabc",
+            symbol="ABC",
+            name="ABC Token",
+            logo_url="https://bin.bnbstatic.com/images/abc.png",
+            website="https://abc.example",
+            twitter_url="https://twitter.com/abc",
+            twitter_username="abc",
+            telegram="https://t.me/abc",
+            description="profile",
+            raw={"source_provider": "binance_web3_profile"},
+        )
+
+
 class FakeDexDiscoveryProvider:
     def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]):
         return []
@@ -546,6 +600,11 @@ class FakeGmgnDexMarketProvider:
     def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
         return []
 
+    def token_profile(self, *, chain_id: str, address: str):
+        return None
+
+
+class FakeBinanceWeb3ProfileProvider:
     def token_profile(self, *, chain_id: str, address: str):
         return None
 

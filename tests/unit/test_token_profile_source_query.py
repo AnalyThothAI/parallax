@@ -33,6 +33,18 @@ def test_gmgn_openapi_profiles_reads_ready_asset_profile_source_only():
     assert "status = 'ready'" in sql
 
 
+def test_binance_web3_profiles_reads_ready_asset_profile_source_only():
+    conn = _Conn(rows=[{"asset_id": "asset:abc", "status": "ready", "provider": "binance_web3_profile"}])
+
+    rows = TokenProfileSourceQuery(conn).binance_web3_profiles(["asset:abc"])
+
+    assert rows == {"asset:abc": {"asset_id": "asset:abc", "status": "ready", "provider": "binance_web3_profile"}}
+    sql = conn.sqls[-1]
+    assert "FROM asset_profiles" in sql
+    assert "provider = 'binance_web3_profile'" in sql
+    assert "status = 'ready'" in sql
+
+
 def test_gmgn_stream_profiles_reads_exact_payload_icons():
     conn = _Conn(
         rows=[
@@ -84,14 +96,15 @@ def test_okx_dex_profiles_reads_exact_address_logos_and_not_symbol_candidates():
     assert "okx_dex_symbol_candidate" not in sql
 
 
-def test_cex_token_profiles_reads_existing_icon_facts_only():
+def test_cex_token_profiles_reads_binance_source_cache_not_registry_icon_columns():
     conn = _Conn(
         rows=[
             {
                 "cex_token_id": "cex_token:BTC",
                 "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
                 "logo_url": "https://bin.bnbstatic.com/btc.png",
-                "logo_source": "binance_marketing_symbol_list",
+                "source_ref": "binance_marketing_symbol_list:BTC",
             }
         ]
     )
@@ -102,15 +115,20 @@ def test_cex_token_profiles_reads_existing_icon_facts_only():
         "cex_token:BTC": {
             "cex_token_id": "cex_token:BTC",
             "base_symbol": "BTC",
+            "provider": "binance_cex_profile",
             "logo_url": "https://bin.bnbstatic.com/btc.png",
-            "logo_source": "binance_marketing_symbol_list",
+            "source_ref": "binance_marketing_symbol_list:BTC",
         }
     }
     sql = conn.sqls[-1]
     params = conn.params[-1]
-    assert "FROM cex_tokens" in sql
+    assert "FROM cex_token_profiles" in sql
+    assert "JOIN cex_tokens" in sql
+    assert "provider = 'binance_cex_profile'" in sql
     assert "logo_url IS NOT NULL" in sql
-    assert "status IN ('candidate', 'canonical')" in sql
+    assert "cex_tokens.status IN ('candidate', 'canonical')" in sql
+    assert "cex_tokens.logo_url" not in sql
+    assert "logo_source" not in sql
     assert params == (["cex_token:BTC"],)
 
 

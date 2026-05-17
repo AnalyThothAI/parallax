@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexProviderTemporarilyUnavailable, DexTokenProfile
+from gmgn_twitter_intel.domains.asset_market.providers import (
+    DexProfileSource,
+    DexProviderTemporarilyUnavailable,
+    DexTokenProfile,
+)
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_repository import (
     ERROR_REFRESH_MS,
     GMGN_DEX_PROFILE_PROVIDER,
@@ -44,7 +48,12 @@ def test_refresh_asset_profiles_writes_ready_profile_and_calls_provider_with_exa
         )
     )
 
-    result = refresh_asset_profiles_once(repos=repos, dex_profile_market=provider, now_ms=10_000, limit=5)
+    result = refresh_asset_profiles_once(
+        repos=repos,
+        profile_source=DexProfileSource(provider=GMGN_DEX_PROFILE_PROVIDER, market=provider),
+        now_ms=10_000,
+        limit=5,
+    )
 
     assert result == {
         "provider": GMGN_DEX_PROFILE_PROVIDER,
@@ -101,7 +110,12 @@ def test_refresh_asset_profiles_writes_missing_row_when_provider_returns_none():
     )
     provider = FakeProfileProvider(profile=None)
 
-    result = refresh_asset_profiles_once(repos=repos, dex_profile_market=provider, now_ms=20_000, limit=10)
+    result = refresh_asset_profiles_once(
+        repos=repos,
+        profile_source=DexProfileSource(provider=GMGN_DEX_PROFILE_PROVIDER, market=provider),
+        now_ms=20_000,
+        limit=10,
+    )
 
     assert result["selected"] == 1
     assert result["missing"] == 1
@@ -153,7 +167,12 @@ def test_refresh_asset_profiles_writes_error_row_and_continues_when_provider_rai
         ]
     )
 
-    result = refresh_asset_profiles_once(repos=repos, dex_profile_market=provider, now_ms=30_000, limit=10)
+    result = refresh_asset_profiles_once(
+        repos=repos,
+        profile_source=DexProfileSource(provider=GMGN_DEX_PROFILE_PROVIDER, market=provider),
+        now_ms=30_000,
+        limit=10,
+    )
 
     assert result["selected"] == 2
     assert result["error"] == 1
@@ -202,7 +221,12 @@ def test_refresh_asset_profiles_stops_batch_without_polluting_profiles_when_prov
         ]
     )
 
-    result = refresh_asset_profiles_once(repos=repos, dex_profile_market=provider, now_ms=35_000, limit=10)
+    result = refresh_asset_profiles_once(
+        repos=repos,
+        profile_source=DexProfileSource(provider=GMGN_DEX_PROFILE_PROVIDER, market=provider),
+        now_ms=35_000,
+        limit=10,
+    )
 
     assert result["selected"] == 2
     assert result["provider_blocked"] == 1
@@ -212,26 +236,6 @@ def test_refresh_asset_profiles_stops_batch_without_polluting_profiles_when_prov
     assert provider.calls == [("eip155:8453", "0xblocked")]
     assert repos.asset_profiles.status_profiles == []
     assert repos.asset_profiles.ready_profiles == []
-
-
-def test_refresh_asset_profiles_returns_skipped_when_provider_is_none_without_db_access():
-    repos = FakeRepos(rows=[])
-
-    result = refresh_asset_profiles_once(repos=repos, dex_profile_market=None, now_ms=40_000, limit=10)
-
-    assert result == {
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
-        "selected": 0,
-        "ready": 0,
-        "missing": 0,
-        "error": 0,
-        "skipped": 1,
-        "started_at_ms": 40_000,
-        "finished_at_ms": 40_000,
-    }
-    assert repos.conn.executed_sql == []
-    assert repos.asset_profiles.ready_profiles == []
-    assert repos.asset_profiles.status_profiles == []
 
 
 class FakeRepos:

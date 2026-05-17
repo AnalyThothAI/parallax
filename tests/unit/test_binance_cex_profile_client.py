@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.integrations.binance.cex_icon_client import BinanceCexIconClient
+from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 
 
-def test_binance_cex_icon_client_normalizes_and_dedupes_symbol_icons():
+def test_binance_cex_profile_client_normalizes_and_dedupes_symbol_profiles():
     http = _HttpClient(
         {
             "code": "000000",
             "data": [
                 {
                     "baseAsset": "BTC",
-                    "name": "BTC",
+                    "name": "Bitcoin",
                     "logo": "https://bin.bnbstatic.com/slow-btc.png",
                     "rank": 10,
                     "symbol": "BTCUSDT",
                 },
                 {
                     "baseAsset": "BTC",
-                    "name": "BTC",
+                    "name": "Bitcoin",
                     "logo": "https://bin.bnbstatic.com/btc.png",
                     "rank": 1,
                     "symbol": "BTCFDUSD",
@@ -38,20 +38,37 @@ def test_binance_cex_icon_client_normalizes_and_dedupes_symbol_icons():
         }
     )
 
-    icons = BinanceCexIconClient(http_client=http).token_icons()
+    profiles = BinanceCexProfileClient(http_client=http).token_profiles()
 
-    assert icons == [
+    assert profiles == [
         {
             "base_symbol": "BTC",
+            "provider": "binance_cex_profile",
+            "symbol": "BTC",
+            "name": "Bitcoin",
             "logo_url": "https://bin.bnbstatic.com/btc.png",
-            "source": "binance_marketing_symbol_list",
             "source_ref": "binance_marketing_symbol_list:BTC",
+            "raw_payload": {
+                "baseAsset": "BTC",
+                "name": "Bitcoin",
+                "logo": "https://bin.bnbstatic.com/btc.png",
+                "rank": 1,
+                "symbol": "BTCFDUSD",
+            },
         },
         {
             "base_symbol": "ETH",
+            "provider": "binance_cex_profile",
+            "symbol": "ETH",
+            "name": "ETH",
             "logo_url": "https://bin.bnbstatic.com/eth.png",
-            "source": "binance_marketing_symbol_list",
             "source_ref": "binance_marketing_symbol_list:ETH",
+            "raw_payload": {
+                "name": "ETH",
+                "logo": "https://bin.bnbstatic.com/eth.png",
+                "rank": 2,
+                "symbol": "ETHUSDT",
+            },
         },
     ]
     assert http.requests == ["/bapi/composite/v1/public/marketing/symbol/list"]

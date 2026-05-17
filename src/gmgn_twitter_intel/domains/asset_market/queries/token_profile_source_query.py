@@ -6,7 +6,7 @@ from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_OKX_DEX_EXACT_ADDRESS,
 )
-from gmgn_twitter_intel.domains.asset_market.services.token_profile_current_projection import (
+from gmgn_twitter_intel.domains.asset_market.profile_source_selection import (
     select_gmgn_stream_source,
     select_okx_dex_source,
 )
@@ -119,6 +119,22 @@ class TokenProfileSourceQuery:
         ).fetchall()
         return {str(row["asset_id"]): dict(row) for row in rows}
 
+    def binance_web3_profiles(self, asset_ids: list[str]) -> dict[str, dict[str, Any]]:
+        requested = _dedupe(asset_ids)
+        if not requested:
+            return {}
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM asset_profiles
+            WHERE provider = 'binance_web3_profile'
+              AND status = 'ready'
+              AND asset_id = ANY(%s)
+            """,
+            (requested,),
+        ).fetchall()
+        return {str(row["asset_id"]): dict(row) for row in rows}
+
     def gmgn_stream_profiles(self, asset_ids: list[str]) -> dict[str, dict[str, Any]]:
         rows_by_asset = self._identity_evidence_rows(
             asset_ids=asset_ids,
@@ -152,16 +168,16 @@ class TokenProfileSourceQuery:
         rows = self.conn.execute(
             """
             SELECT
-              cex_token_id,
-              base_symbol,
-              logo_url,
-              logo_source,
-              logo_observed_at_ms,
-              updated_at_ms
-            FROM cex_tokens
-            WHERE cex_token_id = ANY(%s)
-              AND status IN ('candidate', 'canonical')
-              AND logo_url IS NOT NULL
+              cex_token_profiles.*,
+              cex_tokens.base_symbol
+            FROM cex_token_profiles
+            JOIN cex_tokens
+              ON cex_tokens.cex_token_id = cex_token_profiles.cex_token_id
+            WHERE cex_token_profiles.provider = 'binance_cex_profile'
+              AND cex_token_profiles.status = 'ready'
+              AND cex_token_profiles.logo_url IS NOT NULL
+              AND cex_tokens.cex_token_id = ANY(%s)
+              AND cex_tokens.status IN ('candidate', 'canonical')
             """,
             (requested,),
         ).fetchall()

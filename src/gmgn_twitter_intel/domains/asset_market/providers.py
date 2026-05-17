@@ -11,6 +11,7 @@ class MarketCapability(StrEnum):
     QUOTE_DEX_EXACT = "quote_dex_exact"
     STREAM_DEX = "stream_dex"
     SEARCH_DEX = "search_dex"
+    PROFILE_CEX = "profile_cex"
     PROFILE_DEX_EXACT = "profile_dex_exact"
     CANDLES_DEX_EXACT = "candles_dex_exact"
 
@@ -88,6 +89,12 @@ class DexTokenProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class DexProfileSource:
+    provider: str
+    market: DexTokenProfileProvider
+
+
+@dataclass(frozen=True, slots=True)
 class MarketCandle:
     time_ms: int
     open: float | None
@@ -162,6 +169,7 @@ __all__ = [
     "DexMarketFactUpdate",
     "DexMarketStreamProvider",
     "DexMarketStreamTarget",
+    "DexProfileSource",
     "DexProviderTemporarilyUnavailable",
     "DexTokenCandidate",
     "DexTokenCandleProvider",

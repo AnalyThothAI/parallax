@@ -140,6 +140,7 @@ class CliTests(unittest.TestCase):
             ["ops", "worker-status"],
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
+            ["ops", "sync-binance-cex-profiles"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
             ["ops", "refresh-asset-profiles", "--limit", "5"],
             ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5", "--lookup-key", "symbol:SLOP"],
@@ -178,25 +179,26 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[6].ops_command, "validate-projections")
         self.assertEqual(parsed[6].sample, 5)
         self.assertEqual(parsed[7].ops_command, "sync-okx-cex-universe")
-        self.assertEqual(parsed[8].ops_command, "run-resolution-refresh")
-        self.assertEqual(parsed[8].limit, 5)
-        self.assertEqual(parsed[9].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[8].ops_command, "sync-binance-cex-profiles")
+        self.assertEqual(parsed[9].ops_command, "run-resolution-refresh")
         self.assertEqual(parsed[9].limit, 5)
-        self.assertEqual(parsed[10].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[10].window, "24h")
-        self.assertEqual(parsed[10].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[11].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[11].window, "5m")
-        self.assertEqual(parsed[12].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[13].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[14].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[15].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[15].limit, 200)
-        self.assertEqual(parsed[16].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[16].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[17].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[18].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[18].limit, 5)
+        self.assertEqual(parsed[10].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[10].limit, 5)
+        self.assertEqual(parsed[11].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[11].window, "24h")
+        self.assertEqual(parsed[11].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[12].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[12].window, "5m")
+        self.assertEqual(parsed[13].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[14].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[15].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[16].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[16].limit, 200)
+        self.assertEqual(parsed[17].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[17].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[18].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[19].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[19].limit, 5)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -845,7 +847,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
 
     def fake_wire_asset_market_providers(settings, *, start_collector):
         captured["start_collector"] = start_collector
-        return SimpleNamespace(dex_profile_market=None)
+        return SimpleNamespace(dex_profile_sources=())
 
     def fail_full_wire_providers(*_args, **_kwargs):
         raise AssertionError("refresh-asset-profiles must not wire LLM providers")
@@ -870,12 +872,14 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
     assert payload == {
         "ok": True,
         "data": {
-            "provider": "gmgn_dex_profile",
+            "providers": [],
             "selected": 0,
             "ready": 0,
             "missing": 0,
             "error": 0,
+            "provider_blocked": 0,
             "skipped": 1,
+            "sources": {},
             "started_at_ms": 1_700_000_000_000,
             "finished_at_ms": 1_700_000_000_000,
         },

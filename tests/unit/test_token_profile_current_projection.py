@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.services.token_profile_current_projection import (
-    project_token_profile_current,
+from gmgn_twitter_intel.domains.asset_market.profile_source_selection import (
     select_gmgn_stream_source,
     select_okx_dex_source,
+)
+from gmgn_twitter_intel.domains.asset_market.services.token_profile_current_projection import (
+    project_token_profile_current,
 )
 
 ASSET_ID = "asset:eip155:1:erc20:0xabc"
@@ -18,6 +20,12 @@ def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
             symbol="GMGN",
             raw_payload_json={"profile": True},
             observed_at_ms=1_000,
+        ),
+        binance_web3=asset_profile_row(
+            provider="binance_web3_profile",
+            logo_url="https://binance.example/logo.png",
+            symbol="BN",
+            observed_at_ms=1_500,
         ),
         gmgn_stream=gmgn_stream_row(icon_url="https://stream.example/logo.png", observed_at_ms=2_000),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
@@ -42,6 +50,7 @@ def test_project_token_profile_current_uses_gmgn_stream_when_openapi_is_missing_
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(status="error", logo_url=None, observed_at_ms=1_000),
+        binance_web3=None,
         gmgn_stream=gmgn_stream_row(
             icon_url="https://gmgn-stream.example/icon.png",
             symbol="ABC",
@@ -64,6 +73,7 @@ def test_project_token_profile_current_skips_gmgn_openapi_profile_without_logo()
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=None, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
         gmgn_stream=None,
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
         computed_at_ms=10_000,
@@ -74,10 +84,38 @@ def test_project_token_profile_current_skips_gmgn_openapi_profile_without_logo()
     assert row["logo_url"] == "https://okx.example/logo.png"
 
 
+def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_when_gmgn_openapi_missing():
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=None,
+        binance_web3=asset_profile_row(
+            provider="binance_web3_profile",
+            logo_url="https://bin.bnbstatic.com/images/web3-data/public/token/logos/usdt.png",
+            symbol="USDT",
+            name="Tether USD",
+            raw_payload_json={"source_provider": "binance_web3_profile"},
+            observed_at_ms=1_500,
+        ),
+        gmgn_stream=gmgn_stream_row(icon_url="https://gmgn-stream.example/icon.png", observed_at_ms=2_000),
+        okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["profile_provider"] == "binance_web3_profile"
+    assert row["source_kind"] == "asset_profiles"
+    assert row["source_ref"] == f"binance_web3_profile:{ASSET_ID}"
+    assert row["symbol"] == "USDT"
+    assert row["name"] == "Tether USD"
+    assert row["logo_url"] == "https://bin.bnbstatic.com/images/web3-data/public/token/logos/usdt.png"
+    assert row["observed_at_ms"] == 1_500
+
+
 def test_project_token_profile_current_uses_okx_exact_logo_when_gmgn_sources_are_absent():
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=None,
+        binance_web3=None,
         gmgn_stream=None,
         okx_dex=okx_row(
             logo_url="https://static.okx.com/cdn/wallet/logo/usdt.png",
@@ -101,6 +139,7 @@ def test_project_token_profile_current_filters_okx_default_logo_and_marks_missin
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=None,
+        binance_web3=None,
         gmgn_stream=None,
         okx_dex=okx_row(
             logo_url="https://static.okx.com/cdn/wallet/logo/default-logo/0.png",
@@ -120,6 +159,7 @@ def test_project_token_profile_current_returns_cex_unsupported_without_symbol_ma
     row = project_token_profile_current(
         target={"target_type": "CexToken", "target_id": "cex_token:BTC"},
         gmgn_openapi=None,
+        binance_web3=None,
         gmgn_stream=None,
         okx_dex=okx_row(logo_url="https://okx.example/btc.png", symbol="BTC", observed_at_ms=3_000),
         cex_profile=None,
@@ -134,18 +174,23 @@ def test_project_token_profile_current_returns_cex_unsupported_without_symbol_ma
     assert row["quality_flags"] == ["cex_profile_unsupported"]
 
 
-def test_project_token_profile_current_uses_cex_token_icon_source():
+def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
     row = project_token_profile_current(
         target={"target_type": "CexToken", "target_id": "cex_token:BTC"},
         gmgn_openapi=None,
+        binance_web3=None,
         gmgn_stream=None,
         okx_dex=None,
         cex_profile={
             "cex_token_id": "cex_token:BTC",
             "base_symbol": "BTC",
+            "provider": "binance_cex_profile",
+            "symbol": "BTC",
+            "name": "Bitcoin",
             "logo_url": "https://bin.bnbstatic.com/btc.png",
-            "logo_source": "binance_marketing_symbol_list",
-            "logo_observed_at_ms": 9_000,
+            "source_ref": "binance_marketing_symbol_list:BTC",
+            "raw_payload_json": {"rank": 1},
+            "observed_at_ms": 9_000,
         },
         computed_at_ms=10_000,
     )
@@ -153,13 +198,38 @@ def test_project_token_profile_current_uses_cex_token_icon_source():
     assert row["status"] == "ready"
     assert row["target_type"] == "CexToken"
     assert row["target_id"] == "cex_token:BTC"
-    assert row["profile_provider"] == "cex_token_icon_static"
-    assert row["source_kind"] == "cex_tokens"
-    assert row["source_ref"] == "binance_marketing_symbol_list:cex_token:BTC"
+    assert row["profile_provider"] == "binance_cex_profile"
+    assert row["source_kind"] == "cex_token_profiles"
+    assert row["source_ref"] == "binance_marketing_symbol_list:BTC"
     assert row["symbol"] == "BTC"
+    assert row["name"] == "Bitcoin"
     assert row["logo_url"] == "https://bin.bnbstatic.com/btc.png"
+    assert row["source_payload"] == {"rank": 1}
     assert row["quality_flags"] == []
     assert row["observed_at_ms"] == 9_000
+
+
+def test_project_token_profile_current_falls_back_to_specific_cex_source_ref():
+    row = project_token_profile_current(
+        target={"target_type": "CexToken", "target_id": "cex_token:BTC"},
+        gmgn_openapi=None,
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        cex_profile={
+            "cex_token_id": "cex_token:BTC",
+            "base_symbol": "BTC",
+            "provider": "binance_cex_profile",
+            "symbol": "BTC",
+            "logo_url": "https://bin.bnbstatic.com/btc.png",
+            "raw_payload_json": {},
+            "observed_at_ms": 9_000,
+        },
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["source_ref"] == "binance_cex_profile:cex_token:BTC"
 
 
 def test_select_okx_dex_source_ignores_symbol_candidates():
@@ -196,20 +266,22 @@ def test_select_gmgn_stream_source_requires_icon_url():
     assert selected["evidence_id"] == "with-icon"
 
 
-def gmgn_openapi_row(
+def asset_profile_row(
     *,
-    status: str,
+    provider: str = "gmgn_dex_profile",
+    status: str = "ready",
     logo_url: str | None = None,
     symbol: str | None = None,
+    name: str | None = None,
     raw_payload_json: dict | None = None,
     observed_at_ms: int = 1_000,
 ) -> dict:
     return {
         "asset_id": ASSET_ID,
-        "provider": "gmgn_dex_profile",
+        "provider": provider,
         "status": status,
         "symbol": symbol,
-        "name": None,
+        "name": name,
         "logo_url": logo_url,
         "banner_url": None,
         "website_url": None,
@@ -222,6 +294,24 @@ def gmgn_openapi_row(
         "raw_payload_json": raw_payload_json or {},
         "observed_at_ms": observed_at_ms,
     }
+
+
+def gmgn_openapi_row(
+    *,
+    status: str,
+    logo_url: str | None = None,
+    symbol: str | None = None,
+    raw_payload_json: dict | None = None,
+    observed_at_ms: int = 1_000,
+) -> dict:
+    return asset_profile_row(
+        provider="gmgn_dex_profile",
+        status=status,
+        logo_url=logo_url,
+        symbol=symbol,
+        raw_payload_json=raw_payload_json,
+        observed_at_ms=observed_at_ms,
+    )
 
 
 def gmgn_stream_row(

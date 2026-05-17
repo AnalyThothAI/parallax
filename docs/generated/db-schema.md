@@ -153,6 +153,23 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `cex_token_profiles`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `cex_token_id` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `symbol` | `TEXT` | True | `None` |
+| `name` | `TEXT` | True | `None` |
+| `logo_url` | `TEXT` | True | `None` |
+| `source_ref` | `TEXT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `observed_at_ms` | `BIGINT` | True | `None` |
+| `last_error` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `cex_tokens`
 
 | Column | Type | Nullable | Default |
@@ -406,12 +423,6 @@
 | `event_id` | `TEXT` | False | `None` |
 | `provider` | `TEXT` | False | `None` |
 | `model` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `request_json` | `JSONB` | False | `None` |
-| `response_json` | `JSONB` | True | `None` |
-| `error` | `TEXT` | True | `None` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | False | `None` |
 | `backend` | `TEXT` | False | `'openai_agents_sdk'::text` |
 | `sdk_trace_id` | `TEXT` | True | `None` |
 | `workflow_name` | `TEXT` | True | `None` |
@@ -424,6 +435,12 @@
 | `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
 | `usage_json` | `JSONB` | False | `'{}'::jsonb` |
 | `latency_ms` | `BIGINT` | False | `0` |
+| `status` | `TEXT` | False | `None` |
+| `request_json` | `JSONB` | False | `None` |
+| `response_json` | `JSONB` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
 | `safety_net_used` | `BOOLEAN` | False | `false` |
 | `safety_net_retries` | `INTEGER` | False | `0` |
 | `parse_mode` | `TEXT` | False | `'strict'::text` |
@@ -1134,6 +1151,7 @@
 | `price_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_version` | `TEXT` | False | `'token_factor_snapshot_v3_social_attention'::text` |
+| `listed_at_ms` | `BIGINT` | True | `None` |
 
 ## `token_score_evaluations`
 

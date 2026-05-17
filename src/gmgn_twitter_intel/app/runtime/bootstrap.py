@@ -254,7 +254,7 @@ def _construct_workers(
     asset_market = providers.asset_market
     message_cex_market = getattr(asset_market, "message_cex_market", None)
     dex_quote_market = getattr(asset_market, "dex_quote_market", None)
-    dex_profile_market = getattr(asset_market, "dex_profile_market", None)
+    dex_profile_sources = tuple(getattr(asset_market, "dex_profile_sources", ()) or ())
     dex_discovery_market = getattr(asset_market, "dex_discovery_market", None)
     stream_dex_market = getattr(asset_market, "stream_dex_market", None)
 
@@ -377,13 +377,13 @@ def _construct_workers(
             channels=settings.notifications.channels,
             wake_waiter=delivery_wake,
         )
-    if workers.asset_profile_refresh.enabled and dex_profile_market is not None:
+    if workers.asset_profile_refresh.enabled and dex_profile_sources:
         constructed["asset_profile_refresh"] = AssetProfileRefreshWorker(
             name="asset_profile_refresh",
             settings=workers.asset_profile_refresh,
             db=db,
             telemetry=telemetry,
-            dex_profile_market=dex_profile_market,
+            dex_profile_sources=dex_profile_sources,
         )
     if workers.resolution_refresh.enabled and dex_discovery_market is not None:
         constructed["resolution_refresh"] = ResolutionRefreshWorker(

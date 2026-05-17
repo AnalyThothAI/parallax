@@ -82,6 +82,10 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
     assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
+    assert settings.binance_enabled is True
+    assert settings.binance_web3_base_url == "https://web3.binance.com"
+    assert settings.binance_cex_base_url == "https://www.binance.com"
+    assert settings.binance_timeout_seconds == 15
     assert not hasattr(settings.workers, _legacy_anchor_worker_key())
     assert settings.workers.market_tick_stream.subscription_limit == 100
     assert settings.workers.market_tick_poll.interval_seconds == 15

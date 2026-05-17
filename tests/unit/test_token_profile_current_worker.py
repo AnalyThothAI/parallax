@@ -58,11 +58,23 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         gmgn_openapi={
             "asset:gmgn": {
                 "asset_id": "asset:gmgn",
+                "provider": "gmgn_dex_profile",
                 "status": "ready",
                 "symbol": "GMGN",
                 "logo_url": "https://gmgn.example/logo.png",
                 "raw_payload_json": {"profile": True},
                 "observed_at_ms": 1_000,
+            }
+        },
+        binance_web3={
+            "asset:stream": {
+                "asset_id": "asset:stream",
+                "provider": "binance_web3_profile",
+                "status": "ready",
+                "symbol": "BN",
+                "logo_url": "https://binance.example/logo.png",
+                "raw_payload_json": {"source_provider": "binance_web3_profile"},
+                "observed_at_ms": 1_500,
             }
         },
         gmgn_stream={
@@ -80,9 +92,12 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
             "cex_token:BTC": {
                 "cex_token_id": "cex_token:BTC",
                 "base_symbol": "BTC",
+                "provider": "binance_cex_profile",
+                "symbol": "BTC",
                 "logo_url": "https://bin.bnbstatic.com/btc.png",
-                "logo_source": "binance_marketing_symbol_list",
-                "logo_observed_at_ms": 9_000,
+                "source_ref": "binance_marketing_symbol_list:BTC",
+                "raw_payload_json": {"rank": 1},
+                "observed_at_ms": 9_000,
             }
         },
     )
@@ -94,11 +109,12 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     assert result["unsupported"] == 0
     assert result["with_logo"] == 3
     assert result["source_provider"] == {
-        "cex_token_icon_static": 1,
+        "binance_cex_profile": 1,
+        "binance_web3_profile": 1,
         "gmgn_dex_profile": 1,
-        "gmgn_stream_snapshot": 1,
     }
     assert [row["target_id"] for row in repos.token_profiles.rows] == ["asset:gmgn", "asset:stream", "cex_token:BTC"]
+    assert repos.token_profiles.rows[1]["profile_provider"] == "binance_web3_profile"
     assert repos.token_profiles.rows[2]["logo_url"] == "https://bin.bnbstatic.com/btc.png"
     assert repos.token_profiles.commits == [False, False, False]
     assert repos.conn.commits == 1
@@ -137,11 +153,21 @@ class FakeSession:
 
 
 class FakeRepos:
-    def __init__(self, *, targets, gmgn_openapi, gmgn_stream, okx_dex, cex_profiles=None) -> None:
+    def __init__(
+        self,
+        *,
+        targets,
+        gmgn_openapi,
+        gmgn_stream,
+        okx_dex,
+        binance_web3=None,
+        cex_profiles=None,
+    ) -> None:
         self.conn = FakeConn()
         self.source_query = FakeSourceQuery(
             targets=targets,
             gmgn_openapi=gmgn_openapi,
+            binance_web3=binance_web3 or {},
             gmgn_stream=gmgn_stream,
             okx_dex=okx_dex,
             cex_profiles=cex_profiles or {},
@@ -158,9 +184,10 @@ class FakeConn:
 
 
 class FakeSourceQuery:
-    def __init__(self, *, targets, gmgn_openapi, gmgn_stream, okx_dex, cex_profiles) -> None:
+    def __init__(self, *, targets, gmgn_openapi, binance_web3, gmgn_stream, okx_dex, cex_profiles) -> None:
         self.targets = targets
         self.gmgn_openapi = gmgn_openapi
+        self.binance_web3 = binance_web3
         self.gmgn_stream = gmgn_stream
         self.okx_dex = okx_dex
         self.cex_profiles = cex_profiles
@@ -170,6 +197,9 @@ class FakeSourceQuery:
 
     def gmgn_openapi_profiles(self, asset_ids):
         return {asset_id: self.gmgn_openapi[asset_id] for asset_id in asset_ids if asset_id in self.gmgn_openapi}
+
+    def binance_web3_profiles(self, asset_ids):
+        return {asset_id: self.binance_web3[asset_id] for asset_id in asset_ids if asset_id in self.binance_web3}
 
     def gmgn_stream_profiles(self, asset_ids):
         return {asset_id: self.gmgn_stream[asset_id] for asset_id in asset_ids if asset_id in self.gmgn_stream}

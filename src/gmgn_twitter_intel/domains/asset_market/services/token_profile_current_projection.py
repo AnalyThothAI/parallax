@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
-    EVIDENCE_GMGN_PAYLOAD_EXACT,
-    EVIDENCE_OKX_DEX_EXACT_ADDRESS,
-)
-
 GMGN_DEX_PROFILE_PROVIDER = "gmgn_dex_profile"
+BINANCE_WEB3_PROFILE_PROVIDER = "binance_web3_profile"
 GMGN_STREAM_PROFILE_PROVIDER = "gmgn_stream_snapshot"
 OKX_DEX_PROFILE_PROVIDER = "okx_dex_evidence"
-CEX_TOKEN_ICON_PROVIDER = "cex_token_icon_static"
+BINANCE_CEX_PROFILE_PROVIDER = "binance_cex_profile"
 
 STATUS_READY = "ready"
 STATUS_MISSING = "missing"
@@ -22,6 +18,7 @@ def project_token_profile_current(
     *,
     target: dict[str, Any],
     gmgn_openapi: dict[str, Any] | None,
+    binance_web3: dict[str, Any] | None,
     gmgn_stream: dict[str, Any] | None,
     okx_dex: dict[str, Any] | None,
     computed_at_ms: int,
@@ -31,7 +28,7 @@ def project_token_profile_current(
     target_id = _clean(target.get("target_id"))
     if target_type == "CexToken":
         if _cex_profile_ready(cex_profile):
-            return _cex_token_icon_row(
+            return _cex_token_profile_row(
                 target_type=target_type,
                 target_id=target_id,
                 source=cex_profile or {},
@@ -46,19 +43,31 @@ def project_token_profile_current(
             quality_flags=["cex_profile_unsupported"],
         )
 
-    if _openapi_ready(gmgn_openapi):
+    gmgn_openapi_source = gmgn_openapi
+    if gmgn_openapi_source is not None and _openapi_ready(gmgn_openapi_source):
         return _gmgn_openapi_row(
             target_type=target_type,
             target_id=target_id,
-            source=gmgn_openapi,
+            source=gmgn_openapi_source,
             computed_at_ms=computed_at_ms,
         )
 
-    if _gmgn_stream_ready(gmgn_stream):
+    binance_web3_source = binance_web3
+    if binance_web3_source is not None and _openapi_ready(binance_web3_source):
+        return _asset_profile_row(
+            target_type=target_type,
+            target_id=target_id,
+            profile_provider=BINANCE_WEB3_PROFILE_PROVIDER,
+            source=binance_web3_source,
+            computed_at_ms=computed_at_ms,
+        )
+
+    gmgn_stream_source = gmgn_stream
+    if gmgn_stream_source is not None and _gmgn_stream_ready(gmgn_stream_source):
         return _gmgn_stream_row(
             target_type=target_type,
             target_id=target_id,
-            source=gmgn_stream,
+            source=gmgn_stream_source,
             computed_at_ms=computed_at_ms,
         )
 
@@ -75,28 +84,6 @@ def project_token_profile_current(
     )
 
 
-def select_gmgn_stream_source(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    candidates = [
-        row
-        for row in rows
-        if _clean(row.get("provider")) == "gmgn"
-        and _clean(row.get("evidence_kind")) == EVIDENCE_GMGN_PAYLOAD_EXACT
-        and _valid_logo_url(_raw(row).get("i"))
-    ]
-    return _latest(candidates)
-
-
-def select_okx_dex_source(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    candidates = [
-        row
-        for row in rows
-        if _clean(row.get("provider")) == "okx"
-        and _clean(row.get("evidence_kind")) == EVIDENCE_OKX_DEX_EXACT_ADDRESS
-        and _clean(_raw(row).get("tokenLogoUrl"))
-    ]
-    return _latest(candidates)
-
-
 def _gmgn_openapi_row(
     *,
     target_type: str | None,
@@ -104,13 +91,30 @@ def _gmgn_openapi_row(
     source: dict[str, Any],
     computed_at_ms: int,
 ) -> dict[str, Any]:
+    return _asset_profile_row(
+        target_type=target_type,
+        target_id=target_id,
+        profile_provider=GMGN_DEX_PROFILE_PROVIDER,
+        source=source,
+        computed_at_ms=computed_at_ms,
+    )
+
+
+def _asset_profile_row(
+    *,
+    target_type: str | None,
+    target_id: str | None,
+    profile_provider: str,
+    source: dict[str, Any],
+    computed_at_ms: int,
+) -> dict[str, Any]:
     raw = _raw(source)
     return _ready_row(
         target_type=target_type,
         target_id=target_id,
-        profile_provider=GMGN_DEX_PROFILE_PROVIDER,
+        profile_provider=profile_provider,
         source_kind="asset_profiles",
-        source_ref=f"{GMGN_DEX_PROFILE_PROVIDER}:{target_id}",
+        source_ref=f"{profile_provider}:{target_id}",
         symbol=source.get("symbol"),
         name=source.get("name"),
         logo_url=source.get("logo_url"),
@@ -194,28 +198,28 @@ def _okx_dex_row(
     )
 
 
-def _cex_token_icon_row(
+def _cex_token_profile_row(
     *,
     target_type: str | None,
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
 ) -> dict[str, Any]:
-    source_ref = _clean(source.get("logo_source")) or CEX_TOKEN_ICON_PROVIDER
+    provider = _clean(source.get("provider")) or BINANCE_CEX_PROFILE_PROVIDER
+    source_ref = _clean(source.get("source_ref"))
     cex_token_id = _clean(source.get("cex_token_id")) or target_id
+    fallback_source_ref = f"{provider}:{cex_token_id}" if cex_token_id else provider
     return _ready_row(
         target_type=target_type,
         target_id=target_id,
-        profile_provider=CEX_TOKEN_ICON_PROVIDER,
-        source_kind="cex_tokens",
-        source_ref=f"{source_ref}:{cex_token_id}" if cex_token_id else source_ref,
-        symbol=source.get("base_symbol"),
+        profile_provider=provider,
+        source_kind="cex_token_profiles",
+        source_ref=source_ref or fallback_source_ref,
+        symbol=source.get("symbol") or source.get("base_symbol"),
+        name=source.get("name"),
         logo_url=source.get("logo_url"),
-        source_payload={
-            "base_symbol": _clean(source.get("base_symbol")),
-            "logo_source": _clean(source.get("logo_source")),
-        },
-        observed_at_ms=_int_or_none(source.get("logo_observed_at_ms")),
+        source_payload=_raw(source),
+        observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
     )
 
@@ -338,12 +342,6 @@ def _logo_quality_flags(value: str | None, *, placeholder_flag: str = "placehold
 def _raw(row: dict[str, Any]) -> dict[str, Any]:
     raw = row.get("raw_payload_json")
     return dict(raw) if isinstance(raw, dict) else {}
-
-
-def _latest(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if not rows:
-        return None
-    return max(rows, key=lambda row: (_int_or_none(row.get("observed_at_ms")) or 0, str(row.get("evidence_id") or "")))
 
 
 def _clean(value: Any) -> str | None:

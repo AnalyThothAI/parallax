@@ -4,11 +4,12 @@ from typing import Any
 
 import httpx
 
+PROVIDER = "binance_cex_profile"
 SOURCE = "binance_marketing_symbol_list"
 _SYMBOL_LIST_PATH = "/bapi/composite/v1/public/marketing/symbol/list"
 
 
-class BinanceCexIconClient:
+class BinanceCexProfileClient:
     def __init__(
         self,
         *,
@@ -23,7 +24,7 @@ class BinanceCexIconClient:
             headers={"User-Agent": "Mozilla/5.0"},
         )
 
-    def token_icons(self) -> list[dict[str, str]]:
+    def token_profiles(self) -> list[dict[str, Any]]:
         response = self._client.get(_SYMBOL_LIST_PATH)
         response.raise_for_status()
         payload = response.json()
@@ -31,7 +32,7 @@ class BinanceCexIconClient:
         if not isinstance(data, list):
             return []
 
-        selected: dict[str, tuple[int, str]] = {}
+        selected: dict[str, tuple[int, dict[str, Any]]] = {}
         for item in data:
             if not isinstance(item, dict):
                 continue
@@ -40,19 +41,28 @@ class BinanceCexIconClient:
             if not symbol or not logo_url:
                 continue
             rank = _rank(item.get("rank"))
+            normalized_item = dict(item)
             current = selected.get(symbol)
             if current is None or rank < current[0]:
-                selected[symbol] = (rank, logo_url)
+                selected[symbol] = (rank, normalized_item)
 
-        return [
-            {
-                "base_symbol": symbol,
-                "logo_url": logo_url,
-                "source": SOURCE,
-                "source_ref": f"{SOURCE}:{symbol}",
-            }
-            for symbol, (_, logo_url) in sorted(selected.items())
-        ]
+        profiles: list[dict[str, Any]] = []
+        for symbol, (_, item) in sorted(selected.items()):
+            logo_url = _url(item.get("logo"))
+            if not logo_url:
+                continue
+            profiles.append(
+                {
+                    "base_symbol": symbol,
+                    "provider": PROVIDER,
+                    "symbol": symbol,
+                    "name": _name(item.get("name")) or symbol,
+                    "logo_url": logo_url,
+                    "source_ref": f"{SOURCE}:{symbol}",
+                    "raw_payload": item,
+                }
+            )
+        return profiles
 
     def close(self) -> None:
         if self._owns_client:
@@ -61,6 +71,11 @@ class BinanceCexIconClient:
 
 def _symbol(value: Any) -> str | None:
     text = str(value or "").strip().lstrip("$").upper()
+    return text or None
+
+
+def _name(value: Any) -> str | None:
+    text = str(value or "").strip()
     return text or None
 
 

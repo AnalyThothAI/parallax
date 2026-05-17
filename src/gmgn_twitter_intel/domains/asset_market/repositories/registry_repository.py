@@ -41,39 +41,6 @@ class RegistryRepository:
             self.conn.commit()
         return self._row_by_id("cex_tokens", "cex_token_id", cex_token_id) or {}
 
-    def update_cex_token_icon(
-        self,
-        *,
-        base_symbol: str,
-        logo_url: str,
-        source: str,
-        observed_at_ms: int,
-        commit: bool = True,
-    ) -> dict[str, Any] | None:
-        symbol = _symbol(base_symbol)
-        row = self.conn.execute(
-            """
-            UPDATE cex_tokens
-            SET logo_url = %s,
-                logo_source = %s,
-                logo_observed_at_ms = %s,
-                updated_at_ms = %s
-            WHERE base_symbol = %s
-              AND status IN ('candidate', 'canonical')
-            RETURNING *
-            """,
-            (
-                _url(logo_url),
-                source.strip(),
-                int(observed_at_ms),
-                int(observed_at_ms),
-                symbol,
-            ),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row) if row else None
-
     def upsert_chain_asset(
         self,
         *,
@@ -643,13 +610,6 @@ def _symbol(value: str | None) -> str:
 def _optional_text(value: str | None) -> str | None:
     text = str(value or "").strip()
     return text or None
-
-
-def _url(value: str | None) -> str:
-    text = str(value or "").strip()
-    if not text.startswith(("http://", "https://")):
-        raise ValueError("cex token logo_url must be an absolute URL")
-    return text
 
 
 def _chain(value: str) -> str:

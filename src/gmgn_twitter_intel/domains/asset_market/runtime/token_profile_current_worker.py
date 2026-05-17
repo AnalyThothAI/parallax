@@ -39,6 +39,7 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
     asset_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "Asset"]
     cex_token_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "CexToken"]
     gmgn_openapi = query.gmgn_openapi_profiles(asset_ids)
+    binance_web3 = query.binance_web3_profiles(asset_ids)
     gmgn_stream = query.gmgn_stream_profiles(asset_ids)
     okx_dex = query.okx_dex_profiles(asset_ids)
     cex_profiles = query.cex_token_profiles(cex_token_ids)
@@ -50,6 +51,7 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
         row = project_token_profile_current(
             target=target,
             gmgn_openapi=gmgn_openapi.get(target_id),
+            binance_web3=binance_web3.get(target_id),
             gmgn_stream=gmgn_stream.get(target_id),
             okx_dex=okx_dex.get(target_id),
             cex_profile=cex_profiles.get(target_id),
