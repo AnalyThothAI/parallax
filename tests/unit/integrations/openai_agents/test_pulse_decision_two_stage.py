@@ -21,8 +21,8 @@ from typing import Any
 import pytest
 from agents import Agent, ToolCallItem
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
-    build_pulse_harness_manifest,
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import (
+    build_pulse_runtime_manifest,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
@@ -180,8 +180,8 @@ def _context(
     return ctx
 
 
-def _harness() -> dict[str, Any]:
-    return build_pulse_harness_manifest(
+def _runtime_manifest() -> dict[str, Any]:
+    return build_pulse_runtime_manifest(
         provider="openai",
         model="gpt-test",
         artifact_version_hash="artifact:gpt-test",
@@ -297,7 +297,7 @@ def test_investigator_then_decision_maker_in_order() -> None:
             job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -332,7 +332,7 @@ def test_investigator_uses_configured_max_turns_and_carries_tool_context() -> No
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -371,7 +371,7 @@ def test_tool_budget_counts_are_recorded_for_investigator_and_decision_fallback(
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -401,7 +401,7 @@ def test_decision_maker_fallback_tool_disabled_when_flag_false() -> None:
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -446,7 +446,7 @@ def test_safety_net_strict_success_preserves_sdk_tool_calls_and_budget_counts() 
         job={},
         route="meme",
         completeness={"score": 1.0, "missing_fields": []},
-        harness=_harness(),
+        runtime_manifest=_runtime_manifest(),
     )
 
     stage = asyncio.run(
@@ -491,7 +491,7 @@ def test_investigator_failure_short_circuits_with_one_audit() -> None:
                 job={},
                 route="meme",
                 completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
+                runtime_manifest=_runtime_manifest(),
             )
         )
 
@@ -519,7 +519,7 @@ def test_decision_maker_failure_preserves_two_audits() -> None:
                 job={},
                 route="meme",
                 completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
+                runtime_manifest=_runtime_manifest(),
             )
         )
 
@@ -550,7 +550,7 @@ def test_hallucination_guard_rejects_unknown_supporting_event_ids() -> None:
                 job={},
                 route="meme",
                 completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
+                runtime_manifest=_runtime_manifest(),
             )
         )
 
@@ -606,7 +606,7 @@ def test_hallucination_guard_accepts_ids_from_tool_contributions() -> None:
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
 
     asyncio.run(_seed_then_run())
@@ -629,7 +629,7 @@ def test_final_evidence_guard_rejects_unknown_final_evidence_event_ids() -> None
                 job={},
                 route="meme",
                 completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
+                runtime_manifest=_runtime_manifest(),
             )
         )
 
@@ -673,7 +673,7 @@ def test_final_evidence_guard_rejects_unknown_bull_and_bear_supporting_ids() -> 
                 job={},
                 route="meme",
                 completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
+                runtime_manifest=_runtime_manifest(),
             )
         )
 
@@ -722,7 +722,7 @@ def test_final_evidence_guard_accepts_context_tool_and_investigator_ids() -> Non
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
 
     result = asyncio.run(_seed_then_run())
@@ -748,7 +748,7 @@ def test_tool_budget_exceeded_surfaces_as_investigator_failure() -> None:
                 job={},
                 route="meme",
                 completeness={"score": 1.0, "missing_fields": []},
-                harness=_harness(),
+                runtime_manifest=_runtime_manifest(),
             )
         )
 
@@ -788,7 +788,7 @@ def test_evidence_event_urls_enriched_from_events_table() -> None:
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -829,7 +829,7 @@ def test_evidence_event_urls_prefers_canonical_url_from_payload() -> None:
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -863,7 +863,7 @@ def test_evidence_event_urls_overwrite_model_supplied_urls_on_db_error() -> None
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -923,7 +923,7 @@ def test_evidence_event_urls_include_bull_and_bear_supporting_ids() -> None:
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -955,7 +955,7 @@ def test_evidence_event_urls_db_error_degrades_silently() -> None:
             job={},
             route="meme",
             completeness={"score": 1.0, "missing_fields": []},
-            harness=_harness(),
+            runtime_manifest=_runtime_manifest(),
         )
     )
 
@@ -964,12 +964,12 @@ def test_evidence_event_urls_db_error_degrades_silently() -> None:
 
 
 # ---------------------------------------------------------------------------
-# harness manifest
+# runtime manifest
 # ---------------------------------------------------------------------------
 
 
-def test_pulse_harness_manifest_advertises_two_stages_and_stage_tools() -> None:
-    manifest = build_pulse_harness_manifest(
+def test_pulse_runtime_manifest_advertises_two_stages_and_stage_tools() -> None:
+    manifest = build_pulse_runtime_manifest(
         provider="openai",
         model="gpt-test",
         artifact_version_hash="artifact:gpt-test",

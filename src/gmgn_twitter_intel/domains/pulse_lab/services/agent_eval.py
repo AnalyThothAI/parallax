@@ -13,7 +13,7 @@ v2 hard cut (plan 2026-05-16 Task 10):
   shape (missing v2 narrative/bull/bear/playbook keys *or* stage_audits
   containing analyst/critic/judge), the grader returns
   ``status='legacy_skipped'`` with no violations rather than panicking
-  with a KeyError. v1 cases coexist via the bumped ``harness_hash``
+  with a KeyError. v1 cases coexist via the bumped ``runtime_hash``
   (manifest stages changed in Task 6), so they never reach v2
   expectations and ``legacy_skipped`` documents intent.
 """
@@ -24,7 +24,7 @@ import hashlib
 import json
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import (
     PULSE_DETERMINISTIC_GRADER_VERSION,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
@@ -59,7 +59,7 @@ _V2_FINAL_KEYS = ("narrative_archetype", "narrative_thesis_zh", "bull_view", "be
 def build_pulse_deterministic_eval_case(
     *,
     run_id: str,
-    harness_hash: str,
+    runtime_hash: str,
     context: dict[str, Any],
     route: DecisionRoute,
     completeness: dict[str, Any],
@@ -71,7 +71,7 @@ def build_pulse_deterministic_eval_case(
     return {
         "eval_case_id": _stable_id("pulse-eval-case", run_id, PULSE_DETERMINISTIC_GRADER_VERSION),
         "source_run_id": run_id,
-        "harness_hash": harness_hash,
+        "runtime_hash": runtime_hash,
         "eval_type": "deterministic",
         "route": route,
         "recommendation": final_decision.recommendation,
@@ -94,7 +94,7 @@ def build_pulse_deterministic_eval_case(
 def build_pulse_failed_eval_case(
     *,
     run_id: str,
-    harness_hash: str,
+    runtime_hash: str,
     context: dict[str, Any],
     route: DecisionRoute,
     completeness: dict[str, Any],
@@ -109,7 +109,7 @@ def build_pulse_failed_eval_case(
             PULSE_DETERMINISTIC_GRADER_VERSION,
         ),
         "source_run_id": run_id,
-        "harness_hash": harness_hash,
+        "runtime_hash": runtime_hash,
         "eval_type": "deterministic",
         "route": route,
         "recommendation": "abstain",
@@ -290,11 +290,11 @@ def _result(
         "eval_result_id": _stable_id(
             "pulse-eval-result",
             str(case.get("eval_case_id") or ""),
-            str(case.get("harness_hash") or ""),
+            str(case.get("runtime_hash") or ""),
             PULSE_DETERMINISTIC_GRADER_VERSION,
         ),
         "eval_case_id": str(case.get("eval_case_id") or ""),
-        "harness_hash": str(case.get("harness_hash") or ""),
+        "runtime_hash": str(case.get("runtime_hash") or ""),
         "status": status,
         "score": 1.0 if status == "pass" else 0.0,
         "grader_version": PULSE_DETERMINISTIC_GRADER_VERSION,

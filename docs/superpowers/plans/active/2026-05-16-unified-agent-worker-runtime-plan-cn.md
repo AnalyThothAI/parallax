@@ -10,7 +10,7 @@
 
 **Goal:** 把 pulse / social_event / watchlist 三个 agent 链路从 34% 失败率、90% critic veto、52% JSON 解析错的"半坏"生产状态，**用最小改动面**修到 <3% 失败率、合理 critic 阈值、可在线监控可回滚的状态。保留 qwen3.6 via big9er.com 不切 provider；引入 `jsonref`（schema 展平）+ `instructor`（safety net）两个轻量依赖。
 
-**Architecture:** 不动 worker 调度、不动 PostgreSQL Kappa/CQRS 边界。改动集中在 `integrations/openai_agents/` 三个 client + `agent_decision.py` 输出类型 + `pulse_lab/services/agent_harness.py` 的 harness_hash 计算自动响应；新增 `instructor_safety_net.py` 一个文件；alembic 一次性加 2 列。worker 层只在 pulse_candidate / enrichment / handle_summary 三处加 `safety_net.run_with_safety_net(...)` 调用点。
+**Architecture:** 不动 worker 调度、不动 PostgreSQL Kappa/CQRS 边界。改动集中在 `integrations/openai_agents/` 三个 client + `agent_decision.py` 输出类型 + `pulse_lab/services/agent_runtime.py` 的 runtime_hash 计算自动响应；新增 `instructor_safety_net.py` 一个文件；alembic 一次性加 2 列。worker 层只在 pulse_candidate / enrichment / handle_summary 三处加 `safety_net.run_with_safety_net(...)` 调用点。
 
 **Tech stack:** Python 3.13, openai-agents 0.16.1, Pydantic v2, jsonref, instructor, psycopg, Alembic, qwen3.6 via big9er.com (llama.cpp b8779).
 
@@ -75,7 +75,7 @@
 - 失败错误 Top10 由 `select left(error,120), count(*) from pulse_agent_runs where status='failed' group by 1 order by 2 desc limit 10;` 取出，前 9 行有 1,400+ 行是 `Invalid JSON when parsing` 系列（带 `schema_version` 或 `recommendation: research` 等幻觉字段）。
 - Critic 流转：`select stage, status, count(*) from pulse_agent_run_steps where route='meme' group by 1,2 order by 1,2;` → analyst 1849 ok / 406 failed → critic 1390 ok / 459 failed → judge 117 ok / 17 failed。Critic veto 率 = 1256 / 1390 = **90.4%**。
 - usage 填充率：`select count(*) filter (where usage_json='{}'::jsonb), count(*) from pulse_agent_run_steps;` → 3350 empty / 5363 total = 62% 空（empty 几乎全部是 failed step）。successful step 都有 `{"requests":1,"input_tokens":4280,"output_tokens":355,"input_tokens_details":{"cached_tokens":4276}}` 结构，cache hit 实证 ~13%。
-- `pulse_agent_eval_cases` / `_results` 表均存在（2,494 行），harness_hash 索引到 `pulse_agent_harness_versions` (2 行)。`agent_harness_eval.py:57` 的 `grade_pulse_deterministic_eval_case()` 包含 5 项检查并产 violation list。**这条说明 eval 设施已在线，不需要从零搭建**。
+- `pulse_agent_eval_cases` / `_results` 表均存在（2,494 行），runtime_hash 索引到 `pulse_agent_runtime_versions` (2 行)。`agent_eval.py:57` 的 `grade_pulse_deterministic_eval_case()` 包含 5 项检查并产 violation list。**这条说明 eval 设施已在线，不需要从零搭建**。
 
 ### E. Worker 层证据
 
@@ -104,7 +104,7 @@
 3. **`extra="forbid"` → `extra="ignore"` 不放弃业务约束**。Pydantic `@model_validator(mode="after")` 仍执行（如 `FinalDecision._validate_decision` 的 abstain/evidence 互斥规则），所以业务层强制不变；只是 schema 外字段不再 fail validation。代码审查重点。
 4. **Instructor 与 SDK 共用同一 `AsyncOpenAI` 实例**：`instructor.from_openai(client)` 会 patch 该 client 的 `chat.completions.create`。若同一 client 也被 SDK 用，可能影响 SDK 调用。**对策**：safety net 用**独立的** `AsyncOpenAI` 实例（base_url / api_key 同源，对象不同）。
 5. **Audit 字段写入路径**：M1b 新加 `safety_net_used` / `safety_net_retries` 两列要在 `pulse_candidate_worker.py:568-584` 写入 `pulse_agent_run_steps` 的逻辑里同步更新；不能漏写。
-6. **harness_hash 必须手动 bump（已确认）**：读了 `agent_harness.py:18-71` 的 `build_pulse_harness_manifest()`，输入只看 `PULSE_DECISION_PROMPT_VERSION` / `PULSE_DECISION_SCHEMA_VERSION` / `PULSE_GATE_VERSION` / model / timeout —— **不**含 `is_strict_json_schema` 或 `extra` 行为。所以 PR 1 必须在 `domains/pulse_lab/interfaces.py` 把 `PULSE_DECISION_SCHEMA_VERSION` 从 `"pulse_decision_v1"` 升到 `"pulse_decision_v2"`，否则 PR 1 前后的 run 全部混在同一 `harness_hash` 下，eval 表无法 diff baseline vs candidate。
+6. **runtime_hash 必须手动 bump（已确认）**：读了 `agent_runtime.py:18-71` 的 `build_pulse_runtime_manifest()`，输入只看 `PULSE_DECISION_PROMPT_VERSION` / `PULSE_DECISION_SCHEMA_VERSION` / `PULSE_GATE_VERSION` / model / timeout —— **不**含 `is_strict_json_schema` 或 `extra` 行为。所以 PR 1 必须在 `domains/pulse_lab/interfaces.py` 把 `PULSE_DECISION_SCHEMA_VERSION` 从 `"pulse_decision_v1"` 升到 `"pulse_decision_v2"`，否则 PR 1 前后的 run 全部混在同一 `runtime_hash` 下，eval 表无法 diff baseline vs candidate。
 7. **`StageRunAudit` 用 `extra="forbid"`**（`agent_decision.py:97`）。PR 1 的 audit_extra dict 含 `safety_net_used` / `safety_net_retries` / `parse_mode` 三键，**塞进 `trace_metadata_json` jsonb 安全**（jsonb 内部无 Pydantic 约束）。但 PR 2 把这 3 字段提到顶层 DB 列后，`StageRunAudit` 必须同步加 3 个 Pydantic 字段（带默认值），否则 `pulse_candidate_worker.py:473` 等构造点会爆 `extra inputs not permitted`。PR 1 与 PR 2 衔接时务必协调。
 8. **`social_event_extraction.py:83,91,102` 也有 `extra="forbid"`**（spec M1.b 漏点）。同样改成 `extra="ignore"`，否则 SocialEventAgent 仍会因模型幻觉字段失败。**PR 1 必须包含**。
 9. **3 个已有测试断言反方向**：`tests/test_pulse_decision_agent_client.py:260,267,275` 当前断言 `_JsonOutputSchema(AnalystOpinion).is_strict_json_schema() is False`。PR 1 同 commit 翻为 `is True`，并新加 `assert "$ref" not in json.dumps(schema.json_schema())` 验证展平。
@@ -245,7 +245,7 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
 
 #### `src/gmgn_twitter_intel/domains/pulse_lab/interfaces.py`
 
-- 找到 `PULSE_DECISION_SCHEMA_VERSION = "pulse_decision_v1"`，改为 `"pulse_decision_v2"`（Design Correction §6）。这一改动让 `pulse_harness_hash()` 自动 bump，eval 表自动按新 harness 隔离 PR 1 前后的数据。
+- 找到 `PULSE_DECISION_SCHEMA_VERSION = "pulse_decision_v1"`，改为 `"pulse_decision_v2"`（Design Correction §6）。这一改动让 `pulse_runtime_hash()` 自动 bump，eval 表自动按新 harness 隔离 PR 1 前后的数据。
 - 同时**不**升 `PULSE_DECISION_PROMPT_VERSION`（PR 1 没改 prompt 文字）。
 - 同时**不**升 `PULSE_GATE_VERSION`（PR 1 没改 gate 逻辑）。
 
@@ -579,15 +579,15 @@ uv run alembic downgrade -1
 
 ### 文件
 
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`：`build_pulse_deterministic_eval_case` 加 fail run 分支（spec S2）
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py:57`：`grade_pulse_deterministic_eval_case` 加 `reason_class` violation 类型
+- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`：`build_pulse_deterministic_eval_case` 加 fail run 分支（spec S2）
+- `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py:57`：`grade_pulse_deterministic_eval_case` 加 `reason_class` violation 类型
 - `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py:548-619`：失败路径也调 `build_pulse_deterministic_eval_case` 写入 eval 表
 - `src/gmgn_twitter_intel/app/cli.py` 新加 `pulse eval-diff` 命令
 
 ### Acceptance
 
 ```bash
-uv run gmgn-twitter-intel pulse eval-diff --since 7d --baseline harness_hash=sha256:... --candidate harness_hash=sha256:...
+uv run gmgn-twitter-intel pulse eval-diff --since 7d --baseline runtime_hash=sha256:... --candidate runtime_hash=sha256:...
 # 期望输出 markdown 表，per-rule pass rate diff
 ```
 
@@ -599,7 +599,7 @@ uv run gmgn-twitter-intel pulse eval-diff --since 7d --baseline harness_hash=sha
 
 - `docker-compose.yml`：加 langfuse-v4 service（postgres backend 复用现有 PG 实例新 db）
 - `src/gmgn_twitter_intel/platform/observability/otel_setup.py`：新文件，set OTLP exporter 到 langfuse
-- 三 agent client 在 `Runner.run` 前后包 OTel span，attach 业务属性 `run_id / candidate_id / route / harness_hash / safety_net_used / parse_mode`
+- 三 agent client 在 `Runner.run` 前后包 OTel span，attach 业务属性 `run_id / candidate_id / route / runtime_hash / safety_net_used / parse_mode`
 
 ### Acceptance
 
@@ -673,7 +673,7 @@ SELECT
   ROUND(100.0 * COUNT(*) FILTER (WHERE error LIKE 'Invalid JSON%') / COUNT(*), 1) AS invalid_pct
 FROM pulse_agent_runs
 WHERE started_at_ms > (EXTRACT(EPOCH FROM now() - interval '7 days')*1000)::bigint
-  AND harness_version = 'pulse-decision-harness-v2';  -- 新 harness
+  AND runtime_version = 'pulse-decision-harness-v2';  -- 新 harness
 "
 # 期望: invalid_pct < 5.0
 ```
@@ -743,7 +743,7 @@ verification artefact 必须存在才能宣告本 plan 完成。
 | **A1**：`enable_thinking=false` 注入不生效 | `ModelSettings.extra_args` 不存在且 `default_query` 不传到上游 | Design Correction §1 三选一，PR 1 把选择和验证命令写进 PR 描述 |
 | **A2**：jsonref 展平后的 schema 太大触发 token 浪费 | flat schema > 5KB 重复写入每次 prompt | PR 1 测时记录 schema size 写到 trace_metadata，若 >5KB 在 PR 1 内加压缩（删 `title`/`description` 等冗余字段） |
 | **A3**：Instructor patch 污染主路径 | safety_net 用错 client 实例，patch 到 SDK 主路径 | Design Correction §4 强制独立 AsyncOpenAI 实例，PR 1 加单测 `test_safety_net_does_not_patch_main_client` |
-| **A4**：harness_hash 不 bump 导致新老数据混在一起 | `agent_harness.py` 计算 hash 输入不含 strict / extra 行为 | Design Correction §6 PR 1 阶段检查；若不 bump 则手动 bump `PULSE_DECISION_SCHEMA_VERSION` 一次性触发 |
+| **A4**：runtime_hash 不 bump 导致新老数据混在一起 | `agent_runtime.py` 计算 hash 输入不含 strict / extra 行为 | Design Correction §6 PR 1 阶段检查；若不 bump 则手动 bump `PULSE_DECISION_SCHEMA_VERSION` 一次性触发 |
 | **A5**：PR 1 部署后失败率短期上升 | 任何 silent 假设被 break | 24h 观察窗 + 单行回滚预案；如果 24h 失败率 > 部署前 + 5%，立即 revert PR 1 并复盘 |
 | **A6**：Critic 阈值化（PR 9）后过度激进 → high_conviction 占比反弹 | S6 阈值选太低 | PR 9 上线前用 PR 6 的 eval-diff CLI 做 dry run；上线后 24h 监控 `pulse_candidates.decision_json->>'recommendation'` 分布，超过 high_conviction > 10% 触发回滚 |
 

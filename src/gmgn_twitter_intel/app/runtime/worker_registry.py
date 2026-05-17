@@ -28,7 +28,6 @@ CANONICAL_WORKER_CLASSES = {
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
     "handle_summary": "gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker.HandleSummaryWorker",
-    "harness_ops": "gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker.HarnessOpsWorker",
     "notification_rule": "gmgn_twitter_intel.domains.notifications.runtime.notification_worker.NotificationWorker",
     "notification_delivery": (
         "gmgn_twitter_intel.domains.notifications.runtime.notification_delivery.NotificationDeliveryWorker"
@@ -51,7 +50,6 @@ WORKER_START_PRIORITY = {
     "pulse_candidate": 90,
     "enrichment": 100,
     "handle_summary": 110,
-    "harness_ops": 120,
-    "notification_rule": 130,
-    "notification_delivery": 140,
+    "notification_rule": 120,
+    "notification_delivery": 130,
 }

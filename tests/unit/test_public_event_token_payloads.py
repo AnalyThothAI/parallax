@@ -57,8 +57,6 @@ def test_recent_data_batches_projected_event_tokens_for_page() -> None:
     assert repos.signals.event_ids == []
     assert repos.token_intents.batch_event_ids == [("event-1", "event-2")]
     assert repos.token_intents.event_ids == []
-    assert repos.harness.batch_event_ids == [("event-1", "event-2")]
-    assert repos.harness.event_ids == []
 
 
 class _Repos(SimpleNamespace):
@@ -69,7 +67,6 @@ class _Repos(SimpleNamespace):
             token_intents=_StaticRepo("intents_for_event", []),
             event_tokens=_EventTokens(),
             intent_resolutions=_ExplodingIntentResolutions(),
-            harness=_StaticRepo("harness_for_event", None),
         )
 
 
@@ -145,15 +142,6 @@ class _RecentRepos(_Repos):
                 "event-2": [{"intent_id": "intent-2"}],
             },
         )
-        self.harness = _BatchRepo(
-            "harness_for_event",
-            "harness_for_events",
-            {
-                "event-1": {"snapshots": ["snapshot-1"]},
-                "event-2": None,
-            },
-        )
-
 
 class _Evidence:
     def __init__(self, events: list[dict[str, Any]]) -> None:

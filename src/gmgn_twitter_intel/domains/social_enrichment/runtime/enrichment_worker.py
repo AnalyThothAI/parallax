@@ -5,14 +5,15 @@ import hashlib
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import asdict
 from typing import Any, cast
 
 from loguru import logger
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
+from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import SCHEMA_VERSION
 from gmgn_twitter_intel.domains.watchlist_intel.interfaces import (
     HandleSummaryTriggerConfig,
     WatchlistHandleSummaryService,
@@ -107,14 +108,14 @@ class EnrichmentWorker(WorkerBase):
                 finished_at_ms=_now_ms(),
             )
         except Exception as exc:
-            logger.exception(f"harness materialization failed event_id={event.get('event_id')}: {exc}")
+            logger.exception(f"enrichment persistence failed event_id={event.get('event_id')}: {exc}")
             await asyncio.to_thread(self._fail_job_sync, job=job, error=str(exc))
-            return WorkerResult(failed=1, notes={"reason": "materialization_error", "job_id": job.get("job_id")})
+            return WorkerResult(failed=1, notes={"reason": "enrichment_persistence_error", "job_id": job.get("job_id")})
 
         if self.publisher is not None:
             await self.publisher.publish(
                 {
-                    "type": "harness_update",
+                    "type": "social_event_enrichment_update",
                     "event": event,
                     "entities": entities,
                     **materialized,
@@ -189,26 +190,43 @@ class EnrichmentWorker(WorkerBase):
                 finished_at_ms=finished_at_ms,
                 commit=False,
             )
-            materialized = HarnessSnapshotBuilder(
-                repos.harness,
-                registry=repos.registry,
-                market_ticks=repos.market_ticks,
-            ).materialize(
-                event=event,
-                extraction=result,
+            social_event_row = repos.social_event_extractions.upsert_extraction(
+                event_id=str(event["event_id"]),
                 run_id=str(run["run_id"]),
+                author_handle=_author_handle(event),
+                received_at_ms=int(event.get("received_at_ms") or finished_at_ms),
+                schema_version=SCHEMA_VERSION,
                 model_version=self.client.model,
+                event_type=str(result.event_type),
+                source_action=str(result.source_action),
+                subject=str(result.subject),
+                direction_hint=str(result.direction_hint),
+                attention_mechanism=str(result.attention_mechanism),
+                impact_hint=float(result.impact_hint),
+                semantic_novelty_hint=float(result.semantic_novelty_hint),
+                confidence=float(result.confidence),
+                is_signal_event=bool(result.is_signal_event),
+                anchor_terms=[asdict(anchor) for anchor in result.anchor_terms],
+                token_candidates=[asdict(candidate) for candidate in result.token_candidates],
+                semantic_risks=list(result.semantic_risks),
+                summary_zh=str(result.summary_zh),
+                raw_response=dict(result.raw_response),
                 commit=False,
             )
+            watchlist_summary_enqueued = False
             if self.watchlist_summary_config is not None and bool(getattr(result, "is_signal_event", False)):
                 handle = str(getattr(result, "author_handle", "") or event.get("author_handle") or "")
                 if handle:
-                    WatchlistHandleSummaryService(
+                    summary_job = WatchlistHandleSummaryService(
                         repository=repos.watchlist_intel,
                         provider=None,
                         config=self.watchlist_summary_config,
                     ).enqueue_handle_summary_if_due(handle=handle, now_ms=finished_at_ms, commit=False)
-            return materialized
+                    watchlist_summary_enqueued = summary_job is not None
+            return {
+                "social_event": social_event_row,
+                "watchlist_summary_enqueued": watchlist_summary_enqueued,
+            }
 
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
@@ -234,3 +252,12 @@ def _run_id(job: dict[str, Any]) -> str:
         ]
     )
     return "run-" + hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
+def _author_handle(event: dict[str, Any]) -> str | None:
+    if event.get("author_handle"):
+        return str(event["author_handle"]).strip().lstrip("@").lower()
+    author = event.get("author")
+    if isinstance(author, dict) and author.get("handle"):
+        return str(author["handle"]).strip().lstrip("@").lower()
+    return None

@@ -91,7 +91,6 @@ function statusData() {
       }),
       pulse_candidate: workerStatus(),
       handle_summary: workerStatus(),
-      harness_ops: workerStatus(),
       notification_rule: workerStatus({ enabled: true, running: true }),
       notification_delivery: workerStatus({ enabled: true, running: true, queue_depth: 0 }),
       asset_profile_refresh: workerStatus(),

@@ -39,7 +39,7 @@ def test_pre_audit_failure_marks_job_failed() -> None:
     assert repos.pulse_jobs.failures[0]["error"] == "gate exploded"
     assert repos.pulse_jobs.failures[0]["failure_reason"] == "unexpected_exception"
     assert repos.pulse_runs.finished_runs == []
-    assert repos.pulse_harness.eval_cases == []
+    assert repos.pulse_agent_eval.eval_cases == []
 
 
 def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> None:
@@ -75,11 +75,11 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     assert repos.pulse_runs.agent_run_steps[0]["stage"] == "investigator"
     failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
     assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "schema_validation_failed"}
-    assert repos.pulse_harness.eval_cases[0]["expected_json"] == {
+    assert repos.pulse_agent_eval.eval_cases[0]["expected_json"] == {
         "status": "fail",
         "failure_reason": "schema_validation_failed",
     }
-    assert repos.pulse_harness.eval_results[0]["status"] == "pass"
+    assert repos.pulse_agent_eval.eval_results[0]["status"] == "pass"
     assert repos.pulse_jobs.failures[0]["failure_reason"] == "schema_validation_failed"
 
 
@@ -112,11 +112,12 @@ def test_hard_blocked_success_records_gate_step_without_provider_run(monkeypatch
     assert repos.pulse_jobs.successes == [job["job_id"]]
 
 
-def test_normal_success_records_candidate_playbook_eval_and_job_success() -> None:
+def test_normal_success_records_candidate_playbook_eval_and_job_success(monkeypatch: pytest.MonkeyPatch) -> None:
     repos = FakeRepos()
     context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
     job = _enqueue_context_job(repos, context)
     client = FakeClient(recommendation="trade_candidate")
+    monkeypatch.setattr(job_module, "grade_pulse_deterministic_eval_case", _passing_eval_result)
     service = _service(repos, client=client)
 
     asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
@@ -124,11 +125,75 @@ def test_normal_success_records_candidate_playbook_eval_and_job_success() -> Non
     assert client.run_calls == 1
     assert repos.pulse_runs.finished_runs[0]["status"] == "done"
     assert repos.pulse_runs.finished_runs[0]["outcome"] == "completed"
-    assert repos.pulse_harness.eval_cases
-    assert repos.pulse_harness.eval_results
+    assert repos.pulse_agent_eval.eval_cases
+    assert repos.pulse_agent_eval.eval_results
     assert repos.pulse_candidates.candidate_upserts[0]["decision_recommendation"] == "trade_candidate"
     assert repos.pulse_playbooks.playbook_upserts
     assert repos.pulse_jobs.successes == [job["job_id"]]
+
+
+def test_eval_failure_blocks_public_candidate_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+
+    monkeypatch.setattr(
+        job_module,
+        "grade_pulse_deterministic_eval_case",
+        lambda _case: {
+            "eval_result_id": "eval-result-fail",
+            "eval_case_id": "eval-case-fail",
+            "runtime_hash": "sha256:test",
+            "status": "fail",
+            "score": 0.0,
+            "grader_version": "test",
+            "details_json": {"violations": ["unsupported_claim"]},
+        },
+    )
+    service = _service(repos, client=FakeClient(recommendation="trade_candidate"))
+
+    asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    assert repos.pulse_candidates.candidate_upserts == []
+    assert repos.pulse_playbooks.playbook_upserts == []
+    assert repos.pulse_agent_eval.eval_results[0]["status"] == "fail"
+    assert repos.pulse_agent_eval.eval_results[0]["details_json"]["write_gate"] == {
+        "public_write_allowed": False,
+        "playbook_write_allowed": False,
+        "reason": "deterministic_eval_failed",
+    }
+    assert repos.pulse_jobs.successes == [job["job_id"]]
+
+
+def test_risk_rejected_high_info_clips_recommendation_and_playbook(monkeypatch: pytest.MonkeyPatch) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+    monkeypatch.setattr(job_module, "grade_pulse_deterministic_eval_case", _passing_eval_result)
+
+    def gate_func(**_: Any) -> PulseGateResult:
+        return PulseGateResult(
+            pulse_status="risk_rejected_high_info",
+            verdict="risk_rejected_high_info",
+            candidate_score=82.0,
+            score_band="watch",
+            gate_reasons=["risk_rejected_high_info"],
+            risk_reasons=["timing_chase_risk"],
+            hard_risks=["timing_chase_risk"],
+            max_recommendation="ignore",
+            eligible_for_high_alert=False,
+            blocked_reasons=[],
+        )
+
+    service = _service(repos, client=FakeClient(recommendation="trade_candidate"), gate_func=gate_func)
+
+    asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["pulse_status"] == "risk_rejected_high_info"
+    assert upsert["decision_recommendation"] == "ignore"
+    assert upsert["decision_json"]["playbook"]["has_playbook"] is False
+    assert repos.pulse_playbooks.playbook_upserts == []
 
 
 def _service(
@@ -160,6 +225,18 @@ def _passing_gate(**_: Any) -> PulseGateResult:
         eligible_for_high_alert=True,
         blocked_reasons=[],
     )
+
+
+def _passing_eval_result(case: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "eval_result_id": "eval-result-pass",
+        "eval_case_id": str(case.get("eval_case_id") or "eval-case-pass"),
+        "runtime_hash": str(case.get("runtime_hash") or "sha256:test"),
+        "status": "pass",
+        "score": 1.0,
+        "grader_version": "test",
+        "details_json": {"violations": []},
+    }
 
 
 def _enqueue_context_job(repos: FakeRepos, context: Any) -> dict[str, Any]:

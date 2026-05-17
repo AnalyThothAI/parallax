@@ -641,16 +641,7 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     assert workers.enrichment.concurrency == 4
     assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert workers.handle_summary.time_threshold_ms == 1_800_000
-    assert workers.harness_ops.horizons == ("6h", "24h")
     Settings(**{**payload, "workers": workers})
-
-
-def test_harness_ops_horizons_parse_from_worker_settings() -> None:
-    list_settings = WorkersSettings(harness_ops={"horizons": ["6h"]})
-    comma_settings = WorkersSettings(harness_ops={"horizons": "6h,24h"})
-
-    assert list_settings.harness_ops.horizons == ("6h",)
-    assert comma_settings.harness_ops.horizons == ("6h", "24h")
 
 
 def test_init_creates_config_workers_file_and_runtime_directories(tmp_path, monkeypatch):

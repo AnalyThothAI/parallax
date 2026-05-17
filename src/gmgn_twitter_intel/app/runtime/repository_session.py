@@ -16,18 +16,20 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
-from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_harness_repository import PulseHarnessRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
+from gmgn_twitter_intel.domains.social_enrichment.repositories.social_event_extraction_repository import (
+    SocialEventExtractionRepository,
+)
 from gmgn_twitter_intel.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
@@ -68,13 +70,13 @@ class RepositorySession:
     token_factor_evaluations: TokenFactorEvaluationRepository
     token_targets: TokenTargetRepository
     enrichment: EnrichmentRepository
-    harness: HarnessRepository
+    social_event_extractions: SocialEventExtractionRepository
     notifications: NotificationRepository
     pulse_jobs: PulseJobsRepository
     pulse_admission: PulseAdmissionRepository
     pulse_candidates: PulseCandidatesRepository
     pulse_runs: PulseRunsRepository
-    pulse_harness: PulseHarnessRepository
+    pulse_agent_eval: PulseAgentEvalRepository
     pulse_read: PulseReadRepository
     pulse_playbooks: PulsePlaybooksRepository
     watchlist_intel: WatchlistIntelRepository
@@ -107,13 +109,13 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),
         enrichment=EnrichmentRepository(conn),
-        harness=HarnessRepository(conn),
+        social_event_extractions=SocialEventExtractionRepository(conn),
         notifications=NotificationRepository(conn),
         pulse_jobs=PulseJobsRepository(conn),
         pulse_admission=PulseAdmissionRepository(conn),
         pulse_candidates=PulseCandidatesRepository(conn),
         pulse_runs=PulseRunsRepository(conn),
-        pulse_harness=PulseHarnessRepository(conn),
+        pulse_agent_eval=PulseAgentEvalRepository(conn),
         pulse_read=PulseReadRepository(conn),
         pulse_playbooks=PulsePlaybooksRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),

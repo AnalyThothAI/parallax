@@ -31,7 +31,6 @@ describe("SignalLabPulse", () => {
               blocked_low_information_count: 0,
               dead_job_count: 0,
               market_ready_rate: 1,
-              settlement_coverage: null,
             },
             summary: {
               trade_candidate: 1,

@@ -1167,7 +1167,6 @@ export type SignalPulseHealth = {
   blocked_low_information_count: number;
   dead_job_count: number;
   market_ready_rate: number;
-  settlement_coverage: number | null;
 };
 
 export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number> & {

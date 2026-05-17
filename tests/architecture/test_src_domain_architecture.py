@@ -16,7 +16,6 @@ DOMAINS = {
     "asset_market",
     "token_intel",
     "social_enrichment",
-    "closed_loop_harness",
     "notifications",
     "pulse_lab",
     "watchlist_intel",

@@ -282,7 +282,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["notifications"]["channels"]["pushdeer"]["url_configured"])
         self.assertEqual(payload["data"]["notifications"]["channels"]["pushdeer"]["provider"], "apprise")
 
-    def test_recent_search_asset_flow_harness_and_alerts_use_postgres_runtime_store(self):
+    def test_recent_search_asset_flow_social_enrichment_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
@@ -299,8 +299,6 @@ class CliTests(unittest.TestCase):
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
                 jobs_code = main(["enrichment-jobs", "--limit", "5"], stdout=stdout)
                 social_events_code = main(["social-events", "--window", "1h", "--limit", "5"], stdout=stdout)
-                seeds_code = main(["attention-seeds", "--window", "1h", "--limit", "5"], stdout=stdout)
-                snapshots_code = main(["harness-snapshots", "--horizon", "6h", "--limit", "5"], stdout=stdout)
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual(
@@ -311,10 +309,8 @@ class CliTests(unittest.TestCase):
                 alerts_code,
                 jobs_code,
                 social_events_code,
-                seeds_code,
-                snapshots_code,
             ],
-            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0],
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
@@ -327,8 +323,6 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(lines[4]["data"]["counts"]["pending"], 1)
         self.assertEqual(lines[5]["data"]["items"], [])
-        self.assertEqual(lines[6]["data"]["items"], [])
-        self.assertEqual(lines[7]["data"]["items"], [])
 
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -528,7 +522,7 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
     assert events.index(("release",)) < events.index(("worker_close",))
 
 
-def test_harness_cli_reports_empty_read_models_without_error(tmp_path, monkeypatch):
+def test_social_enrichment_cli_reports_empty_read_models_without_error(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "postgres_test_db"
     write_runtime_config(tmp_path, db_path=db_path)
@@ -542,29 +536,14 @@ def test_harness_cli_reports_empty_read_models_without_error(tmp_path, monkeypat
 
     codes = [
         main(["social-events", "--window", "1h", "--limit", "5"], stdout=stdout),
-        main(["attention-seeds", "--window", "1h", "--limit", "5"], stdout=stdout),
-        main(["harness-snapshots", "--horizon", "6h", "--limit", "5"], stdout=stdout),
-        main(["harness-outcomes", "--horizon", "6h", "--limit", "5"], stdout=stdout),
-        main(["harness-credits", "--horizon", "6h", "--limit", "5"], stdout=stdout),
-        main(["harness-weights", "--horizon", "6h", "--limit", "5"], stdout=stdout),
-        main(["harness-health"], stdout=stdout),
-        main(["harness-score-buckets", "--horizon", "6h"], stdout=stdout),
-        main(["ops", "backfill-harness-jobs", "--limit", "5"], stdout=stdout),
-        main(["ops", "settle-harness", "--horizon", "6h", "--limit", "5", "--now-ms", "21601001"], stdout=stdout),
-        main(["ops", "attribute-harness-credits", "--horizon", "6h", "--limit", "5"], stdout=stdout),
-        main(["ops", "update-harness-weights", "--limit", "5"], stdout=stdout),
+        main(["ops", "backfill-enrichment-jobs", "--limit", "5"], stdout=stdout),
     ]
 
     lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-    assert codes == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    assert [line["ok"] for line in lines] == [True, True, True, True, True, True, True, True, True, True, True, True]
+    assert codes == [0, 0]
+    assert [line["ok"] for line in lines] == [True, True]
     assert lines[0]["data"]["items"] == []
-    assert lines[6]["data"]["snapshots_24h"] == 0
-    assert lines[7]["data"]["items"][2]["bucket"] == "-0.4 to 0.4"
-    assert lines[8]["data"]["jobs_enqueued"] == 0
-    assert lines[9]["data"]["snapshots_scanned"] == 0
-    assert lines[10]["data"]["credits_written"] == 0
-    assert lines[11]["data"]["weights_updated"] == 0
+    assert lines[1]["data"]["jobs_enqueued"] == 0
 
 
 def test_init_creates_runtime_config(tmp_path, monkeypatch):

@@ -133,7 +133,7 @@
 | Worker | `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` | 保留 queue/edge/budget；改 `_run_job` 调新 client + 删 narrative_type 写入 + build evidence_event_urls |
 | Repository | `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` | 删 narrative_type 列引用；扩 stage 枚举 |
 | Read model | `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py` | `_stages_for` keys 改新枚举（**P0-4**）；`_decision()` 暴露新字段（**P0-5**）；删 narrative_type 读 |
-| Eval grader | `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py` | Hard cut grader 改为 v2（5 项）；v1 case 走 `status='legacy_skipped'` 不 panic |
+| Eval grader | `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py` | Hard cut grader 改为 v2（5 项）；v1 case 走 `status='legacy_skipped'` 不 panic |
 | Notification | `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py` | DELETE `_pulse_body` 现有；NEW SurfaceCard 渲染器；signature 改为只 hash 稳定维度；删 narrative_type 写入 payload |
 | GMGN provider | `src/gmgn_twitter_intel/integrations/gmgn/` (T1 grep 定位) | 加 `description` 字段映射 |
 | Tools 目录 | （新建）`src/gmgn_twitter_intel/integrations/openai_agents/tools/` | NEW 3 个 `@function_tool` 包装的只读 SQL 函数 + `ToolResult` Protocol |
@@ -459,7 +459,7 @@ grep -rn "pulse_stage_prompts\|_ROUTE_FOCUS\|_STAGE_FOCUS" src/ tests/
 - Modify (重写): `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/providers.py`（provider protocol 接口签名）
 - Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`（注入 tools list）
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`（manifest stages 改 `["investigator","decision_maker"]`）
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`（manifest stages 改 `["investigator","decision_maker"]`）
 - Add tests: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 
 - [ ] DELETE `_run_stage`, `run_decision_pipeline`, critic veto 分支（spec H6/H8）
@@ -513,10 +513,10 @@ grep -rn "pulse_stage_prompts\|_ROUTE_FOCUS\|_STAGE_FOCUS" src/ tests/
   - JOIN `events.event_payload_json->>'url'` for final.evidence_event_ids
   - 缺 url 的 event_id 不进 dict（surface card 降级）
   - 写入 final.evidence_event_urls
-- [ ] `agent_harness.build_pulse_harness_manifest` 更新：
+- [ ] `agent_runtime.build_pulse_runtime_manifest` 更新：
   - `stages: ["investigator", "decision_maker"]`
   - `runtime.tool_names_by_stage` 是唯一工具契约；“tools enabled” 表示该 stage 工具列表非空，没有单独 bool
-  - 自然 bump `harness_hash`（grader v2 通过 harness_hash 隔离 v1 case）
+  - 自然 bump `runtime_hash`（grader v2 通过 runtime_hash 隔离 v1 case）
 
 **Tests:**
 - [ ] `test_pulse_decision_two_stage.py`:
@@ -701,8 +701,8 @@ grep -rn "'analyst'\|'critic'\|'judge'\"analyst\"\|\"critic\"\|\"judge\"" web/sr
 **[H9/G.1 内联]**
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
-- Modify tests: `tests/unit/domains/pulse_lab/test_agent_harness_eval.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
+- Modify tests: `tests/unit/domains/pulse_lab/test_agent_eval.py`
 - Modify (归档): mv `docs/superpowers/specs/active/2026-05-14-pulse-detail-redesign-cn.md` → `docs/superpowers/specs/completed/`
 - Modify: `docs/CONTRACTS.md`（Signal Pulse decision block 加 narrative/bull/bear/playbook）
 - Modify: `docs/RELIABILITY.md`（Pulse Audit Ledger stage 枚举改）
@@ -716,7 +716,7 @@ grep -rn "'analyst'\|'critic'\|'judge'\"analyst\"\|\"critic\"\|\"judge\"" web/sr
   - **R4** `high_conviction_constraint`: recommendation=high_conviction 必须 bull/bear 都 ≥moderate 且 evidence ≥3
   - **R5** `playbook_consistent`: recommendation=abstain → playbook.has_playbook=false AND watch_signals/exit_triggers 为空
 - [ ] **defensive dispatch**：grader 检测 case shape，v1 case（缺 narrative/bull/bear keys）返回 `status='legacy_skipped'` 不 panic（reviewer G.1）
-- [ ] grader version `pulse-deterministic-harness-v2`
+- [ ] grader version `pulse-deterministic-eval-v3`
 - [ ] 文档更新（CONTRACTS / RELIABILITY / ARCHITECTURE）
 - [ ] **归档 2026-05-14-pulse-detail-redesign-cn.md** 到 `completed/`（P1-10）
 - [ ] **Cross-domain grep 防御**（最终扫，应为 0）:
@@ -735,14 +735,14 @@ grep -rn "'analyst'\|'critic'\|'judge'\"analyst\"\|\"critic\"\|\"judge\"" web/sr
 - [ ] 期望除 `pulse_agent_runs.outcome='abstain_critic_veto'` 历史 enum 值的只读使用（OQ-5 决策保留）外，src/ tests/ 应为 0
 
 **Tests:**
-- [ ] `test_agent_harness_eval.py`:
+- [ ] `test_agent_eval.py`:
   - 5 个 rule 各 happy + fail case
   - v1 case → `status='legacy_skipped'`，不 raise
   - 完整 v2 PulseDecisionPayload pass 5 rules
 
 **Verification:**
 ```bash
-uv run pytest tests/unit/domains/pulse_lab/test_agent_harness_eval.py -v
+uv run pytest tests/unit/domains/pulse_lab/test_agent_eval.py -v
 # grep 防御
 ```
 

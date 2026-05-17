@@ -30,7 +30,7 @@
 - `PulseCandidateWorker` 已有 DB job queue、edge state、run budget、advisory_lock 单冷写、wake-hint + interval 双触发
 - `pulse_agent_run_steps` 是完整 replay ledger：input / prompt / response / usage / latency 每个 stage 落库
 - `pulse_candidates` 主表已包含完整决策列（`decision_route / decision_recommendation / decision_confidence / decision_abstain_reason / decision_stage_count / decision_json`），**本身就是 append-update 形态的决策 ledger**，不需额外 ledger 表
-- `pulse_agent_eval_cases` + `agent_harness_eval` 已有 deterministic grader 闭环
+- `pulse_agent_eval_cases` + `agent_eval` 已有 deterministic grader 闭环
 - 14 worker Kappa/CQRS pipeline 持续产出 events / token_intents / market_ticks / enriched_events / token_radar_rows
 - pre-LLM `_factor_completeness` + `hard_blocked` gate 已实装，缺数据 candidate 不消耗 LLM token
 - `2026-05-16-unified-agent-worker-runtime-cn.md` §5.1 M1 schema hard fix 已设计完，作为本 spec 前置依赖

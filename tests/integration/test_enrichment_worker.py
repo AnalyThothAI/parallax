@@ -3,13 +3,13 @@ import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-import pytest
-
-from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
+from gmgn_twitter_intel.domains.social_enrichment.repositories.social_event_extraction_repository import (
+    SocialEventExtractionRepository,
+)
 from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
     AnchorTerm,
@@ -104,7 +104,7 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
-    harness = HarnessRepository(conn)
+    social_events = SocialEventExtractionRepository(conn)
     db = SingleConnectionWorkerDB(conn)
     ingest = IngestService(
         evidence=evidence,
@@ -120,11 +120,11 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
         client=client or FakeClient(),
         publisher=publisher,
     )
-    return conn, ingest, worker, enrichment, harness
+    return conn, ingest, worker, enrichment, social_events
 
 
 def test_enrichment_worker_run_once_reports_no_job_without_private_concurrency_loop(tmp_path):
-    conn, _ingest, worker, _enrichment, _harness = open_runtime(tmp_path)
+    conn, _ingest, worker, _enrichment, _social_events = open_runtime(tmp_path)
     try:
         result = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
     finally:
@@ -164,43 +164,28 @@ def test_enrichment_worker_enqueues_watchlist_summary_job_in_completion_transact
     assert summary_job["trigger_reason"] == "cold_start"
 
 
-@pytest.mark.skip(
-    reason="Asserts harness materializer reaches snapshot_ready; current pipeline returns "
-    "asset_unresolved because identity model changed in token-identity-evidence hard-cut. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
-def test_enrichment_worker_materializes_closed_loop_harness_and_publishes_update(tmp_path):
+def test_enrichment_worker_persists_social_event_extraction_and_publishes_update(tmp_path):
     publisher = RecordingPublisher()
-    conn, ingest, worker, enrichment, harness = open_runtime(tmp_path, publisher=publisher)
+    conn, ingest, worker, enrichment, social_events = open_runtime(tmp_path, publisher=publisher)
     try:
         event = make_event("event-worker", text="Solana XDP scaling is nearly ready")
         ingest.ingest_event(event, is_watched=True)
 
         processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
         jobs = enrichment.list_jobs(limit=10)
-        social_events = harness.list_social_events(window_ms=86_400_000, limit=10)
-        seeds = harness.list_attention_seeds(window_ms=86_400_000, limit=10)
-        snapshots = harness.list_snapshots(window_ms=86_400_000, horizon="6h", limit=10)
-        decisions = conn.execute("SELECT * FROM harness_decisions").fetchall()
+        stored = social_events.recent(window="24h", limit=10)["items"]
     finally:
         conn.close()
 
     assert processed.processed == 1
     assert jobs[0]["status"] == "done"
-    assert social_events[0]["summary_zh"] == "Toly 提到 Solana XDP，形成注意力种子。"
-    assert seeds[0]["seed_status"] == "snapshot_ready"
-    assert snapshots[0]["asset"] == "SOL"
-    assert snapshots[0]["shadow_signal"] == "LONG_SMALL"
-    assert decisions[0]["execution_mode"] == "shadow"
-    assert publisher.messages[0]["type"] == "harness_update"
+    assert stored[0]["summary_zh"] == "Toly 提到 Solana XDP，形成注意力种子。"
+    assert stored[0]["event_id"] == "event-worker"
+    assert publisher.messages[0]["type"] == "social_event_enrichment_update"
     assert publisher.messages[0]["event"]["event_id"] == "event-worker"
     assert publisher.messages[0]["social_event"]["event_type"] == "meme_phrase_seed"
 
 
-@pytest.mark.skip(
-    reason="Depends on harness materializer behaviour changed by hard-cut. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
 def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_path):
     result = SocialEventExtraction(
         is_signal_event=False,
@@ -218,22 +203,20 @@ def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_pat
         summary_zh="普通回复。",
         raw_response={"ok": True},
     )
-    conn, ingest, worker, enrichment, harness = open_runtime(tmp_path, client=FakeClient(result))
+    conn, ingest, worker, enrichment, social_events = open_runtime(tmp_path, client=FakeClient(result))
     try:
         event = make_event("event-worker-non-signal", text="gm")
         ingest.ingest_event(event, is_watched=True)
 
         processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
-        social_events = harness.list_social_events(window_ms=86_400_000, limit=10)
-        snapshots = harness.list_snapshots(window_ms=86_400_000, horizon="6h", limit=10)
+        stored = social_events.recent(window="24h", limit=10)["items"]
         jobs = enrichment.list_jobs(limit=10)
     finally:
         conn.close()
 
     assert processed.processed == 1
     assert jobs[0]["status"] == "done"
-    assert social_events[0]["is_signal_event"] is False
-    assert snapshots == []
+    assert stored[0]["is_signal_event"] is False
 
 
 def test_enrichment_worker_times_out_hung_llm_job(tmp_path):

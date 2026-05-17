@@ -101,7 +101,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "asset_profile_refresh": FakeWorker("asset_profile_refresh"),
             "enrichment": FakeWorker("enrichment"),
             "handle_summary": FakeWorker("handle_summary"),
-            "harness_ops": FakeWorker("harness_ops"),
             "pulse_candidate": FakeWorker("pulse_candidate"),
             "token_radar_projection": FakeWorker("token_radar_projection"),
             "token_profile_current": FakeWorker("token_profile_current"),
@@ -129,7 +128,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "pulse_candidate",
             "enrichment",
             "handle_summary",
-            "harness_ops",
             "notification_rule",
             "notification_delivery",
         ]
@@ -146,7 +144,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "worker:pulse_candidate",
             "worker:enrichment",
             "worker:handle_summary",
-            "worker:harness_ops",
             "worker:notification_rule",
             "worker:notification_delivery",
         ]

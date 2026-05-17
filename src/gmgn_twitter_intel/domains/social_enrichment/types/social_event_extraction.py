@@ -102,7 +102,7 @@ class SocialEventPayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     is_signal_event: bool = Field(
-        description="True only when the tweet contains a source-backed event worth harness materialization."
+        description="True only when the tweet contains a source-backed event worth persisting as social intelligence."
     )
     event_type: EventType
     source_action: SourceAction
@@ -174,7 +174,7 @@ def social_event_agent_instructions() -> str:
         "Every anchor term and token candidate evidence must be an exact substring of the supplied source tweet text. "
         "Write summary_zh in Simplified Chinese. Keep canonical enum fields in English. "
         "The model owns semantic explanation only; deterministic code validates identity, exact evidence, and "
-        "closed-loop harness materialization. Never output a trading instruction, order instruction, position size, "
+        "persistence eligibility. Never output a trading instruction, order instruction, position size, "
         "leverage, or execution permission. "
         f"Allowed event_type values: {', '.join(sorted(EVENT_TYPES))}. "
         f"Allowed source_action values: {', '.join(sorted(SOURCE_ACTIONS))}. "

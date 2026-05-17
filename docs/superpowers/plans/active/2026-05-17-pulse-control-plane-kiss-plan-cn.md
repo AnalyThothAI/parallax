@@ -28,9 +28,9 @@
   - Keep delivery enqueueing based on candidate channels; no frontend throttling.
 - Modify: `src/gmgn_twitter_intel/platform/config/settings.py`
   - Reject unsupported Signal Pulse statuses after operator config cleanup.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
   - Include actual tool/validator/failure-taxonomy contract fields in the harness manifest.
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
   - Grade failed-run eval cases and align evidence subset checks with runtime validation.
 - Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
   - Remove public `analyst`, `critic`, `judge` stage fields.
@@ -488,10 +488,10 @@
 **Files:**
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
-- Test: `tests/unit/domains/pulse_lab/test_agent_harness_eval_v2.py`
+- Test: `tests/unit/domains/pulse_lab/test_agent_eval_v2.py`
 
 - [ ] **Step 1: Add failure taxonomy helper tests**
 
@@ -542,13 +542,13 @@
 
 - [ ] **Step 4: Add failed-run eval case builder**
 
-  Extend `agent_harness_eval.py` with:
+  Extend `agent_eval.py` with:
 
   ```python
   def build_pulse_failed_eval_case(
       *,
       run_id: str,
-      harness_hash: str,
+      runtime_hash: str,
       context: dict[str, Any],
       route: DecisionRoute,
       completeness: dict[str, Any],
@@ -558,7 +558,7 @@
       return {
           "eval_case_id": _stable_id("pulse-failed-eval-case", run_id, failure_reason, PULSE_DETERMINISTIC_GRADER_VERSION),
           "source_run_id": run_id,
-          "harness_hash": harness_hash,
+          "runtime_hash": runtime_hash,
           "eval_type": "deterministic",
           "route": route,
           "recommendation": "abstain",
@@ -589,7 +589,7 @@
   Run:
 
   ```bash
-  uv run pytest tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_agent_harness_eval_v2.py -q
+  uv run pytest tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_agent_eval_v2.py -q
   ```
 
 ---
@@ -741,7 +741,7 @@
   ```text
   pulse_agent_jobs, pulse_candidate_edge_state, pulse_candidate_run_budget,
   pulse_target_run_budget, pulse_agent_runs, pulse_agent_run_steps,
-  pulse_agent_harness_versions, pulse_agent_eval_cases,
+  pulse_agent_runtime_versions, pulse_agent_eval_cases,
   pulse_agent_eval_results, pulse_candidates, pulse_playbook_snapshots
   ```
 

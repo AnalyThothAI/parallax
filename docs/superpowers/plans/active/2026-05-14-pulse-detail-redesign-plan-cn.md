@@ -1119,7 +1119,7 @@ export const tittyPulseFixture: SignalPulseItem = {
     watched_mentions: 0,
   },
   agent_run_id: "pulse-run:7d250fd8ed8838475aa1b9f8d7deef780e963804",
-  pulse_version: "pulse-decision-harness-v1",
+  pulse_version: "pulse-decision-runtime-v1",
   gate_version: "gate-v1",
   prompt_version: "p4.2",
   schema_version: "token_factor_snapshot_v3_social_attention",
@@ -1507,7 +1507,7 @@ describe("buildPulseDetailView · TITTY fixture", () => {
   });
 
   it("populates replay versions", () => {
-    expect(view.agent.replay.pulseVersion).toBe("pulse-decision-harness-v1");
+    expect(view.agent.replay.pulseVersion).toBe("pulse-decision-runtime-v1");
     expect(view.agent.replay.runId).toMatch(/pulse-run:/);
   });
 });
@@ -3890,7 +3890,7 @@ describe("PulseAgentRail", () => {
 
   it("renders replay versions in collapsed details", () => {
     render(<PulseAgentRail agent={view.agent} density="full" />);
-    expect(screen.getByText(/pulse-decision-harness-v1/)).toBeInTheDocument();
+    expect(screen.getByText(/pulse-decision-runtime-v1/)).toBeInTheDocument();
     expect(screen.getByText(/pulse-run:/)).toBeInTheDocument();
   });
 
@@ -4815,7 +4815,7 @@ Verify in the browser:
 - Market grid: liquidity warn-bordered, volume risk-bordered with `13.5× mcap` subtext, stale notice line below
 - 5 evidence rows all marked ★, author chips show `@cache100x 3` / `@moontoklisting 1` / `@qkl2058 1`
 - Author concentration bar rendered, cache100x segment is red
-- Agent rail: gate-vs-agent mismatch banner; Analyst conf 0.82; Critic ceiling 0.45 with ↓; Judge conf 0.35; replay section lists `pulse-decision-harness-v1` and `pulse-run:7d250fd8...`
+- Agent rail: gate-vs-agent mismatch banner; Analyst conf 0.82; Critic ceiling 0.45 with ↓; Judge conf 0.35; replay section lists `pulse-decision-runtime-v1` and `pulse-run:7d250fd8...`
 - Visit `http://localhost:8765/signal-lab` (no pulse id) → queue + right-pane compact inspector still renders
 
 - [ ] **Step 6: Move the spec to `completed/`**

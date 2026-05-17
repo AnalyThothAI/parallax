@@ -51,8 +51,7 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 `collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
 `live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
 `token_radar_projection`, `token_profile_current`, `pulse_candidate`, `enrichment`,
-`handle_summary`, `harness_ops`, `notification_rule`, and
-`notification_delivery`.
+`handle_summary`, `notification_rule`, and `notification_delivery`.
 
 The schema is `WorkersSettings`; the canonical key list is guarded
 against `worker_registry.py` and `docs/WORKERS.md`.
@@ -61,9 +60,9 @@ against `worker_registry.py` and `docs/WORKERS.md`.
 
 - Auth: `{"type":"auth","token":"..."}`
 - Subscribe: `{"type":"subscribe","handles":[...],"replay":N,"market_targets":[{"target_type":"Asset","target_id":"..."}]}`
-- Push payloads include `event`, `entities`, `alerts`, `enrichment`, harness
-  updates after store commit, and `live_market_update` messages for subscribed
-  market targets.
+- Push payloads include `event`, `entities`, `alerts`, `enrichment`,
+  `social_event_enrichment_update` messages after store commit, and
+  `live_market_update` messages for subscribed market targets.
 - Event payload `token_resolutions` is the same public event-token projection
   used by `/api/recent`: resolved token target identity plus event-anchored
   `price`. It is not a raw `token_intent_resolutions` row.

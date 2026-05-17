@@ -174,7 +174,6 @@ class PublicWebSocketHub:
             "alerts": repos.signals.alerts_for_event(event_id),
             "token_intents": repos.token_intents.intents_for_event(event_id),
             "token_resolutions": repos.event_tokens.for_event(event_id),
-            "harness": repos.harness.harness_for_event(event_id),
         }
 
 

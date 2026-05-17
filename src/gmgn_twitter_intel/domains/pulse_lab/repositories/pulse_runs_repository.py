@@ -30,8 +30,8 @@ class PulseRunsRepository:
         artifact_version_hash: str,
         prompt_version: str,
         schema_version: str,
-        harness_version: str,
-        harness_hash: str,
+        runtime_version: str,
+        runtime_hash: str,
         input_hash: str,
         outcome: str,
         request_json: dict[str, Any] | None = None,
@@ -57,7 +57,7 @@ class PulseRunsRepository:
             INSERT INTO pulse_agent_runs(
               run_id, job_id, candidate_id, provider, model, backend, sdk_trace_id,
               workflow_name, agent_name, artifact_version_hash, prompt_version,
-              schema_version, harness_version, harness_hash, input_hash, output_hash, trace_metadata_json,
+              schema_version, runtime_version, runtime_hash, input_hash, output_hash, trace_metadata_json,
               usage_json, latency_ms, status, outcome, decision_route, decision_stage_count,
               request_json, response_json, error, started_at_ms, finished_at_ms
             )
@@ -80,8 +80,8 @@ class PulseRunsRepository:
                 artifact_version_hash,
                 prompt_version,
                 schema_version,
-                harness_version,
-                harness_hash,
+                runtime_version,
+                runtime_hash,
                 input_hash,
                 output_hash,
                 _json(trace_metadata_json or {}),

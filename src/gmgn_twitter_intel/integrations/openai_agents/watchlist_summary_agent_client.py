@@ -5,12 +5,14 @@ import json
 import re
 from typing import Any
 
-import jsonref
-from agents import Agent, ModelRetrySettings, ModelSettings, RunConfig, Runner, retry_policies
-from agents.agent_output import AgentOutputSchema, AgentOutputSchemaBase
+from agents import Agent, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from pydantic import BaseModel, Field
 
+from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
+    default_agent_model_settings,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 
 BACKEND = "openai_agents_sdk"
@@ -33,43 +35,6 @@ class WatchlistHandleSummaryPayload(BaseModel):
     summary_zh: str
     topics: list[WatchlistTopicPayload] = Field(default_factory=list)
     residual_risks: list[str] = Field(default_factory=list)
-
-
-class _WatchlistOutputSchema(AgentOutputSchemaBase):
-    """Strict + jsonref-flattened wrapper around WatchlistHandleSummaryPayload.
-
-    Same shape as pulse_decision_agent_client._JsonOutputSchema. Kept inline here
-    until PR 3 moves the shared helper into integrations/openai_agents/_shared.py.
-    """
-
-    def __init__(self) -> None:
-        self._output_type = WatchlistHandleSummaryPayload
-        self._schema = AgentOutputSchema(WatchlistHandleSummaryPayload, strict_json_schema=True)
-        raw = self._schema.json_schema()
-        self._flat = jsonref.replace_refs(raw, proxies=False, lazy_load=False)
-
-    @property
-    def output_type(self) -> type[BaseModel]:
-        return self._output_type
-
-    def is_plain_text(self) -> bool:
-        return self._schema.is_plain_text()
-
-    def name(self) -> str:
-        return self._schema.name()
-
-    def json_schema(self) -> dict[str, Any]:
-        return self._flat
-
-    def is_strict_json_schema(self) -> bool:
-        return True
-
-    def validate_json(self, json_str: str) -> Any:
-        text = str(json_str or "")
-        start = text.find("{")
-        end = text.rfind("}")
-        candidate = text[start : end + 1] if start != -1 and end > start else text
-        return self._schema.validate_json(candidate)
 
 
 class OpenAIAgentsWatchlistSummaryClient:
@@ -142,10 +107,10 @@ class OpenAIAgentsWatchlistSummaryClient:
         agent = Agent(
             name=AGENT_NAME,
             instructions=_instructions(),
-            output_type=_WatchlistOutputSchema(),
+            output_type=StrictJsonOutputSchema(WatchlistHandleSummaryPayload),
             tools=[],
             model=self._model,
-            model_settings=_model_settings(),
+            model_settings=default_agent_model_settings(),
         )
         run_config = RunConfig(
             workflow_name=self.workflow_name,
@@ -245,23 +210,6 @@ class OpenAIAgentsWatchlistSummaryClient:
                 timeout_s=self.timeout_seconds,
             ),
         )
-
-
-def _model_settings() -> ModelSettings:
-    return ModelSettings(
-        retry=ModelRetrySettings(
-            max_retries=2,
-            backoff={"initial_delay": 0.5, "max_delay": 4.0, "multiplier": 2.0, "jitter": True},
-            policy=retry_policies.any(
-                retry_policies.provider_suggested(),
-                retry_policies.retry_after(),
-                retry_policies.network_error(),
-                retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
-            ),
-        ),
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-        include_usage=True,
-    )
 
 
 def _instructions() -> str:

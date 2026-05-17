@@ -22,11 +22,6 @@ from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync impo
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
 )
-from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
-    attribute_harness_credits,
-    settle_harness_snapshots,
-    update_harness_weights,
-)
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -141,10 +136,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return 0, {"ok": True, "data": data}
 
         signals = repos.signals
-        registry = repos.registry
-        market_ticks = repos.market_ticks
         enrichment = repos.enrichment
-        harness = repos.harness
 
         if args.ops_command == "backfill-account-quality":
             data = AccountQualityService(
@@ -153,40 +145,8 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             ).backfill_account_token_call_stats(limit=args.limit)
             return 0, {"ok": True, "data": data}
 
-        if args.ops_command == "backfill-harness-jobs":
+        if args.ops_command == "backfill-enrichment-jobs":
             return 0, {"ok": True, "data": enrichment.enqueue_missing_watched_events(limit=args.limit)}
-
-        if args.ops_command == "settle-harness":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": settle_harness_snapshots(
-                        harness=harness,
-                        registry=registry,
-                        market_ticks=market_ticks,
-                        horizon=args.horizon,
-                        limit=args.limit,
-                        now_ms=args.now_ms,
-                    ),
-                },
-            )
-
-        if args.ops_command == "attribute-harness-credits":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": attribute_harness_credits(
-                        harness=harness,
-                        horizon=args.horizon,
-                        limit=args.limit,
-                    ),
-                },
-            )
-
-        if args.ops_command == "update-harness-weights":
-            return 0, {"ok": True, "data": update_harness_weights(harness=harness, limit=args.limit)}
 
         if args.ops_command == "projection-status":
             return 0, {"ok": True, "data": ProjectionRepository(signals.conn).status_summary()}

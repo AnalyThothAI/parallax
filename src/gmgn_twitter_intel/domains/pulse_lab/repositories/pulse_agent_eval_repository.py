@@ -10,16 +10,16 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared 
 )
 
 
-class PulseHarnessRepository:
+class PulseAgentEvalRepository:
     def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
         self.conn = conn
         self.running_timeout_ms = int(running_timeout_ms)
 
-    def upsert_agent_harness_version(
+    def upsert_agent_runtime_version(
         self,
         *,
-        harness_version: str,
-        harness_hash: str,
+        runtime_version: str,
+        runtime_hash: str,
         strategy: str,
         provider: str,
         model: str,
@@ -32,13 +32,13 @@ class PulseHarnessRepository:
         created = int(created_at_ms if created_at_ms is not None else _now_ms())
         row = self.conn.execute(
             """
-            INSERT INTO pulse_agent_harness_versions(
-              harness_hash, harness_version, strategy, provider, model, prompt_version,
+            INSERT INTO pulse_agent_runtime_versions(
+              runtime_hash, runtime_version, strategy, provider, model, prompt_version,
               schema_version, manifest_json, created_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(harness_hash) DO UPDATE SET
-              harness_version = excluded.harness_version,
+            ON CONFLICT(runtime_hash) DO UPDATE SET
+              runtime_version = excluded.runtime_version,
               strategy = excluded.strategy,
               provider = excluded.provider,
               model = excluded.model,
@@ -48,8 +48,8 @@ class PulseHarnessRepository:
             RETURNING *
             """,
             (
-                harness_hash,
-                harness_version,
+                runtime_hash,
+                runtime_version,
                 strategy,
                 provider,
                 model,
@@ -63,14 +63,14 @@ class PulseHarnessRepository:
             self.conn.commit()
         return _row(row)
 
-    def agent_harness_version(self, harness_hash: str) -> dict[str, Any] | None:
+    def agent_runtime_version(self, runtime_hash: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
             SELECT *
-            FROM pulse_agent_harness_versions
-            WHERE harness_hash = %s
+            FROM pulse_agent_runtime_versions
+            WHERE runtime_hash = %s
             """,
-            (harness_hash,),
+            (runtime_hash,),
         ).fetchone()
         return _optional_row(row)
 
@@ -79,7 +79,7 @@ class PulseHarnessRepository:
         *,
         eval_case_id: str,
         source_run_id: str,
-        harness_hash: str,
+        runtime_hash: str,
         eval_type: str,
         route: str,
         recommendation: str,
@@ -94,12 +94,12 @@ class PulseHarnessRepository:
         row = self.conn.execute(
             """
             INSERT INTO pulse_agent_eval_cases(
-              eval_case_id, source_run_id, harness_hash, eval_type, route, recommendation,
+              eval_case_id, source_run_id, runtime_hash, eval_type, route, recommendation,
               input_json, expected_json, rubric_json, status, created_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(source_run_id, eval_type) DO UPDATE SET
-              harness_hash = excluded.harness_hash,
+              runtime_hash = excluded.runtime_hash,
               route = excluded.route,
               recommendation = excluded.recommendation,
               input_json = excluded.input_json,
@@ -112,7 +112,7 @@ class PulseHarnessRepository:
             (
                 eval_case_id,
                 source_run_id,
-                harness_hash,
+                runtime_hash,
                 eval_type,
                 route,
                 recommendation,
@@ -144,7 +144,7 @@ class PulseHarnessRepository:
         *,
         eval_result_id: str,
         eval_case_id: str,
-        harness_hash: str,
+        runtime_hash: str,
         status: str,
         score: float,
         grader_version: str,
@@ -156,11 +156,11 @@ class PulseHarnessRepository:
         row = self.conn.execute(
             """
             INSERT INTO pulse_agent_eval_results(
-              eval_result_id, eval_case_id, harness_hash, status, score,
+              eval_result_id, eval_case_id, runtime_hash, status, score,
               grader_version, details_json, created_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(eval_case_id, harness_hash, grader_version) DO UPDATE SET
+            ON CONFLICT(eval_case_id, runtime_hash, grader_version) DO UPDATE SET
               eval_result_id = excluded.eval_result_id,
               status = excluded.status,
               score = excluded.score,
@@ -171,7 +171,7 @@ class PulseHarnessRepository:
             (
                 eval_result_id,
                 eval_case_id,
-                harness_hash,
+                runtime_hash,
                 status,
                 float(score),
                 grader_version,

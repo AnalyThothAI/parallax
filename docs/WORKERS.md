@@ -20,8 +20,8 @@ delivery — every listener has a bounded `interval_seconds` catch-up from
 collector, token_capture_tier, market_tick_stream, market_tick_poll,
 event_anchor_backfill, live_price_gateway, resolution_refresh,
 asset_profile_refresh, token_radar_projection, token_profile_current,
-pulse_candidate, enrichment, handle_summary, harness_ops,
-notification_rule, notification_delivery
+pulse_candidate, enrichment, handle_summary, notification_rule,
+notification_delivery
 -->
 
 | Worker | Owner | File | Reads | Writes | Wake-in | Wake-out | Catch-up |
@@ -36,10 +36,9 @@ notification_rule, notification_delivery
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
 | `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_rows`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
-| `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope, gate fields, route policy | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_harness_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
+| `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope, gate fields, route policy | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, handle signal events | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
-| `harness_ops` (`HarnessOpsWorker`) | `closed_loop_harness` | `domains/closed_loop_harness/runtime/harness_ops_worker.py` | due `harness_snapshots`, entry/exit `market_ticks` looked up via `registry_assets.chain_token_market_target(...)` | `harness_snapshots.outcome_status`, `harness_outcomes`, `harness_credits`, `harness_weights` | poll | none | `interval_seconds` |
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
 

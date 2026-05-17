@@ -25,7 +25,6 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "events" in names
     assert "event_fts" not in names
     assert "event_entities" in names
-    assert "harness_snapshots" in names
     assert "notifications" in names
     assert "projection_offsets" in names
     assert "projection_runs" in names
@@ -54,6 +53,13 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
         "market_provider_observations",
         "current_market_field_facts",
         "token_market_price_baselines",
+        "attention_seeds",
+        "event_clusters",
+        "harness_snapshots",
+        "harness_decisions",
+        "harness_outcomes",
+        "harness_credits",
+        "harness_weights",
     ):
         assert legacy_table not in names
 

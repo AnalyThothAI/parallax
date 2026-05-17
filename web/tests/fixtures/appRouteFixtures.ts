@@ -76,7 +76,6 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
       }),
       pulse_candidate: workerStatusFixture(),
       handle_summary: workerStatusFixture(),
-      harness_ops: workerStatusFixture(),
       notification_rule: workerStatusFixture({ enabled: true, running: true }),
       notification_delivery: workerStatusFixture({ enabled: true, running: true, queue_depth: 0 }),
       asset_profile_refresh: workerStatusFixture(),
@@ -153,7 +152,6 @@ export function signalPulseFixture(overrides: Partial<SignalPulseData> = {}): Si
       blocked_low_information_count: 0,
       dead_job_count: 0,
       market_ready_rate: 1,
-      settlement_coverage: null,
     },
     summary: {
       trade_candidate: 0,

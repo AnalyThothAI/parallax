@@ -59,7 +59,7 @@ _DEFAULT_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
 
 
 @dataclass(frozen=True, slots=True)
-class PulseAgentHarnessContract:
+class PulseAgentRuntimeContract:
     stage_names: tuple[str, ...] = _DEFAULT_STAGE_NAMES
     max_turns_per_stage: dict[str, int] = field(default_factory=lambda: dict(_DEFAULT_MAX_TURNS_PER_STAGE))
     tool_names_by_stage: dict[str, tuple[str, ...]] = field(
@@ -85,7 +85,7 @@ class PulseAgentHarnessContract:
         }
 
 
-DEFAULT_PULSE_AGENT_HARNESS_CONTRACT = PulseAgentHarnessContract()
+DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT = PulseAgentRuntimeContract()
 
 
 class PulseDecisionRuntime(Protocol):
@@ -137,7 +137,7 @@ class PulseDecisionRuntime(Protocol):
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
         model: str,
         artifact_version_hash: str,
         workflow_name: str,
@@ -160,7 +160,7 @@ class PulseDecisionProvider(Protocol):
     timeout_seconds: float
 
     @property
-    def harness_contract(self) -> PulseAgentHarnessContract: ...
+    def runtime_contract(self) -> PulseAgentRuntimeContract: ...
 
     def request_audit(
         self,
@@ -170,7 +170,7 @@ class PulseDecisionProvider(Protocol):
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]: ...
 
     async def run_decision_pipeline(
@@ -181,13 +181,13 @@ class PulseDecisionProvider(Protocol):
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> PulseDecisionResult: ...
 
 
 __all__ = [
-    "DEFAULT_PULSE_AGENT_HARNESS_CONTRACT",
-    "PulseAgentHarnessContract",
+    "DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT",
+    "PulseAgentRuntimeContract",
     "PulseAgentToolRuntime",
     "PulseAgentToolRuntimeFactory",
     "PulseDecisionProvider",

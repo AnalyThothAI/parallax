@@ -15,7 +15,7 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import (
     PulseDecisionStageSpec,
 )
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import pulse_harness_hash
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
     load_decision_maker_prompt,
     load_investigator_prompt,
@@ -144,14 +144,14 @@ class PulseDecisionRuntimeService:
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
         model: str,
         artifact_version_hash: str,
         workflow_name: str,
         agent_name: str,
     ) -> dict[str, Any]:
         input_hash = _sha256({"context": context, "route": route, "completeness": completeness})
-        harness_hash = pulse_harness_hash(harness)
+        runtime_hash = pulse_runtime_hash(runtime_manifest)
         trace_metadata = {
             "backend": BACKEND,
             "run_id": str(run_id or ""),
@@ -162,8 +162,8 @@ class PulseDecisionRuntimeService:
             "model": str(model or ""),
             "artifact_version_hash": artifact_version_hash,
             "input_hash": input_hash,
-            "harness_version": str(harness.get("harness_version") or ""),
-            "harness_hash": harness_hash,
+            "runtime_version": str(runtime_manifest.get("runtime_version") or ""),
+            "runtime_hash": runtime_hash,
             "candidate_id": _context_string(context, "candidate_id"),
             "candidate_type": _context_string(context, "candidate_type"),
             "subject_key": _context_string(context, "subject_key"),
@@ -182,9 +182,9 @@ class PulseDecisionRuntimeService:
             "artifact_version_hash": artifact_version_hash,
             "trace_metadata": trace_metadata,
             "input_hash": input_hash,
-            "harness_version": str(harness.get("harness_version") or ""),
-            "harness_hash": harness_hash,
-            "harness": harness,
+            "runtime_version": str(runtime_manifest.get("runtime_version") or ""),
+            "runtime_hash": runtime_hash,
+            "runtime_manifest": runtime_manifest,
         }
 
     def with_output_hash(self, audit: dict[str, Any], *, final: FinalDecision) -> dict[str, Any]:

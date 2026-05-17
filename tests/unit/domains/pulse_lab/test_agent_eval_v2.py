@@ -15,14 +15,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
-    PULSE_DETERMINISTIC_GRADER_VERSION,
-    build_pulse_harness_manifest,
-    pulse_harness_hash,
-)
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness_eval import (
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_eval import (
     build_pulse_failed_eval_case,
     grade_pulse_deterministic_eval_case,
+)
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import (
+    PULSE_DETERMINISTIC_GRADER_VERSION,
+    build_pulse_runtime_manifest,
+    pulse_runtime_hash,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import StageRunAudit
 
@@ -166,7 +166,7 @@ def _make_case(
 ) -> dict[str, Any]:
     return {
         "eval_case_id": "case-test",
-        "harness_hash": "sha256:test",
+        "runtime_hash": "sha256:test",
         "route": "meme",
         "recommendation": (final or _v2_final())["recommendation"],
         "input_json": {
@@ -181,7 +181,7 @@ def _make_case(
     }
 
 
-def _harness_manifest(**overrides: Any) -> dict[str, Any]:
+def _runtime_manifest(**overrides: Any) -> dict[str, Any]:
     values: dict[str, Any] = {
         "provider": "openai",
         "model": "gpt-5-mini",
@@ -207,7 +207,7 @@ def _harness_manifest(**overrides: Any) -> dict[str, Any]:
         "failure_taxonomy_version": "pulse-failure-taxonomy-v1",
     }
     values.update(overrides)
-    return build_pulse_harness_manifest(**values)
+    return build_pulse_runtime_manifest(**values)
 
 
 # ---------------------------------------------------------------------------
@@ -221,13 +221,13 @@ def test_complete_v2_case_passes_all_rules() -> None:
     assert result["status"] == "pass"
     assert result["score"] == 1.0
     assert result["details_json"]["violations"] == []
-    assert result["grader_version"] == "pulse-deterministic-harness-v2"
+    assert result["grader_version"] == "pulse-deterministic-eval-v3"
 
 
 def test_failed_run_eval_case_passes_when_failure_reason_is_recorded() -> None:
     case = build_pulse_failed_eval_case(
         run_id="run-failed",
-        harness_hash="sha256:test",
+        runtime_hash="sha256:test",
         context={"candidate_id": "candidate-1"},
         route="meme",
         completeness={"hard_blocked": False},
@@ -246,7 +246,7 @@ def test_failed_run_eval_case_passes_when_failure_reason_is_recorded() -> None:
 def test_failed_run_eval_case_fails_when_failure_reason_is_missing() -> None:
     case = build_pulse_failed_eval_case(
         run_id="run-failed-missing",
-        harness_hash="sha256:test",
+        runtime_hash="sha256:test",
         context={"candidate_id": "candidate-1"},
         route="meme",
         completeness={"hard_blocked": False},
@@ -261,8 +261,8 @@ def test_failed_run_eval_case_fails_when_failure_reason_is_missing() -> None:
     assert "failed_run_recorded" in result["details_json"]["violations"]
 
 
-def test_harness_manifest_records_operational_contract() -> None:
-    manifest = build_pulse_harness_manifest(
+def test_runtime_manifest_records_operational_contract() -> None:
+    manifest = build_pulse_runtime_manifest(
         provider="openai",
         model="gpt-5-mini",
         artifact_version_hash="artifact:gpt-5-mini",
@@ -298,8 +298,8 @@ def test_harness_manifest_records_operational_contract() -> None:
     assert "schema_validation_failed" in manifest["failure_taxonomy"]["codes"]
 
 
-def test_harness_manifest_allows_empty_decision_maker_tool_list() -> None:
-    manifest = build_pulse_harness_manifest(
+def test_runtime_manifest_allows_empty_decision_maker_tool_list() -> None:
+    manifest = build_pulse_runtime_manifest(
         provider="openai",
         model="gpt-5-mini",
         artifact_version_hash="artifact:gpt-5-mini",
@@ -316,19 +316,19 @@ def test_harness_manifest_allows_empty_decision_maker_tool_list() -> None:
     assert runtime["tool_names_by_stage"]["decision_maker"] == []
 
 
-def test_harness_hash_changes_with_operational_contract_fields() -> None:
-    base = _harness_manifest()
-    changed_tools = _harness_manifest(tool_names_by_stage={"investigator": ("get_target_price_action",)})
-    changed_budgets = _harness_manifest(route_tool_budgets={"cex": 1, "meme": 1, "research_only": 1})
-    changed_safety_net = _harness_manifest(safety_net_enabled=False)
-    changed_taxonomy = _harness_manifest(failure_taxonomy_version="pulse-failure-taxonomy-v2")
+def test_runtime_hash_changes_with_operational_contract_fields() -> None:
+    base = _runtime_manifest()
+    changed_tools = _runtime_manifest(tool_names_by_stage={"investigator": ("get_target_price_action",)})
+    changed_budgets = _runtime_manifest(route_tool_budgets={"cex": 1, "meme": 1, "research_only": 1})
+    changed_safety_net = _runtime_manifest(safety_net_enabled=False)
+    changed_taxonomy = _runtime_manifest(failure_taxonomy_version="pulse-failure-taxonomy-v2")
 
     hashes = {
-        pulse_harness_hash(base),
-        pulse_harness_hash(changed_tools),
-        pulse_harness_hash(changed_budgets),
-        pulse_harness_hash(changed_safety_net),
-        pulse_harness_hash(changed_taxonomy),
+        pulse_runtime_hash(base),
+        pulse_runtime_hash(changed_tools),
+        pulse_runtime_hash(changed_budgets),
+        pulse_runtime_hash(changed_safety_net),
+        pulse_runtime_hash(changed_taxonomy),
     }
 
     assert len(hashes) == 5
@@ -528,7 +528,7 @@ def test_r5_playbook_consistent_fails_when_abstain_has_watch_signals() -> None:
 def test_legacy_case_detected_by_v1_stage_names_returns_legacy_skipped() -> None:
     case = {
         "eval_case_id": "case-v1",
-        "harness_hash": "sha256:v1",
+        "runtime_hash": "sha256:v1",
         "route": "meme",
         "recommendation": "trade_candidate",
         "input_json": {
@@ -563,7 +563,7 @@ def test_legacy_case_detected_by_missing_v2_keys_returns_legacy_skipped() -> Non
 
     case = {
         "eval_case_id": "case-v1-shape",
-        "harness_hash": "sha256:v1-shape",
+        "runtime_hash": "sha256:v1-shape",
         "route": "meme",
         "recommendation": "trade_candidate",
         "input_json": {

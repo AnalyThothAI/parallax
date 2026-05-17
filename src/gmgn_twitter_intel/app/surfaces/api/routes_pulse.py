@@ -66,7 +66,6 @@ def signal_lab_pulse_by_id(
         data = SignalPulseService(
             pulse_read=repos.pulse_read,
             pulse_runs=repos.pulse_runs,
-            harness=repos.harness,
         ).candidate(
             candidate_id=normalized,
         )
@@ -94,7 +93,6 @@ def _signal_lab_pulse_data(
         return SignalPulseService(
             pulse_read=repos.pulse_read,
             pulse_runs=repos.pulse_runs,
-            harness=repos.harness,
         ).pulse(
             window=window,
             scope=scope,

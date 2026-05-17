@@ -124,12 +124,6 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
     from gmgn_twitter_intel.app.runtime.worker_factories.enrichment import (
         construct_enrichment_workers,
     )
-    from gmgn_twitter_intel.app.runtime.worker_factories.harness import (
-        WORKER_KEYS as HARNESS_KEYS,
-    )
-    from gmgn_twitter_intel.app.runtime.worker_factories.harness import (
-        construct_harness_workers,
-    )
     from gmgn_twitter_intel.app.runtime.worker_factories.ingestion import (
         WORKER_KEYS as INGESTION_KEYS,
     )
@@ -163,7 +157,6 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
 
     return (
         WorkerFactorySpec("ingestion.py", INGESTION_KEYS, construct_ingestion_workers),
-        WorkerFactorySpec("harness.py", HARNESS_KEYS, construct_harness_workers),
         WorkerFactorySpec("token_intel.py", TOKEN_INTEL_KEYS, construct_token_intel_workers),
         WorkerFactorySpec("asset_market.py", ASSET_MARKET_KEYS, construct_asset_market_workers),
         WorkerFactorySpec("pulse.py", PULSE_KEYS, construct_pulse_workers),

@@ -41,14 +41,12 @@ class NotificationRuleEngine:
         evidence: Any,
         account_alerts: Any,
         asset_flow: Any,
-        harness: Any,
         pulse: Any = None,
     ) -> None:
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
         self.asset_flow = asset_flow
-        self.harness = harness
         self.pulse = pulse
 
     def evaluate(self, *, now_ms: int | None = None) -> list[NotificationCandidate]:
@@ -63,7 +61,6 @@ class NotificationRuleEngine:
         hot_entity_keys.update(key for item in hot_candidates if (key := item.entity_key))
         candidates.extend(hot_candidates)
         candidates.extend(self._quality_tokens(now_ms=now, skip_entity_keys=hot_entity_keys))
-        candidates.extend(self._harness_snapshots(now_ms=now))
         candidates.extend(self._signal_pulse_candidates(now_ms=now))
         return candidates
 
@@ -309,54 +306,6 @@ class NotificationRuleEngine:
                     source_id=identity_key,
                     occurrence_at_ms=occurrence_at_ms,
                     payload=payload,
-                    channels=rule.channels,
-                )
-            )
-        return candidates
-
-    def _harness_snapshots(self, *, now_ms: int) -> list[NotificationCandidate]:
-        rule_id = "harness_snapshot_high_score"
-        rule = self._rule(rule_id)
-        if not rule.enabled:
-            return []
-        data = self.harness.snapshots(
-            window="1h",
-            horizon="6h",
-            limit=self._limit(),
-        )
-        rows = data.get("items", []) if isinstance(data, dict) else []
-        candidates: list[NotificationCandidate] = []
-        threshold = float(rule.combined_score_min if rule.combined_score_min is not None else 0.8)
-        for row in rows:
-            score = float(row.get("combined_score") or 0)
-            if score < threshold:
-                continue
-            snapshot_id = str(row.get("snapshot_id") or "")
-            if not snapshot_id:
-                continue
-            asset = _symbol(row.get("asset"))
-            candidates.append(
-                NotificationCandidate(
-                    dedup_key=f"{rule_id}:snapshot:{snapshot_id}",
-                    rule_id=rule_id,
-                    severity="high",
-                    title=f"{asset} high harness score" if asset else "High harness score",
-                    body=f"Combined score {score:.2f}",
-                    entity_type="harness_snapshot",
-                    entity_key=f"harness_snapshot:{snapshot_id}",
-                    symbol=asset,
-                    event_id=str(row.get("source_event_id") or "") or None,
-                    source_table="harness_snapshots",
-                    source_id=snapshot_id,
-                    occurrence_at_ms=_int(row.get("decision_time_ms") or now_ms),
-                    payload={
-                        "snapshot_id": snapshot_id,
-                        "asset": asset,
-                        "horizon": row.get("horizon"),
-                        "combined_score": score,
-                        "policy_signal": row.get("policy_signal"),
-                        "source_event_id": row.get("source_event_id"),
-                    },
                     channels=rule.channels,
                 )
             )

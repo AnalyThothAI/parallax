@@ -218,7 +218,6 @@ def _settings(*, collector_enabled: bool = False, notifications_enabled: bool = 
             "pulse_candidate": {"enabled": False},
             "enrichment": {"enabled": False},
             "handle_summary": {"enabled": False},
-            "harness_ops": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
         },

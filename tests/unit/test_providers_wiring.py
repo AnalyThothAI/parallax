@@ -340,7 +340,7 @@ def test_openai_providers_receive_llm_gateway() -> None:
     assert providers.social_enrichment.event_enrichment is not None
     assert providers.social_enrichment.event_enrichment._llm_gateway is gateway
     assert providers.pulse_lab.decision_provider is not None
-    contract = providers.pulse_lab.decision_provider.harness_contract
+    contract = providers.pulse_lab.decision_provider.runtime_contract
     assert contract.stage_names == ("investigator", "decision_maker")
     assert contract.tool_names_by_stage["investigator"] == (
         "get_target_recent_tweets",
@@ -369,7 +369,7 @@ def test_openai_pulse_provider_uses_configured_investigator_tool_budgets() -> No
     )
 
     assert providers.pulse_lab.decision_provider is not None
-    assert providers.pulse_lab.decision_provider.harness_contract.route_tool_budgets == {
+    assert providers.pulse_lab.decision_provider.runtime_contract.route_tool_budgets == {
         "cex": 2,
         "meme": 4,
         "research_only": 1,

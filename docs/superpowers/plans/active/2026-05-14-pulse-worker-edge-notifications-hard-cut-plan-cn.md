@@ -224,12 +224,12 @@ Modify:
 - Research-only route remains allowed only for deterministic completeness hard block, not source seed compatibility.
 - Update tests so no source_seed route is accepted.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
+### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
 
 - Keep `research_only` route in manifest for deterministic gate short-circuit.
 - Remove contract text/tests that say source_seed stays research_only.
 
-### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
+### `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
 
 - Remove source_seed-specific violation rules.
 - Keep route/completeness audit checks.
@@ -356,11 +356,11 @@ Modify:
 
 - [ ] Update tests:
   - `tests/unit/test_pulse_agent_routing.py`
-  - `tests/unit/test_pulse_agent_harness.py`
+  - `tests/unit/test_pulse_agent_runtime.py`
   - `tests/unit/test_pulse_agent_decision.py`
 - [ ] Remove source_seed assumptions.
 - [ ] Run:
-  `uv run pytest tests/unit/test_pulse_agent_routing.py tests/unit/test_pulse_agent_harness.py tests/unit/test_pulse_agent_decision.py -q`
+  `uv run pytest tests/unit/test_pulse_agent_routing.py tests/unit/test_pulse_agent_runtime.py tests/unit/test_pulse_agent_decision.py -q`
 
 ### Task 5 — Notification Edge Semantics
 

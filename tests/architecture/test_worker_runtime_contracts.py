@@ -49,7 +49,6 @@ EXPECTED_WORKERS = {
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
     "handle_summary": "gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker.HandleSummaryWorker",
-    "harness_ops": "gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker.HarnessOpsWorker",
     "notification_rule": "gmgn_twitter_intel.domains.notifications.runtime.notification_worker.NotificationWorker",
     "notification_delivery": (
         "gmgn_twitter_intel.domains.notifications.runtime.notification_delivery.NotificationDeliveryWorker"
@@ -70,7 +69,6 @@ OLD_READYZ_WORKER_KEYS = {
     "pulse_candidate",
     "enrichment",
     "handle_summary",
-    "harness_ops",
     "notification_rule",
     "notification_delivery",
 }
@@ -149,7 +147,6 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "__init__.py",
     "asset_market.py",
     "enrichment.py",
-    "harness.py",
     "ingestion.py",
     "notifications.py",
     "pulse.py",

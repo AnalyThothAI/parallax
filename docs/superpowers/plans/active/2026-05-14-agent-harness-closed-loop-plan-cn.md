@@ -23,7 +23,7 @@
 Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 - Add versioned harness manifest ledger.
-- Add run-level `harness_version` / `harness_hash`.
+- Add run-level `runtime_version` / `runtime_hash`.
 - Add deterministic eval case/result ledger.
 - Generate one eval case/result per completed Pulse run.
 - Keep hard-cut semantics: no old recommendation payload, no legacy aliases, no dual-read compatibility path.
@@ -32,57 +32,57 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 | File | Responsibility |
 |---|---|
-| `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_harness_closed_loop.py` | Add harness/eval tables and run harness columns. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py` | Build stable Pulse harness manifest and hash. |
-| `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py` | Build deterministic eval cases and grade them. |
+| `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py` | Add harness/eval tables and run harness columns. |
+| `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py` | Build stable Pulse harness manifest and hash. |
+| `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py` | Build deterministic eval cases and grade them. |
 | `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` | Persist harness versions, eval cases, eval results, and run harness fields. |
 | `src/gmgn_twitter_intel/domains/pulse_lab/providers.py` | Hard-cut provider protocol to require harness metadata. |
 | `src/gmgn_twitter_intel/app/runtime/providers_wiring.py` | Pass harness metadata through the OpenAI provider adapter. |
 | `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py` | Include harness metadata in request audit and trace metadata. |
 | `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py` | Build/upsert harness before run; write eval case/result after run. |
-| `tests/unit/test_pulse_agent_harness.py` | Unit coverage for manifest stability and deterministic grader. |
+| `tests/unit/test_pulse_agent_runtime.py` | Unit coverage for manifest stability and deterministic grader. |
 | `tests/integration/test_pulse_repository.py` | Repository round-trip coverage for harness/eval ledger. |
 | `tests/e2e/test_pulse_agent_runtime_flow.py` | E2E assertion that real worker path writes harness/eval data. |
 
 ## Task 1: Harness Manifest And Storage Ledger
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_harness_closed_loop.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness.py`
+- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py`
+- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Test: `tests/unit/test_pulse_agent_harness.py`
+- Test: `tests/unit/test_pulse_agent_runtime.py`
 - Test: `tests/integration/test_pulse_repository.py`
 
 - [ ] **Step 1: Write failing tests**
   - `test_pulse_harness_manifest_hash_is_stable_and_model_sensitive`
-  - `test_agent_harness_version_round_trip`
+  - `test_agent_runtime_version_round_trip`
   - `test_insert_agent_run_stores_harness_identity`
 
 - [ ] **Step 2: Verify RED**
   ```bash
-  uv run pytest tests/unit/test_pulse_agent_harness.py tests/integration/test_pulse_repository.py::test_agent_harness_version_round_trip tests/integration/test_pulse_repository.py::test_insert_agent_run_stores_harness_identity -q
+  uv run pytest tests/unit/test_pulse_agent_runtime.py tests/integration/test_pulse_repository.py::test_agent_runtime_version_round_trip tests/integration/test_pulse_repository.py::test_insert_agent_run_stores_harness_identity -q
   ```
-  Expected: fails because `agent_harness.py` and repository methods/columns do not exist.
+  Expected: fails because `agent_runtime.py` and repository methods/columns do not exist.
 
 - [ ] **Step 3: Implement minimal GREEN**
-  - Add `pulse_agent_harness_versions`.
-  - Add `harness_version` and `harness_hash` to `pulse_agent_runs`.
-  - Add `build_pulse_harness_manifest(...)` and `pulse_harness_hash(...)`.
-  - Add repository `upsert_agent_harness_version(...)`, `agent_harness_version(...)`.
+  - Add `pulse_agent_runtime_versions`.
+  - Add `runtime_version` and `runtime_hash` to `pulse_agent_runs`.
+  - Add `build_pulse_runtime_manifest(...)` and `pulse_runtime_hash(...)`.
+  - Add repository `upsert_agent_runtime_version(...)`, `agent_runtime_version(...)`.
   - Extend `insert_agent_run(...)` with required harness fields.
 
 - [ ] **Step 4: Verify GREEN**
   ```bash
-  uv run pytest tests/unit/test_pulse_agent_harness.py tests/integration/test_pulse_repository.py::test_agent_harness_version_round_trip tests/integration/test_pulse_repository.py::test_insert_agent_run_stores_harness_identity -q
+  uv run pytest tests/unit/test_pulse_agent_runtime.py tests/integration/test_pulse_repository.py::test_agent_runtime_version_round_trip tests/integration/test_pulse_repository.py::test_insert_agent_run_stores_harness_identity -q
   ```
 
 ## Task 2: Deterministic Eval Case And Result Ledger
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_harness_closed_loop.py`
-- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_harness_eval.py`
+- Modify: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0038_agent_runtime_closed_loop.py`
+- Create: `src/gmgn_twitter_intel/domains/pulse_lab/services/agent_eval.py`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`
-- Test: `tests/unit/test_pulse_agent_harness.py`
+- Test: `tests/unit/test_pulse_agent_runtime.py`
 - Test: `tests/integration/test_pulse_repository.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -92,7 +92,7 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 - [ ] **Step 2: Verify RED**
   ```bash
-  uv run pytest tests/unit/test_pulse_agent_harness.py tests/integration/test_pulse_repository.py::test_agent_eval_case_and_result_round_trip -q
+  uv run pytest tests/unit/test_pulse_agent_runtime.py tests/integration/test_pulse_repository.py::test_agent_eval_case_and_result_round_trip -q
   ```
   Expected: fails because eval service and repository methods/tables do not exist.
 
@@ -110,7 +110,7 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 - [ ] **Step 4: Verify GREEN**
   ```bash
-  uv run pytest tests/unit/test_pulse_agent_harness.py tests/integration/test_pulse_repository.py::test_agent_eval_case_and_result_round_trip -q
+  uv run pytest tests/unit/test_pulse_agent_runtime.py tests/integration/test_pulse_repository.py::test_agent_eval_case_and_result_round_trip -q
   ```
 
 ## Task 3: Worker Runtime Closed Loop
@@ -124,7 +124,7 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 - Modify tests: `tests/e2e/test_pulse_agent_runtime_flow.py`
 
 - [ ] **Step 1: Write failing runtime tests**
-  - E2E asserts run has `harness_version`, `harness_hash`.
+  - E2E asserts run has `runtime_version`, `runtime_hash`.
   - E2E asserts one harness version row exists.
   - E2E asserts one eval case and one passing eval result exist for the run.
   - Unit fake provider signature requires `harness`.
@@ -137,7 +137,7 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 - [ ] **Step 3: Implement minimal GREEN**
   - Worker builds harness manifest from provider/model/prompt/schema/stage/gate policy.
-  - Worker calls `repos.pulse.upsert_agent_harness_version(...)` before `insert_agent_run(...)`.
+  - Worker calls `repos.pulse.upsert_agent_runtime_version(...)` before `insert_agent_run(...)`.
   - Worker passes `harness` to `request_audit(...)` and `run_decision_pipeline(...)`.
   - Client writes harness version/hash into `trace_metadata`.
   - Worker writes eval case/result after successful run and before marking job succeeded.
@@ -151,7 +151,7 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 - [ ] Run focused suite:
   ```bash
-  uv run pytest tests/unit/test_pulse_agent_harness.py tests/integration/test_pulse_repository.py tests/unit/test_pulse_candidate_worker.py tests/e2e/test_pulse_agent_runtime_flow.py -q
+  uv run pytest tests/unit/test_pulse_agent_runtime.py tests/integration/test_pulse_repository.py tests/unit/test_pulse_candidate_worker.py tests/e2e/test_pulse_agent_runtime_flow.py -q
   ```
 - [ ] Run lint:
   ```bash
@@ -170,4 +170,4 @@ Phase 0c 只做闭环地基，不把真实外部工具接进 agent。
 
 - Spec coverage: covers Cookbook-inspired harness versioning, trace/eval linkage, deterministic regression gate, and no compatibility code.
 - Placeholder scan: no TBD/TODO placeholders.
-- Type consistency: `harness_version`, `harness_hash`, `eval_case_id`, `eval_result_id` are used consistently across schema, repository, worker, and tests.
+- Type consistency: `runtime_version`, `runtime_hash`, `eval_case_id`, `eval_result_id` are used consistently across schema, repository, worker, and tests.

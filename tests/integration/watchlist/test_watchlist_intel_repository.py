@@ -1,5 +1,7 @@
-from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.social_enrichment.repositories.social_event_extraction_repository import (
+    SocialEventExtractionRepository,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import (
     IntentResolutionRepository,
 )
@@ -95,7 +97,7 @@ def test_watchlist_timeline_pages_all_and_signal_events(tmp_path):
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        harness = HarnessRepository(conn)
+        social_events = SocialEventExtractionRepository(conn)
         repo = WatchlistIntelRepository(conn)
         evidence.insert_event(
             make_event("event-1", author_handle="toly", text="$SOL launch", received_at_ms=1_000),
@@ -109,8 +111,8 @@ def test_watchlist_timeline_pages_all_and_signal_events(tmp_path):
             make_event("event-3", author_handle="toly", text="$BONK meta", received_at_ms=3_000),
             is_watched=True,
         )
-        _extract_signal(harness, event_id="event-1", received_at_ms=1_000, summary_zh="SOL 讨论升温。")
-        _extract_signal(harness, event_id="event-3", received_at_ms=3_000, summary_zh="BONK 叙事变强。")
+        _extract_signal(social_events, event_id="event-1", received_at_ms=1_000, summary_zh="SOL 讨论升温。")
+        _extract_signal(social_events, event_id="event-3", received_at_ms=3_000, summary_zh="BONK 叙事变强。")
         _insert_token_resolution(conn, event_id="event-3", symbol="BONK")
 
         first_page = repo.timeline(handle="toly", scope="all", cursor=None, limit=2)
@@ -134,7 +136,7 @@ def test_watchlist_handle_overview_separates_resolved_tokens_from_candidate_ment
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        harness = HarnessRepository(conn)
+        social_events = SocialEventExtractionRepository(conn)
         repo = WatchlistIntelRepository(conn)
         evidence.insert_event(
             make_event("event-1", author_handle="marionawfal", text="$ALOY #macro", received_at_ms=1_000),
@@ -149,7 +151,7 @@ def test_watchlist_handle_overview_separates_resolved_tokens_from_candidate_ment
             is_watched=True,
         )
         _extract_signal(
-            harness,
+            social_events,
             event_id="event-1",
             author_handle="marionawfal",
             received_at_ms=1_000,
@@ -158,7 +160,7 @@ def test_watchlist_handle_overview_separates_resolved_tokens_from_candidate_ment
             anchor_terms=[{"term": "macro", "role": "topic", "evidence": "#macro"}],
         )
         _extract_signal(
-            harness,
+            social_events,
             event_id="event-2",
             author_handle="marionawfal",
             received_at_ms=2_000,
@@ -194,7 +196,7 @@ def test_watchlist_handle_overview_metrics_are_not_limited_by_cluster_sample(tmp
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        harness = HarnessRepository(conn)
+        social_events = SocialEventExtractionRepository(conn)
         repo = WatchlistIntelRepository(conn)
         for index, symbol in enumerate(("ONE", "TWO", "THREE"), start=1):
             event_id = f"event-{index}"
@@ -208,7 +210,7 @@ def test_watchlist_handle_overview_metrics_are_not_limited_by_cluster_sample(tmp
                 is_watched=True,
             )
             _extract_signal(
-                harness,
+            social_events,
                 event_id=event_id,
                 author_handle="marionawfal",
                 received_at_ms=index * 1_000,
@@ -233,7 +235,7 @@ def test_watchlist_handles_overview_returns_configured_handle_rows(tmp_path):
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        harness = HarnessRepository(conn)
+        social_events = SocialEventExtractionRepository(conn)
         repo = WatchlistIntelRepository(conn)
         evidence.insert_event(
             make_event("event-1", author_handle="marionawfal", text="$ALOY", received_at_ms=1_000),
@@ -244,7 +246,7 @@ def test_watchlist_handles_overview_returns_configured_handle_rows(tmp_path):
             is_watched=True,
         )
         _extract_signal(
-            harness,
+            social_events,
             event_id="event-1",
             author_handle="marionawfal",
             received_at_ms=1_000,
@@ -313,13 +315,13 @@ def test_watchlist_summary_read_model_and_signal_counts(tmp_path):
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        harness = HarnessRepository(conn)
+        social_events = SocialEventExtractionRepository(conn)
         repo = WatchlistIntelRepository(conn)
         evidence.insert_event(
             make_event("event-1", author_handle="toly", text="$SOL launch", received_at_ms=1_000),
             is_watched=True,
         )
-        _extract_signal(harness, event_id="event-1", received_at_ms=1_000, summary_zh="SOL 讨论升温。")
+        _extract_signal(social_events, event_id="event-1", received_at_ms=1_000, summary_zh="SOL 讨论升温。")
 
         assert repo.count_signal_events_total("TOLY") == 1
         inputs = repo.signal_events_for_summary(handle="toly", since_ms=0, limit=10)
@@ -347,7 +349,7 @@ def test_watchlist_summary_read_model_and_signal_counts(tmp_path):
 
 
 def _extract_signal(
-    harness: HarnessRepository,
+    social_events: SocialEventExtractionRepository,
     *,
     event_id: str,
     received_at_ms: int,
@@ -356,7 +358,7 @@ def _extract_signal(
     token_candidates: list[dict] | None = None,
     anchor_terms: list[dict] | None = None,
 ) -> None:
-    harness.upsert_social_event_extraction(
+    social_events.upsert_extraction(
         extraction_id=f"extract-{event_id}",
         event_id=event_id,
         run_id=None,

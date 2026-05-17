@@ -134,25 +134,6 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
-## `attention_seeds`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `seed_id` | `TEXT` | False | `None` |
-| `extraction_id` | `TEXT` | False | `None` |
-| `event_id` | `TEXT` | False | `None` |
-| `author_handle` | `TEXT` | True | `None` |
-| `received_at_ms` | `BIGINT` | False | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `subject` | `TEXT` | False | `None` |
-| `anchor_terms_json` | `JSONB` | False | `None` |
-| `token_uptake_count` | `BIGINT` | False | `0` |
-| `top_linked_symbols_json` | `JSONB` | False | `'[]'::jsonb` |
-| `seed_status` | `TEXT` | False | `None` |
-| `risks_json` | `JSONB` | False | `'[]'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
 ## `cex_token_profiles`
 
 | Column | Type | Nullable | Default |
@@ -211,33 +192,6 @@
 | `max_attempts` | `BIGINT` | False | `3` |
 | `next_run_at_ms` | `BIGINT` | False | `None` |
 | `last_error` | `TEXT` | True | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `event_clusters`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `cluster_id` | `TEXT` | False | `None` |
-| `seed_id` | `TEXT` | True | `None` |
-| `extraction_id` | `TEXT` | True | `None` |
-| `event_id` | `TEXT` | True | `None` |
-| `asset` | `TEXT` | True | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `source` | `TEXT` | True | `None` |
-| `first_seen_at_ms` | `BIGINT` | False | `None` |
-| `last_seen_at_ms` | `BIGINT` | False | `None` |
-| `direction` | `BIGINT` | False | `None` |
-| `impact` | `DOUBLE PRECISION` | False | `None` |
-| `confidence` | `DOUBLE PRECISION` | False | `None` |
-| `novelty` | `DOUBLE PRECISION` | False | `None` |
-| `pricedness` | `DOUBLE PRECISION` | False | `None` |
-| `base_score` | `DOUBLE PRECISION` | False | `None` |
-| `event_score` | `DOUBLE PRECISION` | False | `None` |
-| `source_list_json` | `JSONB` | False | `'[]'::jsonb` |
-| `raw_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
-| `representative_text` | `TEXT` | False | `None` |
-| `risks_json` | `JSONB` | False | `'[]'::jsonb` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
@@ -304,91 +258,6 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `search_tsv` | `TSVECTOR` | True | `None` |
-
-## `harness_credits`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `credit_id` | `TEXT` | False | `None` |
-| `snapshot_id` | `TEXT` | False | `None` |
-| `cluster_id` | `TEXT` | False | `None` |
-| `asset` | `TEXT` | False | `None` |
-| `event_type` | `TEXT` | False | `None` |
-| `source` | `TEXT` | False | `None` |
-| `horizon` | `TEXT` | False | `None` |
-| `event_score` | `DOUBLE PRECISION` | False | `None` |
-| `responsibility` | `DOUBLE PRECISION` | False | `None` |
-| `credit` | `DOUBLE PRECISION` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `harness_decisions`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `decision_id` | `TEXT` | False | `None` |
-| `snapshot_id` | `TEXT` | False | `None` |
-| `asset` | `TEXT` | False | `None` |
-| `decision_time_ms` | `BIGINT` | False | `None` |
-| `execution_mode` | `TEXT` | False | `None` |
-| `signal` | `TEXT` | False | `None` |
-| `side` | `TEXT` | False | `None` |
-| `size` | `DOUBLE PRECISION` | False | `0` |
-| `entry_price` | `DOUBLE PRECISION` | True | `None` |
-| `risk_reject_reason` | `TEXT` | True | `None` |
-| `config_version` | `TEXT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `harness_outcomes`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `snapshot_id` | `TEXT` | False | `None` |
-| `settled_at_ms` | `BIGINT` | False | `None` |
-| `actual_return` | `DOUBLE PRECISION` | False | `None` |
-| `expected_return` | `DOUBLE PRECISION` | False | `None` |
-| `abnormal_return` | `DOUBLE PRECISION` | False | `None` |
-| `realized_vol` | `DOUBLE PRECISION` | False | `None` |
-| `normalized_outcome` | `DOUBLE PRECISION` | False | `None` |
-| `baseline_version` | `TEXT` | False | `None` |
-| `fees` | `DOUBLE PRECISION` | False | `0` |
-| `slippage` | `DOUBLE PRECISION` | False | `0` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `harness_snapshots`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `snapshot_id` | `TEXT` | False | `None` |
-| `source_event_id` | `TEXT` | True | `None` |
-| `seed_id` | `TEXT` | True | `None` |
-| `asset` | `TEXT` | False | `None` |
-| `decision_time_ms` | `BIGINT` | False | `None` |
-| `horizon` | `TEXT` | False | `None` |
-| `combined_score` | `DOUBLE PRECISION` | False | `None` |
-| `policy_signal` | `TEXT` | False | `None` |
-| `shadow_signal` | `TEXT` | False | `None` |
-| `market_state_json` | `JSONB` | False | `None` |
-| `event_clusters_json` | `JSONB` | False | `None` |
-| `versions_json` | `JSONB` | False | `None` |
-| `config_version` | `TEXT` | False | `None` |
-| `outcome_status` | `TEXT` | False | `'pending'::text` |
-| `credit_status` | `TEXT` | False | `'none'::text` |
-| `risks_json` | `JSONB` | False | `'[]'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `harness_weights`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `key` | `TEXT` | False | `None` |
-| `weight_type` | `TEXT` | False | `None` |
-| `asset` | `TEXT` | True | `None` |
-| `horizon` | `TEXT` | False | `None` |
-| `n` | `BIGINT` | False | `None` |
-| `mean_credit` | `DOUBLE PRECISION` | False | `None` |
-| `weight` | `DOUBLE PRECISION` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `market_ticks`
 
@@ -592,7 +461,7 @@
 |--------|------|----------|---------|
 | `eval_case_id` | `TEXT` | False | `None` |
 | `source_run_id` | `TEXT` | False | `None` |
-| `harness_hash` | `TEXT` | False | `None` |
+| `runtime_hash` | `TEXT` | False | `None` |
 | `eval_type` | `TEXT` | False | `None` |
 | `route` | `TEXT` | False | `None` |
 | `recommendation` | `TEXT` | False | `None` |
@@ -608,25 +477,11 @@
 |--------|------|----------|---------|
 | `eval_result_id` | `TEXT` | False | `None` |
 | `eval_case_id` | `TEXT` | False | `None` |
-| `harness_hash` | `TEXT` | False | `None` |
+| `runtime_hash` | `TEXT` | False | `None` |
 | `status` | `TEXT` | False | `None` |
 | `score` | `DOUBLE PRECISION` | False | `None` |
 | `grader_version` | `TEXT` | False | `None` |
 | `details_json` | `JSONB` | False | `'{}'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
-## `pulse_agent_harness_versions`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `harness_hash` | `TEXT` | False | `None` |
-| `harness_version` | `TEXT` | False | `None` |
-| `strategy` | `TEXT` | False | `None` |
-| `provider` | `TEXT` | False | `None` |
-| `model` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `manifest_json` | `JSONB` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
 ## `pulse_agent_jobs`
@@ -711,8 +566,22 @@
 | `outcome` | `TEXT` | False | `None` |
 | `decision_route` | `TEXT` | False | `'research_only'::text` |
 | `decision_stage_count` | `BIGINT` | False | `0` |
-| `harness_version` | `TEXT` | False | `'pulse-decision-harness-v1'::text` |
-| `harness_hash` | `TEXT` | False | `'sha256:unversioned'::text` |
+| `runtime_version` | `TEXT` | False | `'pulse-decision-runtime-v1'::text` |
+| `runtime_hash` | `TEXT` | False | `'sha256:unversioned'::text` |
+
+## `pulse_agent_runtime_versions`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `runtime_hash` | `TEXT` | False | `None` |
+| `runtime_version` | `TEXT` | False | `None` |
+| `strategy` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `manifest_json` | `JSONB` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
 
 ## `pulse_candidate_edge_state`
 

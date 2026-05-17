@@ -19,7 +19,6 @@ NOTIFICATION_RULE_IDS = (
     "watched_account_token_alert",
     "hot_quality_token_5m",
     "quality_token_5m",
-    "harness_snapshot_high_score",
     "signal_pulse_candidate",
 )
 
@@ -531,17 +530,6 @@ class HandleSummaryWorkerSettings(PerWorkerSettings):
     window_days: int = Field(default=7, ge=1)
 
 
-class HarnessOpsWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    batch_size: int = Field(default=200, ge=1)
-    horizons: tuple[str, ...] = ("6h", "24h")
-
-    @field_validator("horizons", mode="before")
-    @classmethod
-    def parse_horizons(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-
 class NotificationRuleWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
@@ -572,7 +560,6 @@ class WorkersSettings(BaseModel):
     pulse_candidate: PulseCandidateWorkerSettings = Field(default_factory=PulseCandidateWorkerSettings)
     enrichment: EnrichmentWorkerSettings = Field(default_factory=EnrichmentWorkerSettings)
     handle_summary: HandleSummaryWorkerSettings = Field(default_factory=HandleSummaryWorkerSettings)
-    harness_ops: HarnessOpsWorkerSettings = Field(default_factory=HarnessOpsWorkerSettings)
     notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
         default_factory=NotificationDeliveryWorkerSettings
@@ -993,11 +980,6 @@ notifications:
       social_heat_min: 65
       discussion_quality_min: 80
       cooldown_seconds: 900
-    harness_snapshot_high_score:
-      enabled: true
-      channels: ["in_app"]
-      combined_score_min: 0.8
-      cooldown_seconds: 900
     signal_pulse_candidate:
       enabled: true
       channels: ["in_app"]
@@ -1125,11 +1107,6 @@ handle_summary:
   min_interval_ms: 300000
   input_limit: 80
   window_days: 7
-harness_ops:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 200
-  horizons: ["6h", "24h"]
 notification_rule:
   enabled: true
   interval_seconds: 5.0
@@ -1211,12 +1188,6 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "channels": ("in_app",),
             "social_heat_min": 65,
             "discussion_quality_min": 80,
-            "cooldown_seconds": 900,
-        },
-        "harness_snapshot_high_score": {
-            "enabled": True,
-            "channels": ("in_app",),
-            "combined_score_min": 0.8,
             "cooldown_seconds": 900,
         },
         "signal_pulse_candidate": {

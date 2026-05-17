@@ -23,8 +23,6 @@ CORE_TABLES = (
     "token_radar_rows",
     "enrichment_jobs",
     "social_event_extractions",
-    "harness_snapshots",
-    "harness_outcomes",
     "notifications",
     "token_score_evaluations",
     "watchlist_handle_summary_jobs",
@@ -69,12 +67,6 @@ FOREIGN_KEY_CHECKS = {
         FROM token_radar_rows child
         LEFT JOIN token_intents parent ON parent.intent_id = child.intent_id
         WHERE parent.intent_id IS NULL
-    """,
-    "harness_outcomes_missing_snapshots": """
-        SELECT COUNT(*) AS count
-        FROM harness_outcomes child
-        LEFT JOIN harness_snapshots parent ON parent.snapshot_id = child.snapshot_id
-        WHERE parent.snapshot_id IS NULL
     """,
 }
 

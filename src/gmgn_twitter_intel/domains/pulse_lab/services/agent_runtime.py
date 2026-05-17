@@ -10,9 +10,9 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_GATE_VERSION,
 )
 
-PULSE_AGENT_HARNESS_VERSION = "pulse-decision-harness-v1"
+PULSE_AGENT_RUNTIME_VERSION = "pulse-decision-runtime-v1"
 PULSE_AGENT_STRATEGY = "signal_pulse_decision"
-PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-harness-v2"
+PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-eval-v3"
 PULSE_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
 PULSE_FAILURE_TAXONOMY_CODES = (
     "unknown_evidence_id",
@@ -43,7 +43,7 @@ _DEFAULT_VALIDATORS_ENABLED = (
 )
 
 
-def build_pulse_harness_manifest(
+def build_pulse_runtime_manifest(
     *,
     provider: str,
     model: str,
@@ -59,7 +59,7 @@ def build_pulse_harness_manifest(
 ) -> dict[str, Any]:
     stages = _stable_strings(stage_names) or list(_DEFAULT_STAGE_NAMES)
     return {
-        "harness_version": PULSE_AGENT_HARNESS_VERSION,
+        "runtime_version": PULSE_AGENT_RUNTIME_VERSION,
         "strategy": PULSE_AGENT_STRATEGY,
         "runtime": {
             "framework": "openai-agents-python",
@@ -119,7 +119,7 @@ def build_pulse_harness_manifest(
     }
 
 
-def pulse_harness_hash(manifest: dict[str, Any]) -> str:
+def pulse_runtime_hash(manifest: dict[str, Any]) -> str:
     payload = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
@@ -162,11 +162,11 @@ def _int(value: Any) -> int:
 
 
 __all__ = [
-    "PULSE_AGENT_HARNESS_VERSION",
+    "PULSE_AGENT_RUNTIME_VERSION",
     "PULSE_AGENT_STRATEGY",
     "PULSE_DETERMINISTIC_GRADER_VERSION",
     "PULSE_FAILURE_TAXONOMY_CODES",
     "PULSE_FAILURE_TAXONOMY_VERSION",
-    "build_pulse_harness_manifest",
-    "pulse_harness_hash",
+    "build_pulse_runtime_manifest",
+    "pulse_runtime_hash",
 ]

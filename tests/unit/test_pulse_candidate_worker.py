@@ -9,8 +9,8 @@ from gmgn_twitter_intel.app.runtime import providers_wiring
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
-    DEFAULT_PULSE_AGENT_HARNESS_CONTRACT,
-    PulseAgentHarnessContract,
+    DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
+    PulseAgentRuntimeContract,
     PulseDecisionResult,
 )
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
@@ -230,23 +230,6 @@ def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     assert "radar_score_json" not in upsert
     assert "market_context_json" not in upsert
     assert "thesis_json" not in upsert
-
-
-def test_worker_does_not_scan_unresolved_social_events() -> None:
-    repos = FakeRepos()
-    repos.harness.social_events = [_source_event()]
-    client = FakeClient()
-    worker = _worker(repos, client=client)
-
-    scan = worker.scan_triggers_once(now_ms=NOW_MS)
-    run = worker.process_due_jobs_once(now_ms=NOW_MS)
-
-    assert scan["source_seen"] == 0
-    assert scan["source_enqueued"] == 0
-    assert run["processed"] == 0
-    assert repos.pulse_jobs.jobs == []
-    assert repos.pulse_candidates.candidate_upserts == []
-    assert client.run_calls == 0
 
 
 def test_worker_trigger_metrics_use_v3_families_and_gates() -> None:
@@ -518,11 +501,11 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
     assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "schema_validation_failed"}
     assert len(repos.pulse_jobs.failures) == 1
     assert repos.pulse_jobs.failures[0]["failure_reason"] == "schema_validation_failed"
-    assert repos.pulse_harness.eval_cases[0]["expected_json"] == {
+    assert repos.pulse_agent_eval.eval_cases[0]["expected_json"] == {
         "status": "fail",
         "failure_reason": "schema_validation_failed",
     }
-    assert repos.pulse_harness.eval_results[0]["status"] == "pass"
+    assert repos.pulse_agent_eval.eval_results[0]["status"] == "pass"
     candidate_id = repos.pulse_jobs.jobs[0]["candidate_id"]
     assert repos.pulse_admission.edge_states[candidate_id]["last_processed_state_json"] == {}
 
@@ -608,13 +591,13 @@ def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
     assert edge["last_processed_at_ms"] == NOW_MS + 40
 
 
-def test_worker_harness_manifest_uses_decision_client_runtime_contract() -> None:
+def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
 
     class ContractClient(FakeClient):
-        harness_contract = PulseAgentHarnessContract(
+        runtime_contract = PulseAgentRuntimeContract(
             stage_names=("investigator", "decision_maker"),
             tool_names_by_stage={
                 "investigator": ("custom_tool",),
@@ -633,7 +616,7 @@ def test_worker_harness_manifest_uses_decision_client_runtime_contract() -> None
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
 
     assert result["processed"] == 1
-    manifest = repos.pulse_harness.harness_versions[0]["manifest_json"]
+    manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
     assert manifest["runtime"]["tool_names_by_stage"] == {"investigator": ["custom_tool"], "decision_maker": []}
     assert manifest["runtime"]["route_tool_budgets"] == {"cex": 1, "meme": 2, "research_only": 1}
     assert manifest["runtime"]["max_turns_per_stage"] == {"investigator": 4, "decision_maker": 2}
@@ -642,7 +625,7 @@ def test_worker_harness_manifest_uses_decision_client_runtime_contract() -> None
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
 
 
-def test_worker_harness_manifest_uses_wired_provider_custom_tool_budgets(monkeypatch) -> None:
+def test_worker_runtime_manifest_uses_wired_provider_custom_tool_budgets(monkeypatch) -> None:
     settings = Settings(
         ws_token="secret",
         llm={
@@ -686,7 +669,7 @@ def test_worker_harness_manifest_uses_wired_provider_custom_tool_budgets(monkeyp
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
 
     assert result["processed"] == 1
-    manifest = repos.pulse_harness.harness_versions[0]["manifest_json"]
+    manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
     assert manifest["runtime"]["route_tool_budgets"] == {
         "cex": 2,
         "meme": 4,
@@ -866,13 +849,12 @@ class FakeRepos:
         self.conn = FakeConn()
         self.token_radar = FakeTokenRadar()
         self.token_targets = FakeTokenTargets()
-        self.harness = FakeHarness()
         pulse_state = FakePulseStore()
         self.pulse_jobs = pulse_state
         self.pulse_admission = pulse_state
         self.pulse_candidates = pulse_state
         self.pulse_runs = pulse_state
-        self.pulse_harness = pulse_state
+        self.pulse_agent_eval = pulse_state
         self.pulse_playbooks = pulse_state
         self.db_worker_sessions: list[dict[str, Any]] = []
 
@@ -901,14 +883,6 @@ class FakeTokenTargets:
         return list(self.rows)
 
 
-class FakeHarness:
-    def __init__(self) -> None:
-        self.social_events: list[dict[str, Any]] = []
-
-    def list_social_events(self, **_: Any) -> list[dict[str, Any]]:
-        return list(self.social_events)
-
-
 class FakePulseStore:
     def __init__(self) -> None:
         self.jobs: list[dict[str, Any]] = []
@@ -920,7 +894,7 @@ class FakePulseStore:
         self.agent_runs: list[dict[str, Any]] = []
         self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
-        self.harness_versions: list[dict[str, Any]] = []
+        self.runtime_versions: list[dict[str, Any]] = []
         self.eval_cases: list[dict[str, Any]] = []
         self.eval_results: list[dict[str, Any]] = []
         self.candidate_upserts: list[dict[str, Any]] = []
@@ -1071,8 +1045,8 @@ class FakePulseStore:
         self.agent_run_steps.append(kwargs)
         return kwargs
 
-    def upsert_agent_harness_version(self, **kwargs: Any) -> dict[str, Any]:
-        self.harness_versions.append(kwargs)
+    def upsert_agent_runtime_version(self, **kwargs: Any) -> dict[str, Any]:
+        self.runtime_versions.append(kwargs)
         return kwargs
 
     def insert_agent_eval_case(self, **kwargs: Any) -> dict[str, Any]:
@@ -1109,7 +1083,7 @@ class FakeClient:
     model = "fake-pulse"
     timeout_seconds = 1.0
     artifact_version_hash = "artifact:fake"
-    harness_contract = DEFAULT_PULSE_AGENT_HARNESS_CONTRACT
+    runtime_contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
 
     def __init__(self, *, recommendation: str = "watchlist") -> None:
         self.recommendation = recommendation
@@ -1124,7 +1098,7 @@ class FakeClient:
         job: dict[str, Any],
         route: str,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]:
         self.contexts.append(context)
         return {
@@ -1135,14 +1109,14 @@ class FakeClient:
             "prompt_version": "prompt-v1",
             "schema_version": "pulse_decision_v1",
             "artifact_version_hash": self.artifact_version_hash,
-            "harness_version": harness["harness_version"],
-            "harness_hash": "sha256:fake-harness",
+            "runtime_version": runtime_manifest["runtime_version"],
+            "runtime_hash": "sha256:fake-runtime",
             "trace_metadata": {
                 "candidate_id": context["candidate_id"],
                 "route": route,
                 "completeness": completeness,
-                "harness_version": harness["harness_version"],
-                "harness_hash": "sha256:fake-harness",
+                "runtime_version": runtime_manifest["runtime_version"],
+                "runtime_hash": "sha256:fake-runtime",
             },
             "input_hash": "input-hash",
         }
@@ -1155,7 +1129,7 @@ class FakeClient:
         job: dict[str, Any],
         route: str,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> PulseDecisionResult:
         self.run_calls += 1
         evidence_ids = context.get("source_event_ids") or ["event-1"]
@@ -1187,6 +1161,37 @@ class FakeClient:
             residual_risks=["价格响应仍可能变化。"],
             evidence_event_ids=list(evidence_ids),
         )
+        investigator_audit = StageRunAudit(
+            stage="investigator",
+            route=route,  # type: ignore[arg-type]
+            attempt_index=0,
+            input_json={
+                "context": context,
+                "completeness": completeness,
+                "tool_calls": [{"tool_name": "get_target_recent_tweets", "event_ids": list(evidence_ids)}],
+            },
+            prompt_text="fake investigator prompt",
+            response_json={
+                "narrative_archetype_candidate": "社交扩散",
+                "narrative_observation_zh": "当前社交扩散和关注账号确认构成继续观察的主要事实。",
+                "bull_observation": {
+                    "strength": "moderate",
+                    "thesis_zh": "独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                    "supporting_event_ids": list(evidence_ids),
+                },
+                "bear_observation": {
+                    "strength": "weak",
+                    "thesis_zh": "价格响应和流动性确认仍不足，热度可能快速降温。",
+                    "supporting_event_ids": list(evidence_ids),
+                },
+                "data_gaps": [],
+            },
+            trace_metadata_json={},
+            usage_json={},
+            latency_ms=1,
+            status="ok",
+            error=None,
+        )
         stage_audit = StageRunAudit(
             stage="decision_maker",
             route=route,  # type: ignore[arg-type]
@@ -1206,12 +1211,12 @@ class FakeClient:
             job=job,
             route=route,
             completeness=completeness,
-            harness=harness,
+            runtime_manifest=runtime_manifest,
         )
         return PulseDecisionResult(
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
-            stage_audits=(stage_audit,),
+            stage_audits=(investigator_audit, stage_audit),
         )
 
 

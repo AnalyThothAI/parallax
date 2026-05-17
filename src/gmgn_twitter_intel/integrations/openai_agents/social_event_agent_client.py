@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from agents import Agent, ModelRetrySettings, ModelSettings, RunConfig, Runner, retry_policies
+from agents import Agent, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
 from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
@@ -19,6 +19,10 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     social_event_agent_instructions,
     social_event_extraction_from_payload,
 )
+from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
+    default_agent_model_settings,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 
 
@@ -70,10 +74,10 @@ class OpenAIAgentsSocialEventClient:
         agent = Agent(
             name=AGENT_NAME,
             instructions=social_event_agent_instructions(),
-            output_type=SocialEventPayload,
+            output_type=StrictJsonOutputSchema(SocialEventPayload),
             tools=[],
             model=self._model,
-            model_settings=_model_settings(),
+            model_settings=default_agent_model_settings(),
         )
         run_config = RunConfig(
             workflow_name=self.workflow_name,
@@ -177,24 +181,6 @@ class OpenAIAgentsSocialEventClient:
                 timeout_s=self.timeout_seconds,
             ),
         )
-
-
-def _model_settings() -> ModelSettings:
-    return ModelSettings(
-        retry=ModelRetrySettings(
-            max_retries=2,
-            backoff={"initial_delay": 0.5, "max_delay": 4.0, "multiplier": 2.0, "jitter": True},
-            policy=retry_policies.any(
-                retry_policies.provider_suggested(),
-                retry_policies.retry_after(),
-                retry_policies.network_error(),
-                retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
-            ),
-        ),
-        # qwen3.6 reasoning variant - disable thinking to keep grammar enforced.
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-        include_usage=True,
-    )
 
 
 def _event_text(event: dict) -> str:

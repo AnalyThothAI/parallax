@@ -15,10 +15,9 @@ ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "tim
 
 
 class SignalPulseService:
-    def __init__(self, *, pulse_read: Any, pulse_runs: Any, harness: Any | None = None):
+    def __init__(self, *, pulse_read: Any, pulse_runs: Any):
         self.pulse_read_repository = pulse_read
         self.pulse_runs_repository = pulse_runs
-        self.harness = harness
 
     def pulse(
         self,
@@ -52,7 +51,6 @@ class SignalPulseService:
             "blocked_low_information_count": int(aggregate.get("blocked_low_information_count") or 0),
             "dead_job_count": int(aggregate.get("dead_job_count") or 0),
             "market_ready_rate": float(aggregate.get("market_ready_rate") or 0.0),
-            "settlement_coverage": self._settlement_coverage(),
         }
         return {
             "query": {
@@ -104,19 +102,6 @@ class SignalPulseService:
         for stage, step in by_stage.items():
             result[stage] = _stage_payload(step)
         return result
-
-    def _settlement_coverage(self) -> float | None:
-        if self.harness is None:
-            return 0.0
-        try:
-            health = self.harness.health()
-        except Exception:
-            return 0.0
-        coverage = health.get("settlement_coverage")
-        if coverage is None:
-            return None
-        return float(coverage)
-
 
 def _rows(page: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in page.get("items", []) if isinstance(row, dict)]

@@ -1,4 +1,4 @@
-"""Add closed-loop agent harness ledger."""
+"""Add Pulse agent runtime eval ledger."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS pulse_agent_harness_versions (
-          harness_hash TEXT PRIMARY KEY,
-          harness_version TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS pulse_agent_runtime_versions (
+          runtime_hash TEXT PRIMARY KEY,
+          runtime_version TEXT NOT NULL,
           strategy TEXT NOT NULL,
           provider TEXT NOT NULL,
           model TEXT NOT NULL,
@@ -23,21 +23,21 @@ def upgrade() -> None:
           schema_version TEXT NOT NULL,
           manifest_json JSONB NOT NULL,
           created_at_ms BIGINT NOT NULL,
-          UNIQUE(harness_version, provider, model)
+          UNIQUE(runtime_version, provider, model)
         )
         """
     )
     op.execute(
         """
         ALTER TABLE pulse_agent_runs
-          ADD COLUMN IF NOT EXISTS harness_version TEXT NOT NULL DEFAULT 'pulse-decision-harness-v1',
-          ADD COLUMN IF NOT EXISTS harness_hash TEXT NOT NULL DEFAULT 'sha256:unversioned'
+          ADD COLUMN IF NOT EXISTS runtime_version TEXT NOT NULL DEFAULT 'pulse-decision-runtime-v1',
+          ADD COLUMN IF NOT EXISTS runtime_hash TEXT NOT NULL DEFAULT 'sha256:unversioned'
         """
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_pulse_agent_runs_harness
-          ON pulse_agent_runs(harness_hash, started_at_ms DESC)
+        CREATE INDEX IF NOT EXISTS idx_pulse_agent_runs_runtime
+          ON pulse_agent_runs(runtime_hash, started_at_ms DESC)
         """
     )
     op.execute(
@@ -45,7 +45,7 @@ def upgrade() -> None:
         CREATE TABLE IF NOT EXISTS pulse_agent_eval_cases (
           eval_case_id TEXT PRIMARY KEY,
           source_run_id TEXT NOT NULL REFERENCES pulse_agent_runs(run_id) ON DELETE CASCADE,
-          harness_hash TEXT NOT NULL,
+          runtime_hash TEXT NOT NULL,
           eval_type TEXT NOT NULL CHECK (eval_type IN ('deterministic')),
           route TEXT NOT NULL CHECK (route IN ('cex','meme','research_only')),
           recommendation TEXT NOT NULL CHECK (
@@ -68,8 +68,8 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_pulse_agent_eval_cases_harness
-          ON pulse_agent_eval_cases(harness_hash, route, recommendation, created_at_ms DESC)
+        CREATE INDEX IF NOT EXISTS idx_pulse_agent_eval_cases_runtime
+          ON pulse_agent_eval_cases(runtime_hash, route, recommendation, created_at_ms DESC)
         """
     )
     op.execute(
@@ -77,13 +77,13 @@ def upgrade() -> None:
         CREATE TABLE IF NOT EXISTS pulse_agent_eval_results (
           eval_result_id TEXT PRIMARY KEY,
           eval_case_id TEXT NOT NULL REFERENCES pulse_agent_eval_cases(eval_case_id) ON DELETE CASCADE,
-          harness_hash TEXT NOT NULL,
+          runtime_hash TEXT NOT NULL,
           status TEXT NOT NULL CHECK (status IN ('pass','fail')),
           score DOUBLE PRECISION NOT NULL CHECK (score >= 0 AND score <= 1),
           grader_version TEXT NOT NULL,
           details_json JSONB NOT NULL DEFAULT '{}'::jsonb,
           created_at_ms BIGINT NOT NULL,
-          UNIQUE(eval_case_id, harness_hash, grader_version)
+          UNIQUE(eval_case_id, runtime_hash, grader_version)
         )
         """
     )
@@ -98,10 +98,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_pulse_agent_eval_results_case")
     op.execute("DROP TABLE IF EXISTS pulse_agent_eval_results")
-    op.execute("DROP INDEX IF EXISTS idx_pulse_agent_eval_cases_harness")
+    op.execute("DROP INDEX IF EXISTS idx_pulse_agent_eval_cases_runtime")
     op.execute("DROP INDEX IF EXISTS idx_pulse_agent_eval_cases_source")
     op.execute("DROP TABLE IF EXISTS pulse_agent_eval_cases")
-    op.execute("DROP INDEX IF EXISTS idx_pulse_agent_runs_harness")
-    op.execute("ALTER TABLE pulse_agent_runs DROP COLUMN IF EXISTS harness_hash")
-    op.execute("ALTER TABLE pulse_agent_runs DROP COLUMN IF EXISTS harness_version")
-    op.execute("DROP TABLE IF EXISTS pulse_agent_harness_versions")
+    op.execute("DROP INDEX IF EXISTS idx_pulse_agent_runs_runtime")
+    op.execute("ALTER TABLE pulse_agent_runs DROP COLUMN IF EXISTS runtime_hash")
+    op.execute("ALTER TABLE pulse_agent_runs DROP COLUMN IF EXISTS runtime_version")
+    op.execute("DROP TABLE IF EXISTS pulse_agent_runtime_versions")

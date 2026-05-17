@@ -54,43 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     account_quality = subcommands.add_parser("account-quality", help="print account quality profiles")
     account_quality.add_argument("--handles", default="", help="comma separated account handles")
 
-    social_events = subcommands.add_parser("social-events", help="print harness social event read model")
+    social_events = subcommands.add_parser("social-events", help="print social-event extraction read model")
     social_events.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     social_events.add_argument("--limit", type=int, default=50)
     social_events.add_argument("--handles", default="")
     social_events.add_argument("--event-types", default="")
-
-    attention_seeds = subcommands.add_parser("attention-seeds", help="print harness attention seeds")
-    attention_seeds.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    attention_seeds.add_argument("--limit", type=int, default=50)
-    attention_seeds.add_argument("--handles", default="")
-
-    harness_snapshots = subcommands.add_parser("harness-snapshots", help="print harness snapshots")
-    harness_snapshots.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    harness_snapshots.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    harness_snapshots.add_argument("--limit", type=int, default=50)
-    harness_snapshots.add_argument("--asset", default="")
-
-    harness_outcomes = subcommands.add_parser("harness-outcomes", help="print harness outcomes")
-    harness_outcomes.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    harness_outcomes.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    harness_outcomes.add_argument("--limit", type=int, default=50)
-    harness_outcomes.add_argument("--asset", default="")
-
-    harness_credits = subcommands.add_parser("harness-credits", help="print harness credits")
-    harness_credits.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    harness_credits.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    harness_credits.add_argument("--limit", type=int, default=80)
-    harness_credits.add_argument("--asset", default="")
-
-    harness_weights = subcommands.add_parser("harness-weights", help="print harness weights")
-    harness_weights.add_argument("--horizon", choices=("6h", "24h"), default="")
-    harness_weights.add_argument("--limit", type=int, default=100)
-
-    harness_score_buckets = subcommands.add_parser("harness-score-buckets", help="print harness score bucket report")
-    harness_score_buckets.add_argument("--horizon", choices=("6h", "24h"), default="")
-
-    subcommands.add_parser("harness-health", help="print harness health summary")
 
     enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect social-event extraction job backlog")
     enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
@@ -114,26 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="backfill account token-call stats and quality snapshots",
     )
     backfill_account_quality.add_argument("--limit", type=int, default=1000)
-    backfill_harness_jobs = ops_subcommands.add_parser(
-        "backfill-harness-jobs",
+    backfill_enrichment_jobs = ops_subcommands.add_parser(
+        "backfill-enrichment-jobs",
         help="enqueue social-event-v2 extraction jobs for existing watched events",
     )
-    backfill_harness_jobs.add_argument("--limit", type=int, default=1000)
-    settle_harness = ops_subcommands.add_parser(
-        "settle-harness",
-        help="settle due harness snapshots from local market snapshots",
-    )
-    settle_harness.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    settle_harness.add_argument("--limit", type=int, default=100)
-    settle_harness.add_argument("--now-ms", type=int, default=None, help=argparse.SUPPRESS)
-    attribute_harness = ops_subcommands.add_parser(
-        "attribute-harness-credits",
-        help="assign event credit for settled harness snapshots",
-    )
-    attribute_harness.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    attribute_harness.add_argument("--limit", type=int, default=100)
-    update_weights = ops_subcommands.add_parser("update-harness-weights", help="rebuild report-only harness weights")
-    update_weights.add_argument("--limit", type=int, default=1000)
+    backfill_enrichment_jobs.add_argument("--limit", type=int, default=1000)
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
     validate_projections = ops_subcommands.add_parser(

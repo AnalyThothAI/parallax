@@ -21,14 +21,8 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
 )
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
-    AnchorTerm,
-    SocialEventExtraction,
-    SocialTokenCandidate,
-)
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
@@ -418,16 +412,10 @@ class FakeSignalPulseReadRepository:
         }
 
 
-class FakeHarnessRepository:
-    def health(self):
-        return {"settlement_coverage": 0.5}
-
-
 class FakeRepositoryContext:
     def __init__(self, pulse_read):
         self.pulse_read = pulse_read
         self.pulse_runs = pulse_read
-        self.harness = FakeHarnessRepository()
 
     def __enter__(self):
         return self
@@ -665,39 +653,27 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
         event = make_token_event("event-1", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
         with client.app.state.service.repositories() as repos:
-            HarnessSnapshotBuilder(
-                repos.harness,
-                registry=repos.registry,
-                market_ticks=repos.market_ticks,
-            ).materialize(
-                event=event.to_dict(),
-                extraction=SocialEventExtraction(
-                    is_signal_event=True,
-                    event_type="meme_phrase_seed",
-                    source_action="posted",
-                    subject="PEPE ignition",
-                    direction_hint="attention_positive",
-                    attention_mechanism="direct_token_mention",
-                    impact_hint=0.75,
-                    semantic_novelty_hint=0.7,
-                    confidence=0.9,
-                    anchor_terms=[AnchorTerm(term="$PEPE", role="asset", evidence="$PEPE")],
-                    token_candidates=[
-                        SocialTokenCandidate(
-                            symbol="PEPE",
-                            project_name=None,
-                            chain="eth",
-                            address=PEPE,
-                            evidence="$PEPE",
-                            confidence=0.9,
-                        )
-                    ],
-                    semantic_risks=["public_stream_coverage"],
-                    summary_zh="PEPE ignition 形成 harness 事件。",
-                    raw_response={"ok": True},
-                ),
+            repos.social_event_extractions.upsert_extraction(
+                event_id="event-1",
                 run_id="run-event-1",
+                author_handle="toly",
+                received_at_ms=event.received_at_ms,
+                schema_version="social_event_v2",
                 model_version="fake-model",
+                event_type="meme_phrase_seed",
+                source_action="posted",
+                subject="PEPE ignition",
+                direction_hint="attention_positive",
+                attention_mechanism="direct_token_mention",
+                impact_hint=0.75,
+                semantic_novelty_hint=0.7,
+                confidence=0.9,
+                is_signal_event=True,
+                anchor_terms=[{"term": "$PEPE", "role": "asset", "evidence": "$PEPE"}],
+                token_candidates=[{"symbol": "PEPE", "evidence": "$PEPE", "confidence": 0.9}],
+                semantic_risks=["public_stream_coverage"],
+                summary_zh="PEPE ignition 形成 social-event extraction。",
+                raw_response={"ok": True},
             )
         rebuild_token_radar(client)
 
@@ -716,7 +692,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert recent.json()["data"]["events"][0]["event_id"] == "event-1"
     assert "token_intents" in recent.json()["data"]["items"][0]
     assert "token_resolutions" in recent.json()["data"]["items"][0]
-    assert recent.json()["data"]["items"][0]["harness"]["social_event"]["event_id"] == "event-1"
+    assert "harness" not in recent.json()["data"]["items"][0]
     assert "enrichment" not in recent.json()["data"]["items"][0]
 
     assert search.status_code == 200
@@ -1060,13 +1036,13 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
     assert body["data"]["items"][0]["status"] == "pending"
 
 
-def test_api_exposes_empty_harness_read_models_without_404(tmp_path):
+def test_api_exposes_social_enrichment_read_models_and_deletes_harness_routes(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         headers = {"Authorization": "Bearer secret"}
-        responses = [
-            client.get("/api/social-events?window=1h&limit=5", headers=headers),
+        social_events = client.get("/api/social-events?window=1h&limit=5", headers=headers)
+        deleted = [
             client.get("/api/attention-seeds?window=1h&limit=5", headers=headers),
             client.get("/api/harness-snapshots?window=1h&horizon=6h&limit=5", headers=headers),
             client.get("/api/harness-outcomes?window=1h&horizon=6h&limit=5", headers=headers),
@@ -1075,14 +1051,9 @@ def test_api_exposes_empty_harness_read_models_without_404(tmp_path):
             client.get("/api/harness-score-buckets?horizon=6h", headers=headers),
         ]
 
-    assert [response.status_code for response in responses] == [200, 200, 200, 200, 200, 200, 200]
-    assert responses[0].json()["data"]["items"] == []
-    assert responses[1].json()["data"]["items"] == []
-    assert responses[2].json()["data"]["items"] == []
-    assert responses[3].json()["data"]["items"] == []
-    assert responses[4].json()["data"]["items"] == []
-    assert responses[5].json()["data"]["snapshots_24h"] == 0
-    assert responses[6].json()["data"]["items"][2]["bucket"] == "-0.4 to 0.4"
+    assert social_events.status_code == 200
+    assert social_events.json()["data"]["items"] == []
+    assert [response.status_code for response in deleted] == [404, 404, 404, 404, 404, 404]
 
 
 def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
@@ -1184,7 +1155,6 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     ]
     assert pulse.summary_calls == [{"window": "1h", "scope": "matched", "q": "PEPE", "handle": "toly"}]
     assert data["health"]["agent_worker_running"] is True
-    assert data["health"]["settlement_coverage"] == 0.5
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
     assert data["items"][0]["decision"]["summary_zh"] == "PEPE 社交热度显著上升。"
@@ -1837,8 +1807,8 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                 artifact_version_hash="hash",
                 prompt_version="prompt-v1",
                 schema_version="schema-v1",
-                harness_version="harness-v1",
-                harness_hash="harness-hash",
+                runtime_version="runtime-v1",
+                runtime_hash="runtime-hash",
                 input_hash="input-hash",
                 status="ok",
                 outcome="completed",

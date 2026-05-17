@@ -6,10 +6,10 @@
 
 ```
 usage: gmgn-twitter-intel [-h]
-                          {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops} ...
+                          {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops}
+  {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.gmgn-twitter-intel/config.yaml
     config              print effective runtime configuration
@@ -20,15 +20,7 @@ positional arguments:
                         candidates
     account-alerts      print watched-account token alerts
     account-quality     print account quality profiles
-    social-events       print harness social event read model
-    attention-seeds     print harness attention seeds
-    harness-snapshots   print harness snapshots
-    harness-outcomes    print harness outcomes
-    harness-credits     print harness credits
-    harness-weights     print harness weights
-    harness-score-buckets
-                        print harness score bucket report
-    harness-health      print harness health summary
+    social-events       print social-event extraction read model
     enrichment-jobs     inspect social-event extraction job backlog
     notification-deliveries
                         inspect notification external delivery audit rows
@@ -60,22 +52,16 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
-    backfill-harness-jobs
+    backfill-enrichment-jobs
                         enqueue social-event-v2 extraction jobs for existing
                         watched events
-    settle-harness      settle due harness snapshots from local market
-                        snapshots
-    attribute-harness-credits
-                        assign event credit for settled harness snapshots
-    update-harness-weights
-                        rebuild report-only harness weights
     projection-status   print projection offsets and latest runs
     worker-status       print canonical worker runtime status
     validate-projections

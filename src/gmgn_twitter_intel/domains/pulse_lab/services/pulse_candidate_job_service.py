@@ -19,27 +19,29 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     WORKFLOW_NAME,
 )
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
-    DEFAULT_PULSE_AGENT_HARNESS_CONTRACT,
-    PulseAgentHarnessContract,
+    DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
+    PulseAgentRuntimeContract,
     PulseDecisionProvider,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
-    PULSE_AGENT_STRATEGY,
-    PULSE_FAILURE_TAXONOMY_VERSION,
-    build_pulse_harness_manifest,
-    pulse_harness_hash,
-)
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness_eval import (
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_eval import (
     build_pulse_deterministic_eval_case,
     build_pulse_failed_eval_case,
     grade_pulse_deterministic_eval_case,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import (
+    PULSE_AGENT_STRATEGY,
+    PULSE_FAILURE_TAXONOMY_VERSION,
+    build_pulse_runtime_manifest,
+    pulse_runtime_hash,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
+from gmgn_twitter_intel.domains.pulse_lab.services.write_gate import PulseWriteGate
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     DecisionRoute,
@@ -77,7 +79,7 @@ class PulseCandidateJobService:
         agent_context: dict[str, Any] = {}
         route: DecisionRoute = "research_only"
         completeness_json: dict[str, Any] = {}
-        harness_hash = ""
+        runtime_hash = ""
         run_started = False
         try:
             run_id = _prefixed_id(
@@ -107,32 +109,32 @@ class PulseCandidateJobService:
             provider = getattr(self.decision_client, "provider", "openai")
             model = getattr(self.decision_client, "model", "")
             artifact_version_hash = _artifact_hash(self.decision_client)
-            harness = build_pulse_harness_manifest(
+            runtime_manifest = build_pulse_runtime_manifest(
                 provider=provider,
                 model=model,
                 artifact_version_hash=artifact_version_hash,
                 timeout_seconds=float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0),
-                **_harness_contract_from_client(self.decision_client),
+                **_runtime_contract_from_client(self.decision_client),
             )
-            harness_hash = pulse_harness_hash(harness)
+            runtime_hash = pulse_runtime_hash(runtime_manifest)
             audit = self.decision_client.request_audit(
                 context=agent_context,
                 run_id=run_id,
                 job=job,
                 route=route,
                 completeness=completeness_json,
-                harness=harness,
+                runtime_manifest=runtime_manifest,
             )
             with self._repository_session() as repos, _transaction(repos.conn):
-                repos.pulse_harness.upsert_agent_harness_version(
-                    harness_version=str(harness["harness_version"]),
-                    harness_hash=harness_hash,
+                repos.pulse_agent_eval.upsert_agent_runtime_version(
+                    runtime_version=str(runtime_manifest["runtime_version"]),
+                    runtime_hash=runtime_hash,
                     strategy=PULSE_AGENT_STRATEGY,
                     provider=provider,
                     model=model,
                     prompt_version=PULSE_DECISION_PROMPT_VERSION,
                     schema_version=PULSE_DECISION_SCHEMA_VERSION,
-                    manifest_json=harness,
+                    manifest_json=runtime_manifest,
                     created_at_ms=now_ms,
                     commit=False,
                 )
@@ -151,8 +153,8 @@ class PulseCandidateJobService:
                     ),
                     prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
                     schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
-                    harness_version=str(harness["harness_version"]),
-                    harness_hash=harness_hash,
+                    runtime_version=str(runtime_manifest["runtime_version"]),
+                    runtime_hash=runtime_hash,
                     input_hash=str(audit.get("input_hash") or _stable_hash(agent_context)),
                     trace_metadata_json=audit.get("trace_metadata") or {},
                     usage_json=audit.get("usage") or {},
@@ -202,7 +204,7 @@ class PulseCandidateJobService:
                             job=job,
                             route=route,
                             completeness=completeness_json,
-                            harness=harness,
+                            runtime_manifest=runtime_manifest,
                         ),
                         timeout=timeout_seconds,
                     )
@@ -211,6 +213,7 @@ class PulseCandidateJobService:
                 final_decision = result.final_decision
                 stage_audits = result.stage_audits
                 result_audit = result.agent_run_audit or audit
+            final_decision = clip_recommendation(final_decision, gate=gate)
             finished_at_ms = _now_ms()
             decision_fields = candidate_fields_from_decision(final_decision, stage_count=len(stage_audits))
             decision_fields.pop("score_band", None)
@@ -260,58 +263,65 @@ class PulseCandidateJobService:
                 )
                 eval_case = build_pulse_deterministic_eval_case(
                     run_id=run_id,
-                    harness_hash=harness_hash,
+                    runtime_hash=runtime_hash,
                     context=agent_context,
                     route=route,
                     completeness=completeness_json,
                     final_decision=final_decision,
                     stage_audits=tuple(stage_audits),
                 )
-                stored_eval_case = repos.pulse_harness.insert_agent_eval_case(
+                stored_eval_case = repos.pulse_agent_eval.insert_agent_eval_case(
                     **eval_case,
                     status="active",
                     created_at_ms=finished_at_ms,
                     commit=False,
                 )
                 eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
-                repos.pulse_harness.upsert_agent_eval_result(
+                write_gate_decision = PulseWriteGate().evaluate(
+                    final_decision=final_decision,
+                    eval_result=eval_result,
+                    gate=gate,
+                )
+                eval_result = _eval_result_with_write_gate(eval_result, write_gate_decision.to_json())
+                repos.pulse_agent_eval.upsert_agent_eval_result(
                     **eval_result,
                     created_at_ms=finished_at_ms,
                     commit=False,
                 )
-                repos.pulse_candidates.upsert_candidate(
-                    candidate_id=context.candidate_id,
-                    candidate_type=context.candidate_type,
-                    subject_key=context.subject_key,
-                    target_type=context.target_type,
-                    target_id=context.target_id,
-                    symbol=context.symbol,
-                    window=context.window,
-                    scope=context.scope,
-                    pulse_status=gate.pulse_status,
-                    verdict=gate.verdict,
-                    social_phase=_social_phase_from_snapshot(context.factor_snapshot),
-                    candidate_score=gate.candidate_score,
-                    score_band=gate.score_band,
-                    trigger_signature=context.trigger_signature,
-                    timeline_signature=context.timeline_signature,
-                    factor_snapshot_json=context.factor_snapshot,
-                    gate_json=gate.to_json(),
-                    **decision_fields,
-                    gate_reasons_json=gate.gate_reasons,
-                    risk_reasons_json=gate.risk_reasons,
-                    evidence_event_ids_json=list(final_decision.evidence_event_ids or context.evidence_event_ids),
-                    source_event_ids_json=context.source_event_ids,
-                    last_edge_events_json=list(context.edge_events),
-                    agent_run_id=run_id,
-                    pulse_version=PULSE_VERSION,
-                    gate_version=PULSE_GATE_VERSION,
-                    prompt_version=PULSE_DECISION_PROMPT_VERSION,
-                    schema_version=PULSE_DECISION_SCHEMA_VERSION,
-                    updated_at_ms=finished_at_ms,
-                    commit=False,
-                )
-                if gate.pulse_status in _PLAYBOOK_STATUSES:
+                if write_gate_decision.public_write_allowed:
+                    repos.pulse_candidates.upsert_candidate(
+                        candidate_id=context.candidate_id,
+                        candidate_type=context.candidate_type,
+                        subject_key=context.subject_key,
+                        target_type=context.target_type,
+                        target_id=context.target_id,
+                        symbol=context.symbol,
+                        window=context.window,
+                        scope=context.scope,
+                        pulse_status=gate.pulse_status,
+                        verdict=gate.verdict,
+                        social_phase=_social_phase_from_snapshot(context.factor_snapshot),
+                        candidate_score=gate.candidate_score,
+                        score_band=gate.score_band,
+                        trigger_signature=context.trigger_signature,
+                        timeline_signature=context.timeline_signature,
+                        factor_snapshot_json=context.factor_snapshot,
+                        gate_json={**gate.to_json(), "write_gate": write_gate_decision.to_json()},
+                        **decision_fields,
+                        gate_reasons_json=gate.gate_reasons,
+                        risk_reasons_json=gate.risk_reasons,
+                        evidence_event_ids_json=list(final_decision.evidence_event_ids or context.evidence_event_ids),
+                        source_event_ids_json=context.source_event_ids,
+                        last_edge_events_json=list(context.edge_events),
+                        agent_run_id=run_id,
+                        pulse_version=PULSE_VERSION,
+                        gate_version=PULSE_GATE_VERSION,
+                        prompt_version=PULSE_DECISION_PROMPT_VERSION,
+                        schema_version=PULSE_DECISION_SCHEMA_VERSION,
+                        updated_at_ms=finished_at_ms,
+                        commit=False,
+                    )
+                if write_gate_decision.playbook_write_allowed:
                     repos.pulse_playbooks.upsert_playbook_snapshot(
                         **_playbook_snapshot_payload(
                             context=context,
@@ -377,21 +387,21 @@ class PulseCandidateJobService:
                     )
                     eval_case = build_pulse_failed_eval_case(
                         run_id=run_id,
-                        harness_hash=harness_hash,
+                        runtime_hash=runtime_hash,
                         context=agent_context,
                         route=route,
                         completeness=completeness_json,
                         stage_audits=failed_audits,
                         failure_reason=failure_reason,
                     )
-                    stored_eval_case = repos.pulse_harness.insert_agent_eval_case(
+                    stored_eval_case = repos.pulse_agent_eval.insert_agent_eval_case(
                         **eval_case,
                         status="active",
                         created_at_ms=failed_at_ms,
                         commit=False,
                     )
                     eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
-                    repos.pulse_harness.upsert_agent_eval_result(
+                    repos.pulse_agent_eval.upsert_agent_eval_result(
                         **eval_result,
                         created_at_ms=failed_at_ms,
                         commit=False,
@@ -414,16 +424,22 @@ class PulseCandidateJobService:
             yield repos
 
 
-def _harness_contract_from_client(client: Any) -> dict[str, Any]:
-    contract = getattr(client, "harness_contract", DEFAULT_PULSE_AGENT_HARNESS_CONTRACT)
+def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
+    contract = getattr(client, "runtime_contract", DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT)
     if callable(contract):
         contract = contract()
-    if not isinstance(contract, PulseAgentHarnessContract):
-        contract = DEFAULT_PULSE_AGENT_HARNESS_CONTRACT
+    if not isinstance(contract, PulseAgentRuntimeContract):
+        contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
     kwargs = contract.manifest_kwargs()
     if not kwargs.get("failure_taxonomy_version"):
         kwargs["failure_taxonomy_version"] = PULSE_FAILURE_TAXONOMY_VERSION
     return kwargs
+
+
+def _eval_result_with_write_gate(eval_result: dict[str, Any], write_gate: dict[str, Any]) -> dict[str, Any]:
+    details = dict(eval_result.get("details_json") or {})
+    details["write_gate"] = write_gate
+    return {**eval_result, "details_json": details}
 
 
 def _stage_finished_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:

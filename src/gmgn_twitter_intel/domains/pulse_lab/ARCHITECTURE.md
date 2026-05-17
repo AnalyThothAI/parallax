@@ -49,7 +49,7 @@ Tool invocations are persisted on the investigator step under
 `input_json.tool_calls` (worker-side ledger; see P1-1 in the spec) and
 deterministic eval R2 (`tool_calls_present`) asserts that non
 hard-blocked runs always invoke at least one tool. Adding or renaming a
-tool is an Update Trigger. The harness manifest's
+tool is an Update Trigger. The runtime manifest's
 `runtime.tool_names_by_stage` is the only tool contract: "tools enabled"
 means a stage has a non-empty tool list; there is no separate boolean
 flag.
@@ -113,7 +113,7 @@ Pulse worker also runs `interval_seconds` catch-up so a missed
 
 - Only `integrations/openai_agents/` imports OpenAI Agents SDK primitives.
 - Pulse-specific stage contracts, prompt loading, evidence validation, URL
-  enrichment, harness/audit assembly, and tool query behavior live under
+  enrichment, runtime/eval audit assembly, and tool query behavior live under
   `domains/pulse_lab/services/`.
 - `domains/pulse_lab` may not import OpenAI primitives or any other
   concrete LLM client.

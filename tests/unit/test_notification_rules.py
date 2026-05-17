@@ -33,15 +33,6 @@ class FakeAssetFlow:
         return self.data
 
 
-class FakeHarness:
-    def __init__(self, items):
-        self.items = items
-
-    def snapshots(self, **kwargs):
-        self.kwargs = kwargs
-        return {"items": self.items}
-
-
 class FakePulse:
     def __init__(self, items, *, page_size: int | None = None):
         self.items = items
@@ -72,7 +63,7 @@ class FakePulse:
         return {"items": page_rows, "next_cursor": next_cursor}
 
 
-def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, pulse=None, notifications=None):
+def engine(*, events=None, alerts=None, asset_flow=None, pulse=None, notifications=None):
     return NotificationRuleEngine(
         settings=Settings(
             ws_token="secret",
@@ -82,7 +73,6 @@ def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, pulse=N
         evidence=FakeEvidence(events or []),
         account_alerts=FakeAccountAlerts(alerts or []),
         asset_flow=FakeAssetFlow(asset_flow or {"targets": [], "attention": []}),
-        harness=FakeHarness(snapshots or []),
         pulse=pulse or FakePulse([]),
     )
 
@@ -410,37 +400,6 @@ def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
     ).evaluate(now_ms=NOW_MS)
 
     assert not [item for item in candidates if item.rule_id in {"hot_quality_token_5m", "quality_token_5m"}]
-
-
-def test_harness_snapshot_candidate_uses_combined_score_threshold():
-    candidates = engine(
-        snapshots=[
-            {
-                "snapshot_id": "snapshot-1",
-                "asset": "PEPE",
-                "horizon": "6h",
-                "combined_score": 0.86,
-                "policy_signal": "watch",
-                "source_event_id": "event-1",
-                "decision_time_ms": NOW_MS - 10_000,
-            },
-            {
-                "snapshot_id": "snapshot-2",
-                "asset": "DOGE",
-                "horizon": "6h",
-                "combined_score": 0.3,
-                "policy_signal": "watch",
-                "source_event_id": "event-2",
-                "decision_time_ms": NOW_MS - 10_000,
-            },
-        ]
-    ).evaluate(now_ms=NOW_MS)
-
-    snapshots = [item for item in candidates if item.rule_id == "harness_snapshot_high_score"]
-    assert len(snapshots) == 1
-    assert snapshots[0].dedup_key == "harness_snapshot_high_score:snapshot:snapshot-1"
-    assert snapshots[0].symbol == "PEPE"
-    assert snapshots[0].payload["combined_score"] == 0.86
 
 
 def test_disabled_rule_does_not_emit_candidates():

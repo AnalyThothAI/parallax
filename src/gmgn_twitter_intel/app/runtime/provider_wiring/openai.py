@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseAgentHarnessContract, PulseDecisionResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseAgentRuntimeContract, PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
@@ -38,8 +38,8 @@ class OpenAIPulseDecisionProvider:
         return self._client.artifact_version_hash
 
     @property
-    def harness_contract(self) -> PulseAgentHarnessContract:
-        return self._client.harness_contract
+    def runtime_contract(self) -> PulseAgentRuntimeContract:
+        return self._client.runtime_contract
 
     def request_audit(
         self,
@@ -49,7 +49,7 @@ class OpenAIPulseDecisionProvider:
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]:
         return self._client.request_audit(
             context=context,
@@ -57,7 +57,7 @@ class OpenAIPulseDecisionProvider:
             job=job,
             route=route,
             completeness=completeness,
-            harness=harness,
+            runtime_manifest=runtime_manifest,
         )
 
     async def run_decision_pipeline(
@@ -68,7 +68,7 @@ class OpenAIPulseDecisionProvider:
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> PulseDecisionResult:
         result = await self._client.run_decision_pipeline(
             context=context,
@@ -76,7 +76,7 @@ class OpenAIPulseDecisionProvider:
             job=job,
             route=route,
             completeness=completeness,
-            harness=harness,
+            runtime_manifest=runtime_manifest,
         )
         return PulseDecisionResult(
             final_decision=result.final_decision,

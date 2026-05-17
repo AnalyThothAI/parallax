@@ -11,7 +11,6 @@ GMGN public stream
   → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
   → domains/token_intel         (token_radar_rows projection, scoring, search read model)
   → domains/social_enrichment   (watched-event extraction)
-  → domains/closed_loop_harness (signal seeds, settlement, outcomes)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/notifications       (rules, delivery)
@@ -56,7 +55,7 @@ are wrong too.
    `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,
    `pulse_candidate_run_budget`, `pulse_target_run_budget`,
    `pulse_agent_runs`, `pulse_agent_run_steps`,
-   `pulse_agent_harness_versions`, `pulse_agent_eval_cases`,
+   `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`,
    `pulse_agent_eval_results`, `pulse_candidates`, and
    `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`. New
    read models must declare their single writer in the owning module's
@@ -150,8 +149,7 @@ direction is still enforced by the package rules below.
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
 | `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
-| `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
-| `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
+| `domains/social_enrichment/` | Watched-event gate, social-event extraction schema and facts, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
@@ -200,7 +198,7 @@ Cross-domain imports MUST go through the target domain's `interfaces.py` (or `_c
 
 Raw SQL (`conn.execute(...)`) lives ONLY in `repositories/`, `queries/`, `platform/db/`, or `app/runtime/` health checks. `tests/architecture/test_src_domain_architecture.py::test_raw_sql_is_owned_by_repositories_queries_or_app_runtime` enforces this.
 
-Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` tables have no runtime writers. `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_tables_have_no_runtime_writers` enforces this; `test_legacy_asset_repository_is_not_imported` bans the deleted `AssetRepository` / `MarketRepository` classes. Closed-loop harness market reads now go through `RegistryRepository.chain_token_market_target(...)` + `MarketTickRepository.latest_at_or_before(...)` rather than `asset_market_snapshots`.
+Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` tables have no runtime writers. `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_tables_have_no_runtime_writers` enforces this; `test_legacy_asset_repository_is_not_imported` bans the deleted `AssetRepository` / `MarketRepository` classes. SocialEvent closed-loop harness tables are deleted; Pulse market reads go through `RegistryRepository.chain_token_market_target(...)` + `MarketTickRepository.latest_at_or_before(...)` rather than `asset_market_snapshots`.
 
 Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
 
@@ -218,7 +216,7 @@ research-only or hard-blocked rows to an abstain decision, and otherwise calls
 the configured `PulseDecisionProvider`.
 
 OpenAI-specific SDK execution lives only under `integrations/openai_agents/`.
-Signal Pulse uses the two-stage `Investigator -> DecisionMaker` harness, with
+Signal Pulse uses the two-stage `Investigator -> DecisionMaker` runtime, with
 `research_only_gate` for deterministic hard-blocks. Pulse-specific orchestration
 is domain-owned: `domains/pulse_lab/services/pulse_decision_runtime.py` loads
 stage prompts, builds stage input contracts, assembles request audit hashes,
@@ -228,7 +226,7 @@ budgets, truncation, and contributed event ids. The OpenAI adapter wraps Agent /
 `function_tool`, schema parsing, usage/tool-call extraction, safety net, and SDK
 errors only. It may import Pulse provider protocols/types, but not Pulse
 queries or services.
-The harness manifest's `runtime.tool_names_by_stage` is the only tool contract:
+The runtime manifest's `runtime.tool_names_by_stage` is the only tool contract:
 "tools enabled" means a stage has a non-empty tool list; there is no separate
 boolean flag.
 `app/runtime/provider_wiring/openai.py` is the composition point that creates the

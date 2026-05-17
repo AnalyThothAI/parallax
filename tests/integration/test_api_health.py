@@ -205,7 +205,6 @@ def test_healthz_readyz_and_metrics_return_status(tmp_path):
         "asset_profile_refresh",
         "resolution_refresh",
         "live_price_gateway",
-        "harness_ops",
         "pulse_agent",
         "token_resolution",
         "provider_status",
@@ -213,7 +212,6 @@ def test_healthz_readyz_and_metrics_return_status(tmp_path):
     assert not (legacy_worker_sections & set(payload))
     assert set(payload["workers"]) >= {
         "collector",
-        "harness_ops",
         "token_radar_projection",
         "pulse_candidate",
         "enrichment",
@@ -413,7 +411,6 @@ def test_disabled_workers_are_present_but_not_started(monkeypatch, tmp_path):
         ws_token="secret",
         storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
         workers={
-            "harness_ops": {"enabled": False},
             "token_radar_projection": {"enabled": False},
         },
         notifications={"enabled": False},
@@ -424,10 +421,8 @@ def test_disabled_workers_are_present_but_not_started(monkeypatch, tmp_path):
     runtime = bootstrap(settings, start_collector=False)
 
     try:
-        assert runtime.workers["harness_ops"].status_payload()["enabled"] is False
         assert runtime.workers["token_radar_projection"].status_payload()["enabled"] is False
         asyncio.run(runtime.scheduler.start())
-        assert "harness_ops" not in runtime.scheduler.tasks
         assert "token_radar_projection" not in runtime.scheduler.tasks
     finally:
         close_runtime(runtime)
@@ -456,7 +451,6 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
         storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
         workers={
             "collector": {"enabled": False},
-            "harness_ops": {"enabled": False},
             "live_price_gateway": {"enabled": False},
             "token_radar_projection": {"enabled": False},
         },

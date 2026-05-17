@@ -7,7 +7,6 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_servic
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
@@ -21,13 +20,6 @@ READ_MODEL_COMMANDS = frozenset(
         "account-alerts",
         "account-quality",
         "social-events",
-        "attention-seeds",
-        "harness-snapshots",
-        "harness-outcomes",
-        "harness-credits",
-        "harness-weights",
-        "harness-health",
-        "harness-score-buckets",
         "enrichment-jobs",
         "notification-deliveries",
     }
@@ -41,7 +33,6 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
         evidence = repos.evidence
         signals = repos.signals
         enrichment = repos.enrichment
-        harness = repos.harness
         notifications = repos.notifications
 
         if command == "recent":
@@ -114,102 +105,12 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
                 0,
                 {
                     "ok": True,
-                    "data": HarnessService(harness).social_events(
+                    "data": repos.social_event_extractions.recent(
                         window=args.window,
                         limit=args.limit,
                         handles=_handle_set(args.handles),
                         event_types=_csv_set(args.event_types),
                     ),
-                },
-            )
-
-        if command == "attention-seeds":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).attention_seeds(
-                        window=args.window,
-                        limit=args.limit,
-                        handles=_handle_set(args.handles),
-                    ),
-                },
-            )
-
-        if command == "harness-snapshots":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).snapshots(
-                        window=args.window,
-                        horizon=args.horizon,
-                        limit=args.limit,
-                        asset=args.asset or None,
-                    ),
-                },
-            )
-
-        if command == "harness-outcomes":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).outcomes(
-                        window=args.window,
-                        horizon=args.horizon,
-                        limit=args.limit,
-                        asset=args.asset or None,
-                    ),
-                },
-            )
-
-        if command == "harness-credits":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).credits(
-                        window=args.window,
-                        horizon=args.horizon,
-                        limit=args.limit,
-                        asset=args.asset or None,
-                    ),
-                },
-            )
-
-        if command == "harness-weights":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).weights(
-                        horizon=args.horizon or None,
-                        limit=args.limit,
-                    ),
-                },
-            )
-
-        if command == "harness-health":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).health(
-                        llm_configured=settings.llm_configured,
-                        extractor_running=bool(settings.llm_configured),
-                        pending_jobs=enrichment.job_counts().get("pending", 0),
-                        schema_success_rate=None,
-                    ),
-                },
-            )
-
-        if command == "harness-score-buckets":
-            return (
-                0,
-                {
-                    "ok": True,
-                    "data": HarnessService(harness).score_buckets(horizon=args.horizon or None),
                 },
             )
 

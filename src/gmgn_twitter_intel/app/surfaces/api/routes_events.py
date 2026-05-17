@@ -61,7 +61,6 @@ def _payload_for_event(
         "token_resolutions": (
             token_resolutions if token_resolutions is not None else repos.event_tokens.for_event(event_id)
         ),
-        "harness": repos.harness.harness_for_event(event_id),
     }
 
 
@@ -71,7 +70,6 @@ def _payloads_for_events(repos: Any, events: list[dict[str, Any]]) -> list[dict[
     alerts_by_event = repos.signals.alerts_for_events(event_ids)
     intents_by_event = repos.token_intents.intents_for_events(event_ids)
     token_resolutions_by_event = repos.event_tokens.for_events(event_ids)
-    harness_by_event = repos.harness.harness_for_events(event_ids)
     return [
         {
             "type": "event",
@@ -80,7 +78,6 @@ def _payloads_for_events(repos: Any, events: list[dict[str, Any]]) -> list[dict[
             "alerts": alerts_by_event.get(str(event["event_id"]), []),
             "token_intents": intents_by_event.get(str(event["event_id"]), []),
             "token_resolutions": token_resolutions_by_event.get(str(event["event_id"]), []),
-            "harness": harness_by_event.get(str(event["event_id"])),
         }
         for event in events
     ]

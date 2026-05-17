@@ -73,21 +73,13 @@ class FakePulseReadRepository:
 
 
 
-def _service(pulse_read: Any, *, harness: Any | None = None, pulse_runs: Any | None = None) -> SignalPulseService:
-    return SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs or pulse_read, harness=harness)
-
-class FakeHarnessRepository:
-    def __init__(self, coverage: float | None):
-        self.coverage = coverage
-
-    def health(self) -> dict[str, Any]:
-        return {"settlement_coverage": self.coverage}
-
+def _service(pulse_read: Any, pulse_runs: Any | None = None) -> SignalPulseService:
+    return SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs or pulse_read)
 
 def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
     pulse = FakePulseReadRepository()
 
-    result = _service(pulse, harness=FakeHarnessRepository(None)).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -112,7 +104,6 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         "blocked_low_information_count": 0,
         "dead_job_count": 0,
         "market_ready_rate": 0.0,
-        "settlement_coverage": None,
     }
     assert result["summary"] == {
         "trade_candidate": 0,
@@ -181,7 +172,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         },
     )
 
-    result = _service(pulse, harness=FakeHarnessRepository(0.75)).pulse(
+    result = _service(pulse).pulse(
         window="5m",
         scope="all",
         status="token_watch",
@@ -222,7 +213,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         "blocked_low_information_count": 1,
         "dead_job_count": 2,
         "market_ready_rate": 0.5,
-        "settlement_coverage": 0.75,
     }
     assert result["returned_count"] == 1
     assert result["has_more"] is True
@@ -441,7 +431,7 @@ def test_candidate_returns_full_item() -> None:
     pulse = FakePulseReadRepository()
     pulse.candidate_rows = {"cand-1": row}
 
-    result = _service(pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-1")
+    result = _service(pulse).candidate(candidate_id="cand-1")
 
     assert result is not None
     assert result["candidate_id"] == "cand-1"
@@ -616,7 +606,7 @@ def test_default_listing_hides_abstain_decisions() -> None:
     }
     pulse = FakePulseReadRepository(pages={None: {"items": [row], "next_cursor": None}})
 
-    result = _service(pulse, harness=FakeHarnessRepository(None)).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -651,7 +641,7 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
         }
     )
 
-    result = _service(pulse, harness=FakeHarnessRepository(None)).pulse(
+    result = _service(pulse).pulse(
         window="1h",
         scope="matched",
         status=None,
@@ -671,7 +661,7 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
 def test_candidate_returns_none_when_missing() -> None:
     pulse = FakePulseReadRepository()
     pulse.candidate_rows = {}
-    result = _service(pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="ghost")
+    result = _service(pulse).candidate(candidate_id="ghost")
     assert result is None
 
 
@@ -684,7 +674,7 @@ def test_candidate_returns_none_when_blocked() -> None:
     )
     pulse = FakePulseReadRepository()
     pulse.candidate_rows = {"cand-blocked": row}
-    result = _service(pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-blocked")
+    result = _service(pulse).candidate(candidate_id="cand-blocked")
     assert result is None
 
 

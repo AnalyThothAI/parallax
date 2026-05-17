@@ -301,7 +301,7 @@ bar 下方 legend 列 top 3 作者（按 post 数）+ `+N more` 当总作者数 
 #### Replay 折叠
 
 底部 `<details>`：
-- versions 列表：pulse_version / gate_version / prompt_version / schema_version / harness_version
+- versions 列表：pulse_version / gate_version / prompt_version / schema_version / runtime_version
 - run_id, candidate_id, agent_run_id
 - 链接 `view raw pulse_agent_run_steps`（phase 2，先留 anchor 不实现）
 
@@ -484,7 +484,7 @@ SignalLabPage
    - Evidence 列表 5 行，全部 ★（cited）；`@cache100x · 2.7K · #1/3 / #2/3 / #3/3` concentration 标签；底部 author concentration bar 显示 60% / 20% / 20% 三段
    - Agent rail 顶部 `gate-vs-agent` 卡：`gate: high_conviction (82) → agent: trade_candidate · 0.35`
    - Analyst card：confidence 0.82，5 evidence；Critic card：ceiling 0.45 + 5 weaknesses + 4 missing-fact impacts；Judge card：confidence 0.35 + 5 residual risks + 3 invalidation conditions
-   - Replay 折叠展示 `pulse_version / gate_version / prompt_version / schema_version / harness_version / run_id`
+   - Replay 折叠展示 `pulse_version / gate_version / prompt_version / schema_version / runtime_version / run_id`
 
 2. 打开队列 `/signal-lab` 后选中同一 candidate：右栏渲染 `density="compact"` 版本，所有上述数据可见（仅排版折叠不同）。
 

@@ -21,7 +21,6 @@ from gmgn_twitter_intel.domains.asset_market.services.event_market_capture impor
     EventMarketCaptureService,
     TickLookup,
 )
-from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
@@ -50,13 +49,11 @@ class Runtime:
     entities: Any | None = None
     signals: Any | None = None
     enrichment: Any | None = None
-    harness: Any | None = None
     notifications: Any | None = None
     read_evidence: Any | None = None
     read_entities: Any | None = None
     read_signals: Any | None = None
     read_enrichment: Any | None = None
-    read_harness: Any | None = None
     read_notifications: Any | None = None
     ingest: Any | None = None
     stock_quote_provider: Any | None = None
@@ -143,7 +140,6 @@ def _assemble_runtime(
     entities = PooledRepository(db.api_pool, EntityRepository)
     signals = PooledRepository(db.api_pool, SignalRepository)
     enrichment = PooledRepository(db.api_pool, EnrichmentRepository)
-    harness = PooledRepository(db.api_pool, HarnessRepository)
     notifications = PooledRepository(db.api_pool, NotificationRepository)
     ingest = _PooledIngestStore(db, providers=providers.asset_market)
     hub = PublicWebSocketHub(
@@ -188,13 +184,11 @@ def _assemble_runtime(
         entities=entities,
         signals=signals,
         enrichment=enrichment,
-        harness=harness,
         notifications=notifications,
         read_evidence=evidence,
         read_entities=entities,
         read_signals=signals,
         read_enrichment=enrichment,
-        read_harness=harness,
         read_notifications=notifications,
         ingest=ingest,
         stock_quote_provider=providers.marketlane.stock_quote_provider,

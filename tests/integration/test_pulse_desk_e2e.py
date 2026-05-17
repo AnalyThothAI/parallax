@@ -12,8 +12,8 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_harness_repository import PulseHarnessRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
@@ -196,7 +196,7 @@ class _TwoStageClient:
         job: dict[str, Any],
         route: str,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]:
         return {
             "backend": "fake",
@@ -206,8 +206,8 @@ class _TwoStageClient:
             "prompt_version": "pulse-decision-prompt-v2",
             "schema_version": "pulse-decision-v2",
             "artifact_version_hash": self.artifact_version_hash,
-            "harness_version": harness["harness_version"],
-            "harness_hash": "sha256:e2e",
+            "runtime_version": runtime_manifest["runtime_version"],
+            "runtime_hash": "sha256:e2e",
             "trace_metadata": {"candidate_id": context["candidate_id"], "route": route},
             "input_hash": "input-e2e",
             "usage": {"input_tokens": 100, "output_tokens": 50},
@@ -221,7 +221,7 @@ class _TwoStageClient:
         job: dict[str, Any],
         route: str,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> PulseDecisionResult:
         investigation = {
             "narrative_archetype_candidate": "社交扩散",
@@ -272,7 +272,7 @@ class _TwoStageClient:
             job=job,
             route=route,
             completeness=completeness,
-            harness=harness,
+            runtime_manifest=runtime_manifest,
         )
         return PulseDecisionResult(
             final_decision=final,
@@ -361,11 +361,10 @@ class _RealWorkerRepos:
         self.pulse_admission = PulseAdmissionRepository(conn)
         self.pulse_candidates = PulseCandidatesRepository(conn)
         self.pulse_runs = PulseRunsRepository(conn)
-        self.pulse_harness = PulseHarnessRepository(conn)
+        self.pulse_agent_eval = PulseAgentEvalRepository(conn)
         self.pulse_playbooks = PulsePlaybooksRepository(conn)
         self.token_radar = _StaticRows(rows=token_radar_rows)
         self.token_targets = _StaticRows(rows=token_target_rows)
-        self.harness = _EmptyHarness()
 
 
 class _StaticRows:
@@ -394,18 +393,12 @@ class _EmptyAssetFlow:
         return {"targets": [], "attention": []}
 
 
-class _EmptyHarness:
-    def snapshots(self, **_: Any) -> dict[str, list[dict[str, Any]]]:
-        return {"items": []}
-
-
 def _notification_engine(pulse: Any) -> NotificationRuleEngine:
     return NotificationRuleEngine(
         settings=Settings(ws_token="secret"),
         evidence=_EmptyEvidence(),
         account_alerts=_EmptyAlerts(),
         asset_flow=_EmptyAssetFlow(),
-        harness=_EmptyHarness(),
         pulse=pulse,
     )
 

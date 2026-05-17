@@ -7,23 +7,17 @@ from dataclasses import dataclass
 from types import GetSetDescriptorType, MemberDescriptorType
 from typing import Any, cast
 
-import jsonref
 from agents import (
     Agent,
-    AgentOutputSchema,
-    AgentOutputSchemaBase,
-    ModelRetrySettings,
-    ModelSettings,
     RunConfig,
     Runner,
     ToolCallItem,
-    retry_policies,
 )
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
-    DEFAULT_PULSE_AGENT_HARNESS_CONTRACT,
-    PulseAgentHarnessContract,
+    DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
+    PulseAgentRuntimeContract,
     PulseAgentToolRuntimeFactory,
     PulseDecisionRuntime,
 )
@@ -37,6 +31,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     StageStatus,
 )
+from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
+    default_agent_model_settings,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
     InstructorSafetyNet,
     SafetyNetExhausted,
@@ -59,72 +57,6 @@ class PulseDecisionAgentResult:
     stage_audits: tuple[StageRunAudit, ...]
 
 
-class _JsonOutputSchema(AgentOutputSchemaBase):
-    """qwen3.6 + llama.cpp compatible structured-output wrapper.
-
-    Design (revised 2026-05-16):
-    - strict_json_schema=True so the SDK emits response_format.strict=true.
-    - jsonref flattens any $ref/$defs to avoid llama.cpp #21228 silent fail-open
-      (server fingerprint b8779 silently falls back to free-form text when the
-      grammar conversion hits an unresolved $ref).
-    - Dict-typed fields (``evidence_event_urls: dict[str, str]``) would
-      otherwise emit ``additionalProperties: {"type": "string"}`` which the
-      SDK strict validator rejects. We pre-coerce those to
-      ``additionalProperties: false`` *before* handing the type to
-      ``AgentOutputSchema`` so the LLM is told not to invent extra keys.
-      ``FinalDecision.evidence_event_urls`` is worker-filled post-LLM, so
-      stripping it from the model-side schema is the right semantics anyway.
-    - validate_json keeps tolerant extraction for occasional prose-before-json
-      stray output.
-    """
-
-    def __init__(self, output_type: type[Any]) -> None:
-        self._output_type = output_type
-        # Use the non-strict AgentOutputSchema first to obtain the raw Pydantic
-        # JSON schema, then walk + clean before re-wrapping. We synthesise a
-        # ``is_strict_json_schema()`` -> True so the SDK still emits
-        # ``response_format.strict=true`` on the wire.
-        self._schema = AgentOutputSchema(output_type, strict_json_schema=False)
-        raw = self._schema.json_schema()
-        cleaned = _coerce_dict_additional_properties_to_false(raw)
-        # proxies=False / lazy_load=False produces a plain dict; otherwise json.dumps
-        # raises when it hits the jsonref proxy objects. jsonref leaves the
-        # ``$defs`` block in place after replacement, so drop it explicitly —
-        # llama.cpp grammar conversion (issue #21228) silently fails open if
-        # any $ref or $defs slips through.
-        replaced = jsonref.replace_refs(cleaned, proxies=False, lazy_load=False)
-        flattened = _strip_defs(replaced)
-        # Strict-mode requires every object property be required + no extra
-        # keys. Apply that recursively so the wire payload mirrors the
-        # legacy ``ensure_strict_json_schema`` shape (minus the dict-typed
-        # additionalProperties rejection that broke FinalDecision).
-        self._flat = _force_strict_object_shape(flattened)
-
-    @property
-    def output_type(self) -> type[Any]:
-        """Expose underlying Pydantic class for InstructorSafetyNet fallback."""
-        return self._output_type
-
-    def is_plain_text(self) -> bool:
-        return self._schema.is_plain_text()
-
-    def name(self) -> str:
-        return self._schema.name()
-
-    def json_schema(self) -> dict[str, Any]:
-        return self._flat
-
-    def is_strict_json_schema(self) -> bool:
-        return True
-
-    def validate_json(self, json_str: str) -> Any:
-        text = str(json_str or "")
-        start = text.find("{")
-        end = text.rfind("}")
-        candidate = text[start : end + 1] if start != -1 and end > start else text
-        return self._schema.validate_json(candidate)
-
-
 class OpenAIAgentsPulseDecisionClient:
     """Two-stage Investigator → DecisionMaker pulse decision client.
 
@@ -142,9 +74,9 @@ class OpenAIAgentsPulseDecisionClient:
 
     The provider Protocol contract (``run_decision_pipeline`` / ``request_audit``
     signatures) is unchanged from the previous Analyst/Critic/Judge pipeline so
-    wiring + read-models keep compiling. The harness manifest carries
+    wiring + read-models keep compiling. The runtime manifest carries
     ``stages: ["investigator", "decision_maker"]`` which bumps
-    ``harness_hash`` and isolates v2 eval cases from v1.
+    ``runtime_hash`` and isolates v2 eval cases from v1.
     """
 
     provider = "openai"
@@ -200,13 +132,13 @@ class OpenAIAgentsPulseDecisionClient:
         return f"artifact:{self.model}"
 
     @property
-    def harness_contract(self) -> PulseAgentHarnessContract:
+    def runtime_contract(self) -> PulseAgentRuntimeContract:
         decision_tools = ("get_target_recent_tweets",) if self._decision_maker_enable_fallback_tool else ()
         route_budgets = (
             dict(self._investigator_max_tool_calls_by_route)
-            or dict(DEFAULT_PULSE_AGENT_HARNESS_CONTRACT.route_tool_budgets)
+            or dict(DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.route_tool_budgets)
         )
-        return PulseAgentHarnessContract(
+        return PulseAgentRuntimeContract(
             stage_names=("investigator", "decision_maker"),
             max_turns_per_stage={
                 "investigator": self._investigator_max_turns,
@@ -233,7 +165,7 @@ class OpenAIAgentsPulseDecisionClient:
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> dict[str, Any]:
         return self._decision_runtime.request_audit(
             context=context,
@@ -241,7 +173,7 @@ class OpenAIAgentsPulseDecisionClient:
             job=job,
             route=route,
             completeness=completeness,
-            harness=harness,
+            runtime_manifest=runtime_manifest,
             model=self.model,
             artifact_version_hash=self.artifact_version_hash,
             workflow_name=self.workflow_name,
@@ -256,7 +188,7 @@ class OpenAIAgentsPulseDecisionClient:
         job: dict[str, Any],
         route: DecisionRoute,
         completeness: dict[str, Any],
-        harness: dict[str, Any],
+        runtime_manifest: dict[str, Any],
     ) -> PulseDecisionAgentResult:
         audit = self._decision_runtime.request_audit(
             context=context,
@@ -264,7 +196,7 @@ class OpenAIAgentsPulseDecisionClient:
             job=job,
             route=route,
             completeness=completeness,
-            harness=harness,
+            runtime_manifest=runtime_manifest,
             model=self.model,
             artifact_version_hash=self.artifact_version_hash,
             workflow_name=self.workflow_name,
@@ -373,14 +305,14 @@ class OpenAIAgentsPulseDecisionClient:
         agent = Agent[PulseToolContext](
             name=f"PulseInvestigator{_route_label(route)}",
             instructions=spec.prompt_text,
-            output_type=_JsonOutputSchema(InvestigationReport),
+            output_type=StrictJsonOutputSchema(InvestigationReport),
             tools=[
                 get_target_recent_tweets,
                 get_target_price_action,
                 get_official_token_profile,
             ],
             model=self._model,
-            model_settings=_model_settings(),
+            model_settings=default_agent_model_settings(),
         )
         return await self._run_stage(
             stage="investigator",
@@ -415,10 +347,10 @@ class OpenAIAgentsPulseDecisionClient:
         agent = Agent[PulseToolContext](
             name=f"PulseDecisionMaker{_route_label(route)}",
             instructions=spec.prompt_text,
-            output_type=_JsonOutputSchema(FinalDecision),
+            output_type=StrictJsonOutputSchema(FinalDecision),
             tools=tools,
             model=self._model,
-            model_settings=_model_settings(),
+            model_settings=default_agent_model_settings(),
         )
         return await self._run_stage(
             stage="decision_maker",
@@ -587,103 +519,6 @@ class OpenAIAgentsPulseDecisionClient:
 
     async def aclose(self) -> None:
         return None
-
-
-def _model_settings() -> ModelSettings:
-    return ModelSettings(
-        retry=ModelRetrySettings(
-            max_retries=2,
-            backoff={"initial_delay": 0.5, "max_delay": 4.0, "multiplier": 2.0, "jitter": True},
-            policy=retry_policies.any(
-                retry_policies.provider_suggested(),
-                retry_policies.retry_after(),
-                retry_policies.network_error(),
-                retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
-            ),
-        ),
-        # qwen3.6 is a reasoning variant; if the server-side enable_thinking flag
-        # stays on, llama.cpp grammar enforcement breaks (issue #20345) and the
-        # model emits <think> tokens. Disable via chat_template_kwargs in extra_body.
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-        # SDK does not surface usage on RunResult unless explicitly requested.
-        include_usage=True,
-    )
-
-
-def _strip_defs(schema: Any) -> Any:
-    """Drop the top-level ``$defs`` / ``definitions`` blocks.
-
-    ``jsonref.replace_refs`` substitutes ``$ref`` pointers in-place but leaves
-    the original definitions section behind. llama.cpp grammar conversion
-    (issue #21228) silently fails open if any reference syntax slips through,
-    so remove the now-orphaned definitions explicitly.
-    """
-
-    if not isinstance(schema, dict):
-        return schema
-    cleaned = {key: value for key, value in schema.items() if key not in ("$defs", "definitions")}
-    return cleaned
-
-
-def _coerce_dict_additional_properties_to_false(schema: Any) -> Any:
-    """Recursively replace ``additionalProperties: <object>`` with ``False``.
-
-    Pydantic emits ``additionalProperties: {"type": "string"}`` for
-    ``dict[str, str]`` typed fields. The openai-agents-python strict
-    validator rejects that; coerce to ``False`` (i.e. tell the LLM there are
-    no additional keys allowed). For our use case
-    (``evidence_event_urls`` is worker-filled), the model should never emit
-    this field anyway.
-    """
-
-    if isinstance(schema, dict):
-        result: dict[str, Any] = {}
-        for key, value in schema.items():
-            if key == "additionalProperties" and isinstance(value, dict):
-                result[key] = False
-            else:
-                result[key] = _coerce_dict_additional_properties_to_false(value)
-        return result
-    if isinstance(schema, list):
-        return [_coerce_dict_additional_properties_to_false(item) for item in schema]
-    return schema
-
-
-def _force_strict_object_shape(schema: Any) -> Any:
-    """Apply strict-mode requirements without delegating to the SDK validator.
-
-    Mirrors ``agents.strict_schema.ensure_strict_json_schema``:
-    - every object gets ``additionalProperties: false`` if not already set
-    - every object's ``required`` list contains every property name
-    - recurses into ``$defs``, ``properties``, ``items``, ``anyOf``, ``allOf``
-    """
-
-    if isinstance(schema, dict):
-        new = dict(schema)
-        if new.get("type") == "object":
-            new.setdefault("additionalProperties", False)
-            properties = new.get("properties")
-            if isinstance(properties, dict):
-                new["required"] = list(properties.keys())
-                new["properties"] = {
-                    name: _force_strict_object_shape(prop) for name, prop in properties.items()
-                }
-        for key in ("items",):
-            if key in new:
-                new[key] = _force_strict_object_shape(new[key])
-        for key in ("$defs", "definitions"):
-            if key in new and isinstance(new[key], dict):
-                new[key] = {
-                    name: _force_strict_object_shape(def_schema)
-                    for name, def_schema in new[key].items()
-                }
-        for key in ("anyOf", "allOf", "oneOf"):
-            if key in new and isinstance(new[key], list):
-                new[key] = [_force_strict_object_shape(variant) for variant in new[key]]
-        return new
-    if isinstance(schema, list):
-        return [_force_strict_object_shape(item) for item in schema]
-    return schema
 
 
 def _route_label(route: DecisionRoute) -> str:

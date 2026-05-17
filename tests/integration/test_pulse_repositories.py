@@ -11,8 +11,8 @@ import pytest
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_harness_repository import PulseHarnessRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import (
@@ -31,7 +31,7 @@ def _repo_bundle(conn: Any, *, running_timeout_ms: int = 300_000) -> SimpleNames
         admission=PulseAdmissionRepository(conn, running_timeout_ms=running_timeout_ms),
         candidates=PulseCandidatesRepository(conn),
         runs=PulseRunsRepository(conn, running_timeout_ms=running_timeout_ms),
-        harness=PulseHarnessRepository(conn),
+        pulse_agent_eval=PulseAgentEvalRepository(conn),
         read=PulseReadRepository(conn),
         playbooks=PulsePlaybooksRepository(conn),
     )
@@ -583,8 +583,8 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             artifact_version_hash="artifact-hash",
             prompt_version="pulse-prompt-v1",
             schema_version="pulse-schema-v1",
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-run",
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-run",
             input_hash="input-hash",
             trace_metadata_json={"candidate_id": "candidate-run"},
             usage_json={"input_tokens": 10},
@@ -652,14 +652,14 @@ def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_
         )
 
 
-def test_agent_harness_version_round_trip(tmp_path) -> None:
+def test_agent_runtime_version_round_trip(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = _repo_bundle(conn)
-        inserted = repo.harness.upsert_agent_harness_version(
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-1",
+        inserted = repo.pulse_agent_eval.upsert_agent_runtime_version(
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-1",
             strategy="signal_pulse_decision",
             provider="openai",
             model="gpt-5-mini",
@@ -668,24 +668,24 @@ def test_agent_harness_version_round_trip(tmp_path) -> None:
             manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
             created_at_ms=1_000,
         )
-        fetched = repo.harness.agent_harness_version("sha256:harness-1")
+        fetched = repo.pulse_agent_eval.agent_runtime_version("sha256:runtime-1")
     finally:
         conn.close()
 
-    assert inserted["harness_hash"] == "sha256:harness-1"
+    assert inserted["runtime_hash"] == "sha256:runtime-1"
     assert fetched is not None
-    assert fetched["harness_version"] == "pulse-decision-harness-v1"
+    assert fetched["runtime_version"] == "pulse-decision-runtime-v1"
     assert fetched["manifest_json"]["runtime"]["stages"] == ["analyst", "critic", "judge"]
 
 
-def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp_path) -> None:
+def test_agent_runtime_versions_keep_distinct_hashes_for_same_model_identity(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = _repo_bundle(conn)
-        first = repo.harness.upsert_agent_harness_version(
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-a",
+        first = repo.pulse_agent_eval.upsert_agent_runtime_version(
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-a",
             strategy="signal_pulse_decision",
             provider="openai",
             model="qwen3.6",
@@ -694,9 +694,9 @@ def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp
             manifest_json={"runtime": {"timeout_seconds": 30}},
             created_at_ms=1_000,
         )
-        second = repo.harness.upsert_agent_harness_version(
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-b",
+        second = repo.pulse_agent_eval.upsert_agent_runtime_version(
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-b",
             strategy="signal_pulse_decision",
             provider="openai",
             model="qwen3.6",
@@ -705,13 +705,13 @@ def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp
             manifest_json={"runtime": {"timeout_seconds": 120}},
             created_at_ms=2_000,
         )
-        fetched_first = repo.harness.agent_harness_version("sha256:harness-a")
-        fetched_second = repo.harness.agent_harness_version("sha256:harness-b")
+        fetched_first = repo.pulse_agent_eval.agent_runtime_version("sha256:runtime-a")
+        fetched_second = repo.pulse_agent_eval.agent_runtime_version("sha256:runtime-b")
     finally:
         conn.close()
 
-    assert first["harness_hash"] == "sha256:harness-a"
-    assert second["harness_hash"] == "sha256:harness-b"
+    assert first["runtime_hash"] == "sha256:runtime-a"
+    assert second["runtime_hash"] == "sha256:runtime-b"
     assert fetched_first is not None
     assert fetched_first["manifest_json"]["runtime"]["timeout_seconds"] == 30
     assert fetched_second is not None
@@ -736,9 +736,9 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.harness.upsert_agent_harness_version(
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-stale",
+        repo.pulse_agent_eval.upsert_agent_runtime_version(
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-stale",
             strategy="signal_pulse_decision",
             provider="openai",
             model="qwen3.6",
@@ -759,8 +759,8 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
             prompt_version="pulse-decision-v1",
             schema_version="pulse_decision_v1",
             input_hash="input-hash",
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-stale",
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-stale",
             request_json={},
             trace_metadata_json={},
             usage_json={},
@@ -820,8 +820,8 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
             prompt_version="pulse-decision-v1",
             schema_version="pulse_decision_v1",
             input_hash="input-hash",
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-failure",
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-failure",
             status="failed",
             outcome="failed",
             decision_route="meme",
@@ -852,27 +852,27 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
     assert ignored_reason_count == 0
 
 
-def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
+def test_insert_agent_run_stores_runtime_identity(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = _repo_bundle(conn)
         repo.jobs.enqueue_job(
-            job_id="job-harness-run",
-            candidate_id="candidate-harness-run",
+            job_id="job-runtime-run",
+            candidate_id="candidate-runtime-run",
             candidate_type="token_target",
             subject_key="toly",
             window="1h",
             scope="global",
-            trigger_signature="trigger-harness",
-            timeline_signature="timeline-harness",
+            trigger_signature="trigger-runtime",
+            timeline_signature="timeline-runtime",
             priority=10,
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.harness.upsert_agent_harness_version(
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-run",
+        repo.pulse_agent_eval.upsert_agent_runtime_version(
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-run",
             strategy="signal_pulse_decision",
             provider="openai",
             model="gpt-5-mini",
@@ -882,9 +882,9 @@ def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
             created_at_ms=1_000,
         )
         run = repo.runs.insert_agent_run(
-            run_id="run-harness",
-            job_id="job-harness-run",
-            candidate_id="candidate-harness-run",
+            run_id="run-runtime",
+            job_id="job-runtime-run",
+            candidate_id="candidate-runtime-run",
             provider="openai",
             model="gpt-5-mini",
             workflow_name="signal_lab_pulse",
@@ -893,20 +893,20 @@ def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
             prompt_version="pulse-decision-v1",
             schema_version="pulse_decision_v1",
             input_hash="input-hash",
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-run",
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-run",
             status="running",
             outcome="running",
             decision_route="meme",
             decision_stage_count=0,
-            request_json={"candidate_id": "candidate-harness-run"},
+            request_json={"candidate_id": "candidate-runtime-run"},
             started_at_ms=1_100,
         )
     finally:
         conn.close()
 
-    assert run["harness_version"] == "pulse-decision-harness-v1"
-    assert run["harness_hash"] == "sha256:harness-run"
+    assert run["runtime_version"] == "pulse-decision-runtime-v1"
+    assert run["runtime_hash"] == "sha256:runtime-run"
 
 
 def test_agent_run_steps_round_trip(tmp_path) -> None:
@@ -938,8 +938,8 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             artifact_version_hash="artifact-hash",
             prompt_version="pulse-decision-v1",
             schema_version="pulse_decision_v1",
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-step",
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-step",
             input_hash="input-hash",
             status="running",
             outcome="running",
@@ -999,9 +999,9 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             next_run_at_ms=1_000,
             now_ms=900,
         )
-        repo.harness.upsert_agent_harness_version(
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-eval",
+        repo.pulse_agent_eval.upsert_agent_runtime_version(
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-eval",
             strategy="signal_pulse_decision",
             provider="openai",
             model="gpt-5-mini",
@@ -1022,8 +1022,8 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             prompt_version="pulse-decision-v1",
             schema_version="pulse_decision_v1",
             input_hash="input-hash",
-            harness_version="pulse-decision-harness-v1",
-            harness_hash="sha256:harness-eval",
+            runtime_version="pulse-decision-runtime-v1",
+            runtime_hash="sha256:runtime-eval",
             status="done",
             outcome="completed",
             decision_route="meme",
@@ -1033,10 +1033,10 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             started_at_ms=1_100,
             finished_at_ms=1_300,
         )
-        case = repo.harness.insert_agent_eval_case(
+        case = repo.pulse_agent_eval.insert_agent_eval_case(
             eval_case_id="eval-case-run-eval",
             source_run_id="run-eval",
-            harness_hash="sha256:harness-eval",
+            runtime_hash="sha256:runtime-eval",
             eval_type="deterministic",
             route="meme",
             recommendation="watchlist",
@@ -1046,18 +1046,18 @@ def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
             status="active",
             created_at_ms=1_400,
         )
-        result = repo.harness.upsert_agent_eval_result(
+        result = repo.pulse_agent_eval.upsert_agent_eval_result(
             eval_result_id="eval-result-run-eval",
             eval_case_id=case["eval_case_id"],
-            harness_hash="sha256:harness-eval",
+            runtime_hash="sha256:runtime-eval",
             status="pass",
             score=1.0,
-            grader_version="pulse-deterministic-harness-v1",
+            grader_version="pulse-deterministic-eval-v1",
             details_json={"violations": []},
             created_at_ms=1_500,
         )
-        cases = repo.harness.list_agent_eval_cases(source_run_id="run-eval")
-        results = repo.harness.list_agent_eval_results(eval_case_id=case["eval_case_id"])
+        cases = repo.pulse_agent_eval.list_agent_eval_cases(source_run_id="run-eval")
+        results = repo.pulse_agent_eval.list_agent_eval_results(eval_case_id=case["eval_case_id"])
     finally:
         conn.close()
 
@@ -1478,7 +1478,7 @@ def test_repository_session_exposes_focused_pulse_repositories(tmp_path) -> None
     assert isinstance(repos.pulse_admission, PulseAdmissionRepository)
     assert isinstance(repos.pulse_candidates, PulseCandidatesRepository)
     assert isinstance(repos.pulse_runs, PulseRunsRepository)
-    assert isinstance(repos.pulse_harness, PulseHarnessRepository)
+    assert isinstance(repos.pulse_agent_eval, PulseAgentEvalRepository)
     assert isinstance(repos.pulse_read, PulseReadRepository)
     assert isinstance(repos.pulse_playbooks, PulsePlaybooksRepository)
 
