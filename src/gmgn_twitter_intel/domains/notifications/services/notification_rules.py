@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 import time
@@ -23,6 +24,15 @@ SIGNAL_PULSE_SEVERITY = {
     "trade_candidate": "critical",
     "risk_rejected_high_info": "warning",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class _PulseExternalPushPolicy:
+    eligible: bool
+    external_push_signature: str | None
+    suppression_reason: str | None
+
+
 class NotificationRuleEngine:
     def __init__(
         self,
@@ -386,6 +396,7 @@ class NotificationRuleEngine:
                         break
 
         candidates: list[NotificationCandidate] = []
+        seen_external_push_signatures: set[str] = set()
         for row in rows:
             status = str(row.get("pulse_status") or "")
             if status not in statuses:
@@ -400,14 +411,40 @@ class NotificationRuleEngine:
                 continue
             candidate_id = str(row.get("candidate_id") or "")
             occurrence_at_ms = _int(row.get("updated_at_ms") or now_ms)
-            signature = _pulse_notification_signature(row)
-            payload = _pulse_payload(row, notification_signature=signature)
+            in_app_signature = _pulse_in_app_signature(row)
+            push_policy = _pulse_external_push_policy(
+                row,
+                severity=severity,
+                factor_snapshot=factor_snapshot,
+                occurrence_at_ms=occurrence_at_ms,
+                cooldown_seconds=rule.cooldown_seconds,
+            )
+            if push_policy.eligible and push_policy.external_push_signature in seen_external_push_signatures:
+                push_policy = _PulseExternalPushPolicy(
+                    eligible=False,
+                    external_push_signature=push_policy.external_push_signature,
+                    suppression_reason="external_signature_duplicate",
+                )
+            if push_policy.eligible and push_policy.external_push_signature:
+                seen_external_push_signatures.add(push_policy.external_push_signature)
+            external_identity = push_policy.external_push_signature or "in_app"
+            payload = _pulse_payload(
+                row,
+                notification_signature=in_app_signature,
+                in_app_signature=in_app_signature,
+                external_push_signature=push_policy.external_push_signature,
+                external_push_eligible=push_policy.eligible,
+                external_push_suppression_reason=push_policy.suppression_reason,
+            )
+            channels = rule.channels if push_policy.eligible else tuple(
+                channel for channel in rule.channels if channel == "in_app"
+            )
             symbol = _symbol(row.get("symbol"))
             subject = _compact_text(row.get("subject_key") or candidate_id, limit=80)
             title_subject = f"${symbol}" if symbol else subject
             candidates.append(
                 NotificationCandidate(
-                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{candidate_id}:{signature}",
+                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{in_app_signature}:{external_identity}",
                     rule_id=SIGNAL_PULSE_RULE_ID,
                     severity=severity,
                     title=f"{title_subject} {status.replace('_', ' ')}",
@@ -419,7 +456,7 @@ class NotificationRuleEngine:
                     source_id=candidate_id,
                     occurrence_at_ms=occurrence_at_ms,
                     payload=payload,
-                    channels=rule.channels,
+                    channels=channels,
                 )
             )
         return candidates
@@ -531,7 +568,87 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
     return _stable_hash(payload)
 
 
-def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[str, Any]:
+def _pulse_in_app_signature(row: dict[str, Any]) -> str:
+    return _pulse_notification_signature(row)
+
+
+def _pulse_external_push_signature(
+    row: dict[str, Any],
+    *,
+    cooldown_seconds: int,
+    occurrence_at_ms: int,
+    alert_class: str,
+    status_level: int,
+    recommendation_level: int,
+    target_type: str,
+    target_id: str,
+) -> str:
+    payload = {
+        "target_type": target_type,
+        "target_id": target_id,
+        "alert_class": alert_class,
+        "status_level": status_level,
+        "recommendation_level": recommendation_level,
+        "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
+        "pulse_version": row.get("pulse_version"),
+        "gate_version": row.get("gate_version"),
+    }
+    return _stable_hash(payload)
+
+
+def _pulse_external_push_policy(
+    row: dict[str, Any],
+    *,
+    severity: str,
+    factor_snapshot: dict[str, Any],
+    occurrence_at_ms: int,
+    cooldown_seconds: int,
+) -> _PulseExternalPushPolicy:
+    status = str(row.get("pulse_status") or "")
+    if status == "risk_rejected_high_info":
+        return _PulseExternalPushPolicy(False, None, "risk_rejected_in_app_only")
+    if severity not in {"high", "critical"}:
+        return _PulseExternalPushPolicy(False, None, "severity_below_high")
+    target_type, target_id = _pulse_resolved_target(row, factor_snapshot)
+    if not _is_resolved_target(target_type=target_type, target_id=target_id):
+        return _PulseExternalPushPolicy(False, None, "unresolved_target")
+    edge_events = set(_string_list(row.get("last_edge_events_json")))
+    if not edge_events & {"pulse_status_changed", "recommended_decision_changed"}:
+        return _PulseExternalPushPolicy(False, None, "not_escalation")
+    signature = _pulse_external_push_signature(
+        row,
+        cooldown_seconds=cooldown_seconds,
+        occurrence_at_ms=occurrence_at_ms,
+        alert_class=status,
+        status_level=_pulse_status_escalation_level(status),
+        recommendation_level=_pulse_recommendation_escalation_level(_pulse_decision(row).get("recommendation")),
+        target_type=target_type,
+        target_id=target_id,
+    )
+    return _PulseExternalPushPolicy(True, signature, None)
+
+
+def _pulse_status_escalation_level(status: str) -> int:
+    return {"risk_rejected_high_info": 0, "token_watch": 1, "trade_candidate": 2}.get(status, 0)
+
+
+def _pulse_recommendation_escalation_level(value: Any) -> int:
+    recommendation = str(value or "")
+    return {"ignore": 0, "abstain": 0, "watchlist": 1, "trade_candidate": 2, "high_conviction": 3}.get(
+        recommendation,
+        0,
+    )
+
+
+def _pulse_payload(
+    row: dict[str, Any],
+    *,
+    notification_signature: str,
+    in_app_signature: str,
+    external_push_signature: str | None,
+    external_push_eligible: bool,
+    external_push_suppression_reason: str | None,
+) -> dict[str, Any]:
     factor_snapshot = _dict(row.get("factor_snapshot_json"))
     return {
         "candidate_id": row.get("candidate_id"),
@@ -549,6 +666,10 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
         "target_id": row.get("target_id"),
         "symbol": _symbol(row.get("symbol")),
         "notification_signature": notification_signature,
+        "in_app_signature": in_app_signature,
+        "external_push_signature": external_push_signature,
+        "external_push_eligible": external_push_eligible,
+        "external_push_suppression_reason": external_push_suppression_reason,
     }
 
 
@@ -594,9 +715,18 @@ def _signal_pulse_severity(
 
 
 def _has_resolved_pulse_target(row: dict[str, Any], factor_snapshot: dict[str, Any]) -> bool:
+    target_type, target_id = _pulse_resolved_target(row, factor_snapshot)
+    return _is_resolved_target(target_type=target_type, target_id=target_id)
+
+
+def _pulse_resolved_target(row: dict[str, Any], factor_snapshot: dict[str, Any]) -> tuple[str, str]:
     subject = _dict(factor_snapshot.get("subject"))
     target_type = str(row.get("target_type") or subject.get("target_type") or "").strip()
     target_id = str(row.get("target_id") or subject.get("target_id") or "").strip()
+    return target_type, target_id
+
+
+def _is_resolved_target(*, target_type: str, target_id: str) -> bool:
     return bool(target_type and target_id and target_type.lower() != "unresolved")
 
 

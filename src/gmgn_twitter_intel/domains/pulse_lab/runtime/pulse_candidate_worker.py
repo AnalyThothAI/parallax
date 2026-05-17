@@ -26,10 +26,12 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
     PULSE_AGENT_STRATEGY,
+    PULSE_FAILURE_TAXONOMY_VERSION,
     build_pulse_harness_manifest,
     pulse_harness_hash,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness_eval import (
+    build_pulse_failed_eval_case,
     build_pulse_deterministic_eval_case,
     grade_pulse_deterministic_eval_case,
 )
@@ -43,7 +45,10 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_edge_events import (
     build_pulse_edge_state,
     diff_pulse_edge_events,
-    pulse_edge_signature,
+)
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import (
+    ESCALATION_EDGE_EVENTS,
+    PulseAdmissionPolicy,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
@@ -64,6 +69,9 @@ DEFAULT_WINDOWS = ("1h",)
 DEFAULT_SCOPES = ("all",)
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
 PULSE_EDGE_BUDGET_PER_HOUR = 3
+PULSE_TARGET_EDGE_BUDGET_PER_HOUR = 3
+PULSE_FAILURE_CIRCUIT_PER_HOUR = 3
+PULSE_FAILURE_CIRCUIT_REASONS = ("schema_validation_failed", "unknown_evidence_id")
 ADVISORY_LOCK_KEY = 2026051502
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
@@ -311,9 +319,6 @@ class PulseCandidateWorker(WorkerBase):
 
     def _enqueue_if_due(self, repos: Any, context: PulseCandidateContext, *, now_ms: int) -> bool:
         existing_job = _call_optional(repos.pulse, "job_for_candidate", context.candidate_id)
-        if _active_job_blocks_reenqueue(existing_job):
-            return False
-
         gate = self.gate_func(
             factor_snapshot=context.factor_snapshot,
             thresholds=self.gate_thresholds,
@@ -332,53 +337,57 @@ class PulseCandidateWorker(WorkerBase):
             pulse_version=PULSE_VERSION,
             gate_version=PULSE_GATE_VERSION,
         )
-        observed = repos.pulse.record_edge_observation(
-            candidate_id=context.candidate_id,
-            current_state_json=edge_state,
-            edge_signature=pulse_edge_signature(edge_state),
-            observed_at_ms=now_ms,
-        )
-        edge_events = diff_pulse_edge_events(_mapping(observed.get("last_processed_state_json")), edge_state)
-        if not edge_events:
-            return False
+        existing_edge = _call_optional(repos.pulse, "edge_state_by_candidate", context.candidate_id) or {}
+        previous_state = _mapping(existing_edge.get("last_processed_state_json"))
+        edge_events = diff_pulse_edge_events(previous_state, edge_state)
         hour_bucket_ms = now_ms // 3_600_000 * 3_600_000
-        if not repos.pulse.claim_edge_budget(
-            candidate_id=context.candidate_id,
-            hour_bucket_ms=hour_bucket_ms,
-            now_ms=now_ms,
-            max_enqueues=PULSE_EDGE_BUDGET_PER_HOUR,
-        ):
-            repos.pulse.mark_edge_budget_rejected(
-                candidate_id=context.candidate_id,
-                edge_events_json=edge_events,
-                rejected_at_ms=now_ms,
-            )
-            return False
-        context = _context_with_gate(context, gate, edge_state=edge_state, edge_events=edge_events)
-        job = repos.pulse.enqueue_job(
-            candidate_id=context.candidate_id,
-            candidate_type=context.candidate_type,
-            subject_key=context.subject_key,
-            window=context.window,
-            scope=context.scope,
-            trigger_signature=context.trigger_signature,
-            timeline_signature=context.timeline_signature,
-            priority=context.priority,
+        recent_failure_count = _recent_target_failure_count(
+            repos,
             target_type=context.target_type,
             target_id=context.target_id,
-            context_json=context.agent_context(),
-            max_attempts=self.max_attempts,
-            next_run_at_ms=now_ms,
-            now_ms=now_ms,
+            since_ms=hour_bucket_ms,
+            edge_events=edge_events,
         )
-        repos.pulse.mark_edge_job_enqueued(
+        decision = PulseAdmissionPolicy().classify(
+            previous_state=previous_state,
+            current_state=edge_state,
+            existing_job=existing_job,
+            edge_events=edge_events,
+            pending_score_band=_clean(existing_edge.get("pending_score_band")),
+            pending_score_band_count=safe_int(existing_edge.get("pending_score_band_count")),
+            recent_failure_count=recent_failure_count,
+        )
+        context = _context_with_gate(context, gate, edge_state=edge_state, edge_events=decision.edge_events)
+        claim = repos.pulse.claim_pulse_admission(
             candidate_id=context.candidate_id,
-            processed_state_json=edge_state,
-            edge_events_json=edge_events,
-            job_id=str(job.get("job_id") or ""),
-            processed_at_ms=now_ms,
+            target_type=context.target_type,
+            target_id=context.target_id,
+            hour_bucket_ms=hour_bucket_ms,
+            now_ms=now_ms,
+            target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
+            candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+            job_payload={
+                "candidate_id": context.candidate_id,
+                "candidate_type": context.candidate_type,
+                "subject_key": context.subject_key,
+                "window": context.window,
+                "scope": context.scope,
+                "trigger_signature": context.trigger_signature,
+                "timeline_signature": context.timeline_signature,
+                "priority": context.priority,
+                "target_type": context.target_type,
+                "target_id": context.target_id,
+                "context_json": context.agent_context(),
+                "max_attempts": self.max_attempts,
+                "next_run_at_ms": now_ms,
+                "now_ms": now_ms,
+            },
+            edge_state=edge_state,
+            edge_events=decision.edge_events,
+            admission_action=decision.action,
+            admission_reason=decision.reason,
         )
-        return True
+        return bool(claim.accepted)
 
     async def _run_job(self, job: dict[str, Any], context: PulseCandidateContext, *, now_ms: int) -> None:
         run_id = _prefixed_id(
@@ -413,6 +422,7 @@ class PulseCandidateWorker(WorkerBase):
             model=model,
             artifact_version_hash=artifact_version_hash,
             timeout_seconds=float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0),
+            **_harness_contract_from_client(self.decision_client),
         )
         harness_hash = pulse_harness_hash(harness)
         audit: dict[str, Any] | None = None
@@ -625,12 +635,16 @@ class PulseCandidateWorker(WorkerBase):
                 repos.pulse.mark_edge_run_finished(
                     candidate_id=context.candidate_id,
                     agent_run_id=run_id,
+                    processed_state_json=context.edge_state or {},
+                    edge_events_json=list(context.edge_events),
                     finished_at_ms=finished_at_ms,
                     commit=False,
                 )
                 repos.pulse.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
         except Exception as exc:
             failed_at_ms = _now_ms()
+            failure_reason = _normalized_failure_reason(exc)
+            compact_error = _compact_error(exc)
             failed_audits: tuple[StageRunAudit, ...] = ()
             if isinstance(exc, PulseStageFailure):
                 failed_audits = exc.audits
@@ -666,12 +680,40 @@ class PulseCandidateWorker(WorkerBase):
                     repos.pulse.finish_agent_run(
                         run_id,
                         "failed",
-                        error=str(exc)[:1000],
+                        error=compact_error,
                         outcome="failed",
+                        trace_metadata_json_patch={"failure_reason": failure_reason},
                         finished_at_ms=failed_at_ms,
                         commit=False,
                     )
-                repos.pulse.mark_job_failed(job, str(exc), now_ms=failed_at_ms, commit=False)
+                    eval_case = build_pulse_failed_eval_case(
+                        run_id=run_id,
+                        harness_hash=harness_hash,
+                        context=agent_context,
+                        route=route,
+                        completeness=completeness_json,
+                        stage_audits=failed_audits,
+                        failure_reason=failure_reason,
+                    )
+                    stored_eval_case = repos.pulse.insert_agent_eval_case(
+                        **eval_case,
+                        status="active",
+                        created_at_ms=failed_at_ms,
+                        commit=False,
+                    )
+                    eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
+                    repos.pulse.upsert_agent_eval_result(
+                        **eval_result,
+                        created_at_ms=failed_at_ms,
+                        commit=False,
+                    )
+                repos.pulse.mark_job_failed(
+                    job,
+                    compact_error,
+                    now_ms=failed_at_ms,
+                    failure_reason=failure_reason,
+                    commit=False,
+                )
             raise
 
     @contextmanager
@@ -681,6 +723,107 @@ class PulseCandidateWorker(WorkerBase):
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
             yield repos
+
+
+def _harness_contract_from_client(client: Any) -> dict[str, Any]:
+    fallback_enabled = bool(getattr(client, "decision_maker_enable_fallback_tool", True))
+    if not hasattr(client, "decision_maker_enable_fallback_tool") and hasattr(
+        client,
+        "_decision_maker_enable_fallback_tool",
+    ):
+        fallback_enabled = bool(getattr(client, "_decision_maker_enable_fallback_tool"))
+    return {
+        "stage_names": tuple(
+            _stable_strings(
+                _attr_or_default(
+                    client,
+                    ("stage_names", "_stage_names"),
+                    ("investigator", "decision_maker"),
+                )
+            )
+        ),
+        "max_turns_per_stage": _harness_max_turns_per_stage(client),
+        "tool_names_by_stage": _harness_tool_names_by_stage(client, fallback_enabled=fallback_enabled),
+        "route_tool_budgets": _harness_route_tool_budgets(client),
+        "safety_net_enabled": _harness_safety_net_enabled(client),
+        "validators_enabled": tuple(
+            _stable_strings(
+                _attr_or_default(
+                    client,
+                    ("validators_enabled", "_validators_enabled"),
+                    (
+                        "pydantic_final_decision_schema",
+                        "runtime_evidence_id_subset",
+                        "deterministic_completeness_gate",
+                    ),
+                )
+            )
+        ),
+        "failure_taxonomy_version": str(
+            _attr_or_default(
+                client,
+                ("failure_taxonomy_version", "_failure_taxonomy_version"),
+                PULSE_FAILURE_TAXONOMY_VERSION,
+            )
+            or PULSE_FAILURE_TAXONOMY_VERSION
+        ),
+    }
+
+
+def _harness_max_turns_per_stage(client: Any) -> dict[str, int]:
+    configured = _attr_or_default(client, ("max_turns_per_stage", "_max_turns_per_stage"), None)
+    if isinstance(configured, dict):
+        return {str(key): max(1, safe_int(value)) for key, value in configured.items()}
+    return {
+        "investigator": max(1, safe_int(getattr(client, "investigator_max_turns", None)) or safe_int(
+            getattr(client, "_investigator_max_turns", None)
+        ) or 5),
+        "decision_maker": max(1, safe_int(getattr(client, "decision_maker_max_turns", None)) or safe_int(
+            getattr(client, "_decision_maker_max_turns", None)
+        ) or 3),
+    }
+
+
+def _harness_tool_names_by_stage(client: Any, *, fallback_enabled: bool) -> dict[str, tuple[str, ...]]:
+    configured = _attr_or_default(client, ("tool_names_by_stage", "_tool_names_by_stage"), None)
+    if isinstance(configured, dict):
+        return {str(stage): tuple(_stable_strings(names)) for stage, names in configured.items()}
+    decision_tools = ("get_target_recent_tweets",) if fallback_enabled else ()
+    return {
+        "investigator": (
+            "get_target_recent_tweets",
+            "get_target_price_action",
+            "get_official_token_profile",
+        ),
+        "decision_maker": decision_tools,
+    }
+
+
+def _harness_route_tool_budgets(client: Any) -> dict[str, int]:
+    configured = _attr_or_default(
+        client,
+        ("route_tool_budgets", "investigator_max_tool_calls_by_route", "_investigator_max_tool_calls_by_route"),
+        None,
+    )
+    if isinstance(configured, dict):
+        return {str(key): max(0, safe_int(value)) for key, value in configured.items()}
+    return {"cex": 3, "meme": 5, "research_only": 3}
+
+
+def _harness_safety_net_enabled(client: Any) -> bool:
+    configured = _attr_or_default(client, ("safety_net_enabled", "_safety_net_enabled"), None)
+    if configured is not None:
+        return bool(configured)
+    return getattr(client, "_safety_net", None) is not None
+
+
+def _attr_or_default(target: Any, names: tuple[str, ...], default: Any) -> Any:
+    for name in names:
+        if hasattr(target, name):
+            value = getattr(target, name)
+            if value is not None:
+                return value
+    return default
 
 
 def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds | None = None) -> bool:
@@ -812,6 +955,25 @@ def _compact_error(exc: Exception, *, limit: int = 500) -> str:
     return f"{text[:limit]}..."
 
 
+def _normalized_failure_reason(exc: Exception) -> str:
+    text = str(exc).lower()
+    if "unknown evidence" in text or "unknown final evidence" in text:
+        return "unknown_evidence_id"
+    if "model_validate" in text or "validation" in text or "schema" in text:
+        return "schema_validation_failed"
+    if "budget exceeded" in text:
+        return "tool_budget_exceeded"
+    if isinstance(exc, TimeoutError) or "timed out" in text:
+        return "timeout"
+    if "rate limit" in text or "429" in text:
+        return "provider_rate_limited"
+    if "provider unavailable" in text or "503" in text:
+        return "provider_unavailable"
+    if "stale_running_timeout" in text:
+        return "stale_running_timeout"
+    return "unexpected_exception"
+
+
 def _asset_candidate_id(
     *,
     candidate_type: str,
@@ -880,6 +1042,29 @@ def _asset_trigger_metrics(row: dict[str, Any]) -> dict[str, Any]:
         and not blocked_reasons
         and rank_score >= 72,
     }
+
+
+def _recent_target_failure_count(
+    repos: Any,
+    *,
+    target_type: str | None,
+    target_id: str | None,
+    since_ms: int,
+    edge_events: list[str] | tuple[str, ...],
+) -> int:
+    if set(edge_events) & ESCALATION_EDGE_EVENTS:
+        return 0
+    count_func = getattr(repos.pulse, "recent_target_failure_count", None)
+    if count_func is None:
+        return 0
+    return safe_int(
+        count_func(
+            target_type=target_type,
+            target_id=target_id,
+            since_ms=since_ms,
+            reasons=PULSE_FAILURE_CIRCUIT_REASONS,
+        )
+    )
 
 
 def _active_job_blocks_reenqueue(existing_job: dict[str, Any] | None) -> bool:

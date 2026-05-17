@@ -512,18 +512,23 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert "kind" not in trade.payload
 
 
-def test_signal_pulse_dedup_key_uses_candidate_signature():
-    """Dedup key still embeds the signature; signature is now driven by stable decision dimensions."""
-    watch_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS, evidence_ids=["event-1"])
-    # Different status changes pulse_status → signature changes
-    trade_row = pulse_candidate("watch", status="trade_candidate", updated_at_ms=NOW_MS)
+def test_signal_pulse_dedup_key_uses_in_app_and_external_identity():
+    in_app_only_row = pulse_candidate("watch", status="token_watch", edge_events=["score_band_crossed"])
+    external_row = pulse_candidate("watch", status="token_watch", edge_events=["pulse_status_changed"])
+    notifications = _signal_pulse_notifications(channels=["in_app", "pushdeer"], statuses=["token_watch"])
 
-    watch = _only_pulse_notification(watch_row)
-    trade = _only_pulse_notification(trade_row)
+    in_app_only = _only_pulse_notification(in_app_only_row, notifications=notifications)
+    external = _only_pulse_notification(external_row, notifications=notifications)
 
-    assert watch.dedup_key == f"signal_pulse_candidate:watch:{watch.payload['notification_signature']}"
-    assert trade.dedup_key == f"signal_pulse_candidate:watch:{trade.payload['notification_signature']}"
-    assert watch.payload["notification_signature"] != trade.payload["notification_signature"]
+    assert in_app_only.payload["in_app_signature"] == external.payload["in_app_signature"]
+    assert in_app_only.payload["external_push_signature"] is None
+    assert external.payload["external_push_signature"]
+    assert in_app_only.dedup_key == f"signal_pulse_candidate:{in_app_only.payload['in_app_signature']}:in_app"
+    external_identity = external.payload["external_push_signature"]
+    assert (
+        external.dedup_key
+        == f"signal_pulse_candidate:{external.payload['in_app_signature']}:{external_identity}"
+    )
 
 
 def test_signal_pulse_signature_changes_on_stable_dimension_shifts():
@@ -726,6 +731,120 @@ def test_signal_pulse_signature_counts_only_safe_playbook_entries():
     )
 
 
+def test_signal_pulse_pushdeer_uses_target_cooldown_signature_once_across_scopes() -> None:
+    row = pulse_candidate(
+        "pulse-all",
+        status="trade_candidate",
+        symbol="PEPE",
+        eligible_for_high_alert=True,
+    )
+    matched = dict(row)
+    matched["candidate_id"] = "pulse-matched"
+    matched["scope"] = "matched"
+    notifications = _signal_pulse_notifications(
+        channels=["in_app", "pushdeer"],
+        scopes=["all", "matched"],
+        statuses=["trade_candidate"],
+        cooldown_seconds=900,
+    )
+
+    candidates = [
+        item
+        for item in engine(pulse=FakePulse([row, matched]), notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert {item.source_id for item in candidates} == {"pulse-all", "pulse-matched"}
+    pushed = [item for item in candidates if "pushdeer" in item.channels]
+    assert len(pushed) == 1
+    assert pushed[0].channels == ("in_app", "pushdeer")
+    assert pushed[0].payload["external_push_eligible"] is True
+    external_signature = pushed[0].payload["external_push_signature"]
+    assert external_signature
+    assert pushed[0].payload["external_push_suppression_reason"] is None
+    assert pushed[0].payload["in_app_signature"]
+
+    in_app_only = [item for item in candidates if item not in pushed]
+    assert len(in_app_only) == 1
+    assert in_app_only[0].channels == ("in_app",)
+    assert in_app_only[0].payload["external_push_eligible"] is False
+    assert in_app_only[0].payload["external_push_signature"] == external_signature
+    assert in_app_only[0].payload["external_push_suppression_reason"] == "external_signature_duplicate"
+    assert in_app_only[0].payload["in_app_signature"]
+
+
+def test_signal_pulse_score_band_only_change_is_in_app_only() -> None:
+    row = pulse_candidate("pulse-score-band", status="token_watch", eligible_for_high_alert=True)
+    row["last_edge_events_json"] = ["score_band_crossed"]
+
+    candidate = _only_pulse_notification(
+        row,
+        notifications=_signal_pulse_notifications(channels=["in_app", "pushdeer"], statuses=["token_watch"]),
+    )
+
+    assert candidate.channels == ("in_app",)
+    assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_suppression_reason"] == "not_escalation"
+
+
+def test_signal_pulse_risk_rejected_high_info_is_in_app_only() -> None:
+    row = pulse_candidate("pulse-risk", status="risk_rejected_high_info", risks=["chase_risk"])
+
+    candidate = _only_pulse_notification(
+        row,
+        notifications=_signal_pulse_notifications(
+            channels=["in_app", "pushdeer"],
+            statuses=["risk_rejected_high_info"],
+        ),
+    )
+
+    assert candidate.severity == "warning"
+    assert candidate.channels == ("in_app",)
+    assert candidate.payload["external_push_eligible"] is False
+    assert candidate.payload["external_push_suppression_reason"] == "risk_rejected_in_app_only"
+
+
+def test_signal_pulse_external_signature_ignores_in_app_decision_detail_churn() -> None:
+    base = pulse_candidate("pulse-watch", status="token_watch")
+    playbook_changed = pulse_candidate("pulse-watch", status="token_watch")
+    playbook_changed["decision_json"] = {
+        **playbook_changed["decision_json"],
+        "playbook": {
+            "has_playbook": True,
+            "monitoring_horizon": "24h",
+            "watch_signals": ["新增独立作者"],
+            "exit_triggers": ["讨论降温"],
+        },
+        "bull_view": {"strength": "strong", "thesis_zh": "文本变化", "supporting_event_ids": ["event-1"]},
+    }
+
+    notifications = _signal_pulse_notifications(channels=["in_app", "pushdeer"], statuses=["token_watch"])
+    base_candidate = _only_pulse_notification(base, notifications=notifications)
+    changed_candidate = _only_pulse_notification(playbook_changed, notifications=notifications)
+
+    assert base_candidate.payload["notification_signature"] != changed_candidate.payload["notification_signature"]
+    assert base_candidate.payload["external_push_signature"] == changed_candidate.payload["external_push_signature"]
+
+
+def test_signal_pulse_external_signature_uses_snapshot_target_when_row_target_is_absent() -> None:
+    first = pulse_candidate("pulse-first", status="trade_candidate")
+    second = pulse_candidate("pulse-second", status="trade_candidate")
+    for row in (first, second):
+        row["target_type"] = None
+        row["target_id"] = None
+    notifications = _signal_pulse_notifications(channels=["in_app", "pushdeer"], statuses=["trade_candidate"])
+
+    candidates = [
+        item
+        for item in engine(pulse=FakePulse([first, second]), notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert {item.source_id for item in candidates} == {"pulse-first", "pulse-second"}
+    assert all(item.channels == ("in_app", "pushdeer") for item in candidates)
+    assert len({item.payload["external_push_signature"] for item in candidates}) == 2
+
+
 def test_signal_pulse_rule_can_be_disabled():
     notifications = NotificationsConfig(rules={"signal_pulse_candidate": NotificationRuleConfig(enabled=False)})
 
@@ -789,7 +908,11 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
         "pulse-low-score",
     ]
     assert pulse_candidates[0].channels == ("in_app", "pushdeer")
-    assert pulse_candidates[0].dedup_key.startswith("signal_pulse_candidate:pulse-hot:sha256:")
+    assert pulse_candidates[0].dedup_key == (
+        "signal_pulse_candidate:"
+        f"{pulse_candidates[0].payload['in_app_signature']}:"
+        f"{pulse_candidates[0].payload['external_push_signature']}"
+    )
     assert pulse.calls == [
         {
             "window": "5m",
@@ -970,11 +1093,32 @@ def test_signal_pulse_notifications_follow_candidate_pages():
     assert [call["cursor"] for call in token_watch_calls[:3]] == [None, "1", "2"]
 
 
-def _only_pulse_notification(row: dict):
-    candidates = engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+def _only_pulse_notification(row: dict, *, notifications: NotificationsConfig | None = None):
+    candidates = engine(pulse=FakePulse([row]), notifications=notifications).evaluate(now_ms=NOW_MS)
     pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]
     assert len(pulse_candidates) == 1
     return pulse_candidates[0]
+
+
+def _signal_pulse_notifications(
+    *,
+    channels: list[str],
+    statuses: list[str],
+    scopes: list[str] | None = None,
+    cooldown_seconds: int = 900,
+) -> NotificationsConfig:
+    return NotificationsConfig(
+        rules={
+            "signal_pulse_candidate": {
+                "enabled": True,
+                "channels": channels,
+                "window": "1h",
+                "scopes": scopes or ["all"],
+                "statuses": statuses,
+                "cooldown_seconds": cooldown_seconds,
+            }
+        }
+    )
 
 
 def pulse_candidate(

@@ -179,7 +179,6 @@ describe("buildPulseDetailView", () => {
 
   it("builds v2 stage rail with investigator + decision_maker entries", () => {
     expect(view.agent.kind).toBe("stages");
-    expect(view.agent.isLegacy).toBe(false);
     expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
       "investigator",
       "decision_maker",
@@ -267,23 +266,19 @@ describe("buildPulseDetailView", () => {
     expect(decisionView.agent.decisionSurface?.bear).toBeNull();
   });
 
-  it("falls back to legacy stage rail when only analyst/critic/judge are present", () => {
-    const legacy = buildPulseDetailView({
+  it("ignores historical legacy stage rows when building the public agent rail", () => {
+    const legacyOnly = buildPulseDetailView({
       item: { ...tittyPulseFixture, stages: tittyLegacyStages },
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
-    expect(legacy.agent.isLegacy).toBe(true);
-    const kinds = legacy.agent.railItems.map((entry) => entry.kind);
-    expect(kinds).toEqual(["legacy", "legacy", "legacy"]);
-    const legacyEntries = legacy.agent.railItems.filter(
-      (entry): entry is Extract<typeof entry, { kind: "legacy" }> => entry.kind === "legacy",
-    );
-    expect(legacyEntries.map((entry) => entry.stageName)).toEqual(["analyst", "critic", "judge"]);
-    expect(legacyEntries[0].summary).toBe("历史 v1 响应体未解析；仅保留 stage 审计元数据。");
+
+    expect(legacyOnly.agent.railItems).toEqual([]);
+    expect(legacyOnly.agent.model).toBe("-");
+    expect(legacyOnly.agent.totalLatencyMs).toBe(0);
   });
 
-  it("renders v2 stages and legacy placeholders for mixed stage rows", () => {
+  it("renders v2 stages and ignores legacy rows in mixed stage payloads", () => {
     const mixed = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
@@ -293,14 +288,9 @@ describe("buildPulseDetailView", () => {
       now: TITTY_NOW_MS,
     });
 
-    expect(mixed.agent.isLegacy).toBe(false);
-    expect(mixed.agent.hasLegacyStages).toBe(true);
     expect(mixed.agent.railItems.map((entry) => entry.kind)).toEqual([
       "investigator",
       "decision_maker",
-      "legacy",
-      "legacy",
-      "legacy",
     ]);
   });
 

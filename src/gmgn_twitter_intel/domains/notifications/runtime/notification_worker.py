@@ -134,7 +134,7 @@ class NotificationWorker(WorkerBase):
         candidate: NotificationCandidate,
     ) -> bool:
         enqueued = False
-        for channel_id in candidate.channels:
+        for channel_id in _delivery_channels(row, candidate):
             if channel_id == "in_app":
                 continue
             channel = self.delivery_channels.get(channel_id)
@@ -184,3 +184,11 @@ def _unit_of_work_if_available(repos: Any) -> AbstractContextManager[Any]:
     if unit_of_work is None:
         return nullcontext()
     return cast("AbstractContextManager[Any]", unit_of_work())
+
+
+def _delivery_channels(row: dict[str, Any], candidate: NotificationCandidate) -> tuple[str, ...]:
+    row_channels = row.get("channels_json")
+    if isinstance(row_channels, list):
+        channels = tuple(str(channel).strip() for channel in row_channels if str(channel).strip())
+        return channels or ("in_app",)
+    return candidate.channels

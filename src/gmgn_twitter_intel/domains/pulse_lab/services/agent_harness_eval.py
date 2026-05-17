@@ -39,6 +39,7 @@ _RULE_TOOL_CALLS_PRESENT = "tool_calls_present"
 _RULE_EVIDENCE_SUBSET = "evidence_subset"
 _RULE_HIGH_CONVICTION_CONSTRAINT = "high_conviction_constraint"
 _RULE_PLAYBOOK_CONSISTENT = "playbook_consistent"
+_RULE_FAILED_RUN_RECORDED = "failed_run_recorded"
 
 _V2_RULES = (
     _RULE_STAGES_PRESENT,
@@ -90,6 +91,37 @@ def build_pulse_deterministic_eval_case(
     }
 
 
+def build_pulse_failed_eval_case(
+    *,
+    run_id: str,
+    harness_hash: str,
+    context: dict[str, Any],
+    route: DecisionRoute,
+    completeness: dict[str, Any],
+    stage_audits: tuple[StageRunAudit, ...],
+    failure_reason: str,
+) -> dict[str, Any]:
+    return {
+        "eval_case_id": _stable_id("pulse-failed-eval-case", run_id, failure_reason, PULSE_DETERMINISTIC_GRADER_VERSION),
+        "source_run_id": run_id,
+        "harness_hash": harness_hash,
+        "eval_type": "deterministic",
+        "route": route,
+        "recommendation": "abstain",
+        "input_json": {
+            "context": context,
+            "completeness": completeness,
+            "stage_audits": [stage.model_dump(mode="json") for stage in stage_audits],
+            "failure_reason": failure_reason,
+        },
+        "expected_json": {"status": "fail", "failure_reason": failure_reason},
+        "rubric_json": {
+            "grader_version": PULSE_DETERMINISTIC_GRADER_VERSION,
+            "checks": [_RULE_FAILED_RUN_RECORDED],
+        },
+    }
+
+
 def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
     """Grade a v2 eval case against rules R1..R5.
 
@@ -103,6 +135,9 @@ def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
     completeness = _mapping(input_json.get("completeness"))
     final = _mapping(expected_json.get("final_decision"))
     stages = _list(input_json.get("stage_audits"))
+
+    if expected_json.get("status") == "fail":
+        return _grade_failed_run_case(case, input_json=input_json, expected_json=expected_json, stages=stages)
 
     if _is_legacy_case(final=final, stages=stages):
         return _result(
@@ -168,6 +203,26 @@ def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
         status=status,
         violations=violations,
         stage_names=list(stage_status_by_name.keys()),
+    )
+
+
+def _grade_failed_run_case(
+    case: dict[str, Any],
+    *,
+    input_json: dict[str, Any],
+    expected_json: dict[str, Any],
+    stages: list[Any],
+) -> dict[str, Any]:
+    expected_reason = str(expected_json.get("failure_reason") or "")
+    observed_reason = str(input_json.get("failure_reason") or "")
+    violations = []
+    if not expected_reason or observed_reason != expected_reason:
+        violations.append(_RULE_FAILED_RUN_RECORDED)
+    return _result(
+        case,
+        status="fail" if violations else "pass",
+        violations=violations,
+        stage_names=[str(_mapping(stage).get("stage") or "") for stage in stages],
     )
 
 
@@ -257,5 +312,6 @@ def _stable_id(*parts: str) -> str:
 
 __all__ = [
     "build_pulse_deterministic_eval_case",
+    "build_pulse_failed_eval_case",
     "grade_pulse_deterministic_eval_case",
 ]

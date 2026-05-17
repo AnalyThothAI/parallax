@@ -5,6 +5,8 @@ import binascii
 import hashlib
 import json
 import time
+from contextlib import nullcontext
+from dataclasses import dataclass
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -12,6 +14,13 @@ from psycopg.types.json import Jsonb
 DISPLAY_PULSE_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
 SUMMARY_PULSE_STATUSES = (*DISPLAY_PULSE_STATUSES, "blocked_low_information")
 DISPLAY_PULSE_STATUS_SQL = "('trade_candidate', 'token_watch', 'risk_rejected_high_info')"
+
+
+@dataclass(frozen=True, slots=True)
+class PulseAdmissionClaim:
+    accepted: bool
+    reason: str
+    job: dict[str, Any] | None = None
 
 
 class PulseRepository:
@@ -221,6 +230,8 @@ class PulseRepository:
         job: dict[str, Any],
         error: str,
         now_ms: int | None = None,
+        *,
+        failure_reason: str | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
         if job is None:
@@ -230,6 +241,7 @@ class PulseRepository:
         max_attempts = int(job.get("max_attempts") or 3)
         status = "dead" if attempts >= max_attempts else "failed"
         delay_ms = 0 if status == "dead" else min(300_000, 5_000 * max(1, attempts))
+        stored_error = str(failure_reason or error)[:1000]
         row = self.conn.execute(
             """
             UPDATE pulse_agent_jobs
@@ -240,7 +252,7 @@ class PulseRepository:
             WHERE job_id = %s
             RETURNING *
             """,
-            (status, now + delay_ms, str(error)[:1000], now, job["job_id"]),
+            (status, now + delay_ms, stored_error, now, job["job_id"]),
         ).fetchone()
         if commit:
             self.conn.commit()
@@ -345,24 +357,21 @@ class PulseRepository:
             INSERT INTO pulse_candidate_edge_state(
               candidate_id, latest_observed_state_json, last_processed_state_json,
               last_edge_events_json, last_job_id, observed_at_ms,
-              last_processed_at_ms, created_at_ms, updated_at_ms
+              created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(candidate_id) DO UPDATE SET
-              last_processed_state_json = excluded.last_processed_state_json,
               last_edge_events_json = excluded.last_edge_events_json,
               last_job_id = excluded.last_job_id,
-              last_processed_at_ms = excluded.last_processed_at_ms,
               updated_at_ms = excluded.updated_at_ms
             RETURNING *
             """,
             (
                 candidate_id,
                 _json(processed_state_json),
-                _json(processed_state_json),
+                _json({}),
                 _json(edge_events_json),
                 job_id,
-                processed,
                 processed,
                 processed,
                 processed,
@@ -394,11 +403,288 @@ class PulseRepository:
             self.conn.commit()
         return _optional_row(row)
 
+    def claim_pulse_admission(
+        self,
+        *,
+        candidate_id: str,
+        target_type: str | None,
+        target_id: str | None,
+        hour_bucket_ms: int,
+        now_ms: int,
+        target_limit: int,
+        candidate_limit: int,
+        job_payload: dict[str, Any],
+        edge_state: dict[str, Any],
+        edge_events: list[str] | tuple[str, ...],
+        admission_action: str = "enqueue_agent",
+        admission_reason: str = "material_edge",
+        commit: bool = True,
+    ) -> PulseAdmissionClaim:
+        del commit
+        now = int(now_ms)
+        events = _stable_strings(edge_events)
+        with _transaction(self.conn):
+            self.record_edge_observation(
+                candidate_id=candidate_id,
+                current_state_json=edge_state,
+                edge_signature=_stable_hash(edge_state),
+                observed_at_ms=now,
+                commit=False,
+            )
+            if admission_action != "enqueue_agent":
+                self._mark_edge_suppressed(
+                    candidate_id=candidate_id,
+                    reason=admission_reason,
+                    edge_events_json=events,
+                    current_state_json=edge_state,
+                    suppressed_at_ms=now,
+                )
+                return PulseAdmissionClaim(False, admission_reason)
+            if not target_type or not target_id or int(target_limit) <= 0:
+                self._mark_edge_suppressed(
+                    candidate_id=candidate_id,
+                    reason="target_budget_exhausted",
+                    edge_events_json=events,
+                    current_state_json=edge_state,
+                    suppressed_at_ms=now,
+                )
+                return PulseAdmissionClaim(False, "target_budget_exhausted")
+            if int(candidate_limit) <= 0:
+                self._mark_edge_suppressed(
+                    candidate_id=candidate_id,
+                    reason="candidate_budget_exhausted",
+                    edge_events_json=events,
+                    current_state_json=edge_state,
+                    suppressed_at_ms=now,
+                )
+                return PulseAdmissionClaim(False, "candidate_budget_exhausted")
+
+            target_count = self._locked_target_budget_count(
+                target_type=target_type,
+                target_id=target_id,
+                hour_bucket_ms=hour_bucket_ms,
+                now_ms=now,
+            )
+            candidate_count = self._locked_candidate_budget_count(
+                candidate_id=candidate_id,
+                hour_bucket_ms=hour_bucket_ms,
+                now_ms=now,
+            )
+            if target_count >= int(target_limit):
+                self._mark_edge_suppressed(
+                    candidate_id=candidate_id,
+                    reason="target_budget_exhausted",
+                    edge_events_json=events,
+                    current_state_json=edge_state,
+                    suppressed_at_ms=now,
+                )
+                return PulseAdmissionClaim(False, "target_budget_exhausted")
+            if candidate_count >= int(candidate_limit):
+                self._mark_edge_suppressed(
+                    candidate_id=candidate_id,
+                    reason="candidate_budget_exhausted",
+                    edge_events_json=events,
+                    current_state_json=edge_state,
+                    suppressed_at_ms=now,
+                )
+                return PulseAdmissionClaim(False, "candidate_budget_exhausted")
+
+            self._increment_target_budget(
+                target_type=target_type,
+                target_id=target_id,
+                hour_bucket_ms=hour_bucket_ms,
+                now_ms=now,
+            )
+            self._increment_candidate_budget(
+                candidate_id=candidate_id,
+                hour_bucket_ms=hour_bucket_ms,
+                now_ms=now,
+            )
+            payload = dict(job_payload)
+            payload.setdefault("candidate_id", candidate_id)
+            payload.setdefault("target_type", target_type)
+            payload.setdefault("target_id", target_id)
+            payload.setdefault("now_ms", now)
+            payload["commit"] = False
+            job = self.enqueue_job(**payload)
+            self._mark_edge_admitted(
+                candidate_id=candidate_id,
+                edge_events_json=events,
+                job_id=str(job.get("job_id") or ""),
+                admitted_at_ms=now,
+            )
+            return PulseAdmissionClaim(True, admission_reason, job)
+
+    def _locked_target_budget_count(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        hour_bucket_ms: int,
+        now_ms: int,
+    ) -> int:
+        self.conn.execute(
+            """
+            INSERT INTO pulse_target_run_budget(
+              target_type, target_id, hour_bucket_ms, enqueue_count, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, 0, %s, %s)
+            ON CONFLICT(target_type, target_id, hour_bucket_ms) DO NOTHING
+            """,
+            (target_type, target_id, int(hour_bucket_ms), int(now_ms), int(now_ms)),
+        )
+        row = self.conn.execute(
+            """
+            SELECT enqueue_count
+            FROM pulse_target_run_budget
+            WHERE target_type = %s AND target_id = %s AND hour_bucket_ms = %s
+            FOR UPDATE
+            """,
+            (target_type, target_id, int(hour_bucket_ms)),
+        ).fetchone()
+        return int(row["enqueue_count"] if row else 0)
+
+    def _locked_candidate_budget_count(
+        self,
+        *,
+        candidate_id: str,
+        hour_bucket_ms: int,
+        now_ms: int,
+    ) -> int:
+        self.conn.execute(
+            """
+            INSERT INTO pulse_candidate_run_budget(
+              candidate_id, hour_bucket_ms, enqueue_count, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, 0, %s, %s)
+            ON CONFLICT(candidate_id, hour_bucket_ms) DO NOTHING
+            """,
+            (candidate_id, int(hour_bucket_ms), int(now_ms), int(now_ms)),
+        )
+        row = self.conn.execute(
+            """
+            SELECT enqueue_count
+            FROM pulse_candidate_run_budget
+            WHERE candidate_id = %s AND hour_bucket_ms = %s
+            FOR UPDATE
+            """,
+            (candidate_id, int(hour_bucket_ms)),
+        ).fetchone()
+        return int(row["enqueue_count"] if row else 0)
+
+    def _increment_target_budget(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        hour_bucket_ms: int,
+        now_ms: int,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE pulse_target_run_budget
+            SET enqueue_count = enqueue_count + 1,
+                updated_at_ms = %s
+            WHERE target_type = %s AND target_id = %s AND hour_bucket_ms = %s
+            """,
+            (int(now_ms), target_type, target_id, int(hour_bucket_ms)),
+        )
+
+    def _increment_candidate_budget(
+        self,
+        *,
+        candidate_id: str,
+        hour_bucket_ms: int,
+        now_ms: int,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE pulse_candidate_run_budget
+            SET enqueue_count = enqueue_count + 1,
+                updated_at_ms = %s
+            WHERE candidate_id = %s AND hour_bucket_ms = %s
+            """,
+            (int(now_ms), candidate_id, int(hour_bucket_ms)),
+        )
+
+    def _mark_edge_suppressed(
+        self,
+        *,
+        candidate_id: str,
+        reason: str,
+        edge_events_json: list[Any],
+        current_state_json: dict[str, Any],
+        suppressed_at_ms: int,
+    ) -> dict[str, Any] | None:
+        score_band = _clean(current_state_json.get("score_band"))
+        row = self.conn.execute(
+            """
+            UPDATE pulse_candidate_edge_state
+            SET last_edge_events_json = %s,
+                last_suppressed_reason = %s,
+                last_suppressed_at_ms = %s,
+                pending_score_band = CASE
+                  WHEN %s = 'score_band_pending' THEN %s
+                  ELSE pending_score_band
+                END,
+                pending_score_band_count = CASE
+                  WHEN %s = 'score_band_pending' AND pending_score_band = %s
+                    THEN pending_score_band_count + 1
+                  WHEN %s = 'score_band_pending'
+                    THEN 1
+                  ELSE pending_score_band_count
+                END,
+                updated_at_ms = %s
+            WHERE candidate_id = %s
+            RETURNING *
+            """,
+            (
+                _json(edge_events_json),
+                reason,
+                int(suppressed_at_ms),
+                reason,
+                score_band,
+                reason,
+                score_band,
+                reason,
+                int(suppressed_at_ms),
+                candidate_id,
+            ),
+        ).fetchone()
+        return _optional_row(row)
+
+    def _mark_edge_admitted(
+        self,
+        *,
+        candidate_id: str,
+        edge_events_json: list[Any],
+        job_id: str,
+        admitted_at_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            UPDATE pulse_candidate_edge_state
+            SET last_edge_events_json = %s,
+                last_job_id = %s,
+                last_suppressed_reason = NULL,
+                last_suppressed_at_ms = NULL,
+                pending_score_band = NULL,
+                pending_score_band_count = 0,
+                updated_at_ms = %s
+            WHERE candidate_id = %s
+            RETURNING *
+            """,
+            (_json(edge_events_json), job_id, int(admitted_at_ms), candidate_id),
+        ).fetchone()
+        return _optional_row(row)
+
     def mark_edge_run_finished(
         self,
         *,
         candidate_id: str,
         agent_run_id: str,
+        processed_state_json: dict[str, Any],
+        edge_events_json: list[Any],
         finished_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any] | None:
@@ -406,11 +692,25 @@ class PulseRepository:
             """
             UPDATE pulse_candidate_edge_state
             SET last_agent_run_id = %s,
+                last_processed_state_json = %s,
+                last_edge_events_json = %s,
+                last_processed_at_ms = %s,
+                last_suppressed_reason = NULL,
+                last_suppressed_at_ms = NULL,
+                pending_score_band = NULL,
+                pending_score_band_count = 0,
                 updated_at_ms = %s
             WHERE candidate_id = %s
             RETURNING *
             """,
-            (agent_run_id, int(finished_at_ms), candidate_id),
+            (
+                agent_run_id,
+                _json(processed_state_json),
+                _json(edge_events_json),
+                int(finished_at_ms),
+                int(finished_at_ms),
+                candidate_id,
+            ),
         ).fetchone()
         if commit:
             self.conn.commit()
@@ -431,6 +731,8 @@ class PulseRepository:
             SET status = 'failed',
                 outcome = 'failed',
                 error = COALESCE(NULLIF(error, ''), 'stale_running_timeout'),
+                trace_metadata_json = COALESCE(trace_metadata_json, '{}'::jsonb)
+                  || '{"failure_reason":"stale_running_timeout"}'::jsonb,
                 latency_ms = GREATEST(0, %s - started_at_ms),
                 finished_at_ms = %s
             WHERE status = 'running'
@@ -539,11 +841,12 @@ class PulseRepository:
         outcome: str,
         decision_route: str | None = None,
         decision_stage_count: int | None = None,
+        trace_metadata_json_patch: dict[str, Any] | None = None,
         finished_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
         existing = self.conn.execute(
-            "SELECT started_at_ms, usage_json FROM pulse_agent_runs WHERE run_id = %s",
+            "SELECT started_at_ms, usage_json, trace_metadata_json FROM pulse_agent_runs WHERE run_id = %s",
             (run_id,),
         ).fetchone()
         if existing is None:
@@ -551,6 +854,9 @@ class PulseRepository:
         now = int(finished_at_ms if finished_at_ms is not None else _now_ms())
         latency_ms = max(0, now - int(existing["started_at_ms"]))
         next_usage = usage_json if usage_json is not None else _decode_json_value(existing["usage_json"])
+        next_trace_metadata = _mapping(_decode_json_value(existing["trace_metadata_json"]))
+        if trace_metadata_json_patch is not None:
+            next_trace_metadata = {**next_trace_metadata, **_mapping(trace_metadata_json_patch)}
         row = self.conn.execute(
             """
             UPDATE pulse_agent_runs
@@ -563,6 +869,7 @@ class PulseRepository:
                 outcome = %s,
                 decision_route = COALESCE(%s, decision_route),
                 decision_stage_count = COALESCE(%s, decision_stage_count),
+                trace_metadata_json = %s,
                 finished_at_ms = %s
             WHERE run_id = %s
             RETURNING *
@@ -577,6 +884,7 @@ class PulseRepository:
                 outcome,
                 decision_route,
                 max(0, int(decision_stage_count)) if decision_stage_count is not None else None,
+                _json(next_trace_metadata),
                 now,
                 run_id,
             ),
@@ -584,6 +892,33 @@ class PulseRepository:
         if commit:
             self.conn.commit()
         return _optional_row(row)
+
+    def recent_target_failure_count(
+        self,
+        *,
+        target_type: str | None,
+        target_id: str | None,
+        since_ms: int,
+        reasons: tuple[str, ...] | list[str] | set[str],
+    ) -> int:
+        stable_reasons = _stable_strings(reasons)
+        if not target_type or not target_id or not stable_reasons:
+            return 0
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS failure_count
+            FROM pulse_agent_runs AS run
+            JOIN pulse_agent_jobs AS job
+              ON job.job_id = run.job_id
+            WHERE job.target_type = %s
+              AND job.target_id = %s
+              AND run.status = 'failed'
+              AND run.finished_at_ms >= %s
+              AND run.trace_metadata_json->>'failure_reason' = ANY(%s)
+            """,
+            (target_type, target_id, int(since_ms), stable_reasons),
+        ).fetchone()
+        return int(row["failure_count"] if row else 0)
 
     def upsert_candidate(
         self,
@@ -1394,6 +1729,10 @@ def _decode_json_value(value: Any) -> Any:
     return value
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _json_ready(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_ready(item) for key, item in value.items()}
@@ -1433,6 +1772,35 @@ def _decode_cursor(cursor: str | None) -> dict[str, Any] | None:
 
 def _id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _stable_hash(value: Any) -> str:
+    payload = json.dumps(_json_ready(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _stable_strings(values: Any) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values if isinstance(values, list | tuple | set) else []:
+        item = str(value or "").strip()
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def _clean(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _transaction(conn: Any):
+    if hasattr(conn, "transaction"):
+        return conn.transaction()
+    return nullcontext()
 
 
 def _normalize_subject(value: str | None) -> str | None:

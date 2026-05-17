@@ -1300,14 +1300,9 @@ export type SignalPulseStagePayload = {
 };
 
 export type SignalPulseStages = {
-  // v2 新 stage 名
   investigator?: SignalPulseStagePayload | null;
   decision_maker?: SignalPulseStagePayload | null;
   research_only_gate?: SignalPulseStagePayload | null;
-  // Legacy v1 stage data (老 audit 行)，前端 fallback 渲染为 LegacyStageCard
-  analyst?: SignalPulseStagePayload | null;
-  critic?: SignalPulseStagePayload | null;
-  judge?: SignalPulseStagePayload | null;
 };
 
 export type SignalPulseItem = {

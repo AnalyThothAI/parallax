@@ -16,6 +16,32 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
+def _job_payload(candidate_id: str, *, window: str = "1h", scope: str = "all") -> dict[str, Any]:
+    return {
+        "candidate_id": candidate_id,
+        "candidate_type": "token_target",
+        "subject_key": "Asset:asset-1",
+        "window": window,
+        "scope": scope,
+        "trigger_signature": "trigger",
+        "timeline_signature": "timeline",
+        "priority": 10,
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "context_json": {"candidate_id": candidate_id, "factor_snapshot": {"schema_version": "test"}},
+        "max_attempts": 3,
+        "next_run_at_ms": 3_600_001,
+    }
+
+
+def _run_budget_count(conn: Any, table: str, where_sql: str, params: tuple[Any, ...]) -> int:
+    row = conn.execute(
+        f"SELECT COALESCE(SUM(enqueue_count), 0) AS count FROM {table} WHERE {where_sql}",
+        params,
+    ).fetchone()
+    return int(row["count"] if row else 0)
+
+
 def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -93,7 +119,15 @@ def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path
             processed_at_ms=1_700_000_000_123,
             commit=True,
         )
-        edge = repo.edge_state_by_candidate("candidate-edge")
+        enqueued_edge = repo.edge_state_by_candidate("candidate-edge")
+        repo.mark_edge_run_finished(
+            candidate_id="candidate-edge",
+            agent_run_id="run-edge",
+            processed_state_json=current_state,
+            edge_events_json=["pulse_status_changed"],
+            finished_at_ms=1_700_000_000_456,
+        )
+        finished_edge = repo.edge_state_by_candidate("candidate-edge")
     finally:
         conn.close()
 
@@ -101,11 +135,178 @@ def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path
     assert first_budget is True
     assert second_budget is True
     assert third_budget is False
-    assert edge is not None
-    assert edge["latest_observed_state_json"] == current_state
-    assert edge["last_processed_state_json"] == current_state
-    assert edge["last_edge_events_json"] == ["pulse_status_changed"]
-    assert edge["last_job_id"] == "job-edge"
+    assert enqueued_edge is not None
+    assert enqueued_edge["latest_observed_state_json"] == current_state
+    assert enqueued_edge["last_processed_state_json"] == {}
+    assert enqueued_edge["last_edge_events_json"] == ["pulse_status_changed"]
+    assert enqueued_edge["last_job_id"] == "job-edge"
+    assert finished_edge is not None
+    assert finished_edge["last_processed_state_json"] == current_state
+    assert finished_edge["last_processed_at_ms"] == 1_700_000_000_456
+
+
+def test_claim_pulse_admission_rejects_target_without_candidate_budget_consumption(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        first = repo.claim_pulse_admission(
+            candidate_id="cand-1",
+            target_type="Asset",
+            target_id="asset-1",
+            hour_bucket_ms=3_600_000,
+            now_ms=3_600_001,
+            target_limit=0,
+            candidate_limit=3,
+            job_payload=_job_payload("cand-1"),
+            edge_state={"score_band": "70-79"},
+            edge_events=["pulse_status_changed"],
+        )
+        job = repo.job_for_candidate("cand-1")
+        candidate_budget_count = _run_budget_count(
+            conn,
+            "pulse_candidate_run_budget",
+            "candidate_id = %s",
+            ("cand-1",),
+        )
+    finally:
+        conn.close()
+
+    assert first.accepted is False
+    assert first.reason == "target_budget_exhausted"
+    assert job is None
+    assert candidate_budget_count == 0
+
+
+def test_claim_pulse_admission_rejects_candidate_without_target_budget_consumption(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        claim = repo.claim_pulse_admission(
+            candidate_id="cand-candidate-budget",
+            target_type="Asset",
+            target_id="asset-1",
+            hour_bucket_ms=3_600_000,
+            now_ms=3_600_001,
+            target_limit=3,
+            candidate_limit=0,
+            job_payload=_job_payload("cand-candidate-budget"),
+            edge_state={"score_band": "70-79"},
+            edge_events=["pulse_status_changed"],
+        )
+        target_budget_count = _run_budget_count(
+            conn,
+            "pulse_target_run_budget",
+            "target_type = %s AND target_id = %s",
+            ("Asset", "asset-1"),
+        )
+        job = repo.job_for_candidate("cand-candidate-budget")
+    finally:
+        conn.close()
+
+    assert claim.accepted is False
+    assert claim.reason == "candidate_budget_exhausted"
+    assert target_budget_count == 0
+    assert job is None
+
+
+def test_claim_pulse_admission_caps_same_target_across_candidates_windows_and_scopes(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        first = repo.claim_pulse_admission(
+            candidate_id="cand-target-a",
+            target_type="Asset",
+            target_id="asset-1",
+            hour_bucket_ms=3_600_000,
+            now_ms=3_600_001,
+            target_limit=1,
+            candidate_limit=3,
+            job_payload=_job_payload("cand-target-a", window="1h", scope="all"),
+            edge_state={"score_band": "70-79"},
+            edge_events=["pulse_status_changed"],
+        )
+        second = repo.claim_pulse_admission(
+            candidate_id="cand-target-b",
+            target_type="Asset",
+            target_id="asset-1",
+            hour_bucket_ms=3_600_000,
+            now_ms=3_600_100,
+            target_limit=1,
+            candidate_limit=3,
+            job_payload=_job_payload("cand-target-b", window="4h", scope="matched"),
+            edge_state={"score_band": "80-89"},
+            edge_events=["pulse_status_changed"],
+        )
+        target_budget_count = _run_budget_count(
+            conn,
+            "pulse_target_run_budget",
+            "target_type = %s AND target_id = %s AND hour_bucket_ms = %s",
+            ("Asset", "asset-1", 3_600_000),
+        )
+        second_candidate_budget_count = _run_budget_count(
+            conn,
+            "pulse_candidate_run_budget",
+            "candidate_id = %s",
+            ("cand-target-b",),
+        )
+        first_job = repo.job_for_candidate("cand-target-a")
+        second_job = repo.job_for_candidate("cand-target-b")
+    finally:
+        conn.close()
+
+    assert first.accepted is True
+    assert second.accepted is False
+    assert second.reason == "target_budget_exhausted"
+    assert target_budget_count == 1
+    assert second_candidate_budget_count == 0
+    assert first_job is not None
+    assert second_job is None
+
+
+def test_claim_pulse_admission_enqueues_without_marking_processed_until_run_finishes(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        edge_state = {"pulse_status": "token_watch", "score_band": "70-79"}
+
+        claim = repo.claim_pulse_admission(
+            candidate_id="cand-processed",
+            target_type="Asset",
+            target_id="asset-1",
+            hour_bucket_ms=3_600_000,
+            now_ms=3_600_001,
+            target_limit=3,
+            candidate_limit=3,
+            job_payload=_job_payload("cand-processed"),
+            edge_state=edge_state,
+            edge_events=["pulse_status_changed"],
+        )
+        enqueued_edge = repo.edge_state_by_candidate("cand-processed")
+        repo.mark_edge_run_finished(
+            candidate_id="cand-processed",
+            agent_run_id="run-processed",
+            processed_state_json=edge_state,
+            edge_events_json=["pulse_status_changed"],
+            finished_at_ms=3_600_500,
+        )
+        finished_edge = repo.edge_state_by_candidate("cand-processed")
+    finally:
+        conn.close()
+
+    assert claim.accepted is True
+    assert claim.job is not None
+    assert enqueued_edge is not None
+    assert enqueued_edge["latest_observed_state_json"] == edge_state
+    assert enqueued_edge["last_processed_state_json"] == {}
+    assert enqueued_edge["last_job_id"] == claim.job["job_id"]
+    assert enqueued_edge["last_edge_events_json"] == ["pulse_status_changed"]
+    assert finished_edge is not None
+    assert finished_edge["last_processed_state_json"] == edge_state
+    assert finished_edge["last_processed_at_ms"] == 3_600_500
 
 
 def test_enqueue_job_preserves_active_retry_state_on_signature_churn(tmp_path) -> None:
@@ -564,6 +765,70 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
     assert row["error"] == "stale_running_timeout"
     assert row["finished_at_ms"] == 11_000
     assert row["latency_ms"] == 10_000
+
+
+def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        repo.enqueue_job(
+            job_id="job-target-failure",
+            candidate_id="candidate-target-failure",
+            candidate_type="token_target",
+            subject_key="asset-1",
+            target_type="Asset",
+            target_id="asset-1",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-failure",
+            timeline_signature="timeline-failure",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        repo.insert_agent_run(
+            run_id="run-target-failure",
+            job_id="job-target-failure",
+            candidate_id="candidate-target-failure",
+            provider="openai",
+            model="gpt-5-mini",
+            workflow_name="signal_lab_pulse",
+            agent_name="pulse_decision_pipeline",
+            artifact_version_hash="artifact-hash",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            input_hash="input-hash",
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-failure",
+            status="failed",
+            outcome="failed",
+            decision_route="meme",
+            decision_stage_count=1,
+            request_json={"candidate_id": "candidate-target-failure"},
+            trace_metadata_json={"failure_reason": "unknown_evidence_id"},
+            error="unknown evidence ids: event-x",
+            started_at_ms=1_100,
+            finished_at_ms=1_300,
+        )
+
+        count = repo.recent_target_failure_count(
+            target_type="Asset",
+            target_id="asset-1",
+            since_ms=1_000,
+            reasons=("unknown_evidence_id", "schema_validation_failed"),
+        )
+        ignored_reason_count = repo.recent_target_failure_count(
+            target_type="Asset",
+            target_id="asset-1",
+            since_ms=1_000,
+            reasons=("provider_unavailable",),
+        )
+    finally:
+        conn.close()
+
+    assert count == 1
+    assert ignored_reason_count == 0
 
 
 def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:

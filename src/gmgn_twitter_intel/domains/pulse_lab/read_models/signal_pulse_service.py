@@ -84,9 +84,6 @@ class SignalPulseService:
             "investigator": None,
             "decision_maker": None,
             "research_only_gate": None,
-            "analyst": None,
-            "critic": None,
-            "judge": None,
         }
         if not run_id:
             return empty

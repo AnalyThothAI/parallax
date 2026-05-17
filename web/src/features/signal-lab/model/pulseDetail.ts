@@ -135,22 +135,9 @@ export type DecisionMakerView = {
   latencyMs: number | null;
   summary: string;
 };
-export type LegacyStageView = {
-  stageName: "analyst" | "critic" | "judge";
-  status: string;
-  latencyMs: number | null;
-  summary: string;
-};
 export type StageRailItem =
   | { kind: "investigator"; status: string; latencyMs: number | null; summary: string }
-  | { kind: "decision_maker"; status: string; latencyMs: number | null; summary: string }
-  | {
-      kind: "legacy";
-      stageName: "analyst" | "critic" | "judge";
-      status: string;
-      latencyMs: number | null;
-      summary: string;
-    };
+  | { kind: "decision_maker"; status: string; latencyMs: number | null; summary: string };
 export type ResearchOnlyGateView = { status: string; abstainReason: string } | null;
 export type GateAgentMismatch = { gateLabel: string; agentLabel: string; note: string } | null;
 export type DecisionViewSide = {
@@ -188,8 +175,6 @@ export type AgentRailView = {
   mismatch: GateAgentMismatch;
   decisionSurface: DecisionSurfaceView | null;
   railItems: StageRailItem[];
-  isLegacy: boolean;
-  hasLegacyStages: boolean;
   researchOnlyGate: ResearchOnlyGateView;
   replay: ReplayMeta;
 };
@@ -872,15 +857,6 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
   const investigator = stages.investigator ?? null;
   const decisionMaker = stages.decision_maker ?? null;
   const hasV2 = Boolean(investigator || decisionMaker);
-  const legacyStages: Array<{
-    stageName: "analyst" | "critic" | "judge";
-    payload: SignalPulseStagePayload;
-  }> = [];
-  if (stages.analyst) legacyStages.push({ stageName: "analyst", payload: stages.analyst });
-  if (stages.critic) legacyStages.push({ stageName: "critic", payload: stages.critic });
-  if (stages.judge) legacyStages.push({ stageName: "judge", payload: stages.judge });
-  const hasLegacyStages = legacyStages.length > 0;
-  const isLegacy = !hasV2 && hasLegacyStages;
 
   const railItems: StageRailItem[] = [];
   if (kind !== "research_only") {
@@ -902,29 +878,10 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
         });
       }
     }
-    if (hasLegacyStages) {
-      for (const { stageName, payload } of legacyStages) {
-        railItems.push({
-          kind: "legacy",
-          stageName,
-          status: payload.status ?? "skipped",
-          latencyMs: payload.latency_ms ?? null,
-          summary: "历史 v1 响应体未解析；仅保留 stage 审计元数据。",
-        });
-      }
-    }
   }
 
-  const totalLatencyMs =
-    (investigator?.latency_ms ?? 0) +
-    (decisionMaker?.latency_ms ?? 0) +
-    legacyStages.reduce((sum, entry) => sum + (entry.payload.latency_ms ?? 0), 0);
-  const model =
-    decisionMaker?.model ??
-    investigator?.model ??
-    legacyStages[legacyStages.length - 1]?.payload.model ??
-    legacyStages[0]?.payload.model ??
-    "-";
+  const totalLatencyMs = (investigator?.latency_ms ?? 0) + (decisionMaker?.latency_ms ?? 0);
+  const model = decisionMaker?.model ?? investigator?.model ?? "-";
 
   return {
     kind,
@@ -933,8 +890,6 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
     mismatch: detectMismatch(item),
     decisionSurface: buildDecisionSurface(item),
     railItems,
-    isLegacy,
-    hasLegacyStages,
     researchOnlyGate:
       kind === "research_only" && stages.research_only_gate
         ? {
@@ -1132,9 +1087,6 @@ function emptyStages(): SignalPulseStages {
     investigator: null,
     decision_maker: null,
     research_only_gate: null,
-    analyst: null,
-    critic: null,
-    judge: null,
   };
 }
 

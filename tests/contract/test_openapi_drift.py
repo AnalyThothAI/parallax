@@ -139,3 +139,27 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
         "invalidation_conditions",
         "residual_risks",
     } <= set(decision["required"])
+
+
+@pytest.mark.contract
+def test_signal_pulse_stages_schema_exposes_only_v2_stage_fields() -> None:
+    """Signal Pulse public stages are v2-only; legacy DB stage rows stay internal."""
+    from gmgn_twitter_intel.app.runtime.app import create_app
+    from gmgn_twitter_intel.platform.config.settings import Settings
+
+    settings = Settings(ws_token="schema-gen-placeholder")
+    app = create_app(settings=settings, start_collector=False)
+    schema = app.openapi()
+    props = schema["components"]["schemas"]["SignalPulseStages"]["properties"]
+
+    assert set(props) == {"investigator", "decision_maker", "research_only_gate"}
+    assert schema["components"]["schemas"]["SignalPulseStages"]["additionalProperties"] is False
+
+
+@pytest.mark.contract
+def test_signal_pulse_stages_openapi_type_has_no_index_signature() -> None:
+    """Generated OpenAPI TS must not allow arbitrary stage keys on SignalPulseStages."""
+    text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
+    section = text.split("/** SignalPulseStages */", 1)[1].split("/** SocialEventDetail */", 1)[0]
+
+    assert "[key: string]" not in section

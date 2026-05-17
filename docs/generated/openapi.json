@@ -2460,28 +2460,8 @@
         "type": "object"
       },
       "SignalPulseStages": {
-        "additionalProperties": true,
+        "additionalProperties": false,
         "properties": {
-          "analyst": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "critic": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "decision_maker": {
             "anyOf": [
               {
@@ -2493,16 +2473,6 @@
             ]
           },
           "investigator": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "judge": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SignalPulseStagePayload"

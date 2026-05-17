@@ -543,6 +543,27 @@ def test_signal_pulse_rule_rejects_token_flow_thresholds(tmp_path, monkeypatch):
         load_settings()
 
 
+def test_signal_pulse_rule_rejects_theme_watch_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "signal_pulse_candidate": {
+                        "statuses": ["trade_candidate", "theme_watch"],
+                    }
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError, match="unsupported Signal Pulse statuses"):
+        load_settings()
+
+
 def test_load_settings_accepts_config_without_ws_token(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(tmp_path, {"handles": ["toly"]})

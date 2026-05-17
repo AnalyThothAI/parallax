@@ -729,6 +729,10 @@
 | `last_processed_at_ms` | `BIGINT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `last_suppressed_reason` | `TEXT` | True | `None` |
+| `last_suppressed_at_ms` | `BIGINT` | True | `None` |
+| `pending_score_band` | `TEXT` | True | `None` |
+| `pending_score_band_count` | `BIGINT` | False | `0` |
 
 ## `pulse_candidate_run_budget`
 
@@ -816,6 +820,17 @@
 | `playbook_version` | `TEXT` | False | `None` |
 | `outcome_status` | `TEXT` | False | `'pending'::text` |
 | `created_at_ms` | `BIGINT` | False | `None` |
+
+## `pulse_target_run_budget`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `hour_bucket_ms` | `BIGINT` | False | `None` |
+| `enqueue_count` | `BIGINT` | False | `0` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `raw_frames`
 

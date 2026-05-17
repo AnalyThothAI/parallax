@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` or `superpowers:subagent-driven-development` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Follow-up supersession (2026-05-17):** Do not use this plan for the current Signal Pulse notification/admission/failure-loop cleanup. Execute `docs/superpowers/plans/active/2026-05-17-pulse-control-plane-kiss-plan-cn.md` instead. The legacy `analyst` / `critic` / `judge` public placeholder decision below is historical context only; historical DB rows may remain queryable for audit, but they should no longer be first-class API/frontend fields.
+
 **Goal:** Close the review gaps found on 2026-05-17 so the Pulse Agent Desk redesign is production-safe, contract-accurate, and release-verifiable.
 
 **Architecture:** Keep the existing two-stage `Investigator -> DecisionMaker` pipeline. Do not rewrite the agent architecture, worker scheduling, notification framework, or frontend page shell. Fix trust boundaries and contracts at the smallest responsible edges: stage audit extraction, final evidence validation, notification query/filtering, OpenAPI schema, detail UI projection, and generated docs regeneration.

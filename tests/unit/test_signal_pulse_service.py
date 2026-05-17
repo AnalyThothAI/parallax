@@ -547,16 +547,13 @@ def test_candidate_stages_absent_when_no_run() -> None:
         "investigator": None,
         "decision_maker": None,
         "research_only_gate": None,
-        "analyst": None,
-        "critic": None,
-        "judge": None,
     }
 
 
-def test_candidate_includes_legacy_agent_stages_for_placeholder_rendering() -> None:
+def test_candidate_stages_only_expose_v2_public_contract() -> None:
     pulse = FakePulseRepository()
-    pulse.candidate_rows["pulse-legacy"] = _candidate_row(
-        "pulse-legacy",
+    pulse.candidate_rows["pulse-1"] = _candidate_row(
+        "pulse-1",
         pulse_status="token_watch",
         verdict="token_watch",
         market_status="fresh",
@@ -571,10 +568,10 @@ def test_candidate_includes_legacy_agent_stages_for_placeholder_rendering() -> N
             "finished_at_ms": 200,
             "latency_ms": 100,
             "attempt_index": 0,
-            "response_json": {"summary_zh": "Analyst legacy summary."},
+            "response_json": {"summary_zh": "legacy"},
         },
         {
-            "stage": "critic",
+            "stage": "investigator",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -582,27 +579,15 @@ def test_candidate_includes_legacy_agent_stages_for_placeholder_rendering() -> N
             "finished_at_ms": 300,
             "latency_ms": 90,
             "attempt_index": 0,
-            "response_json": {"summary_zh": "Critic legacy summary."},
-        },
-        {
-            "stage": "judge",
-            "route": "meme",
-            "status": "ok",
-            "model": "qwen3.6",
-            "started_at_ms": 310,
-            "finished_at_ms": 450,
-            "latency_ms": 140,
-            "attempt_index": 0,
-            "response_json": {"summary_zh": "Judge legacy summary."},
+            "response_json": {"summary_zh": "v2"},
         },
     ]
 
-    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-legacy")
+    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-1")
 
     assert item is not None
-    assert item["stages"]["analyst"]["response"]["summary_zh"] == "Analyst legacy summary."
-    assert item["stages"]["critic"]["latency_ms"] == 90
-    assert item["stages"]["judge"]["status"] == "ok"
+    assert set(item["stages"]) == {"investigator", "decision_maker", "research_only_gate"}
+    assert item["stages"]["investigator"]["response"]["summary_zh"] == "v2"
 
 
 def test_default_listing_hides_abstain_decisions() -> None:

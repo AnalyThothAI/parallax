@@ -52,8 +52,9 @@ const stages: SignalPulseStages = {
   research_only_gate: null,
 };
 
-// Legacy v1 stage fixture（老历史 run），用于占位卡渲染测试
-export const tittyLegacyStages: SignalPulseStages = {
+// Historical DB rows can still contain legacy stage names; this fixture keeps
+// tests honest without making them public SignalPulseStages fields.
+export const tittyLegacyStages = {
   analyst: {
     stage: "analyst",
     route: "meme",
@@ -94,7 +95,7 @@ export const tittyLegacyStages: SignalPulseStages = {
     error: null,
   },
   research_only_gate: null,
-};
+} as unknown as SignalPulseStages;
 
 export const tittyPulseFixture: SignalPulseItem = {
   candidate_id: "pulse-fa2a12fedd9332271732110ed8bd7b1b49065282",

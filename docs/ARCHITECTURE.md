@@ -53,8 +53,12 @@ are wrong too.
 5. **One writer per read model.** Each derived read model has exactly one
    runtime writer: `token_radar_rows` is written only by
    `TokenRadarProjectionWorker`; `token_capture_tier` is written only by
-   `TokenCaptureTierWorker`; `pulse_candidates`, `pulse_agent_runs`,
-   `pulse_agent_run_steps` are written only by `PulseCandidateWorker`. New
+   `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,
+   `pulse_candidate_run_budget`, `pulse_target_run_budget`,
+   `pulse_agent_runs`, `pulse_agent_run_steps`,
+   `pulse_agent_harness_versions`, `pulse_agent_eval_cases`,
+   `pulse_agent_eval_results`, `pulse_candidates`, and
+   `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`.
@@ -214,10 +218,11 @@ research-only or hard-blocked rows to an abstain decision, and otherwise calls
 the configured `PulseDecisionProvider`.
 
 OpenAI-specific stage execution lives only under `integrations/openai_agents/`.
-That adapter runs the Analyst, Critic, and Judge stages with typed outputs and
-returns domain values; it does not own routing, persistence, product thresholds,
-or SQL. `app/runtime/providers_wiring.py` is the composition point that binds
-the concrete adapter to the `pulse_lab` provider protocol.
+Signal Pulse uses the two-stage `Investigator -> DecisionMaker` harness, with
+`research_only_gate` for deterministic hard-blocks. The adapter returns domain
+values; it does not own routing, persistence, product thresholds, or SQL.
+`app/runtime/providers_wiring.py` is the composition point that binds the
+concrete adapter to the `pulse_lab` provider protocol.
 
 The audit ledger is PostgreSQL: `pulse_agent_runs` records the final outcome and
 route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,

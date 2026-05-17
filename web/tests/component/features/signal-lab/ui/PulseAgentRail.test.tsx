@@ -95,7 +95,7 @@ describe("PulseAgentRail", () => {
     expect(screen.queryByText("看空")).not.toBeInTheDocument();
   });
 
-  it("falls back to legacy placeholder cards when only analyst/critic/judge are present", () => {
+  it("does not render placeholder cards when only historical legacy rows are present", () => {
     const view = buildPulseDetailView({
       item: { ...tittyPulseFixture, stages: tittyLegacyStages },
       sourceEvents: tittySourceEventsFixture,
@@ -103,15 +103,15 @@ describe("PulseAgentRail", () => {
     });
     const { container } = render(<PulseAgentRail agent={view.agent} />);
 
-    expect(screen.getByTestId("legacy-stage-notice")).toBeInTheDocument();
-    expect(screen.getByText("Legacy · analyst")).toBeInTheDocument();
-    expect(screen.getByText("Legacy · critic")).toBeInTheDocument();
-    expect(screen.getByText("Legacy · judge")).toBeInTheDocument();
-    // Should not crash; container is rendered
+    expect(screen.queryByTestId("legacy-stage-notice")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy · analyst/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy · critic/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy · judge/)).not.toBeInTheDocument();
+    expect(screen.getByText(/暂无 stage 数据/)).toBeInTheDocument();
     expect(container.querySelector("aside")).toBeInTheDocument();
   });
 
-  it("renders v2 stage cards and legacy placeholders for mixed stage rows", () => {
+  it("renders v2 stage cards and ignores legacy rows in mixed payloads", () => {
     const view = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
@@ -123,12 +123,12 @@ describe("PulseAgentRail", () => {
     render(<PulseAgentRail agent={view.agent} />);
 
     expect(screen.queryByTestId("legacy-stage-notice")).not.toBeInTheDocument();
-    expect(screen.getByTestId("legacy-stage-presence")).toBeInTheDocument();
+    expect(screen.queryByTestId("legacy-stage-presence")).not.toBeInTheDocument();
     expect(screen.getByText(/阶段 1 · 调研/)).toBeInTheDocument();
     expect(screen.getByText(/阶段 2 · 决策/)).toBeInTheDocument();
-    expect(screen.getByText("Legacy · analyst")).toBeInTheDocument();
-    expect(screen.getByText("Legacy · critic")).toBeInTheDocument();
-    expect(screen.getByText("Legacy · judge")).toBeInTheDocument();
+    expect(screen.queryByText(/Legacy · analyst/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy · critic/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Legacy · judge/)).not.toBeInTheDocument();
   });
 
   it("uses mismatch copy that points to decision and evidence links", () => {

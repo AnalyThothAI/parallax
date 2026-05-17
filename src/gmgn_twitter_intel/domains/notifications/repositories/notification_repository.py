@@ -45,7 +45,7 @@ class NotificationRepository:
         notification_id = _id("notification", dedup_key)
         normalized_severity = _normalize_severity(severity)
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
-        normalized_payload = payload or {}
+        normalized_payload = dict(payload or {})
         semantic_duplicate = self._pulse_signature_duplicate(
             rule_id=rule_id,
             payload=normalized_payload,
@@ -71,6 +71,13 @@ class NotificationRepository:
             if commit:
                 self.conn.commit()
             return None
+        if self._pulse_external_cooldown_duplicate(rule_id=rule_id, payload=normalized_payload):
+            normalized_payload = {
+                **normalized_payload,
+                "external_push_eligible": False,
+                "external_push_suppression_reason": "external_cooldown_duplicate",
+            }
+            normalized_channels = ("in_app",)
         cursor = self.conn.execute(
             """
             INSERT INTO notifications(
@@ -144,22 +151,51 @@ class NotificationRepository:
     ) -> dict[str, Any] | None:
         if rule_id != _SIGNAL_PULSE_RULE_ID:
             return None
-        signature = str(payload.get("notification_signature") or "").strip()
-        if not signature:
+        in_app_signature = str(payload.get("in_app_signature") or payload.get("notification_signature") or "").strip()
+        if not in_app_signature:
             return None
+        external_push_signature = str(payload.get("external_push_signature") or "").strip() or "in_app"
         row = self.conn.execute(
             """
             SELECT *
             FROM notifications
             WHERE rule_id = %s
-              AND payload_json->>'notification_signature' = %s
+              AND COALESCE(payload_json->>'in_app_signature', payload_json->>'notification_signature') = %s
+              AND COALESCE(payload_json->>'external_push_signature', 'in_app') = %s
             ORDER BY last_seen_at_ms DESC, created_at_ms DESC
             LIMIT 1
             FOR UPDATE
             """,
-            (rule_id, signature),
+            (rule_id, in_app_signature, external_push_signature),
         ).fetchone()
         return dict(row) if row is not None else None
+
+    def _pulse_external_cooldown_duplicate(
+        self,
+        *,
+        rule_id: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        if rule_id != _SIGNAL_PULSE_RULE_ID:
+            return False
+        if payload.get("external_push_eligible") is not True:
+            return False
+        external_push_signature = str(payload.get("external_push_signature") or "").strip()
+        if not external_push_signature:
+            return False
+        row = self.conn.execute(
+            """
+            SELECT notification_id
+            FROM notifications
+            WHERE rule_id = %s
+              AND payload_json->>'external_push_signature' = %s
+            ORDER BY last_seen_at_ms DESC, created_at_ms DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (rule_id, external_push_signature),
+        ).fetchone()
+        return row is not None
 
     def _aggregate_notification_row(
         self,

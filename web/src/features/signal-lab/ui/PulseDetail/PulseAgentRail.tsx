@@ -16,16 +16,6 @@ export function PulseAgentRail({ agent }: Props) {
         <p>
           {agent.model} · 总耗时 {formatSeconds(agent.totalLatencyMs)}
         </p>
-        {agent.isLegacy ? (
-          <p className={styles.legacyNotice} data-testid="legacy-stage-notice">
-            此运行为旧版三阶段（analyst/critic/judge）数据，仅展示占位卡
-          </p>
-        ) : null}
-        {!agent.isLegacy && agent.hasLegacyStages ? (
-          <p className={styles.legacyNotice} data-testid="legacy-stage-presence">
-            包含历史 v1 stage 行，已追加占位卡
-          </p>
-        ) : null}
       </header>
       {agent.mismatch ? (
         <section className={styles.mismatch}>
@@ -176,20 +166,10 @@ function RailEntry({ item }: { item: StageRailItem }) {
       </StageCard>
     );
   }
-  return (
-    <StageCard
-      title={`Legacy · ${item.stageName}`}
-      tone="neutral"
-      status={item.status}
-      subtitle="历史 v1 数据"
-    >
-      <LegacyBody summary={item.summary} latencyMs={item.latencyMs} />
-    </StageCard>
-  );
+  return null;
 }
 
 function railKey(item: StageRailItem, index: number): string {
-  if (item.kind === "legacy") return `legacy-${item.stageName}-${index}`;
   return `${item.kind}-${index}`;
 }
 
@@ -198,17 +178,6 @@ function SimpleBody({ summary, latencyMs }: { summary: string; latencyMs: number
     <>
       <div className={styles.kpis}>
         <Metric label="耗时" value={formatLatency(latencyMs)} tone="info" />
-      </div>
-      <p>{summary || "—"}</p>
-    </>
-  );
-}
-
-function LegacyBody({ summary, latencyMs }: { summary: string; latencyMs: number | null }) {
-  return (
-    <>
-      <div className={styles.kpis}>
-        <Metric label="耗时" value={formatLatency(latencyMs)} tone="neutral" />
       </div>
       <p>{summary || "—"}</p>
     </>

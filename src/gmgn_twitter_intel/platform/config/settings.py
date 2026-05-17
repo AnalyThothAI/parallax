@@ -274,6 +274,13 @@ class NotificationsConfig(BaseModel):
                 if present:
                     joined = ", ".join(present)
                     raise ValueError(f"notifications.rules.{key} does not accept token-flow thresholds: {joined}")
+                allowed_statuses = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+                raw_statuses = payload.get("statuses")
+                if raw_statuses is not None:
+                    parsed_statuses = set(_split_values(raw_statuses))
+                    unsupported = sorted(parsed_statuses - allowed_statuses)
+                    if unsupported:
+                        raise ValueError(f"unsupported Signal Pulse statuses: {unsupported}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
 

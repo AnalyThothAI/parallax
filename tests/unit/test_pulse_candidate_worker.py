@@ -14,6 +14,7 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     _asset_candidate_id,
     _asset_trigger_metrics,
     _investigation_tool_calls_count,
+    _normalized_failure_reason,
     _run_outcome,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
@@ -193,6 +194,10 @@ def test_worker_gates_before_agent_and_agent_cannot_upgrade_gate_status() -> Non
     assert repos.pulse.candidate_upserts[0]["pulse_status"] == "token_watch"
     assert repos.pulse.candidate_upserts[0]["candidate_score"] == 50.0
     assert repos.pulse.candidate_upserts[0]["score_band"] == "speculative"
+    candidate_id = repos.pulse.candidate_upserts[0]["candidate_id"]
+    assert repos.pulse.edge_states[candidate_id]["last_processed_state_json"] == repos.pulse.edge_states[
+        candidate_id
+    ]["latest_observed_state_json"]
 
 
 def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
@@ -340,6 +345,126 @@ def test_edge_budget_caps_candidate_enqueues_per_hour() -> None:
     assert repos.pulse.jobs == []
 
 
+def test_score_band_only_edge_waits_for_confirmation_without_job() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    previous = {
+        "candidate_id": candidate_id,
+        "candidate_type": "token_target",
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "pulse_version": "signal-pulse-v3-factor-snapshot",
+        "gate_version": "pulse-factor-gate-v2-edge-state",
+        "pulse_status": "trade_candidate",
+        "verdict": "trade_candidate",
+        "score_band": "watch",
+        "candidate_score_bucket": "80-89",
+        "rank_score_bucket": "80-89",
+        "recommended_decision": "high_alert",
+        "watched_confirmation": True,
+        "independent_author_count_bucket": "6-10",
+        "hard_risks": [],
+        "trigger_signature": "ignored-by-edge",
+        "timeline_signature": "ignored-by-edge",
+    }
+    repos.pulse.edge_states[candidate_id] = {
+        "candidate_id": candidate_id,
+        "last_processed_state_json": previous,
+    }
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_enqueued"] == 0
+    assert repos.pulse.jobs == []
+    edge = repos.pulse.edge_states[candidate_id]
+    assert edge["last_suppressed_reason"] == "score_band_pending"
+    assert edge["pending_score_band"] == "high_conviction"
+    assert edge["pending_score_band_count"] == 1
+
+
+def test_recent_schema_failure_circuit_suppresses_non_escalation_edge() -> None:
+    repos = FakeRepos()
+    repos.pulse.recent_failure_count = 3
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse.edge_states[candidate_id] = {
+        "candidate_id": candidate_id,
+        "last_processed_state_json": _processed_edge_state(
+            candidate_id=candidate_id,
+            pulse_status="trade_candidate",
+            score_band="watch",
+        ),
+        "pending_score_band": "high_conviction",
+        "pending_score_band_count": 1,
+    }
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_enqueued"] == 0
+    assert repos.pulse.jobs == []
+    edge = repos.pulse.edge_states[candidate_id]
+    assert edge["last_suppressed_reason"] == "failure_circuit_open"
+
+
+def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> None:
+    repos = FakeRepos()
+    repos.pulse.recent_failure_count = 3
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse.edge_states[candidate_id] = {
+        "candidate_id": candidate_id,
+        "last_processed_state_json": _processed_edge_state(
+            candidate_id=candidate_id,
+            pulse_status="token_watch",
+            score_band="high_conviction",
+        ),
+    }
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_enqueued"] == 1
+    assert repos.pulse.jobs
+    assert repos.pulse.admission_claims[-1]["admission_reason"] == "escalation"
+
+
+def test_normalized_failure_reason_maps_unknown_evidence() -> None:
+    assert _normalized_failure_reason(ValueError("unknown evidence ids: event-x")) == "unknown_evidence_id"
+
+
+def test_normalized_failure_reason_maps_schema_validation() -> None:
+    assert _normalized_failure_reason(ValueError("model_validate failed")) == "schema_validation_failed"
+
+
 def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
@@ -363,7 +488,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
                 status="failed",
                 error="ModelBehaviorError: invalid JSON",
             )
-            raise PulseStageFailure("analyst stage failed", audits=(failed_audit,))
+            raise PulseStageFailure("model_validate failed", audits=(failed_audit,))
 
     worker = _worker(repos, client=FailingClient())
 
@@ -381,8 +506,17 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
     assert step["started_at_ms"] == NOW_MS - 42
     assert step["finished_at_ms"] == NOW_MS
     assert step["usage_json"] == {"input_tokens": 11}
-    assert any(row["status"] == "failed" for row in repos.pulse.finished_runs)
+    failed_run = next(row for row in repos.pulse.finished_runs if row["status"] == "failed")
+    assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "schema_validation_failed"}
     assert len(repos.pulse.failures) == 1
+    assert repos.pulse.failures[0]["failure_reason"] == "schema_validation_failed"
+    assert repos.pulse.eval_cases[0]["expected_json"] == {
+        "status": "fail",
+        "failure_reason": "schema_validation_failed",
+    }
+    assert repos.pulse.eval_results[0]["status"] == "pass"
+    candidate_id = repos.pulse.jobs[0]["candidate_id"]
+    assert repos.pulse.edge_states[candidate_id]["last_processed_state_json"] == {}
 
 
 def test_hard_blocked_research_only_gate_records_real_step_timing(monkeypatch) -> None:
@@ -432,6 +566,70 @@ def test_hard_blocked_research_only_gate_records_real_step_timing(monkeypatch) -
     assert step["started_at_ms"] == NOW_MS + 10
     assert step["finished_at_ms"] == NOW_MS + 25
     assert step["started_at_ms"] != step["finished_at_ms"]
+
+
+def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    monkeypatch.setattr(module, "route_decision_context", lambda context: "research_only")
+    monkeypatch.setattr(
+        module,
+        "compute_completeness",
+        lambda factor_snapshot, route: SimpleNamespace(
+            route=route,
+            score=0.2,
+            hard_blocked=True,
+            missing_fields=("liquidity_usd",),
+            stale_fields=(),
+            blockers=("missing_liquidity",),
+        ),
+    )
+    now_values = iter([NOW_MS + 10, NOW_MS + 25, NOW_MS + 40])
+    monkeypatch.setattr(module, "_now_ms", lambda: next(now_values))
+    worker = _worker(repos)
+
+    scan = worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert scan["asset_enqueued"] == 1
+    assert result["processed"] == 1
+    candidate_id = repos.pulse.jobs[0]["candidate_id"]
+    edge = repos.pulse.edge_states[candidate_id]
+    assert edge["last_processed_state_json"] == edge["latest_observed_state_json"]
+    assert edge["last_processed_at_ms"] == NOW_MS + 40
+
+
+def test_worker_harness_manifest_uses_decision_client_runtime_contract() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+
+    class ContractClient(FakeClient):
+        stage_names = ("investigator", "decision_maker")
+        tool_names_by_stage = {
+            "investigator": ("custom_tool",),
+            "decision_maker": (),
+        }
+        route_tool_budgets = {"cex": 1, "meme": 2, "research_only": 1}
+        max_turns_per_stage = {"investigator": 4, "decision_maker": 2}
+        safety_net_enabled = False
+        validators_enabled = ("runtime_evidence_id_subset",)
+        failure_taxonomy_version = "pulse-failure-taxonomy-test"
+
+    worker = _worker(repos, client=ContractClient())
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    manifest = repos.pulse.harness_versions[0]["manifest_json"]
+    assert manifest["runtime"]["tool_names_by_stage"] == {"investigator": ["custom_tool"], "decision_maker": []}
+    assert manifest["runtime"]["route_tool_budgets"] == {"cex": 1, "meme": 2, "research_only": 1}
+    assert manifest["runtime"]["max_turns_per_stage"] == {"investigator": 4, "decision_maker": 2}
+    assert manifest["runtime"]["safety_net_enabled"] is False
+    assert manifest["contracts"]["validators_enabled"] == ["runtime_evidence_id_subset"]
+    assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
 
 
 def test_pulse_worker_run_once_returns_worker_result() -> None:
@@ -528,6 +726,36 @@ def _pulse_context(*, factor_snapshot: dict[str, Any]) -> Any:
     )
 
 
+def _processed_edge_state(
+    *,
+    candidate_id: str,
+    pulse_status: str,
+    score_band: str,
+    recommended_decision: str = "high_alert",
+) -> dict[str, Any]:
+    return {
+        "candidate_id": candidate_id,
+        "candidate_type": "token_target",
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "pulse_version": "signal-pulse-v3-factor-snapshot",
+        "gate_version": "pulse-factor-gate-v2-edge-state",
+        "pulse_status": pulse_status,
+        "verdict": pulse_status,
+        "score_band": score_band,
+        "candidate_score_bucket": "80-89",
+        "rank_score_bucket": "80-89",
+        "recommended_decision": recommended_decision,
+        "watched_confirmation": True,
+        "independent_author_count_bucket": "6-10",
+        "hard_risks": [],
+        "trigger_signature": "ignored-by-edge",
+        "timeline_signature": "ignored-by-edge",
+    }
+
+
 @contextmanager
 def _session(repos: FakeRepos):
     yield repos
@@ -607,6 +835,8 @@ class FakePulse:
         self.candidates: dict[str, dict[str, Any]] = {}
         self.edge_states: dict[str, dict[str, Any]] = {}
         self.budget_claims: dict[tuple[str, int], int] = {}
+        self.target_budget_claims: dict[tuple[str, str, int], int] = {}
+        self.recent_failure_count = 0
         self.agent_runs: list[dict[str, Any]] = []
         self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
@@ -617,6 +847,7 @@ class FakePulse:
         self.playbook_upserts: list[dict[str, Any]] = []
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
+        self.admission_claims: list[dict[str, Any]] = []
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidates.get(candidate_id)
@@ -626,6 +857,9 @@ class FakePulse:
             if job["candidate_id"] == candidate_id:
                 return job
         return None
+
+    def edge_state_by_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        return self.edge_states.get(candidate_id)
 
     def record_edge_observation(self, **kwargs: Any) -> dict[str, Any]:
         candidate_id = kwargs["candidate_id"]
@@ -667,12 +901,65 @@ class FakePulse:
         self.edge_states[candidate_id] = row
         return row
 
+    def claim_pulse_admission(self, **kwargs: Any) -> SimpleNamespace:
+        self.admission_claims.append(kwargs)
+        candidate_id = kwargs["candidate_id"]
+        now_ms = kwargs["now_ms"]
+        edge_state = kwargs["edge_state"]
+        edge_events = list(kwargs["edge_events"])
+        row = self.record_edge_observation(
+            candidate_id=candidate_id,
+            current_state_json=edge_state,
+            edge_signature="sha256:test",
+            observed_at_ms=now_ms,
+        )
+        if kwargs.get("admission_action") != "enqueue_agent":
+            score_band = edge_state.get("score_band")
+            pending_count = int(row.get("pending_score_band_count") or 0)
+            if kwargs.get("admission_reason") == "score_band_pending":
+                pending_count = pending_count + 1 if row.get("pending_score_band") == score_band else 1
+                row["pending_score_band"] = score_band
+                row["pending_score_band_count"] = pending_count
+            row["last_edge_events_json"] = edge_events
+            row["last_suppressed_reason"] = kwargs.get("admission_reason")
+            row["last_suppressed_at_ms"] = now_ms
+            self.edge_states[candidate_id] = row
+            return SimpleNamespace(accepted=False, reason=kwargs.get("admission_reason"), job=None)
+        hour_bucket_ms = kwargs["hour_bucket_ms"]
+        target_key = (kwargs["target_type"], kwargs["target_id"], hour_bucket_ms)
+        candidate_key = (candidate_id, hour_bucket_ms)
+        if self.target_budget_claims.get(target_key, 0) >= kwargs["target_limit"]:
+            return SimpleNamespace(accepted=False, reason="target_budget_exhausted", job=None)
+        if self.budget_claims.get(candidate_key, 0) >= kwargs["candidate_limit"]:
+            return SimpleNamespace(accepted=False, reason="candidate_budget_exhausted", job=None)
+        self.target_budget_claims[target_key] = self.target_budget_claims.get(target_key, 0) + 1
+        self.budget_claims[candidate_key] = self.budget_claims.get(candidate_key, 0) + 1
+        job = self.enqueue_job(**kwargs["job_payload"])
+        row["last_edge_events_json"] = edge_events
+        row["last_job_id"] = job["job_id"]
+        row["pending_score_band"] = None
+        row["pending_score_band_count"] = 0
+        row["last_suppressed_reason"] = None
+        row["last_suppressed_at_ms"] = None
+        self.edge_states[candidate_id] = row
+        return SimpleNamespace(accepted=True, reason=kwargs.get("admission_reason"), job=job)
+
     def mark_edge_run_finished(self, **kwargs: Any) -> dict[str, Any]:
         candidate_id = kwargs["candidate_id"]
         row = self.edge_states.get(candidate_id, {"candidate_id": candidate_id})
-        row = {**row, "last_agent_run_id": kwargs["agent_run_id"], "updated_at_ms": kwargs["finished_at_ms"]}
+        row = {
+            **row,
+            "last_agent_run_id": kwargs["agent_run_id"],
+            "last_processed_state_json": kwargs["processed_state_json"],
+            "last_edge_events_json": kwargs["edge_events_json"],
+            "last_processed_at_ms": kwargs["finished_at_ms"],
+            "updated_at_ms": kwargs["finished_at_ms"],
+        }
         self.edge_states[candidate_id] = row
         return row
+
+    def recent_target_failure_count(self, **_: Any) -> int:
+        return self.recent_failure_count
 
     def enqueue_job(self, **kwargs: Any) -> dict[str, Any]:
         job = {
@@ -735,8 +1022,8 @@ class FakePulse:
         self.successes.append(job_id)
         return {"job_id": job_id, "status": "done"}
 
-    def mark_job_failed(self, job: dict[str, Any], error: str, **_: Any) -> dict[str, Any]:
-        self.failures.append({"job": job, "error": error})
+    def mark_job_failed(self, job: dict[str, Any], error: str, **kwargs: Any) -> dict[str, Any]:
+        self.failures.append({"job": job, "error": error, "failure_reason": kwargs.get("failure_reason")})
         return {"job_id": job["job_id"], "status": "failed"}
 
 

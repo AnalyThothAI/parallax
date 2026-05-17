@@ -15,9 +15,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
+    PULSE_DETERMINISTIC_GRADER_VERSION,
+    build_pulse_harness_manifest,
+    pulse_harness_hash,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness_eval import (
+    build_pulse_failed_eval_case,
     grade_pulse_deterministic_eval_case,
 )
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import StageRunAudit
 
 # ---------------------------------------------------------------------------
 # fixtures (builders return plain dicts so tests can mutate freely)
@@ -134,6 +141,22 @@ def _v2_stage_audits(
     ]
 
 
+def _stage_audit(stage: str) -> StageRunAudit:
+    return StageRunAudit(
+        stage=stage,  # type: ignore[arg-type]
+        route="meme",
+        attempt_index=0,
+        input_json={"context": {}, "completeness": {}},
+        prompt_text="prompt",
+        response_json={},
+        trace_metadata_json={},
+        usage_json={},
+        latency_ms=1,
+        status="failed",
+        error="model_validate failed",
+    )
+
+
 def _make_case(
     *,
     final: dict[str, Any] | None = None,
@@ -158,6 +181,35 @@ def _make_case(
     }
 
 
+def _harness_manifest(**overrides: Any) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "provider": "openai",
+        "model": "gpt-5-mini",
+        "artifact_version_hash": "artifact:gpt-5-mini",
+        "timeout_seconds": 20.0,
+        "stage_names": ("investigator", "decision_maker"),
+        "max_turns_per_stage": {"investigator": 5, "decision_maker": 3},
+        "tool_names_by_stage": {
+            "investigator": (
+                "get_target_recent_tweets",
+                "get_target_price_action",
+                "get_official_token_profile",
+            ),
+            "decision_maker": ("get_target_recent_tweets",),
+        },
+        "route_tool_budgets": {"cex": 3, "meme": 5, "research_only": 3},
+        "safety_net_enabled": True,
+        "validators_enabled": (
+            "pydantic_final_decision_schema",
+            "runtime_evidence_id_subset",
+            "deterministic_completeness_gate",
+        ),
+        "failure_taxonomy_version": "pulse-failure-taxonomy-v1",
+    }
+    values.update(overrides)
+    return build_pulse_harness_manifest(**values)
+
+
 # ---------------------------------------------------------------------------
 # Complete v2 happy path — all 5 rules pass
 # ---------------------------------------------------------------------------
@@ -170,6 +222,97 @@ def test_complete_v2_case_passes_all_rules() -> None:
     assert result["score"] == 1.0
     assert result["details_json"]["violations"] == []
     assert result["grader_version"] == "pulse-deterministic-harness-v2"
+
+
+def test_failed_run_eval_case_passes_when_failure_reason_is_recorded() -> None:
+    case = build_pulse_failed_eval_case(
+        run_id="run-failed",
+        harness_hash="sha256:test",
+        context={"candidate_id": "candidate-1"},
+        route="meme",
+        completeness={"hard_blocked": False},
+        stage_audits=(_stage_audit("investigator"),),
+        failure_reason="schema_validation_failed",
+    )
+
+    result = grade_pulse_deterministic_eval_case(case)
+
+    assert case["recommendation"] == "abstain"
+    assert case["expected_json"] == {"status": "fail", "failure_reason": "schema_validation_failed"}
+    assert result["status"] == "pass"
+    assert result["details_json"]["violations"] == []
+
+
+def test_failed_run_eval_case_fails_when_failure_reason_is_missing() -> None:
+    case = build_pulse_failed_eval_case(
+        run_id="run-failed-missing",
+        harness_hash="sha256:test",
+        context={"candidate_id": "candidate-1"},
+        route="meme",
+        completeness={"hard_blocked": False},
+        stage_audits=(_stage_audit("investigator"),),
+        failure_reason="unknown_evidence_id",
+    )
+    case["input_json"].pop("failure_reason")
+
+    result = grade_pulse_deterministic_eval_case(case)
+
+    assert result["status"] == "fail"
+    assert "failed_run_recorded" in result["details_json"]["violations"]
+
+
+def test_harness_manifest_records_operational_contract() -> None:
+    manifest = build_pulse_harness_manifest(
+        provider="openai",
+        model="gpt-5-mini",
+        artifact_version_hash="artifact:gpt-5-mini",
+        timeout_seconds=20.0,
+        stage_names=("investigator", "decision_maker"),
+        max_turns_per_stage={"investigator": 7, "decision_maker": 2},
+        tool_names_by_stage={
+            "investigator": ("get_target_recent_tweets", "get_target_price_action"),
+            "decision_maker": ("get_target_recent_tweets",),
+        },
+        route_tool_budgets={"cex": 3, "meme": 5, "research_only": 2},
+        safety_net_enabled=True,
+        validators_enabled=("pydantic_final_decision_schema", "runtime_evidence_id_subset"),
+        failure_taxonomy_version="pulse-failure-taxonomy-v1",
+    )
+
+    assert manifest["runtime"]["stages"] == ["investigator", "decision_maker"]
+    assert manifest["runtime"]["max_turns_per_stage"] == {"investigator": 7, "decision_maker": 2}
+    assert manifest["runtime"]["tool_names_by_stage"] == {
+        "investigator": ["get_target_recent_tweets", "get_target_price_action"],
+        "decision_maker": ["get_target_recent_tweets"],
+    }
+    assert "tools_enabled" not in manifest["runtime"]
+    assert manifest["runtime"]["route_tool_budgets"] == {"cex": 3, "meme": 5, "research_only": 2}
+    assert manifest["runtime"]["safety_net_enabled"] is True
+    assert manifest["contracts"]["validators_enabled"] == [
+        "pydantic_final_decision_schema",
+        "runtime_evidence_id_subset",
+    ]
+    assert manifest["eval_metadata"]["deterministic_grader_version"] == PULSE_DETERMINISTIC_GRADER_VERSION
+    assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-v1"
+    assert "schema_validation_failed" in manifest["failure_taxonomy"]["codes"]
+
+
+def test_harness_hash_changes_with_operational_contract_fields() -> None:
+    base = _harness_manifest()
+    changed_tools = _harness_manifest(tool_names_by_stage={"investigator": ("get_target_price_action",)})
+    changed_budgets = _harness_manifest(route_tool_budgets={"cex": 1, "meme": 1, "research_only": 1})
+    changed_safety_net = _harness_manifest(safety_net_enabled=False)
+    changed_taxonomy = _harness_manifest(failure_taxonomy_version="pulse-failure-taxonomy-v2")
+
+    hashes = {
+        pulse_harness_hash(base),
+        pulse_harness_hash(changed_tools),
+        pulse_harness_hash(changed_budgets),
+        pulse_harness_hash(changed_safety_net),
+        pulse_harness_hash(changed_taxonomy),
+    }
+
+    assert len(hashes) == 5
 
 
 # ---------------------------------------------------------------------------
