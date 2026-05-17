@@ -39,6 +39,7 @@ diagnostic command results.
 | Testing & completion gates | `docs/TESTING.md` |
 | Secrets, config, authn changes | `docs/SECURITY.md` |
 | Operational invariants | `docs/RELIABILITY.md` |
+| Worker flow, lifecycle, state-machine debugging | `docs/WORKER_FLOW.md` |
 | Cross-domain worker inventory | `docs/WORKERS.md` |
 | Module architecture maps | `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` (currently `token_intel`, `asset_market`, `pulse_lab`) |
 | Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` |

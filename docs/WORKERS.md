@@ -1,18 +1,77 @@
 # Workers
 
-> **Scope.** Cross-domain runtime worker inventory: each long-running
-> worker's fact writes, wake-in and wake-out channels, and catch-up
-> cadence. Domain stage maps live in each domain's `ARCHITECTURE.md`;
-> operational invariants live in `RELIABILITY.md`; the architecture
-> invariants this inventory implements live in `ARCHITECTURE.md`.
+> **Scope.** Canonical cross-domain worker inventory and runtime
+> ownership map. For a beginner-friendly flow, debugging guide, and
+> layered state-machine explanation, read `WORKER_FLOW.md` first. Domain
+> stage maps live in each domain's `ARCHITECTURE.md`; operational
+> invariants live in `RELIABILITY.md`; package boundaries live in
+> `ARCHITECTURE.md`.
+
+This service is PostgreSQL-first. Workers do not pass business truth to
+each other through in-memory messages. They persist facts or rebuild read
+models, optionally emit a wake hint, and downstream workers re-read the
+database.
+
+## Runtime Contract
 
 Every long-running worker listed here is a `WorkerBase` subclass.
-`app/runtime/bootstrap.py` builds the canonical runtime worker registry
-from `worker_registry.py`, `workers.yaml`, providers, and `DBPoolBundle`.
+`runtime.bootstrap()` builds the process runtime:
+
+```text
+settings + workers.yaml
+  -> DBPoolBundle
+  -> provider wiring
+  -> domain worker factories
+  -> canonical worker map
+  -> WorkerScheduler
+```
+
 `WorkerScheduler` is the only runtime owner that starts, stops, closes,
-and reports worker tasks. Worker correctness must not depend on `NOTIFY`
-delivery — every listener has a bounded `interval_seconds` catch-up from
-`workers.yaml`.
+and reports worker tasks. `WorkerBase` owns the common loop:
+
+```text
+run()
+  -> optional advisory lock
+  -> run_once()
+  -> WorkerResult/status
+  -> wait interval_seconds or wake hint
+  -> backoff on failure
+```
+
+Correctness must not depend on `NOTIFY` delivery. Every listener has a
+bounded `interval_seconds` catch-up from `workers.yaml`.
+
+## Truth Categories
+
+Review workers by separating four categories:
+
+| Category | Meaning | Examples | Rule |
+|----------|---------|----------|------|
+| Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
+| Read models | Rebuildable projections for reads and product workflows | `token_radar_rows`, `token_profile_current`, `pulse_candidates`, watchlist summaries | Exactly one runtime writer. |
+| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
+| Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
+
+The most common architecture bug is mixing these categories. For
+example, a job queue row can explain why work has not finished, but it
+cannot become the public market context for a token.
+
+## Canonical Flow
+
+The main chain is:
+
+```text
+collector
+  -> IngestService transaction
+  -> token_capture_tier
+  -> market_tick_stream / market_tick_poll / event_anchor_backfill
+  -> resolution_refresh and profile refresh lanes
+  -> token_radar_projection
+  -> pulse_candidate / notifications / API / WebSocket / CLI
+```
+
+`IngestService` is not a long-running worker, but it is listed in this
+document because every downstream worker depends on the facts it writes.
 
 ## Worker Inventory
 
@@ -43,39 +102,42 @@ notification_rule, notification_delivery
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
 
-`IngestService` is documented here because every other worker depends
-on the facts its transaction writes (`events`, `event_entities`,
-`token_evidence`, `token_intents`, `token_intent_lookup_keys`,
-`token_intent_resolutions`, `registry_assets`,
-`asset_identity_evidence`, `asset_identity_current`, `market_ticks`,
-and `enriched_events`). Inline event capture writes Tier 3
-`market_ticks(source_tier='tier3_inline')` and enriched event rows in
-the ingest transaction. It is a
-transactional service called by `collector`, not a long-running worker
-and not a `WorkerBase` subclass.
+## IngestService Boundary
 
-## Tier and Lane Boundaries
+`IngestService` writes the first durable facts in a single transaction:
+`events`, `event_entities`, `token_evidence`, `token_intents`,
+`token_intent_lookup_keys`, `token_intent_resolutions`,
+`registry_assets`, `asset_identity_evidence`,
+`asset_identity_current`, `market_ticks`, and `enriched_events`.
 
-The market-data lanes carry strict ownership rules. The full upstream
-provider map lives in `ARCHITECTURE.md` (Market Data Provider Matrix);
-the runtime invariants are:
+Inline event capture writes Tier 3 `market_ticks(source_tier='tier3_inline')`
+and matching `enriched_events`. When an event anchor cannot be attached
+from a fresh existing tick, ingest writes an `enriched_events` pending
+fact and enqueues `event_anchor_backfill_jobs` control-plane work.
 
-- `market_tick_stream` accepts only Tier 1 `chain_token` rows from
-  `token_capture_tier`. CEX symbols never enter Tier 1, and no other
-  worker subscribes to the OKX DEX WebSocket.
-- `market_tick_poll` owns CEX quotes (`OKX CEX REST`, no fallback) and
-  Tier 2 DEX quotes (`GMGN OpenAPI REST` primary, `OKX DEX REST`
-  fallback). It is the only worker that calls the CEX quote provider in
-  the steady-state poll path.
-- `event_anchor_backfill` shares the Tier 2 provider stack but consumes
-  `event_anchor_backfill_jobs`, not `enriched_events` as a retry queue. It
-  first attaches an already persisted tick near event time, calls providers
-  only inside the configured anchor lag budget, and terminalizes expired or
-  unavailable anchors. It is the only worker permitted to update
-  `enriched_events` after the ingest transaction.
-- `live_price_gateway` reads the latest `market_ticks` fan-out per
-  target. It does not own an upstream WebSocket or REST client and never
-  writes `market_ticks`.
+`IngestService` is transactional. It is called by `collector`; it is not
+a `WorkerBase` subclass and does not get a `workers.yaml` key.
+
+## Market Capture Lanes
+
+Market capture has several lanes by design. This does not violate the
+single-writer rule because `market_ticks` is an append-only fact table,
+not a read model.
+
+- `token_capture_tier` writes the rebuildable control projection that
+  assigns active targets to Tier 1 stream, Tier 2 poll, or Tier 3
+  inline-only capture.
+- `market_tick_stream` owns Tier 1 OKX DEX WebSocket capture. It accepts
+  only `chain_token` targets from `token_capture_tier(tier=1)`.
+- `market_tick_poll` owns Tier 2 REST capture for DEX and CEX targets.
+  It is the steady-state REST quote worker.
+- `event_anchor_backfill` owns short-lived event-anchor catch-up. It
+  consumes `event_anchor_backfill_jobs`, attaches a persisted nearby tick
+  first, calls providers only inside the configured lag budget, and then
+  terminalizes work.
+- `live_price_gateway` reads latest persisted `market_ticks` and fans out
+  WebSocket updates. It does not call upstream price providers and never
+  writes market facts.
 
 ## Wake Channels
 
@@ -85,16 +147,20 @@ the runtime invariants are:
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` | `{lookup_keys: [...]}` |
 | `token_radar_updated` | `TokenRadarProjectionWorker` | `PulseCandidateWorker` | `{window, scope}` |
 
-Wake payloads are hints; consumers re-read DB on wake and catch up on
-their configured `interval_seconds` cadence. `market_tick_written`
-only wakes the projection; persisted `market_ticks` remain the source
-of correctness. `DBPoolBundle` owns wake emission and listener
-construction through its wake pool.
-Adding a new channel means adding the emitter call, listing the channel
-in the listening worker's `workers.yaml` `wakes_on`, and preserving the
-worker's bounded catch-up loop.
+Wake payloads are hints only. Consumers re-read DB on wake and catch up
+on their configured cadence. `DBPoolBundle` owns wake emission and
+listener construction through `wake_emitter()` and `wake_listener()`.
+Domain workers never call `pg_notify` directly.
 
-## Lifecycle and Supervision
+Adding a wake channel requires all of these in one change:
+
+- emitter call through `WakeBus`;
+- listener `wakes_on` entry in `workers.yaml`;
+- a bounded `interval_seconds` catch-up path;
+- a row in this table;
+- tests for missed-wake recovery when practical.
+
+## Lifecycle And Supervision
 
 - `WorkerBase` owns the common run loop, timeout/backoff handling,
   `run_once()` execution, advisory lock acquisition, status payloads,
@@ -110,16 +176,28 @@ worker's bounded catch-up loop.
   only under the `workers` map. `collector.details` carries collector
   counters, including `snapshot_gate_outcomes`; `snapshot_gate` is a
   global health field copied from those counters.
-- Domain workers never call `pg_notify` directly and never own raw pool
-  lifecycle. They use `DBPoolBundle.worker_session()`,
-  `wake_emitter()`, and `wake_listener()` through injected runtime
-  dependencies.
 - Runtime knobs live in `~/.gmgn-twitter-intel/workers.yaml`. The
   application/provider config in `config.yaml` must not contain worker
   interval, batch, concurrency, lease, max-attempt, timeout, advisory
   lock, or wake-channel settings.
 
-## Adding a Worker
+## Layered State Machines
+
+Worker bugs often look confusing because several state machines are
+visible at once:
+
+- provider connection state describes upstream IO health;
+- collector snapshot-gate counters describe frame completeness;
+- fact lifecycle describes durable observations;
+- control-plane job status describes scheduling and retries;
+- projection status describes read-model freshness;
+- business decision state describes product output and audit results.
+
+These layers are allowed to coexist. They conflict only if one layer
+tries to answer another layer's question. See `WORKER_FLOW.md` for the
+full state-machine map and debugging playbook.
+
+## Adding A Worker
 
 When introducing a new worker, do all of the following in the same
 change:
@@ -131,16 +209,16 @@ change:
 2. Add the canonical key and class path to
    `app/runtime/worker_registry.py`, add a matching
    `WorkersSettings` field and default `workers.yaml` block, and
-   construct the worker in `app/runtime/bootstrap.py`.
+   construct the worker in the owning domain factory under
+   `app/runtime/worker_factories/`.
 3. Add a row to this file's worker inventory.
-4. Add or update the wake channels table here if the worker introduces
-   a channel, and add its `wakes_on` list to `workers.yaml` when it
-   listens for wake hints.
-5. Document the worker in the owning domain's `ARCHITECTURE.md` Stage
-   Map.
+4. Add or update the wake channels table here if the worker introduces a
+   channel, and add its `wakes_on` list to `workers.yaml` when it listens
+   for wake hints.
+5. Document the worker in the owning domain's `ARCHITECTURE.md` stage
+   map.
 6. If the worker writes a new derived table, declare it as a read model
-   and name its single writer (`Architecture Invariants` #4 in
-   `ARCHITECTURE.md`).
+   and name its single writer in `ARCHITECTURE.md`.
 7. Extend architecture guards so `WorkerBase`, `worker_registry.py`,
    `WorkersSettings`, the default `workers.yaml`, and this file's
    `worker-inventory-keys` marker stay in lockstep.
@@ -154,3 +232,5 @@ Update this file in the same change as any of:
 - A change to a catch-up cadence default.
 - A worker moving between domains.
 - A new `NOTIFY` channel name or hint payload shape.
+- A read model gaining a new runtime writer or losing its declared writer.
+- A control-plane table becoming part of a worker's scheduling contract.
