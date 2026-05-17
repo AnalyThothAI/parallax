@@ -2,7 +2,7 @@
 
 > **Scope.** Owns asset identity evidence, the `MarketTick` fact
 > model, capture-tier / stream / poll market workers, cache-only live
-> market fan-out, profile refresh, and discovery workers. Global package boundaries live in
+> market fan-out, profile refresh/current projection, and discovery workers. Global package boundaries live in
 > `../../../../docs/ARCHITECTURE.md`; Token Radar projection lives in
 > `../token_intel/ARCHITECTURE.md`; public payload shapes live in
 > `../../../../docs/CONTRACTS.md`.
@@ -22,7 +22,8 @@ or read-model projection.
 | Tier 1 market stream | `runtime/market_tick_stream_worker.py` | `market_ticks(source_tier='tier1_ws')` | Stream targets come from `token_capture_tier(tier=1)`. Provider IO never holds a DB session. |
 | Tier 2 market poll | `runtime/market_tick_poll_worker.py` | `market_ticks(source_tier='tier2_poll')` | Poll targets come from `token_capture_tier(tier=2)`. DEX and CEX provider calls run outside DB sessions. |
 | Live market fan-out | `runtime/live_price_gateway.py` | in-process cache only | Raw provider frames update process-local latest state and WebSocket subscribers. The gateway does not write market facts. |
-| Asset profile refresh | `runtime/asset_profile_refresh_worker.py`, `services/asset_profile_refresh.py`, `repositories/asset_profile_repository.py` | `asset_profiles` | Resolved DEX assets are enriched through the GMGN exact-token profile role. Profile facts are asset-level current facts and never resolver evidence, ranking factors, or `factor_snapshot_json` fields. |
+| GMGN profile source refresh | `runtime/asset_profile_refresh_worker.py`, `services/asset_profile_refresh.py`, `repositories/asset_profile_repository.py` | `asset_profiles` | Resolved DEX assets are enriched through the GMGN exact-token profile role. This table is a GMGN OpenAPI source cache, not the public profile read model. |
+| Token profile current projection | `runtime/token_profile_current_worker.py`, `services/token_profile_current_projection.py`, `repositories/token_profile_current_repository.py`, `queries/token_profile_source_query.py` | `token_profile_current` | Public profile/icon facts are projected from persisted GMGN OpenAPI rows with valid logos, GMGN stream exact snapshot evidence, and OKX DEX exact-address evidence. CEX profile absence is explicit `unsupported`; no symbol-only icon matching. |
 | Resolution refresh and discovery | `runtime/resolution_refresh_worker.py`, `repositories/discovery_repository.py` | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | Recent NIL / AMBIGUOUS lookup keys are refreshed through OKX DEX, then affected intents are reprocessed. Successful refresh emits `resolution_updated` so downstream readers wake; the worker itself does not run inline Token Radar projection. |
 | CEX route sync | `services/asset_market_sync.py` | `cex_tokens`, `price_feeds` | Maintains token/feed routing without refreshing prices. |
 | US equity symbol sync | `services/us_equity_symbol_sync.py` | `registry_assets` (MarketInstrument rows) | Confirms US equity symbols so the deterministic resolver can elevate them above DEX same-symbol assets. |

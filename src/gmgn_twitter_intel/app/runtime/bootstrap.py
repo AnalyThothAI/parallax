@@ -29,6 +29,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker imp
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
     TickLookup,
@@ -276,6 +277,13 @@ def _construct_workers(
             wake_bus=wake_bus,
             wake_waiter=db.wake_listener(worker_name, workers.token_radar_projection.wakes_on),
         )
+    if workers.token_profile_current.enabled:
+        constructed["token_profile_current"] = TokenProfileCurrentWorker(
+            name="token_profile_current",
+            settings=workers.token_profile_current,
+            db=db,
+            telemetry=telemetry,
+        )
     if workers.token_capture_tier.enabled:
         constructed["token_capture_tier"] = TokenCaptureTierWorker(
             name="token_capture_tier",
@@ -434,7 +442,7 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
         account_alerts=AccountAlertService(repos.signals),
         asset_flow=AssetFlowService(
             token_radar=repos.token_radar,
-            profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+            profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
         ),
         harness=HarnessService(repos.harness),
         pulse=repos.pulse,

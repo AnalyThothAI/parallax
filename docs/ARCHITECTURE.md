@@ -8,7 +8,7 @@ The service is organised around domain packages, explicit integration adapters, 
 GMGN public stream
   → domains/ingestion           (raw frame normalisation, snapshot gate)
   → domains/evidence            (transactional facts: events, evidence, intents, resolutions, asset identity)
-  → domains/asset_market        (market tick capture, capture-tier projection, profile refresh, discovery)
+  → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
   → domains/token_intel         (token_radar_rows projection, scoring, search read model)
   → domains/social_enrichment   (watched-event extraction)
   → domains/closed_loop_harness (signal seeds, settlement, outcomes)
@@ -56,7 +56,8 @@ are wrong too.
    `TokenCaptureTierWorker`; `pulse_candidates`, `pulse_agent_runs`,
    `pulse_agent_run_steps` are written only by `PulseCandidateWorker`. New
    read models must declare their single writer in the owning module's
-   ARCHITECTURE.md.
+   ARCHITECTURE.md. `token_profile_current` is written only by
+   `TokenProfileCurrentWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
@@ -143,7 +144,7 @@ direction is still enforced by the package rules below.
 |--------|------|
 | `domains/ingestion/` | GMGN public-stream frame handling, snapshot gate, handle filtering, raw public-stream normalisation, collector status. |
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
-| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile facts, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
+| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
@@ -233,7 +234,9 @@ Radar scoring snapshots. The runtime profile lane is:
 resolved Asset(chain,address)
   → AssetProfileRefreshWorker
   → dex_profile_market.token_profile(...)
-  → asset_profiles
+  → asset_profiles (GMGN source cache)
+  → TokenProfileCurrentWorker
+  → token_profile_current
   → TokenProfileReadModel
   → /api/token-radar + /api/search/inspect + CLI asset-flow
   → shared frontend TokenProfileCard
@@ -241,10 +244,14 @@ resolved Asset(chain,address)
 
 Only `asset_market` workers and ops commands may call the profile provider.
 HTTP handlers, CLI read commands, Token Radar projection, Search read models,
-and frontend components read persisted `asset_profiles` through
-`TokenProfileReadModel`. Official links and descriptions must be visible without
-running a narrative agent; future narrative jobs may consume profile facts, but
-they do not own official profile data.
+and frontend components read persisted `token_profile_current` through
+`TokenProfileReadModel`. The current profile projection only marks rows
+`ready` when the selected source has a usable logo; it also promotes exact
+GMGN stream snapshot icons and exact OKX DEX evidence already stored in
+PostgreSQL; it does not use request-time fallback or symbol-only CEX matching.
+Official links and descriptions must be visible without running a narrative
+agent; future narrative jobs may consume profile facts, but they do not own
+official profile data.
 
 ## Market Data Provider Matrix
 

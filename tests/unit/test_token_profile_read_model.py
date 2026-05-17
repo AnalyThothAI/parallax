@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_repository import GMGN_DEX_PROFILE_PROVIDER
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
@@ -11,12 +10,16 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
-def test_profile_read_model_returns_ready_block_with_normalized_links_and_public_source():
-    asset_profiles = FakeAssetProfiles(
+def test_profile_read_model_returns_ready_block_from_current_profile_row():
+    token_profiles = FakeTokenProfiles(
         rows={
-            "asset:eip155:1:erc20:0xabc": profile_row(
-                asset_id="asset:eip155:1:erc20:0xabc",
+            ("Asset", "asset:eip155:1:erc20:0xabc"): profile_row(
+                target_type="Asset",
+                target_id="asset:eip155:1:erc20:0xabc",
                 status="ready",
+                profile_provider="gmgn_stream_snapshot",
+                source_kind="asset_identity_evidence",
+                source_ref="gmgn-evidence-1",
                 symbol="ABC",
                 name=" ",
                 logo_url="https://assets.example/abc.png",
@@ -28,18 +31,19 @@ def test_profile_read_model_returns_ready_block_with_normalized_links_and_public
                 gmgn_url="https://gmgn.ai/eth/token/0xabc",
                 geckoterminal_url="",
                 description=" project profile ",
-                raw_payload_json={"ok": True},
+                quality_flags_json=[],
+                source_payload_json={"ok": True},
                 observed_at_ms=1_000,
             )
         }
     )
-    model = TokenProfileReadModel(asset_profiles=asset_profiles)
+    model = TokenProfileReadModel(token_profiles=token_profiles)
 
     profile = model.profile_for_target(target_type="Asset", target_id="asset:eip155:1:erc20:0xabc")
 
     assert profile == {
         "status": "ready",
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
+        "provider": "gmgn_stream_snapshot",
         "observed_at_ms": 1_000,
         "identity": {
             "symbol": "ABC",
@@ -57,28 +61,33 @@ def test_profile_read_model_returns_ready_block_with_normalized_links_and_public
             "geckoterminal_url": None,
         },
         "source": {
-            "provider": GMGN_DEX_PROFILE_PROVIDER,
+            "provider": "gmgn_stream_snapshot",
+            "source_kind": "asset_identity_evidence",
+            "source_ref": "gmgn-evidence-1",
+            "quality_flags": [],
             "raw_available": True,
             "last_error": None,
         },
     }
-    assert "raw_payload_json" not in profile
+    assert "source_payload_json" not in profile
 
 
 def test_profile_read_model_preserves_full_twitter_url():
-    asset_profiles = FakeAssetProfiles(
+    token_profiles = FakeTokenProfiles(
         rows={
-            "asset:eip155:1:erc20:0xabc": profile_row(
-                asset_id="asset:eip155:1:erc20:0xabc",
+            ("Asset", "asset:eip155:1:erc20:0xabc"): profile_row(
+                target_type="Asset",
+                target_id="asset:eip155:1:erc20:0xabc",
                 status="ready",
+                profile_provider="gmgn_dex_profile",
                 twitter_username="abc",
                 twitter_url="https://twitter.com/abc",
-                raw_payload_json={},
+                source_payload_json={},
                 observed_at_ms=1_000,
             )
         }
     )
-    model = TokenProfileReadModel(asset_profiles=asset_profiles)
+    model = TokenProfileReadModel(token_profiles=token_profiles)
 
     profile = model.profile_for_target(target_type="Asset", target_id="asset:eip155:1:erc20:0xabc")
 
@@ -86,78 +95,109 @@ def test_profile_read_model_preserves_full_twitter_url():
     assert profile["source"]["raw_available"] is False
 
 
-def test_profile_read_model_returns_pending_missing_error_and_non_asset_blocks():
-    asset_profiles = FakeAssetProfiles(
+def test_profile_read_model_returns_pending_missing_error_and_cex_unsupported_blocks():
+    token_profiles = FakeTokenProfiles(
         rows={
-            "asset:missing": profile_row(
-                asset_id="asset:missing",
+            ("Asset", "asset:missing"): profile_row(
+                target_type="Asset",
+                target_id="asset:missing",
                 status="missing",
-                raw_payload_json={},
+                profile_provider=None,
+                source_kind="projection",
+                source_payload_json={},
                 observed_at_ms=2_000,
             ),
-            "asset:error": profile_row(
-                asset_id="asset:error",
+            ("Asset", "asset:error"): profile_row(
+                target_type="Asset",
+                target_id="asset:error",
                 status="error",
-                raw_payload_json={},
+                profile_provider="gmgn_stream_snapshot",
+                source_kind="asset_identity_evidence",
+                source_ref="gmgn-bad",
+                source_payload_json={"last_error": "malformed icon"},
+                quality_flags_json=["invalid_logo_url"],
                 observed_at_ms=3_000,
-                last_error="provider timeout",
             ),
         }
     )
-    model = TokenProfileReadModel(asset_profiles=asset_profiles)
+    model = TokenProfileReadModel(token_profiles=token_profiles)
 
     pending = model.profile_for_target(target_type="Asset", target_id="asset:pending")
     missing = model.profile_for_target(target_type="Asset", target_id="asset:missing")
     error = model.profile_for_target(target_type="Asset", target_id="asset:error")
+    unsupported = model.profile_for_target(target_type="CexToken", target_id="cex_token:BTC")
 
     assert pending == {
         "status": "pending",
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
+        "provider": None,
         "observed_at_ms": None,
         "source": {
-            "provider": GMGN_DEX_PROFILE_PROVIDER,
+            "provider": None,
+            "source_kind": "token_profile_current",
+            "source_ref": None,
+            "quality_flags": [],
             "raw_available": False,
             "last_error": None,
         },
     }
     assert missing == {
         "status": "missing",
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
+        "provider": None,
         "observed_at_ms": 2_000,
         "source": {
-            "provider": GMGN_DEX_PROFILE_PROVIDER,
+            "provider": None,
+            "source_kind": "projection",
+            "source_ref": None,
+            "quality_flags": [],
             "raw_available": False,
             "last_error": None,
         },
     }
     assert error == {
         "status": "error",
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
+        "provider": "gmgn_stream_snapshot",
         "observed_at_ms": 3_000,
         "source": {
-            "provider": GMGN_DEX_PROFILE_PROVIDER,
-            "raw_available": False,
-            "last_error": "provider timeout",
+            "provider": "gmgn_stream_snapshot",
+            "source_kind": "asset_identity_evidence",
+            "source_ref": "gmgn-bad",
+            "quality_flags": ["invalid_logo_url"],
+            "raw_available": True,
+            "last_error": "malformed icon",
         },
     }
-    assert model.profile_for_target(target_type="CexToken", target_id="cex_token:BTC") is None
+    assert unsupported == {
+        "status": "unsupported",
+        "provider": None,
+        "observed_at_ms": None,
+        "source": {
+            "provider": None,
+            "source_kind": "token_profile_current",
+            "source_ref": None,
+            "quality_flags": ["cex_profile_unsupported"],
+            "raw_available": False,
+            "last_error": None,
+        },
+    }
     assert model.profile_for_target(target_type="Asset", target_id=" ") is None
 
 
-def test_profile_read_model_batches_targets_by_asset_id():
-    asset_profiles = FakeAssetProfiles(
+def test_profile_read_model_batches_all_targets_without_provider_argument():
+    token_profiles = FakeTokenProfiles(
         rows={
-            "asset:abc": profile_row(
-                asset_id="asset:abc",
+            ("Asset", "asset:abc"): profile_row(
+                target_type="Asset",
+                target_id="asset:abc",
                 status="ready",
+                profile_provider="okx_dex_evidence",
                 symbol="ABC",
                 twitter_username="abc",
-                raw_payload_json={"ok": True},
+                source_payload_json={"ok": True},
                 observed_at_ms=1_000,
             )
         }
     )
-    model = TokenProfileReadModel(asset_profiles=asset_profiles)
+    model = TokenProfileReadModel(token_profiles=token_profiles)
 
     profiles = model.profiles_for_targets(
         [
@@ -168,23 +208,28 @@ def test_profile_read_model_batches_targets_by_asset_id():
         ]
     )
 
-    assert asset_profiles.calls == [
-        {"asset_ids": ["asset:abc", "asset:pending"], "provider": GMGN_DEX_PROFILE_PROVIDER}
-    ]
+    assert token_profiles.calls == [[("Asset", "asset:abc"), ("Asset", "asset:pending"), ("CexToken", "cex_token:BTC")]]
     assert profiles[("Asset", "asset:abc")]["status"] == "ready"
     assert profiles[("Asset", "asset:pending")]["status"] == "pending"
-    assert profiles[("CexToken", "cex_token:BTC")] is None
+    assert profiles[("CexToken", "cex_token:BTC")]["status"] == "unsupported"
     assert ("Asset", "") not in profiles
 
 
 def test_asset_flow_hydrates_row_profile_from_profile_batch():
     profile_block = {
         "status": "ready",
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
+        "provider": "okx_dex_evidence",
         "observed_at_ms": 1_000,
         "identity": {},
         "links": {},
-        "source": {"provider": GMGN_DEX_PROFILE_PROVIDER, "raw_available": True, "last_error": None},
+        "source": {
+            "provider": "okx_dex_evidence",
+            "source_kind": "asset_identity_evidence",
+            "source_ref": "okx-1",
+            "quality_flags": [],
+            "raw_available": True,
+            "last_error": None,
+        },
     }
     profiles = FakeProfiles({("Asset", "asset:abc"): profile_block})
     service = AssetFlowService(
@@ -202,19 +247,14 @@ def test_asset_flow_hydrates_row_profile_from_profile_batch():
     assert profiles.calls[0][0]["symbol"] == "ABC"
 
 
-class FakeAssetProfiles:
-    def __init__(self, *, rows: dict[str, dict[str, Any]]) -> None:
+class FakeTokenProfiles:
+    def __init__(self, *, rows: dict[tuple[str, str], dict[str, Any]]) -> None:
         self.rows = rows
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[list[tuple[str, str]]] = []
 
-    def profiles_for_asset_ids(
-        self,
-        asset_ids: list[str],
-        *,
-        provider: str = GMGN_DEX_PROFILE_PROVIDER,
-    ) -> dict[str, dict[str, Any]]:
-        self.calls.append({"asset_ids": asset_ids, "provider": provider})
-        return {asset_id: self.rows[asset_id] for asset_id in asset_ids if asset_id in self.rows}
+    def current_for_targets(self, targets: list[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
+        self.calls.append(targets)
+        return {key: self.rows[key] for key in targets if key in self.rows}
 
 
 class FakeProfiles:
@@ -250,8 +290,12 @@ class FakeTokenRadar:
 
 def profile_row(
     *,
-    asset_id: str,
+    target_type: str,
+    target_id: str,
     status: str,
+    profile_provider: str | None,
+    source_kind: str = "asset_identity_evidence",
+    source_ref: str | None = None,
     symbol: str | None = None,
     name: str | None = None,
     logo_url: str | None = None,
@@ -263,13 +307,16 @@ def profile_row(
     gmgn_url: str | None = None,
     geckoterminal_url: str | None = None,
     description: str | None = None,
-    raw_payload_json: dict[str, Any] | None = None,
+    quality_flags_json: list[str] | None = None,
+    source_payload_json: dict[str, Any] | None = None,
     observed_at_ms: int | None = None,
-    last_error: str | None = None,
 ) -> dict[str, Any]:
     return {
-        "asset_id": asset_id,
-        "provider": GMGN_DEX_PROFILE_PROVIDER,
+        "target_type": target_type,
+        "target_id": target_id,
+        "profile_provider": profile_provider,
+        "source_kind": source_kind,
+        "source_ref": source_ref,
         "status": status,
         "symbol": symbol,
         "name": name,
@@ -282,9 +329,9 @@ def profile_row(
         "gmgn_url": gmgn_url,
         "geckoterminal_url": geckoterminal_url,
         "description": description,
-        "raw_payload_json": raw_payload_json,
+        "quality_flags_json": quality_flags_json or [],
+        "source_payload_json": source_payload_json or {},
         "observed_at_ms": observed_at_ms,
-        "last_error": last_error,
     }
 
 

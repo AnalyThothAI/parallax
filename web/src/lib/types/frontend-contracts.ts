@@ -354,6 +354,9 @@ export type TokenProfileBlock = {
   } | null;
   source?: {
     provider?: string | null;
+    source_kind?: string | null;
+    source_ref?: string | null;
+    quality_flags?: string[] | null;
     raw_available?: boolean | null;
     last_error?: string | null;
   } | null;

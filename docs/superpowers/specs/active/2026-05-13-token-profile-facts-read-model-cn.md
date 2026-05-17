@@ -1,6 +1,6 @@
 # Spec — Token Profile Facts Read Model
 
-**Status**: Approved for implementation by user request
+**Status**: Superseded
 **Date**: 2026-05-13
 **Owner**: Codex with Qinghuan
 **Scope**: resolved DEX asset profile facts, Token Radar/Search read surfaces, shared frontend profile card
@@ -12,6 +12,13 @@
 - `docs/ARCHITECTURE.md`
 - `docs/CONTRACTS.md`
 - `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`
+
+> Superseded on 2026-05-17 by
+> `docs/superpowers/specs/active/2026-05-17-token-profile-current-facts-hard-cut-cn.md`.
+> This document described the first GMGN-only profile cache. Do not use it as the
+> current implementation target; the newer spec hard-cuts public profile reads to
+> canonical current facts projected from persisted GMGN OpenAPI, GMGN stream, and
+> OKX DEX evidence.
 
 ## One-line decision
 

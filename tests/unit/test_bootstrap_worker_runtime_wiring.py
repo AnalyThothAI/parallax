@@ -8,6 +8,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import L
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 _UNSET = object()
@@ -60,6 +61,7 @@ def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_legacy_anchor_worker(
     assert not hasattr(workers["live_price_gateway"], "stream_provider")
     assert not hasattr(workers["live_price_gateway"], "cex_market")
     assert not hasattr(workers["live_price_gateway"], "wake_bus")
+    assert isinstance(workers["token_profile_current"], TokenProfileCurrentWorker)
 
 
 def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_providers() -> None:
@@ -100,6 +102,7 @@ def _settings() -> Settings:
             "live_price_gateway": {"enabled": True},
             "resolution_refresh": {"enabled": False},
             "asset_profile_refresh": {"enabled": False},
+            "token_profile_current": {"enabled": True},
             "token_radar_projection": {"enabled": False},
             "pulse_candidate": {"enabled": False},
             "enrichment": {"enabled": False},

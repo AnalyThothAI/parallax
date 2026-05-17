@@ -30,8 +30,8 @@ settings. It must not contain worker runtime knobs.
   discovery, route sync, market tick capture, cache-only live price fan-out,
   and request-time US equity quote snapshots.
 - `gmgn` — GMGN OpenAPI key/base URL/timeout/cache settings. The exact-token
-  profile lane uses this group to write persisted `asset_profiles` facts,
-  including DEX token `logo_url`.
+  profile lane uses this group to write persisted GMGN source
+  `asset_profiles` facts, including DEX token `logo_url`.
 - `providers.okx` — OKX CEX/DEX REST and DEX WebSocket endpoints plus
   credentials where required by the enabled provider lane.
 
@@ -47,7 +47,7 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 
 `collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
 `live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
-`token_radar_projection`, `pulse_candidate`, `enrichment`,
+`token_radar_projection`, `token_profile_current`, `pulse_candidate`, `enrichment`,
 `handle_summary`, `harness_ops`, `notification_rule`, and
 `notification_delivery`.
 
@@ -140,9 +140,10 @@ Token Radar market contract:
   `confidence`, `record_status`, `is_current`, and market join columns are not
   part of the public contract.
 - Resolved DEX asset rows may expose a top-level `profile` block. Profile facts
-  come from the persisted `asset_profiles` read model, not request-time provider
+  come from the persisted `token_profile_current` read model, not request-time provider
   calls and not `factor_snapshot_json`. `profile.status` is one of `ready`,
-  `pending`, `missing`, `unsupported`, or `error`. A `ready` block contains
+  `pending`, `missing`, `unsupported`, or `error`. A `ready` block has a usable
+  `identity.logo_url` and contains
   `identity` fields (`symbol`, `name`, `logo_url`, `banner_url`,
   `description`), normalized `links` (`website_url`, `twitter_url`,
   `twitter_username`, `telegram_url`, `gmgn_url`, `geckoterminal_url`), and
@@ -276,9 +277,11 @@ and includes the effective `workers` settings loaded from `workers.yaml`.
 `ops worker-status` bootstraps the runtime without the upstream
 collector and returns the canonical worker map plus queue depths where
 queue tables exist. `ops refresh-asset-profiles` is the one-shot
-operator path for due GMGN exact-token profile refreshes; it returns an
+operator path for due GMGN exact-token profile source refreshes; it returns an
 explicit skipped result when the GMGN profile provider is not
-configured.
+configured. `ops rebuild-token-profiles` rebuilds canonical
+`token_profile_current` rows from persisted source facts without wiring
+upstream providers.
 
 ## Token Radar Factor Snapshot Discipline
 

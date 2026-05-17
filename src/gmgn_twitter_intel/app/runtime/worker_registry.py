@@ -19,6 +19,9 @@ CANONICAL_WORKER_CLASSES = {
     "asset_profile_refresh": (
         "gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"
     ),
+    "token_profile_current": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"
+    ),
     "token_radar_projection": (
         "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
     ),
@@ -44,6 +47,7 @@ WORKER_START_PRIORITY = {
     "resolution_refresh": 60,
     "asset_profile_refresh": 70,
     "token_radar_projection": 80,
+    "token_profile_current": 85,
     "pulse_candidate": 90,
     "enrichment": 100,
     "handle_summary": 110,

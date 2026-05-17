@@ -39,6 +39,9 @@ EXPECTED_WORKERS = {
     "asset_profile_refresh": (
         "gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"
     ),
+    "token_profile_current": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"
+    ),
     "token_radar_projection": (
         "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
     ),
@@ -61,6 +64,7 @@ OLD_READYZ_WORKER_KEYS = {
     "live_price_gateway",
     "resolution_refresh",
     "asset_profile_refresh",
+    "token_profile_current",
     "token_radar_projection",
     "pulse_candidate",
     "enrichment",
@@ -119,6 +123,11 @@ TOKEN_RADAR_WRITE_OWNER_ALLOWLIST = {
 
 SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "token_radar_rows": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
+    "token_profile_current": {
+        SRC / "domains/asset_market/repositories/token_profile_current_repository.py",
+        SRC / "domains/asset_market/runtime/token_profile_current_worker.py",
+        SRC / "platform/db/alembic/versions/20260517_0052_token_profile_current.py",
+    },
     "token_capture_tier": {
         SRC / "domains/asset_market/repositories/token_capture_tier_repository.py",
     },

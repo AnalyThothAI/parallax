@@ -12,7 +12,7 @@
 
 ## Status
 
-**Status**: Approved for implementation by user request
+**Status**: Superseded
 **Date**: 2026-05-13
 **Owning spec**: `docs/superpowers/specs/active/2026-05-13-token-profile-facts-read-model-cn.md`
 **Worktree**: `.worktrees/token-profile-facts-read-model/`
@@ -46,6 +46,9 @@
 Known process note:
 
 - User explicitly asked to write spec and plan together after approving the architecture. This plan treats the spec lane as approved and does not implement code until the user chooses an execution mode.
+- Superseded on 2026-05-17 by
+  `docs/superpowers/plans/active/2026-05-17-token-profile-current-facts-hard-cut-plan-cn.md`.
+  Do not implement the GMGN-only public read model from this plan.
 
 ## File-Level Edits
 

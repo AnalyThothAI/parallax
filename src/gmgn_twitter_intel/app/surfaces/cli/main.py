@@ -28,6 +28,7 @@ from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_rep
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
@@ -235,6 +236,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="refresh due GMGN token profile facts",
     )
     refresh_asset_profiles.add_argument("--limit", type=int, default=50)
+    rebuild_token_profiles = ops_subcommands.add_parser(
+        "rebuild-token-profiles",
+        help="rebuild canonical token profile current facts",
+    )
+    rebuild_token_profiles.add_argument("--limit", type=int, default=500)
     reprocess_token_intents = ops_subcommands.add_parser(
         "reprocess-token-intents",
         help="re-resolve recent unresolved token intents and rebuild token radar",
@@ -446,6 +452,11 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         _emit({"ok": True, "data": data}, stdout)
         return 0
 
+    if command == "ops" and args.ops_command == "rebuild-token-profiles":
+        data = _run_token_profile_current_worker_once(settings, limit=args.limit, now_ms=_now_ms())
+        _emit({"ok": True, "data": data}, stdout)
+        return 0
+
     if command == "ops" and args.ops_command == "run-resolution-refresh":
         data = _run_resolution_refresh_worker_once(
             settings,
@@ -576,7 +587,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         if command == "asset-flow":
             data = AssetFlowService(
                 token_radar=repos.token_radar,
-                profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+                profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
             ).asset_flow(
                 window=args.window,
                 limit=args.limit,
@@ -941,6 +952,27 @@ def _run_asset_profile_refresh_worker_once(settings: object, *, limit: int, now_
             _close_db_bundle(db)
 
 
+def _run_token_profile_current_worker_once(settings: object, *, limit: int, now_ms: int) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        worker = TokenProfileCurrentWorker(
+            name="token_profile_current",
+            settings=_worker_settings_with_overrides(settings.workers.token_profile_current, batch_size=limit),
+            db=db,
+            telemetry=telemetry,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if db is not None:
+            _close_db_bundle(db)
+
+
 def _run_resolution_refresh_worker_once(
     settings: object,
     *,
@@ -1027,7 +1059,7 @@ def _worker_settings_with_overrides(config: object, **overrides: object) -> Simp
 
 
 def _close_db_bundle(db: object) -> None:
-    for name in ("api_pool", "worker_pool", "wake_pool"):
+    for name in ("api_pool", "worker_pool", "tool_pool", "wake_pool"):
         pool = getattr(db, name, None)
         close = getattr(pool, "close", None)
         if close:

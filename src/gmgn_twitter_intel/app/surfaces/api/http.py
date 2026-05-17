@@ -285,7 +285,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
-            profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
+            profiles = TokenProfileReadModel(token_profiles=repos.token_profiles)
             data = SearchInspectService(
                 search_query=SearchEventsQuery(repos.conn),
                 token_radar=repos.token_radar,
@@ -325,7 +325,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             with runtime.repositories() as repos:
                 data = TokenCaseService(
                     targets=repos.token_targets,
-                    profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+                    profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
                     live_price_gateway=_worker_object(runtime, "live_price_gateway"),
                 ).dossier(
                     target_type=parsed_target_type,
@@ -1006,7 +1006,7 @@ def _token_radar_data(
     now_ms: int,
 ) -> dict[str, Any]:
     with runtime.repositories() as repos:
-        profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
+        profiles = TokenProfileReadModel(token_profiles=repos.token_profiles)
         return AssetFlowService(
             token_radar=repos.token_radar,
             profiles=profiles,

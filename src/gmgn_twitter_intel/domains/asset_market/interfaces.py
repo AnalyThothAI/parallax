@@ -23,6 +23,7 @@ from .repositories.identity_evidence_repository import IdentityEvidenceRepositor
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
 from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
+from .repositories.token_profile_current_repository import TokenProfileCurrentRepository
 from .types import EnrichedEventCapture
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     "MarketTickRepository",
     "RegistryRepository",
     "TokenCaptureTierRepository",
+    "TokenProfileCurrentRepository",
     "message_price_payload",
     "select_current_identity",
 ]

@@ -163,6 +163,7 @@ class CliTests(unittest.TestCase):
                 "1700000000000",
             ],
             ["ops", "sync-us-equity-symbols"],
+            ["ops", "rebuild-token-profiles", "--limit", "5"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -194,6 +195,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[16].ops_command, "settle-token-factors")
         self.assertEqual(parsed[16].now_ms, 1_700_000_000_000)
         self.assertEqual(parsed[17].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[18].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[18].limit, 5)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -941,6 +944,77 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
     assert captured["session_names"] == ["resolution_refresh", "resolution_refresh"]
     assert captured["due_lookup_kwargs"]["limit"] == 3
     assert payload["data"]["lookups_selected"] == 0
+
+
+def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    captured: dict[str, object] = {}
+    closed: list[str] = []
+
+    @contextmanager
+    def fake_repositories(_settings):
+        raise AssertionError("rebuild-token-profiles must not hold an outer repository session")
+
+    class FakePool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def close(self) -> None:
+            closed.append(self.name)
+
+    class FakeDB:
+        api_pool = FakePool("api")
+        worker_pool = FakePool("worker")
+        tool_pool = FakePool("tool")
+        wake_pool = FakePool("wake")
+
+    class FakeWorker:
+        def __init__(self, *, name, settings, db, telemetry):
+            captured["worker"] = (name, settings.batch_size, db, telemetry)
+
+        async def run_once(self, *, now_ms):
+            captured["now_ms"] = now_ms
+            return SimpleNamespace(
+                notes={
+                    "result": {
+                        "selected": 0,
+                        "ready": 0,
+                        "missing": 0,
+                        "unsupported": 0,
+                        "error": 0,
+                        "with_logo": 0,
+                        "source_provider": {},
+                        "started_at_ms": now_ms,
+                        "finished_at_ms": now_ms,
+                    }
+                }
+            )
+
+        async def aclose(self):
+            captured["closed_worker"] = True
+
+    def fail_wire_asset_market_providers(*_args, **_kwargs):
+        raise AssertionError("rebuild-token-profiles must not wire asset providers")
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    monkeypatch.setattr(cli_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(cli_module, "wire_asset_market_providers", fail_wire_asset_market_providers, raising=False)
+    monkeypatch.setattr(cli_module, "TokenProfileCurrentWorker", FakeWorker)
+    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    stdout = io.StringIO()
+
+    code = cli_module.main(["ops", "rebuild-token-profiles", "--limit", "3"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured["worker"][0] == "token_profile_current"
+    assert captured["worker"][1] == 3
+    assert captured["closed_worker"] is True
+    assert closed == ["api", "worker", "tool", "wake"]
+    assert payload["data"]["unsupported"] == 0
 
 
 def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):

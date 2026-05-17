@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_repository import GMGN_DEX_PROFILE_PROVIDER
-
 
 class TokenProfileReadModel:
-    def __init__(self, *, asset_profiles: Any) -> None:
-        self.asset_profiles = asset_profiles
+    def __init__(self, *, token_profiles: Any) -> None:
+        self.token_profiles = token_profiles
 
     def profile_for_target(self, *, target_type: str | None, target_id: str | None) -> dict[str, Any] | None:
         key = _target_key({"target_type": target_type, "target_id": target_id})
@@ -17,32 +15,25 @@ class TokenProfileReadModel:
 
     def profiles_for_targets(self, targets: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any] | None]:
         keys = [_target_key(target) for target in targets]
-        requested_keys = [key for key in keys if key is not None]
-        asset_ids = [
-            target_id
-            for target_type, target_id in dict.fromkeys(requested_keys)
-            if target_type == "Asset" and target_id
-        ]
-        rows = self.asset_profiles.profiles_for_asset_ids(asset_ids, provider=GMGN_DEX_PROFILE_PROVIDER)
+        requested_keys = list(dict.fromkeys(key for key in keys if key is not None))
+        rows = self.token_profiles.current_for_targets(requested_keys)
         profiles: dict[tuple[str, str], dict[str, Any] | None] = {}
-        for target_type, target_id in dict.fromkeys(requested_keys):
+        for target_type, target_id in requested_keys:
             key = (target_type, target_id)
-            if target_type != "Asset":
-                profiles[key] = None
+            row = rows.get(key)
+            if row is not None:
+                profiles[key] = _block_from_row(row)
                 continue
-            profiles[key] = _block_from_row(rows.get(target_id))
+            if target_type == "Asset":
+                profiles[key] = _pending_block()
+            elif target_type == "CexToken":
+                profiles[key] = _unsupported_block()
+            else:
+                profiles[key] = None
         return profiles
 
 
-def _block_from_row(row: dict[str, Any] | None) -> dict[str, Any]:
-    if row is None:
-        return {
-            "status": "pending",
-            "provider": GMGN_DEX_PROFILE_PROVIDER,
-            "observed_at_ms": None,
-            "source": _source(None),
-        }
-
+def _block_from_row(row: dict[str, Any]) -> dict[str, Any]:
     status = (_clean(row.get("status")) or "pending").lower()
     if status == "ready":
         return {
@@ -75,11 +66,47 @@ def _block_from_row(row: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def _source(row: dict[str, Any] | None) -> dict[str, Any]:
+def _pending_block() -> dict[str, Any]:
+    return {
+        "status": "pending",
+        "provider": None,
+        "observed_at_ms": None,
+        "source": {
+            "provider": None,
+            "source_kind": "token_profile_current",
+            "source_ref": None,
+            "quality_flags": [],
+            "raw_available": False,
+            "last_error": None,
+        },
+    }
+
+
+def _unsupported_block() -> dict[str, Any]:
+    return {
+        "status": "unsupported",
+        "provider": None,
+        "observed_at_ms": None,
+        "source": {
+            "provider": None,
+            "source_kind": "token_profile_current",
+            "source_ref": None,
+            "quality_flags": ["cex_profile_unsupported"],
+            "raw_available": False,
+            "last_error": None,
+        },
+    }
+
+
+def _source(row: dict[str, Any]) -> dict[str, Any]:
+    payload = _payload(row)
     return {
         "provider": _provider(row),
-        "raw_available": _raw_available(row),
-        "last_error": _clean((row or {}).get("last_error")),
+        "source_kind": _clean(row.get("source_kind")),
+        "source_ref": _clean(row.get("source_ref")),
+        "quality_flags": _quality_flags(row.get("quality_flags_json")),
+        "raw_available": bool(payload),
+        "last_error": _clean(payload.get("last_error")),
     }
 
 
@@ -101,15 +128,19 @@ def _twitter_url(username_or_url: str | None) -> str | None:
     return f"https://x.com/{handle}" if handle else None
 
 
-def _provider(row: dict[str, Any] | None) -> str:
-    return _clean((row or {}).get("provider")) or GMGN_DEX_PROFILE_PROVIDER
+def _provider(row: dict[str, Any]) -> str | None:
+    return _clean(row.get("profile_provider"))
 
 
-def _raw_available(row: dict[str, Any] | None) -> bool:
-    if not row:
-        return False
-    raw = row.get("raw_payload_json")
-    return bool(raw)
+def _payload(row: dict[str, Any]) -> dict[str, Any]:
+    payload = row.get("source_payload_json")
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _quality_flags(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [_clean(item) for item in value if _clean(item)]
 
 
 def _clean(value: Any) -> str | None:

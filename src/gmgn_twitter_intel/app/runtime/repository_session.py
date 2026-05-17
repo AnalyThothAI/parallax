@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     MarketTickRepository,
     RegistryRepository,
     TokenCaptureTierRepository,
+    TokenProfileCurrentRepository,
 )
 from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
@@ -43,6 +44,7 @@ class RepositorySession:
     entities: EntityRepository
     signals: SignalRepository
     asset_profiles: AssetProfileRepository
+    token_profiles: TokenProfileCurrentRepository
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
     intent_resolutions: IntentResolutionRepository
@@ -74,6 +76,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
         asset_profiles=AssetProfileRepository(conn),
+        token_profiles=TokenProfileCurrentRepository(conn),
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),
         intent_resolutions=IntentResolutionRepository(conn),
