@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -914,10 +915,10 @@ class FakePulseStore:
                 "ref_id": "market:pf-test",
                 "route": "meme",
                 "target_market_type": "dex",
-                "price_usd": 0.42,
-                "liquidity_usd": 250_000,
-                "market_cap_usd": 1_000_000,
-                "volume_24h_usd": 12_000,
+                "price_usd": Decimal("0.42"),
+                "liquidity_usd": Decimal("250000"),
+                "market_cap_usd": Decimal("1000000"),
+                "volume_24h_usd": Decimal("12000"),
                 "pricefeed_id": "pf-test",
                 "instrument_ref": "pf-test",
                 "source_provider": "okx",

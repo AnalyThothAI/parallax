@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, cast
 
 from loguru import logger
@@ -614,6 +615,8 @@ def _jsonable(value: Any) -> Any:
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [_jsonable(item) for item in value]
+    if isinstance(value, Decimal):
+        return float(value)
     return value
 
 

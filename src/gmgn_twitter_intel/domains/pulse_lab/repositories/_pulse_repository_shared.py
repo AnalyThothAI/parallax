@@ -7,6 +7,7 @@ import json
 import time
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
@@ -40,6 +41,8 @@ def _decode_json_value(value: Any) -> Any:
         return {str(key): _decode_json_value(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_decode_json_value(item) for item in value]
+    if isinstance(value, Decimal):
+        return float(value)
     return value
 
 
@@ -52,6 +55,8 @@ def _json_ready(value: Any) -> Any:
         return {str(key): _json_ready(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [_json_ready(item) for item in value]
+    if isinstance(value, Decimal):
+        return float(value)
     return value
 
 
