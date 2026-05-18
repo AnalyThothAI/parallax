@@ -48,9 +48,7 @@ class AgentToolRuntime:
 
         tweets = list(payload.get("tweets") or [])
         event_ids = [
-            str(tweet.get("event_id"))
-            for tweet in tweets
-            if isinstance(tweet, dict) and tweet.get("event_id")
+            str(tweet.get("event_id")) for tweet in tweets if isinstance(tweet, dict) and tweet.get("event_id")
         ]
         data: dict[str, Any] = {**payload, "tweets": tweets}
         truncated = False
@@ -117,8 +115,7 @@ class AgentToolRuntime:
         self.tool_calls_count += 1
         if self.tool_calls_count > self.investigator_max_tool_calls:
             raise ToolBudgetExceeded(
-                "investigator tool call budget exceeded: "
-                f"{self.tool_calls_count} > {self.investigator_max_tool_calls}"
+                f"investigator tool call budget exceeded: {self.tool_calls_count} > {self.investigator_max_tool_calls}"
             )
 
 

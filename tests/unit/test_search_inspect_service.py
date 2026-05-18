@@ -1,6 +1,6 @@
 from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 
-LEGACY_MARKET_FIELD = "market" "_overlay"
+LEGACY_MARKET_FIELD = "market_overlay"
 
 
 def test_search_inspect_returns_token_result_with_agent_brief_and_posts():

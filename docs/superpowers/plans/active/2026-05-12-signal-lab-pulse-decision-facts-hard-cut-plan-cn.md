@@ -16,7 +16,7 @@
 - [ ] Worktree exists at `.worktrees/signal-lab-pulse-decision-facts-hard-cut/`.
 - [ ] Branch is `codex/signal-lab-pulse-decision-facts-hard-cut`.
 - [ ] Baseline `uv run ruff check .` passes.
-- [ ] Baseline `uv run pytest tests/test_factor_snapshot.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/test_pulse_recommendation.py tests/test_pulse_recommendation_agent_client.py -q` passes or known failures are recorded before editing.
+- [ ] Baseline `uv run pytest tests/unit/test_factor_snapshot.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/test_pulse_recommendation.py tests/test_pulse_recommendation_agent_client.py -q` passes or known failures are recorded before editing.
 - [ ] Frontend baseline `cd web && npm test -- --run` passes or known failures are recorded before editing.
 
 Known-failing baseline tests: none expected.
@@ -313,7 +313,7 @@ request_json={
 
 ### No-fallback tests
 
-- Modify: `tests/test_no_factor_snapshot_fallback.py`
+- Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
   - Add assertions that v3 schema string is not accepted by runtime validators.
   - Add assertions that no Python or web runtime imports/uses `token_factor_snapshot_v3_social_attention`.
   - Keep generated docs references out of the runtime scan if they exist for history.
@@ -380,8 +380,8 @@ request_json={
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`
-- Modify: `tests/test_factor_snapshot.py`
-- Modify: `tests/test_no_factor_snapshot_fallback.py`
+- Modify: `tests/unit/test_factor_snapshot.py`
+- Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
 
 - [ ] **Step 1: Write fail-closed DEX gate tests**
   - Replace `test_fresh_dex_market_missing_floor_inputs_is_not_market_ready` expectation: `market_data_unverified` appears in `blocked_reasons`, `eligible_for_high_alert is False`, and `max_decision` is not `high_alert`.
@@ -402,7 +402,7 @@ request_json={
   - Add negative penalties after the average.
 
 - [ ] **Step 5: Run factor tests**
-  - Run: `uv run pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py -q`
+  - Run: `uv run pytest tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py -q`
   - Expected: PASS.
 
 ### Task 4: Feed decision snapshots into Token Radar projection
@@ -631,7 +631,7 @@ GROUP BY target_type;
 ## Acceptance test commands
 
 - AC1 fail-closed DEX gates:
-  - `uv run pytest tests/test_factor_snapshot.py::test_fresh_dex_market_missing_floor_inputs_is_not_market_ready tests/unit/test_pulse_candidate_gate.py -q`
+  - `uv run pytest tests/unit/test_factor_snapshot.py::test_fresh_dex_market_missing_floor_inputs_is_not_market_ready tests/unit/test_pulse_candidate_gate.py -q`
 - AC2 decision snapshot source:
   - `uv run pytest tests/integration/test_decision_market_snapshot_repository.py tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py -q`
 - AC3 no percentile-as-score:
@@ -639,7 +639,7 @@ GROUP BY target_type;
 - AC4 full Pulse request audit:
   - `uv run pytest tests/unit/test_pulse_candidate_worker.py tests/integration/test_pulse_repository.py -q`
 - AC5 no compatibility fallback:
-  - `uv run pytest tests/test_no_factor_snapshot_fallback.py web/src/lib/tokenFactorSnapshot.test.ts -q`
+  - `uv run pytest tests/architecture/test_no_factor_snapshot_fallback.py web/src/lib/tokenFactorSnapshot.test.ts -q`
   - Frontend test command is `cd web && npm test -- --run`.
 - AC6 end-to-end:
   - `make check-all`

@@ -474,8 +474,7 @@ def test_service_provider_wiring_is_the_only_integration_provider_join_point() -
             imported.startswith("gmgn_twitter_intel.domains.") and ".providers" in imported for imported in imports
         )
         allowed_adapter_protocol_import = (
-            OPENAI_AGENTS_DIR in path.parents
-            and "gmgn_twitter_intel.domains.pulse_lab.providers" in imports
+            OPENAI_AGENTS_DIR in path.parents and "gmgn_twitter_intel.domains.pulse_lab.providers" in imports
         )
         if (
             imports_integrations

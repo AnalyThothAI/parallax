@@ -62,9 +62,7 @@ _DEFAULT_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
 class PulseAgentRuntimeContract:
     stage_names: tuple[str, ...] = _DEFAULT_STAGE_NAMES
     max_turns_per_stage: dict[str, int] = field(default_factory=lambda: dict(_DEFAULT_MAX_TURNS_PER_STAGE))
-    tool_names_by_stage: dict[str, tuple[str, ...]] = field(
-        default_factory=lambda: dict(_DEFAULT_TOOL_NAMES_BY_STAGE)
-    )
+    tool_names_by_stage: dict[str, tuple[str, ...]] = field(default_factory=lambda: dict(_DEFAULT_TOOL_NAMES_BY_STAGE))
     route_tool_budgets: dict[str, int] = field(default_factory=lambda: dict(_DEFAULT_ROUTE_TOOL_BUDGETS))
     decision_maker_fallback_tool_enabled: bool = True
     safety_net_enabled: bool = False
@@ -75,9 +73,7 @@ class PulseAgentRuntimeContract:
         return {
             "stage_names": tuple(self.stage_names),
             "max_turns_per_stage": dict(self.max_turns_per_stage),
-            "tool_names_by_stage": {
-                str(stage): tuple(names) for stage, names in self.tool_names_by_stage.items()
-            },
+            "tool_names_by_stage": {str(stage): tuple(names) for stage, names in self.tool_names_by_stage.items()},
             "route_tool_budgets": dict(self.route_tool_budgets),
             "safety_net_enabled": bool(self.safety_net_enabled),
             "validators_enabled": tuple(self.validators_enabled),

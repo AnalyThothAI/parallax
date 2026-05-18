@@ -174,8 +174,7 @@ def test_pulse_repository_monolith_and_session_facade_stay_removed():
         path
         for base in (ROOT / "src", ROOT / "tests")
         for path in base.rglob("*.py")
-        if "platform/db/alembic/versions" not in path.as_posix()
-        and path.resolve() != this_file
+        if "platform/db/alembic/versions" not in path.as_posix() and path.resolve() != this_file
     ]
     text_by_path = {path: path.read_text(encoding="utf-8") for path in active_paths}
 
@@ -183,11 +182,7 @@ def test_pulse_repository_monolith_and_session_facade_stay_removed():
         ROOT / "src" / "gmgn_twitter_intel" / "domains" / "pulse_lab" / "repositories" / "pulse_repository.py"
     ).exists()
     class_name = "Pulse" + "Repository"
-    import_text = (
-        "from gmgn_twitter_intel.domains.pulse_lab.repositories."
-        "pulse_repository import "
-        f"{class_name}"
-    )
+    import_text = f"from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import {class_name}"
     for path, text in text_by_path.items():
         assert f"class {class_name}" not in text, path
         assert f"{class_name}(" not in text, path

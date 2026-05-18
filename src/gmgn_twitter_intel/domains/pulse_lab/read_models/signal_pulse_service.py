@@ -103,6 +103,7 @@ class SignalPulseService:
             result[stage] = _stage_payload(step)
         return result
 
+
 def _rows(page: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in page.get("items", []) if isinstance(row, dict)]
 
@@ -229,11 +230,7 @@ def _playbook(value: Any) -> dict[str, Any] | None:
 def _string_string_map(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         return {}
-    return {
-        str(k): str(v)
-        for k, v in value.items()
-        if isinstance(k, str) and isinstance(v, str)
-    }
+    return {str(k): str(v) for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
 
 
 def _valid_factor_snapshot(value: Any) -> bool:

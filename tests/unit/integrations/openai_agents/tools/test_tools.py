@@ -85,9 +85,7 @@ class _FakePool:
 
 
 def _ctx(pool: Any, *, max_calls: int = 5) -> PulseToolContext:
-    return PulseToolContext(
-        tool_runtime=AgentToolRuntime(db_pool=pool, investigator_max_tool_calls=max_calls)
-    )
+    return PulseToolContext(tool_runtime=AgentToolRuntime(db_pool=pool, investigator_max_tool_calls=max_calls))
 
 
 # ---------------------------------------------------------------------------
@@ -198,10 +196,7 @@ def test_recent_tweets_oversize_payload_is_truncated() -> None:
     # Each tweet ~ a few hundred bytes once a long text is embedded;
     # request 25 tweets with ~500 byte text each => >4KiB.
     long_text = "x" * 500
-    rows = [
-        _tweet_row(event_id=f"evt-{i}", tweet_id=str(2000 + i), text=long_text)
-        for i in range(25)
-    ]
+    rows = [_tweet_row(event_id=f"evt-{i}", tweet_id=str(2000 + i), text=long_text) for i in range(25)]
     pool = _FakePool([rows])
     ctx = _ctx(pool)
 

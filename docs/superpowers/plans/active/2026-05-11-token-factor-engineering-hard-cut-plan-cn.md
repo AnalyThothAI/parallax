@@ -16,7 +16,7 @@ This plan was refreshed against local `main` on 2026-05-11 after the tests-and-l
 
 - Local `main` is ahead of `origin/main` by three commits and is the base for this work.
 - Coding happens in `.worktrees/token-factor-engineering-hard-cut` on branch `codex/token-factor-engineering-hard-cut`.
-- Backend tests are now split. Most old `tests/test_*.py` paths moved to `tests/unit/` or `tests/integration/`. The root exceptions still present are `tests/test_factor_snapshot.py` and `tests/test_no_factor_snapshot_fallback.py`.
+- Backend tests are now split. Most old `tests/test_*.py` paths moved to `tests/unit/` or `tests/integration/`. The root exceptions still present are `tests/unit/test_factor_snapshot.py` and `tests/architecture/test_no_factor_snapshot_fallback.py`.
 - Frontend commands must run from `web/`: `cd web && npm run test`, `cd web && npm run typecheck`, `cd web && npm run build`, `cd web && npm run lint`.
 - Completion evidence is `make check-all`; it wraps lint, typecheck, unit/architecture/contract, integration/e2e, and coverage.
 - `web/src/lib/tokenRadar.ts` is the frontend Token Radar adapter and is more important than `ScoreLedger.tsx` for the v2 hard cut.
@@ -204,8 +204,8 @@ Frontend:
 - Create `web/src/components/ScoreLedger.test.tsx` if ledger-specific gate/alpha rendering is not covered elsewhere.
 
 Tests:
-- Modify `tests/test_factor_snapshot.py`.
-- Modify `tests/test_no_factor_snapshot_fallback.py`.
+- Modify `tests/unit/test_factor_snapshot.py`.
+- Modify `tests/architecture/test_no_factor_snapshot_fallback.py`.
 - Modify `tests/unit/test_cross_section_normalizer.py`.
 - Modify `tests/unit/test_factor_cohort.py`.
 - Modify `tests/unit/test_token_radar_feature_builder.py`.
@@ -266,7 +266,7 @@ Run:
 
 ```bash
 uv run ruff check .
-uv run python -m pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_repository.py tests/unit/test_pulse_candidate_gate.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_repository.py tests/unit/test_pulse_candidate_gate.py -q
 cd web && npm run typecheck && npm run test -- --run
 ```
 
@@ -277,12 +277,12 @@ Expected: record pass/fail state before changing code. If baseline fails for unr
 **Files:**
 - Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`.
 - Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`.
-- Modify `tests/test_factor_snapshot.py`.
-- Modify `tests/test_no_factor_snapshot_fallback.py`.
+- Modify `tests/unit/test_factor_snapshot.py`.
+- Modify `tests/architecture/test_no_factor_snapshot_fallback.py`.
 
 - [x] **Step 1.1: Add failing snapshot contract tests**
 
-In `tests/test_factor_snapshot.py`, assert:
+In `tests/unit/test_factor_snapshot.py`, assert:
 
 ```python
 snapshot = build_token_factor_snapshot(
@@ -335,7 +335,7 @@ assert "duplicate_text_share_high" in repeated["gates"]["blocked_reasons"]
 
 - [x] **Step 1.3: Add producer no-fallback scan**
 
-In `tests/test_no_factor_snapshot_fallback.py`, add a focused producer scan for the files owned by Tasks 1 and 2. The full runtime/frontend scan belongs to Task 7 after all consumers are converted.
+In `tests/architecture/test_no_factor_snapshot_fallback.py`, add a focused producer scan for the files owned by Tasks 1 and 2. The full runtime/frontend scan belongs to Task 7 after all consumers are converted.
 
 ```python
 source_files = [
@@ -412,7 +412,7 @@ Thresholds:
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py -q
 ```
 
 Expected: v2 snapshot tests pass; no producer-owned v1 fallback remains in files touched so far.

@@ -210,7 +210,7 @@ def test_watchlist_handle_overview_metrics_are_not_limited_by_cluster_sample(tmp
                 is_watched=True,
             )
             _extract_signal(
-            social_events,
+                social_events,
                 event_id=event_id,
                 author_handle="marionawfal",
                 received_at_ms=index * 1_000,

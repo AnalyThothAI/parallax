@@ -166,7 +166,6 @@ class PulseRunsRepository:
             self.conn.commit()
         return _optional_row(row)
 
-
     def insert_agent_run_step(
         self,
         *,
@@ -276,4 +275,3 @@ class PulseRunsRepository:
             (run_id,),
         ).fetchall()
         return [_row(row) for row in rows]
-

@@ -72,15 +72,6 @@ rejects.
 To unstick: either (a) `monkeypatch.setenv("HOME", str(tmp_path))` and seed a minimal
 `config.yaml` per test, or (b) refactor the runner so the test never reaches `load_settings`.
 
-## Idempotency test should be opt-in against live data only（来自 spec 2026-05-10-tests-and-lint-production-grade, P6 pre-flight）
-
-`tests/unit/test_token_radar_idempotency.py::test_token_radar_rebuild_is_idempotent_against_live_db`
-auto-runs whenever `GMGN_TEST_POSTGRES_DSN` is set (which P5 auto-testcontainers does for
-the entire session). Against a fresh empty DB, `_source_rows` returns `[]` and the original
-`assert frozen_rows` failed loudly. P6 changed the assertion to `pytest.skip(...)` so this no
-longer breaks `make check-all`, but the test should be moved out of `tests/unit/` (it is not a
-unit test) and gated behind an explicit env flag like `GMGN_RUN_LIVE_IDEMPOTENCY_TEST=1`.
-
 ## mypy strict overrides（来自 spec 2026-05-10-tests-and-lint-production-grade）
 
 以下包当前以 `disallow_untyped_defs = false` 等放宽设置通过 mypy。每条都需要后续按包消化（一个 sprint 摘掉一两条）。`no_implicit_optional` 与 `warn_unused_ignores` 等基础项仍全局严格。
@@ -94,6 +85,7 @@ unit test) and gated behind an explicit env flag like `GMGN_RUN_LIVE_IDEMPOTENCY
 
 | Description | Introduced | Resolved | Resolution |
 |-------------|------------|----------|------------|
+| Token Radar idempotency test lived under `tests/unit/`, depended on live DSNs, and skipped when source rows were absent | 2026-05-10 (tests-and-lint-production-grade, P6 pre-flight) | 2026-05-18 (test-system-hard-cut Task 5) | Moved to `tests/integration/test_token_radar_idempotency.py`, seeded disposable PostgreSQL current facts, removed live DSN/skips/private `_source_rows` monkeypatch, and asserted two real projection rebuilds are semantically stable |
 | `MarketRepository` was added to `domains/asset_market/interfaces.py` even though only `app/runtime/repository_session.py` consumed it | 2026-05-10 (src-domain-package-restructure, Task 4) | 2026-05-16 (backend-architecture-audit P0 hard-cut) | Deleted `AssetRepository` and `MarketRepository` classes from runtime. Architecture test `test_legacy_asset_repository_is_not_imported` guards regressions |
 | Watchlist page still combined live `/api/recent` replay for sidebar counts with handle-intel summary/timeline endpoints for the main panel | 2026-05-14-watchlist-handle-intel | 2026-05-16-watchlist-page-single-source-hard-cut | Added Watchlist overview read endpoints, moved selected-handle facts and sidebar rows onto persisted watchlist data, and added frontend architecture gates that reject the old account-case/live-buffer path |
 | Token Radar v1 factor snapshot mixed presence/data-quality facts into scoring families, which made many factors saturate near 100 and reduced IC/dispersion usefulness | pre-2026-05-11 Token Radar | 2026-05-11-token-factor-engineering-hard-cut | Replaced runtime contract with `token_factor_snapshot_v2_alpha_gated`: identity/market/data availability are gates or data-health, alpha families are social-first, anchor market context is explicit, and diagnostics/settlement evaluate v2 rows by score version |

@@ -195,9 +195,7 @@ def test_worker_construction_is_split_into_domain_factories() -> None:
         node.name for node in ast.walk(bootstrap_tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     expected_worker_modules = {
-        qualified_name.rpartition(".")[0]
-        for key, qualified_name in EXPECTED_WORKERS.items()
-        if key != "collector"
+        qualified_name.rpartition(".")[0] for key, qualified_name in EXPECTED_WORKERS.items() if key != "collector"
     }
     bootstrap_runtime_worker_imports = sorted(
         module

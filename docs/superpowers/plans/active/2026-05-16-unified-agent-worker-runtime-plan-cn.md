@@ -107,7 +107,7 @@
 6. **runtime_hash 必须手动 bump（已确认）**：读了 `agent_runtime.py:18-71` 的 `build_pulse_runtime_manifest()`，输入只看 `PULSE_DECISION_PROMPT_VERSION` / `PULSE_DECISION_SCHEMA_VERSION` / `PULSE_GATE_VERSION` / model / timeout —— **不**含 `is_strict_json_schema` 或 `extra` 行为。所以 PR 1 必须在 `domains/pulse_lab/interfaces.py` 把 `PULSE_DECISION_SCHEMA_VERSION` 从 `"pulse_decision_v1"` 升到 `"pulse_decision_v2"`，否则 PR 1 前后的 run 全部混在同一 `runtime_hash` 下，eval 表无法 diff baseline vs candidate。
 7. **`StageRunAudit` 用 `extra="forbid"`**（`agent_decision.py:97`）。PR 1 的 audit_extra dict 含 `safety_net_used` / `safety_net_retries` / `parse_mode` 三键，**塞进 `trace_metadata_json` jsonb 安全**（jsonb 内部无 Pydantic 约束）。但 PR 2 把这 3 字段提到顶层 DB 列后，`StageRunAudit` 必须同步加 3 个 Pydantic 字段（带默认值），否则 `pulse_candidate_worker.py:473` 等构造点会爆 `extra inputs not permitted`。PR 1 与 PR 2 衔接时务必协调。
 8. **`social_event_extraction.py:83,91,102` 也有 `extra="forbid"`**（spec M1.b 漏点）。同样改成 `extra="ignore"`，否则 SocialEventAgent 仍会因模型幻觉字段失败。**PR 1 必须包含**。
-9. **3 个已有测试断言反方向**：`tests/test_pulse_decision_agent_client.py:260,267,275` 当前断言 `_JsonOutputSchema(AnalystOpinion).is_strict_json_schema() is False`。PR 1 同 commit 翻为 `is True`，并新加 `assert "$ref" not in json.dumps(schema.json_schema())` 验证展平。
+9. **3 个已有测试断言反方向**：`tests/unit/test_pulse_decision_agent_client.py:260,267,275` 当前断言 `_JsonOutputSchema(AnalystOpinion).is_strict_json_schema() is False`。PR 1 同 commit 翻为 `is True`，并新加 `assert "$ref" not in json.dumps(schema.json_schema())` 验证展平。
 10. **`<think>` 残留兜底**：若 M1.d enable_thinking 注入路径不生效（fallback 没拦到 server-side），qwen3.6 仍会在 `summary_zh` 等字段里输出 `<think>...</think>` 字面文本，前端 markdown 渲染会直暴给用户。PR 1 给 `agent_decision.py:_clean_text()` 加 `re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()`，是 cheap 但严肃的兜底。
 11. **`_runner` mock 返回类型变化**：现有 `tests/unit/test_pulse_decision_agent_client.py` 等用 `FakeRunner` 返回 `RunResult` 对象给 `_runner.run(...)`。PR 1 把调用换成 `safety_net.run_with_safety_net(...)` 返回 `(final_output, audit_extra)` tuple。所有相关测试 mock 必须改成 mock `safety_net`（推荐）或保留 `_runner` mock 而在 client 内做兼容（不推荐，增加分支）。
 12. **safety_net 与 `llm_gateway.run_with_timeout` 嵌套顺序**：当前三 client 形如 `await self._llm_gateway.run_with_timeout(lambda: self._runner.run(...))`。PR 1 改为：**gateway 包 safety_net**——`await self._llm_gateway.run_with_timeout(lambda: self._safety_net.run_with_safety_net(...))`。这样 timeout 同时 cover 主路径与 Instructor reask，行为可预测；不要反过来包，否则 reask 路径不受 timeout 保护。
@@ -407,8 +407,8 @@ class InstructorSafetyNet:
 
 #### 必须翻转的已有测试
 
-- `tests/test_pulse_decision_agent_client.py:260` — `assert schema.is_strict_json_schema() is False` → `is True`
-- `tests/test_pulse_decision_agent_client.py:267,275` — 同上路径上 schema 实例的断言保留 schema 类型校验，但取消所有 `is False` 假设
+- `tests/unit/test_pulse_decision_agent_client.py:260` — `assert schema.is_strict_json_schema() is False` → `is True`
+- `tests/unit/test_pulse_decision_agent_client.py:267,275` — 同上路径上 schema 实例的断言保留 schema 类型校验，但取消所有 `is False` 假设
 - 同时加：在 `:260` 那个测试里追加 `assert "$ref" not in json.dumps(schema.json_schema())` 验证 jsonref 展平生效
 
 #### _runner mock 改造（Design Correction §11）

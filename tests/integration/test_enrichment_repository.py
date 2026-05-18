@@ -1,7 +1,5 @@
 import time
 
-import pytest
-
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
@@ -198,14 +196,13 @@ def test_claim_next_job_ignores_legacy_enrichment_job_types(tmp_path):
     assert stored["last_error"] == "legacy_job_type_retired"
 
 
-@pytest.mark.skip(
-    reason="agents_sdk_run audit row shape changed; test indexes None subscript. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
 def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
     conn, _, enrichment, ingest = open_repositories(tmp_path)
     try:
-        ingest.ingest_event(make_event("agent-run-audit", text="Solana XDP agent audit"), is_watched=True)
+        ingest.ingest_event(
+            make_event("agent-run-audit", text="Solana XDP throughput is nearly ready"),
+            is_watched=True,
+        )
         job = enrichment.claim_next_job(now_ms=int(time.time() * 1000))
         result = SocialEventExtraction(
             is_signal_event=True,
@@ -231,6 +228,10 @@ def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
                 "schema_version": "social_event_v2",
                 "artifact_version_hash": "artifact:gpt-test",
                 "trace_metadata": {"event_id": "agent-run-audit"},
+                "usage": {"input_tokens": 12, "output_tokens": 8},
+                "safety_net_used": True,
+                "safety_net_retries": 2,
+                "parse_mode": "safety_net_repair",
             },
         )
 
@@ -254,6 +255,13 @@ def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
     assert run["schema_version"] == "social_event_v2"
     assert run["artifact_version_hash"] == "artifact:gpt-test"
     assert run["trace_metadata_json"]["event_id"] == "agent-run-audit"
+    assert run["status"] == "done"
+    assert run["request_json"] == {"job_id": job["job_id"]}
+    assert run["response_json"] == {"is_signal_event": True}
+    assert run["usage_json"] == {"input_tokens": 12, "output_tokens": 8}
+    assert run["safety_net_used"] is True
+    assert run["safety_net_retries"] == 2
+    assert run["parse_mode"] == "safety_net_repair"
 
 
 def test_claim_next_job_reclaims_stale_running_job(tmp_path):

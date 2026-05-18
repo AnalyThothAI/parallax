@@ -564,8 +564,7 @@ def _abstain_decision(
         summary_zh=summary_zh,
         narrative_archetype="unclear",
         narrative_thesis_zh=(
-            "当前数据完整度不足，无法形成可靠叙事判断；本次仅记录确定性门控结果，"
-            "等待更多事实信号后再评估。"
+            "当前数据完整度不足，无法形成可靠叙事判断；本次仅记录确定性门控结果，等待更多事实信号后再评估。"
         ),
         bull_view=BullBearView(strength="absent"),
         bear_view=BullBearView(strength="absent"),

@@ -134,9 +134,8 @@ class OpenAIAgentsPulseDecisionClient:
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         decision_tools = ("get_target_recent_tweets",) if self._decision_maker_enable_fallback_tool else ()
-        route_budgets = (
-            dict(self._investigator_max_tool_calls_by_route)
-            or dict(DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.route_tool_budgets)
+        route_budgets = dict(self._investigator_max_tool_calls_by_route) or dict(
+            DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.route_tool_budgets
         )
         return PulseAgentRuntimeContract(
             stage_names=("investigator", "decision_maker"),

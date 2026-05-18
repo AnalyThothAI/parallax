@@ -22,8 +22,7 @@ ORIGINAL_DECISIONS = [
             "理由: 与 spec §4.4 默认值一致；cex 信号高质量低频，不需要太多 tool round-trip；"
             "meme 信号低质量高频且叙事更模糊，保留更宽预算。Phase 1 上线 7 天后看实际 "
             "`tool_calls_count` 分布再调整。",
-            "实施位置: Task 4 工具内 counter + Task 6 client 读 workers.yaml + "
-            "`gmgn-twitter-intel init` 默认模板。",
+            "实施位置: Task 4 工具内 counter + Task 6 client 读 workers.yaml + `gmgn-twitter-intel init` 默认模板。",
         ],
     ),
     (
@@ -72,8 +71,7 @@ ORIGINAL_DECISIONS = [
         "OQ-6 prompt 文件命名",
         [
             "锁定 `prompts/{investigator,decision_maker}.md` 单文件，路由段落内联。",
-            "理由: KISS；复用现有 anti-injection prefix 与角色定位段；prompt diff 更容易 review；"
-            "loader 实现简单。",
+            "理由: KISS；复用现有 anti-injection prefix 与角色定位段；prompt diff 更容易 review；loader 实现简单。",
             "实施位置: `prompt_loader.py` + 2 个 markdown 文件。",
         ],
     ),
@@ -98,8 +96,7 @@ HARDENING_DECISIONS = [
     (
         "HD-3 generated script owns this file",
         [
-            "`docs/generated/pulse-agent-desk-decisions.md` is owned by "
-            "`scripts/regen_pulse_agent_desk_decisions.py`.",
+            "`docs/generated/pulse-agent-desk-decisions.md` is owned by `scripts/regen_pulse_agent_desk_decisions.py`.",
             "Edits to decisions should update the generator source and rerun `make docs-generated`; the generated "
             "Markdown is not hand-maintained.",
         ],

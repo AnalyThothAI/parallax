@@ -92,9 +92,7 @@ def _v2_final(
         "evidence_event_urls": {"event-1": "https://x.com/foo/status/1"},
         "invalidation_conditions": ["Independent author count rolls over"],
         "residual_risks": ["Single-KOL driven"],
-        "evidence_event_ids": evidence_event_ids
-        if evidence_event_ids is not None
-        else ["event-1", "event-2"],
+        "evidence_event_ids": evidence_event_ids if evidence_event_ids is not None else ["event-1", "event-2"],
     }
 
 
@@ -110,21 +108,25 @@ def _v2_stage_audits(
         if investigator_tool_calls is not None
         else [{"name": "get_target_recent_tweets", "args": {}}]
     )
-    response = investigator_response if investigator_response is not None else {
-        "narrative_archetype_candidate": "kol-ignition",
-        "narrative_observation_zh": "Stub investigator observation for tests.",
-        "bull_observation": {
-            "strength": "moderate",
-            "thesis_zh": "Stub bull thesis",
-            "supporting_event_ids": ["event-1", "event-2"],
-        },
-        "bear_observation": {
-            "strength": "weak",
-            "thesis_zh": "Stub bear thesis",
-            "supporting_event_ids": ["event-3"],
-        },
-        "data_gaps": [],
-    }
+    response = (
+        investigator_response
+        if investigator_response is not None
+        else {
+            "narrative_archetype_candidate": "kol-ignition",
+            "narrative_observation_zh": "Stub investigator observation for tests.",
+            "bull_observation": {
+                "strength": "moderate",
+                "thesis_zh": "Stub bull thesis",
+                "supporting_event_ids": ["event-1", "event-2"],
+            },
+            "bear_observation": {
+                "strength": "weak",
+                "thesis_zh": "Stub bear thesis",
+                "supporting_event_ids": ["event-3"],
+            },
+            "data_gaps": [],
+        }
+    )
     return [
         {
             "stage": "investigator",

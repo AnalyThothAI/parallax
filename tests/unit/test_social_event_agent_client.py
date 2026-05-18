@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import SocialEventPayload
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 
 
@@ -99,7 +100,9 @@ def test_openai_agents_client_uses_typed_agent_output_and_trace_metadata():
     call = runner.calls[0]
     assert gateway.calls == [{"worker_name": "enrichment", "stage": "social_event", "timeout_s": 7}]
     assert call["agent"].tools == []
-    assert call["agent"].output_type is SocialEventPayload
+    assert isinstance(call["agent"].output_type, StrictJsonOutputSchema)
+    assert call["agent"].output_type.output_type is SocialEventPayload
+    assert call["agent"].output_type.is_strict_json_schema() is True
     assert call["agent"].model is None
     assert call["max_turns"] == 1
     assert call["run_config"].workflow_name == "gmgn-twitter-intel.social_event_extraction"

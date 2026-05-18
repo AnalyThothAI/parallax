@@ -260,7 +260,6 @@ class PulseJobsRepository:
         ).fetchone()
         return _optional_row(row)
 
-
     def mark_stale_agent_runs_failed(
         self,
         *,
@@ -288,4 +287,3 @@ class PulseJobsRepository:
         if commit:
             self.conn.commit()
         return int(cursor.rowcount or 0)
-

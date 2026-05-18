@@ -12,9 +12,7 @@ from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAME
 from gmgn_twitter_intel.app.surfaces.api import routes_token_image as token_image_api
 from gmgn_twitter_intel.app.surfaces.api.exceptions import (
     ApiBadRequest,
-    ApiUnauthorized,
     api_bad_request_response,
-    api_unauthorized_response,
 )
 from gmgn_twitter_intel.app.surfaces.api.http import (
     create_api_router,
@@ -322,134 +320,6 @@ def make_settings(tmp_path) -> Settings:
     return settings
 
 
-class FakePulseTask:
-    def done(self) -> bool:
-        return False
-
-
-class FakeSignalPulseReadRepository:
-    def __init__(self):
-        self.list_calls: list[dict[str, object]] = []
-        self.summary_calls: list[dict[str, object]] = []
-
-    def list_candidates(
-        self,
-        window,
-        scope,
-        status=None,
-        limit=50,
-        cursor=None,
-        q=None,
-        handle=None,
-        displayable_only=False,
-    ):
-        self.list_calls.append(
-            {
-                "window": window,
-                "scope": scope,
-                "status": status,
-                "limit": limit,
-                "cursor": cursor,
-                "q": q,
-                "handle": handle,
-                "displayable_only": displayable_only,
-            }
-        )
-        return {
-            "items": [
-                {
-                    "candidate_id": "candidate-fake",
-                    "candidate_type": "token_target",
-                    "subject_key": "toly",
-                    "target_type": "Asset",
-                    "target_id": "asset:pepe",
-                    "symbol": "PEPE",
-                    "window": window,
-                    "scope": scope,
-                    "pulse_status": "token_watch",
-                    "verdict": "token_watch",
-                    "social_phase": "ignition",
-                    "candidate_score": 0.84,
-                    "score_band": "watch",
-                    "factor_snapshot_json": _pulse_factor_snapshot(),
-                    "decision_route": "meme",
-                    "decision_recommendation": "watchlist",
-                    "decision_confidence": 0.72,
-                    "decision_abstain_reason": None,
-                    "decision_stage_count": 3,
-                    "decision_json": _pulse_decision(),
-                    "gate_json": _pulse_gate(score=0.84),
-                    "gate_reasons_json": ["fresh_attention"],
-                    "risk_reasons_json": [],
-                    "last_edge_events_json": ["pulse_status_changed"],
-                    "evidence_event_ids_json": ["event-fake"],
-                    "source_event_ids_json": ["event-fake"],
-                    "agent_run_id": "run-fake",
-                    "pulse_version": "pulse-v1",
-                    "gate_version": "gate-v1",
-                    "prompt_version": "prompt-v1",
-                    "schema_version": "schema-v1",
-                    "created_at_ms": 1_000,
-                    "updated_at_ms": 2_000,
-                }
-            ],
-            "next_cursor": None,
-        }
-
-    def pulse_summary(self, window, scope, q=None, handle=None):
-        self.summary_calls.append({"window": window, "scope": scope, "q": q, "handle": handle})
-        return {
-            "summary": {
-                "trade_candidate": 0,
-                "token_watch": 1,
-                "risk_rejected_high_info": 0,
-                "blocked_low_information": 0,
-            },
-            "candidate_count": 1,
-            "blocked_low_information_count": 0,
-            "dead_job_count": 0,
-            "market_ready_rate": 1.0,
-        }
-
-
-class FakeRepositoryContext:
-    def __init__(self, pulse_read):
-        self.pulse_read = pulse_read
-        self.pulse_runs = pulse_read
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-class FakeRuntime:
-    def __init__(self, pulse_read):
-        self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
-        self.pulse_read = pulse_read
-        self.workers = {
-            "pulse_candidate": SimpleNamespace(
-                status_payload=lambda: {
-                    "enabled": True,
-                    "running": True,
-                    "last_started_at_ms": None,
-                    "last_finished_at_ms": None,
-                    "last_result": None,
-                    "last_error": None,
-                }
-            )
-        }
-        self.scheduler = SimpleNamespace(
-            tasks={},
-            status_payload=lambda: {"pulse_candidate": self.workers["pulse_candidate"].status_payload()},
-            unhealthy_reasons=lambda: [],
-        )
-
-    def repositories(self):
-        return FakeRepositoryContext(self.pulse_read)
-
-
 def make_event(
     event_id: str,
     handle: str = "toly",
@@ -711,7 +581,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert inspect_data["token_result"]["profile"]["status"] == "pending"
     assert inspect_data["token_result"]["profile"]["provider"] is None
     assert inspect_data["token_result"]["market_live"]["status"] in {"missing", "unsupported", "ready"}
-    legacy_market_field = "market" "_overlay"
+    legacy_market_field = "market_overlay"
     assert legacy_market_field not in inspect_data["token_result"]
     assert "radar_item" not in inspect_data["token_result"]
     assert inspect_data["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
@@ -1119,75 +989,6 @@ def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
     assert blocked_status.json() == {"ok": False, "error": "invalid_status", "field": "status"}
 
 
-def test_signal_pulse_api_uses_fake_runtime_without_postgres():
-    pulse = FakeSignalPulseReadRepository()
-    app = FastAPI()
-    app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
-    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(pulse)
-
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/signal-lab/pulse",
-            params={"window": "1h", "scope": "matched", "q": "PEPE", "handle": "toly", "limit": 5},
-            headers={"Authorization": "Bearer secret"},
-        )
-        invalid = client.get(
-            "/api/signal-lab/pulse",
-            params={"status": "blocked_low_information"},
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert pulse.list_calls == [
-        {
-            "window": "1h",
-            "scope": "matched",
-            "status": None,
-            "limit": 5,
-            "cursor": None,
-            "q": "PEPE",
-            "handle": "toly",
-            "displayable_only": True,
-        }
-    ]
-    assert pulse.summary_calls == [{"window": "1h", "scope": "matched", "q": "PEPE", "handle": "toly"}]
-    assert data["health"]["agent_worker_running"] is True
-    assert data["summary"]["token_watch"] == 1
-    assert data["items"][0]["candidate_id"] == "candidate-fake"
-    assert data["items"][0]["decision"]["summary_zh"] == "PEPE 社交热度显著上升。"
-    assert "agent_recommendation" not in data["items"][0]
-    assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
-    assert "radar_score_json" not in data["items"][0]
-    assert "market_context_json" not in data["items"][0]
-    assert "thesis_json" not in data["items"][0]
-    assert "kind" not in data["items"][0]
-    assert invalid.status_code == 400
-    assert invalid.json() == {"ok": False, "error": "invalid_status", "field": "status"}
-
-
-def test_signal_pulse_api_defaults_to_produced_agent_window_and_scope():
-    pulse = FakeSignalPulseReadRepository()
-    app = FastAPI()
-    app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
-    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(pulse)
-
-    with TestClient(app) as client:
-        response = client.get("/api/signal-lab/pulse", headers={"Authorization": "Bearer secret"})
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["query"]["window"] == "1h"
-    assert data["query"]["scope"] == "all"
-    assert pulse.list_calls[0]["window"] == "1h"
-    assert pulse.list_calls[0]["scope"] == "all"
-    assert pulse.summary_calls[0] == {"window": "1h", "scope": "all", "q": None, "handle": None}
-
-
 def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
@@ -1430,7 +1231,7 @@ def test_api_token_case_returns_dossier_for_resolved_asset(tmp_path):
     assert "market_live" in body["data"]
     assert body["data"]["timeline"]["market_candles"]["target_type"] == "Asset"
     assert "radar_item" not in body["data"]
-    legacy_market_field = "market" "_overlay"
+    legacy_market_field = "market_overlay"
     assert legacy_market_field not in body["data"]
     assert body["data"]["posts"]["items"][0]["post_quality"]["contributions"]
 

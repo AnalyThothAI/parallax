@@ -43,6 +43,4 @@ async def get_target_recent_tweets(
         target_id: The Pulse target id (``token_intent_resolutions.target_id``).
         limit: Max tweets to return (clamped to 1..30, default 15).
     """
-    return _impl_get_target_recent_tweets(
-        ctx.context, target_id=target_id, limit=limit
-    )
+    return _impl_get_target_recent_tweets(ctx.context, target_id=target_id, limit=limit)

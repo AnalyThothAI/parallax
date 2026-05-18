@@ -10,6 +10,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
     WINDOW_MS,
@@ -357,11 +358,7 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
-    monkeypatch.setattr(
-        TokenRadarProjection,
-        "_source_rows",
-        lambda self, since_ms, scope, now_ms: [source_row],
-    )
+    patch_query_rows(monkeypatch, [source_row])
 
     result = TokenRadarProjection(repos=repos).rebuild(
         window="5m",
@@ -405,15 +402,12 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     now_ms = 1_777_800_060_000
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
 
-    def source_rows(self, since_ms, scope, now_ms):
-        return [source_row("event-1", received_at_ms=now_ms - 60_000)]
-
     monkeypatch.setattr(
         token_radar_projection_module,
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
-    monkeypatch.setattr(TokenRadarProjection, "_source_rows", source_rows)
+    patch_query_rows(monkeypatch, [source_row("event-1", received_at_ms=now_ms - 60_000)])
 
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
 
@@ -431,24 +425,22 @@ def test_projection_marks_market_missing_when_event_market_tick_has_not_arrived(
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
     now_ms = 1_777_800_060_000
 
-    def source_rows(self, since_ms, scope, now_ms):
-        row = source_row("event-1", received_at_ms=now_ms - 60_000)
-        row["event_price_usd"] = None
-        row["event_price_quote"] = None
-        row["event_price_provider"] = None
-        row["event_price_observed_at_ms"] = None
-        row["event_price_capture_method"] = "unavailable"
-        row["event_price_capture_reason"] = "provider_no_quote"
-        row["event_price_tick_lag_ms"] = None
-        row["first_price_usd"] = None
-        return [row]
+    row = source_row("event-1", received_at_ms=now_ms - 60_000)
+    row["event_price_usd"] = None
+    row["event_price_quote"] = None
+    row["event_price_provider"] = None
+    row["event_price_observed_at_ms"] = None
+    row["event_price_capture_method"] = "unavailable"
+    row["event_price_capture_reason"] = "provider_no_quote"
+    row["event_price_tick_lag_ms"] = None
+    row["first_price_usd"] = None
 
     monkeypatch.setattr(
         token_radar_projection_module,
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
-    monkeypatch.setattr(TokenRadarProjection, "_source_rows", source_rows)
+    patch_query_rows(monkeypatch, [row])
 
     result = TokenRadarProjection(repos=repos).rebuild(
         window="5m",
@@ -548,22 +540,20 @@ def test_projection_market_uses_social_start_row_not_latest_row():
     assert market["readiness"]["anchor_status"] == "ready"
 
 
-def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
+def test_token_radar_source_query_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
     conn = FakeConn()
-    repos = type("Repos", (), {"conn": conn})()
 
-    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
+    TokenRadarSourceQuery(conn).source_rows(since_ms=1, scope="all", now_ms=2)
 
     assert "preferred_price_feed" in conn.sql
     assert "COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id)" in conn.sql
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
-def test_source_rows_does_not_read_historical_market_fact_table():
+def test_token_radar_source_query_does_not_read_historical_market_fact_table():
     conn = FakeConn()
-    repos = type("Repos", (), {"conn": conn})()
 
-    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
+    TokenRadarSourceQuery(conn).source_rows(since_ms=1, scope="all", now_ms=2)
 
     assert _legacy_price_table() not in conn.sql
     assert "enriched_events" in conn.sql
@@ -603,11 +593,7 @@ def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypa
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
-    monkeypatch.setattr(
-        TokenRadarProjection,
-        "_source_rows",
-        lambda self, since_ms, scope, now_ms: [source_row("event-1", received_at_ms=now_ms - 60_000)],
-    )
+    patch_query_rows(monkeypatch, [source_row("event-1", received_at_ms=now_ms - 60_000)])
 
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
 
@@ -671,6 +657,13 @@ def test_demoted_search_asset_does_not_project_as_resolved_high_alert():
     assert projected["factor_snapshot_json"]["data_health"]["market"] == "missing"
     assert projected["data_health_json"]["identity"] == "ready"
     assert projected["market_json"] == {}
+
+
+def patch_query_rows(monkeypatch: pytest.MonkeyPatch, rows: list[dict]) -> None:
+    def source_rows(self, *, since_ms, scope, now_ms):
+        return rows
+
+    monkeypatch.setattr(TokenRadarSourceQuery, "source_rows", source_rows)
 
 
 def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> dict:

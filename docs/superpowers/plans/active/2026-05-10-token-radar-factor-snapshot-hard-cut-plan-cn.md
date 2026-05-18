@@ -117,7 +117,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 ### Tests to add or rewrite
 
-- `tests/test_factor_snapshot.py`
+- `tests/unit/test_factor_snapshot.py`
 - `tests/test_token_radar_projection.py`
 - `tests/test_token_radar_repository.py`
 - `tests/test_market_freshness_demand.py`
@@ -299,7 +299,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
 - Create: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/__init__.py`
-- Test: `tests/test_factor_snapshot.py`
+- Test: `tests/unit/test_factor_snapshot.py`
 
 - [ ] **Step 1: Write tests for DEX floors, CEX separation, and social quality**
 
@@ -463,7 +463,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 3: Run focused tests**
 
   ```bash
-  uv run pytest tests/test_factor_snapshot.py -q
+  uv run pytest tests/unit/test_factor_snapshot.py -q
   ```
   Expected: PASS.
 
@@ -472,7 +472,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
   ```bash
   git add src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py \
           src/gmgn_twitter_intel/domains/token_intel/scoring/__init__.py \
-          tests/test_factor_snapshot.py
+          tests/unit/test_factor_snapshot.py
   git commit -m "feat: build token factor snapshots"
   ```
 
@@ -1506,11 +1506,11 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 **Files:**
 
 - Modify: all files touched by Tasks 3-7
-- Test: `tests/test_no_factor_snapshot_fallback.py`
+- Test: `tests/architecture/test_no_factor_snapshot_fallback.py`
 
 - [ ] **Step 1: Add grep-based no-fallback regression test**
 
-  Create `tests/test_no_factor_snapshot_fallback.py`:
+  Create `tests/architecture/test_no_factor_snapshot_fallback.py`:
 
   ```python
   from pathlib import Path
@@ -1575,7 +1575,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 - [ ] **Step 5: Run focused test**
 
   ```bash
-  uv run pytest tests/test_no_factor_snapshot_fallback.py -q
+  uv run pytest tests/architecture/test_no_factor_snapshot_fallback.py -q
   ```
   Expected: PASS.
 
@@ -1583,7 +1583,7 @@ Known baseline expectation: no known failing tests are accepted for this plan. I
 
   ```bash
   git add src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md docs/ARCHITECTURE.md docs/CONTRACTS.md \
-          tests/test_no_factor_snapshot_fallback.py
+          tests/architecture/test_no_factor_snapshot_fallback.py
   git commit -m "chore: remove factor snapshot fallback paths"
   ```
 
@@ -1732,7 +1732,7 @@ This is intentionally a hard cut, so runtime rollback is branch-level or deploy-
 
 - AC1, AC2:
   ```bash
-  uv run pytest tests/test_factor_snapshot.py -q
+  uv run pytest tests/unit/test_factor_snapshot.py -q
   ```
 - AC3, AC4:
   ```bash
@@ -1753,7 +1753,7 @@ This is intentionally a hard cut, so runtime rollback is branch-level or deploy-
   ```
 - AC9:
   ```bash
-  uv run pytest tests/test_no_factor_snapshot_fallback.py -q
+  uv run pytest tests/architecture/test_no_factor_snapshot_fallback.py -q
   rg -n "factor_snapshot.*or.*score_json|radar_score_json=context|market_context_json=context" src web tests
   ```
   Expected grep output: no current runtime hits.

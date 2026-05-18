@@ -205,7 +205,10 @@ def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_pat
     )
     conn, ingest, worker, enrichment, social_events = open_runtime(tmp_path, client=FakeClient(result))
     try:
-        event = make_event("event-worker-non-signal", text="gm")
+        event = make_event(
+            "event-worker-non-signal",
+            text="Solana scaling is nearly ready but this reply is casual context",
+        )
         ingest.ingest_event(event, is_watched=True)
 
         processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))

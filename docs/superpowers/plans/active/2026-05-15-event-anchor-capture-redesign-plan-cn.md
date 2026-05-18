@@ -1625,7 +1625,7 @@ git commit -m "refactor: delete anchor price observation runtime"
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `tests/unit/test_token_radar_source_query.py`
 - Modify: `tests/unit/test_token_radar_projection.py`
-- Modify: `tests/test_factor_snapshot.py`
+- Modify: `tests/unit/test_factor_snapshot.py`
 - Modify: `tests/golden/test_token_radar_corpus.py`
 
 - [ ] Update query tests to require new joins.
@@ -1704,13 +1704,13 @@ assert "observation_kind" not in snapshot["market"]["event_anchor"]
 - [ ] Run radar tests.
 
 ```bash
-uv run pytest tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py tests/test_factor_snapshot.py tests/golden/test_token_radar_corpus.py -q
+uv run pytest tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py tests/unit/test_factor_snapshot.py tests/golden/test_token_radar_corpus.py -q
 ```
 
 - [ ] Commit.
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py tests/test_factor_snapshot.py tests/golden/test_token_radar_corpus.py
+git add src/gmgn_twitter_intel/domains/token_intel/queries/token_radar_source_query.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py tests/unit/test_factor_snapshot.py tests/golden/test_token_radar_corpus.py
 git commit -m "refactor: source token radar market context from market ticks"
 ```
 
@@ -1905,7 +1905,7 @@ Expected: no matches.
 
 ```bash
 rg -n "\"event_anchor\"|'event_anchor'|\"decision_latest\"|'decision_latest'|\"message_anchor\"|'message_anchor'" src tests \
-  --glob '!tests/test_factor_snapshot.py' \
+  --glob '!tests/unit/test_factor_snapshot.py' \
   --glob '!src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py'
 ```
 

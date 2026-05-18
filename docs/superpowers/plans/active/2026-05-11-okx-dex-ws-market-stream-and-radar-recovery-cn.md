@@ -374,7 +374,7 @@ class DexMarketStreamProvider(Protocol):
   - Plain text `"ping"` every 25 seconds and expect `"pong"`.
   - Reconnect on close, timeout, `notice`, or non-zero login/subscribe error.
 
-### `tests/test_okx_dex_ws_client.py`
+### `tests/unit/test_okx_dex_ws_client.py`
 
 - Add unit tests with fake websocket:
   - `test_okx_dex_ws_login_uses_expected_signature_prehash`
@@ -563,7 +563,7 @@ if (payload.type === "market_update") {
 
 - AC1:
   ```bash
-  uv run pytest tests/test_okx_dex_ws_client.py::test_okx_dex_ws_price_info_normalizes_market_fields tests/test_asset_market_stream_worker.py::test_stream_worker_writes_okx_dex_ws_price_info_observation -q
+  uv run pytest tests/unit/test_okx_dex_ws_client.py::test_okx_dex_ws_price_info_normalizes_market_fields tests/test_asset_market_stream_worker.py::test_stream_worker_writes_okx_dex_ws_price_info_observation -q
   ```
 
 - AC2:
@@ -591,7 +591,7 @@ if (payload.type === "market_update") {
 
 - AC6:
   ```bash
-  uv run pytest tests/test_okx_dex_ws_client.py::test_okx_dex_ws_reconnects_and_resubscribes_after_notice -q
+  uv run pytest tests/unit/test_okx_dex_ws_client.py::test_okx_dex_ws_reconnects_and_resubscribes_after_notice -q
   ```
 
 ## Verification

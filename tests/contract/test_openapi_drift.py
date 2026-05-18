@@ -172,7 +172,7 @@ def test_market_candles_contract_has_no_legacy_market_payload_field() -> None:
     openapi_text = OPENAPI_PATH.read_text(encoding="utf-8")
     openapi_ts_text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
     frontend_contracts_text = FRONTEND_CONTRACTS_PATH.read_text(encoding="utf-8")
-    legacy_field = "market" "_overlay"
+    legacy_field = "market_overlay"
 
     assert "market_candles" in openapi_text
     assert "market_candles" in openapi_ts_text

@@ -13,9 +13,9 @@ The plan and spec are the contract. This file is the evidence the contract was m
 | Acceptance criterion | Status | Evidence |
 |----------------------|--------|----------|
 | AC1 — market schema uses `event_anchor`, `decision_latest`, and `readiness` | ✅ | `make check-all` includes `tests/unit/test_token_radar_projection.py` and final `833 passed, 14 skipped`. |
-| AC2 — no API/UI live overlay fallback | ✅ | `make check-all` includes `tests/test_no_factor_snapshot_fallback.py`; manual `rg` showed only historical Alembic migration references. |
+| AC2 — no API/UI live overlay fallback | ✅ | `make check-all` includes `tests/architecture/test_no_factor_snapshot_fallback.py`; manual `rg` showed only historical Alembic migration references. |
 | AC3 — `token_radar_rows` has one runtime writer | ✅ | `make check-all` includes `tests/architecture/test_src_domain_architecture.py`. |
-| AC4 — DEX market floors fail closed | ✅ | `make check-all` includes `tests/test_factor_snapshot.py`. |
+| AC4 — DEX market floors fail closed | ✅ | `make check-all` includes `tests/unit/test_factor_snapshot.py`. |
 | AC5 — insufficient/all-tied cohorts return no signal | ✅ | `make check-all` includes `tests/unit/test_token_radar_apply_cross_section.py`. |
 | AC6 — frontend live patch applies material market updates | ✅ | `make check-all` includes web checks and Vitest coverage from `npm test -- --run`. |
 | AC7 — live observation write budget | ✅ | `make check-all` includes `tests/benchmark/test_live_observation_write_budget.py`. |

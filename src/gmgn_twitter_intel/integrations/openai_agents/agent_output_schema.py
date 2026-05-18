@@ -79,17 +79,12 @@ def _force_strict_object_shape(schema: Any) -> Any:
             if not isinstance(properties, dict):
                 properties = {}
             new["required"] = list(properties.keys())
-            new["properties"] = {
-                name: _force_strict_object_shape(prop) for name, prop in properties.items()
-            }
+            new["properties"] = {name: _force_strict_object_shape(prop) for name, prop in properties.items()}
         if "items" in new:
             new["items"] = _force_strict_object_shape(new["items"])
         for key in ("$defs", "definitions"):
             if key in new and isinstance(new[key], dict):
-                new[key] = {
-                    name: _force_strict_object_shape(def_schema)
-                    for name, def_schema in new[key].items()
-                }
+                new[key] = {name: _force_strict_object_shape(def_schema) for name, def_schema in new[key].items()}
         for key in ("anyOf", "allOf", "oneOf"):
             if key in new and isinstance(new[key], list):
                 new[key] = [_force_strict_object_shape(variant) for variant in new[key]]
@@ -103,11 +98,7 @@ def _strip_unsupported_keywords(schema: Any) -> Any:
     """Remove JSON Schema decoration keywords unsupported by strict providers."""
 
     if isinstance(schema, dict):
-        return {
-            key: _strip_unsupported_keywords(value)
-            for key, value in schema.items()
-            if key not in {"default"}
-        }
+        return {key: _strip_unsupported_keywords(value) for key, value in schema.items() if key not in {"default"}}
     if isinstance(schema, list):
         return [_strip_unsupported_keywords(item) for item in schema]
     return schema

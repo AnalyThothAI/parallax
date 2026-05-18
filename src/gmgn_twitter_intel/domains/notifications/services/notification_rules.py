@@ -385,8 +385,10 @@ class NotificationRuleEngine:
                 external_push_eligible=push_policy.eligible,
                 external_push_suppression_reason=push_policy.suppression_reason,
             )
-            channels = rule.channels if push_policy.eligible else tuple(
-                channel for channel in rule.channels if channel == "in_app"
+            channels = (
+                rule.channels
+                if push_policy.eligible
+                else tuple(channel for channel in rule.channels if channel == "in_app")
             )
             symbol = _symbol(row.get("symbol"))
             subject = _compact_text(row.get("subject_key") or candidate_id, limit=80)
@@ -736,11 +738,7 @@ def _playbook(value: Any) -> dict[str, Any] | None:
 def _string_string_map(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         return {}
-    return {
-        str(k): str(v)
-        for k, v in value.items()
-        if isinstance(k, str) and isinstance(v, str)
-    }
+    return {str(k): str(v) for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
 
 
 def _dict(value: Any) -> dict[str, Any]:

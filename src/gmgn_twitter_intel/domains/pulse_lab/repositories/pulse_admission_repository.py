@@ -454,7 +454,6 @@ class PulseAdmissionRepository:
             self.conn.commit()
         return _optional_row(row)
 
-
     def recent_target_failure_count(
         self,
         *,

@@ -249,7 +249,7 @@ Expected: PASS. Confirm existing assertions that expected CEX Tier 1 now expect 
 - Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/market_tick_stream_worker.py`
 - Modify: `src/gmgn_twitter_intel/domains/asset_market/runtime/live_price_gateway.py`
 - Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/market_tick_repository.py`
-- Test: `tests/test_okx_dex_ws_client.py`
+- Test: `tests/unit/test_okx_dex_ws_client.py`
 - Test: `tests/unit/test_market_tick_stream_worker.py`
 - Test: `tests/unit/test_live_price_gateway.py`
 - Test: `tests/unit/test_provider_capabilities.py`
@@ -283,7 +283,7 @@ async def test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnect
 Run:
 
 ```bash
-uv run pytest tests/test_okx_dex_ws_client.py::test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnecting -q
+uv run pytest tests/unit/test_okx_dex_ws_client.py::test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnecting -q
 ```
 
 Expected: FAIL because the provider has no stateful lifecycle methods.
@@ -537,7 +537,7 @@ Run:
 
 ```bash
 uv run pytest \
-  tests/test_okx_dex_ws_client.py \
+  tests/unit/test_okx_dex_ws_client.py \
   tests/unit/test_market_tick_stream_worker.py \
   tests/unit/test_live_price_gateway.py \
   tests/unit/test_provider_capabilities.py \
@@ -1151,7 +1151,7 @@ Run:
 uv run pytest \
   tests/unit/test_token_capture_tier_worker.py \
   tests/unit/test_token_capture_tier_repository.py \
-  tests/test_okx_dex_ws_client.py \
+  tests/unit/test_okx_dex_ws_client.py \
   tests/unit/test_market_tick_stream_worker.py \
   tests/unit/test_market_tick_poll_worker.py \
   tests/unit/test_event_market_capture.py \

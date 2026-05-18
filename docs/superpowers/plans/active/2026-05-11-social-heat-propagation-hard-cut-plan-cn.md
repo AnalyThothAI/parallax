@@ -228,8 +228,8 @@ Frontend consumers:
 
 Tests:
 
-- Modify `tests/test_factor_snapshot.py`.
-- Modify `tests/test_no_factor_snapshot_fallback.py`.
+- Modify `tests/unit/test_factor_snapshot.py`.
+- Modify `tests/architecture/test_no_factor_snapshot_fallback.py`.
 - Modify `tests/unit/test_token_radar_feature_builder.py`.
 - Modify `tests/unit/test_diffusion_health.py`.
 - Create `tests/unit/test_social_signal_features.py`.
@@ -292,7 +292,7 @@ codex/social-heat-propagation-hard-cut
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_token_factor_evaluation.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_token_factor_evaluation.py -q
 ```
 
 Expected: the current mainline focused tests pass before changes begin.
@@ -304,13 +304,13 @@ Expected: the current mainline focused tests pass before changes begin.
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py`
 - Modify: `web/src/lib/tokenFactorSnapshot.ts`
-- Modify: `tests/test_factor_snapshot.py`
-- Modify: `tests/test_no_factor_snapshot_fallback.py`
+- Modify: `tests/unit/test_factor_snapshot.py`
+- Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
 - Modify: `web/src/lib/tokenRadar.test.ts`
 
 - [ ] **Step 1.1: Write failing backend contract tests**
 
-In `tests/test_factor_snapshot.py`, change the exported contract assertion to:
+In `tests/unit/test_factor_snapshot.py`, change the exported contract assertion to:
 
 ```python
 def test_scoring_package_exports_factor_snapshot_contract() -> None:
@@ -329,7 +329,7 @@ def test_scoring_package_exports_factor_snapshot_contract() -> None:
     assert scoring.build_token_factor_snapshot is build_token_factor_snapshot
 ```
 
-Add this old-family rejection guard to `tests/test_no_factor_snapshot_fallback.py`:
+Add this old-family rejection guard to `tests/architecture/test_no_factor_snapshot_fallback.py`:
 
 ```python
 LEGACY_FACTOR_FAMILY_PATTERNS = (
@@ -373,7 +373,7 @@ def test_runtime_has_no_stale_v2_factor_contract_function_names() -> None:
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py::test_scoring_package_exports_factor_snapshot_contract tests/test_no_factor_snapshot_fallback.py::test_runtime_has_no_previous_factor_family_literals tests/test_no_factor_snapshot_fallback.py::test_runtime_has_no_stale_v2_factor_contract_function_names -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py::test_scoring_package_exports_factor_snapshot_contract tests/architecture/test_no_factor_snapshot_fallback.py::test_runtime_has_no_previous_factor_family_literals tests/architecture/test_no_factor_snapshot_fallback.py::test_runtime_has_no_stale_v2_factor_contract_function_names -q
 ```
 
 Expected: fails because constants and runtime readers still mention v2 family names.
@@ -499,7 +499,7 @@ if (oldFamily) {
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py::test_scoring_package_exports_factor_snapshot_contract tests/test_no_factor_snapshot_fallback.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py::test_scoring_package_exports_factor_snapshot_contract tests/architecture/test_no_factor_snapshot_fallback.py -q
 cd web && npm run test -- tokenRadar.test.ts
 ```
 
@@ -510,7 +510,7 @@ Expected: Python tests still fail until snapshot producer is updated; frontend v
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/_constants.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py web/src/lib/tokenFactorSnapshot.ts tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py web/src/lib/tokenRadar.test.ts
+git add src/gmgn_twitter_intel/domains/token_intel/_constants.py src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot_contract.py src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py web/src/lib/tokenFactorSnapshot.ts tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py web/src/lib/tokenRadar.test.ts
 git commit -m "feat: hard cut token factor snapshot contract"
 ```
 
@@ -911,11 +911,11 @@ Expected: commit succeeds.
 **Files:**
 
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
-- Modify: `tests/test_factor_snapshot.py`
+- Modify: `tests/unit/test_factor_snapshot.py`
 
 - [ ] **Step 4.1: Write failing snapshot shape and formula tests**
 
-Update `tests/test_factor_snapshot.py` shape assertions:
+Update `tests/unit/test_factor_snapshot.py` shape assertions:
 
 ```python
 assert set(snapshot) == {
@@ -1027,7 +1027,7 @@ def test_timing_risk_has_zero_weight_and_never_adds_positive_alpha() -> None:
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py -q
 ```
 
 Expected: fails because producer still emits old families.
@@ -1293,7 +1293,7 @@ Do not append timing risks to `discard_cap_reasons`; they cap confidence through
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py -q
 ```
 
 Expected: all factor snapshot tests pass after fixture updates.
@@ -1303,7 +1303,7 @@ Expected: all factor snapshot tests pass after fixture updates.
 Run:
 
 ```bash
-git add src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/test_factor_snapshot.py
+git add src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py tests/unit/test_factor_snapshot.py
 git commit -m "feat: rewrite token radar social factor families"
 ```
 
@@ -1989,7 +1989,7 @@ Expected: no output except explicit rejection tests are outside this command sco
 Run:
 
 ```bash
-uv run python -m pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py tests/unit/test_social_signal_features.py tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_token_radar_projection.py tests/unit/test_factor_diagnostics.py tests/unit/test_token_factor_evaluation.py tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_signal_pulse_service.py tests/unit/test_notification_rules.py tests/unit/test_token_radar_repository.py tests/test_pulse_recommendation.py tests/test_pulse_recommendation_agent_client.py -q
+uv run python -m pytest tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py tests/unit/test_social_signal_features.py tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py tests/unit/test_token_radar_apply_cross_section.py tests/unit/test_token_radar_projection.py tests/unit/test_factor_diagnostics.py tests/unit/test_token_factor_evaluation.py tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_signal_pulse_service.py tests/unit/test_notification_rules.py tests/unit/test_token_radar_repository.py tests/test_pulse_recommendation.py tests/test_pulse_recommendation_agent_client.py -q
 ```
 
 Expected: all selected tests pass.
@@ -1999,7 +1999,7 @@ Expected: all selected tests pass.
 Run:
 
 ```bash
-uv run ruff check src/gmgn_twitter_intel/domains/token_intel src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/domains/notifications tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py tests/unit/test_social_signal_features.py
+uv run ruff check src/gmgn_twitter_intel/domains/token_intel src/gmgn_twitter_intel/domains/pulse_lab src/gmgn_twitter_intel/domains/notifications tests/unit/test_factor_snapshot.py tests/architecture/test_no_factor_snapshot_fallback.py tests/unit/test_social_signal_features.py
 ```
 
 Expected: exits 0.
@@ -2067,10 +2067,10 @@ Record the exact `make check-all` command from Step 10.5 and its full stdout/std
 
 ## Coverage
 
-- Social heat: covered by `tests/test_factor_snapshot.py`, `tests/unit/test_token_radar_feature_builder.py`, and frontend factor snapshot tests.
-- Social propagation: covered by `tests/test_factor_snapshot.py`, `tests/unit/test_social_signal_features.py`, `tests/unit/test_diffusion_health.py`, and projection tests.
-- Semantic catalyst: covered by `tests/test_factor_snapshot.py`, Pulse recommendation factor-key tests, and Signal Lab frontend tests.
-- Timing risk: covered by `tests/test_factor_snapshot.py` and cross-section zero-weight tests.
+- Social heat: covered by `tests/unit/test_factor_snapshot.py`, `tests/unit/test_token_radar_feature_builder.py`, and frontend factor snapshot tests.
+- Social propagation: covered by `tests/unit/test_factor_snapshot.py`, `tests/unit/test_social_signal_features.py`, `tests/unit/test_diffusion_health.py`, and projection tests.
+- Semantic catalyst: covered by `tests/unit/test_factor_snapshot.py`, Pulse recommendation factor-key tests, and Signal Lab frontend tests.
+- Timing risk: covered by `tests/unit/test_factor_snapshot.py` and cross-section zero-weight tests.
 - Pulse: covered by `tests/unit/test_pulse_candidate_gate.py`, `tests/unit/test_pulse_candidate_worker.py`, `tests/unit/test_signal_pulse_service.py`, `tests/test_pulse_recommendation.py`, and `tests/test_pulse_recommendation_agent_client.py`.
 - Notifications: covered by `tests/unit/test_notification_rules.py`.
 - Frontend: covered by `web` lint, typecheck, and Vitest.

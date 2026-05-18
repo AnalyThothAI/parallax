@@ -335,9 +335,7 @@ def test_upgrade_downgrade_upgrade_cycle_drops_and_restores_narrative_type(tmp_p
             "SELECT candidate_id, social_phase FROM pulse_candidates WHERE candidate_id = %s",
             ("candidate-cycle",),
         ).fetchall()
-        assert [(row["candidate_id"], row["social_phase"]) for row in rows] == [
-            ("candidate-cycle", "ignition")
-        ]
+        assert [(row["candidate_id"], row["social_phase"]) for row in rows] == [("candidate-cycle", "ignition")]
     finally:
         conn.close()
 

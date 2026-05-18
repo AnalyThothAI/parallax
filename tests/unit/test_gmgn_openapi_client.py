@@ -155,7 +155,7 @@ def test_gmgn_openapi_client_identifies_cloudflare_challenge_response():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             403,
-            text='<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>cf-chl</body></html>',
+            text="<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>cf-chl</body></html>",
             headers={"content-type": "text/html; charset=UTF-8", "server": "cloudflare"},
         )
 

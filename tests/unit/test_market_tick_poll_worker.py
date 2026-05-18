@@ -557,10 +557,13 @@ class FakeMarketTicks:
         self.inserted_target_ids: set[str] = set()
 
     def insert_ticks(self, ticks) -> int:
+        return len(self.insert_ticks_returning_ids(ticks))
+
+    def insert_ticks_returning_ids(self, ticks) -> list[str]:
         assert self.state.in_session is True
         self.inserted.extend(ticks)
         self.inserted_target_ids.update(str(tick.target_id) for tick in ticks)
-        return len(ticks)
+        return [str(tick.tick_id) for tick in ticks]
 
 
 class FakeConn:

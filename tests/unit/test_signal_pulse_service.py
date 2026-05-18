@@ -71,10 +71,9 @@ class FakePulseReadRepository:
         return list(self.agent_run_steps.get(run_id, []))
 
 
-
-
 def _service(pulse_read: Any, pulse_runs: Any | None = None) -> SignalPulseService:
     return SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs or pulse_read)
+
 
 def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
     pulse = FakePulseReadRepository()

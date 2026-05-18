@@ -282,7 +282,7 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
 - Add prompt files under `src/gmgn_twitter_intel/integrations/openai_agents/prompts/pulse_decision/`
 - Modify: `src/gmgn_twitter_intel/app/runtime/providers_wiring.py`
 - Delete old tests: `tests/test_pulse_recommendation_agent_client.py`
-- Add tests: `tests/test_pulse_decision_agent_client.py`
+- Add tests: `tests/unit/test_pulse_decision_agent_client.py`
 
 - [ ] Add decision-oriented provider protocol:
   ```python
@@ -337,7 +337,7 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
   - `test_runner_rejects_execution_language_in_final_output`
 - [ ] Run:
   ```bash
-  uv run pytest tests/test_pulse_decision_agent_client.py -q
+  uv run pytest tests/unit/test_pulse_decision_agent_client.py -q
   ```
 
 ### Task 5 — Worker Orchestration Hard Cut
@@ -527,7 +527,7 @@ Known-failing baseline tests: none expected. If any fail before edits, record ex
   ```
 - AC3 stage runner:
   ```bash
-  uv run pytest tests/test_pulse_decision_agent_client.py::test_stage_runner_calls_analyst_critic_judge_in_order -q
+  uv run pytest tests/unit/test_pulse_decision_agent_client.py::test_stage_runner_calls_analyst_critic_judge_in_order -q
   ```
 - AC4 worker hard cut:
   ```bash
