@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
+from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidenceDataGap
 
 
 def test_cex_with_pricefeed_id_source_provider_and_instrument_ref_passes_market_contract() -> None:
@@ -69,6 +71,24 @@ def test_unknown_route_social_only_is_hidden_abstain() -> None:
     assert result.max_decision_status == "abstain"
     assert result.public_allowed is False
     assert result.display_status == "hidden_abstain"
+
+
+def test_gate_json_serializes_packet_model_data_gaps() -> None:
+    packet = _packet(market=[])
+    packet.data_gaps = (
+        PulseEvidenceDataGap(
+            gap_id="market_missing",
+            ref_type="market",
+            severity="high",
+            summary_zh="缺少可引用市场证据",
+        ),
+    )
+
+    result = EvidenceCompletenessGate().evaluate(packet)
+    payload = result.to_json()
+
+    json.dumps(payload, ensure_ascii=False)
+    assert payload["data_gaps"][0]["gap_id"] == "market_missing"
 
 
 def _packet(

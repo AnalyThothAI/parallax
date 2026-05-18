@@ -75,7 +75,7 @@ class EvidenceCompletenessGate:
             max_decision_status="trade_candidate" if status == "complete" else "token_watch",
             required_ref_ids=tuple(sorted(_required_ref_ids(refs))),
             missing_ref_types=tuple(),
-            data_gaps=tuple(_items(getattr(packet, "data_gaps", ()))),
+            data_gaps=tuple(_packet_gaps(packet)),
             public_allowed=True,
             display_status="display_trade_candidate" if status == "complete" else "display_token_watch",
         )
@@ -151,9 +151,12 @@ def _refs(packet: Any) -> list[dict[str, Any]]:
     return [_model_mapping(ref) for ref in _items(getattr(packet, "allowed_evidence_refs", ()))]
 
 
-def _packet_gaps(packet: Any, fallback: dict[str, Any]) -> list[dict[str, Any]]:
-    gaps = _items(getattr(packet, "data_gaps", ()))
-    return gaps or [fallback]
+def _packet_gaps(packet: Any, fallback: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    gaps = [_model_mapping(gap) for gap in _items(getattr(packet, "data_gaps", ()))]
+    gaps = [gap for gap in gaps if gap]
+    if gaps:
+        return gaps
+    return [fallback] if fallback is not None else []
 
 
 def _items(value: Any) -> list[Any]:
