@@ -190,10 +190,13 @@ class OpenAIAgentsPulseDecisionClient:
         except ValueError as exc:
             failed_step = self._decision_runtime.mark_step_failed(debate_step, error=str(exc))
             stage_audits[-1] = failed_step
-            raise PulseStageFailure(
-                f"evidence_debate stage failed: {exc}",
-                audits=tuple(stage_audits),
-            ) from exc
+            final = _invalid_ref_abstain_decision(route=route, reason=str(exc), evidence_packet=evidence_packet)
+            audit = self._decision_runtime.with_output_hash(audit, final=final)
+            return PulseDecisionAgentResult(
+                final_decision=final,
+                run_audit=audit,
+                stage_audits=tuple(stage_audits),
+            )
 
         decision_step = await self._run_decision_maker(
             route=route,
