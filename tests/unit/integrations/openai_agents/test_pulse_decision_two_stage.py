@@ -35,6 +35,9 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     PulseStageFailure,
     TradePlaybook,
 )
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
+    InstructorSafetyNet,
+)
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
 )
@@ -165,6 +168,7 @@ def _context(
     *,
     evidence_event_ids: list[str] | None = None,
     source_event_ids: list[str] | None = None,
+    selected_posts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     ctx: dict[str, Any] = {
         "candidate_id": "candidate-1",
@@ -177,6 +181,8 @@ def _context(
         ctx["evidence_event_ids"] = evidence_event_ids
     if source_event_ids is not None:
         ctx["source_event_ids"] = source_event_ids
+    if selected_posts is not None:
+        ctx["selected_posts"] = selected_posts
     return ctx
 
 
@@ -385,6 +391,43 @@ def test_tool_budget_counts_are_recorded_for_investigator_and_decision_fallback(
     assert decision_meta["tool_calls_count_delta"] == 1
 
 
+def test_stage_inputs_promote_allowed_event_ids_for_reask_grounding() -> None:
+    runtime = PulseDecisionRuntimeService(db_pool=object())
+    context = _context(
+        evidence_event_ids=["evt-context"],
+        source_event_ids=["evt-source", "evt-context"],
+        selected_posts=[{"event_id": "evt-selected"}, {"event_id": "evt-context"}],
+    )
+    investigation = _investigation(bull_ids=["evt-investigator"])
+
+    investigator_spec = runtime.investigator_stage_spec(
+        route="meme",
+        context=context,
+        completeness={"score": 1.0, "missing_fields": []},
+    )
+    decision_spec = runtime.decision_maker_stage_spec(
+        route="meme",
+        context=context,
+        completeness={"score": 1.0, "missing_fields": []},
+        investigation=investigation,
+    )
+
+    assert investigator_spec.input_payload["allowed_event_ids"] == [
+        "evt-context",
+        "evt-selected",
+        "evt-source",
+    ]
+    assert investigator_spec.input_payload["event_id_policy"]["when_no_allowed_ids"] == (
+        "set non-absent evidence views to absent instead of inventing ids"
+    )
+    assert decision_spec.input_payload["allowed_event_ids"] == [
+        "evt-context",
+        "evt-investigator",
+        "evt-selected",
+        "evt-source",
+    ]
+
+
 def test_decision_maker_fallback_tool_disabled_when_flag_false() -> None:
     runner = FakeRunner(
         [
@@ -472,6 +515,36 @@ def test_safety_net_strict_success_preserves_sdk_tool_calls_and_budget_counts() 
     assert stage.trace_metadata_json["tool_calls_count_before"] == 0
     assert stage.trace_metadata_json["tool_calls_count_after"] == 1
     assert stage.trace_metadata_json["tool_calls_count_delta"] == 1
+
+
+def test_safety_net_reask_for_investigator_restates_event_id_and_language_guards() -> None:
+    messages = InstructorSafetyNet._rebuild_messages(
+        Agent(name="PulseInvestigatorMeme", instructions="investigator instructions"),
+        '{"allowed_event_ids":["evt-1"],"context":{"target_id":"asset:pepe"}}',
+        "bull_observation.supporting_event_ids contains unknown event ids",
+        output_type=InvestigationReport,
+    )
+
+    repair = messages[-1]["content"]
+    assert "allowed_event_ids" in repair
+    assert "Do not invent event ids" in repair
+    assert "set that view strength to absent" in repair
+    assert "Do not use trading execution language" in repair
+
+
+def test_safety_net_reask_for_final_decision_restates_abstain_contract() -> None:
+    messages = InstructorSafetyNet._rebuild_messages(
+        Agent(name="PulseDecisionMakerMeme", instructions="decision instructions"),
+        '{"allowed_event_ids":["evt-1"],"investigation":{"data_gaps":["missing tweets"]}}',
+        "abstain_reason is required when recommendation is abstain",
+        output_type=FinalDecision,
+    )
+
+    repair = messages[-1]["content"]
+    assert "abstain_reason" in repair
+    assert "recommendation=abstain" in repair
+    assert "playbook.has_playbook=false" in repair
+    assert "Downgrade to abstain" in repair
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +683,44 @@ def test_hallucination_guard_accepts_ids_from_tool_contributions() -> None:
         )
 
     asyncio.run(_seed_then_run())
+
+
+def test_hallucination_guard_accepts_selected_post_event_ids_from_context() -> None:
+    runner = FakeRunner(
+        [
+            FakeRunResult(final_output=_investigation(bull_ids=["evt-selected"])),
+            FakeRunResult(
+                final_output=_final_decision(evidence_event_ids=["evt-selected"]).model_copy(
+                    update={
+                        "bull_view": BullBearView(
+                            strength="moderate",
+                            thesis_zh="选中帖子给出可核验社交证据。",
+                            supporting_event_ids=["evt-selected"],
+                        ),
+                        "bear_view": BullBearView(
+                            strength="weak",
+                            thesis_zh="样本仍然偏少，需要继续观察。",
+                            supporting_event_ids=["evt-selected"],
+                        ),
+                    }
+                )
+            ),
+        ]
+    )
+    client = _build_client(runner)
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_context(selected_posts=[{"event_id": "evt-selected"}]),
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={"score": 1.0, "missing_fields": []},
+            runtime_manifest=_runtime_manifest(),
+        )
+    )
+
+    assert result.final_decision.evidence_event_ids == ["evt-selected"]
 
 
 def test_final_evidence_guard_rejects_unknown_final_evidence_event_ids() -> None:

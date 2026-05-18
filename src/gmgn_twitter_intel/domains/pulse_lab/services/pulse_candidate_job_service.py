@@ -489,7 +489,7 @@ def _compact_error(exc: Exception, *, limit: int = 500) -> str:
 
 def _normalized_failure_reason(exc: Exception) -> str:
     text = str(exc).lower()
-    if "unknown evidence" in text or "unknown final evidence" in text:
+    if "unknown evidence" in text or "unknown final evidence" in text or "unknown event ids" in text:
         return "unknown_evidence_id"
     if "model_validate" in text or "validation" in text or "schema" in text:
         return "schema_validation_failed"

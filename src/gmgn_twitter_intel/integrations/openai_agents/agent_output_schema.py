@@ -16,7 +16,8 @@ class StrictJsonOutputSchema(AgentOutputSchemaBase):
         cleaned = _coerce_dict_additional_properties_to_false(raw)
         replaced = jsonref.replace_refs(cleaned, proxies=False, lazy_load=False)
         flattened = _strip_defs(replaced)
-        self._flat = _force_strict_object_shape(flattened)
+        strict = _force_strict_object_shape(flattened)
+        self._flat = _strip_unsupported_keywords(strict)
 
     @property
     def output_type(self) -> type[Any]:
@@ -75,11 +76,12 @@ def _force_strict_object_shape(schema: Any) -> Any:
         if new.get("type") == "object":
             new.setdefault("additionalProperties", False)
             properties = new.get("properties")
-            if isinstance(properties, dict):
-                new["required"] = list(properties.keys())
-                new["properties"] = {
-                    name: _force_strict_object_shape(prop) for name, prop in properties.items()
-                }
+            if not isinstance(properties, dict):
+                properties = {}
+            new["required"] = list(properties.keys())
+            new["properties"] = {
+                name: _force_strict_object_shape(prop) for name, prop in properties.items()
+            }
         if "items" in new:
             new["items"] = _force_strict_object_shape(new["items"])
         for key in ("$defs", "definitions"):
@@ -94,6 +96,20 @@ def _force_strict_object_shape(schema: Any) -> Any:
         return new
     if isinstance(schema, list):
         return [_force_strict_object_shape(item) for item in schema]
+    return schema
+
+
+def _strip_unsupported_keywords(schema: Any) -> Any:
+    """Remove JSON Schema decoration keywords unsupported by strict providers."""
+
+    if isinstance(schema, dict):
+        return {
+            key: _strip_unsupported_keywords(value)
+            for key, value in schema.items()
+            if key not in {"default"}
+        }
+    if isinstance(schema, list):
+        return [_strip_unsupported_keywords(item) for item in schema]
     return schema
 
 

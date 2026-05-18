@@ -4,6 +4,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    FinalDecision,
+    InvestigationReport,
+)
 from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
     default_agent_model_settings,
 )
@@ -44,6 +48,44 @@ def test_strict_json_output_schema_flattens_refs_and_forces_strict_objects() -> 
     object_nodes = [node for node in _walk_schema(schema) if node.get("type") == "object"]
     assert object_nodes
     assert all(node.get("additionalProperties") is False for node in object_nodes)
+
+
+def test_pulse_agent_output_schemas_match_openai_strict_subset() -> None:
+    forbidden_keywords = {
+        "$defs",
+        "$ref",
+        "allOf",
+        "default",
+        "definitions",
+        "dependentRequired",
+        "dependentSchemas",
+        "if",
+        "not",
+        "oneOf",
+        "patternProperties",
+        "then",
+    }
+
+    for output_type in (InvestigationReport, FinalDecision):
+        schema = StrictJsonOutputSchema(output_type).json_schema()
+
+        assert schema["type"] == "object"
+        assert "anyOf" not in schema
+        for node in _walk_schema(schema):
+            assert forbidden_keywords.isdisjoint(node.keys())
+            if node.get("type") == "object":
+                assert node.get("additionalProperties") is False
+                assert node.get("required") == list(node.get("properties", {}).keys())
+
+
+def test_final_decision_schema_keeps_worker_enriched_urls_as_empty_object_contract() -> None:
+    schema = StrictJsonOutputSchema(FinalDecision).json_schema()
+
+    evidence_urls = schema["properties"]["evidence_event_urls"]
+    assert evidence_urls["type"] == "object"
+    assert evidence_urls["additionalProperties"] is False
+    assert evidence_urls.get("properties", {}) == {}
+    assert "evidence_event_urls" in schema["required"]
 
 
 def test_strict_json_output_schema_extracts_json_from_prose_before_validation() -> None:

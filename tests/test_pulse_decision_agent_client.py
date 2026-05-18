@@ -1,12 +1,12 @@
 """SDK plumbing tests for the rewritten two-stage pulse decision client.
 
 Coverage focus:
-- ``_JsonOutputSchema`` strict + jsonref flattening (qwen3.6 / llama.cpp).
+- ``StrictJsonOutputSchema`` strict + jsonref flattening (qwen3.6 / llama.cpp).
 - ``_extract_usage`` reflective object → dict serialization.
 - Base URL normalization on construction.
 
 The full Investigator → DecisionMaker pipeline (happy path, failure modes,
-hallucination guard, tool budget, evidence URL enrichment, harness manifest)
+hallucination guard, tool budget, evidence URL enrichment, runtime manifest)
 is covered in
 ``tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py``.
 """
@@ -24,10 +24,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     InvestigationReport,
 )
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
     _extract_usage,
-    _JsonOutputSchema,
 )
 
 
@@ -103,7 +103,7 @@ def test_extract_usage_serializes_pure_slotted_usage_objects() -> None:
 
 
 def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
-    schema = _JsonOutputSchema(InvestigationReport)
+    schema = StrictJsonOutputSchema(InvestigationReport)
     assert schema.is_strict_json_schema() is True
     assert schema.is_plain_text() is False
     flat = schema.json_schema()
@@ -118,7 +118,7 @@ def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
 
 
 def test_json_output_schema_final_decision_also_flattens_refs() -> None:
-    schema = _JsonOutputSchema(FinalDecision)
+    schema = StrictJsonOutputSchema(FinalDecision)
     serialized = json.dumps(schema.json_schema())
     assert "$ref" not in serialized
     assert "$defs" not in serialized

@@ -184,7 +184,12 @@ class InstructorSafetyNet:
                 getattr(agent, "name", "?"),
                 str(exc)[:200],
             )
-            messages = self._rebuild_messages(agent, input_payload, str(exc))
+            messages = self._rebuild_messages(
+                agent,
+                input_payload,
+                str(exc),
+                output_type=pydantic_output_type,
+            )
             inst = self._ensure_instructor()
             try:
                 obj = await inst.chat.completions.create(
@@ -215,7 +220,13 @@ class InstructorSafetyNet:
             return obj, audit_extra
 
     @staticmethod
-    def _rebuild_messages(agent: Agent, input_payload: Any, error_text: str) -> list[dict[str, str]]:
+    def _rebuild_messages(
+        agent: Agent,
+        input_payload: Any,
+        error_text: str,
+        *,
+        output_type: type[BaseModel] | None = None,
+    ) -> list[dict[str, str]]:
         instructions = str(getattr(agent, "instructions", "") or "")
         if isinstance(input_payload, str):
             user_content = input_payload
@@ -231,13 +242,45 @@ class InstructorSafetyNet:
             {"role": "user", "content": user_content},
             {
                 "role": "user",
-                "content": (
-                    "Your previous response failed schema validation: "
-                    f"{error_text[:500]}. Return JSON that matches the schema exactly. "
-                    "Output raw JSON only - no markdown fences, no <think> tags."
-                ),
+                "content": _repair_instruction(error_text, output_type=output_type),
             },
         ]
+
+
+def _repair_instruction(error_text: str, *, output_type: type[BaseModel] | None) -> str:
+    output_name = getattr(output_type, "__name__", "") if output_type is not None else ""
+    lines = [
+        "Your previous response failed schema validation:",
+        str(error_text or "")[:500],
+        "Return JSON that matches the schema exactly.",
+        "Output raw JSON only - no markdown fences, no <think> tags.",
+        "Do not invent event ids. Copy supporting_event_ids/evidence_event_ids only from "
+        "allowed_event_ids in the user payload or from tool result contributed_event_ids.",
+        "Do not use trading execution language; describe observable facts, invalidation "
+        "conditions, and residual risks only.",
+    ]
+    if output_name == "InvestigationReport":
+        lines.extend(
+            [
+                "For any non-absent bull_observation or bear_observation, include at least "
+                "one copied supporting_event_id.",
+                "If you cannot cite a legal event id, set that view strength to absent with "
+                "empty thesis_zh and empty supporting_event_ids.",
+                "Keep narrative_observation_zh between 30 and 300 Chinese characters.",
+            ]
+        )
+    elif output_name == "FinalDecision":
+        lines.extend(
+            [
+                "If recommendation=abstain, abstain_reason must be non-empty and "
+                "playbook.has_playbook=false with empty watch_signals and exit_triggers.",
+                "If a non-abstain recommendation cannot cite a legal evidence_event_id, "
+                "Downgrade to abstain and explain the missing evidence in abstain_reason.",
+                "For high_conviction, require bull and bear strengths at least moderate plus "
+                "at least three legal evidence_event_ids; otherwise downgrade.",
+            ]
+        )
+    return "\n".join(lines)
 
 
 __all__ = ["InstructorSafetyNet", "SafetyNetExhausted"]

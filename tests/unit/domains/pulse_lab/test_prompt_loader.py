@@ -118,6 +118,16 @@ def test_decision_maker_cex_contains_playbook_and_only_cex() -> None:
     assert "swing" in rendered.lower() or "event-driven" in rendered.lower()
 
 
+def test_decision_maker_prompt_matches_runtime_input_and_strict_output_shape() -> None:
+    rendered = load_decision_maker_prompt("meme")
+
+    assert "investigation_report" not in rendered
+    assert "`investigation`" in rendered
+    assert '"abstain_reason": null' in rendered
+    assert '"evidence_event_urls": {}' in rendered
+    assert "allowed_event_ids" in rendered
+
+
 # ---------------------------------------------------------------------------
 # error paths
 # ---------------------------------------------------------------------------

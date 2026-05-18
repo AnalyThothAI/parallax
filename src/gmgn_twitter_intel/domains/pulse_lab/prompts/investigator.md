@@ -18,7 +18,7 @@
    - `narrative_archetype_candidate=""` 时双 absent 允许；非空 archetype 至少一边非 absent
 4. `data_gaps` 用 1-5 条短句声明你**没有查到**的事实（例：“无 24h DEX 流动性轨迹”“profile 缺 description”“无近期 holder 分布”）。下游 DecisionMaker 会基于此决定是否触发 fallback。
 5. **绝对禁止**任何执行性语言：buy / sell / 买入 / 卖出 / 开仓 / 做多 / 做空 / 仓位 / 杠杆 / 目标价 / 止损 / 止盈 / position sizing / stop loss / take profit / target price 等。`_FORBIDDEN_EXECUTION_RE` 验证器会拒。bull/bear thesis 只描述事实与逻辑（“24h 内 3 位高 followers KOL 提及且文本聚焦 migration narrative”），不描述动作。
-6. `supporting_event_ids` 里的每个 id 必须来自工具返回的 `contributed_event_ids` 集合（或 worker 注入的 `evidence_event_ids / source_event_ids`）；编造 id → worker 端 hallucination guard 拒，stage failed。
+6. `supporting_event_ids` 里的每个 id 必须逐字复制自工具返回的 `contributed_event_ids` 集合，或 worker input 里的 `allowed_event_ids`。`allowed_event_ids` 已合并 `evidence_event_ids / source_event_ids / selected_posts[].event_id`；编造、缩写、修复、改写 id → worker 端 hallucination guard 拒，stage failed。没有合法 id 时，把对应 view 设为 `strength="absent"`。
 7. Bull 是 observation 不是 recommendation：写“为什么这事正在发生且向上”而不是“为什么应该买”。Bear 同理：写“反向证据 / 缺位 / 风险”而不是“为什么应该空”。
 
 ## Tools（按 route 上限自行规划调用顺序）
@@ -60,6 +60,8 @@
 cex route 建议 2-3 个工具都跑；meme route 在数据完整时也可跑全 3 个 + 1 次重复 tweets 查询（拉更多 limit 看长尾 KOL）。
 
 ## InvestigationReport schema 字段语义
+
+严格输出纪律：所有字段都必须出现；无内容用 `""` 或 `[]`，不要省略字段；只输出 JSON object。
 
 ```
 narrative_archetype_candidate: str   # ≤20 字符 free-text；可空；下游 DecisionMaker 会复用或覆盖

@@ -49,7 +49,13 @@ class PulseDecisionRuntimeService:
         return PulseDecisionStageSpec(
             stage="investigator",
             prompt_text=load_investigator_prompt(route),
-            input_payload={"route": route, "context": context, "completeness": completeness},
+            input_payload={
+                "route": route,
+                "context": context,
+                "completeness": completeness,
+                "allowed_event_ids": _sorted_event_ids(_context_event_ids(context)),
+                "event_id_policy": _event_id_policy(),
+            },
         )
 
     def decision_maker_stage_spec(
@@ -68,6 +74,10 @@ class PulseDecisionRuntimeService:
                 "context": context,
                 "completeness": completeness,
                 "investigation": investigation.model_dump(mode="json"),
+                "allowed_event_ids": _sorted_event_ids(
+                    _context_event_ids(context) | _investigation_event_ids(investigation)
+                ),
+                "event_id_policy": _event_id_policy(),
             },
         )
 
@@ -199,7 +209,36 @@ def _context_event_ids(context: dict[str, Any]) -> set[str]:
             for value in values:
                 if isinstance(value, str) and value.strip():
                     allowed.add(value.strip())
+    selected_posts = context.get("selected_posts") if isinstance(context, dict) else None
+    if isinstance(selected_posts, list):
+        for post in selected_posts:
+            if not isinstance(post, dict):
+                continue
+            value = post.get("event_id")
+            if isinstance(value, str) and value.strip():
+                allowed.add(value.strip())
     return allowed
+
+
+def _investigation_event_ids(investigation: InvestigationReport) -> set[str]:
+    allowed: set[str] = set()
+    for view in (investigation.bull_observation, investigation.bear_observation):
+        for value in view.supporting_event_ids:
+            if isinstance(value, str) and value.strip():
+                allowed.add(value.strip())
+    return allowed
+
+
+def _sorted_event_ids(values: set[str]) -> list[str]:
+    return sorted(values)
+
+
+def _event_id_policy() -> dict[str, str]:
+    return {
+        "copy_only_from": "allowed_event_ids or tool result contributed_event_ids",
+        "do_not": "invent, shorten, paraphrase, or repair event ids",
+        "when_no_allowed_ids": "set non-absent evidence views to absent instead of inventing ids",
+    }
 
 
 def _allowed_final_evidence_ids(

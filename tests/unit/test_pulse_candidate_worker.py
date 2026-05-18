@@ -450,6 +450,9 @@ def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> No
 
 def test_normalized_failure_reason_maps_unknown_evidence() -> None:
     assert _normalized_failure_reason(ValueError("unknown evidence ids: event-x")) == "unknown_evidence_id"
+    assert _normalized_failure_reason(ValueError("bull_view.supporting_event_ids contains unknown event ids")) == (
+        "unknown_evidence_id"
+    )
 
 
 def test_normalized_failure_reason_maps_schema_validation() -> None:
