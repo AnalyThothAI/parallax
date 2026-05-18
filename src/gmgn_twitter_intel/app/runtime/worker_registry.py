@@ -25,6 +25,13 @@ CANONICAL_WORKER_CLASSES = {
     "token_radar_projection": (
         "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
     ),
+    "mention_semantics": (
+        "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
+    ),
+    "token_discussion_digest": (
+        "gmgn_twitter_intel.domains.narrative_intel.runtime."
+        "token_discussion_digest_worker.TokenDiscussionDigestWorker"
+    ),
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
     "handle_summary": "gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker.HandleSummaryWorker",
@@ -47,6 +54,8 @@ WORKER_START_PRIORITY = {
     "asset_profile_refresh": 70,
     "token_radar_projection": 80,
     "token_profile_current": 85,
+    "mention_semantics": 88,
+    "token_discussion_digest": 89,
     "pulse_candidate": 90,
     "enrichment": 100,
     "handle_summary": 110,

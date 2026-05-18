@@ -3364,15 +3364,23 @@
       "TokenCaseData": {
         "additionalProperties": true,
         "properties": {
-          "agent_brief": {
+          "discussion_digest": {
             "additionalProperties": true,
-            "title": "Agent Brief",
+            "title": "Discussion Digest",
             "type": "object"
           },
           "market_live": {
             "additionalProperties": true,
             "title": "Market Live",
             "type": "object"
+          },
+          "narrative_clusters": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Narrative Clusters",
+            "type": "array"
           },
           "posts": {
             "additionalProperties": true,
@@ -3391,6 +3399,18 @@
             ],
             "title": "Profile"
           },
+          "pulse_overlay": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pulse Overlay"
+          },
           "target": {
             "additionalProperties": true,
             "title": "Target",
@@ -3406,7 +3426,7 @@
           "target",
           "timeline",
           "posts",
-          "agent_brief",
+          "discussion_digest",
           "market_live"
         ],
         "title": "TokenCaseData",

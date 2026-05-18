@@ -41,8 +41,9 @@ class PulseEvidenceBuilder:
         )
         events = self._list_repo("list_source_events", source_event_ids, default=())
         enriched_events = self._list_repo("list_enriched_events", source_event_ids, default=())
-        market_facts = self._list_repo("list_market_facts", context, default=())
+        market_facts = self._list_market_facts(context, now_ms=now_ms)
         identity_facts = self._list_repo("list_identity_facts", context, default=())
+        discussion_digest = self._current_discussion_digest(context)
 
         refs: list[dict[str, Any]] = []
         social_rows = self._build_social_evidence(events, enriched_events, refs=refs)
@@ -87,11 +88,13 @@ class PulseEvidenceBuilder:
             "risk_flags": tuple(),
             "source_fingerprints": {
                 "factor_snapshot_sha256": _sha256_json(_mapping(getattr(context, "factor_snapshot", {}))),
+                "discussion_digest_id": _optional_str(_mapping(discussion_digest).get("digest_id")),
             },
             "admission_context": {
                 "factor_snapshot": _mapping(getattr(context, "factor_snapshot", {})),
                 "gate_result": _mapping(getattr(context, "gate_result", {})),
                 "selected_post_count": len(_sequence(getattr(context, "selected_posts", ()))),
+                "discussion_digest": _compact_discussion_digest(discussion_digest),
             },
             "summary_json": {
                 "social_rows": tuple(sorted(social_rows, key=lambda row: str(row.get("ref_id") or ""))),
@@ -99,6 +102,7 @@ class PulseEvidenceBuilder:
                     sorted(market_rows, key=lambda row: str(row.get("ref_id") or row.get("instrument_ref") or ""))
                 ),
                 "identity_rows": tuple(sorted(identity_rows, key=lambda row: str(row.get("ref_id") or ""))),
+                "discussion_digest": _compact_discussion_digest(discussion_digest),
             },
         }
         packet_payload["evidence_packet_hash"] = _sha256_json(
@@ -321,6 +325,33 @@ class PulseEvidenceBuilder:
             return list(default)
         return list(value)
 
+    def _list_market_facts(self, context: Any, *, now_ms: int) -> list[Any]:
+        method = getattr(self._sources, "list_market_facts", None)
+        if method is None:
+            return []
+        value = method(context, max_age_ms=self._market_freshness_ms, now_ms=now_ms)
+        if value is None:
+            return []
+        return list(value)
+
+    def _current_discussion_digest(self, context: Any) -> dict[str, Any] | None:
+        method = getattr(self._sources, "get_current_discussion_digest", None)
+        if method is None:
+            return None
+        target_type = _optional_str(getattr(context, "target_type", None))
+        target_id = _optional_str(getattr(context, "target_id", None))
+        window = _optional_str(getattr(context, "window", None))
+        scope = _optional_str(getattr(context, "scope", None))
+        if not target_type or not target_id or not window or not scope:
+            return None
+        return method(
+            target_type=target_type,
+            target_id=target_id,
+            window=window,
+            scope=scope,
+            schema_version="narrative_intel_v1",
+        )
+
 
 def _packet_from_payload(payload: dict[str, Any]) -> PulseEvidencePacket:
     from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
@@ -439,6 +470,25 @@ def _identity_contract(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "identity_refs": identity_refs,
         "profile_refs": profile_refs,
         "summary_zh": "；".join(str(row.get("summary_zh") or "") for row in rows if row.get("summary_zh"))[:300],
+    }
+
+
+def _compact_discussion_digest(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    payload = _mapping(row)
+    if not payload:
+        return None
+    return {
+        "digest_id": _optional_str(payload.get("digest_id")),
+        "schema_version": _optional_str(payload.get("schema_version")),
+        "computed_at_ms": _int(payload.get("computed_at_ms")),
+        "semantic_coverage": payload.get("semantic_coverage"),
+        "headline_zh": _optional_str(payload.get("headline_zh")),
+        "dominant_narratives": payload.get("dominant_narratives_json") or (),
+        "bull_view": payload.get("bull_view_json") or {},
+        "bear_view": payload.get("bear_view_json") or {},
+        "propagation_read": payload.get("propagation_read_json") or {},
+        "reflexivity_read": payload.get("reflexivity_read_json") or {},
+        "evidence_refs": payload.get("evidence_refs_json") or (),
     }
 
 

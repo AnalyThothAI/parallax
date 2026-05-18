@@ -1480,20 +1480,28 @@ export interface components {
         };
         /** TokenCaseData */
         TokenCaseData: {
-            /** Agent Brief */
-            agent_brief: {
+            /** Discussion Digest */
+            discussion_digest: {
                 [key: string]: unknown;
             };
             /** Market Live */
             market_live: {
                 [key: string]: unknown;
             };
+            /** Narrative Clusters */
+            narrative_clusters?: {
+                [key: string]: unknown;
+            }[];
             /** Posts */
             posts: {
                 [key: string]: unknown;
             };
             /** Profile */
             profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Pulse Overlay */
+            pulse_overlay?: {
                 [key: string]: unknown;
             } | null;
             /** Target */

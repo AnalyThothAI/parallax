@@ -332,6 +332,59 @@
 | `safety_net_retries` | `INTEGER` | False | `0` |
 | `parse_mode` | `TEXT` | False | `'strict'::text` |
 
+## `narrative_admissions`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `admission_id` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `window` | `TEXT` | False | `None` |
+| `scope` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `reason` | `TEXT` | False | `None` |
+| `priority` | `BIGINT` | False | `0` |
+| `last_radar_rank` | `BIGINT` | True | `None` |
+| `last_rank_score` | `DOUBLE PRECISION` | True | `None` |
+| `source_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
+| `source_fingerprint` | `TEXT` | True | `None` |
+| `source_max_received_at_ms` | `BIGINT` | True | `None` |
+| `admitted_at_ms` | `BIGINT` | False | `None` |
+| `last_seen_at_ms` | `BIGINT` | False | `None` |
+| `next_semantics_due_at_ms` | `BIGINT` | False | `0` |
+| `next_digest_due_at_ms` | `BIGINT` | False | `0` |
+| `suppressed_at_ms` | `BIGINT` | True | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `narrative_model_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `run_id` | `TEXT` | False | `None` |
+| `stage` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | True | `None` |
+| `target_id` | `TEXT` | True | `None` |
+| `window` | `TEXT` | True | `None` |
+| `scope` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `artifact_version_hash` | `TEXT` | True | `None` |
+| `input_hash` | `TEXT` | False | `None` |
+| `output_hash` | `TEXT` | True | `None` |
+| `evidence_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
+| `request_json` | `JSONB` | False | `None` |
+| `response_json` | `JSONB` | True | `None` |
+| `usage_json` | `JSONB` | False | `'{}'::jsonb` |
+| `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
+| `status` | `TEXT` | False | `None` |
+| `error` | `TEXT` | True | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
+| `latency_ms` | `BIGINT` | False | `0` |
+
 ## `notification_deliveries`
 
 | Column | Type | Nullable | Default |
@@ -586,6 +639,10 @@
 | `decision_stage_count` | `BIGINT` | False | `0` |
 | `runtime_version` | `TEXT` | False | `'pulse-decision-runtime-v1'::text` |
 | `runtime_hash` | `TEXT` | False | `'sha256:unversioned'::text` |
+| `evidence_packet_id` | `TEXT` | True | `None` |
+| `evidence_packet_hash` | `TEXT` | True | `None` |
+| `evidence_status` | `TEXT` | True | `None` |
+| `display_status` | `TEXT` | True | `None` |
 
 ## `pulse_agent_runtime_versions`
 
@@ -670,6 +727,30 @@
 | `decision_stage_count` | `BIGINT` | False | `0` |
 | `decision_json` | `JSONB` | False | `'{}'::jsonb` |
 | `last_edge_events_json` | `JSONB` | False | `'[]'::jsonb` |
+| `evidence_packet_hash` | `TEXT` | True | `None` |
+| `evidence_status` | `TEXT` | False | `'insufficient'::text` |
+| `decision_status` | `TEXT` | False | `'invalid'::text` |
+| `display_status` | `TEXT` | False | `'hidden_insufficient_evidence'::text` |
+| `claim_verification_json` | `JSONB` | False | `'{}'::jsonb` |
+| `evidence_gate_json` | `JSONB` | False | `'{}'::jsonb` |
+
+## `pulse_evidence_packets`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `evidence_packet_id` | `TEXT` | False | `None` |
+| `run_id` | `TEXT` | False | `None` |
+| `candidate_id` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `window` | `TEXT` | False | `None` |
+| `scope` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `evidence_packet_hash` | `TEXT` | False | `None` |
+| `packet_json` | `JSONB` | False | `None` |
+| `summary_json` | `JSONB` | False | `'{}'::jsonb` |
+| `source_fingerprints_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
 
 ## `pulse_playbook_outcomes`
 
@@ -848,6 +929,42 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `token_discussion_digests`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `digest_id` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `window` | `TEXT` | False | `None` |
+| `scope` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `model_version` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `is_current` | `BOOLEAN` | False | `true` |
+| `source_fingerprint` | `TEXT` | True | `None` |
+| `label_fingerprint` | `TEXT` | True | `None` |
+| `headline_zh` | `TEXT` | True | `None` |
+| `dominant_narratives_json` | `JSONB` | False | `'[]'::jsonb` |
+| `bull_view_json` | `JSONB` | False | `'{}'::jsonb` |
+| `bear_view_json` | `JSONB` | False | `'{}'::jsonb` |
+| `stance_mix_json` | `JSONB` | False | `'{}'::jsonb` |
+| `attention_valence_mix_json` | `JSONB` | False | `'{}'::jsonb` |
+| `propagation_read_json` | `JSONB` | False | `'{}'::jsonb` |
+| `reflexivity_read_json` | `JSONB` | False | `'{}'::jsonb` |
+| `watch_triggers_json` | `JSONB` | False | `'[]'::jsonb` |
+| `invalidation_conditions_json` | `JSONB` | False | `'[]'::jsonb` |
+| `data_gaps_json` | `JSONB` | False | `'[]'::jsonb` |
+| `semantic_coverage` | `DOUBLE PRECISION` | False | `0` |
+| `source_event_count` | `BIGINT` | False | `0` |
+| `labeled_event_count` | `BIGINT` | False | `0` |
+| `independent_author_count` | `BIGINT` | False | `0` |
+| `evidence_refs_json` | `JSONB` | False | `'[]'::jsonb` |
+| `model_run_id` | `TEXT` | True | `None` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+| `expires_at_ms` | `BIGINT` | True | `None` |
+| `superseded_at_ms` | `BIGINT` | True | `None` |
+
 ## `token_evidence`
 
 | Column | Type | Nullable | Default |
@@ -955,6 +1072,36 @@
 | `intent_confidence` | `DOUBLE PRECISION` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `token_mention_semantics`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `semantic_id` | `TEXT` | False | `None` |
+| `event_id` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `model_version` | `TEXT` | False | `None` |
+| `text_fingerprint` | `TEXT` | False | `None` |
+| `language` | `TEXT` | True | `None` |
+| `status` | `TEXT` | False | `None` |
+| `trade_stance` | `TEXT` | False | `'unknown'::text` |
+| `attention_valence` | `TEXT` | False | `'unknown'::text` |
+| `narrative_cluster_key` | `TEXT` | True | `None` |
+| `claim_type` | `TEXT` | False | `'other'::text` |
+| `evidence_type` | `TEXT` | False | `'unknown'::text` |
+| `semantic_confidence` | `DOUBLE PRECISION` | False | `0` |
+| `co_mentioned_targets_json` | `JSONB` | False | `'[]'::jsonb` |
+| `evidence_refs_json` | `JSONB` | False | `'[]'::jsonb` |
+| `raw_label_json` | `JSONB` | False | `'{}'::jsonb` |
+| `model_run_id` | `TEXT` | True | `None` |
+| `source_received_at_ms` | `BIGINT` | False | `None` |
+| `queued_at_ms` | `BIGINT` | True | `None` |
+| `computed_at_ms` | `BIGINT` | True | `None` |
+| `retry_count` | `BIGINT` | False | `0` |
+| `next_retry_at_ms` | `BIGINT` | False | `0` |
+| `error` | `TEXT` | True | `None` |
 
 ## `token_profile_current`
 

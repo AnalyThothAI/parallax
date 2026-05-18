@@ -344,6 +344,8 @@ def test_openai_providers_receive_llm_gateway() -> None:
     assert contract.stage_names == ("evidence_debate", "decision_maker")
     assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
     assert contract.safety_net_enabled is True
+    assert providers.narrative_intel.narrative_provider is not None
+    assert providers.narrative_intel.narrative_provider._client._llm_gateway is gateway
     assert providers.watchlist_intel.summary_provider is not None
     assert providers.watchlist_intel.summary_provider._llm_gateway is gateway
 

@@ -3,7 +3,7 @@ from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service i
 LEGACY_MARKET_FIELD = "market_overlay"
 
 
-def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
+def test_search_inspect_returns_canonical_token_result_without_agent_brief():
     service = SearchInspectService(
         search_query=FakeSearchQuery(
             candidates=[
@@ -28,12 +28,12 @@ def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
 
     assert result["query"]["result_kind"] == "token_result"
     assert result["resolver"]["selected_target"]["target_id"] == "cex_token:BTC"
-    assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "agent_brief", "market_live"]
+    assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "market_live"]
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
     assert result["token_result"]["timeline"]["market_candles"]["target_type"] == "CexToken"
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
-    assert result["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
+    assert "agent_brief" not in result["token_result"]
     assert result["token_result"]["market_live"]["status"] == "ready"
     assert "radar_item" not in result["token_result"]
     assert LEGACY_MARKET_FIELD not in result["token_result"]

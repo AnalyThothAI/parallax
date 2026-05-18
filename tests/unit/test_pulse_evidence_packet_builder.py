@@ -27,7 +27,7 @@ class FakeEvidenceSourceRepository:
     def list_enriched_events(self, event_ids: list[str]) -> list[dict[str, object]]:
         return [row for row in self.enriched_events if row["event_id"] in set(event_ids)]
 
-    def list_market_facts(self, context: object) -> list[dict[str, object]]:
+    def list_market_facts(self, context: object, *, max_age_ms: int, now_ms: int) -> list[dict[str, object]]:
         return list(self.market_facts)
 
     def list_identity_facts(self, context: object) -> list[dict[str, object]]:

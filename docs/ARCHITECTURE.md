@@ -10,6 +10,7 @@ GMGN public stream
   → domains/evidence            (transactional facts: events, evidence, intents, resolutions, asset identity)
   → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
   → domains/token_intel         (token_radar_rows projection, scoring, search read model)
+  → domains/narrative_intel     (per-mention semantics and token discussion digests)
   → domains/social_enrichment   (watched-event extraction)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
@@ -60,7 +61,10 @@ are wrong too.
    `pulse_agent_runs`, `pulse_agent_run_steps`,
    `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`,
    `pulse_agent_eval_results`, `pulse_candidates`, and
-   `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`. New
+   `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`.
+   `token_mention_semantics` is written only by `MentionSemanticsWorker`;
+   `token_discussion_digests` is written only by
+   `TokenDiscussionDigestWorker`. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`.
@@ -152,6 +156,7 @@ direction is still enforced by the package rules below.
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
 | `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
+| `domains/narrative_intel/` | Per-mention trade stance / attention valence labels, token-window discussion digests, semantic coverage, narrative evidence refs, and the narrative read model consumed by API composition and Pulse evidence packets. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema and facts, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
@@ -166,6 +171,7 @@ own maps next to the code they describe, and this file links to them.
 | Module | File | Covers |
 |--------|------|--------|
 | Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
+| Narrative intelligence | `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
 | Asset market and market tick capture | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 
@@ -241,6 +247,13 @@ route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,
 and `pulse_candidates.decision_*` plus `decision_json` are the public decision
 source. Signal Pulse public payloads expose `decision`, `factor_snapshot`,
 `gate`, and `fact_card`.
+
+Narrative Intelligence sits upstream of Pulse decisioning and downstream of
+Token Radar discovery. API surfaces may compose Token Radar / Token Case rows
+with `NarrativeReadModel`, but they do not run providers, score rows, or write
+narrative read models. Pulse may include a ready discussion digest in its sealed
+evidence packet; Pulse hidden/internal candidate state never triggers narrative
+workers and never writes `token_mention_semantics` or `token_discussion_digests`.
 
 ## Asset Profile Facts
 

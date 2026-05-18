@@ -1,12 +1,11 @@
 import {
   compactNumber,
-  formatReason,
   formatRelativeTime,
   formatRisk,
   formatSignedPercent,
   formatUsdCompact,
 } from "@lib/format";
-import type { TokenFlowItem } from "@lib/types";
+import type { NarrativeStatus, TokenDiscussionDigest, TokenFlowItem } from "@lib/types";
 
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
 import { tokenImageUrl } from "./tokenImageUrl";
@@ -31,8 +30,8 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     },
     marketMove,
     narrative: {
-      detail: compactWhyNowDetail(item, risk),
-      tone: risk ? "risk" : tokenCase.narrative.tone,
+      detail: compactWhyNowDetail(item),
+      tone: compactWhyNowTone(item.discussion_digest, risk, tokenCase.narrative.tone),
       value: compactWhyNowTitle(item),
     },
     score: tokenCase.score,
@@ -172,34 +171,80 @@ function compactListedAt(item: TokenFlowItem): {
 }
 
 function compactWhyNowTitle(item: TokenFlowItem): string {
-  return `${phaseLabel(item.propagation.phase)} · ${compactNumber(
-    item.discussion_quality.informative_post_count,
-  )} 条有效讨论`;
+  const digest = item.discussion_digest;
+  if (!digest) {
+    return narrativeStatusTitle("semantic_unavailable");
+  }
+  if (digest.status !== "ready") {
+    return narrativeStatusTitle(digest.status);
+  }
+  const title = cleanText(digest.dominant_narrative?.title) ?? "叙事已读取";
+  const stance = topMixLabel(digest.stance_mix);
+  return stance ? `${title} · ${stance}` : title;
 }
 
-function compactWhyNowDetail(item: TokenFlowItem, risk: string | null): string {
-  if (risk) {
-    return `风险：${risk}`;
+function compactWhyNowDetail(item: TokenFlowItem): string {
+  const digest = item.discussion_digest;
+  if (!digest) {
+    return "discussion digest missing";
   }
-  if (item.flow.watched_mentions > 0) {
-    return `关注源 ${compactNumber(item.flow.watched_mentions)} 次确认`;
+  const gap = digest.data_gaps.find(Boolean);
+  if (digest.status !== "ready") {
+    return gap ?? narrativeStatusTitle(digest.status);
   }
-  const reason =
-    item.discussion_quality.reasons[0] ??
-    item.propagation.reasons[0] ??
-    item.social_heat.reasons[0];
-  return reason ? `催化：${formatReason(reason)}` : "暂无关注源确认";
+  const summary = cleanText(digest.dominant_narrative?.summary_zh) ?? gap ?? "ready";
+  const details = [summary, coverageLabel(digest), pulseOverlayLabel(item)].filter(Boolean);
+  return details.join(" · ");
 }
 
-function phaseLabel(phase: string): string {
+function compactWhyNowTone(
+  digest: TokenDiscussionDigest | null | undefined,
+  risk: string | null,
+  fallbackTone: string,
+): string {
+  if (digest?.status === "ready") {
+    return fallbackTone;
+  }
+  if (digest?.status === "insufficient" || digest?.status === "semantic_unavailable" || risk) {
+    return "risk";
+  }
+  return "info";
+}
+
+function narrativeStatusTitle(status: NarrativeStatus): string {
   const labels: Record<string, string> = {
-    concentration: "集中期",
-    expansion: "扩散中",
-    fade: "降温中",
-    ignition: "点火中",
-    seed: "种子中",
+    insufficient: "叙事样本不足",
+    pending: "叙事读取中",
+    semantic_unavailable: "叙事不可用",
   };
-  return labels[phase] ?? phase.replaceAll("_", " ");
+  return labels[status] ?? status.replaceAll("_", " ");
+}
+
+function topMixLabel(mix: TokenDiscussionDigest["stance_mix"]): string | null {
+  const top = Object.entries(mix ?? {})
+    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+    .sort((left, right) => Number(right[1]) - Number(left[1]))[0];
+  if (!top) {
+    return null;
+  }
+  const [label, value] = top;
+  return `${label} ${Math.round(Number(value) * 100)}%`;
+}
+
+function coverageLabel(digest: TokenDiscussionDigest): string | null {
+  const coverage = digest.coverage?.semantic_coverage;
+  return typeof coverage === "number" && Number.isFinite(coverage)
+    ? `coverage ${Math.round(coverage * 100)}%`
+    : null;
+}
+
+function pulseOverlayLabel(item: TokenFlowItem): string | null {
+  const pulse = item.pulse_overlay;
+  if (!pulse || pulse.status !== "ready") {
+    return null;
+  }
+  const summary = cleanText(pulse.verdict) ?? cleanText(pulse.recommendation) ?? pulse.pulse_status;
+  return summary ? `Pulse ${summary}` : "Pulse ready";
 }
 
 function signedCompactNumber(value: number | null | undefined): string {

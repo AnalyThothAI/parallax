@@ -75,7 +75,9 @@ class TokenCaseData(ApiSchema):
     profile: JsonObject | None = None
     timeline: JsonObject
     posts: JsonObject
-    agent_brief: JsonObject
+    discussion_digest: JsonObject
+    narrative_clusters: list[JsonObject] = Field(default_factory=list)
+    pulse_overlay: JsonObject | None = None
     market_live: JsonObject
 
 

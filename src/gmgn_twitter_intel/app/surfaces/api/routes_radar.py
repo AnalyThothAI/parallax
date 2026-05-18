@@ -11,6 +11,7 @@ from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _scope, _target_type, _window
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
+from gmgn_twitter_intel.domains.narrative_intel.read_models.narrative_read_model import NarrativeReadModel
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 
@@ -88,7 +89,7 @@ def _token_radar_data(
 ) -> dict[str, Any]:
     with runtime.repositories() as repos:
         profiles = TokenProfileReadModel(token_profiles=repos.token_profiles)
-        return AssetFlowService(
+        data = AssetFlowService(
             token_radar=repos.token_radar,
             profiles=profiles,
         ).asset_flow(
@@ -97,3 +98,53 @@ def _token_radar_data(
             scope=scope,
             now_ms=now_ms,
         )
+        hydrated = _narrative_read_model(repos).hydrate_token_radar(
+            _with_top_level_targets(data),
+            window=window,
+            scope=scope,
+            now_ms=now_ms,
+        )
+        return _strip_synthetic_targets(hydrated)
+
+
+def _narrative_read_model(repos: Any) -> Any:
+    return NarrativeReadModel(repository=repos.narratives)
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _with_top_level_targets(data: dict[str, Any]) -> dict[str, Any]:
+    hydrated = dict(data)
+    for key in ("targets", "attention"):
+        hydrated[key] = [_row_with_top_level_target(item) for item in data.get(key, [])]
+    return hydrated
+
+
+def _row_with_top_level_target(item: Any) -> dict[str, Any]:
+    row = dict(_dict(item))
+    target = _dict(row.get("target"))
+    if "target_type" not in row and target.get("target_type"):
+        row["_synthetic_target_type"] = True
+        row["target_type"] = target.get("target_type")
+    if "target_id" not in row and target.get("target_id"):
+        row["_synthetic_target_id"] = True
+        row["target_id"] = target.get("target_id")
+    return row
+
+
+def _strip_synthetic_targets(data: dict[str, Any]) -> dict[str, Any]:
+    stripped = dict(data)
+    for key in ("targets", "attention"):
+        stripped[key] = [_strip_synthetic_target(item) for item in data.get(key, [])]
+    return stripped
+
+
+def _strip_synthetic_target(item: Any) -> dict[str, Any]:
+    row = dict(_dict(item))
+    if row.pop("_synthetic_target_type", False):
+        row.pop("target_type", None)
+    if row.pop("_synthetic_target_id", False):
+        row.pop("target_id", None)
+    return row

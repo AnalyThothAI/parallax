@@ -454,7 +454,7 @@ class _RealWorkerEvidenceSources:
     def list_enriched_events(self, event_ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
         return []
 
-    def list_market_facts(self, context: Any) -> list[dict[str, Any]]:
+    def list_market_facts(self, context: Any, *, max_age_ms: int, now_ms: int) -> list[dict[str, Any]]:
         return [
             {
                 "ref_id": "market:pf-test",

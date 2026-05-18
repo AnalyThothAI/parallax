@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from .search_agent_brief import build_token_agent_brief
 from .token_target_posts_service import TokenTargetPostsService
 from .token_target_social_timeline_service import TokenTargetSocialTimelineService
 
@@ -76,19 +75,11 @@ class TokenCaseService:
         posts["query"]["scope"] = response_scope
         profile = self.profiles.profile_for_target(target_type=target_type, target_id=target_id)
         market_live = self._market_live(target=target, now_ms=now_ms)
-        agent_brief = build_token_agent_brief(
-            target=target,
-            timeline=timeline,
-            posts=posts,
-            market_live=market_live,
-            profile=profile,
-        )
         return {
             "target": target,
             "profile": profile,
             "timeline": timeline,
             "posts": posts,
-            "agent_brief": agent_brief,
             "market_live": market_live,
         }
 

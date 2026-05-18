@@ -72,7 +72,6 @@ describe("SearchIntelPage", () => {
 
   it("keeps candidate compare for ambiguous search results", async () => {
     const base = searchInspectData();
-    const tokenResult = requiredTokenResult(base);
     const data: SearchInspectData = {
       ...base,
       query: { ...base.query, result_kind: "ambiguous_result" },
@@ -98,7 +97,7 @@ describe("SearchIntelPage", () => {
         ],
         summary: { posts: 9, authors: 4 },
         items: [],
-        agent_brief: tokenResult.agent_brief,
+        agent_brief: topicAgentBrief(),
       },
     };
     apiMock.readApiImpl = async () => ok(data);
@@ -112,13 +111,6 @@ describe("SearchIntelPage", () => {
     expect(within(compare as HTMLElement).getByText("$ROCKY")).toBeInTheDocument();
   });
 });
-
-function requiredTokenResult(data: SearchInspectData) {
-  if (!data.token_result) {
-    throw new Error("Search inspect fixture is missing token_result");
-  }
-  return data.token_result;
-}
 
 function searchInspectData(): SearchInspectData {
   const tokenResult = tokenCaseFixture();
@@ -255,48 +247,70 @@ function searchInspectData(): SearchInspectData {
           last_error: null,
         },
       },
-      agent_brief: {
-        ...tokenResult.agent_brief,
-        schema_version: "search_agent_brief_v1",
-        generated_by: "deterministic",
-        project_summary: {
-          one_liner: "$RKC 24h social propagation brief",
-          summary_zh: "过去 24 小时，RKC 进入 expansion。",
-          current_state: "active_propagation",
-          data_gaps: ["缺真实 OHLC/K 线"],
-          evidence_event_ids: ["ev_482"],
+      discussion_digest: {
+        ...tokenResult.discussion_digest,
+        dominant_narrative: {
+          title: "$RKC 24h social propagation brief",
+          summary_zh: "Runtime narrative",
+          propagation_state: "expansion",
+          trade_stance: "bullish",
+          attention_valence: "informational",
+          evidence_refs: [{ ref_type: "event", event_id: "ev_482" }],
         },
         propagation: {
-          summary_zh: "seed -> expansion",
-          phases: [
-            {
-              phase: "expansion",
-              window_label: "11:00-16:00",
-              tweets: 31,
-              authors: 14,
-              lead_accounts: ["toly"],
-              read_zh: "作者宽度变大。",
-              evidence_event_ids: ["ev_482"],
-            },
-          ],
-          key_accounts: [{ handle: "toly", role: "watched", posts: 1 }],
+          state: "expansion",
+          summary_zh: "过去 24 小时，RKC 进入 expansion。",
+          evidence_refs: [{ ref_type: "event", event_id: "ev_482" }],
         },
         bull_bear: {
           stance: "watch",
           bull: {
             thesis_zh: "作者扩散。",
-            evidence_event_ids: ["ev_482"],
-            triggers_zh: ["新增作者"],
+            evidence_refs: [{ ref_type: "event", event_id: "ev_482" }],
+            bullets_zh: ["新增作者"],
           },
           bear: {
             thesis_zh: "后段 chase。",
-            evidence_event_ids: ["ev_556"],
-            invalidations_zh: ["无新作者"],
+            evidence_refs: [{ ref_type: "event", event_id: "ev_556" }],
+            bullets_zh: ["无新作者"],
           },
         },
+        data_gaps: ["缺真实 OHLC/K 线"],
       },
     },
     topic_result: null,
     ambiguous_result: null,
+  };
+}
+
+function topicAgentBrief() {
+  return {
+    schema_version: "search_agent_brief_v1",
+    generated_by: "deterministic",
+    project_summary: {
+      one_liner: "$RKC remains ambiguous at search time",
+      summary_zh: "RKC 搜索仍需候选比较。",
+      current_state: "ambiguous",
+      data_gaps: [],
+      evidence_event_ids: [],
+    },
+    propagation: {
+      summary_zh: "topic evidence retained",
+      phases: [],
+      key_accounts: [],
+    },
+    bull_bear: {
+      stance: "research",
+      bull: {
+        thesis_zh: "",
+        evidence_event_ids: [],
+        triggers_zh: [],
+      },
+      bear: {
+        thesis_zh: "",
+        evidence_event_ids: [],
+        invalidations_zh: [],
+      },
+    },
   };
 }

@@ -238,7 +238,11 @@ class FakePulseDecisionProvider:
                     stage="decision_maker",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
-                    input_json={"context": context, "completeness": completeness, "debate_memo": debate.model_dump(mode="json")},
+                    input_json={
+                        "context": context,
+                        "completeness": completeness,
+                        "debate_memo": debate.model_dump(mode="json"),
+                    },
                     prompt_text="decision maker prompt",
                     response_json=final.model_dump(mode="json"),
                     trace_metadata_json={},

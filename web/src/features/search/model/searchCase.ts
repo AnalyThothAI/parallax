@@ -137,7 +137,7 @@ function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): Se
       value: officialName,
     },
     market: marketFact(result),
-    narrative: agentNarrative(result.agent_brief.project_summary.one_liner),
+    narrative: tokenDigestNarrative(result),
     resolver: resolverFact(data),
     resultKind: data.query.result_kind,
     subtitle: identityLine(target, searchMarketCandles(result)),
@@ -186,6 +186,33 @@ function agentNarrative(value?: string | null): SearchCaseFact {
     tone: "agent",
     value: cleanText(value) ?? "Agent memo unavailable",
   };
+}
+
+function tokenDigestNarrative(result: SearchTokenResult): SearchCaseFact {
+  const digest = result.discussion_digest;
+  const dominant = digest.dominant_narrative;
+  const coverage = digest.coverage?.semantic_coverage;
+  const coverageDetail =
+    typeof coverage === "number" && Number.isFinite(coverage)
+      ? `${Math.round(coverage * 100)}% semantic coverage`
+      : digest.status.replaceAll("_", " ");
+  return {
+    detail: cleanText(dominant?.summary_zh) ?? digest.data_gaps[0] ?? coverageDetail,
+    label: "Narrative",
+    source: "social",
+    tone: digest.status === "ready" ? "health" : "info",
+    value: cleanText(dominant?.title) ?? digestStatusLabel(digest.status),
+  };
+}
+
+function digestStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    insufficient: "Narrative insufficient",
+    pending: "Narrative pending",
+    ready: "Narrative ready",
+    semantic_unavailable: "Narrative unavailable",
+  };
+  return labels[status] ?? status.replaceAll("_", " ");
 }
 
 function evidenceFact(count: number): SearchCaseFact {

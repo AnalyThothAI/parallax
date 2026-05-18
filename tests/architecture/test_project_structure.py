@@ -44,6 +44,7 @@ def test_project_uses_domain_package_src_layout():
         "config.py",
         "db.py",
         "ops.py",
+        "pulse_replay.py",
         "read_models.py",
         "serve.py",
     }

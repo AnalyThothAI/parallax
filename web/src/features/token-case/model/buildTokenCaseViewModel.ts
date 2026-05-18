@@ -1,5 +1,13 @@
 import { compactNumber, formatTokenPriceUsd, formatUsdCompact, shortAddress } from "@lib/format";
-import type { TokenCaseDossier, TokenCasePostsData, TokenPostItem } from "@lib/types";
+import type {
+  NarrativeArgument,
+  NarrativeCluster,
+  TokenCaseDossier,
+  TokenCasePostsData,
+  TokenDiscussionDigest,
+  TokenMentionSemantic,
+  TokenPostItem,
+} from "@lib/types";
 import type {
   TokenCaseMarketView,
   TokenCasePostEvent,
@@ -10,7 +18,6 @@ import { tokenImageUrl } from "@shared/model/tokenImageUrl";
 import {
   buildTokenPostEventMarket,
   cleanText,
-  normalizeTokenSymbol,
   numberValue,
   relativeTimeLabel,
   tokenPricePill,
@@ -49,7 +56,9 @@ export function buildTokenCaseViewModel({
   );
   const visibleTimelineItems =
     route.postSort === "watched" ? timelineItems.filter((item) => item.isWatched) : timelineItems;
-  const dataGaps = dossier.agent_brief.project_summary.data_gaps.filter(Boolean);
+  const digest = dossier.discussion_digest;
+  const dataGaps = digest.data_gaps.filter(Boolean);
+  const propagationState = digestPropagationState(digest) ?? dossier.timeline.summary.phase;
 
   return {
     target: {
@@ -70,7 +79,7 @@ export function buildTokenCaseViewModel({
     hero: {
       logoUrl: tokenImageUrl(profileIdentity?.logo_url),
       title,
-      subtitle: heroSubtitle(dossier),
+      subtitle: heroSubtitle(dossier, digest),
       contractLabel: target.address
         ? `${target.chain_id ?? "chain"} · ${shortAddress(target.address)}`
         : null,
@@ -87,9 +96,11 @@ export function buildTokenCaseViewModel({
       {
         key: "phase",
         label: "phase",
-        value: phaseLabel(dossier.timeline.summary.phase),
-        detail: `${dossier.timeline.stages.length} propagation stages`,
-        tone: phaseTone(dossier.timeline.summary.phase),
+        value: phaseLabel(propagationState),
+        detail: digest.coverage?.semantic_coverage
+          ? `${Math.round(digest.coverage.semantic_coverage * 100)}% semantic coverage`
+          : "semantic coverage pending",
+        tone: phaseTone(propagationState),
       },
       {
         key: "watched",
@@ -107,35 +118,9 @@ export function buildTokenCaseViewModel({
       },
     ],
     propagation: {
-      summaryZh: dossier.agent_brief.propagation.summary_zh,
-      statusPills: [
-        {
-          label: dossier.agent_brief.project_summary.current_state,
-          tone: phaseTone(dossier.timeline.summary.phase),
-        },
-        {
-          label: `${compactNumber(dossier.timeline.summary.effective_authors)} effective authors`,
-          tone: "info",
-        },
-        {
-          label: `top ${Math.round(dossier.timeline.summary.top_author_share * 100)}%`,
-          tone: "neutral",
-        },
-      ],
-      stages: dossier.agent_brief.propagation.phases.slice(0, 3).map((phase, index) => {
-        const stage = dossier.timeline.stages[index];
-        return {
-          id: stage?.stage_id ?? `${phase.phase}-${index}`,
-          phase: phaseLabel(phase.phase),
-          count: stage?.people.posts ?? phase.tweets,
-          authors: stage?.people.authors ?? phase.authors,
-          leadAccount: phase.lead_accounts[0]
-            ? `@${phase.lead_accounts[0].replace(/^@+/, "")}`
-            : null,
-          readZh: phase.read_zh,
-          tone: phaseTone(phase.phase),
-        };
-      }),
+      summaryZh: propagationSummary(digest),
+      statusPills: digestStatusPills(digest),
+      stages: digestStages(dossier.narrative_clusters, digest),
     },
     timeline: {
       sort: route.postSort,
@@ -147,23 +132,23 @@ export function buildTokenCaseViewModel({
     },
     market,
     bullBear: {
-      stance: dossier.agent_brief.bull_bear.stance,
+      stance: digest.bull_bear?.stance ?? digest.status,
       bull: {
         title: "Bull · 多头",
-        thesis: dossier.agent_brief.bull_bear.bull.thesis_zh,
-        evidenceEventIds: dossier.agent_brief.bull_bear.bull.evidence_event_ids,
-        bullets: dossier.agent_brief.bull_bear.bull.triggers_zh,
+        thesis: digest.bull_bear?.bull.thesis_zh ?? "",
+        evidenceEventIds: evidenceEventIds(digest.bull_bear?.bull.evidence_refs),
+        bullets: digest.bull_bear?.bull.bullets_zh ?? [],
         tone: "health",
       },
       bear: {
         title: "Bear · 空头",
-        thesis: dossier.agent_brief.bull_bear.bear.thesis_zh,
-        evidenceEventIds: dossier.agent_brief.bull_bear.bear.evidence_event_ids,
-        bullets: dossier.agent_brief.bull_bear.bear.invalidations_zh,
+        thesis: digest.bull_bear?.bear.thesis_zh ?? "",
+        evidenceEventIds: evidenceEventIds(digest.bull_bear?.bear.evidence_refs),
+        bullets: digest.bull_bear?.bear.bullets_zh ?? [],
         tone: "risk",
       },
     },
-    amplifiers: dossier.agent_brief.propagation.key_accounts.map((account) => ({
+    amplifiers: digestAmplifiers(digest, dossier.narrative_clusters).map((account) => ({
       handle: `@${account.handle.replace(/^@+/, "")}`,
       role: account.role,
       posts: account.posts,
@@ -176,6 +161,7 @@ export function buildTokenCaseViewModel({
 function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): TokenCasePostEvent {
   const score = numberValue(post.post_quality.score);
   const reasons = post.post_quality.reasons ?? [];
+  const semantic = post.semantic ?? null;
   return {
     id: post.event_id,
     handle: cleanText(post.handle ?? post.author_role),
@@ -183,8 +169,9 @@ function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): Token
     url: cleanText(post.url),
     timestampMs: post.received_at_ms ?? null,
     timeLabel: post.received_at_ms ? timeAgoLabel(post.received_at_ms) : null,
-    phase: cleanText(post.stage_phase),
-    role: cleanText(post.author_role),
+    phase:
+      cleanText(semantic?.narrative_cluster_title) ?? cleanText(semantic?.narrative_cluster_key),
+    role: semanticRole(semantic),
     isWatched: Boolean(post.is_watched),
     pills: postPills(post),
     market: buildPostMarket(post, livePriceUsd),
@@ -257,32 +244,43 @@ function sortTimelineItems(
 
 function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseTone }> {
   const pills: Array<{ label: string; tone: TokenCaseTone }> = [];
-  const symbol = normalizeTokenSymbol(post.symbol);
-  if (symbol) {
-    pills.push({ label: `$${symbol}`, tone: "opportunity" });
-  }
   const pricePill = tokenPricePill(post.price?.price_usd, post.price?.status);
   if (pricePill) {
     pills.push(pricePill);
   }
-  const score = numberValue(post.post_quality.score);
-  pills.push({
-    label: score === null ? "PQ -" : `PQ ${Math.round(score)}`,
-    tone: scoreTone(score),
-  });
-  if (post.attribution_status) {
-    pills.push({ label: post.attribution_status.replaceAll("_", " "), tone: "info" });
+  const semantic = post.semantic;
+  if (!semantic) {
+    pills.push({ label: "semantic unavailable", tone: "warn" });
+    return pills;
   }
-  if (post.mention_source) {
-    pills.push({ label: post.mention_source.replaceAll("_", " "), tone: "neutral" });
+  if (semantic.status !== "ready" && semantic.status !== "labeled") {
+    pills.push({
+      label: semantic.status.replaceAll("_", " "),
+      tone: semanticStatusTone(semantic.status),
+    });
+    return pills;
   }
-  if (post.is_watched) {
-    pills.push({ label: "watched", tone: "health" });
+  const stance = cleanText(semantic.trade_stance);
+  if (stance && stance !== "unknown") {
+    pills.push({ label: stance, tone: stanceTone(stance) });
+  }
+  const valence = cleanText(semantic.attention_valence);
+  if (valence && valence !== "unknown") {
+    pills.push({ label: valence, tone: valenceTone(valence) });
+  }
+  const cluster =
+    cleanText(semantic.narrative_cluster_title) ?? cleanText(semantic.narrative_cluster_key);
+  if (cluster) {
+    pills.push({ label: cluster, tone: "info" });
   }
   return pills;
 }
 
-function heroSubtitle(dossier: TokenCaseDossier): string {
+function heroSubtitle(dossier: TokenCaseDossier, digest: TokenDiscussionDigest): string {
+  const narrativeTitle = cleanText(digest.dominant_narrative?.title);
+  if (digest.status === "ready" && narrativeTitle) {
+    return narrativeTitle;
+  }
   const target = dossier.target;
   const parts = [
     target.chain_id,
@@ -327,16 +325,151 @@ function phaseTone(phase?: string | null): TokenCaseTone {
   return "info";
 }
 
-function scoreTone(score: number | null): TokenCaseTone {
-  if (score === null) return "neutral";
-  if (score >= 80) return "health";
-  if (score >= 60) return "info";
-  return "warn";
-}
-
 function phaseLabel(value?: string | null): string {
   const text = cleanText(value) ?? "unknown";
   return text.replaceAll("_", " ");
+}
+
+function digestPropagationState(digest: TokenDiscussionDigest): string | null {
+  return (
+    cleanText(digest.propagation?.state) ??
+    cleanText(digest.dominant_narrative?.propagation_state) ??
+    null
+  );
+}
+
+function propagationSummary(digest: TokenDiscussionDigest): string {
+  return (
+    cleanText(digest.propagation?.summary_zh) ??
+    cleanText(digest.dominant_narrative?.summary_zh) ??
+    digestStatusLabel(digest.status)
+  );
+}
+
+function digestStatusPills(
+  digest: TokenDiscussionDigest,
+): Array<{ label: string; tone: TokenCaseTone }> {
+  const pills: Array<{ label: string; tone: TokenCaseTone }> = [
+    { label: digestStatusLabel(digest.status), tone: digestStatusTone(digest.status) },
+  ];
+  const state = digestPropagationState(digest);
+  if (state) {
+    pills.push({ label: phaseLabel(state), tone: phaseTone(state) });
+  }
+  const topStance = topMixLabel(digest.stance_mix);
+  if (topStance) {
+    pills.push({ label: topStance, tone: "info" });
+  }
+  const coverage = digest.coverage?.semantic_coverage;
+  if (typeof coverage === "number" && Number.isFinite(coverage)) {
+    pills.push({ label: `${Math.round(coverage * 100)}% coverage`, tone: "neutral" });
+  }
+  return pills;
+}
+
+function digestStages(
+  clusters: NarrativeCluster[],
+  digest: TokenDiscussionDigest,
+): TokenCaseViewModel["propagation"]["stages"] {
+  const fromClusters = clusters.slice(0, 3).map((cluster) => {
+    const state = cluster.propagation_state ?? digestPropagationState(digest) ?? cluster.cluster_key;
+    const lead = cluster.lead_accounts?.[0]?.handle;
+    return {
+      id: cluster.cluster_key,
+      phase: phaseLabel(state),
+      count: cluster.mention_count ?? 0,
+      authors: cluster.author_count ?? 0,
+      leadAccount: lead ? `@${lead.replace(/^@+/, "")}` : null,
+      readZh: cluster.summary_zh,
+      tone: phaseTone(state),
+    };
+  });
+  if (fromClusters.length) {
+    return fromClusters;
+  }
+  const state = digestPropagationState(digest) ?? digest.status;
+  return [
+    {
+      id: "digest",
+      phase: phaseLabel(state),
+      count: digest.coverage?.source_mentions ?? 0,
+      authors: digest.coverage?.independent_authors ?? 0,
+      leadAccount: null,
+      readZh: propagationSummary(digest),
+      tone: phaseTone(state),
+    },
+  ];
+}
+
+function digestAmplifiers(digest: TokenDiscussionDigest, clusters: NarrativeCluster[]) {
+  if (digest.key_accounts?.length) {
+    return digest.key_accounts;
+  }
+  return clusters.flatMap((cluster) =>
+    (cluster.lead_accounts ?? []).map((account) => ({
+      handle: account.handle,
+      role: account.role ?? cluster.title,
+      posts: account.posts ?? 0,
+      first_seen_ms: account.first_seen_ms,
+    })),
+  );
+}
+
+function topMixLabel(mix: TokenDiscussionDigest["stance_mix"]): string | null {
+  const top = Object.entries(mix ?? {})
+    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+    .sort((left, right) => Number(right[1]) - Number(left[1]))[0];
+  return top ? `${top[0]} ${Math.round(Number(top[1]) * 100)}%` : null;
+}
+
+function digestStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    insufficient: "insufficient",
+    pending: "pending",
+    ready: "ready",
+    semantic_unavailable: "semantic unavailable",
+  };
+  return labels[status] ?? status.replaceAll("_", " ");
+}
+
+function digestStatusTone(status: string): TokenCaseTone {
+  if (status === "ready") return "health";
+  if (status === "pending") return "info";
+  return "warn";
+}
+
+function semanticRole(semantic: TokenMentionSemantic | null): string | null {
+  return (
+    cleanText(semantic?.claim_type) ??
+    cleanText(semantic?.evidence_type) ??
+    cleanText(semantic?.status) ??
+    null
+  );
+}
+
+function semanticStatusTone(status: string): TokenCaseTone {
+  if (status === "pending" || status === "queued") return "info";
+  return "warn";
+}
+
+function stanceTone(stance: string): TokenCaseTone {
+  if (stance === "bullish") return "health";
+  if (stance === "bearish" || stance === "exit-risk") return "risk";
+  if (stance === "skeptical") return "warn";
+  return "neutral";
+}
+
+function valenceTone(valence: string): TokenCaseTone {
+  if (valence === "positive" || valence === "celebratory") return "health";
+  if (valence === "panic" || valence === "hostile" || valence === "negative") return "risk";
+  if (valence === "mixed" || valence === "ironic") return "warn";
+  return "info";
+}
+
+function evidenceEventIds(refs: NarrativeArgument["evidence_refs"] | undefined): string[] {
+  return (refs ?? [])
+    .map((ref) => cleanText(ref.event_id))
+    .filter((eventId): eventId is string => Boolean(eventId));
 }
 
 function shortId(value: string): string {
