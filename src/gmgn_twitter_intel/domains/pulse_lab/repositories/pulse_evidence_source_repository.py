@@ -87,8 +87,15 @@ class PulseEvidenceSourceRepository:
             ).fetchone()
         )
 
-    def get_latest_market_tick(self, target_type: str, target_id: str, max_age_ms: int) -> dict[str, Any] | None:
-        min_observed_at_ms = max(0, _now_ms() - max(0, int(max_age_ms)))
+    def get_latest_market_tick(
+        self,
+        target_type: str,
+        target_id: str,
+        max_age_ms: int,
+        *,
+        now_ms: int,
+    ) -> dict[str, Any] | None:
+        min_observed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
         return _optional_row(
             self.conn.execute(
                 """
@@ -104,8 +111,14 @@ class PulseEvidenceSourceRepository:
             ).fetchone()
         )
 
-    def get_latest_market_tick_by_pricefeed(self, pricefeed_id: str, max_age_ms: int) -> dict[str, Any] | None:
-        min_observed_at_ms = max(0, _now_ms() - max(0, int(max_age_ms)))
+    def get_latest_market_tick_by_pricefeed(
+        self,
+        pricefeed_id: str,
+        max_age_ms: int,
+        *,
+        now_ms: int,
+    ) -> dict[str, Any] | None:
+        min_observed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
         return _optional_row(
             self.conn.execute(
                 """
@@ -120,16 +133,23 @@ class PulseEvidenceSourceRepository:
             ).fetchone()
         )
 
-    def list_market_facts(self, context: Any, *, max_age_ms: int = 3_600_000) -> list[dict[str, Any]]:
+    def list_market_facts(
+        self,
+        context: Any,
+        *,
+        max_age_ms: int = 3_600_000,
+        now_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        effective_now_ms = _now_ms() if now_ms is None else int(now_ms)
         rows: list[dict[str, Any]] = []
         seen_ticks: set[str] = set()
         for target_type, target_id in _market_lookup_keys(context):
-            tick = self.get_latest_market_tick(target_type, target_id, max_age_ms)
+            tick = self.get_latest_market_tick(target_type, target_id, max_age_ms, now_ms=effective_now_ms)
             if tick is not None and str(tick.get("tick_id") or "") not in seen_ticks:
                 seen_ticks.add(str(tick.get("tick_id") or ""))
                 rows.append(_market_fact_from_tick(tick))
         for pricefeed_id in _market_pricefeed_ids(context):
-            tick = self.get_latest_market_tick_by_pricefeed(pricefeed_id, max_age_ms)
+            tick = self.get_latest_market_tick_by_pricefeed(pricefeed_id, max_age_ms, now_ms=effective_now_ms)
             if tick is not None and str(tick.get("tick_id") or "") not in seen_ticks:
                 seen_ticks.add(str(tick.get("tick_id") or ""))
                 rows.append(_market_fact_from_tick(tick))
@@ -164,6 +184,59 @@ class PulseEvidenceSourceRepository:
                 }
             )
         return rows
+
+    def get_current_discussion_digest(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, Any] | None:
+        normalized_scope = "matched" if scope == "watched" else scope
+        return _optional_row(
+            self.conn.execute(
+                """
+                SELECT digest_id, target_type, target_id, "window", scope, schema_version,
+                       status, headline_zh, dominant_narratives_json, bull_view_json,
+                       bear_view_json, stance_mix_json, attention_valence_mix_json,
+                       propagation_read_json, reflexivity_read_json, watch_triggers_json,
+                       invalidation_conditions_json, data_gaps_json, semantic_coverage,
+                       source_event_count, labeled_event_count, independent_author_count,
+                       evidence_refs_json, computed_at_ms, expires_at_ms
+                FROM token_discussion_digests
+                WHERE target_type = %s
+                  AND target_id = %s
+                  AND "window" = %s
+                  AND scope = %s
+                  AND schema_version = %s
+                  AND is_current
+                  AND status = 'ready'
+                ORDER BY computed_at_ms DESC, digest_id DESC
+                LIMIT 1
+                """,
+                (target_type, target_id, window, normalized_scope, schema_version),
+            ).fetchone()
+        )
+
+    def list_semantic_refs(self, semantic_ids: Sequence[str]) -> list[dict[str, Any]]:
+        ids = _stable_ids(semantic_ids)
+        if not ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT semantic_id, event_id, target_type, target_id, schema_version,
+                   status, trade_stance, attention_valence, narrative_cluster_key,
+                   claim_type, evidence_type, semantic_confidence, evidence_refs_json,
+                   computed_at_ms, source_received_at_ms
+            FROM token_mention_semantics
+            WHERE semantic_id = ANY(%s)
+            ORDER BY source_received_at_ms DESC, semantic_id ASC
+            """,
+            (ids,),
+        ).fetchall()
+        return [_row(row) for row in rows]
 
 
 def _stable_ids(values: Sequence[str]) -> list[str]:

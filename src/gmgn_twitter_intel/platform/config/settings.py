@@ -75,6 +75,7 @@ class LlmConfig(BaseModel):
     trace_include_sensitive_data: bool = False
     pulse_agent_model: str | None = None
     watchlist_handle_summary_model: str | None = None
+    narrative_intel_model: str | None = None
     instructor_safety_net_enabled: bool = True
     instructor_max_retries: int = 2
 
@@ -92,6 +93,7 @@ class LlmConfig(BaseModel):
         "trace_api_key",
         "pulse_agent_model",
         "watchlist_handle_summary_model",
+        "narrative_intel_model",
         mode="before",
     )
     @classmethod
@@ -495,6 +497,56 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
+class MentionSemanticsWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    timeout_seconds: float = Field(default=0.0, ge=0)
+    batch_size: int = Field(default=50, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    advisory_lock_key: int = 2026051801
+    wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
+    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
+    scopes: tuple[str, ...] = ("all", "matched")
+    admission_limit: int = Field(default=200, ge=1)
+    source_limit: int = Field(default=2000, ge=1)
+    min_rank_score: int = Field(default=30, ge=0)
+    hot_rank_limit: int = Field(default=50, ge=1)
+    carry_ttl_seconds: int = Field(default=3600, ge=1)
+    suppression_ttl_seconds: int = Field(default=3600, ge=1)
+
+    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=120.0, ge=0)
+    timeout_seconds: float = Field(default=0.0, ge=0)
+    batch_size: int = Field(default=25, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    advisory_lock_key: int = 2026051802
+    wakes_on: tuple[str, ...] = ("token_radar_updated", "narrative_semantics_updated", "market_tick_written")
+    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
+    scopes: tuple[str, ...] = ("all", "matched")
+    min_source_mentions: int = Field(default=3, ge=1)
+    min_independent_authors: int = Field(default=2, ge=1)
+    min_new_labeled_mentions: int = Field(default=3, ge=1)
+    min_new_authors: int = Field(default=2, ge=1)
+    min_semantic_coverage: float = Field(default=0.35, ge=0, le=1)
+    max_mentions_per_digest: int = Field(default=120, ge=1)
+    stance_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
+    attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
+    price_move_refresh_pct: float = Field(default=12.0, ge=0)
+    digest_ttl_by_window_seconds: dict[str, int] = Field(
+        default_factory=lambda: {"5m": 120, "1h": 300, "4h": 600, "24h": 900}
+    )
+
+    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
 class EnrichmentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=2.0, ge=0)
     concurrency: int = Field(default=4, ge=1)
@@ -542,6 +594,10 @@ class WorkersSettings(BaseModel):
     token_profile_current: TokenProfileCurrentWorkerSettings = Field(default_factory=TokenProfileCurrentWorkerSettings)
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
+    )
+    mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
+    token_discussion_digest: TokenDiscussionDigestWorkerSettings = Field(
+        default_factory=TokenDiscussionDigestWorkerSettings
     )
     pulse_candidate: PulseCandidateWorkerSettings = Field(default_factory=PulseCandidateWorkerSettings)
     enrichment: EnrichmentWorkerSettings = Field(default_factory=EnrichmentWorkerSettings)
@@ -660,6 +716,14 @@ class Settings(BaseModel):
     @property
     def watchlist_handle_summary_configured(self) -> bool:
         return bool(self.llm_api_key and self.watchlist_handle_summary_model)
+
+    @property
+    def narrative_intel_model(self) -> str | None:
+        return self.llm.narrative_intel_model or self.llm_model
+
+    @property
+    def narrative_intel_configured(self) -> bool:
+        return bool(self.llm_api_key and self.narrative_intel_model)
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -909,6 +973,7 @@ llm:
   trace_include_sensitive_data: false
   pulse_agent_model:
   watchlist_handle_summary_model:
+  narrative_intel_model:
 
 gmgn:
   api_key:
@@ -1055,6 +1120,46 @@ token_profile_current:
   enabled: true
   interval_seconds: 60.0
   batch_size: 500
+mention_semantics:
+  enabled: true
+  interval_seconds: 60.0
+  timeout_seconds: 0.0
+  batch_size: 50
+  max_attempts: 3
+  advisory_lock_key: 2026051801
+  wakes_on: ["token_radar_updated", "resolution_updated"]
+  windows: ["5m", "1h", "4h", "24h"]
+  scopes: ["all", "matched"]
+  admission_limit: 200
+  source_limit: 2000
+  min_rank_score: 30
+  hot_rank_limit: 50
+  carry_ttl_seconds: 3600
+  suppression_ttl_seconds: 3600
+token_discussion_digest:
+  enabled: true
+  interval_seconds: 120.0
+  timeout_seconds: 0.0
+  batch_size: 25
+  max_attempts: 3
+  advisory_lock_key: 2026051802
+  wakes_on: ["token_radar_updated", "narrative_semantics_updated", "market_tick_written"]
+  windows: ["5m", "1h", "4h", "24h"]
+  scopes: ["all", "matched"]
+  min_source_mentions: 3
+  min_independent_authors: 2
+  min_new_labeled_mentions: 3
+  min_new_authors: 2
+  min_semantic_coverage: 0.35
+  max_mentions_per_digest: 120
+  stance_mix_change_threshold: 0.20
+  attention_mix_change_threshold: 0.20
+  price_move_refresh_pct: 12.0
+  digest_ttl_by_window_seconds:
+    5m: 120
+    1h: 300
+    4h: 600
+    24h: 900
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0

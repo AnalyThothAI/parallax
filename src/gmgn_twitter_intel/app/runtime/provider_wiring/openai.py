@@ -8,12 +8,39 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
+from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import OpenAIAgentsNarrativeIntelClient
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
     OpenAIAgentsWatchlistSummaryClient,
 )
 from gmgn_twitter_intel.platform.config.settings import Settings
+
+
+class OpenAINarrativeIntelProvider:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    @property
+    def provider(self) -> str:
+        return self._client.provider
+
+    @property
+    def model(self) -> str:
+        return self._client.model
+
+    @property
+    def artifact_version_hash(self) -> str:
+        return self._client.artifact_version_hash
+
+    async def label_mentions(self, **kwargs: Any) -> Any:
+        return await self._client.label_mentions(**kwargs)
+
+    async def summarize_discussion(self, **kwargs: Any) -> Any:
+        return await self._client.summarize_discussion(**kwargs)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
 
 class OpenAIPulseDecisionProvider:
@@ -131,6 +158,27 @@ def openai_pulse_decision_provider(
     )
 
 
+def openai_narrative_intel_provider(
+    settings: Settings,
+    *,
+    llm_gateway: object | None,
+) -> OpenAINarrativeIntelProvider:
+    gateway = _require_llm_gateway(llm_gateway)
+    model = settings.narrative_intel_model or ""
+    return OpenAINarrativeIntelProvider(
+        OpenAIAgentsNarrativeIntelClient(
+            api_key=settings.llm_api_key or "",
+            model=model,
+            llm_gateway=gateway,
+            base_url=settings.llm_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
+            safety_net=_build_safety_net(settings, model=model),
+            trace_enabled=settings.llm_trace_enabled,
+            trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
+        )
+    )
+
+
 def openai_watchlist_summary_provider(
     settings: Settings,
     *,
@@ -169,7 +217,9 @@ def _require_llm_gateway(llm_gateway: object | None) -> object:
 
 
 __all__ = [
+    "OpenAINarrativeIntelProvider",
     "OpenAIPulseDecisionProvider",
+    "openai_narrative_intel_provider",
     "openai_pulse_decision_provider",
     "openai_social_event_provider",
     "openai_watchlist_summary_provider",

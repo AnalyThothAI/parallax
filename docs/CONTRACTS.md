@@ -50,8 +50,9 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 
 `collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
 `live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
-`token_radar_projection`, `token_profile_current`, `pulse_candidate`, `enrichment`,
-`handle_summary`, `notification_rule`, and `notification_delivery`.
+`token_radar_projection`, `token_profile_current`, `mention_semantics`,
+`token_discussion_digest`, `pulse_candidate`, `enrichment`, `handle_summary`,
+`notification_rule`, and `notification_delivery`.
 
 The schema is `WorkersSettings`; the canonical key list is guarded
 against `worker_registry.py` and `docs/WORKERS.md`.
@@ -96,6 +97,11 @@ Token Radar market contract:
 - `/api/token-radar` rows expose a single `market` block from
   `factor_snapshot_json`. The block contains `event_anchor`, `decision_latest`,
   and `readiness`.
+- `/api/token-radar` rows expose `discussion_digest` from the persisted
+  narrative read model and may expose a read-only public `pulse_overlay`.
+  Digest status is `ready`, `pending`, `insufficient`,
+  `semantic_unavailable`, or `stale`; clients must render data gaps instead of
+  recreating narrative text from factor snapshots.
 - `market.event_anchor` and `market.decision_latest` are public response keys
   generated from `enriched_events` and `market_ticks`. They are not internal
   market concepts, DB tables, worker names, or provider runtime semantics.
@@ -226,19 +232,21 @@ Search V2 contract:
   - `data.resolver`: confidence, target candidates, selected target when there
     is exactly one resolved target, and deterministic resolver reasons.
   - `data.token_result`: the same token case dossier shape as `/api/token-case`
-    for the selected target. The Search page renders this payload directly and
-    must not issue a second `/api/token-case` request for the same result.
+    for the selected target, including `discussion_digest` and no
+    `agent_brief`. The Search page renders this payload directly and must not
+    issue a second `/api/token-case` request for the same result.
   - `data.topic_result`: 24h search items, post/author summary, and
     `agent_brief`.
   - `data.ambiguous_result`: candidates plus topic evidence; callers must not
     silently pick a token.
-- `agent_brief.schema_version` is `search_agent_brief_v1`. The brief has three
+- Topic and ambiguous results keep `agent_brief.schema_version =
+  search_agent_brief_v1`. The brief has three
   product sections: project/topic summary, propagation, and bull/bear views.
   It is deterministic in the first release and must cite visible evidence ids.
 - `token_result.profile` uses the same `TokenProfileBlock` contract as
   `/api/token-radar` rows. Search Inspect continues to return timeline, posts,
-  live market status, and deterministic brief when profile facts are pending,
-  missing, or errored.
+  live market status, and discussion digest state when profile facts are
+  pending, missing, or errored.
 
 ### Token Case Dossier
 
@@ -261,15 +269,19 @@ Search V2 contract:
     payload field.
   - `data.posts`: the initial recent post page for the same target/window/scope.
     Additional pages use `/api/target-posts` with the returned `next_cursor`.
-  - `data.agent_brief`: deterministic `search_agent_brief_v1` project summary,
-    propagation read, and bull/bear sections over visible evidence.
+  - `data.discussion_digest`: persisted narrative digest with explicit status,
+    semantic coverage, evidence refs, and data gaps.
+  - `data.narrative_clusters`: digest cluster summaries when available.
+  - `data.pulse_overlay`: optional public Signal Pulse overlay; it is
+    display-gated and never changes Radar rank or Token Case narrative.
   - `data.market_live`: request-time/process-local live market snapshot with
     `status` (`ready`, `live`, `missing`, `unsupported`, `stale`, or `error`),
     provider metadata, and nullable price, market-cap, liquidity, holder, and
     observation fields.
 - Token Case responses do not expose Token Radar score audit blocks. Ranking
   facts remain owned by `/api/token-radar`; dossier pages show evidence,
-  propagation, profile, and live market readiness.
+  propagation, profile, discussion digest, semantic timeline labels, and live
+  market readiness. Canonical token dossiers do not expose `agent_brief`.
 
 ## CLI
 

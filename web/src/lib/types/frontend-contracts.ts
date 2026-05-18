@@ -333,6 +333,146 @@ export type SearchAgentBrief = {
   };
 };
 
+export type NarrativeStatus = "ready" | "pending" | "insufficient" | "semantic_unavailable" | string;
+
+export type EvidenceRef = {
+  ref_id?: string | null;
+  ref_type:
+    | "event"
+    | "author"
+    | "market"
+    | "data_gap"
+    | "narrative_cluster"
+    | "pulse_packet"
+    | string;
+  event_id?: string | null;
+  handle?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
+  label?: string | null;
+  detail?: string | null;
+  url?: string | null;
+};
+
+export type NarrativeArgument = {
+  thesis_zh: string;
+  bullets_zh?: string[];
+  evidence_refs: EvidenceRef[];
+  evidence_event_ids?: string[];
+  confidence?: number | null;
+};
+
+export type TokenMentionSemantic = {
+  status: NarrativeStatus;
+  trade_stance:
+    | "bullish"
+    | "bearish"
+    | "neutral"
+    | "skeptical"
+    | "exit-risk"
+    | "research-only"
+    | "unknown"
+    | string;
+  attention_valence:
+    | "positive"
+    | "negative"
+    | "mixed"
+    | "ironic"
+    | "hostile"
+    | "panic"
+    | "celebratory"
+    | "informational"
+    | "unknown"
+    | string;
+  narrative_cluster_key?: string | null;
+  narrative_cluster_title?: string | null;
+  claim_type?: string | null;
+  evidence_type?: string | null;
+  semantic_confidence?: number | null;
+  co_mentioned_targets?: SearchTargetCandidate[];
+  evidence_refs?: EvidenceRef[];
+  summary_zh?: string | null;
+  data_gaps?: string[];
+};
+
+export type NarrativeCluster = {
+  cluster_key: string;
+  title: string;
+  summary_zh: string;
+  status?: NarrativeStatus;
+  propagation_state?: string | null;
+  attention_valence?: string | null;
+  trade_stance?: string | null;
+  mention_count?: number | null;
+  author_count?: number | null;
+  lead_accounts?: Array<{
+    handle: string;
+    role?: string | null;
+    posts?: number | null;
+    first_seen_ms?: number | null;
+  }>;
+  evidence_refs: EvidenceRef[];
+  data_gaps?: string[];
+};
+
+export type TokenDiscussionDigest = {
+  schema_version?: string | null;
+  status: NarrativeStatus;
+  generated_at_ms?: number | null;
+  computed_at_ms?: number | null;
+  stale?: boolean | null;
+  dominant_narrative?: {
+    title: string;
+    summary_zh: string;
+    propagation_state?: string | null;
+    trade_stance?: string | null;
+    attention_valence?: string | null;
+    evidence_refs: EvidenceRef[];
+  } | null;
+  coverage?: {
+    semantic_coverage?: number | null;
+    labeled_mentions?: number | null;
+    source_mentions?: number | null;
+    independent_authors?: number | null;
+  } | null;
+  stance_mix?: Partial<Record<TokenMentionSemantic["trade_stance"], number>>;
+  attention_valence_mix?: Partial<Record<TokenMentionSemantic["attention_valence"], number>>;
+  propagation?: {
+    state: string;
+    summary_zh: string;
+    evidence_refs: EvidenceRef[];
+  } | null;
+  bull_bear?: {
+    stance: "watch" | "research" | "avoid" | "unknown" | string;
+    bull: NarrativeArgument;
+    bear: NarrativeArgument;
+  } | null;
+  timeline_pills?: Array<{ label: string; tone?: string | null; evidence_refs?: EvidenceRef[] }>;
+  key_accounts?: Array<{
+    handle: string;
+    role: string;
+    posts: number;
+    first_seen_ms?: number | null;
+    evidence_refs?: EvidenceRef[];
+  }>;
+  data_gaps: string[];
+  evidence_refs?: EvidenceRef[];
+};
+
+export type PulseOverlay = {
+  status: "ready" | "hidden" | "unavailable" | string;
+  pulse_status?: SignalPulseStatus | string | null;
+  display_status?: string | null;
+  evidence_packet_hash?: string | null;
+  verdict?: string | null;
+  summary_zh?: string | null;
+  recommendation?: string | null;
+  confidence?: number | null;
+  updated_at_ms?: number | null;
+  evidence_refs?: EvidenceRef[];
+  data_gaps?: string[];
+};
+
 export type TokenProfileBlock = {
   status: "ready" | "pending" | "missing" | "unsupported" | "error" | string;
   provider?: string | null;
@@ -392,7 +532,9 @@ export type TokenCaseDossier = {
   profile?: TokenProfileBlock | null;
   timeline: TokenCaseSocialTimelineData;
   posts: TokenCasePostsData;
-  agent_brief: SearchAgentBrief;
+  discussion_digest: TokenDiscussionDigest;
+  narrative_clusters: NarrativeCluster[];
+  pulse_overlay?: PulseOverlay | null;
   market_live: LiveMarketSnapshot;
 };
 
@@ -905,6 +1047,8 @@ export type TokenFlowItem = {
   opportunity: OpportunityBlock;
   watch: WatchBlock;
   profile?: TokenProfileBlock | null;
+  discussion_digest?: TokenDiscussionDigest | null;
+  pulse_overlay?: PulseOverlay | null;
   factor_data_health?: TokenFactorSnapshot["data_health"];
   factor_gates?: TokenFactorSnapshot["gates"];
   factor_normalization?: TokenFactorSnapshot["normalization"];
@@ -940,6 +1084,7 @@ export type TokenPostItem = {
   author_role?: string | null;
   is_stage_representative?: boolean | number | null;
   price_delta_from_previous_post_pct?: number | null;
+  semantic?: TokenMentionSemantic | null;
   post_quality: ScoreBlock;
 };
 
@@ -1021,6 +1166,7 @@ export type TokenTimelinePost = {
   author_role?: string | null;
   is_stage_representative?: boolean | number | null;
   price_delta_from_previous_post_pct?: number | null;
+  semantic?: TokenMentionSemantic | null;
   post_quality: ScoreBlock;
 };
 

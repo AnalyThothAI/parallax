@@ -71,8 +71,14 @@ The hot path from one public-stream frame to product output is:
    - rebuilds token_radar_rows.factor_snapshot_json
    - emits token_radar_updated as a wake hint
 
-5. Consumers
+5. Narrative Intelligence read models
+   - mention_semantics reconciles admitted Radar targets and labels source mentions
+   - token_discussion_digest aggregates labeled mentions into discussion digests
+   - emits narrative_semantics_updated only as a wake hint for digest refresh
+
+6. Consumers
    - Pulse reads token_radar_rows, gates candidates, runs the agent, and writes audit rows
+   - Pulse may include ready discussion digest evidence but never triggers narrative workers
    - notifications evaluate candidates and enqueue deliveries
    - API / WebSocket / CLI read public read models
    - frontend renders generated contract payloads
@@ -179,6 +185,8 @@ Examples:
 - `projection_offsets`
 - projection coverage rows
 - `token_radar_rows.computed_at_ms`
+- `token_mention_semantics.computed_at_ms`
+- `token_discussion_digests.computed_at_ms`
 - status payload fields such as `last_result` and `last_error`
 
 Projection freshness is a read-model health signal. It should never

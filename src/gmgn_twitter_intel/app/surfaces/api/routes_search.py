@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
@@ -12,6 +12,7 @@ from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _post_range, _scope, _target_type, _window
 from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
+from gmgn_twitter_intel.domains.narrative_intel.read_models.narrative_read_model import NarrativeReadModel
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
@@ -105,6 +106,14 @@ def search_inspect(
             limit=_limit(limit, maximum=200),
             now_ms=_now_ms(),
         )
+        if isinstance(data.get("token_result"), dict):
+            data["token_result"].pop("agent_brief", None)
+            data["token_result"] = _narrative_read_model(repos).hydrate_token_case(
+                data["token_result"],
+                window=parsed_window,
+                scope=parsed_scope,
+                now_ms=_now_ms(),
+            )
     return _json({"ok": True, "data": data})
 
 
@@ -143,6 +152,14 @@ def token_case(
                 posts_limit=max(1, _limit(posts_limit, maximum=50)),
                 now_ms=_now_ms(),
             )
+            data.pop("agent_brief", None)
+            _, response_scope = normalize_token_case_scope(scope)
+            data = _narrative_read_model(repos).hydrate_token_case(
+                data,
+                window=parsed_window,
+                scope=response_scope,
+                now_ms=_now_ms(),
+            )
     except TokenCaseTargetNotFound:
         return _json({"ok": False, "error": "target_not_found"}, status_code=404)
     return _json({"ok": True, "data": data})
@@ -177,6 +194,12 @@ def target_posts(
                 sort=sort,
                 limit=_limit(limit, maximum=200),
                 cursor=cursor or None,
+            )
+            data = _narrative_read_model(repos).hydrate_target_posts(
+                data,
+                window=parsed_window,
+                scope=parsed_scope,
+                now_ms=_now_ms(),
             )
     except TokenTargetPostsRangeError:
         return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)
@@ -232,3 +255,7 @@ def _market_candles_service(runtime: object) -> MarketCandlesService:
         cex_market=getattr(providers, "message_cex_market", None),
         dex_candle_market=getattr(providers, "dex_candle_market", None),
     )
+
+
+def _narrative_read_model(repos: Any) -> Any:
+    return NarrativeReadModel(repository=repos.narratives)

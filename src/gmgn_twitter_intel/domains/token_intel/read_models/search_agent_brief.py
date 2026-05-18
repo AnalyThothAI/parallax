@@ -5,7 +5,7 @@ from typing import Any
 SCHEMA_VERSION = "search_agent_brief_v1"
 
 
-def build_token_agent_brief(
+def _build_token_agent_brief(
     *,
     target: dict[str, Any],
     timeline: dict[str, Any],

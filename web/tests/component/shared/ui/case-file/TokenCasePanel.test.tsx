@@ -30,8 +30,8 @@ describe("TokenCasePanel", () => {
     expect(screen.getByText("Bear · 空头")).toBeInTheDocument();
     expect(screen.getByText("Key Amplifiers")).toBeInTheDocument();
     expect(screen.getByText("Data Gaps")).toBeInTheDocument();
-    expect(screen.getAllByText(/PQ/)[0]).toBeInTheDocument();
-    expect(screen.getAllByText("$HANSA")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("bullish")[0]).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /\$HANSA/i })).toBeInTheDocument();
     expect(screen.getAllByText(/原文/)[0]).toBeInTheDocument();
   });
 });

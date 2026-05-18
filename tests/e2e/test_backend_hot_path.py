@@ -107,6 +107,7 @@ def test_complete_backend_hot_path_without_notify_dependency(
         assert radar_result.notes["rows_written"] >= 1
         _assert_counts({"token_radar_rows": 1})
         _promote_single_fixture_radar_row_for_pulse()
+        _seed_profile_for_pulse_evidence()
 
         pulse_client = FakePulseDecisionProvider()
         pulse_result = asyncio.run(
@@ -179,12 +180,59 @@ def _promote_single_fixture_radar_row_for_pulse() -> None:
         conn.close()
 
 
+def _seed_profile_for_pulse_evidence() -> None:
+    conn = connect_postgres_test(read_only=False)
+    try:
+        conn.execute(
+            """
+            INSERT INTO token_profile_current(
+              target_type, target_id, status, profile_provider, source_kind, source_ref,
+              symbol, name, quality_flags_json, source_payload_json,
+              observed_at_ms, computed_at_ms, updated_at_ms
+            )
+            VALUES (
+              %s, %s, 'ready', 'fixture', 'fixture', %s,
+              %s, %s, '[]'::jsonb, '{}'::jsonb,
+              %s, %s, %s
+            )
+            ON CONFLICT (target_type, target_id) DO UPDATE
+            SET status = EXCLUDED.status,
+                profile_provider = EXCLUDED.profile_provider,
+                source_kind = EXCLUDED.source_kind,
+                source_ref = EXCLUDED.source_ref,
+                symbol = EXCLUDED.symbol,
+                name = EXCLUDED.name,
+                observed_at_ms = EXCLUDED.observed_at_ms,
+                computed_at_ms = EXCLUDED.computed_at_ms,
+                updated_at_ms = EXCLUDED.updated_at_ms
+            """,
+            (
+                MARKET_TARGET_TYPE,
+                MARKET_TARGET_ID,
+                f"fixture:{EVENT_ID}",
+                SYMBOL,
+                f"{SYMBOL} Fixture Token",
+                FIXED_NOW_MS + 2_500,
+                FIXED_NOW_MS + 2_500,
+                FIXED_NOW_MS + 2_500,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _pulse_debug() -> dict[str, Any]:
     conn = connect_postgres_test(read_only=False)
     try:
         runs = conn.execute(
             """
-            SELECT decision_route, outcome, request_json, response_json, error
+            SELECT decision_route,
+                   outcome,
+                   request_json->'evidence_gate' AS evidence_gate,
+                   request_json->'evidence_packet'->'data_gaps' AS data_gaps,
+                   request_json->'evidence_packet'->'allowed_evidence_refs' AS allowed_refs,
+                   error
             FROM pulse_agent_runs
             ORDER BY started_at_ms DESC
             LIMIT 3

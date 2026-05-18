@@ -53,6 +53,8 @@ def _full_v2_decision() -> FinalDecision:
         invalidation_conditions=["主要 KOL 删帖。"],
         residual_risks=["市场宏观波动。"],
         evidence_event_ids=["event-1", "event-2", "event-3"],
+        supporting_evidence_refs=("event:event-1", "event:event-2"),
+        risk_evidence_refs=("market:asset-1",),
     )
 
 
@@ -85,6 +87,8 @@ def test_candidate_fields_decision_json_contains_all_v2_fields() -> None:
     # v1 fields still present
     assert decision_json["summary_zh"].startswith("cohort")
     assert decision_json["evidence_event_ids"] == ["event-1", "event-2", "event-3"]
+    assert decision_json["supporting_evidence_refs"] == ["event:event-1", "event:event-2"]
+    assert decision_json["risk_evidence_refs"] == ["market:asset-1"]
 
 
 def test_candidate_fields_does_not_promote_v2_to_main_columns() -> None:

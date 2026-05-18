@@ -6,13 +6,14 @@
 
 ```
 usage: gmgn-twitter-intel [-h]
-                          {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops} ...
+                          {serve,init,config,pulse,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops}
+  {serve,init,config,pulse,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.gmgn-twitter-intel/config.yaml
     config              print effective runtime configuration
+    pulse               Signal Pulse diagnostics
     db                  database lifecycle commands
     recent              print recent stored events
     search              search stored tweets by query text

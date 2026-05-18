@@ -6,6 +6,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     IngestionProviders,
     MarketlaneProviders,
+    NarrativeIntelProviders,
     PulseLabProviders,
     SocialEnrichmentProviders,
     WatchlistIntelProviders,
@@ -31,6 +32,15 @@ def wire_providers(
         social_enrichment=SocialEnrichmentProviders(
             event_enrichment=openai.openai_social_event_provider(settings, llm_gateway=llm_gateway)
             if settings.llm_configured
+            else None,
+        ),
+        narrative_intel=NarrativeIntelProviders(
+            narrative_provider=openai.openai_narrative_intel_provider(settings, llm_gateway=llm_gateway)
+            if (
+                settings.workers.mention_semantics.enabled
+                or settings.workers.token_discussion_digest.enabled
+            )
+            and settings.narrative_intel_configured
             else None,
         ),
         pulse_lab=PulseLabProviders(
@@ -61,6 +71,7 @@ __all__ = [
     "AssetMarketProviders",
     "IngestionProviders",
     "MarketlaneProviders",
+    "NarrativeIntelProviders",
     "PulseLabProviders",
     "SocialEnrichmentProviders",
     "WatchlistIntelProviders",

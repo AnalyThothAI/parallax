@@ -31,12 +31,11 @@ def test_token_case_dossier_builds_all_sections_for_resolved_asset():
         now_ms=NOW_MS,
     )
 
-    assert list(dossier) == ["target", "profile", "timeline", "posts", "agent_brief", "market_live"]
+    assert list(dossier) == ["target", "profile", "timeline", "posts", "market_live"]
     assert dossier["target"]["target_id"] == TARGET_ID
     assert dossier["profile"]["status"] == "ready"
     assert dossier["timeline"]["summary"]["posts"] == 2
     assert dossier["posts"]["returned_count"] == 2
-    assert dossier["agent_brief"]["schema_version"] == "search_agent_brief_v1"
     assert dossier["market_live"]["status"] in {"ready", "missing"}
 
 
@@ -154,10 +153,10 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
     assert dossier["market_live"]["volume_24h_usd"] == 26133.3652616
     assert dossier["market_live"]["holders"] == 551
     assert dossier["market_live"]["age_ms"] == 1_000
-    assert "缺 holders" not in dossier["agent_brief"]["project_summary"]["data_gaps"]
+    assert "agent_brief" not in dossier
 
 
-def test_token_case_data_gaps_do_not_claim_project_profile_missing_when_ready():
+def test_token_case_keeps_profile_and_market_context_without_agent_brief():
     service = TokenCaseService(
         targets=FakeTargets(
             rows=[target_row("event-1")],
@@ -193,11 +192,9 @@ def test_token_case_data_gaps_do_not_claim_project_profile_missing_when_ready():
         now_ms=NOW_MS,
     )
 
-    data_gaps = dossier["agent_brief"]["project_summary"]["data_gaps"]
-
-    assert "缺合约风险和项目方资料" not in data_gaps
-    assert "缺项目方资料" not in data_gaps
-    assert "缺合约风险数据" in data_gaps
+    assert dossier["profile"]["status"] == "ready"
+    assert dossier["market_live"]["status"] == "ready"
+    assert "agent_brief" not in dossier
 
 
 def test_token_case_uses_unsupported_live_market_without_gateway():

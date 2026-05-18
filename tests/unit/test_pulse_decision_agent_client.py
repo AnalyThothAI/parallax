@@ -12,11 +12,11 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.domains.pulse_lab.providers import EvidenceDebateMemo
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
 )
-from gmgn_twitter_intel.domains.pulse_lab.providers import EvidenceDebateMemo
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
 )

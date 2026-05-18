@@ -44,6 +44,28 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_capture_tier.advisory_lock_key == 2026051503
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
     assert settings.token_radar_projection.wakes_on == ("market_tick_written", "resolution_updated")
+    assert settings.mention_semantics.interval_seconds == 60
+    assert settings.mention_semantics.timeout_seconds == 0
+    assert settings.mention_semantics.batch_size == 50
+    assert settings.mention_semantics.advisory_lock_key == 2026051801
+    assert settings.mention_semantics.wakes_on == ("token_radar_updated", "resolution_updated")
+    assert settings.mention_semantics.windows == ("5m", "1h", "4h", "24h")
+    assert settings.mention_semantics.scopes == ("all", "matched")
+    assert settings.mention_semantics.hot_rank_limit == 50
+    assert settings.mention_semantics.min_rank_score == 30
+    assert settings.token_discussion_digest.interval_seconds == 120
+    assert settings.token_discussion_digest.timeout_seconds == 0
+    assert settings.token_discussion_digest.batch_size == 25
+    assert settings.token_discussion_digest.advisory_lock_key == 2026051802
+    assert settings.token_discussion_digest.wakes_on == (
+        "token_radar_updated",
+        "narrative_semantics_updated",
+        "market_tick_written",
+    )
+    assert settings.token_discussion_digest.windows == ("5m", "1h", "4h", "24h")
+    assert settings.token_discussion_digest.scopes == ("all", "matched")
+    assert settings.token_discussion_digest.min_semantic_coverage == 0.35
+    assert settings.token_discussion_digest.digest_ttl_by_window_seconds["24h"] == 900
     assert settings.pulse_candidate.timeout_seconds == 0
     assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
@@ -62,6 +84,8 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "hot_target_ttl_seconds" not in text
     assert "cex_poll_interval_seconds" not in text
     assert "investigator_max_tool_calls" not in text
+    assert "fallback_agent_brief" not in text
+    assert "narrative_fallback" not in text
 
 
 def test_worker_settings_reject_unknown_worker_key():

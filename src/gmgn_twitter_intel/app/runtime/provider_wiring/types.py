@@ -58,6 +58,11 @@ class PulseLabProviders:
 
 
 @dataclass(frozen=True, slots=True)
+class NarrativeIntelProviders:
+    narrative_provider: Any | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WatchlistIntelProviders:
     summary_provider: object | None = None
 
@@ -72,6 +77,7 @@ class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
     social_enrichment: SocialEnrichmentProviders
+    narrative_intel: NarrativeIntelProviders
     pulse_lab: PulseLabProviders
     watchlist_intel: WatchlistIntelProviders
     marketlane: MarketlaneProviders
@@ -81,6 +87,7 @@ __all__ = [
     "AssetMarketProviders",
     "IngestionProviders",
     "MarketlaneProviders",
+    "NarrativeIntelProviders",
     "OkxProviderBundle",
     "PulseLabProviders",
     "SocialEnrichmentProviders",

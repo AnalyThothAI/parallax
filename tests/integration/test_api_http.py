@@ -587,12 +587,17 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     legacy_market_field = "market_overlay"
     assert legacy_market_field not in inspect_data["token_result"]
     assert "radar_item" not in inspect_data["token_result"]
-    assert inspect_data["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
+    assert "agent_brief" not in inspect_data["token_result"]
+    assert inspect_data["token_result"]["discussion_digest"]["status"] in {"pending", "semantic_unavailable"}
+    assert inspect_data["token_result"]["discussion_digest"]["data_gaps"]
 
     assert asset_flow.status_code == 200
-    assert asset_flow.json()["data"]["targets"][0]["target"]["symbol"] == "PEPE"
-    assert asset_flow.json()["data"]["targets"][0]["profile"]["status"] == "pending"
-    assert asset_flow.json()["data"]["targets"][0]["profile"]["provider"] is None
+    radar_row = asset_flow.json()["data"]["targets"][0]
+    assert radar_row["target"]["symbol"] == "PEPE"
+    assert radar_row["profile"]["status"] == "pending"
+    assert radar_row["profile"]["provider"] is None
+    assert radar_row["discussion_digest"]["status"] in {"pending", "semantic_unavailable"}
+    assert radar_row["discussion_digest"]["data_gaps"]
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
@@ -1240,6 +1245,9 @@ def test_api_token_case_returns_dossier_for_resolved_asset(tmp_path):
     assert "radar_item" not in body["data"]
     legacy_market_field = "market_overlay"
     assert legacy_market_field not in body["data"]
+    assert "agent_brief" not in body["data"]
+    assert body["data"]["discussion_digest"]["status"] in {"pending", "semantic_unavailable"}
+    assert body["data"]["discussion_digest"]["data_gaps"]
     assert body["data"]["posts"]["items"][0]["post_quality"]["contributions"]
 
 
@@ -1368,6 +1376,8 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
     assert first_body["returned_count"] == 2
     assert first_body["has_more"] is True
     assert first_body["query"]["target_type"] == target_type
+    assert first_body["items"][0]["semantic"]["status"] in {"pending", "semantic_unavailable"}
+    assert first_body["items"][0]["semantic"]["data_gaps"]
     assert first_body["query"]["target_id"] == target_id
     assert first_body["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
     assert first_body["items"][0]["post_quality"]["contributions"]

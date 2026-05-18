@@ -94,7 +94,12 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
         if not startup_db.get("ok"):
             raise RuntimeError(f"postgres health check failed: {startup_db}")
 
-        if settings.llm_configured or settings.pulse_agent_configured or settings.watchlist_handle_summary_configured:
+        if (
+            settings.llm_configured
+            or settings.pulse_agent_configured
+            or settings.watchlist_handle_summary_configured
+            or settings.narrative_intel_configured
+        ):
             llm_gateway = LLMGateway.create(settings)
         providers = wire_providers(
             settings,

@@ -15,6 +15,7 @@ describe("buildTokenCaseViewModel", () => {
     });
 
     expect(vm.hero.title).toContain("$HANSA");
+    expect(vm.hero.subtitle).toBe("Contract-confirmed Solana rotation");
     expect(vm.metrics.map((metric) => metric.key)).toEqual([
       "mentions",
       "phase",
@@ -23,11 +24,31 @@ describe("buildTokenCaseViewModel", () => {
     ]);
     expect(vm.hero.logoUrl).toBe("https://example.test/hansa.png");
     expect(vm.propagation.stages).toHaveLength(3);
-    expect(vm.timeline.items[0].quality.scoreLabel).toMatch(/PQ/);
+    expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
+    expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("bullish");
+    expect(vm.timeline.items[0].pills.map((pill) => pill.label)).not.toContain("PQ 82");
     expect(vm.market.status).toBe("missing");
     expect(vm.bullBear.bull.title).toBe("Bull · 多头");
+    expect(vm.bullBear.bull.thesis).toContain("多个独立账号围绕 CA 证据");
     expect(vm.bullBear.bear.title).toBe("Bear · 空头");
-    expect(vm.dataGaps.length).toBeGreaterThan(0);
+    expect(vm.dataGaps).toEqual(["live market snapshot missing", "official liquidity route not confirmed"]);
+  });
+
+  it("does not read canonical token agent_brief as a fallback narrative", () => {
+    const dossier = tokenCaseFixture();
+    const dossierWithRemovedLegacyBrief = {
+      ...dossier,
+      agent_brief: undefined,
+    };
+
+    const vm = buildTokenCaseViewModel({
+      dossier: dossierWithRemovedLegacyBrief,
+      route: { window: "1h", scope: "all", postSort: "recent" },
+      posts: dossier.posts,
+    });
+
+    expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
+    expect(vm.bullBear.stance).toBe("watch");
   });
 
   it("surfaces event-level token prices in timeline pills", () => {
