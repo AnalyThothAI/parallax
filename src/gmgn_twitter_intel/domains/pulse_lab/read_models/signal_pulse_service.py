@@ -6,11 +6,10 @@ from typing import Any
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
 from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
 
-SUMMARY_STATUSES = (
+PUBLIC_SUMMARY_STATUSES = (
     "trade_candidate",
     "token_watch",
     "risk_rejected_high_info",
-    "blocked_low_information",
 )
 PUBLIC_DISPLAY_STATUSES = {
     "display_trade_candidate",
@@ -123,8 +122,8 @@ def _rows(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _summary(aggregate: dict[str, Any]) -> dict[str, Any]:
     raw_summary = _dict(aggregate.get("summary"))
-    counts: dict[str, Any] = {status: 0 for status in SUMMARY_STATUSES}
-    for status in SUMMARY_STATUSES:
+    counts: dict[str, Any] = {status: 0 for status in PUBLIC_SUMMARY_STATUSES}
+    for status in PUBLIC_SUMMARY_STATUSES:
         if status in counts:
             counts[status] = int(raw_summary.get(status) or 0)
     counts["decision_route_counts"] = _int_dict(aggregate.get("decision_route_counts"))
@@ -176,7 +175,6 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "symbol": row.get("symbol"),
         "window": row.get("window"),
         "scope": row.get("scope"),
-        "pulse_status": row.get("pulse_status"),
         "evidence_status": row.get("evidence_status"),
         "decision_status": row.get("decision_status"),
         "display_status": row.get("display_status"),
@@ -187,7 +185,6 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "score_band": row.get("score_band"),
         "gate_reasons": _list(row.get("gate_reasons_json")),
         "risk_reasons": _list(row.get("risk_reasons_json")),
-        "last_edge_events": _list(row.get("last_edge_events_json")),
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
         "factor_snapshot": factor_snapshot,
@@ -219,7 +216,6 @@ def _int_dict(value: Any) -> dict[str, int]:
 def _decision(row: dict[str, Any]) -> dict[str, Any]:
     decision = _dict(row.get("decision_json"))
     return {
-        # v1 retained fields
         "route": row.get("decision_route") or decision.get("route"),
         "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
         "confidence": row.get("decision_confidence"),
@@ -232,7 +228,6 @@ def _decision(row: dict[str, Any]) -> dict[str, Any]:
         "supporting_evidence_refs": _string_list(decision.get("supporting_evidence_refs")),
         "risk_evidence_refs": _string_list(decision.get("risk_evidence_refs")),
         "data_gap_refs": _string_list(decision.get("data_gap_refs")),
-        # v2 new fields (consumed by SurfaceCard UI)
         "narrative_archetype": decision.get("narrative_archetype") or "",
         "narrative_thesis_zh": decision.get("narrative_thesis_zh") or "",
         "bull_view": _bull_bear_view(decision.get("bull_view")),

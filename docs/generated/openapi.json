@@ -2495,13 +2495,6 @@
             ],
             "title": "Gate Version"
           },
-          "last_edge_events": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Last Edge Events",
-            "type": "array"
-          },
           "playbooks": {
             "items": {
               "additionalProperties": true,
@@ -2520,17 +2513,6 @@
               }
             ],
             "title": "Prompt Version"
-          },
-          "pulse_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pulse Status"
           },
           "pulse_version": {
             "anyOf": [
@@ -4736,7 +4718,7 @@
             "name": "window",
             "required": false,
             "schema": {
-              "default": "1h",
+              "default": "5m",
               "title": "Window",
               "type": "string"
             }

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 describe("signalLabRouteState", () => {
   it("uses product defaults when query params are omitted", () => {
     expect(parseSignalLabRouteState(new URLSearchParams())).toEqual({
-      window: "1h",
+      window: "5m",
       scope: "all",
       status: "all",
       handle: "",
@@ -36,7 +36,7 @@ describe("signalLabRouteState", () => {
         new URLSearchParams("window=2d&scope=private&status=moon&handle=  @TraderPow  "),
       ),
     ).toEqual({
-      window: "1h",
+      window: "5m",
       scope: "all",
       status: "all",
       handle: "traderpow",
@@ -47,7 +47,7 @@ describe("signalLabRouteState", () => {
   it("omits defaults when serializing to URL search params", () => {
     expect(
       serializeSignalLabRouteState({
-        window: "1h",
+        window: "5m",
         scope: "all",
         status: "all",
         handle: "",

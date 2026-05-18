@@ -1228,16 +1228,12 @@ export interface components {
             gate_reasons?: string[];
             /** Gate Version */
             gate_version?: string | null;
-            /** Last Edge Events */
-            last_edge_events?: string[];
             /** Playbooks */
             playbooks?: {
                 [key: string]: unknown;
             }[];
             /** Prompt Version */
             prompt_version?: string | null;
-            /** Pulse Status */
-            pulse_status?: string | null;
             /** Pulse Version */
             pulse_version?: string | null;
             /** Risk Reasons */

@@ -8,7 +8,7 @@ ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
-SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+PUBLIC_SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
 
 
@@ -58,10 +58,10 @@ def _alert_type(value: str | None) -> str | None:
     return value if value in ALERT_TYPES else None
 
 
-def _signal_pulse_status(value: str) -> str | None:
+def _signal_pulse_public_status(value: str) -> str | None:
     if not value:
         return None
-    if value in SIGNAL_PULSE_STATUSES:
+    if value in PUBLIC_SIGNAL_PULSE_STATUSES:
         return value
     raise ApiBadRequest("invalid_status", field="status")
 

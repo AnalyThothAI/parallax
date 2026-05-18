@@ -11,6 +11,11 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared 
 )
 
 PUBLIC_DISPLAY_STATUS_SQL = "('display_trade_candidate', 'display_token_watch', 'display_risk_rejected_high_info')"
+PUBLIC_DISPLAY_STATUS_BY_PUBLIC_STATUS = {
+    "trade_candidate": "display_trade_candidate",
+    "token_watch": "display_token_watch",
+    "risk_rejected_high_info": "display_risk_rejected_high_info",
+}
 
 
 class PulseReadRepository:
@@ -33,8 +38,11 @@ class PulseReadRepository:
         clauses = ['candidate."window" = %s', "candidate.scope = %s"]
         params: list[Any] = [window, scope]
         if status:
-            clauses.append("candidate.pulse_status = %s")
-            params.append(status)
+            public_display_status = PUBLIC_DISPLAY_STATUS_BY_PUBLIC_STATUS.get(status)
+            if public_display_status is None:
+                raise ValueError(f"invalid public Signal Pulse status: {status}")
+            clauses.append("candidate.display_status = %s")
+            params.append(public_display_status)
         if displayable_only:
             clauses.append(f"candidate.display_status IN {PUBLIC_DISPLAY_STATUS_SQL}")
             clauses.append("candidate.evidence_packet_hash IS NOT NULL")
@@ -96,18 +104,40 @@ class PulseReadRepository:
             f"""
             SELECT
               COUNT(*) AS candidate_count,
-              COUNT(*) FILTER (WHERE pulse_status = 'trade_candidate') AS trade_candidate_count,
-              COUNT(*) FILTER (WHERE pulse_status = 'token_watch') AS token_watch_count,
-              COUNT(*) FILTER (WHERE pulse_status = 'risk_rejected_high_info') AS risk_rejected_high_info_count,
-              COUNT(*) FILTER (WHERE pulse_status = 'blocked_low_information') AS blocked_low_information_status_count,
-              COUNT(*) FILTER (WHERE decision_route = 'cex') AS decision_route_cex_count,
-              COUNT(*) FILTER (WHERE decision_route = 'meme') AS decision_route_meme_count,
-              COUNT(*) FILTER (WHERE decision_route = 'research_only') AS decision_route_research_only_count,
-              COUNT(*) FILTER (WHERE decision_recommendation = 'high_conviction') AS decision_high_conviction_count,
-              COUNT(*) FILTER (WHERE decision_recommendation = 'trade_candidate') AS decision_trade_candidate_count,
-              COUNT(*) FILTER (WHERE decision_recommendation = 'watchlist') AS decision_watchlist_count,
-              COUNT(*) FILTER (WHERE decision_recommendation = 'ignore') AS decision_ignore_count,
-              COUNT(*) FILTER (WHERE decision_recommendation = 'abstain') AS decision_abstain_count,
+              COUNT(*) FILTER (WHERE display_status = 'display_trade_candidate') AS trade_candidate_count,
+              COUNT(*) FILTER (WHERE display_status = 'display_token_watch') AS token_watch_count,
+              COUNT(*) FILTER (
+                WHERE display_status = 'display_risk_rejected_high_info'
+              ) AS risk_rejected_high_info_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL} AND decision_route = 'cex'
+              ) AS decision_route_cex_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL} AND decision_route = 'meme'
+              ) AS decision_route_meme_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL} AND decision_route = 'research_only'
+              ) AS decision_route_research_only_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                  AND decision_recommendation = 'high_conviction'
+              ) AS decision_high_conviction_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                  AND decision_recommendation = 'trade_candidate'
+              ) AS decision_trade_candidate_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                  AND decision_recommendation = 'watchlist'
+              ) AS decision_watchlist_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                  AND decision_recommendation = 'ignore'
+              ) AS decision_ignore_count,
+              COUNT(*) FILTER (
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                  AND decision_recommendation = 'abstain'
+              ) AS decision_abstain_count,
               COUNT(*) FILTER (
                 WHERE pulse_status = 'blocked_low_information'
                    OR verdict = 'blocked_low_information'
@@ -133,6 +163,7 @@ class PulseReadRepository:
             FROM pulse_candidates
             AS candidate
             WHERE {" AND ".join(clauses)}
+              AND display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
               AND decision_recommendation = 'abstain'
             GROUP BY reason
             ORDER BY count DESC, reason ASC
@@ -166,7 +197,6 @@ class PulseReadRepository:
             "trade_candidate": int(row.get("trade_candidate_count") or 0),
             "token_watch": int(row.get("token_watch_count") or 0),
             "risk_rejected_high_info": int(row.get("risk_rejected_high_info_count") or 0),
-            "blocked_low_information": int(row.get("blocked_low_information_status_count") or 0),
         }
         decision_route_counts = {
             "cex": int(row.get("decision_route_cex_count") or 0),

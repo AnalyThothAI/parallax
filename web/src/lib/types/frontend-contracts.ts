@@ -1200,7 +1200,7 @@ export type SignalPulseHealth = {
   public_candidates_4h?: number | null;
 };
 
-export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number> & {
+export type SignalPulseSummary = Record<SignalPulseStatus, number> & {
   decision_route_counts?: Record<string, number>;
   decision_recommendation_counts?: Record<string, number>;
   decision_abstain_reason_counts?: Record<string, number>;
@@ -1364,7 +1364,6 @@ export type SignalPulseItem = {
   symbol?: string | null;
   window: WindowKey | string;
   scope: ScopeKey | string;
-  pulse_status: SignalPulseStatus;
   evidence_status?: string | null;
   decision_status?: string | null;
   display_status?: string | null;
@@ -1373,7 +1372,6 @@ export type SignalPulseItem = {
   social_phase?: string | null;
   candidate_score?: number | null;
   score_band?: string | null;
-  last_edge_events: string[];
   evidence_event_ids: string[];
   source_event_ids: string[];
   factor_snapshot: TokenFactorSnapshot;

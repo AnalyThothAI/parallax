@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime, _worker_running
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
-from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _scope, _signal_pulse_status, _window
+from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _scope, _signal_pulse_public_status, _window
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 
 router = APIRouter()
@@ -20,7 +20,7 @@ router = APIRouter()
 )
 def signal_lab_pulse(
     request: Request,
-    window: Annotated[str, Query()] = "1h",
+    window: Annotated[str, Query()] = "5m",
     scope: Annotated[str, Query()] = "all",
     status: Annotated[str, Query()] = "",
     handle: Annotated[str, Query()] = "",
@@ -32,7 +32,7 @@ def signal_lab_pulse(
     parsed_window = _window(window)
     parsed_scope = _scope(scope)
     parsed_limit = _limit(limit, maximum=500)
-    parsed_status = _signal_pulse_status(status)
+    parsed_status = _signal_pulse_public_status(status)
     data = _signal_lab_pulse_data(
         runtime,
         window=parsed_window,

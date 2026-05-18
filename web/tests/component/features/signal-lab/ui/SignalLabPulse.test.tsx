@@ -36,7 +36,6 @@ describe("SignalLabPulse", () => {
               trade_candidate: 1,
               token_watch: 0,
               risk_rejected_high_info: 0,
-              blocked_low_information: 0,
             },
             items: [tittyPulseFixture],
             returned_count: 1,

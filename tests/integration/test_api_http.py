@@ -970,7 +970,6 @@ def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
         "trade_candidate": 0,
         "token_watch": 0,
         "risk_rejected_high_info": 0,
-        "blocked_low_information": 0,
         "decision_route_counts": {"cex": 0, "meme": 0, "research_only": 0},
         "decision_recommendation_counts": {
             "abstain": 0,
@@ -1143,7 +1142,7 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["summary"]["token_watch"] == 1
-    assert data["summary"]["blocked_low_information"] == 2
+    assert "blocked_low_information" not in data["summary"]
     assert data["health"]["pulse_ready"] is True
     assert data["health"]["candidate_count"] == 3
     assert data["health"]["blocked_low_information_count"] == 2
@@ -1157,6 +1156,106 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     assert "market_context_json" not in data["items"][0]
     assert "thesis_json" not in data["items"][0]
     assert "kind" not in data["items"][0]
+
+
+def test_api_signal_pulse_status_filter_uses_public_display_status_after_evidence_cut(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        with client.app.state.service.repositories() as repos:
+            repos.pulse_candidates.upsert_candidate(
+                candidate_id="candidate-display-watch",
+                candidate_type="token_target",
+                subject_key="risk-gate-watch",
+                target_type="Asset",
+                target_id="asset:watch",
+                symbol="WATCH",
+                window="5m",
+                scope="all",
+                pulse_status="risk_rejected_high_info",
+                verdict="risk_rejected_high_info",
+                social_phase="ignition",
+                candidate_score=82.0,
+                score_band="watch",
+                trigger_signature="trigger-display-watch",
+                timeline_signature="timeline-display-watch",
+                factor_snapshot_json=_pulse_factor_snapshot(symbol="WATCH", target_id="asset:watch", score=82),
+                gate_json=_pulse_gate(pulse_status="risk_rejected_high_info", score=82.0),
+                decision_route="meme",
+                decision_recommendation="ignore",
+                decision_confidence=0.3,
+                decision_abstain_reason=None,
+                decision_stage_count=6,
+                decision_json=_pulse_decision("WATCH 只能进入观察。", recommendation="ignore"),
+                gate_reasons_json=["duplicate_text_share_high"],
+                risk_reasons_json=["duplicate_text_share_high"],
+                evidence_event_ids_json=["event-display-watch"],
+                source_event_ids_json=["event-display-watch"],
+                pulse_version="pulse-v1",
+                gate_version="gate-v1",
+                prompt_version="prompt-v1",
+                schema_version="schema-v1",
+                evidence_packet_hash="sha256:display-watch",
+                evidence_status="complete",
+                decision_status="token_watch",
+                display_status="display_token_watch",
+                created_at_ms=1_000,
+                updated_at_ms=3_000,
+            )
+            repos.pulse_candidates.upsert_candidate(
+                candidate_id="candidate-hidden-old-watch",
+                candidate_type="token_target",
+                subject_key="hidden-old-watch",
+                target_type="Asset",
+                target_id="asset:hidden",
+                symbol="HIDDEN",
+                window="5m",
+                scope="all",
+                pulse_status="token_watch",
+                verdict="token_watch",
+                social_phase="ignition",
+                candidate_score=75.0,
+                score_band="watch",
+                trigger_signature="trigger-hidden-watch",
+                timeline_signature="timeline-hidden-watch",
+                factor_snapshot_json=_pulse_factor_snapshot(symbol="HIDDEN", target_id="asset:hidden", score=75),
+                gate_json=_pulse_gate(pulse_status="token_watch", score=75.0),
+                decision_route="meme",
+                decision_recommendation="abstain",
+                decision_confidence=0.0,
+                decision_abstain_reason="data_completeness_below_hard_gate",
+                decision_stage_count=2,
+                decision_json=_pulse_decision("HIDDEN 证据不足。", recommendation="abstain"),
+                gate_reasons_json=["fresh_attention"],
+                risk_reasons_json=[],
+                evidence_event_ids_json=["event-hidden-watch"],
+                source_event_ids_json=["event-hidden-watch"],
+                pulse_version="pulse-v1",
+                gate_version="gate-v1",
+                prompt_version="prompt-v1",
+                schema_version="schema-v1",
+                evidence_packet_hash="sha256:hidden-watch",
+                evidence_status="insufficient",
+                decision_status="abstain",
+                display_status="hidden_insufficient_evidence",
+                created_at_ms=900,
+                updated_at_ms=2_500,
+            )
+
+        response = client.get(
+            "/api/signal-lab/pulse",
+            params={"window": "5m", "scope": "all", "status": "token_watch", "limit": 10},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["summary"]["token_watch"] == 1
+    assert data["summary"]["risk_rejected_high_info"] == 0
+    assert data["returned_count"] == 1
+    assert data["items"][0]["candidate_id"] == "candidate-display-watch"
+    assert "pulse_status" not in data["items"][0]
+    assert data["items"][0]["display_status"] == "display_token_watch"
 
 
 def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
@@ -1588,7 +1687,8 @@ def test_api_signal_pulse_by_id_returns_item(tmp_path):
     payload = response.json()
     assert payload["ok"] is True
     assert payload["data"]["candidate_id"] == "cand-real"
-    assert payload["data"]["pulse_status"] == "token_watch"
+    assert "pulse_status" not in payload["data"]
+    assert payload["data"]["display_status"] == "display_token_watch"
 
 
 def test_api_signal_pulse_by_id_returns_stages(tmp_path):

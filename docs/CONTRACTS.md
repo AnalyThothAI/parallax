@@ -364,7 +364,7 @@ Decision block field semantics (v2, set in plan 2026-05-16):
 
 Default Signal Pulse listings hide rows where
 `decision.recommendation = "abstain"`. Abstain is decision semantics, not a
-`pulse_status`.
+public display bucket.
 
 Current factor snapshots use `schema_version =
 "token_factor_snapshot_v3_social_attention"` only. Runtime readers reject old

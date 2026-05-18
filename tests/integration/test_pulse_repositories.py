@@ -1094,7 +1094,12 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
             limit=1,
             cursor=first_page["next_cursor"],
         )
-        blocked = repo.read.list_candidates(window="1h", scope="global", status="blocked_low_information", limit=10)
+        try:
+            repo.read.list_candidates(window="1h", scope="global", status="blocked_low_information", limit=10)
+        except ValueError as exc:
+            blocked_status_error = str(exc)
+        else:
+            blocked_status_error = ""
         handle_filtered = repo.read.list_candidates(window="1h", scope="global", handle="@pepewhale", limit=10)
         query_filtered = repo.read.list_candidates(window="1h", scope="global", q="pep", limit=10)
     finally:
@@ -1111,7 +1116,7 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
     assert first_page["items"][0]["gate_reasons_json"] == ["fresh_attention"]
     assert second_page["items"][0]["candidate_id"] == "candidate-older"
     assert second_page["next_cursor"] is None
-    assert [item["candidate_id"] for item in blocked["items"]] == ["candidate-blocked"]
+    assert "invalid public Signal Pulse status" in blocked_status_error
     assert [item["candidate_id"] for item in handle_filtered["items"]] == ["candidate-older"]
     assert [item["candidate_id"] for item in query_filtered["items"]] == ["candidate-older"]
 

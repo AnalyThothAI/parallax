@@ -157,7 +157,6 @@ export function signalPulseFixture(overrides: Partial<SignalPulseData> = {}): Si
       trade_candidate: 0,
       token_watch: 0,
       risk_rejected_high_info: 0,
-      blocked_low_information: 0,
     },
     items: [],
     returned_count: 0,

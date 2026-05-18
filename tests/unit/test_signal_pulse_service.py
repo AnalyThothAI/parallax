@@ -24,7 +24,6 @@ class FakePulseReadRepository:
                 "trade_candidate": 0,
                 "token_watch": 0,
                 "risk_rejected_high_info": 0,
-                "blocked_low_information": 0,
             },
         }
         self.calls: list[dict[str, Any]] = []
@@ -108,7 +107,6 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         "trade_candidate": 0,
         "token_watch": 0,
         "risk_rejected_high_info": 0,
-        "blocked_low_information": 0,
         "decision_route_counts": {},
         "decision_recommendation_counts": {},
         "decision_abstain_reason_counts": {},
@@ -166,7 +164,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "trade_candidate": 1,
                 "token_watch": 1,
                 "risk_rejected_high_info": 0,
-                "blocked_low_information": 1,
             },
         },
     )
@@ -199,7 +196,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         "trade_candidate": 1,
         "token_watch": 1,
         "risk_rejected_high_info": 0,
-        "blocked_low_information": 1,
         "decision_route_counts": {},
         "decision_recommendation_counts": {},
         "decision_abstain_reason_counts": {},
@@ -232,7 +228,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "symbol": "PEPE",
             "window": "5m",
             "scope": "all",
-            "pulse_status": "token_watch",
             "evidence_status": "complete",
             "decision_status": "token_watch",
             "display_status": "display_token_watch",
@@ -243,7 +238,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "score_band": "watch",
             "gate_reasons": ["fresh_attention"],
             "risk_reasons": ["thin_liquidity"],
-            "last_edge_events": ["pulse_status_changed"],
             "evidence_event_ids": ["event-1"],
             "source_event_ids": ["event-1"],
             "factor_snapshot": _factor_snapshot(market_status="fresh"),
@@ -333,7 +327,6 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
                 "trade_candidate": 1,
                 "token_watch": 1,
                 "risk_rejected_high_info": 0,
-                "blocked_low_information": 1,
             },
         },
     )
@@ -351,7 +344,7 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
 
     assert missing_market["factor_snapshot_json"]["data_health"]["market"] == "missing"
     assert result["summary"]["trade_candidate"] == 1
-    assert result["summary"]["blocked_low_information"] == 1
+    assert "blocked_low_information" not in result["summary"]
     assert result["health"]["candidate_count"] == 3
     assert result["health"]["market_ready_rate"] == 0.5
     assert result["returned_count"] == 1
@@ -454,7 +447,8 @@ def test_candidate_returns_full_item() -> None:
 
     assert result is not None
     assert result["candidate_id"] == "cand-1"
-    assert result["pulse_status"] == "token_watch"
+    assert "pulse_status" not in result
+    assert result["display_status"] == "display_token_watch"
     assert result["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert result["decision"]["summary_zh"] == "链上质量允许继续观察。"
     assert "agent_recommendation" not in result
@@ -667,7 +661,6 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
                 "trade_candidate": 1,
                 "token_watch": 2,
                 "risk_rejected_high_info": 0,
-                "blocked_low_information": 1,
             },
             "decision_route_counts": {"meme": 3, "research_only": 1},
             "decision_recommendation_counts": {"watchlist": 2, "abstain": 1, "ignore": 1},

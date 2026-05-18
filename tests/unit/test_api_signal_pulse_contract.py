@@ -48,6 +48,7 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert data["health"]["agent_worker_running"] is True
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
+    assert "pulse_status" not in data["items"][0]
     assert data["items"][0]["decision"]["summary_zh"] == "PEPE 社交热度显著上升。"
     assert "agent_recommendation" not in data["items"][0]
     assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
@@ -68,11 +69,11 @@ def test_signal_pulse_api_defaults_to_produced_agent_window_and_scope():
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["query"]["window"] == "1h"
+    assert data["query"]["window"] == "5m"
     assert data["query"]["scope"] == "all"
-    assert pulse.list_calls[0]["window"] == "1h"
+    assert pulse.list_calls[0]["window"] == "5m"
     assert pulse.list_calls[0]["scope"] == "all"
-    assert pulse.summary_calls[0] == {"window": "1h", "scope": "all", "q": None, "handle": None}
+    assert pulse.summary_calls[0] == {"window": "5m", "scope": "all", "q": None, "handle": None}
 
 
 class FakeSignalPulseReadRepository:
@@ -114,7 +115,10 @@ class FakeSignalPulseReadRepository:
                     "symbol": "PEPE",
                     "window": window,
                     "scope": scope,
-                    "pulse_status": "token_watch",
+                    "evidence_status": "complete",
+                    "decision_status": "token_watch",
+                    "display_status": "display_token_watch",
+                    "evidence_packet_hash": "sha256:fake-packet",
                     "verdict": "token_watch",
                     "social_phase": "ignition",
                     "candidate_score": 0.84,
@@ -151,7 +155,6 @@ class FakeSignalPulseReadRepository:
                 "trade_candidate": 0,
                 "token_watch": 1,
                 "risk_rejected_high_info": 0,
-                "blocked_low_information": 0,
             },
             "candidate_count": 1,
             "blocked_low_information_count": 0,

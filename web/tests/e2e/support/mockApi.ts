@@ -517,7 +517,6 @@ function pulseItem() {
     symbol: "BNB",
     window: "1h",
     scope: "all",
-    pulse_status: "trade_candidate",
     evidence_status: "complete",
     decision_status: "trade_candidate",
     display_status: "display_trade_candidate",
@@ -526,7 +525,6 @@ function pulseItem() {
     social_phase: "ignition",
     candidate_score: 88,
     score_band: "trade",
-    last_edge_events: ["pulse_status_changed"],
     evidence_event_ids: ["event-upeg-1", "event-upeg-2"],
     source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3"],
     factor_snapshot: {
@@ -576,7 +574,6 @@ function pulseItem() {
       data_gap_refs: [],
     },
     gate: {
-      pulse_status: "trade_candidate",
       candidate_score: 88,
       score_band: "trade",
       blocked_reasons: [],

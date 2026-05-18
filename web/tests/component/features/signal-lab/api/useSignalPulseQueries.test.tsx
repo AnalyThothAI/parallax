@@ -1,3 +1,4 @@
+import { useSignalLabCompactQuery } from "@features/signal-lab";
 import { useSignalPulseCandidate } from "@features/signal-lab/api/useSignalPulseQueries";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -46,5 +47,33 @@ describe("useSignalPulseCandidate", () => {
       wrapper: wrapper(),
     });
     expect(apiMock.getApi).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSignalLabCompactQuery", () => {
+  it("loads the hot Signal Pulse window for the compact deck", async () => {
+    apiMock.getApiImpl = async () =>
+      ok({
+        query: { window: "5m", scope: "all" },
+        health: {},
+        summary: {},
+        items: [],
+        returned_count: 0,
+        has_more: false,
+        next_cursor: null,
+      });
+
+    const { result } = renderHook(() => useSignalLabCompactQuery({ token: "tok" }), {
+      wrapper: wrapper(),
+    });
+
+    await waitFor(() => expect(result.current.overviewData).toBeDefined());
+    expect(apiMock.getApi).toHaveBeenCalledWith(
+      "/api/signal-lab/pulse",
+      expect.objectContaining({
+        token: "tok",
+        params: expect.objectContaining({ window: "5m", scope: "all" }),
+      }),
+    );
   });
 });

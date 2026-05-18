@@ -264,7 +264,6 @@ class SignalPulseItem(ApiSchema):
     symbol: str | None = None
     window: str | None = None
     scope: str | None = None
-    pulse_status: str | None = None
     evidence_status: str | None = None
     decision_status: str | None = None
     display_status: str | None = None
@@ -275,7 +274,6 @@ class SignalPulseItem(ApiSchema):
     score_band: str | None = None
     gate_reasons: list[str] = Field(default_factory=list)
     risk_reasons: list[str] = Field(default_factory=list)
-    last_edge_events: list[str] = Field(default_factory=list)
     evidence_event_ids: list[str] = Field(default_factory=list)
     source_event_ids: list[str] = Field(default_factory=list)
     factor_snapshot: JsonObject | None = None

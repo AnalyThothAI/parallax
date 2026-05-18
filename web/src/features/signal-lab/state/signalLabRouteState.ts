@@ -10,7 +10,7 @@ export type SignalLabRouteState = {
 };
 
 export const SIGNAL_LAB_ROUTE_DEFAULTS: SignalLabRouteState = {
-  window: "1h",
+  window: "5m",
   scope: "all",
   status: "all",
   handle: "",
