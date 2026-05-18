@@ -79,6 +79,30 @@ def test_handle_summary_worker_records_failed_run_audit():
     asyncio.run(scenario())
 
 
+def test_handle_summary_worker_reports_reconcile_failure_as_iteration_result():
+    async def scenario():
+        repo = ReconcileFailingWatchlistRepository([])
+        db = FakeDB(repo)
+        worker = HandleSummaryWorker(
+            name="handle_summary",
+            settings=fake_settings(concurrency=1),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=FailingSummaryProvider(),
+            handles=("toly",),
+        )
+
+        result = await worker.run_once(now_ms=1_000)
+
+        assert result.processed == 0
+        assert result.failed == 1
+        assert result.notes["reconcile_failed"] == 1
+        assert result.notes["reconcile_error"] == "TimeoutError"
+        assert result.notes["claimed"] == 0
+
+    asyncio.run(scenario())
+
+
 def fake_settings(*, concurrency=1):
     return SimpleNamespace(
         enabled=True,
@@ -155,6 +179,11 @@ class FakeWatchlistRepository:
     def insert_summary_run(self, **run):
         self.failed_runs.append(run)
         return run
+
+
+class ReconcileFailingWatchlistRepository(FakeWatchlistRepository):
+    def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
+        raise TimeoutError("summary reconcile timed out")
 
 
 class BarrierSummaryProvider:

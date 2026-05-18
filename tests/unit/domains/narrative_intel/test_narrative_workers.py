@@ -90,6 +90,51 @@ def test_mention_semantics_worker_reconciles_radar_admission_before_labeling():
     asyncio.run(scenario())
 
 
+def test_mention_semantics_worker_records_provider_failure_without_poisoning_worker_loop():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=FailingNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.processed == 0
+        assert result.failed == 1
+        assert result.notes["provider_error"] == "TimeoutError"
+        assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_worker_records_provider_failure_without_poisoning_worker_loop():
+    async def scenario():
+        repo = FakeDigestRepository()
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=FailingNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.processed == 0
+        assert result.failed == 1
+        assert repo.recorded_runs[0]["stage"] == "discussion_digest"
+        assert repo.recorded_runs[0]["status"] == "failed"
+
+    asyncio.run(scenario())
+
+
 def fake_settings():
     return SimpleNamespace(
         enabled=True,
@@ -102,6 +147,20 @@ def fake_settings():
         admission_limit=10,
         source_limit=100,
         model_version="gpt-test",
+    )
+
+
+def fake_digest_settings():
+    return SimpleNamespace(
+        enabled=True,
+        interval_seconds=1.0,
+        timeout_seconds=0.0,
+        statement_timeout_seconds=9.0,
+        batch_size=10,
+        min_source_mentions=3,
+        min_independent_authors=2,
+        min_semantic_coverage=0.35,
+        max_mentions_per_digest=10,
     )
 
 
@@ -188,6 +247,44 @@ class FakeNarrativeRepository:
         return {"labeled": len(labels), "semantic_unavailable": 0, "failed": len(failures)}
 
 
+class FakeDigestRepository:
+    def __init__(self):
+        self.recorded_runs = []
+
+    def due_digest_targets(self, *, now_ms, limit):
+        return [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+            }
+        ][:limit]
+
+    def digest_context(self, *, target_type, target_id, window, scope, since_ms, max_mentions):
+        mentions = [
+            {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
+            {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
+            {"event_id": "event-3", "author_handle": "b", "status": "labeled"},
+        ]
+        return {
+            "target_type": target_type,
+            "target_id": target_id,
+            "window": window,
+            "scope": scope,
+            "mentions": mentions,
+            "semantic_rows": mentions,
+            "source_event_count": 3,
+            "labeled_event_count": 3,
+            "independent_author_count": 2,
+            "allowed_refs": [],
+        }
+
+    def record_narrative_model_run(self, run, *, commit=True):
+        self.recorded_runs.append(run)
+        return run
+
+
 class BarrierNarrativeProvider:
     provider = "test-provider"
     model = "gpt-test"
@@ -231,6 +328,21 @@ class BarrierNarrativeProvider:
 
     async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
         raise NotImplementedError
+
+    async def aclose(self):  # pragma: no cover - runtime-owned provider
+        return None
+
+
+class FailingNarrativeProvider:
+    provider = "test-provider"
+    model = "gpt-test"
+    artifact_version_hash = "artifact-test"
+
+    async def label_mentions(self, *, run_id, request):
+        raise TimeoutError("provider timed out")
+
+    async def summarize_discussion(self, *, run_id, request):
+        raise TimeoutError("provider timed out")
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None

@@ -90,7 +90,39 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 schema_version=NARRATIVE_SCHEMA_VERSION,
                 prompt_version=DISCUSSION_DIGEST_PROMPT_VERSION,
             )
-            result = await self.provider.summarize_discussion(run_id=run_id, request=request)
+            try:
+                result = await self.provider.summarize_discussion(run_id=run_id, request=request)
+            except Exception as exc:
+                finished_at_ms = _now_ms()
+                await asyncio.to_thread(
+                    self._record_failed_run_sync,
+                    run={
+                        "run_id": run_id,
+                        "stage": "discussion_digest",
+                        "target_type": target["target_type"],
+                        "target_id": target["target_id"],
+                        "window": target["window"],
+                        "scope": target["scope"],
+                        "provider": self.provider.provider,
+                        "model": self.provider.model,
+                        "schema_version": NARRATIVE_SCHEMA_VERSION,
+                        "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
+                        "artifact_version_hash": self.provider.artifact_version_hash,
+                        "input_hash": input_hash,
+                        "output_hash": None,
+                        "request_json": request.model_dump(mode="json"),
+                        "response_json": None,
+                        "usage_json": {},
+                        "trace_metadata_json": {"error_type": type(exc).__name__},
+                        "status": "failed",
+                        "error": str(exc),
+                        "started_at_ms": started_at_ms,
+                        "finished_at_ms": finished_at_ms,
+                        "latency_ms": finished_at_ms - started_at_ms,
+                    },
+                )
+                counts["failed"] += 1
+                continue
             allowed_refs = [EvidenceRef.model_validate(ref) for ref in request.allowed_refs]
             validation = self.validator.validate_digest_refs(result.digest, allowed_refs)
             if not validation.ok:
@@ -161,6 +193,10 @@ class TokenDiscussionDigestWorker(WorkerBase):
         with self._repository_session() as repos:
             repos.narratives.record_narrative_model_run(run, commit=True)
             repos.narratives.replace_current_digest(digest, now_ms=now_ms)
+
+    def _record_failed_run_sync(self, *, run: dict[str, Any]) -> None:
+        with self._repository_session() as repos:
+            repos.narratives.record_narrative_model_run(run, commit=True)
 
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:

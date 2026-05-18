@@ -69,7 +69,61 @@ class MentionSemanticsWorker(WorkerBase):
             schema_version=NARRATIVE_SCHEMA_VERSION,
             prompt_version=MENTION_SEMANTICS_PROMPT_VERSION,
         )
-        result = await self.provider.label_mentions(run_id=run_id, request=request)
+        try:
+            result = await self.provider.label_mentions(run_id=run_id, request=request)
+        except Exception as exc:
+            finished_at_ms = _now_ms()
+            failures = [
+                {
+                    "event_id": row.get("event_id"),
+                    "target_type": row.get("target_type"),
+                    "target_id": row.get("target_id"),
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "next_retry_at_ms": finished_at_ms + 60_000,
+                }
+                for row in rows
+            ]
+            run_payload = {
+                "run_id": run_id,
+                "stage": "mention_semantics",
+                "provider": self.provider.provider,
+                "model": self.provider.model,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
+                "artifact_version_hash": self.provider.artifact_version_hash,
+                "input_hash": input_hash,
+                "output_hash": None,
+                "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
+                "request_json": request.model_dump(mode="json"),
+                "response_json": None,
+                "usage_json": {},
+                "trace_metadata_json": {"error_type": type(exc).__name__},
+                "status": "failed",
+                "error": str(exc),
+                "started_at_ms": started_at_ms,
+                "finished_at_ms": finished_at_ms,
+                "latency_ms": finished_at_ms - started_at_ms,
+            }
+            complete = await asyncio.to_thread(
+                self._record_completion_sync,
+                run=run_payload,
+                labels=[],
+                failures=failures,
+                now_ms=finished_at_ms,
+            )
+            return WorkerResult(
+                processed=0,
+                failed=int(complete.get("failed") or len(rows)),
+                notes={
+                    "claimed": len(rows),
+                    **_prefixed(admission_stats, "admission_"),
+                    "labeled": 0,
+                    "semantic_unavailable": 0,
+                    "failed": int(complete.get("failed") or len(rows)),
+                    "provider_error": type(exc).__name__,
+                    "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
+                },
+            )
         self.service.validate_batch_result(rows, result)
         finished_at_ms = _now_ms()
         labels = [label.model_dump(mode="json") for label in result.labels]

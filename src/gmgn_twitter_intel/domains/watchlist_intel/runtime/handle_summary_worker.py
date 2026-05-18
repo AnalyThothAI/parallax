@@ -41,7 +41,17 @@ class HandleSummaryWorker(WorkerBase):
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         started_at_ms = int(now_ms if now_ms is not None else _now_ms())
-        reconcile = await asyncio.to_thread(self.reconcile_missing_jobs_once, now_ms=started_at_ms)
+        try:
+            reconcile = await asyncio.to_thread(self.reconcile_missing_jobs_once, now_ms=started_at_ms)
+        except Exception as exc:
+            logger.warning("watchlist handle summary reconcile failed: error={}", str(exc)[:300])
+            reconcile = {
+                "seen": 0,
+                "enqueued": 0,
+                "skipped": 0,
+                "failed": 1,
+                "error": type(exc).__name__,
+            }
         process = await self.process_due_jobs_once_async(now_ms=started_at_ms)
         notes = {**{f"reconcile_{key}": value for key, value in reconcile.items()}, **process}
         skipped = int(reconcile.get("skipped") or 0)
@@ -49,7 +59,7 @@ class HandleSummaryWorker(WorkerBase):
             skipped = max(1, skipped)
         return WorkerResult(
             processed=int(process.get("processed") or 0) + int(reconcile.get("enqueued") or 0),
-            failed=int(process.get("failed") or 0),
+            failed=int(process.get("failed") or 0) + int(reconcile.get("failed") or 0),
             skipped=skipped,
             notes=notes,
         )
