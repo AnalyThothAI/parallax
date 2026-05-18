@@ -525,6 +525,31 @@ class NarrativeRepository:
               %(independent_author_count)s, %(evidence_refs_json)s, %(model_run_id)s, %(computed_at_ms)s,
               %(expires_at_ms)s, %(superseded_at_ms)s
             )
+            ON CONFLICT (digest_id)
+            DO UPDATE SET
+              model_version = EXCLUDED.model_version,
+              status = EXCLUDED.status,
+              is_current = true,
+              headline_zh = EXCLUDED.headline_zh,
+              dominant_narratives_json = EXCLUDED.dominant_narratives_json,
+              bull_view_json = EXCLUDED.bull_view_json,
+              bear_view_json = EXCLUDED.bear_view_json,
+              stance_mix_json = EXCLUDED.stance_mix_json,
+              attention_valence_mix_json = EXCLUDED.attention_valence_mix_json,
+              propagation_read_json = EXCLUDED.propagation_read_json,
+              reflexivity_read_json = EXCLUDED.reflexivity_read_json,
+              watch_triggers_json = EXCLUDED.watch_triggers_json,
+              invalidation_conditions_json = EXCLUDED.invalidation_conditions_json,
+              data_gaps_json = EXCLUDED.data_gaps_json,
+              semantic_coverage = EXCLUDED.semantic_coverage,
+              source_event_count = EXCLUDED.source_event_count,
+              labeled_event_count = EXCLUDED.labeled_event_count,
+              independent_author_count = EXCLUDED.independent_author_count,
+              evidence_refs_json = EXCLUDED.evidence_refs_json,
+              model_run_id = EXCLUDED.model_run_id,
+              computed_at_ms = EXCLUDED.computed_at_ms,
+              expires_at_ms = EXCLUDED.expires_at_ms,
+              superseded_at_ms = EXCLUDED.superseded_at_ms
             """,
             payload,
         )

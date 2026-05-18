@@ -237,3 +237,41 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
     assert rows[0]["is_current"] is False
     assert rows[0]["superseded_at_ms"] == 2_000
     assert rows[1]["is_current"] is True
+
+
+def test_replace_current_digest_is_idempotent_for_same_digest(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    digest = {
+        "target_type": "chain_token",
+        "target_id": "solana:So111",
+        "window": "24h",
+        "scope": "matched",
+        "schema_version": "narrative_intel_v1",
+        "model_version": "deterministic",
+        "status": "insufficient",
+        "source_fingerprint": "source-1",
+        "label_fingerprint": "labels-1",
+        "data_gaps": [{"reason": "low_source_volume"}],
+        "semantic_coverage": 0.0,
+        "source_event_count": 1,
+        "labeled_event_count": 0,
+        "independent_author_count": 1,
+    }
+    try:
+        first = repo.replace_current_digest(digest, now_ms=1_000)
+        second = repo.replace_current_digest(digest, now_ms=2_000)
+        rows = conn.execute(
+            """
+            SELECT digest_id, is_current, computed_at_ms, superseded_at_ms
+            FROM token_discussion_digests
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert second["digest_id"] == first["digest_id"]
+    assert len(rows) == 1
+    assert rows[0]["digest_id"] == first["digest_id"]
+    assert rows[0]["is_current"] is True
+    assert rows[0]["computed_at_ms"] == 2_000
+    assert rows[0]["superseded_at_ms"] is None
