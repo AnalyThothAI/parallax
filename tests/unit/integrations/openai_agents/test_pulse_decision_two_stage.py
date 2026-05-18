@@ -232,9 +232,7 @@ def _final_decision(
         abstain_reason=None,
         summary_zh="社交与市场事实共振。",
         narrative_archetype="社交热度叙事",
-        narrative_thesis_zh=(
-            "社交注意力扩散叠加链上买盘抬升,短期主题动能成立,但需要持续跟进流动性变化与回撤幅度。"
-        ),
+        narrative_thesis_zh=("社交注意力扩散叠加链上买盘抬升,短期主题动能成立,但需要持续跟进流动性变化与回撤幅度。"),
         bull_view=BullBearView(
             strength="moderate",
             thesis_zh="社交关注度抬升提供主题动能。",
@@ -429,17 +427,19 @@ def test_safety_net_strict_success_preserves_sdk_tool_calls_and_budget_counts() 
                 final_output=_investigation(),
                 new_items=[_tool_call_item("get_target_recent_tweets")],
             )
-            return result.final_output, {
-                "safety_net_used": False,
-                "safety_net_retries": 0,
-                "parse_mode": "strict",
-                "usage": {"total_tokens": 42},
-            }, result
+            return (
+                result.final_output,
+                {
+                    "safety_net_used": False,
+                    "safety_net_retries": 0,
+                    "parse_mode": "strict",
+                    "usage": {"total_tokens": 42},
+                },
+                result,
+            )
 
     client = _build_client(FakeRunner([]), safety_net=FakeSafetyNet())
-    tool_ctx = PulseToolContext(
-        tool_runtime=AgentToolRuntime(db_pool=FakeDbPool(), investigator_max_tool_calls=5)
-    )
+    tool_ctx = PulseToolContext(tool_runtime=AgentToolRuntime(db_pool=FakeDbPool(), investigator_max_tool_calls=5))
     audit = client.request_audit(
         context=_context(evidence_event_ids=["evt-1"]),
         run_id="run-1",
@@ -537,9 +537,7 @@ def test_decision_maker_failure_preserves_two_audits() -> None:
 def test_hallucination_guard_rejects_unknown_supporting_event_ids() -> None:
     # bull_observation cites evt-unknown but tool contributions + context have
     # only evt-real → guard must flip stage to failed and raise.
-    runner = FakeRunner(
-        [FakeRunResult(final_output=_investigation(bull_ids=["evt-unknown"]))]
-    )
+    runner = FakeRunner([FakeRunResult(final_output=_investigation(bull_ids=["evt-unknown"]))])
     client = _build_client(runner)
 
     with pytest.raises(PulseStageFailure) as exc_info:
@@ -774,9 +772,7 @@ def test_evidence_event_urls_enriched_from_events_table() -> None:
     runner = FakeRunner(
         [
             FakeRunResult(final_output=_investigation(bull_ids=["evt-1"])),
-            FakeRunResult(
-                final_output=_final_decision(evidence_event_ids=["evt-1", "evt-2", "evt-3"])
-            ),
+            FakeRunResult(final_output=_final_decision(evidence_event_ids=["evt-1", "evt-2", "evt-3"])),
         ]
     )
     client = _build_client(runner, db_pool=db_pool)

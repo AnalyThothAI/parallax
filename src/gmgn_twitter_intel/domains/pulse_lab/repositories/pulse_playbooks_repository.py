@@ -139,4 +139,3 @@ class PulsePlaybooksRepository:
         if commit:
             self.conn.commit()
         return _row(row)
-

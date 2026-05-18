@@ -228,10 +228,7 @@ class LivePriceGateway(WorkerBase):
                 max_age_ms=int(self.target_ttl_seconds * 1000),
                 now_ms=int(now_ms),
             )
-        return {
-            (str(target_type), str(target_id)): dict(row)
-            for (target_type, target_id), row in latest_rows.items()
-        }
+        return {(str(target_type), str(target_id)): dict(row) for (target_type, target_id), row in latest_rows.items()}
 
     def _payload_from_tick(
         self,

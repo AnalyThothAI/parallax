@@ -627,9 +627,7 @@ class FakeBinanceWeb3ProfileProvider:
 class FailingGmgnDexMarketProvider(FakeGmgnDexMarketProvider):
     def token_quotes(self, tokens):
         self.quote_requests.append([(token.chain_id, token.address) for token in tokens])
-        raise DexProviderTemporarilyUnavailable(
-            "GET /v1/token/info blocked by Cloudflare challenge HTTP 403"
-        )
+        raise DexProviderTemporarilyUnavailable("GET /v1/token/info blocked by Cloudflare challenge HTTP 403")
 
 
 class FakeDexStreamProvider:

@@ -516,7 +516,7 @@ Read marker: first 12 chars of SHA-256 for the exact file contents read during t
 | 270 | `platform/db/alembic/versions/20260507_0008_token_radar_deterministic_registry.py` | DB 迁移 | 268 | 历史必要: schema 链 | Add token radar deterministic registry and price observations. | `f975672e973a` |
 | 271 | `platform/db/alembic/versions/20260507_0009_token_discovery_results.py` | DB 迁移 | 70 | 历史必要: schema 链 | Replace discovery task queue with discovery result facts. | `0d17c39a6d55` |
 | 272 | `platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py` | DB 迁移 | 55 | 历史必要: schema 链 | Add OpenAI Agents SDK run audit columns. | `be051d352a75` |
-| 273 | `platform/db/alembic/versions/20260508_0011_event_price_observations.py` | DB 迁移 | 78 | 历史必要: schema 链 | Add message attribution to price observations. | `2b843c3f5e1c` |
+| 273 | `platform/db/alembic/versions/20260508_0011_event_price\_observations.py` | DB 迁移 | 78 | 历史必要: schema 链 | Add message attribution to removed price observation table. | `2b843c3f5e1c` |
 | 274 | `platform/db/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py` | DB 迁移 | 46 | 历史必要: schema 链 | Prune non-current token radar projection rows. | `73a409a8b732` |
 | 275 | `platform/db/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py` | DB 迁移 | 27 | 历史必要: schema 链 | Retire non-current token resolver policies. | `926505873cf4` |
 | 276 | `platform/db/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py` | DB 迁移 | 46 | 历史必要: schema 链 | Prune token radar rows outside the v6 auditable contract. | `330306ed9092` |

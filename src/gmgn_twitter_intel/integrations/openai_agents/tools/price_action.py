@@ -41,6 +41,4 @@ async def get_target_price_action(
         target_id: The Pulse target id used in ``market_ticks.target_id``.
         hours: Aggregation window in hours (clamped to 1..168, default 24).
     """
-    return _impl_get_target_price_action(
-        ctx.context, target_id=target_id, hours=hours
-    )
+    return _impl_get_target_price_action(ctx.context, target_id=target_id, hours=hours)

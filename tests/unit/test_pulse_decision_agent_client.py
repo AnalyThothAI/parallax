@@ -24,10 +24,12 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
     InvestigationReport,
 )
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import (
+    StrictJsonOutputSchema as _JsonOutputSchema,
+)
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
     _extract_usage,
-    _JsonOutputSchema,
 )
 
 

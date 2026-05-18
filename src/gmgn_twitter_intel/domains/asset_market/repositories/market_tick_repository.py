@@ -14,6 +14,21 @@ class MarketTickRepository:
         self._conn = conn
 
     def insert_tick(self, tick: MarketTick) -> str:
+        self._insert_tick_returning_id(tick)
+        return tick.tick_id
+
+    def insert_ticks(self, ticks: Iterable[MarketTick]) -> int:
+        return len(self.insert_ticks_returning_ids(ticks))
+
+    def insert_ticks_returning_ids(self, ticks: Iterable[MarketTick]) -> list[str]:
+        inserted: list[str] = []
+        for tick in ticks:
+            inserted_id = self._insert_tick_returning_id(tick)
+            if inserted_id is not None:
+                inserted.append(inserted_id)
+        return inserted
+
+    def _insert_tick_returning_id(self, tick: MarketTick) -> str | None:
         expected_id = market_tick_id(
             target_type=tick.target_type,
             target_id=tick.target_id,
@@ -25,7 +40,7 @@ class MarketTickRepository:
                 "market tick id must be deterministic for (target_type, target_id, source_provider, observed_at_ms)"
             )
 
-        self._conn.execute(
+        row = self._conn.execute(
             """
             INSERT INTO market_ticks(
                 tick_id,
@@ -70,6 +85,7 @@ class MarketTickRepository:
                 %(created_at_ms)s
             )
             ON CONFLICT(target_type, target_id, source_provider, observed_at_ms) DO NOTHING
+            RETURNING tick_id
             """,
             {
                 "tick_id": tick.tick_id,
@@ -92,15 +108,10 @@ class MarketTickRepository:
                 "raw_payload_json": Jsonb(postgres_safe_json(tick.raw_payload_json)),
                 "created_at_ms": tick.created_at_ms,
             },
-        )
-        return tick.tick_id
-
-    def insert_ticks(self, ticks: Iterable[MarketTick]) -> int:
-        count = 0
-        for tick in ticks:
-            self.insert_tick(tick)
-            count += 1
-        return count
+        ).fetchone()
+        if row is None:
+            return None
+        return str(row["tick_id"])
 
     def latest_at_or_before(
         self,

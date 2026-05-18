@@ -194,4 +194,3 @@ class PulseAgentEvalRepository:
             (eval_case_id,),
         ).fetchall()
         return [_row(row) for row in rows]
-

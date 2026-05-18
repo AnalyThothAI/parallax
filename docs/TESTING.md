@@ -6,7 +6,14 @@
 
 - Every behaviour change must include a test in `tests/`.
 - Bug fixes must include a regression test that fails before the fix and passes after it.
-- Integration tests should hit a real PostgreSQL instance (Docker Compose), not mocks, when the change touches storage or query paths.
+- Test files must live in an explicit lane. Do not add root-level `tests/test_*.py` files.
+- Unit tests live under `tests/unit/`. They must be deterministic, in-process, and must not reference live DSNs or `connect_postgres_test`.
+- Integration tests should hit a real PostgreSQL instance through the project test harness when they touch storage, query paths, worker runtime behavior, API read models, or derived read-model writes. They live under `tests/integration/` and may use fake external providers/clients. Do not replace runtime repositories with `FakeRuntime`, `FakeRepository`, or `without_postgres` in integration tests.
+- Architecture tests live under `tests/architecture/`. They enforce repository structure, lane boundaries, and other static contracts. They should not require network services.
+- Contract tests live under `tests/contract/`. They protect public surfaces such as OpenAPI, provider schema drift, and other documented IO contracts. Provider live drift checks are opt-in diagnostics and are not required for normal CI.
+- E2E tests live under `tests/e2e/`. They exercise the running service boundary and may use testcontainers, subprocesses, and real PostgreSQL.
+- Golden tests live under `tests/golden/`. They exercise curated corpus expectations against the real ingest/projection pipeline, provision PostgreSQL like integration tests, and are covered by `make check-all`.
+- Business skips are not a long-term state. Do not leave `@pytest.mark.skip` or `pytest.skip(...)` in business tests; move environment-dependent skips into lane conftests or the shared PostgreSQL test harness.
 
 ## Frontend (`web/tests/`)
 

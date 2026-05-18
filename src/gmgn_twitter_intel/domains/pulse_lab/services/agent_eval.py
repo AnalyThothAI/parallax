@@ -162,8 +162,7 @@ def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
         payload = _mapping(stage)
         stage_status_by_name[str(payload.get("stage") or "")] = str(payload.get("status") or "")
     if not hard_blocked and (
-        stage_status_by_name.get("investigator") != "ok"
-        or stage_status_by_name.get("decision_maker") != "ok"
+        stage_status_by_name.get("investigator") != "ok" or stage_status_by_name.get("decision_maker") != "ok"
     ):
         violations.append(_RULE_STAGES_PRESENT)
 

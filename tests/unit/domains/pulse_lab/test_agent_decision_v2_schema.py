@@ -22,9 +22,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     contains_trading_execution_instruction,
 )
 
-_ABSTAIN_THESIS = (
-    "窗口期内未观察到稳定叙事或对立证据，缺乏足够输入支撑可执行的判断，应转入 research_only"
-)
+_ABSTAIN_THESIS = "窗口期内未观察到稳定叙事或对立证据，缺乏足够输入支撑可执行的判断，应转入 research_only"
 
 
 # ---------------------------------------------------------------------------

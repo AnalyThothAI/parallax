@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-import pytest
-
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate, DexTokenQuote
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
@@ -14,7 +12,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker i
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, SignalRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -48,15 +46,11 @@ def _dex_candidate(
     )
 
 
-@pytest.mark.skip(
-    reason="registry_assets.symbol/name/decimals dropped by token-identity-evidence hard-cut "
-    "(migration 20260510_0021); test predates new asset_identity_evidence/current model. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
-def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_path):
+def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_wake(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
     address = "0x44b28991b167582f18ba0259e0173176ca125505"
+    wake_bus = RecordingWakeBus()
     try:
         migrate(conn)
         ingest = IngestService(
@@ -97,16 +91,40 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp
                 ]
             ),
             chain_ids=("eip155:1",),
+            wake_bus=wake_bus,
         )
 
         result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
         after = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
-        rows = repos.token_radar.latest_rows(
-            window="5m",
-            scope="all",
-            limit=10,
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-        )
+        identity = conn.execute(
+            """
+            SELECT registry_assets.asset_id, registry_assets.chain_id, registry_assets.address,
+                   registry_assets.status, asset_identity_current.canonical_symbol,
+                   asset_identity_current.canonical_name,
+                   asset_identity_current.identity_confidence
+            FROM registry_assets
+            JOIN asset_identity_current ON asset_identity_current.asset_id = registry_assets.asset_id
+            WHERE registry_assets.asset_id = %s
+            """,
+            (f"asset:eip155:1:erc20:{address}",),
+        ).fetchone()
+        evidence = conn.execute(
+            """
+            SELECT *
+            FROM asset_identity_evidence
+            WHERE asset_id = %s
+            ORDER BY observed_at_ms DESC, evidence_id DESC
+            """,
+            (f"asset:eip155:1:erc20:{address}",),
+        ).fetchall()
+        discovery = conn.execute(
+            """
+            SELECT status, candidate_count, candidate_ids_json
+            FROM token_discovery_results
+            WHERE provider = 'okx_dex_search' AND lookup_key = %s
+            """,
+            ("symbol:UPEG",),
+        ).fetchone()
     finally:
         conn.close()
 
@@ -117,13 +135,24 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp
     assert result["search_hits"] == 1
     assert result["assets_written"] == 1
     assert result["reprocessed_intents"] == 1
-    assert result["projection"]["rows_written"] >= 1
+    assert result["projection"]["status"] == "deferred_to_worker"
     assert result["discovery_result_counts"] == {"found": 1}
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_type"] == "Asset"
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert rows[0]["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert rows[0]["market_json"]["price_usd"] == 1061.0
+    assert wake_bus.resolution_updates == [("cex_token:UPEG", "project_symbol:UPEG", "symbol:UPEG")]
+    assert identity["canonical_symbol"] == "UPEG"
+    assert identity["canonical_name"] == "Unipeg"
+    assert identity["identity_confidence"] == "provider_candidate"
+    assert len(evidence) == 1
+    assert evidence[0]["provider"] == "okx"
+    assert evidence[0]["lookup_mode"] == "symbol_search"
+    assert evidence[0]["evidence_kind"] == "okx_dex_symbol_candidate"
+    assert evidence[0]["raw_payload_json"]["tokenSymbol"] == "UPEG"
+    assert evidence[0]["raw_payload_json"]["provider_rank"] == 0
+    assert discovery["status"] == "found"
+    assert discovery["candidate_count"] == 1
+    assert discovery["candidate_ids_json"] == [f"asset:eip155:1:erc20:{address}"]
 
 
 def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_resolves_intent(tmp_path):
@@ -264,11 +293,6 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
 
 
-@pytest.mark.skip(
-    reason="registry_assets.symbol dropped by token-identity-evidence hard-cut "
-    "(migration 20260510_0021); test asserts demoted_search by symbol selector. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
 def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
@@ -369,12 +393,25 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
         result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
         rows = conn.execute(
             """
-            SELECT chain_id, address, status
+            SELECT registry_assets.chain_id, registry_assets.address, registry_assets.status,
+                   asset_identity_current.canonical_symbol AS symbol,
+                   asset_identity_current.canonical_name AS name,
+                   asset_identity_current.identity_confidence
             FROM registry_assets
-            WHERE upper(symbol) = 'HANTA'
-            ORDER BY chain_id, address
-            """
+            JOIN asset_identity_current ON asset_identity_current.asset_id = registry_assets.asset_id
+            WHERE asset_identity_current.canonical_symbol = %s
+            ORDER BY registry_assets.chain_id, registry_assets.address
+            """,
+            ("HANTA",),
         ).fetchall()
+        discovery = conn.execute(
+            """
+            SELECT status, candidate_count, candidate_ids_json
+            FROM token_discovery_results
+            WHERE provider = 'okx_dex_search' AND lookup_key = %s
+            """,
+            ("symbol:HANTA",),
+        ).fetchone()
     finally:
         conn.close()
 
@@ -384,6 +421,9 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
     by_chain: dict[str, list[str]] = {}
     for row in rows:
         assert row["status"] == "candidate"
+        assert row["symbol"] == "HANTA"
+        assert row["name"] == "HANTA"
+        assert row["identity_confidence"] == "provider_candidate"
         by_chain.setdefault(row["chain_id"], []).append(row["address"])
     assert by_chain["eip155:56"] == [_evm_address(2), _evm_address(3), _evm_address(4)]
     assert by_chain["solana"] == [
@@ -391,14 +431,21 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
         "SoTop222222222222222222222222222222222222",
         "SoTop333333333333333333333333333333333333",
     ]
+    assert discovery["status"] == "found"
+    assert discovery["candidate_count"] == 6
+    assert discovery["candidate_ids_json"] == sorted(
+        [
+            f"asset:eip155:56:erc20:{_evm_address(2)}",
+            f"asset:eip155:56:erc20:{_evm_address(3)}",
+            f"asset:eip155:56:erc20:{_evm_address(4)}",
+            "asset:solana:token:SoTop111111111111111111111111111111111111",
+            "asset:solana:token:SoTop222222222222222222222222222222222222",
+            "asset:solana:token:SoTop333333333333333333333333333333333333",
+        ]
+    )
 
 
-@pytest.mark.skip(
-    reason="upsert_chain_asset(symbol=…, name=…, decimals=…, source=…) signature removed by "
-    "token-identity-evidence hard-cut; identity now lives in asset_identity_evidence/current. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
-def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
+def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_result(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
     try:
@@ -417,12 +464,30 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
         old = repos.registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(99),
+            observed_at_ms=now_ms,
+            commit=False,
+        )
+        repos.identity_evidence.upsert_identity_evidence(
+            asset_id=old["asset_id"],
+            evidence_kind="okx_dex_symbol_candidate",
+            provider="okx",
+            lookup_mode="symbol_search",
+            chain_id=old["chain_id"],
+            address=old["address"],
             symbol="HANTA",
             name="Old HANTA",
             decimals=18,
-            source="okx_dex_search",
+            confidence="provider_candidate",
+            raw_payload={"tokenSymbol": "HANTA", "stale": True},
             observed_at_ms=now_ms,
+            commit=False,
         )
+        repos.identity_evidence.recompute_current_identity(
+            old["asset_id"],
+            now_ms=now_ms,
+            commit=False,
+        )
+        conn.commit()
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
             settings=resolution_worker_settings(interval_seconds=60),
@@ -458,17 +523,31 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
 
         asyncio.run(worker.run_once(now_ms=now_ms + 60_000))
         row = conn.execute("SELECT status FROM registry_assets WHERE asset_id = %s", (old["asset_id"],)).fetchone()
+        discovery = conn.execute(
+            """
+            SELECT status, candidate_count, candidate_ids_json
+            FROM token_discovery_results
+            WHERE provider = 'okx_dex_search' AND lookup_key = %s
+            """,
+            ("symbol:HANTA",),
+        ).fetchone()
     finally:
         conn.close()
 
-    assert row["status"] == "demoted_search"
+    expected_ids = sorted(
+        [
+            f"asset:eip155:56:erc20:{_evm_address(1)}",
+            f"asset:eip155:56:erc20:{_evm_address(2)}",
+            f"asset:eip155:56:erc20:{_evm_address(3)}",
+        ]
+    )
+    assert row["status"] == "candidate"
+    assert discovery["status"] == "found"
+    assert discovery["candidate_count"] == 3
+    assert discovery["candidate_ids_json"] == expected_ids
+    assert old["asset_id"] not in discovery["candidate_ids_json"]
 
 
-@pytest.mark.skip(
-    reason="SELECT registry_assets.symbol references column dropped by hard-cut "
-    "(migration 20260510_0021); should select via asset_identity_current. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
 def test_address_discovery_remains_uncapped(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     address = _evm_address(77)
@@ -487,13 +566,27 @@ def test_address_discovery_remains_uncapped(tmp_path):
             chain_ids=("eip155:56",),
             now_ms=1_000,
         )
-        row = conn.execute("SELECT address, status FROM registry_assets WHERE upper(symbol) = 'HANTA'").fetchone()
+        row = conn.execute(
+            """
+            SELECT registry_assets.address, registry_assets.status,
+                   asset_identity_current.canonical_symbol AS symbol,
+                   asset_identity_current.canonical_name AS name,
+                   asset_identity_current.identity_confidence
+            FROM registry_assets
+            JOIN asset_identity_current ON asset_identity_current.asset_id = registry_assets.asset_id
+            WHERE asset_identity_current.canonical_symbol = %s
+            """,
+            ("HANTA",),
+        ).fetchone()
     finally:
         conn.close()
 
     assert result["assets_written"] == 1
     assert row["address"] == address
     assert row["status"] == "candidate"
+    assert row["symbol"] == "HANTA"
+    assert row["name"] == "HANTA"
+    assert row["identity_confidence"] == "provider_exact"
 
 
 def resolution_worker_settings(**overrides):
@@ -553,3 +646,11 @@ class FakeDexMarket:
 class FakeEnrichment:
     def enqueue_watched_event(self, *, event_id, received_at_ms, priority=None, commit=False):
         return None
+
+
+class RecordingWakeBus:
+    def __init__(self):
+        self.resolution_updates: list[tuple[str, ...]] = []
+
+    def notify_resolution_updated(self, *, lookup_keys):
+        self.resolution_updates.append(tuple(lookup_keys))

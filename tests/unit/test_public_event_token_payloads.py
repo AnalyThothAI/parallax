@@ -143,6 +143,7 @@ class _RecentRepos(_Repos):
             },
         )
 
+
 class _Evidence:
     def __init__(self, events: list[dict[str, Any]]) -> None:
         self.events = events

@@ -337,7 +337,7 @@ src/gmgn_twitter_intel/
 - Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/price_action.py`
 - Modify: `src/gmgn_twitter_intel/integrations/openai_agents/tools/official_profile.py`
 - Modify: `tests/unit/integrations/openai_agents/tools/test_tools.py`
-- Modify: `tests/test_pulse_decision_agent_client.py`
+- Modify: `tests/unit/test_pulse_decision_agent_client.py`
 - Modify: `tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py`
 - Modify: `tests/architecture/test_src_domain_architecture.py`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
@@ -348,7 +348,7 @@ src/gmgn_twitter_intel/
 - [ ] Keep `integrations/openai_agents` responsible only for SDK calls, function-tool wrapper registration, structured output parsing, safety net calls, and external adapter errors.
 - [ ] Add architecture guard: `integrations/openai_agents` may import domain provider protocols/types only, not domain queries/services.
 - [ ] Verify: AST import scan shows no `integrations/openai_agents` imports from `domains.pulse_lab.queries` or `domains.pulse_lab.services`.
-- [ ] Verify: `uv run pytest tests/unit/integrations/openai_agents tests/unit/domains/pulse_lab tests/test_pulse_decision_agent_client.py -q`.
+- [ ] Verify: `uv run pytest tests/unit/integrations/openai_agents tests/unit/domains/pulse_lab tests/unit/test_pulse_decision_agent_client.py -q`.
 
 ## Phase 3 — Pulse Core Split
 

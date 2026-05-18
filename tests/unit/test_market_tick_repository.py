@@ -63,6 +63,7 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
     sql = "\n".join(conn.sql)
     assert "INSERT INTO market_ticks" in sql
     assert "ON CONFLICT(target_type, target_id, source_provider, observed_at_ms) DO NOTHING" in sql
+    assert "RETURNING tick_id" in sql
     assert "UPDATE market_ticks" not in sql
     assert conn.commits == 0
     assert len(conn.params) == 2
@@ -83,18 +84,25 @@ def test_insert_market_tick_strips_nul_bytes_from_raw_payload() -> None:
     }
 
 
-def test_insert_ticks_returns_attempted_count() -> None:
-    conn = _ScriptedConnection([])
+def test_insert_ticks_returns_actual_inserted_count() -> None:
+    first_tick = _tick(observed_at_ms=1_700_000_000_000)
+    duplicate_tick = _tick(observed_at_ms=1_700_000_000_000)
+    conn = _ScriptedConnection([{"tick_id": first_tick.tick_id}, None])
 
-    count = MarketTickRepository(conn).insert_ticks(
-        [
-            _tick(observed_at_ms=1_700_000_000_000),
-            _tick(observed_at_ms=1_700_000_000_001),
-        ]
-    )
+    count = MarketTickRepository(conn).insert_ticks([first_tick, duplicate_tick])
 
-    assert count == 2
+    assert count == 1
     assert len(conn.sql) == 2
+
+
+def test_insert_ticks_returning_ids_returns_only_inserted_ids() -> None:
+    first_tick = _tick(observed_at_ms=1_700_000_000_000)
+    second_tick = _tick(observed_at_ms=1_700_000_000_001)
+    conn = _ScriptedConnection([{"tick_id": first_tick.tick_id}, {"tick_id": second_tick.tick_id}])
+
+    inserted_ids = MarketTickRepository(conn).insert_ticks_returning_ids([first_tick, second_tick])
+
+    assert inserted_ids == [first_tick.tick_id, second_tick.tick_id]
 
 
 def test_latest_at_or_before_uses_observed_window_and_order() -> None:

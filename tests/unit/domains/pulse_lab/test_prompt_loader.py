@@ -22,14 +22,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
     load_prompt,
 )
 
-_PROMPTS_DIR = (
-    Path(__file__).resolve().parents[4]
-    / "src"
-    / "gmgn_twitter_intel"
-    / "domains"
-    / "pulse_lab"
-    / "prompts"
-)
+_PROMPTS_DIR = Path(__file__).resolve().parents[4] / "src" / "gmgn_twitter_intel" / "domains" / "pulse_lab" / "prompts"
 
 _ANTI_INJECTION_KEYS = (
     "Deterministic context",
@@ -67,10 +60,7 @@ def test_anti_injection_prefix_present(role: str, route: str) -> None:
 @pytest.mark.parametrize("role", ["investigator", "decision_maker"])
 def test_base_preamble_is_cache_friendly(role: str) -> None:
     size = _base_preamble_bytes(role)
-    assert size >= 4096, (
-        f"{role}.md base preamble must be >= 4 KiB for prompt cache reuse, "
-        f"got {size} bytes"
-    )
+    assert size >= 4096, f"{role}.md base preamble must be >= 4 KiB for prompt cache reuse, got {size} bytes"
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +140,6 @@ def test_unknown_route_raises_runtime_error() -> None:
 def test_rendered_prompt_has_base_plus_single_route_section(role: str, route: str) -> None:
     rendered = load_prompt(role, route)
     # Exactly one ## Route: heading remains in output
-    headings = [
-        line for line in rendered.splitlines() if line.strip().startswith("## Route:")
-    ]
+    headings = [line for line in rendered.splitlines() if line.strip().startswith("## Route:")]
     assert len(headings) == 1, f"expected one ## Route: heading, got {headings!r}"
     assert headings[0].strip().lower() == f"## route: {route}"

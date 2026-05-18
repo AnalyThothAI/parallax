@@ -28,8 +28,7 @@ def _full_v2_decision() -> FinalDecision:
         summary_zh="cohort 持续扩散，链上质量同步确认。",
         narrative_archetype="memetic",
         narrative_thesis_zh=(
-            "多位独立 KOL 同时提及该 ticker 并触发现货放量，cohort 显著扩散"
-            "，对立证据仍存但未占据主导。"
+            "多位独立 KOL 同时提及该 ticker 并触发现货放量，cohort 显著扩散，对立证据仍存但未占据主导。"
         ),
         bull_view=BullBearView(
             strength="strong",

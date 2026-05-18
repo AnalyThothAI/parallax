@@ -1074,7 +1074,16 @@ export type TokenTimelineMarketCandles = {
   quote_symbol?: string | null;
   feed_type?: string | null;
   price_series_type?: "anchor_line" | "ohlc" | string | null;
-  candle_status?: "ready" | "empty" | "unsupported" | "missing_target" | "missing_identity" | "missing_market_id" | "error" | string | null;
+  candle_status?:
+    | "ready"
+    | "empty"
+    | "unsupported"
+    | "missing_target"
+    | "missing_identity"
+    | "missing_market_id"
+    | "error"
+    | string
+    | null;
   candle_source?: string | null;
   candle_bar?: string | null;
   candle_error?: string | null;

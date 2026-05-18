@@ -484,10 +484,7 @@ def test_signal_pulse_dedup_key_uses_in_app_and_external_identity():
     assert external.payload["external_push_signature"]
     assert in_app_only.dedup_key == f"signal_pulse_candidate:{in_app_only.payload['in_app_signature']}:in_app"
     external_identity = external.payload["external_push_signature"]
-    assert (
-        external.dedup_key
-        == f"signal_pulse_candidate:{external.payload['in_app_signature']}:{external_identity}"
-    )
+    assert external.dedup_key == f"signal_pulse_candidate:{external.payload['in_app_signature']}:{external_identity}"
 
 
 def test_signal_pulse_signature_changes_on_stable_dimension_shifts():

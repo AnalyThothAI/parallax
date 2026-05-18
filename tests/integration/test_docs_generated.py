@@ -4,11 +4,8 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from tests.postgres_test_utils import prepare_postgres_database
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
@@ -48,12 +45,9 @@ def test_generated_files_have_header_marker() -> None:
         assert HEADER_MARKER in first_line, f"{name} missing AUTO-GENERATED header"
 
 
-@pytest.mark.skipif(
-    shutil.which("uv") is None or shutil.which("make") is None,
-    reason="uv or make not available in this environment",
-)
 def test_make_docs_generated_clean_diff() -> None:
     prepare_postgres_database()
+    before = _generated_snapshot()
     env = os.environ.copy()
     env["GMGN_TEST_POSTGRES_DSN"] = _test_postgres_dsn()
     proc = subprocess.run(
@@ -64,9 +58,23 @@ def test_make_docs_generated_clean_diff() -> None:
         check=False,
         env=env,
     )
-    if proc.returncode != 0:
-        pytest.skip(f"make docs-generated failed (likely Postgres unreachable): {proc.stderr}")
-    diff = subprocess.run(
-        ["git", "diff", "--exit-code", "docs/generated/"], cwd=REPO_ROOT, capture_output=True, text=True, check=False
+    assert proc.returncode == 0, f"make docs-generated failed:\n{proc.stderr}"
+    after = _generated_snapshot()
+    assert after == before, "make docs-generated changed docs/generated files:\n" + "\n".join(
+        _snapshot_diff(before, after)
     )
-    assert diff.returncode == 0, f"make docs-generated produced uncommitted changes:\n{diff.stdout}"
+
+
+def _generated_snapshot() -> dict[str, bytes]:
+    return {
+        str(path.relative_to(GENERATED)): path.read_bytes() for path in sorted(GENERATED.rglob("*")) if path.is_file()
+    }
+
+
+def _snapshot_diff(before: dict[str, bytes], after: dict[str, bytes]) -> list[str]:
+    before_keys = set(before)
+    after_keys = set(after)
+    lines = [f"added: {path}" for path in sorted(after_keys - before_keys)]
+    lines.extend(f"removed: {path}" for path in sorted(before_keys - after_keys))
+    lines.extend(f"changed: {path}" for path in sorted(before_keys & after_keys) if before[path] != after[path])
+    return lines

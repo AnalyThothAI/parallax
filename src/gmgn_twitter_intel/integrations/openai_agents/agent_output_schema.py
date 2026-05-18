@@ -77,17 +77,12 @@ def _force_strict_object_shape(schema: Any) -> Any:
             properties = new.get("properties")
             if isinstance(properties, dict):
                 new["required"] = list(properties.keys())
-                new["properties"] = {
-                    name: _force_strict_object_shape(prop) for name, prop in properties.items()
-                }
+                new["properties"] = {name: _force_strict_object_shape(prop) for name, prop in properties.items()}
         if "items" in new:
             new["items"] = _force_strict_object_shape(new["items"])
         for key in ("$defs", "definitions"):
             if key in new and isinstance(new[key], dict):
-                new[key] = {
-                    name: _force_strict_object_shape(def_schema)
-                    for name, def_schema in new[key].items()
-                }
+                new[key] = {name: _force_strict_object_shape(def_schema) for name, def_schema in new[key].items()}
         for key in ("anyOf", "allOf", "oneOf"):
             if key in new and isinstance(new[key], list):
                 new[key] = [_force_strict_object_shape(variant) for variant in new[key]]

@@ -153,4 +153,3 @@ class PulseCandidatesRepository:
         if commit:
             self.conn.commit()
         return _row(row)
-

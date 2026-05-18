@@ -6,7 +6,7 @@ from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_time
     TokenTargetSocialTimelineService,
 )
 
-LEGACY_MARKET_FIELD = "market" "_overlay"
+LEGACY_MARKET_FIELD = "market_overlay"
 
 
 def test_token_target_timeline_reads_rows_by_target_identity():

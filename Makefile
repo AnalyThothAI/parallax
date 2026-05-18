@@ -1,6 +1,6 @@
 GMGN := uv run gmgn-twitter-intel
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-architecture test-contract check-all coverage contract-check regen-contract install-hooks
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-all coverage contract-check regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -43,6 +43,9 @@ test-integration: ## run only tests/integration/ (real Postgres required; auto t
 test-e2e: ## run only tests/e2e/ (testcontainers + uvicorn subprocess; populated in P5)
 	@uv run python -m pytest tests/e2e -m e2e; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
 
+test-golden: ## run only tests/golden/ (real Postgres golden corpus)
+	@uv run python -m pytest tests/golden -m e2e; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
 test-architecture: ## run only tests/architecture/ (AST/grep checks)
 	@uv run python -m pytest tests/architecture -m architecture; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
 
@@ -53,6 +56,7 @@ check-all: ## the only command that may produce verification-artefact evidence (
 	@$(MAKE) check
 	@$(MAKE) test-integration
 	@$(MAKE) test-e2e
+	@$(MAKE) test-golden
 	@$(MAKE) coverage
 
 coverage: ## run coverage report (gates fail_under from pyproject.toml [tool.coverage])

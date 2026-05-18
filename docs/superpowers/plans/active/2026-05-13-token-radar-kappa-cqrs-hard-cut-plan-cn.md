@@ -28,13 +28,13 @@
 - 2026-05-13 14:14 Asia/Shanghai — Task 4 complete. Added market capability/health types, wired OKX through a small provider bundle with shared CEX provider instance, removed `dex_ws_enabled`, and made OKX DEX WS configured by URL plus credentials. Validation: `uv run pytest tests/unit/test_provider_capabilities.py tests/unit/test_settings.py -q` passed with 25 tests; extra `uv run pytest tests/unit/test_providers_wiring.py -q` passed with 5 tests.
 - 2026-05-13 14:24 Asia/Shanghai — Task 5 complete. Added live observation persistence policy and write-budget benchmark, changed anchor/live workers to write `event_anchor`/`decision_latest` material facts, added `WakeBus`, removed anchor worker callback wiring, and removed resolution refresh inline anchor/projection rebuild. Validation: `uv run pytest tests/unit/test_anchor_price_worker.py tests/unit/test_live_observation_policy.py tests/unit/test_live_price_gateway.py tests/unit/test_resolution_refresh_worker.py tests/benchmark/test_live_observation_write_budget.py -q` passed with 15 tests. Extra affected tests `uv run pytest tests/test_live_price_gateway.py tests/unit/test_anchor_price_observation.py tests/unit/test_settings.py -q` passed with 32 tests; focused ruff check passed.
 - 2026-05-13 14:33 Asia/Shanghai — Task 6 complete. Source query now reads `event_anchor` and `decision_latest` from `price_observations` LATERAL joins, projection emits `market.event_anchor` / `market.decision_latest` / `market.readiness`, and the factor snapshot contract enforces the new market shape. Validation: `uv run pytest tests/unit/test_token_radar_source_query.py tests/unit/test_token_radar_projection.py -q` passed with 27 tests; focused ruff check passed.
-- 2026-05-13 14:39 Asia/Shanghai — Task 7 complete. DEX gate checks now read `market.decision_latest`, missing DEX floor fields add `*_unverified` blockers, cohort ranking returns no signal for cohorts below 10 or all tied, and normalization records `cohort_status`. Validation: `uv run pytest tests/test_factor_snapshot.py tests/unit/test_token_radar_apply_cross_section.py -q` passed with 38 tests; focused ruff check passed.
+- 2026-05-13 14:39 Asia/Shanghai — Task 7 complete. DEX gate checks now read `market.decision_latest`, missing DEX floor fields add `*_unverified` blockers, cohort ranking returns no signal for cohorts below 10 or all tied, and normalization records `cohort_status`. Validation: `uv run pytest tests/unit/test_factor_snapshot.py tests/unit/test_token_radar_apply_cross_section.py -q` passed with 38 tests; focused ruff check passed.
 - 2026-05-13 14:45 Asia/Shanghai — Task 8 complete. Projection worker now has no callback wake API, listens for market/resolution wake hints via injected `WakeListener`, keeps interval catch-up, remains the single runtime writer of `token_radar_rows`, and publishes `token_radar_updated` after successful window writes. Validation: `uv run pytest tests/unit/test_token_radar_projection_worker.py tests/unit/test_token_radar_idempotency.py tests/architecture/test_src_domain_architecture.py -q` passed with 17 tests / 1 skipped.
 - 2026-05-13 14:52 Asia/Shanghai — Task 9 complete. Pulse candidate worker now runs as a normal asyncio task, listens to `token_radar_updated` through the shared wake listener, keeps poll catch-up, and gates candidates on `market.decision_latest` plus `normalization.cohort_status`. Validation: `uv run pytest tests/unit/test_pulse_candidate_worker.py tests/unit/test_pulse_candidate_gate.py -q` passed with 30 tests.
 - 2026-05-13 14:58 Asia/Shanghai — Task 10 complete. Asset flow rows now expose `market` directly from factor snapshots, HTTP no longer injects live gateway overlays, live WS updates carry only `market.decision_latest`, and repository/CLI validation helpers use the hard-cut market schema. Validation: `uv run pytest tests/unit/test_token_radar_repository.py tests/integration/test_cli.py -q` passed with 34 tests / 4 skipped. Extra affected validation `uv run pytest tests/unit/test_live_price_gateway.py tests/test_live_price_gateway.py -q` passed with 5 tests.
 - 2026-05-13 15:11 Asia/Shanghai — Task 11 complete. Frontend Token Radar cache patching now uses socket callback material updates, rows patch `market.decision_latest`, TokenTargetPage shares the token radar query hook, and components/types use the hard-cut market context. Validation: `cd web && npm test -- --run src/features/live/liveMarketUpdatePatch.test.ts src/lib/tokenRadar.test.ts src/components/TokenRadarRow.test.tsx src/components/__tests__/TokenTargetPage.routing.test.tsx` passed with 25 tests.
-- 2026-05-13 15:16 Asia/Shanghai — Task 12 complete. OKX DEX WS and GMGN direct WS now expose connection states with timestamps, collector status records snapshot gate outcomes, and `/api/status` exposes provider states plus snapshot gate counters. Validation: `uv run pytest tests/test_okx_dex_ws_client.py tests/unit/test_gmgn_token_payload.py -q` passed with 11 tests. Extra affected validation `uv run pytest tests/unit/test_collector_service.py -q` passed with 3 tests.
-- 2026-05-13 15:21 Asia/Shanghai — Task 13 complete. Regenerated CLI/WS docs, added hard-cut no-fallback guards for market overlay paths, and updated golden corpus assertions to the `market.event_anchor` / `market.decision_latest` / `market.readiness` schema. Validation: `uv run pytest tests/test_no_factor_snapshot_fallback.py tests/golden/test_token_radar_corpus.py -q` passed with 10 tests / 4 skipped because the optional PostgreSQL golden database was unavailable.
+- 2026-05-13 15:16 Asia/Shanghai — Task 12 complete. OKX DEX WS and GMGN direct WS now expose connection states with timestamps, collector status records snapshot gate outcomes, and `/api/status` exposes provider states plus snapshot gate counters. Validation: `uv run pytest tests/unit/test_okx_dex_ws_client.py tests/unit/test_gmgn_token_payload.py -q` passed with 11 tests. Extra affected validation `uv run pytest tests/unit/test_collector_service.py -q` passed with 3 tests.
+- 2026-05-13 15:21 Asia/Shanghai — Task 13 complete. Regenerated CLI/WS docs, added hard-cut no-fallback guards for market overlay paths, and updated golden corpus assertions to the `market.event_anchor` / `market.decision_latest` / `market.readiness` schema. Validation: `uv run pytest tests/architecture/test_no_factor_snapshot_fallback.py tests/golden/test_token_radar_corpus.py -q` passed with 10 tests / 4 skipped because the optional PostgreSQL golden database was unavailable.
 - 2026-05-13 15:56 Asia/Shanghai — Task 14 local hard-cut operations partially complete before merge. Stopped running app container, applied Alembic head, truncated derived read models plus FK-dependent derived tables, rebuilt 5m/1h radar projections, removed stale `dex_ws_enabled` from local config with a timestamped backup, and passed pre-merge `make check`. Full `make check-all` verification artefact remains pending on `main` per latest user direction to merge first and deepen testing after.
 - 2026-05-13 16:54 Asia/Shanghai — Merged `codex/token-radar-kappa-cqrs-hard-cut` into `main`, fixed post-merge hard-cut integration fixture drift, committed `465d4fb0`, and completed final audit. Validation: `make check-all` passed with exit code 0; final coverage run reported 833 passed / 14 skipped and total coverage 82.18%. Verification artefact created at `docs/superpowers/plans/active/2026-05-13-token-radar-kappa-cqrs-hard-cut-verification-cn.md`.
 - 2026-05-13 17:02 Asia/Shanghai — Attempted local `docker compose up -d --build app` after verification. Build failed while fetching private GitHub dependency `marketlane-cli` because no GitHub token/credentials were available in the non-interactive environment. PostgreSQL remains healthy; app container remains stopped rather than starting an old image.
@@ -634,7 +634,7 @@ Known-failing baseline tests: none expected.
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`
 - Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`
-- Test: `tests/test_factor_snapshot.py`
+- Test: `tests/unit/test_factor_snapshot.py`
 - Test: `tests/unit/test_token_radar_apply_cross_section.py`
 
 - [x] `_gates()` reads DEX floors from `market.decision_latest`; missing `holders`, `liquidity_usd`, or `market_cap_usd` appends blocker reason `<field>_unverified`.
@@ -644,7 +644,7 @@ Known-failing baseline tests: none expected.
 - [x] Add `normalization.cohort_status` values `ready`, `insufficient`, `all_tied`.
 - [x] Run:
   ```bash
-  uv run pytest tests/test_factor_snapshot.py tests/unit/test_token_radar_apply_cross_section.py -q
+  uv run pytest tests/unit/test_factor_snapshot.py tests/unit/test_token_radar_apply_cross_section.py -q
   ```
   Expected: pass.
 
@@ -747,7 +747,7 @@ Known-failing baseline tests: none expected.
 - Modify: `src/gmgn_twitter_intel/integrations/gmgn/direct_ws.py`
 - Modify: `src/gmgn_twitter_intel/domains/ingestion/runtime/collector_service.py`
 - Modify: `src/gmgn_twitter_intel/app/runtime/app.py`
-- Test: `tests/test_okx_dex_ws_client.py`
+- Test: `tests/unit/test_okx_dex_ws_client.py`
 - Test: `tests/unit/test_gmgn_token_payload.py`
 
 - [x] Add WS connection states `disconnected`, `connecting`, `authenticating`, `subscribed`, `streaming`, `failed`.
@@ -756,7 +756,7 @@ Known-failing baseline tests: none expected.
 - [x] `/api/status` exposes provider states and snapshot gate counters.
 - [x] Run:
   ```bash
-  uv run pytest tests/test_okx_dex_ws_client.py tests/unit/test_gmgn_token_payload.py -q
+  uv run pytest tests/unit/test_okx_dex_ws_client.py tests/unit/test_gmgn_token_payload.py -q
   ```
   Expected: pass.
 
@@ -766,7 +766,7 @@ Known-failing baseline tests: none expected.
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/generated/cli-help.md`
 - Modify: `docs/generated/ws-protocol.md`
-- Modify: `tests/test_no_factor_snapshot_fallback.py`
+- Modify: `tests/architecture/test_no_factor_snapshot_fallback.py`
 - Modify: `tests/golden/test_token_radar_corpus.py`
 
 - [x] Regenerate CLI help:
@@ -777,7 +777,7 @@ Known-failing baseline tests: none expected.
 - [x] Update golden corpus expected snapshot to new market schema.
 - [x] Run:
   ```bash
-  uv run pytest tests/test_no_factor_snapshot_fallback.py tests/golden/test_token_radar_corpus.py -q
+  uv run pytest tests/architecture/test_no_factor_snapshot_fallback.py tests/golden/test_token_radar_corpus.py -q
   ```
   Expected: pass.
 
@@ -883,7 +883,7 @@ Source/social facts and material market facts are preserved across rollback. Der
   ```
 - AC2 no API overlay:
   ```bash
-  uv run pytest tests/test_no_factor_snapshot_fallback.py::test_no_runtime_market_overlay_fallbacks -q
+  uv run pytest tests/architecture/test_no_factor_snapshot_fallback.py::test_no_runtime_market_overlay_fallbacks -q
   ```
 - AC3 one writer:
   ```bash
@@ -891,7 +891,7 @@ Source/social facts and material market facts are preserved across rollback. Der
   ```
 - AC4 DEX fail-closed:
   ```bash
-  uv run pytest tests/test_factor_snapshot.py::test_dex_missing_market_fields_block_high_alert -q
+  uv run pytest tests/unit/test_factor_snapshot.py::test_dex_missing_market_fields_block_high_alert -q
   ```
 - AC5 cohort no-signal:
   ```bash
