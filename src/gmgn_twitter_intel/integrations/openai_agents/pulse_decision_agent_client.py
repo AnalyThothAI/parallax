@@ -176,6 +176,18 @@ class OpenAIAgentsPulseDecisionClient:
         )
         stage_audits: list[StageRunAudit] = [debate_step]
         if debate_step.status != "ok":
+            if _is_model_contract_stage_failure(debate_step):
+                final = _invalid_ref_abstain_decision(
+                    route=route,
+                    reason=debate_step.error or "evidence_debate_contract_failed",
+                    evidence_packet=evidence_packet,
+                )
+                audit = self._decision_runtime.with_output_hash(audit, final=final)
+                return PulseDecisionAgentResult(
+                    final_decision=final,
+                    run_audit=audit,
+                    stage_audits=tuple(stage_audits),
+                )
             raise PulseStageFailure(
                 f"evidence_debate stage {debate_step.status}: {debate_step.error}",
                 audits=tuple(stage_audits),
@@ -208,6 +220,18 @@ class OpenAIAgentsPulseDecisionClient:
         )
         stage_audits.append(decision_step)
         if decision_step.status != "ok":
+            if _is_model_contract_stage_failure(decision_step):
+                final = _invalid_ref_abstain_decision(
+                    route=route,
+                    reason=decision_step.error or "decision_maker_contract_failed",
+                    evidence_packet=evidence_packet,
+                )
+                audit = self._decision_runtime.with_output_hash(audit, final=final)
+                return PulseDecisionAgentResult(
+                    final_decision=final,
+                    run_audit=audit,
+                    stage_audits=tuple(stage_audits),
+                )
             raise PulseStageFailure(
                 f"decision_maker stage {decision_step.status}: {decision_step.error}",
                 audits=tuple(stage_audits),
@@ -512,12 +536,12 @@ def _invalid_ref_abstain_decision(
     *,
     route: DecisionRoute,
     reason: str,
-    evidence_packet: PulseEvidencePacket,
+    evidence_packet: PulseEvidencePacket | dict[str, Any],
 ) -> FinalDecision:
     gate_refs = tuple(
-        ref.ref_id
-        for ref in evidence_packet.allowed_evidence_refs
-        if ref.ref_type == "gate"
+        ref_id
+        for ref in _allowed_refs_from_packet(evidence_packet)
+        if (ref_id := _ref_value(ref, "ref_id")) and _ref_value(ref, "ref_type") == "gate"
     )
     return FinalDecision(
         route=route,
@@ -540,6 +564,36 @@ def _invalid_ref_abstain_decision(
         evidence_event_ids=[],
         data_gap_refs=gate_refs,
     )
+
+
+def _is_model_contract_stage_failure(step: StageRunAudit) -> bool:
+    if step.status != "failed":
+        return False
+    text = str(step.error or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "validation error",
+            "modelbehaviorerror",
+            "instructorretryexception",
+            "trading execution language",
+            "invalid json",
+            "outside allowed_evidence_refs",
+        )
+    )
+
+
+def _allowed_refs_from_packet(packet: PulseEvidencePacket | dict[str, Any]) -> tuple[Any, ...]:
+    if isinstance(packet, dict):
+        refs = packet.get("allowed_evidence_refs")
+    else:
+        refs = getattr(packet, "allowed_evidence_refs", ())
+    return tuple(refs) if isinstance(refs, list | tuple) else tuple()
+
+
+def _ref_value(ref: Any, key: str) -> str:
+    value = ref.get(key) if isinstance(ref, dict) else getattr(ref, key, None)
+    return str(value or "").strip()
 
 
 def _context_string(context: dict[str, Any], key: str) -> str | None:
