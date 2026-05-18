@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
 
-
 NOW_MS = 1_800_000_000_000
 
 

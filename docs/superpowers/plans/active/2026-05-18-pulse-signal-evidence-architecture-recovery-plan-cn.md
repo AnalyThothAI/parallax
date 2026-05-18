@@ -361,14 +361,13 @@ ALTER TABLE pulse_candidates
   - `get_asset_identity(target_type: str, target_id: str)`
   - `get_latest_profile(target_type: str, target_id: str)`
   - `get_latest_market_tick(target_type: str, target_id: str, max_age_ms: int)`
-  - `get_pricefeed_snapshot(target_type: str, target_id: str, max_age_ms: int)`
+  - `list_market_facts(context: PulseTargetContext, max_age_ms: int)`
 - [ ] Use existing canonical tables and repositories where present:
   - `events`
   - `enriched_events`
   - `asset_identity_current` / current identity table in this repo
   - token profile tables already used by Token Radar
-  - `market_ticks`
-  - current pricefeed/materialized market fact tables
+  - `market_ticks` as the current live market snapshot source
 - [ ] Export both repositories from `repositories/__init__.py` by appending to current exports:
   - `PulseAdmissionRepository`
   - `PulseAgentEvalRepository`
