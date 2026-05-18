@@ -17,8 +17,9 @@ class NarrativeSourceQuery:
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            SELECT row_id, target_type, target_id, rank, rank_score, computed_at_ms,
-                   factor_snapshot_json->'provenance'->'source_event_ids' AS source_event_ids_json
+            SELECT row_id, target_type, target_id, rank, computed_at_ms,
+                   NULLIF(factor_snapshot_json->'composite'->>'rank_score', '')::double precision AS rank_score,
+                   source_event_ids_json
             FROM token_radar_rows
             WHERE "window" = %s
               AND scope = %s

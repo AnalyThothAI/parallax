@@ -62,6 +62,33 @@ def test_migration_creates_narrative_read_model_tables(tmp_path):
     }.issubset(tables)
 
 
+def test_admitted_radar_rows_query_matches_current_token_radar_schema(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'token_radar_rows'
+                """
+            ).fetchall()
+        }
+        rows = repo.admitted_radar_rows(
+            window="5m",
+            scope="all",
+            limit=10,
+            projection_version="token_radar_v3",
+        )
+    finally:
+        conn.close()
+
+    assert "rank_score" not in columns
+    assert "factor_snapshot_json" in columns
+    assert rows == []
+
+
 def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
