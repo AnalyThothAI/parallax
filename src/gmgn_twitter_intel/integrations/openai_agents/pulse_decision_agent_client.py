@@ -22,12 +22,14 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import (
     PulseEvidencePacket,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BullBearView,
     DecisionRoute,
     FinalDecision,
     PulseDecisionPayload,
     PulseStageFailure,
     StageRunAudit,
     StageStatus,
+    TradePlaybook,
 )
 from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
     default_agent_model_settings,
@@ -217,10 +219,7 @@ class OpenAIAgentsPulseDecisionClient:
         except ValueError as exc:
             failed_step = self._decision_runtime.mark_step_failed(decision_step, error=str(exc))
             stage_audits[-1] = failed_step
-            raise PulseStageFailure(
-                f"decision_maker stage failed: {exc}",
-                audits=tuple(stage_audits),
-            ) from exc
+            final = _invalid_ref_abstain_decision(route=route, reason=str(exc), evidence_packet=evidence_packet)
 
         # Evidence URL enrichment (best-effort JOIN against events).
         final = self._decision_runtime.enrich_evidence_urls(final)
@@ -504,6 +503,40 @@ def _recommendation_constraints(*, route: DecisionRoute, completeness: dict[str,
         "high_conviction_requires_multiple_supporting_refs": True,
         "when_fact_absent": "lower_confidence_or_abstain",
     }
+
+
+def _invalid_ref_abstain_decision(
+    *,
+    route: DecisionRoute,
+    reason: str,
+    evidence_packet: PulseEvidencePacket,
+) -> FinalDecision:
+    gate_refs = tuple(
+        ref.ref_id
+        for ref in evidence_packet.allowed_evidence_refs
+        if ref.ref_type == "gate"
+    )
+    return FinalDecision(
+        route=route,
+        recommendation="abstain",
+        confidence=0.0,
+        abstain_reason="invalid_unknown_evidence_ref",
+        summary_zh="模型输出引用了证据包外的 ref，本次不发布候选。",
+        narrative_archetype="unclear",
+        narrative_thesis_zh="模型输出包含证据包以外的引用，违反封闭证据合同；本次仅记录无效输出并等待下一轮有效证据综合。",
+        bull_view=BullBearView(strength="absent"),
+        bear_view=BullBearView(strength="absent"),
+        playbook=TradePlaybook(
+            has_playbook=False,
+            watch_signals=[],
+            exit_triggers=[],
+            monitoring_horizon="1h",
+        ),
+        invalidation_conditions=[],
+        residual_risks=[reason[:240]],
+        evidence_event_ids=[],
+        data_gap_refs=gate_refs,
+    )
 
 
 def _context_string(context: dict[str, Any], key: str) -> str | None:

@@ -766,6 +766,8 @@ def _run_outcome(
     if evidence_gate.hard_blocked:
         return run_outcome_from_failure(evidence_gate.blocked_reason or "insufficient_evidence")
     if final_decision.recommendation == "abstain":
+        if final_decision.abstain_reason == "invalid_unknown_evidence_ref":
+            return "invalid_unknown_evidence_ref"
         return "abstain_insufficient_evidence"
     return "completed"
 

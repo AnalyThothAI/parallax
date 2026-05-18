@@ -155,6 +155,44 @@ def test_abstain_decision_maps_to_evidence_insufficient_outcome() -> None:
     )
 
 
+def test_invalid_ref_abstain_maps_to_unknown_evidence_outcome() -> None:
+    final_decision = FinalDecision(
+        route="meme",
+        recommendation="abstain",
+        confidence=0.0,
+        abstain_reason="invalid_unknown_evidence_ref",
+        summary_zh="模型输出引用了证据包外的 ref，本次不发布候选。",
+        narrative_archetype="unclear",
+        narrative_thesis_zh="模型输出包含证据包以外的引用，违反封闭证据合同；本次仅记录无效输出并等待下一轮有效证据综合。",
+        bull_view=BullBearView(strength="absent"),
+        bear_view=BullBearView(strength="absent"),
+        playbook=TradePlaybook(
+            has_playbook=False,
+            watch_signals=[],
+            exit_triggers=[],
+            monitoring_horizon="1h",
+        ),
+        invalidation_conditions=[],
+        residual_risks=["outside allowed_evidence_refs"],
+        evidence_event_ids=[],
+    )
+    gate = EvidenceCompletenessGateResult(
+        evidence_status="complete",
+        hard_blocked=False,
+        blocked_reason=None,
+        max_decision_status="trade_candidate",
+        required_ref_ids=("event:event-1",),
+        missing_ref_types=(),
+        data_gaps=(),
+        public_allowed=True,
+        display_status="display_trade_candidate",
+    )
+
+    assert _run_outcome(final_decision, evidence_gate=gate, claim_verification_valid=True) == (
+        "invalid_unknown_evidence_ref"
+    )
+
+
 def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> None:
     repos = FakeRepos()
     snapshot = _factor_snapshot(rank_score=82)
