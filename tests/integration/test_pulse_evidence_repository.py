@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.types import PulseEvidencePacket
@@ -60,6 +61,109 @@ def test_repository_session_exposes_pulse_evidence_repositories(tmp_path) -> Non
             assert repos.pulse_evidence_sources.list_source_events(["missing"]) == []
     finally:
         conn.close()
+
+
+def test_pulse_evidence_source_reads_market_tick_for_asset_candidate(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        conn.execute(
+            """
+            INSERT INTO market_ticks(
+              tick_id, target_type, target_id, chain, token_address, exchange, instrument,
+              pricefeed_id, source_tier, source_provider, observed_at_ms, received_at_ms,
+              price_usd, liquidity_usd, volume_24h_usd, market_cap_usd, holders,
+              raw_payload_json, created_at_ms
+            )
+            VALUES (
+              'tick-asset-1', 'chain_token', 'solana:Token111', 'solana', 'Token111', NULL, NULL,
+              NULL, 'tier1_ws', 'okx_dex_ws', 1800000000000, 1800000000001,
+              0.42, 250000, 12000, 420000, 1000, '{}'::jsonb, 1800000000001
+            )
+            """,
+        )
+        conn.commit()
+        context = SimpleNamespace(
+            target_type="Asset",
+            target_id="asset:solana:token:Token111",
+            factor_snapshot={
+                "subject": {
+                    "target_type": "Asset",
+                    "target_id": "asset:solana:token:Token111",
+                    "target_market_type": "dex",
+                }
+            },
+        )
+        with repository_session_for_connection(conn) as repos:
+            rows = repos.pulse_evidence_sources.list_market_facts(context, max_age_ms=10_000_000_000)
+    finally:
+        conn.close()
+
+    assert rows
+    assert rows[0]["source_table"] == "market_ticks"
+    assert rows[0]["route"] == "meme"
+    assert rows[0]["target_market_type"] == "dex"
+    assert float(rows[0]["price_usd"]) == 0.42
+
+
+def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        conn.execute(
+            """
+            INSERT INTO price_feeds(
+              pricefeed_id, feed_type, provider, subject_type, subject_id,
+              native_market_id, base_symbol, quote_symbol, status, evidence_level,
+              first_seen_at_ms, updated_at_ms
+            )
+            VALUES (
+              'pricefeed:cex:okx:swap:NVDA-USDT-SWAP', 'swap', 'okx', 'CexToken', 'cex_token:NVDA',
+              'NVDA-USDT-SWAP', 'NVDA', 'USDT', 'canonical', 'provider_exact',
+              1800000000000, 1800000000001
+            )
+            """,
+        )
+        conn.execute(
+            """
+            INSERT INTO market_ticks(
+              tick_id, target_type, target_id, chain, token_address, exchange, instrument,
+              pricefeed_id, source_tier, source_provider, observed_at_ms, received_at_ms,
+              price_usd, liquidity_usd, volume_24h_usd, market_cap_usd, holders,
+              raw_payload_json, created_at_ms
+            )
+            VALUES (
+              'tick-cex-1', 'cex_symbol', 'okx:NVDA-USDT-SWAP', NULL, NULL, 'okx', 'NVDA-USDT-SWAP',
+              'pricefeed:cex:okx:swap:NVDA-USDT-SWAP', 'tier2_poll', 'okx_cex_rest',
+              1800000000000, 1800000000001, 228.44, NULL, 46036.11, NULL, NULL,
+              '{}'::jsonb, 1800000000001
+            )
+            """,
+        )
+        conn.commit()
+        context = SimpleNamespace(
+            target_type="CexToken",
+            target_id="cex_token:NVDA",
+            factor_snapshot={
+                "market": {
+                    "decision_latest": {
+                        "target_type": "CexToken",
+                        "target_id": "cex_token:NVDA",
+                        "pricefeed_id": "pricefeed:cex:okx:swap:NVDA-USDT-SWAP",
+                    }
+                }
+            },
+        )
+        with repository_session_for_connection(conn) as repos:
+            rows = repos.pulse_evidence_sources.list_market_facts(context, max_age_ms=10_000_000_000)
+    finally:
+        conn.close()
+
+    assert rows
+    assert rows[0]["route"] == "cex"
+    assert rows[0]["target_market_type"] == "cex"
+    assert rows[0]["instrument_ref"] == "pricefeed:cex:okx:swap:NVDA-USDT-SWAP"
+    assert float(rows[0]["price_usd"]) == 228.44
 
 
 def _insert_run(conn: Any, *, run_id: str, candidate_id: str) -> None:
