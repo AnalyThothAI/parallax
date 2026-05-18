@@ -125,7 +125,7 @@ export type EvidenceView = {
   concentration: AuthorConcentrationBar;
   abstainCallout: string | null;
 };
-export type InvestigatorView = {
+export type EvidenceDebateView = {
   status: string;
   latencyMs: number | null;
   summary: string;
@@ -136,9 +136,9 @@ export type DecisionMakerView = {
   summary: string;
 };
 export type StageRailItem =
-  | { kind: "investigator"; status: string; latencyMs: number | null; summary: string }
+  | { kind: "evidence_debate"; status: string; latencyMs: number | null; summary: string }
   | { kind: "decision_maker"; status: string; latencyMs: number | null; summary: string };
-export type ResearchOnlyGateView = { status: string; abstainReason: string } | null;
+export type EvidenceGateView = { status: string; abstainReason: string } | null;
 export type GateAgentMismatch = { gateLabel: string; agentLabel: string; note: string } | null;
 export type DecisionViewSide = {
   strength: string;
@@ -175,7 +175,7 @@ export type AgentRailView = {
   mismatch: GateAgentMismatch;
   decisionSurface: DecisionSurfaceView | null;
   railItems: StageRailItem[];
-  researchOnlyGate: ResearchOnlyGateView;
+  researchOnlyGate: EvidenceGateView;
   replay: ReplayMeta;
 };
 export type PulseDetailViewModel = {
@@ -854,19 +854,20 @@ function buildConcentration(
 function buildAgent(item: SignalPulseItem): AgentRailView {
   const stages = item.stages ?? emptyStages();
   const kind = item.decision.route === "research_only" ? "research_only" : "stages";
-  const investigator = stages.investigator ?? null;
+  const evidenceDebate = stages.evidence_debate ?? null;
+  const evidenceGate = stages.evidence_completeness_gate ?? null;
   const decisionMaker = stages.decision_maker ?? null;
-  const hasV2 = Boolean(investigator || decisionMaker);
+  const hasEvidenceStages = Boolean(evidenceDebate || decisionMaker);
 
   const railItems: StageRailItem[] = [];
   if (kind !== "research_only") {
-    if (hasV2) {
-      if (investigator) {
+    if (hasEvidenceStages) {
+      if (evidenceDebate) {
         railItems.push({
-          kind: "investigator",
-          status: investigator.status ?? "skipped",
-          latencyMs: investigator.latency_ms ?? null,
-          summary: stagePreviewSummary(investigator),
+          kind: "evidence_debate",
+          status: evidenceDebate.status ?? "skipped",
+          latencyMs: evidenceDebate.latency_ms ?? null,
+          summary: stagePreviewSummary(evidenceDebate),
         });
       }
       if (decisionMaker) {
@@ -880,8 +881,9 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
     }
   }
 
-  const totalLatencyMs = (investigator?.latency_ms ?? 0) + (decisionMaker?.latency_ms ?? 0);
-  const model = decisionMaker?.model ?? investigator?.model ?? "-";
+  const totalLatencyMs =
+    (evidenceGate?.latency_ms ?? 0) + (evidenceDebate?.latency_ms ?? 0) + (decisionMaker?.latency_ms ?? 0);
+  const model = decisionMaker?.model ?? evidenceDebate?.model ?? evidenceGate?.model ?? "-";
 
   return {
     kind,
@@ -891,11 +893,11 @@ function buildAgent(item: SignalPulseItem): AgentRailView {
     decisionSurface: buildDecisionSurface(item),
     railItems,
     researchOnlyGate:
-      kind === "research_only" && stages.research_only_gate
+      kind === "research_only" && evidenceGate
         ? {
-            status: stages.research_only_gate.status ?? "ok",
+            status: evidenceGate.status ?? "ok",
             abstainReason:
-              stringValue(record(stages.research_only_gate.response).abstain_reason) ??
+              stringValue(record(evidenceGate.response).blocked_reason) ??
               item.decision.abstain_reason ??
               "",
           }
@@ -996,7 +998,7 @@ function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
   return {
     gateLabel: `策略门：${scoreBandLabel(item.score_band)} (score ${item.candidate_score ?? 0})`,
     agentLabel: `Agent：${recommendation ?? "-"} · 置信度 ${confidence.toFixed(2)}`,
-    note: "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对调研、决策和证据链接。",
+    note: "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对证据辩论、决策和证据链接。",
   };
 }
 
@@ -1084,9 +1086,14 @@ function authorRunIndex(
 
 function emptyStages(): SignalPulseStages {
   return {
-    investigator: null,
+    evidence_pack: null,
+    evidence_completeness_gate: null,
+    evidence_debate: null,
+    claim_verifier: null,
     decision_maker: null,
-    research_only_gate: null,
+    recommendation_clipper: null,
+    deterministic_eval: null,
+    write_gate: null,
   };
 }
 

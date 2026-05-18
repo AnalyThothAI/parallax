@@ -488,27 +488,11 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
     scopes: tuple[str, ...] = ("all", "matched")
     trigger_thresholds: PulseCandidateTriggerThresholds = Field(default_factory=PulseCandidateTriggerThresholds)
     gate_thresholds: PulseCandidateGateThresholds = Field(default_factory=PulseCandidateGateThresholds)
-    investigator_max_tool_calls: dict[str, int] = Field(
-        default_factory=lambda: {"cex": 3, "meme": 5, "research_only": 3}
-    )
 
     @field_validator("wakes_on", "windows", "scopes", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
-
-    @field_validator("investigator_max_tool_calls", mode="after")
-    @classmethod
-    def validate_investigator_max_tool_calls(cls, value: dict[str, int]) -> dict[str, int]:
-        required = {"cex", "meme", "research_only"}
-        cleaned = {str(key): int(count) for key, count in value.items()}
-        missing = required - set(cleaned)
-        if missing:
-            raise ValueError(f"investigator_max_tool_calls missing routes: {sorted(missing)}")
-        for route, count in cleaned.items():
-            if count < 1:
-                raise ValueError(f"investigator_max_tool_calls[{route!r}] must be >= 1")
-        return cleaned
 
 
 class EnrichmentWorkerSettings(PerWorkerSettings):
@@ -1088,10 +1072,6 @@ pulse_candidate:
     token_watch_min: 45
     high_info_rejection_min: 30
     high_conviction_min: 78
-  investigator_max_tool_calls:
-    cex: 3
-    meme: 5
-    research_only: 3
 enrichment:
   enabled: true
   interval_seconds: 2.0

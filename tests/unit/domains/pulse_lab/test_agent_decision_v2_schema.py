@@ -1,6 +1,6 @@
 """Schema tests for the v2 Pulse agent decision pydantic types.
 
-Covers the new BullBearView / TradePlaybook / InvestigationReport types and
+Covers the BullBearView / TradePlaybook / EvidenceDebateMemo types and
 the v2-extended FinalDecision hard constraints (Task 3, plan
 2026-05-16-pulse-agent-desk-redesign-plan-cn.md §Task 3).
 
@@ -16,8 +16,9 @@ from pydantic import ValidationError
 
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
+    EvidenceClaim,
+    EvidenceDebateMemo,
     FinalDecision,
-    InvestigationReport,
     TradePlaybook,
     contains_trading_execution_instruction,
 )
@@ -128,7 +129,7 @@ def test_trade_playbook_rejects_execution_language() -> None:
 
 
 # ---------------------------------------------------------------------------
-# InvestigationReport
+# EvidenceDebateMemo
 # ---------------------------------------------------------------------------
 
 
@@ -136,73 +137,23 @@ def _absent() -> BullBearView:
     return BullBearView(strength="absent")
 
 
-def _strong(prefix: str = "ev") -> BullBearView:
-    return BullBearView(
-        strength="strong",
-        thesis_zh="叙事被多个 cohort 转发并触发现货放量",
-        supporting_event_ids=[f"{prefix}-1", f"{prefix}-2"],
+def test_evidence_debate_memo_with_allowed_refs_ok() -> None:
+    memo = EvidenceDebateMemo(
+        bull_claims=(
+            EvidenceClaim(claim="社交事件显示讨论正在扩散", evidence_refs=("event:event-1",), stance="bull"),
+        ),
+        bear_claims=(
+            EvidenceClaim(claim="市场流动性仍然偏薄", evidence_refs=("market:pf-1",), stance="risk"),
+        ),
+        summary_zh="证据包内社交扩散较强，但市场流动性仍偏薄，需要等待更多确认。",
+        allowed_evidence_ref_ids=("event:event-1", "market:pf-1"),
     )
+    assert memo.allowed_evidence_ref_ids == ("event:event-1", "market:pf-1")
 
 
-def test_investigation_report_empty_archetype_with_double_absent_ok() -> None:
-    report = InvestigationReport(
-        narrative_archetype_candidate="",
-        narrative_observation_zh="信号过浅，未观察到稳定叙事或 contrarian 信号在窗口期内成型",
-        bull_observation=_absent(),
-        bear_observation=_absent(),
-    )
-    assert report.narrative_archetype_candidate == ""
-
-
-def test_investigation_report_archetype_with_double_absent_rejected() -> None:
-    with pytest.raises(ValidationError, match="non-absent observation"):
-        InvestigationReport(
-            narrative_archetype_candidate="memetic",
-            narrative_observation_zh="叙事候选 memetic 出现，但双向证据均缺失，仍需更多输入材料",
-            bull_observation=_absent(),
-            bear_observation=_absent(),
-        )
-
-
-def test_investigation_report_asymmetric_bull_strong_bear_absent_ok() -> None:
-    report = InvestigationReport(
-        narrative_archetype_candidate="memetic",
-        narrative_observation_zh="单边看涨叙事在窗口期内成型，未见明显空方反驳，cohort 持续扩散",
-        bull_observation=_strong("bull"),
-        bear_observation=_absent(),
-    )
-    assert report.bull_observation.strength == "strong"
-    assert report.bear_observation.strength == "absent"
-
-
-def test_investigation_report_observation_too_short_rejected() -> None:
-    with pytest.raises(ValidationError, match="narrative_observation_zh must be 30-300 chars"):
-        InvestigationReport(
-            narrative_archetype_candidate="",
-            narrative_observation_zh="太短",
-            bull_observation=_absent(),
-            bear_observation=_absent(),
-        )
-
-
-def test_investigation_report_observation_too_long_rejected() -> None:
-    with pytest.raises(ValidationError, match="narrative_observation_zh must be 30-300 chars"):
-        InvestigationReport(
-            narrative_archetype_candidate="",
-            narrative_observation_zh="x" * 301,
-            bull_observation=_absent(),
-            bear_observation=_absent(),
-        )
-
-
-def test_investigation_report_archetype_too_long_rejected() -> None:
-    with pytest.raises(ValidationError, match="narrative_archetype_candidate exceeds 20 chars"):
-        InvestigationReport(
-            narrative_archetype_candidate="x" * 21,
-            narrative_observation_zh="叙事候选过长应当被字段校验拒绝，避免模型自由输出突破 20 字符上限",
-            bull_observation=_strong("bull"),
-            bear_observation=_absent(),
-        )
+def test_evidence_debate_claim_requires_evidence_refs() -> None:
+    claim = EvidenceClaim(claim="社交事件显示讨论正在扩散", evidence_refs=(), stance="bull")
+    assert claim.evidence_refs == ()
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +203,7 @@ def _hc_kwargs(
         "bear_view": bear,
         "playbook": _playbook(True),
         "evidence_event_ids": [f"event-{i}" for i in range(1, evidence_count + 1)],
+        "supporting_evidence_refs": tuple(f"event:event-{i}" for i in range(1, evidence_count + 1)),
     }
 
 
@@ -355,8 +307,8 @@ def test_final_decision_rejects_execution_language_in_summary() -> None:
         FinalDecision(**kwargs)
 
 
-def test_final_decision_non_abstain_without_evidence_or_residual_rejected() -> None:
-    with pytest.raises(ValidationError, match="evidence_event_ids or residual_risks"):
+def test_final_decision_non_abstain_without_packet_refs_rejected() -> None:
+    with pytest.raises(ValidationError, match="supporting_evidence_refs"):
         FinalDecision(
             route="meme",
             recommendation="watchlist",
@@ -401,7 +353,7 @@ def test_final_decision_non_abstain_without_evidence_or_residual_rejected() -> N
         "bull_view",
         "bear_view",
         "evidence_event_urls",
-        "investigator",
+        "evidence_debate",
         "decision_maker",
     ],
 )

@@ -14,31 +14,23 @@ PULSE_AGENT_RUNTIME_VERSION = "pulse-decision-runtime-v1"
 PULSE_AGENT_STRATEGY = "signal_pulse_decision"
 PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-eval-v3"
 PULSE_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
+PULSE_EVIDENCE_PACKET_SCHEMA_VERSION = "pulse-evidence-packet-v1"
 PULSE_FAILURE_TAXONOMY_CODES = (
-    "unknown_evidence_id",
-    "schema_validation_failed",
-    "tool_budget_exceeded",
+    "invalid_schema",
+    "invalid_unknown_evidence_ref",
+    "invalid_unsupported_claim",
     "timeout",
     "provider_rate_limited",
     "provider_unavailable",
-    "stale_running_timeout",
     "unexpected_exception",
 )
 
-_DEFAULT_STAGE_NAMES = ("investigator", "decision_maker")
-_DEFAULT_MAX_TURNS_PER_STAGE = {"investigator": 5, "decision_maker": 3}
-_DEFAULT_TOOL_NAMES_BY_STAGE = {
-    "investigator": (
-        "get_target_recent_tweets",
-        "get_target_price_action",
-        "get_official_token_profile",
-    ),
-    "decision_maker": ("get_target_recent_tweets",),
-}
-_DEFAULT_ROUTE_TOOL_BUDGETS = {"cex": 3, "meme": 5, "research_only": 3}
+_DEFAULT_STAGE_NAMES = ("evidence_debate", "decision_maker")
+_DEFAULT_MAX_TURNS_PER_STAGE = {"evidence_debate": 3, "decision_maker": 3}
+_DEFAULT_TOOL_NAMES_BY_STAGE = {"evidence_debate": (), "decision_maker": ()}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
-    "runtime_evidence_id_subset",
+    "runtime_evidence_ref_subset",
     "deterministic_completeness_gate",
 )
 
@@ -52,10 +44,10 @@ def build_pulse_runtime_manifest(
     stage_names: tuple[str, ...] | list[str] | None = None,
     max_turns_per_stage: dict[str, Any] | None = None,
     tool_names_by_stage: dict[str, Any] | None = None,
-    route_tool_budgets: dict[str, Any] | None = None,
     safety_net_enabled: bool = False,
     validators_enabled: tuple[str, ...] | list[str] | None = None,
     failure_taxonomy_version: str = PULSE_FAILURE_TAXONOMY_VERSION,
+    evidence_packet_schema_version: str = PULSE_EVIDENCE_PACKET_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     stages = _stable_strings(stage_names) or list(_DEFAULT_STAGE_NAMES)
     return {
@@ -71,7 +63,6 @@ def build_pulse_runtime_manifest(
                 keys=stages,
             ),
             "tool_names_by_stage": _tool_names_by_stage(tool_names_by_stage, stages=stages),
-            "route_tool_budgets": _int_mapping(route_tool_budgets, default=_DEFAULT_ROUTE_TOOL_BUDGETS),
             "safety_net_enabled": bool(safety_net_enabled),
             "timeout_seconds": float(timeout_seconds),
         },
@@ -92,6 +83,9 @@ def build_pulse_runtime_manifest(
                 "abstain",
             ],
             "validators_enabled": _stable_strings(validators_enabled) or list(_DEFAULT_VALIDATORS_ENABLED),
+            "evidence_packet_schema_version": str(
+                evidence_packet_schema_version or PULSE_EVIDENCE_PACKET_SCHEMA_VERSION
+            ),
         },
         "gate_policy": {
             "gate_version": PULSE_GATE_VERSION,

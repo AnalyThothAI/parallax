@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import EvidenceDebateMemo, FinalDecision
+    from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimEvidenceVerificationResult:
+    valid: bool
+    unknown_ref_ids: tuple[str, ...]
+    unsupported_claims: tuple[str, ...]
+    missing_required_ref_claims: tuple[str, ...]
+    decision_status: str
+    display_status_if_failed: str | None
+
+    def to_json(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+class ClaimEvidenceVerifier:
+    def verify(
+        self,
+        packet: PulseEvidencePacket | Any,
+        debate_memo: EvidenceDebateMemo | Any,
+        final_decision: FinalDecision | Any,
+    ) -> ClaimEvidenceVerificationResult:
+        allowed = _allowed_ref_ids(packet)
+        unknown: list[str] = []
+        unsupported: list[str] = []
+        missing: list[str] = []
+
+        for group_name in ("bull_claims", "bear_claims", "rebuttal_claims", "data_gap_claims"):
+            for claim in _sequence(getattr(debate_memo, group_name, ())):
+                refs = _string_tuple(getattr(claim, "evidence_refs", ()))
+                if not refs and group_name != "data_gap_claims":
+                    missing.append(f"{group_name}.evidence_refs")
+                for ref_id in refs:
+                    if ref_id in allowed:
+                        continue
+                    if group_name == "data_gap_claims" and ref_id.startswith("missing:"):
+                        continue
+                    unknown.append(ref_id)
+
+        recommendation = str(getattr(final_decision, "recommendation", "") or "")
+        supporting_refs = _string_tuple(getattr(final_decision, "supporting_evidence_refs", ()))
+        risk_refs = _string_tuple(getattr(final_decision, "risk_evidence_refs", ()))
+        data_gap_refs = _string_tuple(getattr(final_decision, "data_gap_refs", ()))
+        final_refs = (*supporting_refs, *risk_refs, *data_gap_refs)
+        unknown.extend(ref_id for ref_id in final_refs if ref_id not in allowed)
+
+        evidence_event_ids = _string_tuple(getattr(final_decision, "evidence_event_ids", ()))
+        if recommendation != "abstain" and not supporting_refs:
+            missing.append("final_decision.supporting_evidence_refs")
+            if evidence_event_ids:
+                unsupported.append("event_id_only_final_decision")
+        if recommendation != "abstain" and evidence_event_ids and not supporting_refs:
+            unsupported.append("evidence_event_ids_cannot_substitute_for_refs")
+
+        unknown_tuple = tuple(dict.fromkeys(unknown))
+        unsupported_tuple = tuple(dict.fromkeys(unsupported))
+        missing_tuple = tuple(dict.fromkeys(missing))
+        valid = not unknown_tuple and not unsupported_tuple and not missing_tuple
+        return ClaimEvidenceVerificationResult(
+            valid=valid,
+            unknown_ref_ids=unknown_tuple,
+            unsupported_claims=unsupported_tuple,
+            missing_required_ref_claims=missing_tuple,
+            decision_status=_decision_status(recommendation, valid=valid),
+            display_status_if_failed=None if valid else "hidden_invalid_output",
+        )
+
+
+def verify_claim_evidence(
+    *,
+    packet: PulseEvidencePacket | Any,
+    debate_memo: EvidenceDebateMemo | Any,
+    final_decision: FinalDecision | Any,
+) -> ClaimEvidenceVerificationResult:
+    return ClaimEvidenceVerifier().verify(packet, debate_memo, final_decision)
+
+
+def _allowed_ref_ids(packet: Any) -> set[str]:
+    refs = _sequence(getattr(packet, "allowed_evidence_refs", ()))
+    allowed: set[str] = set()
+    for ref in refs:
+        ref_id = ref.get("ref_id") if isinstance(ref, dict) else getattr(ref, "ref_id", None)
+        if ref_id:
+            allowed.add(str(ref_id))
+    return allowed
+
+
+def _decision_status(recommendation: str, *, valid: bool) -> str:
+    if not valid:
+        return "invalid"
+    if recommendation in {"high_conviction", "trade_candidate"}:
+        return "trade_candidate"
+    if recommendation in {"watchlist", "token_watch", "watch"}:
+        return "token_watch"
+    if recommendation == "ignore":
+        return "risk_rejected_high_info"
+    return "abstain"
+
+
+def _sequence(value: Any) -> tuple[Any, ...]:
+    if isinstance(value, list | tuple | set):
+        return tuple(value)
+    return tuple()
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    return tuple(str(item).strip() for item in _sequence(value) if str(item or "").strip())
+
+
+__all__ = ["ClaimEvidenceVerificationResult", "ClaimEvidenceVerifier", "verify_claim_evidence"]

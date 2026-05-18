@@ -254,19 +254,17 @@ def _repair_instruction(error_text: str, *, output_type: type[BaseModel] | None)
         str(error_text or "")[:500],
         "Return JSON that matches the schema exactly.",
         "Output raw JSON only - no markdown fences, no <think> tags.",
-        "Do not invent event ids. Copy supporting_event_ids/evidence_event_ids only from "
-        "allowed_event_ids in the user payload or from tool result contributed_event_ids.",
+        "Do not invent evidence refs. Copy supporting_evidence_refs, risk_evidence_refs, "
+        "data_gap_refs, and evidence_event_ids only from the sealed evidence packet.",
         "Do not use trading execution language; describe observable facts, invalidation "
         "conditions, and residual risks only.",
     ]
-    if output_name == "InvestigationReport":
+    if output_name == "EvidenceDebateMemo":
         lines.extend(
             [
-                "For any non-absent bull_observation or bear_observation, include at least "
-                "one copied supporting_event_id.",
-                "If you cannot cite a legal event id, set that view strength to absent with "
-                "empty thesis_zh and empty supporting_event_ids.",
-                "Keep narrative_observation_zh between 30 and 300 Chinese characters.",
+                "Every non-gap claim must include at least one copied evidence_refs value.",
+                "allowed_evidence_ref_ids must be a subset of allowed_evidence_refs[].ref_id.",
+                "If a fact is missing from the packet, represent it as a data_gap_claim.",
             ]
         )
     elif output_name == "FinalDecision":
@@ -274,8 +272,8 @@ def _repair_instruction(error_text: str, *, output_type: type[BaseModel] | None)
             [
                 "If recommendation=abstain, abstain_reason must be non-empty and "
                 "playbook.has_playbook=false with empty watch_signals and exit_triggers.",
-                "If a non-abstain recommendation cannot cite a legal evidence_event_id, "
-                "Downgrade to abstain and explain the missing evidence in abstain_reason.",
+                "If a non-abstain recommendation cannot cite legal supporting_evidence_refs, "
+                "downgrade to abstain and explain the missing evidence in abstain_reason.",
                 "For high_conviction, require bull and bear strengths at least moderate plus "
                 "at least three legal evidence_event_ids; otherwise downgrade.",
             ]

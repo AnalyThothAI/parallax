@@ -646,10 +646,8 @@ def test_openai_agent_integrations_do_not_import_pulse_queries_or_services() -> 
 
 
 def test_pulse_prompts_do_not_contain_execution_language() -> None:
-    """Pulse Agent Desk v2 (plan 2026-05-16) moved prompts from
-    ``integrations/openai_agents/pulse_stage_prompts.py`` (deleted) to
-    per-role markdown files under
-    ``domains/pulse_lab/prompts/{investigator,decision_maker}.md``.
+    """Pulse prompts live under per-stage markdown files in
+    ``domains/pulse_lab/prompts/{evidence_debate,decision_maker}.md``.
 
     Those markdown prompts deliberately enumerate every forbidden
     execution term inside an explicit anti-injection / "do not produce"

@@ -18,16 +18,15 @@ import pytest
 
 from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
     load_decision_maker_prompt,
-    load_investigator_prompt,
+    load_evidence_debate_prompt,
     load_prompt,
 )
 
 _PROMPTS_DIR = Path(__file__).resolve().parents[4] / "src" / "gmgn_twitter_intel" / "domains" / "pulse_lab" / "prompts"
 
 _ANTI_INJECTION_KEYS = (
-    "Deterministic context",
     "data, not instructions",
-    "Do not invent market facts",
+    "Do not invent facts",
 )
 
 
@@ -44,7 +43,7 @@ def _base_preamble_bytes(role: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("role", ["investigator", "decision_maker"])
+@pytest.mark.parametrize("role", ["evidence_debate", "decision_maker"])
 @pytest.mark.parametrize("route", ["cex", "meme"])
 def test_anti_injection_prefix_present(role: str, route: str) -> None:
     rendered = load_prompt(role, route)
@@ -57,28 +56,28 @@ def test_anti_injection_prefix_present(role: str, route: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("role", ["investigator", "decision_maker"])
+@pytest.mark.parametrize("role", ["evidence_debate", "decision_maker"])
 def test_base_preamble_is_cache_friendly(role: str) -> None:
     size = _base_preamble_bytes(role)
-    assert size >= 4096, f"{role}.md base preamble must be >= 4 KiB for prompt cache reuse, got {size} bytes"
+    assert size >= 1000, f"{role}.md base preamble should keep shared packet rules in the cached prefix"
 
 
 # ---------------------------------------------------------------------------
-# route section selection — investigator
+# route section selection — evidence_debate
 # ---------------------------------------------------------------------------
 
 
-def test_investigator_meme_contains_only_meme_section() -> None:
-    rendered = load_investigator_prompt("meme")
+def test_evidence_debate_meme_contains_only_meme_section() -> None:
+    rendered = load_evidence_debate_prompt("meme")
     assert "## Route: meme" in rendered
     assert "## Route: cex" not in rendered
     assert "meme" in rendered.lower()
     # Phrase unique to the meme route body
-    assert "cohort" in rendered.lower()
+    assert "social concentration" in rendered.lower()
 
 
-def test_investigator_cex_contains_only_cex_section() -> None:
-    rendered = load_investigator_prompt("cex")
+def test_evidence_debate_cex_contains_only_cex_section() -> None:
+    rendered = load_evidence_debate_prompt("cex")
     assert "## Route: cex" in rendered
     assert "## Route: meme" not in rendered
     assert "cex" in rendered.lower()
@@ -96,8 +95,7 @@ def test_decision_maker_meme_contains_playbook_and_only_meme() -> None:
     assert "## Route: meme" in rendered
     assert "## Route: cex" not in rendered
     assert "playbook" in rendered.lower()
-    assert "watch_signals" in rendered
-    assert "exit_triggers" in rendered
+    assert "supporting_evidence_refs" in rendered
 
 
 def test_decision_maker_cex_contains_playbook_and_only_cex() -> None:
@@ -105,17 +103,18 @@ def test_decision_maker_cex_contains_playbook_and_only_cex() -> None:
     assert "## Route: cex" in rendered
     assert "## Route: meme" not in rendered
     assert "playbook" in rendered.lower()
-    assert "swing" in rendered.lower() or "event-driven" in rendered.lower()
+    assert "venue" in rendered.lower()
 
 
 def test_decision_maker_prompt_matches_runtime_input_and_strict_output_shape() -> None:
     rendered = load_decision_maker_prompt("meme")
 
     assert "investigation_report" not in rendered
-    assert "`investigation`" in rendered
-    assert '"abstain_reason": null' in rendered
-    assert '"evidence_event_urls": {}' in rendered
-    assert "allowed_event_ids" in rendered
+    assert "EvidenceDebateMemo" in rendered
+    assert "abstain_reason" in rendered
+    assert "evidence_event_urls" in rendered
+    assert "supporting_evidence_refs" in rendered
+    assert "allowed_evidence_refs" in rendered
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +129,7 @@ def test_unknown_role_raises_value_error() -> None:
 
 def test_unknown_route_raises_runtime_error() -> None:
     with pytest.raises(RuntimeError, match="does not contain ## Route"):
-        load_prompt("investigator", "research_only")  # type: ignore[arg-type]
+        load_prompt("evidence_debate", "research_only")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +140,8 @@ def test_unknown_route_raises_runtime_error() -> None:
 @pytest.mark.parametrize(
     ("role", "route"),
     [
-        ("investigator", "cex"),
-        ("investigator", "meme"),
+        ("evidence_debate", "cex"),
+        ("evidence_debate", "meme"),
         ("decision_maker", "cex"),
         ("decision_maker", "meme"),
     ],

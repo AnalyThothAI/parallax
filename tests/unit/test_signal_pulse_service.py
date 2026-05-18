@@ -233,6 +233,10 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "window": "5m",
             "scope": "all",
             "pulse_status": "token_watch",
+            "evidence_status": "complete",
+            "decision_status": "token_watch",
+            "display_status": "display_token_watch",
+            "evidence_packet_hash": "sha256:test-packet",
             "verdict": "token_watch",
             "social_phase": "ignition",
             "candidate_score": 0.82,
@@ -253,6 +257,9 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "invalidation_conditions": ["讨论快速降温。"],
                 "residual_risks": ["价格响应仍可能变化。"],
                 "evidence_event_ids": ["event-1"],
+                "supporting_evidence_refs": ["event:event-1"],
+                "risk_evidence_refs": ["market:pf-test"],
+                "data_gap_refs": [],
                 "narrative_archetype": "",
                 "narrative_thesis_zh": "",
                 "bull_view": None,
@@ -265,6 +272,8 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "blocked_reasons": [],
                 "risk_reasons": [],
             },
+            "claim_verification": {"valid": True},
+            "evidence_gate": {"evidence_status": "complete"},
             "fact_card": {
                 "rank_score": 82,
                 "recommended_decision": "high_alert",
@@ -366,6 +375,12 @@ def _candidate_row(
         "window": "5m",
         "scope": "all",
         "pulse_status": pulse_status,
+        "evidence_status": "complete" if pulse_status != "blocked_low_information" else "insufficient",
+        "decision_status": "token_watch" if pulse_status != "blocked_low_information" else "abstain",
+        "display_status": "display_token_watch"
+        if pulse_status != "blocked_low_information"
+        else "hidden_blocked_low_information",
+        "evidence_packet_hash": "sha256:test-packet" if pulse_status != "blocked_low_information" else None,
         "verdict": verdict,
         "social_phase": "ignition",
         "candidate_score": 0.82,
@@ -396,7 +411,12 @@ def _candidate_row(
             "invalidation_conditions": ["讨论快速降温。"],
             "residual_risks": ["价格响应仍可能变化。"],
             "evidence_event_ids": ["event-1"],
+            "supporting_evidence_refs": ["event:event-1"],
+            "risk_evidence_refs": ["market:pf-test"],
+            "data_gap_refs": [],
         },
+        "claim_verification_json": {"valid": True},
+        "evidence_gate_json": {"evidence_status": "complete"},
         "gate_json": {
             "pulse_status": pulse_status,
             "candidate_score": 82.0,
@@ -451,7 +471,7 @@ def test_candidate_includes_stages_from_run_steps() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "investigator",
+            "stage": "evidence_debate",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -478,10 +498,10 @@ def test_candidate_includes_stages_from_run_steps() -> None:
 
     assert item is not None
     stages = item["stages"]
-    assert stages["investigator"]["response"]["confidence"] == 0.82
-    assert stages["investigator"]["latency_ms"] == 100
+    assert stages["evidence_debate"]["response"]["confidence"] == 0.82
+    assert stages["evidence_debate"]["latency_ms"] == 100
     assert stages["decision_maker"]["response"]["confidence"] == 0.35
-    assert stages.get("research_only_gate") is None
+    assert stages.get("evidence_completeness_gate") is None
 
 
 def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
@@ -494,7 +514,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "investigator",
+            "stage": "evidence_debate",
             "route": "meme",
             "status": "failed",
             "model": "qwen3.6",
@@ -505,7 +525,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
             "response_json": None,
         },
         {
-            "stage": "investigator",
+            "stage": "evidence_debate",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -520,8 +540,8 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
     item = _service(pulse).candidate(candidate_id="pulse-2")
 
     assert item is not None
-    assert item["stages"]["investigator"]["status"] == "ok"
-    assert item["stages"]["investigator"]["response"]["confidence"] == 0.7
+    assert item["stages"]["evidence_debate"]["status"] == "ok"
+    assert item["stages"]["evidence_debate"]["response"]["confidence"] == 0.7
 
 
 def test_candidate_stages_absent_when_no_run() -> None:
@@ -538,13 +558,18 @@ def test_candidate_stages_absent_when_no_run() -> None:
 
     assert item is not None
     assert item["stages"] == {
-        "investigator": None,
+        "evidence_pack": None,
+        "evidence_completeness_gate": None,
+        "evidence_debate": None,
+        "claim_verifier": None,
         "decision_maker": None,
-        "research_only_gate": None,
+        "recommendation_clipper": None,
+        "deterministic_eval": None,
+        "write_gate": None,
     }
 
 
-def test_candidate_stages_only_expose_v2_public_contract() -> None:
+def test_candidate_stages_only_expose_evidence_first_public_contract() -> None:
     pulse = FakePulseReadRepository()
     pulse.candidate_rows["pulse-1"] = _candidate_row(
         "pulse-1",
@@ -565,7 +590,7 @@ def test_candidate_stages_only_expose_v2_public_contract() -> None:
             "response_json": {"summary_zh": "legacy"},
         },
         {
-            "stage": "investigator",
+            "stage": "evidence_debate",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -580,8 +605,17 @@ def test_candidate_stages_only_expose_v2_public_contract() -> None:
     item = _service(pulse).candidate(candidate_id="pulse-1")
 
     assert item is not None
-    assert set(item["stages"]) == {"investigator", "decision_maker", "research_only_gate"}
-    assert item["stages"]["investigator"]["response"]["summary_zh"] == "v2"
+    assert set(item["stages"]) == {
+        "evidence_pack",
+        "evidence_completeness_gate",
+        "evidence_debate",
+        "claim_verifier",
+        "decision_maker",
+        "recommendation_clipper",
+        "deterministic_eval",
+        "write_gate",
+    }
+    assert item["stages"]["evidence_debate"]["response"]["summary_zh"] == "v2"
 
 
 def test_default_listing_hides_abstain_decisions() -> None:
@@ -593,6 +627,8 @@ def test_default_listing_hides_abstain_decisions() -> None:
     )
     row["decision_recommendation"] = "abstain"
     row["decision_abstain_reason"] = "missing_decision_latest"
+    row["decision_status"] = "abstain"
+    row["display_status"] = "hidden_abstain"
     row["decision_json"] = {
         "route": "meme",
         "recommendation": "abstain",

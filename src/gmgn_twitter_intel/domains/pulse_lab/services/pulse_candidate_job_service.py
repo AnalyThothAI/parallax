@@ -28,29 +28,39 @@ from gmgn_twitter_intel.domains.pulse_lab.services.agent_eval import (
     build_pulse_failed_eval_case,
     grade_pulse_deterministic_eval_case,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import route_decision_context
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import (
     PULSE_AGENT_STRATEGY,
     PULSE_FAILURE_TAXONOMY_VERSION,
     build_pulse_runtime_manifest,
     pulse_runtime_hash,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
 from gmgn_twitter_intel.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
+from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
+    EvidenceCompletenessGate,
+    EvidenceCompletenessGateResult,
+)
+from gmgn_twitter_intel.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
 from gmgn_twitter_intel.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
 from gmgn_twitter_intel.domains.pulse_lab.services.write_gate import PulseWriteGate
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     DecisionRoute,
+    EvidenceDebateMemo,
     FinalDecision,
     PulseStageFailure,
     StageRunAudit,
     TradePlaybook,
 )
+from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_state import run_outcome_from_failure
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 
@@ -81,6 +91,8 @@ class PulseCandidateJobService:
         completeness_json: dict[str, Any] = {}
         runtime_hash = ""
         run_started = False
+        evidence_packet: PulseEvidencePacket | None = None
+        evidence_gate: EvidenceCompletenessGateResult | None = None
         try:
             run_id = _prefixed_id(
                 "pulse-run",
@@ -95,17 +107,7 @@ class PulseCandidateJobService:
                 thresholds=self.gate_thresholds,
             )
             context = _context_with_gate(context, gate)
-            agent_context = context.agent_context()
-            route = route_decision_context(agent_context)
-            completeness = compute_completeness(context.factor_snapshot, route=route)
-            completeness_json = {
-                "route": completeness.route,
-                "score": completeness.score,
-                "hard_blocked": completeness.hard_blocked,
-                "missing_fields": list(completeness.missing_fields),
-                "stale_fields": list(completeness.stale_fields),
-                "blockers": list(completeness.blockers),
-            }
+            route = route_decision_context(context.agent_context())
             provider = getattr(self.decision_client, "provider", "openai")
             model = getattr(self.decision_client, "model", "")
             artifact_version_hash = _artifact_hash(self.decision_client)
@@ -117,15 +119,29 @@ class PulseCandidateJobService:
                 **_runtime_contract_from_client(self.decision_client),
             )
             runtime_hash = pulse_runtime_hash(runtime_manifest)
-            audit = self.decision_client.request_audit(
-                context=agent_context,
-                run_id=run_id,
-                job=job,
-                route=route,
-                completeness=completeness_json,
-                runtime_manifest=runtime_manifest,
-            )
+            pre_stage_audits: tuple[StageRunAudit, ...]
             with self._repository_session() as repos, _transaction(repos.conn):
+                evidence_packet = PulseEvidenceBuilder(repos.pulse_evidence_sources).build(
+                    context,
+                    run_id=run_id,
+                    now_ms=now_ms,
+                )
+                evidence_gate = EvidenceCompletenessGate().evaluate(evidence_packet)
+                completeness_json = {**evidence_gate.to_json(), "route": route}
+                agent_context = {
+                    **context.agent_context(),
+                    "evidence_packet": evidence_packet.model_dump(mode="json"),
+                    "evidence_packet_hash": evidence_packet.evidence_packet_hash,
+                    "evidence_gate": completeness_json,
+                }
+                audit = self.decision_client.request_audit(
+                    context=agent_context,
+                    run_id=run_id,
+                    job=job,
+                    route=route,
+                    completeness=completeness_json,
+                    runtime_manifest=runtime_manifest,
+                )
                 repos.pulse_agent_eval.upsert_agent_runtime_version(
                     runtime_version=str(runtime_manifest["runtime_version"]),
                     runtime_hash=runtime_hash,
@@ -166,33 +182,61 @@ class PulseCandidateJobService:
                     started_at_ms=now_ms,
                     commit=False,
                 )
-            run_started = True
-            if completeness.hard_blocked:
-                gate_step_started_at_ms = _now_ms()
-                final_decision = _abstain_decision(
-                    route=route,
-                    reason=(completeness.blockers[0] if completeness.blockers else "data_completeness_blocked"),
-                    summary_zh="数据完整度不足，未进入资产决策。",
-                    residual_risks=list(completeness.blockers),
-                )
-                gate_step_finished_at_ms = _now_ms()
-                stage_audits: tuple[StageRunAudit, ...] = (
-                    StageRunAudit(
-                        stage="research_only_gate",
+                repos.pulse_evidence.upsert_packet(evidence_packet, commit=False)
+                pre_stage_audits = (
+                    _deterministic_stage_audit(
+                        stage="evidence_pack",
                         route=route,
-                        attempt_index=0,
-                        input_json={"context": agent_context, "completeness": completeness_json},
-                        prompt_text="deterministic completeness gate",
-                        response_json=final_decision.model_dump(mode="json"),
+                        input_json={"candidate_id": context.candidate_id, "source_event_ids": context.source_event_ids},
+                        response_json=evidence_packet.model_dump(mode="json"),
                         trace_metadata_json=audit.get("trace_metadata") or {},
-                        usage_json={},
-                        latency_ms=max(0, gate_step_finished_at_ms - gate_step_started_at_ms),
-                        started_at_ms=gate_step_started_at_ms,
-                        finished_at_ms=gate_step_finished_at_ms,
-                        status="skipped",
-                        error=None,
+                        started_at_ms=now_ms,
+                        finished_at_ms=now_ms,
+                    ),
+                    _deterministic_stage_audit(
+                        stage="evidence_completeness_gate",
+                        route=route,
+                        input_json={"evidence_packet_hash": evidence_packet.evidence_packet_hash},
+                        response_json=completeness_json,
+                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        started_at_ms=now_ms,
+                        finished_at_ms=now_ms,
                     ),
                 )
+                for stage_audit in pre_stage_audits:
+                    repos.pulse_runs.insert_agent_run_step(
+                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
+                        run_id=run_id,
+                        stage=stage_audit.stage,
+                        route=stage_audit.route,
+                        attempt_index=stage_audit.attempt_index,
+                        provider=provider,
+                        model=model,
+                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
+                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                        input_json=stage_audit.input_json,
+                        prompt_text=stage_audit.prompt_text,
+                        response_json=stage_audit.response_json,
+                        trace_metadata_json=stage_audit.trace_metadata_json,
+                        usage_json=stage_audit.usage_json,
+                        latency_ms=stage_audit.latency_ms,
+                        status=stage_audit.status,
+                        error=stage_audit.error,
+                        started_at_ms=stage_audit.started_at_ms,
+                        finished_at_ms=stage_audit.finished_at_ms,
+                        created_at_ms=now_ms,
+                        commit=False,
+                    )
+            run_started = True
+            if evidence_gate.hard_blocked:
+                final_decision = _abstain_decision(
+                    route=route,
+                    reason=evidence_gate.blocked_reason or "evidence_completeness_blocked",
+                    summary_zh="数据完整度不足，未进入资产决策。",
+                    residual_risks=list(evidence_gate.missing_ref_types),
+                    data_gap_refs=_packet_gate_refs(evidence_packet),
+                )
+                stage_audits = pre_stage_audits
                 result_audit = audit
             else:
                 timeout_seconds = max(0.1, float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0))
@@ -211,18 +255,42 @@ class PulseCandidateJobService:
                 except TimeoutError as exc:
                     raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
                 final_decision = result.final_decision
-                stage_audits = result.stage_audits
+                stage_audits = (*pre_stage_audits, *result.stage_audits)
                 result_audit = result.agent_run_audit or audit
-            final_decision = clip_recommendation(final_decision, gate=gate)
+            debate_memo = _debate_memo_from_stage_audits(stage_audits)
+            claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, debate_memo, final_decision)
+            final_decision = clip_recommendation(final_decision, gate=gate, evidence_gate=evidence_gate)
             finished_at_ms = _now_ms()
+            claim_stage = _deterministic_stage_audit(
+                stage="claim_verifier",
+                route=route,
+                input_json={"evidence_packet_hash": evidence_packet.evidence_packet_hash},
+                response_json=claim_verification.to_json(),
+                trace_metadata_json=audit.get("trace_metadata") or {},
+                started_at_ms=finished_at_ms,
+                finished_at_ms=finished_at_ms,
+            )
+            clip_stage = _deterministic_stage_audit(
+                stage="recommendation_clipper",
+                route=route,
+                input_json={"evidence_status": evidence_gate.evidence_status},
+                response_json=final_decision.model_dump(mode="json"),
+                trace_metadata_json=audit.get("trace_metadata") or {},
+                started_at_ms=finished_at_ms,
+                finished_at_ms=finished_at_ms,
+            )
+            stage_audits = (*stage_audits, claim_stage, clip_stage)
             decision_fields = candidate_fields_from_decision(final_decision, stage_count=len(stage_audits))
             decision_fields.pop("score_band", None)
-            outcome = _run_outcome(final_decision, completeness_blocked=completeness.hard_blocked)
-            investigation_tool_calls_count = _investigation_tool_calls_count(stage_audits)
+            outcome = _run_outcome(
+                final_decision,
+                evidence_gate=evidence_gate,
+                claim_verification_valid=claim_verification.valid,
+                claim_verification=claim_verification,
+            )
             run_usage_json = dict(result_audit.get("usage") or _aggregate_stage_usage(stage_audits))
-            run_usage_json["investigation_tool_calls_count"] = investigation_tool_calls_count
             with self._repository_session() as repos, _transaction(repos.conn):
-                for stage_audit in stage_audits:
+                for stage_audit in stage_audits[len(pre_stage_audits) :]:
                     repos.pulse_runs.insert_agent_run_step(
                         step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
                         run_id=run_id,
@@ -249,18 +317,6 @@ class PulseCandidateJobService:
                         parse_mode=stage_audit.parse_mode,
                         commit=False,
                     )
-                repos.pulse_runs.finish_agent_run(
-                    run_id,
-                    "done",
-                    response_json=final_decision.model_dump(mode="json"),
-                    output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
-                    usage_json=run_usage_json,
-                    outcome=outcome,
-                    decision_route=route,
-                    decision_stage_count=len(stage_audits),
-                    finished_at_ms=finished_at_ms,
-                    commit=False,
-                )
                 eval_case = build_pulse_deterministic_eval_case(
                     run_id=run_id,
                     runtime_hash=runtime_hash,
@@ -277,10 +333,19 @@ class PulseCandidateJobService:
                     commit=False,
                 )
                 eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
+                health_status = PulseFreshnessHealthService(repos.conn).health(
+                    window=context.window,
+                    scope=context.scope,
+                    now_ms=finished_at_ms,
+                    since_hours=4,
+                )
                 write_gate_decision = PulseWriteGate().evaluate(
                     final_decision=final_decision,
                     eval_result=eval_result,
                     gate=gate,
+                    evidence_gate=evidence_gate,
+                    claim_verification=claim_verification,
+                    health_status=health_status,
                 )
                 eval_result = _eval_result_with_write_gate(eval_result, write_gate_decision.to_json())
                 repos.pulse_agent_eval.upsert_agent_eval_result(
@@ -288,7 +353,70 @@ class PulseCandidateJobService:
                     created_at_ms=finished_at_ms,
                     commit=False,
                 )
-                if write_gate_decision.public_write_allowed:
+                for stage_audit in (
+                    _deterministic_stage_audit(
+                        stage="deterministic_eval",
+                        route=route,
+                        input_json={"eval_case_id": stored_eval_case.get("eval_case_id")},
+                        response_json=eval_result,
+                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        started_at_ms=finished_at_ms,
+                        finished_at_ms=finished_at_ms,
+                    ),
+                    _deterministic_stage_audit(
+                        stage="write_gate",
+                        route=route,
+                        input_json={
+                            "eval_result_id": eval_result.get("eval_result_id"),
+                            "publish_status": health_status.get("publish_status"),
+                        },
+                        response_json=write_gate_decision.to_json(),
+                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        started_at_ms=finished_at_ms,
+                        finished_at_ms=finished_at_ms,
+                    ),
+                ):
+                    repos.pulse_runs.insert_agent_run_step(
+                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
+                        run_id=run_id,
+                        stage=stage_audit.stage,
+                        route=stage_audit.route,
+                        attempt_index=stage_audit.attempt_index,
+                        provider=getattr(self.decision_client, "provider", "openai"),
+                        model=getattr(self.decision_client, "model", ""),
+                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
+                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                        input_json=stage_audit.input_json,
+                        prompt_text=stage_audit.prompt_text,
+                        response_json=stage_audit.response_json,
+                        trace_metadata_json=stage_audit.trace_metadata_json,
+                        usage_json=stage_audit.usage_json,
+                        latency_ms=stage_audit.latency_ms,
+                        status=stage_audit.status,
+                        error=stage_audit.error,
+                        started_at_ms=stage_audit.started_at_ms,
+                        finished_at_ms=stage_audit.finished_at_ms,
+                        created_at_ms=finished_at_ms,
+                        commit=False,
+                    )
+                    stage_audits = (*stage_audits, stage_audit)
+                repos.pulse_runs.finish_agent_run(
+                    run_id,
+                    "done",
+                    response_json=final_decision.model_dump(mode="json"),
+                    output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
+                    usage_json=run_usage_json,
+                    outcome=outcome,
+                    decision_route=route,
+                    decision_stage_count=len(stage_audits),
+                    evidence_packet_id=evidence_packet.evidence_packet_id,
+                    evidence_packet_hash=evidence_packet.evidence_packet_hash,
+                    evidence_status=evidence_gate.evidence_status,
+                    display_status=write_gate_decision.display_status,
+                    finished_at_ms=finished_at_ms,
+                    commit=False,
+                )
+                if write_gate_decision.write_allowed:
                     repos.pulse_candidates.upsert_candidate(
                         candidate_id=context.candidate_id,
                         candidate_type=context.candidate_type,
@@ -314,6 +442,12 @@ class PulseCandidateJobService:
                         source_event_ids_json=context.source_event_ids,
                         last_edge_events_json=list(context.edge_events),
                         agent_run_id=run_id,
+                        evidence_packet_hash=evidence_packet.evidence_packet_hash,
+                        evidence_status=evidence_gate.evidence_status,
+                        decision_status=write_gate_decision.decision_status,
+                        display_status=write_gate_decision.display_status,
+                        claim_verification_json=claim_verification.to_json(),
+                        evidence_gate_json=completeness_json,
                         pulse_version=PULSE_VERSION,
                         gate_version=PULSE_GATE_VERSION,
                         prompt_version=PULSE_DECISION_PROMPT_VERSION,
@@ -380,7 +514,7 @@ class PulseCandidateJobService:
                         run_id,
                         "failed",
                         error=compact_error,
-                        outcome="failed",
+                        outcome=run_outcome_from_failure(failure_reason),
                         trace_metadata_json_patch={"failure_reason": failure_reason},
                         finished_at_ms=failed_at_ms,
                         commit=False,
@@ -430,6 +564,8 @@ def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
         contract = contract()
     if not isinstance(contract, PulseAgentRuntimeContract):
         contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
+    if tuple(contract.stage_names) != ("evidence_debate", "decision_maker"):
+        contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
     kwargs = contract.manifest_kwargs()
     if not kwargs.get("failure_taxonomy_version"):
         kwargs["failure_taxonomy_version"] = PULSE_FAILURE_TAXONOMY_VERSION
@@ -440,6 +576,55 @@ def _eval_result_with_write_gate(eval_result: dict[str, Any], write_gate: dict[s
     details = dict(eval_result.get("details_json") or {})
     details["write_gate"] = write_gate
     return {**eval_result, "details_json": details}
+
+
+def _deterministic_stage_audit(
+    *,
+    stage: str,
+    route: DecisionRoute,
+    input_json: dict[str, Any],
+    response_json: dict[str, Any],
+    trace_metadata_json: dict[str, Any],
+    started_at_ms: int,
+    finished_at_ms: int,
+) -> StageRunAudit:
+    return StageRunAudit(
+        stage=cast(Any, stage),
+        route=route,
+        attempt_index=0,
+        input_json=input_json,
+        prompt_text=f"deterministic {stage}",
+        response_json=response_json,
+        trace_metadata_json=trace_metadata_json,
+        usage_json={},
+        latency_ms=max(0, int(finished_at_ms) - int(started_at_ms)),
+        started_at_ms=int(started_at_ms),
+        finished_at_ms=int(finished_at_ms),
+        status="ok",
+        error=None,
+    )
+
+
+def _debate_memo_from_stage_audits(stage_audits: tuple[StageRunAudit, ...]) -> EvidenceDebateMemo:
+    for stage_audit in stage_audits:
+        if stage_audit.stage == "evidence_debate" and stage_audit.response_json:
+            return EvidenceDebateMemo.model_validate(stage_audit.response_json)
+    return EvidenceDebateMemo(
+        bull_claims=(),
+        bear_claims=(),
+        rebuttal_claims=(),
+        data_gap_claims=(),
+        summary_zh="证据门未允许进入 LLM 综合，本次只保留确定性证据缺口。",
+        allowed_evidence_ref_ids=(),
+    )
+
+
+def _packet_gate_refs(packet: PulseEvidencePacket) -> list[str]:
+    return [
+        ref.ref_id
+        for ref in packet.allowed_evidence_refs
+        if ref.ref_type == "gate"
+    ]
 
 
 def _stage_finished_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:
@@ -467,19 +652,6 @@ def _aggregate_stage_usage(stage_audits: tuple[StageRunAudit, ...]) -> dict[str,
     return totals
 
 
-def _investigation_tool_calls_count(stage_audits: tuple[StageRunAudit, ...]) -> int:
-    if not stage_audits:
-        return 0
-    investigator = stage_audits[0]
-    if investigator.stage != "investigator":
-        return 0
-    payload = investigator.input_json if isinstance(investigator.input_json, dict) else None
-    tool_calls = payload.get("tool_calls") if payload else None
-    if isinstance(tool_calls, list):
-        return len(tool_calls)
-    return 0
-
-
 def _compact_error(exc: Exception, *, limit: int = 500) -> str:
     text = " ".join(str(exc).split())
     if len(text) <= limit:
@@ -490,19 +662,15 @@ def _compact_error(exc: Exception, *, limit: int = 500) -> str:
 def _normalized_failure_reason(exc: Exception) -> str:
     text = str(exc).lower()
     if "unknown evidence" in text or "unknown final evidence" in text or "unknown event ids" in text:
-        return "unknown_evidence_id"
+        return "invalid_unknown_evidence_ref"
     if "model_validate" in text or "validation" in text or "schema" in text:
-        return "schema_validation_failed"
-    if "budget exceeded" in text:
-        return "tool_budget_exceeded"
+        return "invalid_schema"
     if isinstance(exc, TimeoutError) or "timed out" in text:
         return "timeout"
     if "rate limit" in text or "429" in text:
         return "provider_rate_limited"
     if "provider unavailable" in text or "503" in text:
         return "provider_unavailable"
-    if "stale_running_timeout" in text:
-        return "stale_running_timeout"
     return "unexpected_exception"
 
 
@@ -555,6 +723,7 @@ def _abstain_decision(
     reason: str,
     summary_zh: str,
     residual_risks: list[str],
+    data_gap_refs: list[str] | None = None,
 ) -> FinalDecision:
     return FinalDecision(
         route=route,
@@ -577,14 +746,26 @@ def _abstain_decision(
         invalidation_conditions=[],
         residual_risks=residual_risks or [reason],
         evidence_event_ids=[],
+        data_gap_refs=tuple(data_gap_refs or []),
     )
 
 
-def _run_outcome(final_decision: FinalDecision, *, completeness_blocked: bool) -> str:
+def _run_outcome(
+    final_decision: FinalDecision,
+    *,
+    evidence_gate: EvidenceCompletenessGateResult,
+    claim_verification_valid: bool,
+    claim_verification: Any | None = None,
+) -> str:
+    if not claim_verification_valid:
+        unknown_refs = tuple(getattr(claim_verification, "unknown_ref_ids", ()) or ())
+        if unknown_refs:
+            return "invalid_unknown_evidence_ref"
+        return "invalid_unsupported_claim"
+    if evidence_gate.hard_blocked:
+        return run_outcome_from_failure(evidence_gate.blocked_reason or "insufficient_evidence")
     if final_decision.recommendation == "abstain":
-        if completeness_blocked:
-            return "abstain_insufficient_data"
-        return "abstain"
+        return "abstain_insufficient_evidence"
     return "completed"
 
 

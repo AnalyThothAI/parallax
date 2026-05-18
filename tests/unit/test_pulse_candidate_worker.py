@@ -19,14 +19,18 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     _asset_trigger_metrics,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services import pulse_candidate_job_service as job_module
+from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
+    EvidenceCompletenessGateResult,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
-    _investigation_tool_calls_count,
     _normalized_failure_reason,
     _run_outcome,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
+    EvidenceClaim,
+    EvidenceDebateMemo,
     FinalDecision,
     PulseStageFailure,
     StageRunAudit,
@@ -111,7 +115,7 @@ def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcu
     assert repos.pulse_jobs.jobs == []
 
 
-def test_critic_veto_abstain_maps_to_generic_abstain_outcome() -> None:
+def test_abstain_decision_maps_to_evidence_insufficient_outcome() -> None:
     final_decision = FinalDecision(
         route="meme",
         recommendation="abstain",
@@ -133,7 +137,21 @@ def test_critic_veto_abstain_maps_to_generic_abstain_outcome() -> None:
         evidence_event_ids=[],
     )
 
-    assert _run_outcome(final_decision, completeness_blocked=False) == "abstain"
+    gate = EvidenceCompletenessGateResult(
+        evidence_status="complete",
+        hard_blocked=False,
+        blocked_reason=None,
+        max_decision_status="trade_candidate",
+        required_ref_ids=("event:event-1",),
+        missing_ref_types=(),
+        data_gaps=(),
+        public_allowed=True,
+        display_status="display_trade_candidate",
+    )
+
+    assert _run_outcome(final_decision, evidence_gate=gate, claim_verification_valid=True) == (
+        "abstain_insufficient_evidence"
+    )
 
 
 def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> None:
@@ -449,14 +467,14 @@ def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> No
 
 
 def test_normalized_failure_reason_maps_unknown_evidence() -> None:
-    assert _normalized_failure_reason(ValueError("unknown evidence ids: event-x")) == "unknown_evidence_id"
+    assert _normalized_failure_reason(ValueError("unknown evidence ids: event-x")) == "invalid_unknown_evidence_ref"
     assert _normalized_failure_reason(ValueError("bull_view.supporting_event_ids contains unknown event ids")) == (
-        "unknown_evidence_id"
+        "invalid_unknown_evidence_ref"
     )
 
 
 def test_normalized_failure_reason_maps_schema_validation() -> None:
-    assert _normalized_failure_reason(ValueError("model_validate failed")) == "schema_validation_failed"
+    assert _normalized_failure_reason(ValueError("model_validate failed")) == "invalid_schema"
 
 
 def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure() -> None:
@@ -468,13 +486,13 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             self.run_calls += 1
             failed_audit = StageRunAudit(
-                stage="investigator",
+                stage="evidence_debate",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake investigator prompt",
+                prompt_text="fake evidence debate prompt",
                 response_json={"raw_output": "**Investigation Report:** prose only"},
-                trace_metadata_json={"stage": "investigator"},
+                trace_metadata_json={"stage": "evidence_debate"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -491,9 +509,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
 
     assert result["processed"] == 0
     assert result["failed"] == 1
-    assert len(repos.pulse_runs.agent_run_steps) == 1
-    step = repos.pulse_runs.agent_run_steps[0]
-    assert step["stage"] == "investigator"
+    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_debate")
     assert step["status"] == "failed"
     assert step["error"] == "ModelBehaviorError: invalid JSON"
     assert step["response_json"] == {"raw_output": "**Investigation Report:** prose only"}
@@ -501,20 +517,21 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
     assert step["finished_at_ms"] == NOW_MS
     assert step["usage_json"] == {"input_tokens": 11}
     failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
-    assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "schema_validation_failed"}
+    assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "invalid_schema"}
     assert len(repos.pulse_jobs.failures) == 1
-    assert repos.pulse_jobs.failures[0]["failure_reason"] == "schema_validation_failed"
+    assert repos.pulse_jobs.failures[0]["failure_reason"] == "invalid_schema"
     assert repos.pulse_agent_eval.eval_cases[0]["expected_json"] == {
         "status": "fail",
-        "failure_reason": "schema_validation_failed",
+        "failure_reason": "invalid_schema",
     }
     assert repos.pulse_agent_eval.eval_results[0]["status"] == "pass"
     candidate_id = repos.pulse_jobs.jobs[0]["candidate_id"]
     assert repos.pulse_admission.edge_states[candidate_id]["last_processed_state_json"] == {}
 
 
-def test_hard_blocked_research_only_gate_records_real_step_timing(monkeypatch) -> None:
+def test_hard_blocked_evidence_gate_does_not_call_agent() -> None:
     repos = FakeRepos()
+    repos.pulse_evidence_sources.market_facts = []
     context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
     repos.pulse_jobs.enqueue_job(
         candidate_id=context.candidate_id,
@@ -532,21 +549,6 @@ def test_hard_blocked_research_only_gate_records_real_step_timing(monkeypatch) -
         next_run_at_ms=NOW_MS,
         now_ms=NOW_MS,
     )
-    monkeypatch.setattr(job_module, "route_decision_context", lambda context: "research_only")
-    monkeypatch.setattr(
-        job_module,
-        "compute_completeness",
-        lambda factor_snapshot, route: SimpleNamespace(
-            route=route,
-            score=0.2,
-            hard_blocked=True,
-            missing_fields=("liquidity_usd",),
-            stale_fields=(),
-            blockers=("missing_liquidity",),
-        ),
-    )
-    now_values = iter([NOW_MS + 10, NOW_MS + 25, NOW_MS + 40])
-    monkeypatch.setattr(job_module, "_now_ms", lambda: next(now_values))
     client = FakeClient()
     worker = _worker(repos, client=client)
 
@@ -554,32 +556,19 @@ def test_hard_blocked_research_only_gate_records_real_step_timing(monkeypatch) -
 
     assert result["processed"] == 1
     assert client.run_calls == 0
-    step = repos.pulse_runs.agent_run_steps[0]
-    assert step["stage"] == "research_only_gate"
-    assert step["status"] == "skipped"
-    assert step["started_at_ms"] == NOW_MS + 10
-    assert step["finished_at_ms"] == NOW_MS + 25
-    assert step["started_at_ms"] != step["finished_at_ms"]
+    gate_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_completeness_gate")
+    assert gate_step["status"] == "ok"
+    assert gate_step["response_json"]["hard_blocked"] is True
+    assert gate_step["response_json"]["blocked_reason"] == "blocked_market_contract"
+    assert not any(row["stage"] == "decision_maker" for row in repos.pulse_runs.agent_run_steps)
 
 
 def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
     repos = FakeRepos()
+    repos.pulse_evidence_sources.market_facts = []
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    monkeypatch.setattr(job_module, "route_decision_context", lambda context: "research_only")
-    monkeypatch.setattr(
-        job_module,
-        "compute_completeness",
-        lambda factor_snapshot, route: SimpleNamespace(
-            route=route,
-            score=0.2,
-            hard_blocked=True,
-            missing_fields=("liquidity_usd",),
-            stale_fields=(),
-            blockers=("missing_liquidity",),
-        ),
-    )
-    now_values = iter([NOW_MS + 10, NOW_MS + 25, NOW_MS + 40])
+    now_values = iter([NOW_MS + 40])
     monkeypatch.setattr(job_module, "_now_ms", lambda: next(now_values))
     worker = _worker(repos)
 
@@ -601,13 +590,12 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     class ContractClient(FakeClient):
         runtime_contract = PulseAgentRuntimeContract(
-            stage_names=("investigator", "decision_maker"),
+            stage_names=("evidence_debate", "decision_maker"),
             tool_names_by_stage={
-                "investigator": ("custom_tool",),
+                "evidence_debate": (),
                 "decision_maker": (),
             },
-            route_tool_budgets={"cex": 1, "meme": 2, "research_only": 1},
-            max_turns_per_stage={"investigator": 4, "decision_maker": 2},
+            max_turns_per_stage={"evidence_debate": 4, "decision_maker": 2},
             safety_net_enabled=False,
             validators_enabled=("runtime_evidence_id_subset",),
             failure_taxonomy_version="pulse-failure-taxonomy-test",
@@ -620,15 +608,14 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {"investigator": ["custom_tool"], "decision_maker": []}
-    assert manifest["runtime"]["route_tool_budgets"] == {"cex": 1, "meme": 2, "research_only": 1}
-    assert manifest["runtime"]["max_turns_per_stage"] == {"investigator": 4, "decision_maker": 2}
+    assert manifest["runtime"]["tool_names_by_stage"] == {"evidence_debate": [], "decision_maker": []}
+    assert manifest["runtime"]["max_turns_per_stage"] == {"evidence_debate": 4, "decision_maker": 2}
     assert manifest["runtime"]["safety_net_enabled"] is False
     assert manifest["contracts"]["validators_enabled"] == ["runtime_evidence_id_subset"]
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
 
 
-def test_worker_runtime_manifest_uses_wired_provider_custom_tool_budgets(monkeypatch) -> None:
+def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(monkeypatch) -> None:
     settings = Settings(
         ws_token="secret",
         llm={
@@ -638,11 +625,6 @@ def test_worker_runtime_manifest_uses_wired_provider_custom_tool_budgets(monkeyp
             "watchlist_handle_summary_model": "gpt-summary",
         },
     )
-    settings.workers.pulse_candidate.investigator_max_tool_calls = {
-        "cex": 2,
-        "meme": 4,
-        "research_only": 1,
-    }
     wired = providers_wiring.wire_providers(
         settings,
         start_collector=True,
@@ -650,21 +632,9 @@ def test_worker_runtime_manifest_uses_wired_provider_custom_tool_budgets(monkeyp
         db_pool=object(),
     )
     repos = FakeRepos()
+    repos.pulse_evidence_sources.market_facts = []
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    monkeypatch.setattr(job_module, "route_decision_context", lambda context: "research_only")
-    monkeypatch.setattr(
-        job_module,
-        "compute_completeness",
-        lambda factor_snapshot, route: SimpleNamespace(
-            route=route,
-            score=0.2,
-            hard_blocked=True,
-            missing_fields=("liquidity_usd",),
-            stale_fields=(),
-            blockers=("missing_liquidity",),
-        ),
-    )
     assert wired.pulse_lab.decision_provider is not None
     worker = _worker(repos, client=wired.pulse_lab.decision_provider)
 
@@ -673,12 +643,8 @@ def test_worker_runtime_manifest_uses_wired_provider_custom_tool_budgets(monkeyp
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["route_tool_budgets"] == {
-        "cex": 2,
-        "meme": 4,
-        "research_only": 1,
-    }
-    assert manifest["runtime"]["tool_names_by_stage"]["decision_maker"] == ["get_target_recent_tweets"]
+    assert manifest["runtime"]["stages"] == ["evidence_debate", "decision_maker"]
+    assert manifest["runtime"]["tool_names_by_stage"] == {"evidence_debate": [], "decision_maker": []}
     assert manifest["runtime"]["safety_net_enabled"] is True
 
 
@@ -859,6 +825,8 @@ class FakeRepos:
         self.pulse_runs = pulse_state
         self.pulse_agent_eval = pulse_state
         self.pulse_playbooks = pulse_state
+        self.pulse_evidence = pulse_state
+        self.pulse_evidence_sources = pulse_state
         self.db_worker_sessions: list[dict[str, Any]] = []
 
 
@@ -866,6 +834,39 @@ class FakeConn:
     @contextmanager
     def transaction(self):
         yield
+
+    def execute(self, *_: Any, **__: Any) -> Any:
+        return FakeCursor(
+            {
+                "latest_packet_created_at_ms": NOW_MS,
+                "latest_agent_run_finished_at_ms": NOW_MS,
+                "latest_public_candidate_updated_at_ms": NOW_MS,
+                "due_jobs": 0,
+                "claimed_jobs": 0,
+                "failed_jobs_4h": 0,
+                "dead_jobs": 0,
+                "agent_runs_4h": 0,
+                "agent_failed_4h": 0,
+                "unknown_ref_failures_4h": 0,
+                "unsupported_claim_failures_4h": 0,
+                "hidden_abstain_4h": 0,
+                "hidden_hold_publish_4h": 0,
+                "hidden_insufficient_evidence_4h": 0,
+                "public_candidates_4h": 0,
+            }
+        )
+
+
+class FakeCursor:
+    def __init__(self, row: dict[str, Any] | None = None, rows: list[dict[str, Any]] | None = None) -> None:
+        self.row = row
+        self.rows = rows or ([] if row is None else [row])
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self.row
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return list(self.rows)
 
 
 class FakeTokenRadar:
@@ -902,9 +903,38 @@ class FakePulseStore:
         self.eval_results: list[dict[str, Any]] = []
         self.candidate_upserts: list[dict[str, Any]] = []
         self.playbook_upserts: list[dict[str, Any]] = []
+        self.packets: list[Any] = []
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
         self.admission_claims: list[dict[str, Any]] = []
+        self.market_facts: list[dict[str, Any]] = [
+            {
+                "ref_id": "market:pf-test",
+                "route": "meme",
+                "target_market_type": "dex",
+                "price_usd": 0.42,
+                "liquidity_usd": 250_000,
+                "market_cap_usd": 1_000_000,
+                "volume_24h_usd": 12_000,
+                "pricefeed_id": "pf-test",
+                "instrument_ref": "pf-test",
+                "source_provider": "okx",
+                "observed_at_ms": NOW_MS - 1_000,
+                "freshness_status": "fresh",
+                "source_table": "market_ticks",
+            }
+        ]
+        self.identity_facts: list[dict[str, Any]] = [
+            {
+                "source_id": "identity:asset-1",
+                "target_id": "asset-1",
+                "symbol": "TEST",
+                "summary_zh": "TEST 目标身份已解析",
+                "quality": "high",
+                "observed_at_ms": NOW_MS - 1_000,
+                "source_table": "asset_identity_current",
+            }
+        ]
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidates.get(candidate_id)
@@ -1069,6 +1099,31 @@ class FakePulseStore:
         self.playbook_upserts.append(kwargs)
         return kwargs
 
+    def upsert_packet(self, packet: Any, *, commit: bool = True) -> None:
+        self.packets.append(packet)
+
+    def list_source_events(self, event_ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+        return [
+            {
+                "event_id": event_id,
+                "observed_at_ms": NOW_MS - 1_000,
+                "created_at_ms": NOW_MS - 1_000,
+                "summary_zh": f"{event_id} 社交事件正在扩散",
+                "source_table": "events",
+                "quality": "high",
+            }
+            for event_id in event_ids
+        ]
+
+    def list_enriched_events(self, event_ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+        return []
+
+    def list_market_facts(self, context: Any) -> list[dict[str, Any]]:
+        return list(self.market_facts)
+
+    def list_identity_facts(self, context: Any) -> list[dict[str, Any]]:
+        return list(self.identity_facts)
+
     def mark_job_succeeded(self, job_id: str, **_: Any) -> dict[str, Any]:
         for job in self.jobs:
             if job["job_id"] == job_id:
@@ -1135,6 +1190,13 @@ class FakeClient:
         runtime_manifest: dict[str, Any],
     ) -> PulseDecisionResult:
         self.run_calls += 1
+        allowed_refs = [
+            str(ref.get("ref_id"))
+            for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
+            if isinstance(ref, dict) and ref.get("ref_id")
+        ]
+        supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1] or tuple(allowed_refs[:1])
+        risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
         evidence_ids = context.get("source_event_ids") or ["event-1"]
         final_decision = FinalDecision(
             route=route,  # type: ignore[arg-type]
@@ -1163,32 +1225,39 @@ class FakeClient:
             invalidation_conditions=["独立作者数回落。"],
             residual_risks=["价格响应仍可能变化。"],
             evidence_event_ids=list(evidence_ids),
+            supporting_evidence_refs=supporting_refs,
+            risk_evidence_refs=risk_refs,
         )
-        investigator_audit = StageRunAudit(
-            stage="investigator",
+        debate_memo = EvidenceDebateMemo(
+            bull_claims=(
+                EvidenceClaim(
+                    claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                    evidence_refs=supporting_refs,
+                    stance="bull",
+                ),
+            ),
+            bear_claims=(
+                EvidenceClaim(
+                    claim="价格响应和流动性确认仍不足，热度可能快速降温。",
+                    evidence_refs=risk_refs or supporting_refs,
+                    stance="risk",
+                ),
+            ),
+            rebuttal_claims=(),
+            data_gap_claims=(),
+            summary_zh="基于封闭证据包的多空综合完成。",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
+        evidence_debate_audit = StageRunAudit(
+            stage="evidence_debate",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
             input_json={
                 "context": context,
                 "completeness": completeness,
-                "tool_calls": [{"tool_name": "get_target_recent_tweets", "event_ids": list(evidence_ids)}],
             },
-            prompt_text="fake investigator prompt",
-            response_json={
-                "narrative_archetype_candidate": "社交扩散",
-                "narrative_observation_zh": "当前社交扩散和关注账号确认构成继续观察的主要事实。",
-                "bull_observation": {
-                    "strength": "moderate",
-                    "thesis_zh": "独立作者扩散和关注账号确认提供了继续观察的积极证据。",
-                    "supporting_event_ids": list(evidence_ids),
-                },
-                "bear_observation": {
-                    "strength": "weak",
-                    "thesis_zh": "价格响应和流动性确认仍不足，热度可能快速降温。",
-                    "supporting_event_ids": list(evidence_ids),
-                },
-                "data_gaps": [],
-            },
+            prompt_text="fake evidence debate prompt",
+            response_json=debate_memo.model_dump(mode="json"),
             trace_metadata_json={},
             usage_json={},
             latency_ms=1,
@@ -1219,7 +1288,7 @@ class FakeClient:
         return PulseDecisionResult(
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
-            stage_audits=(investigator_audit, stage_audit),
+            stage_audits=(evidence_debate_audit, stage_audit),
         )
 
 
@@ -1422,53 +1491,3 @@ def _source_event() -> dict[str, Any]:
         "semantic_novelty_hint": 0.67,
         "summary_zh": "生态发布正在获得关注",
     }
-
-
-# ---------------------------------------------------------------------------
-# _investigation_tool_calls_count helper
-# ---------------------------------------------------------------------------
-
-
-def _stage_audit(stage: str, *, tool_calls: Any | None = None) -> StageRunAudit:
-    payload: dict[str, Any] = {"context": {}, "completeness": {}}
-    if tool_calls is not None:
-        payload["tool_calls"] = tool_calls
-    return StageRunAudit(
-        stage=stage,  # type: ignore[arg-type]
-        route="meme",
-        attempt_index=0,
-        input_json=payload,
-        prompt_text="prompt",
-        response_json={},
-        trace_metadata_json={},
-        usage_json={},
-        latency_ms=1,
-        status="ok",
-        error=None,
-    )
-
-
-def test_investigation_tool_calls_count_returns_zero_when_no_audits() -> None:
-    assert _investigation_tool_calls_count(()) == 0
-
-
-def test_investigation_tool_calls_count_reads_stage_zero_input_json() -> None:
-    audit = _stage_audit("investigator", tool_calls=[{"name": "fetch"}, {"name": "lookup"}])
-    decision = _stage_audit("decision_maker")
-    assert _investigation_tool_calls_count((audit, decision)) == 2
-
-
-def test_investigation_tool_calls_count_zero_when_tool_calls_missing() -> None:
-    audit = _stage_audit("investigator")
-    assert _investigation_tool_calls_count((audit,)) == 0
-
-
-def test_investigation_tool_calls_count_zero_when_tool_calls_not_list() -> None:
-    audit = _stage_audit("investigator", tool_calls="not-a-list")
-    assert _investigation_tool_calls_count((audit,)) == 0
-
-
-def test_investigation_tool_calls_count_zero_when_stage_zero_is_not_investigator() -> None:
-    # research_only_gate path (completeness hard-blocked) puts gate audit at index 0
-    audit = _stage_audit("research_only_gate", tool_calls=[{"name": "noop"}])
-    assert _investigation_tool_calls_count((audit,)) == 0

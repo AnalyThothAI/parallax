@@ -152,9 +152,9 @@ function ListBlock({ items, title }: { items: string[]; title: string }) {
 }
 
 function RailEntry({ item }: { item: StageRailItem }) {
-  if (item.kind === "investigator") {
+  if (item.kind === "evidence_debate") {
     return (
-      <StageCard title="阶段 1 · 调研" tone="info" status={item.status}>
+      <StageCard title="阶段 1 · 证据辩论" tone="info" status={item.status}>
         <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
       </StageCard>
     );

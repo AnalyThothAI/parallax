@@ -3,13 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared import (
-    DISPLAY_PULSE_STATUS_SQL,
     _decode_cursor,
     _encode_cursor,
     _normalize_subject,
     _optional_row,
     _row,
 )
+
+PUBLIC_DISPLAY_STATUS_SQL = "('display_trade_candidate', 'display_token_watch', 'display_risk_rejected_high_info')"
 
 
 class PulseReadRepository:
@@ -35,9 +36,8 @@ class PulseReadRepository:
             clauses.append("candidate.pulse_status = %s")
             params.append(status)
         if displayable_only:
-            clauses.append(f"candidate.pulse_status IN {DISPLAY_PULSE_STATUS_SQL}")
-            clauses.append("candidate.verdict IS DISTINCT FROM 'blocked_low_information'")
-            clauses.append("candidate.decision_recommendation IS DISTINCT FROM 'abstain'")
+            clauses.append(f"candidate.display_status IN {PUBLIC_DISPLAY_STATUS_SQL}")
+            clauses.append("candidate.evidence_packet_hash IS NOT NULL")
         if handle:
             handle_clause, handle_params = _candidate_handle_filter_clause("candidate", handle)
             if handle_clause:
@@ -113,16 +113,11 @@ class PulseReadRepository:
                    OR verdict = 'blocked_low_information'
                    OR gate_reasons_json @> '["low_information"]'::jsonb
               ) AS blocked_low_information_count,
+              COUNT(*) FILTER (WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}) AS displayable_count,
               COUNT(*) FILTER (
-                WHERE pulse_status IN {DISPLAY_PULSE_STATUS_SQL}
-                  AND verdict IS DISTINCT FROM 'blocked_low_information'
-                  AND decision_recommendation IS DISTINCT FROM 'abstain'
-              ) AS displayable_count,
-              COUNT(*) FILTER (
-                WHERE pulse_status IN {DISPLAY_PULSE_STATUS_SQL}
-                  AND verdict IS DISTINCT FROM 'blocked_low_information'
-                  AND decision_recommendation IS DISTINCT FROM 'abstain'
-                  AND factor_snapshot_json #>> '{{data_health,market}}' = 'ready'
+                WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
+                  AND evidence_packet_hash IS NOT NULL
+                  AND evidence_status IN ('complete', 'partial')
               ) AS market_fresh_count
             FROM pulse_candidates
             AS candidate
@@ -221,6 +216,14 @@ class PulseReadRepository:
             SELECT
               COUNT(*) AS candidate_count,
               COUNT(*) FILTER (
+                WHERE display_status IN (
+                  'display_trade_candidate',
+                  'display_token_watch',
+                  'display_risk_rejected_high_info'
+                )
+                AND evidence_packet_hash IS NOT NULL
+              ) AS displayable_count,
+              COUNT(*) FILTER (
                 WHERE pulse_status = 'blocked_low_information'
                    OR verdict = 'blocked_low_information'
                    OR gate_reasons_json @> '["low_information"]'::jsonb
@@ -244,6 +247,7 @@ class PulseReadRepository:
             "window": window,
             "scope": scope,
             "candidate_count": int(candidate_row["candidate_count"] if candidate_row else 0),
+            "displayable_count": int(candidate_row["displayable_count"] if candidate_row else 0),
             "blocked_low_information_count": int(
                 candidate_row["blocked_low_information_count"] if candidate_row else 0
             ),

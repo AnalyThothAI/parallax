@@ -9,8 +9,21 @@ const evidenceIds = [
 ];
 
 const stages: SignalPulseStages = {
-  investigator: {
-    stage: "investigator",
+  evidence_pack: null,
+  evidence_completeness_gate: {
+    stage: "evidence_completeness_gate",
+    route: "meme",
+    status: "ok",
+    model: "deterministic",
+    started_at_ms: 1778726642689 - 14702,
+    finished_at_ms: 1778726642689 - 14702,
+    latency_ms: 0,
+    attempt_index: 0,
+    response: { evidence_status: "complete", hard_blocked: false },
+    error: null,
+  },
+  evidence_debate: {
+    stage: "evidence_debate",
     route: "meme",
     status: "ok",
     model: "qwen3.6",
@@ -49,53 +62,11 @@ const stages: SignalPulseStages = {
     },
     error: null,
   },
-  research_only_gate: null,
+  claim_verifier: null,
+  recommendation_clipper: null,
+  deterministic_eval: null,
+  write_gate: null,
 };
-
-// Historical DB rows can still contain legacy stage names; this fixture keeps
-// tests honest without making them public SignalPulseStages fields.
-export const tittyLegacyStages = {
-  analyst: {
-    stage: "analyst",
-    route: "meme",
-    status: "ok",
-    model: "qwen3.6",
-    started_at_ms: 1778726642689 - 14702,
-    finished_at_ms: 1778726642689 - 11000,
-    latency_ms: 3704,
-    attempt_index: 0,
-    response: {
-      summary_zh: "Analyst legacy summary placeholder.",
-      recommendation: "trade_candidate",
-    },
-    error: null,
-  },
-  critic: {
-    stage: "critic",
-    route: "meme",
-    status: "ok",
-    model: "qwen3.6",
-    started_at_ms: 1778726642689 - 11000,
-    finished_at_ms: 1778726642689 - 6122,
-    latency_ms: 4876,
-    attempt_index: 0,
-    response: { summary_zh: "Critic legacy summary placeholder." },
-    error: null,
-  },
-  judge: {
-    stage: "judge",
-    route: "meme",
-    status: "ok",
-    model: "qwen3.6",
-    started_at_ms: 1778726642689 - 6122,
-    finished_at_ms: 1778726642689,
-    latency_ms: 6122,
-    attempt_index: 0,
-    response: { summary_zh: "Judge legacy summary placeholder." },
-    error: null,
-  },
-  research_only_gate: null,
-} as unknown as SignalPulseStages;
 
 export const tittyPulseFixture: SignalPulseItem = {
   candidate_id: "pulse-fa2a12fedd9332271732110ed8bd7b1b49065282",
@@ -107,6 +78,10 @@ export const tittyPulseFixture: SignalPulseItem = {
   window: "1h",
   scope: "all",
   pulse_status: "trade_candidate",
+  evidence_status: "complete",
+  decision_status: "trade_candidate",
+  display_status: "display_trade_candidate",
+  evidence_packet_hash: "sha256:titty-fixture-packet",
   verdict: "trade_candidate",
   social_phase: "ignition",
   candidate_score: 82,
@@ -135,8 +110,13 @@ export const tittyPulseFixture: SignalPulseItem = {
       "holder structure unknown",
     ],
     evidence_event_ids: evidenceIds,
+    supporting_evidence_refs: ["event:gmgn:titty-1"],
+    risk_evidence_refs: ["market:pf-titty"],
+    data_gap_refs: [],
   },
   gate: {},
+  claim_verification: { valid: true },
+  evidence_gate: { evidence_status: "complete", hard_blocked: false },
   fact_card: {
     mentions_1h: 5,
     unique_authors: 3,

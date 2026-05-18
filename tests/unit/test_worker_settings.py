@@ -47,11 +47,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.pulse_candidate.timeout_seconds == 0
     assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
-    assert settings.pulse_candidate.investigator_max_tool_calls == {
-        "cex": 3,
-        "meme": 5,
-        "research_only": 3,
-    }
     assert settings.handle_summary.time_threshold_ms == 1_800_000
     assert settings.notification_delivery.max_attempts == 5
 
@@ -66,6 +61,7 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "live_observation_" not in text
     assert "hot_target_ttl_seconds" not in text
     assert "cex_poll_interval_seconds" not in text
+    assert "investigator_max_tool_calls" not in text
 
 
 def test_worker_settings_reject_unknown_worker_key():

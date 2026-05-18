@@ -170,6 +170,9 @@ def _pulse_decision(
         "invalidation_conditions": ["讨论快速降温。"],
         "residual_risks": ["价格响应仍可能变化。"],
         "evidence_event_ids": ["event-api-1"],
+        "supporting_evidence_refs": ["event:event-api-1"],
+        "risk_evidence_refs": ["market:pf-api"],
+        "data_gap_refs": [],
     }
 
 
@@ -1026,6 +1029,10 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 gate_version="gate-v1",
                 prompt_version="prompt-v1",
                 schema_version="schema-v1",
+                evidence_packet_hash="sha256:candidate-api-token",
+                evidence_status="complete",
+                decision_status="token_watch",
+                display_status="display_token_watch",
                 created_at_ms=1_000,
                 updated_at_ms=2_000,
             )
@@ -1559,6 +1566,12 @@ def _seed_displayable_candidate(app, *, candidate_id: str, agent_run_id: str | N
             evidence_event_ids_json=["event-1"],
             source_event_ids_json=["event-1"],
             agent_run_id=agent_run_id,
+            evidence_packet_hash="sha256:test-packet",
+            evidence_status="complete",
+            decision_status="token_watch",
+            display_status="display_token_watch",
+            claim_verification_json={"valid": True},
+            evidence_gate_json={"evidence_status": "complete", "hard_blocked": False},
         )
 
 
@@ -1619,7 +1632,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
         _seed_displayable_candidate(client.app, candidate_id="cand-stages", agent_run_id="run-stages")
         with client.app.state.service.repositories() as repos:
             for stage, response_json, started_at_ms, finished_at_ms in [
-                ("investigator", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
+                ("evidence_debate", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
                 ("decision_maker", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
             ]:
                 repos.pulse_runs.insert_agent_run_step(
@@ -1646,11 +1659,19 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
 
     assert response.status_code == 200
     stages = response.json()["data"]["stages"]
-    assert set(stages.keys()) == {"investigator", "decision_maker", "research_only_gate"}
-    assert stages["investigator"]["status"] == "ok"
-    assert stages["investigator"]["response"]["confidence"] == 0.82
+    assert set(stages.keys()) == {
+        "evidence_pack",
+        "evidence_completeness_gate",
+        "evidence_debate",
+        "claim_verifier",
+        "decision_maker",
+        "recommendation_clipper",
+        "deterministic_eval",
+        "write_gate",
+    }
+    assert stages["evidence_debate"]["status"] == "ok"
+    assert stages["evidence_debate"]["response"]["confidence"] == 0.82
     assert stages["decision_maker"]["response"]["confidence"] == 0.35
-    assert stages["research_only_gate"] is None
 
 
 def test_social_events_by_ids_returns_full_records(tmp_path):

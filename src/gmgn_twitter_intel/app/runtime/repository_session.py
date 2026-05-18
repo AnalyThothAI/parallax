@@ -23,6 +23,10 @@ from gmgn_twitter_intel.domains.notifications.repositories.notification_reposito
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_evidence_repository import PulseEvidenceRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_evidence_source_repository import (
+    PulseEvidenceSourceRepository,
+)
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
@@ -77,6 +81,8 @@ class RepositorySession:
     pulse_jobs: PulseJobsRepository
     pulse_admission: PulseAdmissionRepository
     pulse_candidates: PulseCandidatesRepository
+    pulse_evidence: PulseEvidenceRepository
+    pulse_evidence_sources: PulseEvidenceSourceRepository
     pulse_runs: PulseRunsRepository
     pulse_agent_eval: PulseAgentEvalRepository
     pulse_read: PulseReadRepository
@@ -117,6 +123,8 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         pulse_jobs=PulseJobsRepository(conn),
         pulse_admission=PulseAdmissionRepository(conn),
         pulse_candidates=PulseCandidatesRepository(conn),
+        pulse_evidence=PulseEvidenceRepository(conn),
+        pulse_evidence_sources=PulseEvidenceSourceRepository(conn),
         pulse_runs=PulseRunsRepository(conn),
         pulse_agent_eval=PulseAgentEvalRepository(conn),
         pulse_read=PulseReadRepository(conn),

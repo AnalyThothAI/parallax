@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
+
+
+def test_cex_with_pricefeed_id_source_provider_and_instrument_ref_passes_market_contract() -> None:
+    packet = _packet(
+        market=[
+            {
+                "route": "cex",
+                "price_usd": 1.25,
+                "pricefeed_id": "pricefeed:cex:okx:spot:TEST-USDT",
+                "instrument_ref": "pricefeed:cex:okx:spot:TEST-USDT",
+                "source_provider": "okx_cex_rest",
+                "freshness_status": "fresh",
+            }
+        ],
+    )
+
+    result = EvidenceCompletenessGate().evaluate(packet)
+
+    assert result.evidence_status == "complete"
+    assert result.hard_blocked is False
+    assert result.public_allowed is True
+    assert result.max_decision_status == "trade_candidate"
+    assert result.blocked_reason is None
+
+
+def test_cex_with_no_fresh_price_is_blocked_market_contract() -> None:
+    packet = _packet(
+        market=[
+            {
+                "route": "cex",
+                "pricefeed_id": "pricefeed:cex:okx:spot:TEST-USDT",
+                "instrument_ref": "pricefeed:cex:okx:spot:TEST-USDT",
+                "source_provider": "okx_cex_rest",
+                "freshness_status": "stale",
+            }
+        ],
+    )
+
+    result = EvidenceCompletenessGate().evaluate(packet)
+
+    assert result.evidence_status == "stale"
+    assert result.hard_blocked is True
+    assert result.blocked_reason == "blocked_market_contract"
+    assert result.public_allowed is False
+
+
+def test_packet_with_no_social_refs_is_blocked_social_contract() -> None:
+    packet = _packet(social=[], refs=[_ref("metric:market:price_usd", "metric"), _ref("identity:token", "identity")])
+
+    result = EvidenceCompletenessGate().evaluate(packet)
+
+    assert result.evidence_status == "insufficient"
+    assert result.hard_blocked is True
+    assert result.blocked_reason == "blocked_social_contract"
+    assert "event" in result.missing_ref_types
+
+
+def test_unknown_route_social_only_is_hidden_abstain() -> None:
+    packet = _packet(route="research_only", market=[], identity=[])
+
+    result = EvidenceCompletenessGate().evaluate(packet)
+
+    assert result.evidence_status == "insufficient"
+    assert result.max_decision_status == "abstain"
+    assert result.public_allowed is False
+    assert result.display_status == "hidden_abstain"
+
+
+def _packet(
+    *,
+    route: str = "cex",
+    social: list[dict[str, object]] | None = None,
+    market: list[dict[str, object]] | None = None,
+    identity: list[dict[str, object]] | None = None,
+    refs: list[dict[str, object]] | None = None,
+) -> SimpleNamespace:
+    social = [{"event_id": "event-1", "ref_id": "event:event-1"}] if social is None else social
+    market = (
+        [
+            {
+                "route": route,
+                "price_usd": 1.25,
+                "pricefeed_id": "pricefeed:cex:okx:spot:TEST-USDT",
+                "instrument_ref": "pricefeed:cex:okx:spot:TEST-USDT",
+                "source_provider": "okx_cex_rest",
+                "freshness_status": "fresh",
+            }
+        ]
+        if market is None
+        else market
+    )
+    identity = [{"source_id": "identity:token", "ref_id": "identity:token"}] if identity is None else identity
+    refs = refs or [
+        _ref("event:event-1", "event"),
+        _ref("metric:market:price_usd", "metric"),
+        _ref("identity:token", "identity"),
+    ]
+    return SimpleNamespace(
+        target_type="cex_token" if route == "cex" else "chain_token",
+        market_evidence=market,
+        social_evidence=social,
+        identity_evidence=identity,
+        allowed_evidence_refs=refs,
+        data_gaps=[],
+    )
+
+
+def _ref(ref_id: str, ref_type: str) -> dict[str, object]:
+    return {
+        "ref_id": ref_id,
+        "ref_type": ref_type,
+        "source_table": "test",
+        "source_id": ref_id,
+        "observed_at_ms": 1,
+        "summary_zh": ref_id,
+        "quality": "high",
+    }

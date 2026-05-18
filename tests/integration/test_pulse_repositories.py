@@ -782,7 +782,7 @@ def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_pat
     assert updated == 1
     assert row is not None
     assert row["status"] == "failed"
-    assert row["outcome"] == "failed"
+    assert row["outcome"] == "timeout"
     assert row["error"] == "stale_running_timeout"
     assert row["finished_at_ms"] == 11_000
     assert row["latency_ms"] == 10_000
@@ -823,11 +823,11 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
             runtime_version="pulse-decision-runtime-v1",
             runtime_hash="sha256:runtime-failure",
             status="failed",
-            outcome="failed",
+            outcome="invalid_unknown_evidence_ref",
             decision_route="meme",
             decision_stage_count=1,
             request_json={"candidate_id": "candidate-target-failure"},
-            trace_metadata_json={"failure_reason": "unknown_evidence_id"},
+            trace_metadata_json={"failure_reason": "invalid_unknown_evidence_ref"},
             error="unknown evidence ids: event-x",
             started_at_ms=1_100,
             finished_at_ms=1_300,
@@ -837,7 +837,7 @@ def test_recent_target_failure_count_reads_normalized_trace_reason(tmp_path) -> 
             target_type="Asset",
             target_id="asset-1",
             since_ms=1_000,
-            reasons=("unknown_evidence_id", "schema_validation_failed"),
+            reasons=("invalid_unknown_evidence_ref", "invalid_schema"),
         )
         ignored_reason_count = repo.admission.recent_target_failure_count(
             target_type="Asset",
@@ -949,14 +949,14 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             started_at_ms=1_100,
         )
         step = repo.runs.insert_agent_run_step(
-            step_id="run-step:investigator:0",
+            step_id="run-step:evidence_debate:0",
             run_id="run-step",
-            stage="investigator",
+            stage="evidence_debate",
             route="meme",
             attempt_index=0,
             provider="openai",
             model="gpt-5-mini",
-            prompt_version="meme-investigator-v1",
+            prompt_version="meme-evidence-debate-v1",
             schema_version="pulse_decision_v1",
             input_json={"factor_snapshot": {"schema_version": "token_factor_snapshot_v3_social_attention"}},
             prompt_text="Investigate meme token facts only.",
@@ -974,7 +974,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
     finally:
         conn.close()
 
-    assert step["step_id"] == "run-step:investigator:0"
+    assert step["step_id"] == "run-step:evidence_debate:0"
     assert steps == [step]
     assert steps[0]["prompt_text"] == "Investigate meme token facts only."
     assert steps[0]["input_json"]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
@@ -1210,8 +1210,8 @@ def test_pulse_summary_reads_market_fresh_count_from_factor_snapshot_contract() 
     summary = _repo_bundle(conn).read.pulse_summary(window="1h", scope="global")
 
     assert summary["market_ready_rate"] == 1.0
-    assert "factor_snapshot_json #>> '{data_health,market}' = 'ready'" in conn.summary_sql
-    assert "families,market_quality" not in conn.summary_sql
+    assert "evidence_status IN ('complete', 'partial')" in conn.summary_sql
+    assert "factor_snapshot_json #>> '{data_health,market}'" not in conn.summary_sql
     assert "market_context_json" not in conn.summary_sql
 
 
@@ -1235,6 +1235,7 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
                 factor_snapshot_json={
                     "data_health": {"market": "partial"},
                 },
+                evidence_status="insufficient",
                 updated_at_ms=2_000,
             )
         )
@@ -1503,9 +1504,15 @@ def _candidate_payload(
     decision_abstain_reason: str | None = None,
     decision_stage_count: int = 3,
     decision_json: dict[str, Any] | None = None,
+    evidence_packet_hash: str | None = None,
+    evidence_status: str = "complete",
+    decision_status: str | None = None,
+    display_status: str | None = None,
     updated_at_ms: int,
 ) -> dict[str, Any]:
     resolved_verdict = verdict if verdict is not None else pulse_status
+    resolved_display_status = display_status or _display_status_for_pulse(pulse_status)
+    resolved_decision_status = decision_status or _decision_status_for_recommendation(decision_recommendation)
     return {
         "candidate_id": candidate_id,
         "candidate_type": candidate_type,
@@ -1556,9 +1563,33 @@ def _candidate_payload(
         "gate_version": "gate-v1",
         "prompt_version": "prompt-v1",
         "schema_version": "schema-v1",
+        "evidence_packet_hash": evidence_packet_hash if evidence_packet_hash is not None else f"sha256:{candidate_id}",
+        "evidence_status": evidence_status,
+        "decision_status": resolved_decision_status,
+        "display_status": resolved_display_status,
         "created_at_ms": updated_at_ms - 100,
         "updated_at_ms": updated_at_ms,
     }
+
+
+def _display_status_for_pulse(pulse_status: str) -> str:
+    return {
+        "trade_candidate": "display_trade_candidate",
+        "token_watch": "display_token_watch",
+        "risk_rejected_high_info": "display_risk_rejected_high_info",
+        "blocked_low_information": "hidden_blocked_low_information",
+    }.get(pulse_status, "hidden_insufficient_evidence")
+
+
+def _decision_status_for_recommendation(recommendation: str) -> str:
+    return {
+        "high_conviction": "trade_candidate",
+        "trade_candidate": "trade_candidate",
+        "watchlist": "token_watch",
+        "token_watch": "token_watch",
+        "ignore": "risk_rejected_high_info",
+        "abstain": "abstain",
+    }.get(recommendation, "invalid")
 
 
 class FakePulseSummaryConn:
@@ -1579,9 +1610,7 @@ class FakePulseSummaryConn:
                     "blocked_low_information_status_count": 0,
                     "blocked_low_information_count": 0,
                     "displayable_count": 1,
-                    "market_fresh_count": (
-                        1 if "factor_snapshot_json #>> '{data_health,market}' = 'ready'" in text else 0
-                    ),
+                    "market_fresh_count": 1 if "evidence_status IN ('complete', 'partial')" in text else 0,
                 }
             )
         return FakePulseSummaryResult({"dead_job_count": 0})

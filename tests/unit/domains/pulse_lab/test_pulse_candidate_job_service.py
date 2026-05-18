@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -50,13 +49,13 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     class FailingClient(FakeClient):
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             failed_audit = StageRunAudit(
-                stage="investigator",
+                stage="evidence_debate",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake investigator prompt",
+                prompt_text="fake evidence debate prompt",
                 response_json={"raw_output": "not valid json"},
-                trace_metadata_json={"stage": "investigator"},
+                trace_metadata_json={"stage": "evidence_debate"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -71,44 +70,33 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     with pytest.raises(PulseStageFailure):
         asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
-    assert len(repos.pulse_runs.agent_run_steps) == 1
-    assert repos.pulse_runs.agent_run_steps[0]["stage"] == "investigator"
+    failed_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_debate")
+    assert failed_step["status"] == "failed"
     failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
-    assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "schema_validation_failed"}
+    assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "invalid_schema"}
     assert repos.pulse_agent_eval.eval_cases[0]["expected_json"] == {
         "status": "fail",
-        "failure_reason": "schema_validation_failed",
+        "failure_reason": "invalid_schema",
     }
     assert repos.pulse_agent_eval.eval_results[0]["status"] == "pass"
-    assert repos.pulse_jobs.failures[0]["failure_reason"] == "schema_validation_failed"
+    assert repos.pulse_jobs.failures[0]["failure_reason"] == "invalid_schema"
 
 
-def test_hard_blocked_success_records_gate_step_without_provider_run(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_hard_blocked_success_records_evidence_gate_without_provider_run() -> None:
     repos = FakeRepos()
+    repos.pulse_evidence_sources.market_facts = []
     context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
     job = _enqueue_context_job(repos, context)
     client = FakeClient()
-    monkeypatch.setattr(job_module, "route_decision_context", lambda context: "research_only")
-    monkeypatch.setattr(
-        job_module,
-        "compute_completeness",
-        lambda factor_snapshot, route: SimpleNamespace(
-            route=route,
-            score=0.2,
-            hard_blocked=True,
-            missing_fields=("liquidity_usd",),
-            stale_fields=(),
-            blockers=("missing_liquidity",),
-        ),
-    )
     service = _service(repos, client=client)
 
     asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
     assert client.run_calls == 0
-    assert repos.pulse_runs.agent_run_steps[0]["stage"] == "research_only_gate"
-    assert repos.pulse_runs.finished_runs[0]["status"] == "done"
-    assert repos.pulse_runs.finished_runs[0]["outcome"] == "abstain_insufficient_data"
+    gate_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_completeness_gate")
+    assert gate_step["response_json"]["hard_blocked"] is True
+    finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "done")
+    assert finished_run["outcome"] == "blocked_market_contract"
     assert repos.pulse_jobs.successes == [job["job_id"]]
 
 
@@ -154,12 +142,15 @@ def test_eval_failure_blocks_public_candidate_write(monkeypatch: pytest.MonkeyPa
 
     asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
-    assert repos.pulse_candidates.candidate_upserts == []
+    assert repos.pulse_candidates.candidate_upserts[0]["display_status"] == "hidden_invalid_output"
     assert repos.pulse_playbooks.playbook_upserts == []
     assert repos.pulse_agent_eval.eval_results[0]["status"] == "fail"
     assert repos.pulse_agent_eval.eval_results[0]["details_json"]["write_gate"] == {
+        "write_allowed": True,
         "public_write_allowed": False,
         "playbook_write_allowed": False,
+        "decision_status": "invalid",
+        "display_status": "hidden_invalid_output",
         "reason": "deterministic_eval_failed",
     }
     assert repos.pulse_jobs.successes == [job["job_id"]]
@@ -208,7 +199,7 @@ def _service(
         db=FakeDB(repos),
         decision_client=client or FakeClient(),
         gate_func=gate_func or _passing_gate,
-        gate_thresholds=SimpleNamespace(),
+        gate_thresholds=object(),
     )
 
 

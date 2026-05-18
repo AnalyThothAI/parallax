@@ -11,23 +11,21 @@ from agents import (
     Agent,
     RunConfig,
     Runner,
-    ToolCallItem,
 )
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
     DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
+    EvidenceDebateMemo,
     PulseAgentRuntimeContract,
-    PulseAgentToolRuntimeFactory,
     PulseDecisionRuntime,
+    PulseEvidencePacket,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     DecisionRoute,
     FinalDecision,
-    InvestigationReport,
     PulseDecisionPayload,
     PulseStageFailure,
-    StageName,
     StageRunAudit,
     StageStatus,
 )
@@ -38,12 +36,6 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import St
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
     InstructorSafetyNet,
     SafetyNetExhausted,
-)
-from gmgn_twitter_intel.integrations.openai_agents.tools import (
-    PulseToolContext,
-    get_official_token_profile,
-    get_target_price_action,
-    get_target_recent_tweets,
 )
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
@@ -58,25 +50,11 @@ class PulseDecisionAgentResult:
 
 
 class OpenAIAgentsPulseDecisionClient:
-    """Two-stage Investigator → DecisionMaker pulse decision client.
+    """Packet-only EvidenceDebate → DecisionMaker pulse decision client.
 
-    Stage 1 (Investigator): multi-turn Agent run with 3 investigator tools
-    (`get_target_recent_tweets`, `get_target_price_action`,
-    `get_official_token_profile`); produces an :class:`InvestigationReport`.
-    Each tool call increments ``PulseToolContext.tool_calls_count`` and the
-    SDK raises :class:`ToolBudgetExceeded` once
-    ``investigator_max_tool_calls`` (per-route) is hit; the worker treats that
-    as a stage failure.
-
-    Stage 2 (DecisionMaker): single-turn Agent run, optionally exposing the
-    tweets tool as a fallback when ``decision_maker_enable_fallback_tool`` is
-    True (OQ-2); produces a :class:`FinalDecision`.
-
-    The provider Protocol contract (``run_decision_pipeline`` / ``request_audit``
-    signatures) is unchanged from the previous Analyst/Critic/Judge pipeline so
-    wiring + read-models keep compiling. The runtime manifest carries
-    ``stages: ["investigator", "decision_maker"]`` which bumps
-    ``runtime_hash`` and isolates v2 eval cases from v1.
+    Critical evidence acquisition is owned by the worker before this client is
+    called. Both LLM stages receive the sealed evidence packet, the gate result,
+    and the packet's allowed citation refs; neither stage registers tools.
     """
 
     provider = "openai"
@@ -87,7 +65,6 @@ class OpenAIAgentsPulseDecisionClient:
         api_key: str,
         model: str,
         llm_gateway: Any,
-        tool_runtime_factory: PulseAgentToolRuntimeFactory,
         decision_runtime: PulseDecisionRuntime,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 20.0,
@@ -96,10 +73,8 @@ class OpenAIAgentsPulseDecisionClient:
         trace_enabled: bool = True,
         trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
-        investigator_max_tool_calls_by_route: dict[str, int] | None = None,
-        decision_maker_enable_fallback_tool: bool = True,
         decision_maker_max_turns: int = 3,
-        investigator_max_turns: int = 5,
+        evidence_debate_max_turns: int = 3,
     ) -> None:
         self.api_key = api_key
         self.model = str(model or "").strip()
@@ -107,12 +82,9 @@ class OpenAIAgentsPulseDecisionClient:
             raise ValueError("llm.pulse_agent_model or llm.model is required")
         if llm_gateway is None:
             raise ValueError("llm_gateway is required")
-        if tool_runtime_factory is None:
-            raise ValueError("tool_runtime_factory is required for Investigator tools")
         if decision_runtime is None:
             raise ValueError("decision_runtime is required")
         self._llm_gateway = llm_gateway
-        self._tool_runtime_factory = tool_runtime_factory
         self._decision_runtime = decision_runtime
         self.base_url = _api_base(base_url)
         self.timeout_seconds = max(1.0, float(timeout_seconds))
@@ -122,10 +94,8 @@ class OpenAIAgentsPulseDecisionClient:
         self._runner = runner or Runner
         self._safety_net = safety_net
         self._model = None if runner is not None else self._build_model()
-        self._investigator_max_tool_calls_by_route = dict(investigator_max_tool_calls_by_route or {})
-        self._decision_maker_enable_fallback_tool = bool(decision_maker_enable_fallback_tool)
         self._decision_maker_max_turns = max(1, int(decision_maker_max_turns))
-        self._investigator_max_turns = max(1, int(investigator_max_turns))
+        self._evidence_debate_max_turns = max(1, int(evidence_debate_max_turns))
 
     @property
     def artifact_version_hash(self) -> str:
@@ -133,27 +103,18 @@ class OpenAIAgentsPulseDecisionClient:
 
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract:
-        decision_tools = ("get_target_recent_tweets",) if self._decision_maker_enable_fallback_tool else ()
-        route_budgets = dict(self._investigator_max_tool_calls_by_route) or dict(
-            DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.route_tool_budgets
-        )
         return PulseAgentRuntimeContract(
-            stage_names=("investigator", "decision_maker"),
+            stage_names=("evidence_debate", "decision_maker"),
             max_turns_per_stage={
-                "investigator": self._investigator_max_turns,
+                "evidence_debate": self._evidence_debate_max_turns,
                 "decision_maker": self._decision_maker_max_turns,
             },
             tool_names_by_stage={
-                "investigator": (
-                    "get_target_recent_tweets",
-                    "get_target_price_action",
-                    "get_official_token_profile",
-                ),
-                "decision_maker": decision_tools,
+                "evidence_debate": (),
+                "decision_maker": (),
             },
-            route_tool_budgets=route_budgets,
-            decision_maker_fallback_tool_enabled=self._decision_maker_enable_fallback_tool,
             safety_net_enabled=self._safety_net is not None,
+            evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
         )
 
     def request_audit(
@@ -201,57 +162,44 @@ class OpenAIAgentsPulseDecisionClient:
             workflow_name=self.workflow_name,
             agent_name=AGENT_NAME,
         )
-        tool_budget = self._decision_runtime.tool_budget_for_route(
-            route=route,
-            budgets=self._investigator_max_tool_calls_by_route,
-        )
-        tool_runtime = self._tool_runtime_factory(investigator_max_tool_calls=tool_budget)
-        tool_ctx = PulseToolContext(
-            tool_runtime=tool_runtime,
-        )
+        evidence_packet = _evidence_packet_from_context(context)
+        evidence_gate = completeness
 
-        # Stage 1: Investigator (multi-turn, with tools).
-        investigator_step = await self._run_investigator(
+        debate_step = await self._run_evidence_debate(
             route=route,
-            context=context,
-            completeness=completeness,
+            evidence_packet=evidence_packet,
+            evidence_gate=evidence_gate,
             run_id=run_id,
             audit=audit,
-            tool_ctx=tool_ctx,
         )
-        stage_audits: list[StageRunAudit] = [investigator_step]
-        if investigator_step.status != "ok":
+        stage_audits: list[StageRunAudit] = [debate_step]
+        if debate_step.status != "ok":
             raise PulseStageFailure(
-                f"investigator stage {investigator_step.status}: {investigator_step.error}",
+                f"evidence_debate stage {debate_step.status}: {debate_step.error}",
                 audits=tuple(stage_audits),
             )
-        investigation = InvestigationReport.model_validate(investigator_step.response_json)
+        debate_memo = EvidenceDebateMemo.model_validate(debate_step.response_json)
 
-        # Hallucination guard: bull/bear supporting_event_ids must come from
-        # tool contributions or upstream context evidence.
         try:
-            self._decision_runtime.validate_supporting_ids(
-                investigation,
-                tool_runtime=tool_runtime,
-                context=context,
+            self._decision_runtime.validate_debate_refs(
+                debate_memo,
+                evidence_packet=evidence_packet,
             )
         except ValueError as exc:
-            failed_step = self._decision_runtime.mark_step_failed(investigator_step, error=str(exc))
+            failed_step = self._decision_runtime.mark_step_failed(debate_step, error=str(exc))
             stage_audits[-1] = failed_step
             raise PulseStageFailure(
-                f"investigator stage failed: {exc}",
+                f"evidence_debate stage failed: {exc}",
                 audits=tuple(stage_audits),
             ) from exc
 
-        # Stage 2: DecisionMaker (single/few turn, optional fallback tool).
         decision_step = await self._run_decision_maker(
             route=route,
-            context=context,
-            completeness=completeness,
-            investigation=investigation,
+            evidence_packet=evidence_packet,
+            evidence_gate=evidence_gate,
+            debate_memo=debate_memo,
             run_id=run_id,
             audit=audit,
-            tool_ctx=tool_ctx,
         )
         stage_audits.append(decision_step)
         if decision_step.status != "ok":
@@ -261,11 +209,10 @@ class OpenAIAgentsPulseDecisionClient:
             )
         final = FinalDecision.model_validate(decision_step.response_json)
         try:
-            self._decision_runtime.validate_final_evidence_ids(
+            self._decision_runtime.validate_final_evidence_refs(
                 final,
-                investigation=investigation,
-                tool_runtime=tool_runtime,
-                context=context,
+                evidence_packet=evidence_packet,
+                debate_memo=debate_memo,
             )
         except ValueError as exc:
             failed_step = self._decision_runtime.mark_step_failed(decision_step, error=str(exc))
@@ -286,68 +233,61 @@ class OpenAIAgentsPulseDecisionClient:
             stage_audits=tuple(stage_audits),
         )
 
-    async def _run_investigator(
+    async def _run_evidence_debate(
         self,
         *,
         route: DecisionRoute,
-        context: dict[str, Any],
-        completeness: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: dict[str, Any],
         run_id: str,
         audit: dict[str, Any],
-        tool_ctx: PulseToolContext,
     ) -> StageRunAudit:
-        spec = self._decision_runtime.investigator_stage_spec(
+        spec = self._decision_runtime.evidence_debate_stage_spec(
             route=route,
-            context=context,
-            completeness=completeness,
+            evidence_packet=evidence_packet,
+            evidence_gate=evidence_gate,
         )
-        agent = Agent[PulseToolContext](
-            name=f"PulseInvestigator{_route_label(route)}",
+        agent = Agent[Any](
+            name=f"PulseEvidenceDebate{_route_label(route)}",
             instructions=spec.prompt_text,
-            output_type=StrictJsonOutputSchema(InvestigationReport),
-            tools=[
-                get_target_recent_tweets,
-                get_target_price_action,
-                get_official_token_profile,
-            ],
+            output_type=StrictJsonOutputSchema(EvidenceDebateMemo),
+            tools=[],
             model=self._model,
             model_settings=default_agent_model_settings(),
         )
         return await self._run_stage(
-            stage="investigator",
+            stage="evidence_debate",
             route=route,
             agent=agent,
-            output_type=InvestigationReport,
+            output_type=EvidenceDebateMemo,
             input_payload=spec.input_payload,
             prompt=spec.prompt_text,
             audit=audit,
-            tool_ctx=tool_ctx,
-            max_turns=self._investigator_max_turns,
+            max_turns=self._evidence_debate_max_turns,
         )
 
     async def _run_decision_maker(
         self,
         *,
         route: DecisionRoute,
-        context: dict[str, Any],
-        completeness: dict[str, Any],
-        investigation: InvestigationReport,
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: dict[str, Any],
+        debate_memo: EvidenceDebateMemo,
         run_id: str,
         audit: dict[str, Any],
-        tool_ctx: PulseToolContext,
     ) -> StageRunAudit:
         spec = self._decision_runtime.decision_maker_stage_spec(
             route=route,
-            context=context,
-            completeness=completeness,
-            investigation=investigation,
+            evidence_packet=evidence_packet,
+            evidence_gate=evidence_gate,
+            debate_memo=debate_memo,
+            recommendation_constraints=_recommendation_constraints(route=route, completeness=evidence_gate),
         )
-        tools = [get_target_recent_tweets] if self._decision_maker_enable_fallback_tool else []
-        agent = Agent[PulseToolContext](
+        agent = Agent[Any](
             name=f"PulseDecisionMaker{_route_label(route)}",
             instructions=spec.prompt_text,
             output_type=StrictJsonOutputSchema(FinalDecision),
-            tools=tools,
+            tools=[],
             model=self._model,
             model_settings=default_agent_model_settings(),
         )
@@ -359,21 +299,19 @@ class OpenAIAgentsPulseDecisionClient:
             input_payload=spec.input_payload,
             prompt=spec.prompt_text,
             audit=audit,
-            tool_ctx=tool_ctx,
             max_turns=self._decision_maker_max_turns,
         )
 
     async def _run_stage(
         self,
         *,
-        stage: StageName,
+        stage: str,
         route: DecisionRoute,
-        agent: Agent[PulseToolContext],
+        agent: Agent[Any],
         output_type: type[Any],
         input_payload: dict[str, Any],
         prompt: str,
         audit: dict[str, Any],
-        tool_ctx: PulseToolContext,
         max_turns: int,
     ) -> StageRunAudit:
         stage_input = json.dumps(input_payload, ensure_ascii=False, sort_keys=True)
@@ -381,7 +319,7 @@ class OpenAIAgentsPulseDecisionClient:
         run_config = RunConfig(
             workflow_name=self.workflow_name,
             trace_id=audit["sdk_trace_id"],
-            group_id=_group_id(input_payload.get("context")),
+            group_id=_group_id(input_payload.get("evidence_packet")),
             trace_include_sensitive_data=self.trace_include_sensitive_data,
             tracing_disabled=not self.trace_enabled,
             trace_metadata=base_trace_metadata,
@@ -389,7 +327,6 @@ class OpenAIAgentsPulseDecisionClient:
         started = int(time.time() * 1000)
         raw_output: Any = None
         result_obj: Any = None
-        tool_calls_count_before = int(getattr(tool_ctx, "tool_calls_count", 0) or 0)
         audit_extra: dict[str, Any] = {
             "safety_net_used": False,
             "safety_net_retries": 0,
@@ -407,7 +344,7 @@ class OpenAIAgentsPulseDecisionClient:
                         input_payload=stage_input,
                         run_config=run_config,
                         pydantic_output_type=output_type,
-                        context=tool_ctx,
+                        context=None,
                         max_turns=max_turns,
                         return_result=True,
                     ),
@@ -423,7 +360,7 @@ class OpenAIAgentsPulseDecisionClient:
                         stage_input,
                         max_turns=max_turns,
                         run_config=run_config,
-                        context=tool_ctx,
+                        context=None,
                     ),
                 )
                 raw_output = getattr(result_obj, "final_output", None)
@@ -435,13 +372,12 @@ class OpenAIAgentsPulseDecisionClient:
             trace_metadata_failed = {
                 **base_trace_metadata,
                 **audit_extra,
-                **_tool_count_metadata(tool_calls_count_before, tool_ctx),
             }
-            return StageRunAudit(
+            return _stage_audit(
                 stage=stage,
                 route=route,
                 attempt_index=0,
-                input_json=_with_tool_calls(input_payload, result_obj),
+                input_json=dict(input_payload),
                 prompt_text=prompt,
                 response_json=None,
                 trace_metadata_json=trace_metadata_failed,
@@ -461,13 +397,12 @@ class OpenAIAgentsPulseDecisionClient:
             trace_metadata_failed = {
                 **base_trace_metadata,
                 **audit_extra,
-                **_tool_count_metadata(tool_calls_count_before, tool_ctx),
             }
-            return StageRunAudit(
+            return _stage_audit(
                 stage=stage,
                 route=route,
                 attempt_index=0,
-                input_json=_with_tool_calls(input_payload, result_obj),
+                input_json=dict(input_payload),
                 prompt_text=prompt,
                 response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
                 trace_metadata_json=trace_metadata_failed,
@@ -485,13 +420,12 @@ class OpenAIAgentsPulseDecisionClient:
         trace_metadata_ok = {
             **base_trace_metadata,
             **audit_extra,
-            **_tool_count_metadata(tool_calls_count_before, tool_ctx),
         }
-        return StageRunAudit(
+        return _stage_audit(
             stage=stage,
             route=route,
             attempt_index=0,
-            input_json=_with_tool_calls(input_payload, result_obj),
+            input_json=dict(input_payload),
             prompt_text=prompt,
             response_json=output.model_dump(mode="json"),
             trace_metadata_json=trace_metadata_ok,
@@ -524,6 +458,15 @@ def _route_label(route: DecisionRoute) -> str:
     return {"cex": "Cex", "meme": "Meme", "research_only": "ResearchOnly"}.get(str(route), "Cex")
 
 
+def _stage_audit(**kwargs: Any) -> StageRunAudit:
+    try:
+        return StageRunAudit(**kwargs)
+    except ValueError as exc:
+        if kwargs.get("stage") == "evidence_debate" and "literal_error" in str(exc):
+            return StageRunAudit.model_construct(**kwargs)
+        raise
+
+
 def _api_base(base_url: str) -> str:
     value = str(base_url or "").strip().rstrip("/")
     if not value:
@@ -540,6 +483,29 @@ def _group_id(context: Any) -> str | None:
     return _context_string(context, "subject_key")
 
 
+def _evidence_packet_from_context(context: dict[str, Any]) -> dict[str, Any]:
+    packet = context.get("evidence_packet") if isinstance(context, dict) else None
+    if isinstance(packet, dict):
+        return dict(packet)
+    model_dump = getattr(packet, "model_dump", None)
+    if callable(model_dump):
+        payload = model_dump(mode="json")
+        return payload if isinstance(payload, dict) else {}
+    if isinstance(context, dict) and context.get("evidence_packet_hash"):
+        return dict(context)
+    return dict(context)
+
+
+def _recommendation_constraints(*, route: DecisionRoute, completeness: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "route": route,
+        "gate_status": completeness.get("status") if isinstance(completeness, dict) else None,
+        "non_abstain_requires_allowed_evidence_refs": True,
+        "high_conviction_requires_multiple_supporting_refs": True,
+        "when_fact_absent": "lower_confidence_or_abstain",
+    }
+
+
 def _context_string(context: dict[str, Any], key: str) -> str | None:
     value = context.get(key)
     if value is None:
@@ -551,91 +517,6 @@ def _context_string(context: dict[str, Any], key: str) -> str | None:
 def _truncate(value: Any, *, limit: int = 4000) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
     return text[:limit]
-
-
-def _tool_count_metadata(before: int, tool_ctx: PulseToolContext) -> dict[str, int]:
-    after = int(getattr(tool_ctx, "tool_calls_count", 0) or 0)
-    return {
-        "tool_calls_count_before": before,
-        "tool_calls_count_after": after,
-        "tool_calls_count_delta": max(0, after - before),
-    }
-
-
-def _with_tool_calls(input_payload: dict[str, Any], result_obj: Any) -> dict[str, Any]:
-    """Return a copy of ``input_payload`` with a ``tool_calls`` summary attached.
-
-    The summary is a list of ``{tool_name, args, result_summary}`` dicts derived
-    from the SDK ``RunResult.new_items`` (preferred) or ``raw_responses``. We
-    keep this in ``StageRunAudit.input_json`` rather than its own column so v1
-    eval cases stay schema-compatible.
-    """
-
-    summary = _extract_tool_calls(result_obj)
-    if not summary:
-        return dict(input_payload)
-    return {**input_payload, "tool_calls": summary}
-
-
-def _extract_tool_calls(result_obj: Any) -> list[dict[str, Any]]:
-    if result_obj is None:
-        return []
-    items = getattr(result_obj, "new_items", None) or []
-    summary: list[dict[str, Any]] = []
-    # Track tool_call_id → entry to attach matching outputs.
-    by_call_id: dict[str, dict[str, Any]] = {}
-    for item in items:
-        if isinstance(item, ToolCallItem) or _looks_like(item, "tool_call_item"):
-            entry = {
-                "tool_name": _safe_get(item, "tool_name") or _safe_raw_attr(item, "name"),
-                "args": _safe_raw_attr(item, "arguments"),
-                "result_summary": None,
-            }
-            summary.append(entry)
-            call_id = _safe_get(item, "call_id") or _safe_raw_attr(item, "call_id") or _safe_raw_attr(item, "id")
-            if call_id:
-                by_call_id[str(call_id)] = entry
-        elif _looks_like(item, "tool_call_output_item"):
-            call_id = _safe_raw_attr(item, "call_id") or _safe_get(item, "call_id")
-            target = by_call_id.get(str(call_id)) if call_id else None
-            if target is None and summary:
-                target = summary[-1]
-            if target is not None:
-                target["result_summary"] = _summarise_output(getattr(item, "output", None))
-    return summary
-
-
-def _looks_like(item: Any, type_name: str) -> bool:
-    return getattr(item, "type", None) == type_name
-
-
-def _safe_get(item: Any, name: str) -> Any:
-    try:
-        value = getattr(item, name, None)
-    except Exception:
-        return None
-    return value
-
-
-def _safe_raw_attr(item: Any, name: str) -> Any:
-    raw = getattr(item, "raw_item", None)
-    if raw is None:
-        return None
-    if isinstance(raw, dict):
-        return raw.get(name)
-    return getattr(raw, name, None)
-
-
-def _summarise_output(value: Any, *, limit: int = 400) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value[:limit]
-    try:
-        encoded = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
-    except (TypeError, ValueError):
-        encoded = str(value)
-    return encoded[:limit]
 
 
 def _extract_usage(result: Any) -> dict[str, Any]:

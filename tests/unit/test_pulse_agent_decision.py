@@ -65,6 +65,7 @@ def test_final_decision_rejects_execution_language() -> None:
             invalidation_conditions=["流动性跌破 floor。"],
             residual_risks=["单一 KOL 驱动。"],
             evidence_event_ids=["event-1"],
+            supporting_evidence_refs=("event:event-1",),
         )
 
 
@@ -83,6 +84,8 @@ def test_high_conviction_maps_to_candidate_decision_fields() -> None:
         invalidation_conditions=["cohort 转弱。"],
         residual_risks=["流动性薄。"],
         evidence_event_ids=["event-1", "event-2", "event-3"],
+        supporting_evidence_refs=("event:event-1", "event:event-2"),
+        risk_evidence_refs=("event:event-3",),
     )
 
     fields = candidate_fields_from_decision(decision, stage_count=3)
@@ -112,6 +115,7 @@ def test_watchlist_maps_to_candidate_decision_fields() -> None:
         invalidation_conditions=["成交量回落。"],
         residual_risks=["缺少 OI 确认。"],
         evidence_event_ids=["event-2"],
+        supporting_evidence_refs=("event:event-2",),
     )
 
     fields = candidate_fields_from_decision(decision, stage_count=2)

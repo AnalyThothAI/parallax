@@ -180,9 +180,14 @@ class SignalPulseStagePayload(ApiSchema):
 class SignalPulseStages(ApiSchema):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    investigator: SignalPulseStagePayload | None = None
+    evidence_pack: SignalPulseStagePayload | None = None
+    evidence_completeness_gate: SignalPulseStagePayload | None = None
+    evidence_debate: SignalPulseStagePayload | None = None
+    claim_verifier: SignalPulseStagePayload | None = None
     decision_maker: SignalPulseStagePayload | None = None
-    research_only_gate: SignalPulseStagePayload | None = None
+    recommendation_clipper: SignalPulseStagePayload | None = None
+    deterministic_eval: SignalPulseStagePayload | None = None
+    write_gate: SignalPulseStagePayload | None = None
 
 
 class SignalPulseBullBearView(ApiSchema):
@@ -210,9 +215,43 @@ class SignalPulseDecision(ApiSchema):
     bear_view: SignalPulseBullBearView | None
     playbook: SignalPulsePlaybook | None
     evidence_event_ids: list[str]
+    supporting_evidence_refs: list[str] = Field(default_factory=list)
+    risk_evidence_refs: list[str] = Field(default_factory=list)
+    data_gap_refs: list[str] = Field(default_factory=list)
     evidence_event_urls: dict[str, str]
     invalidation_conditions: list[str]
     residual_risks: list[str]
+
+
+class SignalPulseHealth(ApiSchema):
+    pulse_ready: bool | None = None
+    agent_worker_running: bool | None = None
+    candidate_count: int | None = None
+    blocked_low_information_count: int | None = None
+    dead_job_count: int | None = None
+    market_ready_rate: float | None = None
+    window: str | None = None
+    scope: str | None = None
+    since_hours: int | None = None
+    publish_status: str | None = None
+    reasons: list[str] = Field(default_factory=list)
+    latest_packet_created_at_ms: int | None = None
+    latest_agent_run_finished_at_ms: int | None = None
+    latest_public_candidate_updated_at_ms: int | None = None
+    due_jobs: int | None = None
+    claimed_jobs: int | None = None
+    failed_jobs_4h: int | None = None
+    agent_runs_4h: int | None = None
+    agent_failed_4h: int | None = None
+    agent_failure_rate_4h: float | None = None
+    unknown_ref_failures_4h: int | None = None
+    unknown_ref_failure_rate_4h: float | None = None
+    unsupported_claim_failures_4h: int | None = None
+    unsupported_claim_failure_rate_4h: float | None = None
+    hidden_abstain_4h: int | None = None
+    hidden_hold_publish_4h: int | None = None
+    hidden_insufficient_evidence_4h: int | None = None
+    public_candidates_4h: int | None = None
 
 
 class SignalPulseItem(ApiSchema):
@@ -226,6 +265,10 @@ class SignalPulseItem(ApiSchema):
     window: str | None = None
     scope: str | None = None
     pulse_status: str | None = None
+    evidence_status: str | None = None
+    decision_status: str | None = None
+    display_status: str | None = None
+    evidence_packet_hash: str | None = None
     verdict: str | None = None
     social_phase: str | None = None
     candidate_score: float | None = None
@@ -238,6 +281,8 @@ class SignalPulseItem(ApiSchema):
     factor_snapshot: JsonObject | None = None
     decision: SignalPulseDecision | None = None
     gate: JsonObject | None = None
+    claim_verification: JsonObject | None = None
+    evidence_gate: JsonObject | None = None
     fact_card: JsonObject | None = None
     agent_run_id: str | None = None
     pulse_version: str | None = None
@@ -252,7 +297,7 @@ class SignalPulseItem(ApiSchema):
 
 class SignalPulseData(ApiSchema):
     query: JsonObject | None = None
-    health: JsonObject | None = None
+    health: SignalPulseHealth | None = None
     summary: JsonObject | None = None
     items: list[SignalPulseItem] = Field(default_factory=list)
     next_cursor: str | None = None

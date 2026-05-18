@@ -52,6 +52,12 @@ class PulseCandidatesRepository:
         source_event_ids_json: list[Any] | None = None,
         last_edge_events_json: list[Any] | None = None,
         agent_run_id: str | None = None,
+        evidence_packet_hash: str | None = None,
+        evidence_status: str = "insufficient",
+        decision_status: str = "invalid",
+        display_status: str = "hidden_insufficient_evidence",
+        claim_verification_json: dict[str, Any] | None = None,
+        evidence_gate_json: dict[str, Any] | None = None,
         created_at_ms: int | None = None,
         updated_at_ms: int | None = None,
         commit: bool = True,
@@ -68,13 +74,15 @@ class PulseCandidatesRepository:
               decision_confidence, decision_abstain_reason, decision_stage_count, decision_json,
               gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
               last_edge_events_json, agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
-              created_at_ms, updated_at_ms
+              evidence_packet_hash, evidence_status, decision_status, display_status,
+              claim_verification_json, evidence_gate_json, created_at_ms, updated_at_ms
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s
             )
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
@@ -109,6 +117,12 @@ class PulseCandidatesRepository:
               gate_version = excluded.gate_version,
               prompt_version = excluded.prompt_version,
               schema_version = excluded.schema_version,
+              evidence_packet_hash = excluded.evidence_packet_hash,
+              evidence_status = excluded.evidence_status,
+              decision_status = excluded.decision_status,
+              display_status = excluded.display_status,
+              claim_verification_json = excluded.claim_verification_json,
+              evidence_gate_json = excluded.evidence_gate_json,
               updated_at_ms = excluded.updated_at_ms
             RETURNING *
             """,
@@ -146,6 +160,12 @@ class PulseCandidatesRepository:
                 gate_version,
                 prompt_version,
                 schema_version,
+                evidence_packet_hash,
+                evidence_status,
+                decision_status,
+                display_status,
+                _json(claim_verification_json or {}),
+                _json(evidence_gate_json or {}),
                 created,
                 now,
             ),

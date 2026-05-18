@@ -143,8 +143,8 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
 
 
 @pytest.mark.contract
-def test_signal_pulse_stages_schema_exposes_only_v2_stage_fields() -> None:
-    """Signal Pulse public stages are v2-only; legacy DB stage rows stay internal."""
+def test_signal_pulse_stages_schema_exposes_only_evidence_first_stage_fields() -> None:
+    """Signal Pulse public stages expose only evidence-first stage fields."""
     from gmgn_twitter_intel.app.runtime.app import create_app
     from gmgn_twitter_intel.platform.config.settings import Settings
 
@@ -153,7 +153,16 @@ def test_signal_pulse_stages_schema_exposes_only_v2_stage_fields() -> None:
     schema = app.openapi()
     props = schema["components"]["schemas"]["SignalPulseStages"]["properties"]
 
-    assert set(props) == {"investigator", "decision_maker", "research_only_gate"}
+    assert set(props) == {
+        "evidence_pack",
+        "evidence_completeness_gate",
+        "evidence_debate",
+        "claim_verifier",
+        "decision_maker",
+        "recommendation_clipper",
+        "deterministic_eval",
+        "write_gate",
+    }
     assert schema["components"]["schemas"]["SignalPulseStages"]["additionalProperties"] is False
 
 

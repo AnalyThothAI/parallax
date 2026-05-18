@@ -273,7 +273,7 @@ class PulseJobsRepository:
             """
             UPDATE pulse_agent_runs
             SET status = 'failed',
-                outcome = 'failed',
+                outcome = 'timeout',
                 error = COALESCE(NULLIF(error, ''), 'stale_running_timeout'),
                 trace_metadata_json = COALESCE(trace_metadata_json, '{}'::jsonb)
                   || '{"failure_reason":"stale_running_timeout"}'::jsonb,

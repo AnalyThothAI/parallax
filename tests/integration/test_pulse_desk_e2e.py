@@ -14,6 +14,7 @@ from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service impor
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_evidence_repository import PulseEvidenceRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
@@ -21,6 +22,8 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository imp
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
+    EvidenceClaim,
+    EvidenceDebateMemo,
     FinalDecision,
     StageRunAudit,
     TradePlaybook,
@@ -45,7 +48,7 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    client = _TwoStageClient()
+    client = _EvidenceFirstClient()
     worker = PulseCandidateWorker(
         name="pulse_candidate",
         settings=_settings(),
@@ -64,8 +67,10 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     decision = candidate["decision_json"]
     assert {"narrative_archetype", "narrative_thesis_zh", "bull_view", "bear_view", "playbook"} <= set(decision)
     assert decision["evidence_event_urls"] == {"event-1": "https://x.com/toly/status/1"}
-    assert [step["stage"] for step in repos.pulse_runs.agent_run_steps] == ["investigator", "decision_maker"]
-    assert repos.pulse_runs.agent_run_steps[0]["input_json"]["tool_calls"]
+    steps_by_stage = {step["stage"]: step for step in repos.pulse_runs.agent_run_steps}
+    assert set(steps_by_stage) == _EVIDENCE_FIRST_STAGES
+    assert steps_by_stage["evidence_pack"]["response_json"]["evidence_packet_hash"] == candidate["evidence_packet_hash"]
+    assert "tool_calls" not in steps_by_stage["evidence_debate"]["input_json"]
 
     pulse_read = _PulseReadAdapter(repos)
     detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_read).candidate(
@@ -74,7 +79,7 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     assert detail is not None
     assert detail["decision"]["playbook"]["has_playbook"] is True
     assert detail["decision"]["bull_view"]["strength"] == "moderate"
-    assert detail["stages"]["investigator"]["response"]["narrative_archetype_candidate"] == "社交扩散"
+    assert detail["stages"]["evidence_debate"]["response"]["summary_zh"] == "基于封闭证据包的多空综合完成。"
     assert detail["stages"]["decision_maker"]["response"]["recommendation"] == "trade_candidate"
 
     notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
@@ -102,8 +107,15 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
                 token_target_rows=[_timeline_row("event-1", NOW_MS - 1_000)],
             ),
             telemetry=object(),
-            decision_client=_TwoStageClient(),
+            decision_client=_EvidenceFirstClient(),
         )
+        _insert_event(
+            conn,
+            event_id="event-1",
+            received_at_ms=NOW_MS - 1_000,
+            canonical_url="https://x.com/toly/status/1",
+        )
+        conn.commit()
 
         scan = worker.scan_triggers_once(now_ms=NOW_MS)
         run = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -122,8 +134,10 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
 
         steps = pulse_runs.list_agent_run_steps(ids["run_id"])
         steps_by_stage = {step["stage"]: step for step in steps}
-        assert set(steps_by_stage) == {"investigator", "decision_maker"}
-        assert steps_by_stage["investigator"]["input_json"]["tool_calls"]
+        assert set(steps_by_stage) == _EVIDENCE_FIRST_STAGES
+        packet_step = steps_by_stage["evidence_pack"]
+        assert packet_step["response_json"]["evidence_packet_hash"] == stored["evidence_packet_hash"]
+        assert "tool_calls" not in steps_by_stage["evidence_debate"]["input_json"]
 
         detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs).candidate(
             candidate_id=ids["candidate_id"]
@@ -131,7 +145,7 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         assert detail is not None
         assert detail["decision"]["playbook"]["has_playbook"] is True
         assert detail["decision"]["bull_view"]["strength"] == "moderate"
-        assert detail["stages"]["investigator"]["response"]["narrative_archetype_candidate"] == "社交扩散"
+        assert detail["stages"]["evidence_debate"]["response"]["summary_zh"] == "基于封闭证据包的多空综合完成。"
         assert detail["stages"]["decision_maker"]["response"]["recommendation"] == "trade_candidate"
 
         notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
@@ -182,11 +196,23 @@ def test_pulse_agent_tool_queries_read_seeded_events_through_read_only_connectio
         read_conn.close()
 
 
-class _TwoStageClient:
+_EVIDENCE_FIRST_STAGES = {
+    "evidence_pack",
+    "evidence_completeness_gate",
+    "evidence_debate",
+    "claim_verifier",
+    "decision_maker",
+    "recommendation_clipper",
+    "deterministic_eval",
+    "write_gate",
+}
+
+
+class _EvidenceFirstClient:
     provider = "fake"
     model = "fake-pulse"
     timeout_seconds = 1.0
-    artifact_version_hash = "artifact:fake-two-stage"
+    artifact_version_hash = "artifact:fake-evidence-first"
 
     def request_audit(
         self,
@@ -223,21 +249,33 @@ class _TwoStageClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
     ) -> PulseDecisionResult:
-        investigation = {
-            "narrative_archetype_candidate": "社交扩散",
-            "narrative_observation_zh": "独立作者和关注账号讨论同步升温，链上质量仍保持可观察状态。",
-            "bull_observation": {
-                "strength": "moderate",
-                "thesis_zh": "独立作者扩散和关注账号确认共同支撑继续观察。",
-                "supporting_event_ids": ["event-1"],
-            },
-            "bear_observation": {
-                "strength": "weak",
-                "thesis_zh": "讨论窗口仍短，热度可能快速回落。",
-                "supporting_event_ids": ["event-1"],
-            },
-            "data_gaps": [],
-        }
+        allowed_refs = [
+            str(ref.get("ref_id"))
+            for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
+            if isinstance(ref, dict) and ref.get("ref_id")
+        ]
+        supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1]
+        risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
+        debate_memo = EvidenceDebateMemo(
+            bull_claims=(
+                EvidenceClaim(
+                    claim="独立作者扩散和关注账号确认共同支撑继续观察。",
+                    evidence_refs=supporting_refs,
+                    stance="bull",
+                ),
+            ),
+            bear_claims=(
+                EvidenceClaim(
+                    claim="讨论窗口仍短，热度可能快速回落。",
+                    evidence_refs=risk_refs or supporting_refs,
+                    stance="risk",
+                ),
+            ),
+            rebuttal_claims=(),
+            data_gap_claims=(),
+            summary_zh="基于封闭证据包的多空综合完成。",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
         final = FinalDecision(
             route=route,  # type: ignore[arg-type]
             recommendation="trade_candidate",
@@ -265,6 +303,8 @@ class _TwoStageClient:
             invalidation_conditions=["独立作者数回落。"],
             residual_risks=["流动性确认仍需观察。"],
             evidence_event_ids=["event-1"],
+            supporting_evidence_refs=supporting_refs,
+            risk_evidence_refs=risk_refs,
         )
         audit = self.request_audit(
             context=context,
@@ -279,16 +319,15 @@ class _TwoStageClient:
             agent_run_audit={**audit, "output_hash": "output-e2e"},
             stage_audits=(
                 StageRunAudit(
-                    stage="investigator",
+                    stage="evidence_debate",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
                     input_json={
-                        "context": context,
+                        "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
                         "completeness": completeness,
-                        "tool_calls": [{"tool_name": "get_target_recent_tweets"}],
                     },
-                    prompt_text="investigator prompt",
-                    response_json=investigation,
+                    prompt_text="evidence debate prompt",
+                    response_json=debate_memo.model_dump(mode="json"),
                     trace_metadata_json={},
                     usage_json={"input_tokens": 60},
                     latency_ms=10,
@@ -298,7 +337,11 @@ class _TwoStageClient:
                     stage="decision_maker",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
-                    input_json={"context": context, "completeness": completeness, "investigation": investigation},
+                    input_json={
+                        "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
+                        "completeness": completeness,
+                        "evidence_debate": debate_memo.model_dump(mode="json"),
+                    },
                     prompt_text="decision maker prompt",
                     response_json=final.model_dump(mode="json"),
                     trace_metadata_json={},
@@ -363,6 +406,8 @@ class _RealWorkerRepos:
         self.pulse_runs = PulseRunsRepository(conn)
         self.pulse_agent_eval = PulseAgentEvalRepository(conn)
         self.pulse_playbooks = PulsePlaybooksRepository(conn)
+        self.pulse_evidence = PulseEvidenceRepository(conn)
+        self.pulse_evidence_sources = _RealWorkerEvidenceSources(conn)
         self.token_radar = _StaticRows(rows=token_radar_rows)
         self.token_targets = _StaticRows(rows=token_target_rows)
 
@@ -376,6 +421,70 @@ class _StaticRows:
 
     def timeline_rows(self, **_: Any) -> list[dict[str, Any]]:
         return list(self.rows)
+
+
+class _RealWorkerEvidenceSources:
+    def __init__(self, conn: Any) -> None:
+        self.conn = conn
+
+    def list_source_events(self, event_ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+        ids = sorted({str(event_id).strip() for event_id in event_ids if str(event_id).strip()})
+        if not ids:
+            return []
+        return [
+            dict(row)
+            for row in self.conn.execute(
+                """
+                SELECT
+                  event_id,
+                  received_at_ms AS observed_at_ms,
+                  created_at_ms,
+                  text_clean AS summary_zh,
+                  canonical_url AS url,
+                  'events' AS source_table,
+                  'high' AS quality
+                FROM events
+                WHERE event_id = ANY(%s)
+                ORDER BY received_at_ms DESC, event_id ASC
+                """,
+                (ids,),
+            ).fetchall()
+        ]
+
+    def list_enriched_events(self, event_ids: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+        return []
+
+    def list_market_facts(self, context: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "ref_id": "market:pf-test",
+                "route": "meme",
+                "target_market_type": "dex",
+                "price_usd": 0.42,
+                "liquidity_usd": 250_000,
+                "market_cap_usd": 1_000_000,
+                "volume_24h_usd": 12_000,
+                "pricefeed_id": "pf-test",
+                "instrument_ref": "pf-test",
+                "source_provider": "okx",
+                "observed_at_ms": NOW_MS - 1_000,
+                "freshness_status": "fresh",
+                "source_table": "market_ticks",
+            }
+        ]
+
+    def list_identity_facts(self, context: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "source_id": "identity:asset-1",
+                "target_id": "asset-1",
+                "symbol": "TEST",
+                "summary_zh": "TEST 目标身份已解析",
+                "quality": "high",
+                "observed_at_ms": NOW_MS - 1_000,
+                "source_table": "asset_identity_current",
+            }
+        ]
 
 
 class _EmptyEvidence:

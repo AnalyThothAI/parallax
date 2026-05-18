@@ -1062,10 +1062,7 @@ export interface components {
             agent_worker_running?: boolean | null;
             /** Has More */
             has_more?: boolean | null;
-            /** Health */
-            health?: {
-                [key: string]: unknown;
-            } | null;
+            health?: components["schemas"]["SignalPulseHealth"] | null;
             /** Items */
             items?: components["schemas"]["SignalPulseItem"][];
             /** Next Cursor */
@@ -1093,6 +1090,8 @@ export interface components {
             bull_view: components["schemas"]["SignalPulseBullBearView"] | null;
             /** Confidence */
             confidence: number | null;
+            /** Data Gap Refs */
+            data_gap_refs?: string[];
             /** Evidence Event Ids */
             evidence_event_ids: string[];
             /** Evidence Event Urls */
@@ -1110,10 +1109,75 @@ export interface components {
             recommendation: string | null;
             /** Residual Risks */
             residual_risks: string[];
+            /** Risk Evidence Refs */
+            risk_evidence_refs?: string[];
             /** Route */
             route: string | null;
             /** Summary Zh */
             summary_zh: string | null;
+            /** Supporting Evidence Refs */
+            supporting_evidence_refs?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalPulseHealth */
+        SignalPulseHealth: {
+            /** Agent Failed 4H */
+            agent_failed_4h?: number | null;
+            /** Agent Failure Rate 4H */
+            agent_failure_rate_4h?: number | null;
+            /** Agent Runs 4H */
+            agent_runs_4h?: number | null;
+            /** Agent Worker Running */
+            agent_worker_running?: boolean | null;
+            /** Blocked Low Information Count */
+            blocked_low_information_count?: number | null;
+            /** Candidate Count */
+            candidate_count?: number | null;
+            /** Claimed Jobs */
+            claimed_jobs?: number | null;
+            /** Dead Job Count */
+            dead_job_count?: number | null;
+            /** Due Jobs */
+            due_jobs?: number | null;
+            /** Failed Jobs 4H */
+            failed_jobs_4h?: number | null;
+            /** Hidden Abstain 4H */
+            hidden_abstain_4h?: number | null;
+            /** Hidden Hold Publish 4H */
+            hidden_hold_publish_4h?: number | null;
+            /** Hidden Insufficient Evidence 4H */
+            hidden_insufficient_evidence_4h?: number | null;
+            /** Latest Agent Run Finished At Ms */
+            latest_agent_run_finished_at_ms?: number | null;
+            /** Latest Packet Created At Ms */
+            latest_packet_created_at_ms?: number | null;
+            /** Latest Public Candidate Updated At Ms */
+            latest_public_candidate_updated_at_ms?: number | null;
+            /** Market Ready Rate */
+            market_ready_rate?: number | null;
+            /** Public Candidates 4H */
+            public_candidates_4h?: number | null;
+            /** Publish Status */
+            publish_status?: string | null;
+            /** Pulse Ready */
+            pulse_ready?: boolean | null;
+            /** Reasons */
+            reasons?: string[];
+            /** Scope */
+            scope?: string | null;
+            /** Since Hours */
+            since_hours?: number | null;
+            /** Unknown Ref Failure Rate 4H */
+            unknown_ref_failure_rate_4h?: number | null;
+            /** Unknown Ref Failures 4H */
+            unknown_ref_failures_4h?: number | null;
+            /** Unsupported Claim Failure Rate 4H */
+            unsupported_claim_failure_rate_4h?: number | null;
+            /** Unsupported Claim Failures 4H */
+            unsupported_claim_failures_4h?: number | null;
+            /** Window */
+            window?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -1127,11 +1191,27 @@ export interface components {
             candidate_score?: number | null;
             /** Candidate Type */
             candidate_type?: string | null;
+            /** Claim Verification */
+            claim_verification?: {
+                [key: string]: unknown;
+            } | null;
             /** Created At Ms */
             created_at_ms?: number | null;
             decision?: components["schemas"]["SignalPulseDecision"] | null;
+            /** Decision Status */
+            decision_status?: string | null;
+            /** Display Status */
+            display_status?: string | null;
             /** Evidence Event Ids */
             evidence_event_ids?: string[];
+            /** Evidence Gate */
+            evidence_gate?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence Packet Hash */
+            evidence_packet_hash?: string | null;
+            /** Evidence Status */
+            evidence_status?: string | null;
             /** Fact Card */
             fact_card?: {
                 [key: string]: unknown;
@@ -1236,9 +1316,14 @@ export interface components {
         };
         /** SignalPulseStages */
         SignalPulseStages: {
+            claim_verifier?: components["schemas"]["SignalPulseStagePayload"] | null;
             decision_maker?: components["schemas"]["SignalPulseStagePayload"] | null;
-            investigator?: components["schemas"]["SignalPulseStagePayload"] | null;
-            research_only_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
+            deterministic_eval?: components["schemas"]["SignalPulseStagePayload"] | null;
+            evidence_completeness_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
+            evidence_debate?: components["schemas"]["SignalPulseStagePayload"] | null;
+            evidence_pack?: components["schemas"]["SignalPulseStagePayload"] | null;
+            recommendation_clipper?: components["schemas"]["SignalPulseStagePayload"] | null;
+            write_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
         };
         /** SocialEventDetail */
         SocialEventDetail: {

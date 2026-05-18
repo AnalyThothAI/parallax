@@ -3,56 +3,31 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
+    EvidenceCompletenessGateResult,
+)
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     DecisionRoute,
+    EvidenceDebateMemo,
     FinalDecision,
-    InvestigationReport,
-    StageName,
     StageRunAudit,
 )
-
-
-class ToolBudgetExceeded(RuntimeError):
-    """Investigator tool call budget was exceeded for the route."""
-
-
-class PulseAgentToolRuntime(Protocol):
-    tool_calls_count: int
-    investigator_max_tool_calls: int
-    contributed_event_ids: set[str]
-
-    def get_target_recent_tweets(self, *, target_id: str, limit: int = 15) -> dict[str, Any]: ...
-
-    def get_target_price_action(self, *, target_id: str, hours: int = 24) -> dict[str, Any]: ...
-
-    def get_official_token_profile(self, *, target_id: str) -> dict[str, Any]: ...
-
-
-class PulseAgentToolRuntimeFactory(Protocol):
-    def __call__(self, *, investigator_max_tool_calls: int) -> PulseAgentToolRuntime: ...
+from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
 @dataclass(frozen=True, slots=True)
 class PulseDecisionStageSpec:
-    stage: StageName
+    stage: str
     prompt_text: str
     input_payload: dict[str, Any]
 
 
-_DEFAULT_STAGE_NAMES = ("investigator", "decision_maker")
-_DEFAULT_MAX_TURNS_PER_STAGE = {"investigator": 5, "decision_maker": 3}
-_DEFAULT_TOOL_NAMES_BY_STAGE = {
-    "investigator": (
-        "get_target_recent_tweets",
-        "get_target_price_action",
-        "get_official_token_profile",
-    ),
-    "decision_maker": ("get_target_recent_tweets",),
-}
-_DEFAULT_ROUTE_TOOL_BUDGETS = {"cex": 3, "meme": 5, "research_only": 3}
+_DEFAULT_STAGE_NAMES = ("evidence_debate", "decision_maker")
+_DEFAULT_MAX_TURNS_PER_STAGE = {"evidence_debate": 3, "decision_maker": 3}
+_DEFAULT_TOOL_NAMES_BY_STAGE = {"evidence_debate": (), "decision_maker": ()}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
-    "runtime_evidence_id_subset",
+    "runtime_evidence_ref_subset",
     "deterministic_completeness_gate",
 )
 _DEFAULT_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
@@ -63,21 +38,20 @@ class PulseAgentRuntimeContract:
     stage_names: tuple[str, ...] = _DEFAULT_STAGE_NAMES
     max_turns_per_stage: dict[str, int] = field(default_factory=lambda: dict(_DEFAULT_MAX_TURNS_PER_STAGE))
     tool_names_by_stage: dict[str, tuple[str, ...]] = field(default_factory=lambda: dict(_DEFAULT_TOOL_NAMES_BY_STAGE))
-    route_tool_budgets: dict[str, int] = field(default_factory=lambda: dict(_DEFAULT_ROUTE_TOOL_BUDGETS))
-    decision_maker_fallback_tool_enabled: bool = True
     safety_net_enabled: bool = False
     validators_enabled: tuple[str, ...] = _DEFAULT_VALIDATORS_ENABLED
     failure_taxonomy_version: str = _DEFAULT_FAILURE_TAXONOMY_VERSION
+    evidence_packet_schema_version: str = "pulse-evidence-packet-v1"
 
     def manifest_kwargs(self) -> dict[str, Any]:
         return {
             "stage_names": tuple(self.stage_names),
             "max_turns_per_stage": dict(self.max_turns_per_stage),
             "tool_names_by_stage": {str(stage): tuple(names) for stage, names in self.tool_names_by_stage.items()},
-            "route_tool_budgets": dict(self.route_tool_budgets),
             "safety_net_enabled": bool(self.safety_net_enabled),
             "validators_enabled": tuple(self.validators_enabled),
             "failure_taxonomy_version": str(self.failure_taxonomy_version),
+            "evidence_packet_schema_version": str(self.evidence_packet_schema_version),
         }
 
 
@@ -85,40 +59,37 @@ DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT = PulseAgentRuntimeContract()
 
 
 class PulseDecisionRuntime(Protocol):
-    def tool_budget_for_route(self, *, route: DecisionRoute, budgets: dict[str, int] | None) -> int: ...
-
-    def investigator_stage_spec(
+    def evidence_debate_stage_spec(
         self,
         *,
         route: DecisionRoute,
-        context: dict[str, Any],
-        completeness: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: EvidenceCompletenessGateResult,
     ) -> PulseDecisionStageSpec: ...
 
     def decision_maker_stage_spec(
         self,
         *,
         route: DecisionRoute,
-        context: dict[str, Any],
-        completeness: dict[str, Any],
-        investigation: InvestigationReport,
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: EvidenceCompletenessGateResult,
+        debate_memo: EvidenceDebateMemo,
+        recommendation_constraints: dict[str, Any],
     ) -> PulseDecisionStageSpec: ...
 
-    def validate_supporting_ids(
+    def validate_debate_refs(
         self,
-        investigation: InvestigationReport,
+        debate_memo: EvidenceDebateMemo,
         *,
-        tool_runtime: PulseAgentToolRuntime,
-        context: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
     ) -> None: ...
 
-    def validate_final_evidence_ids(
+    def validate_final_evidence_refs(
         self,
         final: FinalDecision,
         *,
-        investigation: InvestigationReport,
-        tool_runtime: PulseAgentToolRuntime,
-        context: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
+        debate_memo: EvidenceDebateMemo,
     ) -> None: ...
 
     def enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision: ...
@@ -183,12 +154,12 @@ class PulseDecisionProvider(Protocol):
 
 __all__ = [
     "DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT",
+    "EvidenceCompletenessGateResult",
+    "EvidenceDebateMemo",
     "PulseAgentRuntimeContract",
-    "PulseAgentToolRuntime",
-    "PulseAgentToolRuntimeFactory",
     "PulseDecisionProvider",
     "PulseDecisionResult",
     "PulseDecisionRuntime",
     "PulseDecisionStageSpec",
-    "ToolBudgetExceeded",
+    "PulseEvidencePacket",
 ]

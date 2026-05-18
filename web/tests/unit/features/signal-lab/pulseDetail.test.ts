@@ -3,7 +3,6 @@ import {
   GATE_AGENT_MISMATCH_CONFIDENCE,
 } from "@features/signal-lab/model/pulseDetail";
 import {
-  tittyLegacyStages,
   tittyPulseFixture,
   tittySourceEventsFixture,
   TITTY_NOW_MS,
@@ -177,10 +176,10 @@ describe("buildPulseDetailView", () => {
     expect(view.evidence.concentration.topAuthorShare).toBeCloseTo(0.6);
   });
 
-  it("builds v2 stage rail with investigator + decision_maker entries", () => {
+  it("builds evidence-first stage rail with evidence_debate + decision_maker entries", () => {
     expect(view.agent.kind).toBe("stages");
     expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
-      "investigator",
+      "evidence_debate",
       "decision_maker",
     ]);
     const decision = view.agent.railItems.find((entry) => entry.kind === "decision_maker");
@@ -266,30 +265,18 @@ describe("buildPulseDetailView", () => {
     expect(decisionView.agent.decisionSurface?.bear).toBeNull();
   });
 
-  it("ignores historical legacy stage rows when building the public agent rail", () => {
-    const legacyOnly = buildPulseDetailView({
-      item: { ...tittyPulseFixture, stages: tittyLegacyStages },
-      sourceEvents: tittySourceEventsFixture,
-      now: TITTY_NOW_MS,
-    });
-
-    expect(legacyOnly.agent.railItems).toEqual([]);
-    expect(legacyOnly.agent.model).toBe("-");
-    expect(legacyOnly.agent.totalLatencyMs).toBe(0);
-  });
-
-  it("renders v2 stages and ignores legacy rows in mixed stage payloads", () => {
-    const mixed = buildPulseDetailView({
+  it("renders evidence-first stages in the public agent rail", () => {
+    const view = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
-        stages: { ...(tittyPulseFixture.stages ?? {}), ...tittyLegacyStages },
+        stages: tittyPulseFixture.stages,
       },
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
 
-    expect(mixed.agent.railItems.map((entry) => entry.kind)).toEqual([
-      "investigator",
+    expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
+      "evidence_debate",
       "decision_maker",
     ]);
   });
@@ -322,10 +309,15 @@ describe("buildPulseDetailView", () => {
           confidence: 0,
         },
         stages: {
-          investigator: null,
+          evidence_pack: null,
+          evidence_debate: null,
+          claim_verifier: null,
           decision_maker: null,
-          research_only_gate: {
-            stage: "research_only_gate",
+          recommendation_clipper: null,
+          deterministic_eval: null,
+          write_gate: null,
+          evidence_completeness_gate: {
+            stage: "evidence_completeness_gate",
             route: "research_only",
             status: "ok",
             model: null,
@@ -333,7 +325,7 @@ describe("buildPulseDetailView", () => {
             finished_at_ms: TITTY_NOW_MS,
             latency_ms: 0,
             attempt_index: 0,
-            response: { abstain_reason: "no_target_resolved" },
+            response: { blocked_reason: "no_target_resolved" },
             error: null,
           },
         },
@@ -350,22 +342,22 @@ describe("buildPulseDetailView", () => {
         ...tittyPulseFixture,
         stages: {
           ...tittyPulseFixture.stages!,
-          investigator: {
-            ...tittyPulseFixture.stages!.investigator!,
+          evidence_debate: {
+            ...tittyPulseFixture.stages!.evidence_debate!,
             status: "failed",
             response: null,
-            error: "investigator timed out",
+            error: "evidence debate timed out",
           },
         },
       },
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
-    const failedInvestigator = failed.agent.railItems.find(
-      (entry) => entry.kind === "investigator",
+    const failedDebate = failed.agent.railItems.find(
+      (entry) => entry.kind === "evidence_debate",
     );
-    expect(failedInvestigator?.status).toBe("failed");
-    expect(failedInvestigator?.summary).toMatch(/timed out/);
+    expect(failedDebate?.status).toBe("failed");
+    expect(failedDebate?.summary).toMatch(/timed out/);
   });
 });
 

@@ -1,6 +1,5 @@
 import { buildPulseDetailView } from "@features/signal-lab/model/pulseDetail";
 import {
-  tittyLegacyStages,
   tittyPulseFixture,
   tittySourceEventsFixture,
   TITTY_NOW_MS,
@@ -43,16 +42,15 @@ describe("PulseAgentRail", () => {
     },
   });
 
-  it("renders v2 investigator + decision_maker stage cards", () => {
+  it("renders evidence_debate + decision_maker stage cards", () => {
     const view = buildPulseDetailView({
       item: tittyPulseFixture,
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
     render(<PulseAgentRail agent={view.agent} />);
-    expect(screen.getByText(/阶段 1 · 调研/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 1 · 证据辩论/)).toBeInTheDocument();
     expect(screen.getByText(/阶段 2 · 决策/)).toBeInTheDocument();
-    expect(screen.queryByTestId("legacy-stage-notice")).not.toBeInTheDocument();
   });
 
   it("renders v2 decision surface before stage cards", () => {
@@ -95,40 +93,19 @@ describe("PulseAgentRail", () => {
     expect(screen.queryByText("看空")).not.toBeInTheDocument();
   });
 
-  it("does not render placeholder cards when only historical legacy rows are present", () => {
-    const view = buildPulseDetailView({
-      item: { ...tittyPulseFixture, stages: tittyLegacyStages },
-      sourceEvents: tittySourceEventsFixture,
-      now: TITTY_NOW_MS,
-    });
-    const { container } = render(<PulseAgentRail agent={view.agent} />);
-
-    expect(screen.queryByTestId("legacy-stage-notice")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Legacy · analyst/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Legacy · critic/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Legacy · judge/)).not.toBeInTheDocument();
-    expect(screen.getByText(/暂无 stage 数据/)).toBeInTheDocument();
-    expect(container.querySelector("aside")).toBeInTheDocument();
-  });
-
-  it("renders v2 stage cards and ignores legacy rows in mixed payloads", () => {
+  it("renders evidence-first stage cards from the public payload", () => {
     const view = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
-        stages: { ...(tittyPulseFixture.stages ?? {}), ...tittyLegacyStages },
+        stages: tittyPulseFixture.stages,
       },
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
     render(<PulseAgentRail agent={view.agent} />);
 
-    expect(screen.queryByTestId("legacy-stage-notice")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("legacy-stage-presence")).not.toBeInTheDocument();
-    expect(screen.getByText(/阶段 1 · 调研/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 1 · 证据辩论/)).toBeInTheDocument();
     expect(screen.getByText(/阶段 2 · 决策/)).toBeInTheDocument();
-    expect(screen.queryByText(/Legacy · analyst/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Legacy · critic/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Legacy · judge/)).not.toBeInTheDocument();
   });
 
   it("uses mismatch copy that points to decision and evidence links", () => {
@@ -141,10 +118,9 @@ describe("PulseAgentRail", () => {
 
     expect(
       screen.getByText(
-        "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对调研、决策和证据链接。",
+        "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对证据辩论、决策和证据链接。",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/三阶段|Critic/)).not.toBeInTheDocument();
   });
 
   it("does not throw when stages payload is entirely missing", () => {

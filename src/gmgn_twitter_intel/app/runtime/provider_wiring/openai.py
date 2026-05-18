@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseAgentRuntimeContract, PulseDecisionResult
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
 )
@@ -117,23 +116,17 @@ def openai_pulse_decision_provider(
     if db_pool is None:
         raise RuntimeError("db_pool is required for OpenAIPulseDecisionProvider")
     model = settings.pulse_agent_model or ""
-    investigator_budgets = dict(settings.workers.pulse_candidate.investigator_max_tool_calls)
     return OpenAIPulseDecisionProvider(
         OpenAIAgentsPulseDecisionClient(
             api_key=settings.llm_api_key or "",
             model=model,
             llm_gateway=gateway,
-            tool_runtime_factory=lambda *, investigator_max_tool_calls: AgentToolRuntime(
-                db_pool=db_pool,
-                investigator_max_tool_calls=investigator_max_tool_calls,
-            ),
             decision_runtime=PulseDecisionRuntimeService(db_pool=db_pool),
             base_url=settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             safety_net=_build_safety_net(settings, model=model),
             trace_enabled=settings.llm_trace_enabled,
             trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
-            investigator_max_tool_calls_by_route=investigator_budgets,
         )
     )
 

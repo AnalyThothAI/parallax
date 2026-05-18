@@ -11,50 +11,48 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_DECISION_SCHEMA_VERSION,
 )
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
-    PulseAgentToolRuntime,
+    EvidenceCompletenessGateResult,
+    EvidenceDebateMemo,
     PulseDecisionStageSpec,
+    PulseEvidencePacket,
 )
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
     load_decision_maker_prompt,
-    load_investigator_prompt,
+    load_evidence_debate_prompt,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
-    BullBearView,
     DecisionRoute,
     FinalDecision,
-    InvestigationReport,
     StageRunAudit,
 )
-
-_DEFAULT_INVESTIGATOR_BUDGETS: dict[str, int] = {"cex": 3, "meme": 5, "research_only": 3}
 
 
 @dataclass(frozen=True, slots=True)
 class PulseDecisionRuntimeService:
     db_pool: Any
 
-    def tool_budget_for_route(self, *, route: DecisionRoute, budgets: dict[str, int] | None) -> int:
-        configured = budgets or {}
-        return int(configured.get(str(route), _DEFAULT_INVESTIGATOR_BUDGETS.get(str(route), 3)))
-
-    def investigator_stage_spec(
+    def evidence_debate_stage_spec(
         self,
         *,
         route: DecisionRoute,
-        context: dict[str, Any],
-        completeness: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: EvidenceCompletenessGateResult,
     ) -> PulseDecisionStageSpec:
+        packet_payload = _model_payload(evidence_packet)
+        gate_payload = _model_payload(evidence_gate)
         return PulseDecisionStageSpec(
-            stage="investigator",
-            prompt_text=load_investigator_prompt(route),
+            stage="evidence_debate",
+            prompt_text=load_evidence_debate_prompt(route),
             input_payload={
                 "route": route,
-                "context": context,
-                "completeness": completeness,
-                "allowed_event_ids": _sorted_event_ids(_context_event_ids(context)),
-                "event_id_policy": _event_id_policy(),
+                "evidence_packet": packet_payload,
+                "evidence_gate": gate_payload,
+                "evidence_packet_hash": _packet_hash(packet_payload),
+                "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
+                "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
+                "evidence_ref_policy": _evidence_ref_policy(),
             },
         )
 
@@ -62,73 +60,64 @@ class PulseDecisionRuntimeService:
         self,
         *,
         route: DecisionRoute,
-        context: dict[str, Any],
-        completeness: dict[str, Any],
-        investigation: InvestigationReport,
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: EvidenceCompletenessGateResult,
+        debate_memo: EvidenceDebateMemo,
+        recommendation_constraints: dict[str, Any],
     ) -> PulseDecisionStageSpec:
+        packet_payload = _model_payload(evidence_packet)
+        gate_payload = _model_payload(evidence_gate)
+        debate_payload = _model_payload(debate_memo)
         return PulseDecisionStageSpec(
             stage="decision_maker",
             prompt_text=load_decision_maker_prompt(route),
             input_payload={
                 "route": route,
-                "context": context,
-                "completeness": completeness,
-                "investigation": investigation.model_dump(mode="json"),
-                "allowed_event_ids": _sorted_event_ids(
-                    _context_event_ids(context) | _investigation_event_ids(investigation)
-                ),
-                "event_id_policy": _event_id_policy(),
+                "evidence_packet": packet_payload,
+                "evidence_gate": gate_payload,
+                "debate_memo": debate_payload,
+                "recommendation_constraints": dict(recommendation_constraints or {}),
+                "evidence_packet_hash": _packet_hash(packet_payload),
+                "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
+                "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
+                "evidence_ref_policy": _evidence_ref_policy(),
             },
         )
 
-    def validate_supporting_ids(
+    def validate_debate_refs(
         self,
-        investigation: InvestigationReport,
+        debate_memo: EvidenceDebateMemo,
         *,
-        tool_runtime: PulseAgentToolRuntime,
-        context: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
     ) -> None:
-        allowed = _context_event_ids(context) | set(tool_runtime.contributed_event_ids)
-        for view_name in ("bull_observation", "bear_observation"):
-            view: BullBearView = getattr(investigation, view_name)
-            if view.strength == "absent":
-                continue
-            unknown = [event_id for event_id in view.supporting_event_ids if event_id not in allowed]
-            if unknown:
-                preview = unknown[:5]
-                suffix = "..." if len(unknown) > 5 else ""
-                raise ValueError(
-                    f"{view_name}.supporting_event_ids contains unknown event ids "
-                    f"(not in tool contributions or context): {preview}{suffix}"
-                )
+        packet_payload = _model_payload(evidence_packet)
+        allowed = _allowed_evidence_ref_ids(packet_payload)
+        memo_payload = _model_payload(debate_memo)
+        unknown = sorted(_debate_ref_ids(memo_payload) - allowed)
+        if unknown:
+            preview = unknown[:5]
+            suffix = "..." if len(unknown) > 5 else ""
+            raise ValueError(f"EvidenceDebateMemo cites refs outside allowed_evidence_refs: {preview}{suffix}")
 
-    def validate_final_evidence_ids(
+    def validate_final_evidence_refs(
         self,
         final: FinalDecision,
         *,
-        investigation: InvestigationReport,
-        tool_runtime: PulseAgentToolRuntime,
-        context: dict[str, Any],
+        evidence_packet: PulseEvidencePacket,
+        debate_memo: EvidenceDebateMemo,
     ) -> None:
-        allowed = _allowed_final_evidence_ids(
-            context=context,
-            tool_runtime=tool_runtime,
-            investigation=investigation,
-        )
-        fields = (
-            ("evidence_event_ids", final.evidence_event_ids),
-            ("bull_view.supporting_event_ids", final.bull_view.supporting_event_ids),
-            ("bear_view.supporting_event_ids", final.bear_view.supporting_event_ids),
-        )
+        packet_payload = _model_payload(evidence_packet)
+        allowed_refs = _allowed_evidence_ref_ids(packet_payload)
+        allowed_events = _packet_event_ids(packet_payload)
+        memo_refs = _debate_ref_ids(_model_payload(debate_memo))
+        fields = _final_ref_fields(final)
         for field_name, values in fields:
-            unknown = [event_id for event_id in values if event_id not in allowed]
+            allowed = allowed_events if field_name.endswith("event_ids") else (allowed_refs | memo_refs)
+            unknown = [ref_id for ref_id in values if ref_id not in allowed]
             if unknown:
                 preview = unknown[:5]
                 suffix = "..." if len(unknown) > 5 else ""
-                raise ValueError(
-                    f"{field_name} contains unknown event ids "
-                    f"(not in context, tool contributions, or Investigator output): {preview}{suffix}"
-                )
+                raise ValueError(f"{field_name} contains refs outside allowed_evidence_refs: {preview}{suffix}")
 
     def enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision:
         event_ids = _final_url_event_ids(final)
@@ -160,7 +149,11 @@ class PulseDecisionRuntimeService:
         workflow_name: str,
         agent_name: str,
     ) -> dict[str, Any]:
-        input_hash = _sha256({"context": context, "route": route, "completeness": completeness})
+        packet_payload = _context_packet_payload(context)
+        evidence_packet_hash = _packet_hash(packet_payload) if packet_payload else None
+        input_hash = _sha256(
+            {"evidence_packet": packet_payload or context, "route": route, "evidence_gate": completeness}
+        )
         runtime_hash = pulse_runtime_hash(runtime_manifest)
         trace_metadata = {
             "backend": BACKEND,
@@ -180,7 +173,9 @@ class PulseDecisionRuntimeService:
             "target_type": _context_string(context, "target_type"),
             "target_id": _context_string(context, "target_id"),
             "route": route,
-            "completeness": completeness,
+            "evidence_gate": completeness,
+            "evidence_packet_hash": evidence_packet_hash,
+            "evidence_packet_schema_version": _packet_schema_version(packet_payload),
         }
         return {
             "backend": BACKEND,
@@ -201,58 +196,106 @@ class PulseDecisionRuntimeService:
         return {**audit, "output_hash": _sha256(final.model_dump(mode="json"))}
 
 
-def _context_event_ids(context: dict[str, Any]) -> set[str]:
-    allowed: set[str] = set()
-    for key in ("evidence_event_ids", "source_event_ids"):
-        values = context.get(key) if isinstance(context, dict) else None
-        if isinstance(values, list):
-            for value in values:
-                if isinstance(value, str) and value.strip():
-                    allowed.add(value.strip())
-    selected_posts = context.get("selected_posts") if isinstance(context, dict) else None
-    if isinstance(selected_posts, list):
-        for post in selected_posts:
-            if not isinstance(post, dict):
-                continue
-            value = post.get("event_id")
-            if isinstance(value, str) and value.strip():
-                allowed.add(value.strip())
-    return allowed
+def _model_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        payload = model_dump(mode="json")
+        return payload if isinstance(payload, dict) else {}
+    return {}
 
 
-def _investigation_event_ids(investigation: InvestigationReport) -> set[str]:
-    allowed: set[str] = set()
-    for view in (investigation.bull_observation, investigation.bear_observation):
-        for value in view.supporting_event_ids:
-            if isinstance(value, str) and value.strip():
-                allowed.add(value.strip())
-    return allowed
+def _context_packet_payload(context: dict[str, Any]) -> dict[str, Any]:
+    packet = context.get("evidence_packet") if isinstance(context, dict) else None
+    if isinstance(packet, dict):
+        return dict(packet)
+    packet_payload = _model_payload(packet)
+    if packet_payload:
+        return packet_payload
+    return dict(context) if isinstance(context, dict) and context.get("evidence_packet_hash") else {}
 
 
-def _sorted_event_ids(values: set[str]) -> list[str]:
-    return sorted(values)
+def _packet_hash(packet_payload: dict[str, Any]) -> str:
+    return _string_value(packet_payload.get("evidence_packet_hash"))
 
 
-def _event_id_policy() -> dict[str, str]:
+def _packet_schema_version(packet_payload: dict[str, Any]) -> str | None:
+    value = _string_value(packet_payload.get("schema_version"))
+    return value or None
+
+
+def _allowed_evidence_refs(packet_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    refs = packet_payload.get("allowed_evidence_refs")
+    if not isinstance(refs, list | tuple):
+        return []
+    result: list[dict[str, Any]] = []
+    for ref in refs:
+        ref_payload = _model_payload(ref)
+        if not ref_payload and isinstance(ref, dict):
+            ref_payload = dict(ref)
+        if _string_value(ref_payload.get("ref_id")):
+            result.append(ref_payload)
+    return result
+
+
+def _allowed_evidence_ref_ids(packet_payload: dict[str, Any]) -> set[str]:
+    return {_string_value(ref.get("ref_id")) for ref in _allowed_evidence_refs(packet_payload) if ref.get("ref_id")}
+
+
+def _packet_event_ids(packet_payload: dict[str, Any]) -> set[str]:
+    values = packet_payload.get("source_event_ids")
+    result = (
+        {_string_value(value) for value in values if _string_value(value)}
+        if isinstance(values, list | tuple)
+        else set()
+    )
+    for ref_id in _allowed_evidence_ref_ids(packet_payload):
+        if ref_id.startswith("event:"):
+            result.add(ref_id.removeprefix("event:"))
+    return result
+
+
+def _sorted_ref_ids(values: set[str]) -> list[str]:
+    return sorted(value for value in values if value)
+
+
+def _evidence_ref_policy() -> dict[str, str]:
     return {
-        "copy_only_from": "allowed_event_ids or tool result contributed_event_ids",
-        "do_not": "invent, shorten, paraphrase, or repair event ids",
-        "when_no_allowed_ids": "set non-absent evidence views to absent instead of inventing ids",
+        "copy_only_from": "allowed_evidence_refs.ref_id",
+        "do_not": "invent, shorten, paraphrase, repair, or transform evidence refs",
+        "when_fact_absent": "declare a data gap and lower confidence or abstain",
     }
 
 
-def _allowed_final_evidence_ids(
-    *,
-    context: dict[str, Any],
-    tool_runtime: PulseAgentToolRuntime,
-    investigation: InvestigationReport,
-) -> set[str]:
-    allowed = _context_event_ids(context) | set(tool_runtime.contributed_event_ids)
-    for view in (investigation.bull_observation, investigation.bear_observation):
-        for value in view.supporting_event_ids:
-            if isinstance(value, str) and value.strip():
-                allowed.add(value.strip())
-    return allowed
+def _debate_ref_ids(memo_payload: dict[str, Any]) -> set[str]:
+    refs: set[str] = set()
+    for key in ("bull_claims", "bear_claims", "rebuttal_claims", "data_gap_claims"):
+        claims = memo_payload.get(key)
+        if not isinstance(claims, list | tuple):
+            continue
+        for claim in claims:
+            claim_payload = _model_payload(claim)
+            values = claim_payload.get("evidence_refs") if claim_payload else None
+            if isinstance(values, list | tuple):
+                refs.update(_string_value(value) for value in values if _string_value(value))
+    values = memo_payload.get("allowed_evidence_ref_ids")
+    if isinstance(values, list | tuple):
+        refs.update(_string_value(value) for value in values if _string_value(value))
+    return refs
+
+
+def _final_ref_fields(final: FinalDecision) -> tuple[tuple[str, list[str]], ...]:
+    payload = final.model_dump(mode="json")
+    fields: list[tuple[str, list[str]]] = []
+    for key in ("supporting_evidence_refs", "risk_evidence_refs", "data_gap_refs"):
+        values = payload.get(key)
+        if isinstance(values, list | tuple):
+            fields.append((key, [_string_value(value) for value in values if _string_value(value)]))
+    fields.append(
+        ("evidence_event_ids", [_string_value(value) for value in final.evidence_event_ids if _string_value(value)])
+    )
+    return tuple(fields)
 
 
 def _final_url_event_ids(final: FinalDecision) -> list[str]:
@@ -276,6 +319,11 @@ def _context_string(context: dict[str, Any], key: str) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _string_value(value: Any) -> str:
+    text = str(value or "").strip()
+    return text
 
 
 def _trace_id(run_id: str) -> str:

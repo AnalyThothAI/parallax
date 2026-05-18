@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
 from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
 
 SUMMARY_STATUSES = (
@@ -10,7 +12,11 @@ SUMMARY_STATUSES = (
     "risk_rejected_high_info",
     "blocked_low_information",
 )
-DISPLAY_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+PUBLIC_DISPLAY_STATUSES = {
+    "display_trade_candidate",
+    "display_token_watch",
+    "display_risk_rejected_high_info",
+}
 ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
 
 
@@ -44,6 +50,7 @@ class SignalPulseService:
         page_rows = [row for row in _rows(page) if _is_displayable(row)]
         aggregate = self.pulse_read_repository.pulse_summary(window=window, scope=scope, q=q, handle=handle)
         candidate_count = int(aggregate.get("candidate_count") or 0)
+        freshness_health = _freshness_health(self.pulse_read_repository, window=window, scope=scope)
         result_health = {
             "pulse_ready": candidate_count > 0,
             "agent_worker_running": bool(agent_worker_running),
@@ -51,6 +58,7 @@ class SignalPulseService:
             "blocked_low_information_count": int(aggregate.get("blocked_low_information_count") or 0),
             "dead_job_count": int(aggregate.get("dead_job_count") or 0),
             "market_ready_rate": float(aggregate.get("market_ready_rate") or 0.0),
+            **freshness_health,
         }
         return {
             "query": {
@@ -80,9 +88,14 @@ class SignalPulseService:
 
     def _stages_for(self, run_id: Any) -> dict[str, Any]:
         empty: dict[str, dict[str, Any] | None] = {
-            "investigator": None,
+            "evidence_pack": None,
+            "evidence_completeness_gate": None,
+            "evidence_debate": None,
+            "claim_verifier": None,
             "decision_maker": None,
-            "research_only_gate": None,
+            "recommendation_clipper": None,
+            "deterministic_eval": None,
+            "write_gate": None,
         }
         if not run_id:
             return empty
@@ -121,11 +134,31 @@ def _summary(aggregate: dict[str, Any]) -> dict[str, Any]:
     return counts
 
 
+def _freshness_health(repository: Any, *, window: str, scope: str) -> dict[str, Any]:
+    conn = getattr(repository, "conn", None)
+    if conn is None:
+        return {}
+    try:
+        return PulseFreshnessHealthService(conn).health(
+            window=window,
+            scope=scope,
+            now_ms=int(time.time() * 1000),
+            since_hours=4,
+        )
+    except Exception:
+        return {
+            "window": window,
+            "scope": scope,
+            "since_hours": 4,
+            "publish_status": "degraded",
+            "reasons": ["pulse_health_query_failed"],
+        }
+
+
 def _is_displayable(row: dict[str, Any]) -> bool:
     return (
-        row.get("pulse_status") in DISPLAY_STATUSES
-        and row.get("verdict") != "blocked_low_information"
-        and row.get("decision_recommendation") != "abstain"
+        row.get("display_status") in PUBLIC_DISPLAY_STATUSES
+        and bool(row.get("evidence_packet_hash"))
         and _valid_factor_snapshot(row.get("factor_snapshot_json"))
     )
 
@@ -144,6 +177,10 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "window": row.get("window"),
         "scope": row.get("scope"),
         "pulse_status": row.get("pulse_status"),
+        "evidence_status": row.get("evidence_status"),
+        "decision_status": row.get("decision_status"),
+        "display_status": row.get("display_status"),
+        "evidence_packet_hash": row.get("evidence_packet_hash"),
         "verdict": row.get("verdict"),
         "social_phase": row.get("social_phase"),
         "candidate_score": row.get("candidate_score"),
@@ -156,6 +193,8 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "factor_snapshot": factor_snapshot,
         "decision": _decision(row),
         "gate": gate,
+        "claim_verification": _dict(row.get("claim_verification_json")),
+        "evidence_gate": _dict(row.get("evidence_gate_json")),
         "fact_card": _fact_card(factor_snapshot=factor_snapshot, gate=gate),
         "agent_run_id": row.get("agent_run_id"),
         "pulse_version": row.get("pulse_version"),
@@ -190,6 +229,9 @@ def _decision(row: dict[str, Any]) -> dict[str, Any]:
         "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
         "residual_risks": _string_list(decision.get("residual_risks")),
         "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
+        "supporting_evidence_refs": _string_list(decision.get("supporting_evidence_refs")),
+        "risk_evidence_refs": _string_list(decision.get("risk_evidence_refs")),
+        "data_gap_refs": _string_list(decision.get("data_gap_refs")),
         # v2 new fields (consumed by SurfaceCard UI)
         "narrative_archetype": decision.get("narrative_archetype") or "",
         "narrative_thesis_zh": decision.get("narrative_thesis_zh") or "",

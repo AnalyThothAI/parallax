@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import TextIO
 
 from . import parser as cli_parser
-from .commands import CommandResult, config, db, ops, read_models, serve
+from .commands import CommandResult, config, db, ops, pulse_replay, read_models, serve
 
 
 def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
@@ -23,6 +23,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return _finish(serve.handle_serve(args), stdout)
     if command == "config":
         return _finish(config.handle_config(args), stdout)
+    if command == "pulse":
+        return _finish(pulse_replay.handle_pulse(args), stdout)
     if command == "db":
         return _finish(db.handle_db(args), stdout)
     if command == "ops":

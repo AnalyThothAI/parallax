@@ -1,14 +1,10 @@
-"""SDK plumbing tests for the rewritten two-stage pulse decision client.
+"""SDK plumbing tests for the packet-only pulse decision client.
 
 Coverage focus:
 - ``StrictJsonOutputSchema`` strict + jsonref flattening (qwen3.6 / llama.cpp).
 - ``_extract_usage`` reflective object → dict serialization.
 - Base URL normalization on construction.
-
-The full Investigator → DecisionMaker pipeline (happy path, failure modes,
-hallucination guard, tool budget, evidence URL enrichment, runtime manifest)
-is covered in
-``tests/unit/integrations/openai_agents/test_pulse_decision_two_stage.py``.
+- Pulse public runtime no longer registers critical data-acquisition tools.
 """
 
 from __future__ import annotations
@@ -16,13 +12,13 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_tool_runtime import AgentToolRuntime
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
 )
+from gmgn_twitter_intel.domains.pulse_lab.providers import EvidenceDebateMemo
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
-    InvestigationReport,
 )
 from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
@@ -43,10 +39,6 @@ class _FakeGateway:
     def openai_client(self, *, model, base_url, timeout_s):
         self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
         return object()
-
-
-def _tool_runtime_factory(*, investigator_max_tool_calls: int):
-    return AgentToolRuntime(db_pool=object(), investigator_max_tool_calls=investigator_max_tool_calls)
 
 
 def test_extract_usage_recursively_returns_json_safe_payload() -> None:
@@ -103,7 +95,7 @@ def test_extract_usage_serializes_pure_slotted_usage_objects() -> None:
 
 
 def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
-    schema = StrictJsonOutputSchema(InvestigationReport)
+    schema = StrictJsonOutputSchema(EvidenceDebateMemo)
     assert schema.is_strict_json_schema() is True
     assert schema.is_plain_text() is False
     flat = schema.json_schema()
@@ -114,7 +106,7 @@ def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
     assert "$ref" not in serialized
     assert "$defs" not in serialized
     # Expose underlying Pydantic class for InstructorSafetyNet fallback path.
-    assert schema.output_type is InvestigationReport
+    assert schema.output_type is EvidenceDebateMemo
 
 
 def test_json_output_schema_final_decision_also_flattens_refs() -> None:
@@ -131,7 +123,6 @@ def test_pulse_client_normalizes_openai_root_base_url_before_building_model() ->
         api_key="sk-test",
         model="gpt-test",
         llm_gateway=gateway,
-        tool_runtime_factory=_tool_runtime_factory,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
         base_url="https://api.openai.com",
     )
@@ -141,23 +132,78 @@ def test_pulse_client_normalizes_openai_root_base_url_before_building_model() ->
     ]
 
 
-def test_pulse_client_requires_injected_runtimes() -> None:
+def test_pulse_client_requires_decision_runtime_only() -> None:
     import pytest
-
-    with pytest.raises(ValueError, match="tool_runtime_factory is required"):
-        OpenAIAgentsPulseDecisionClient(
-            api_key="sk-test",
-            model="gpt-test",
-            llm_gateway=_FakeGateway(),
-            tool_runtime_factory=None,  # type: ignore[arg-type]
-            decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        )
 
     with pytest.raises(ValueError, match="decision_runtime is required"):
         OpenAIAgentsPulseDecisionClient(
             api_key="sk-test",
             model="gpt-test",
             llm_gateway=_FakeGateway(),
-            tool_runtime_factory=_tool_runtime_factory,
             decision_runtime=None,  # type: ignore[arg-type]
         )
+
+
+def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test",
+        model="gpt-test",
+        llm_gateway=_FakeGateway(),
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+        runner=object(),
+    )
+
+    contract = client.runtime_contract
+
+    assert contract.stage_names == ("evidence_debate", "decision_maker")
+    assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
+    assert contract.manifest_kwargs()["tool_names_by_stage"] == {
+        "evidence_debate": (),
+        "decision_maker": (),
+    }
+    assert "route_tool_budgets" not in contract.manifest_kwargs()
+
+
+def test_pulse_runtime_manifest_declares_packet_schema_and_no_tools() -> None:
+    manifest = build_pulse_runtime_manifest(
+        provider="openai",
+        model="gpt-test",
+        artifact_version_hash="artifact:gpt-test",
+        timeout_seconds=20.0,
+    )
+
+    assert manifest["runtime"]["stages"] == ["evidence_debate", "decision_maker"]
+    assert manifest["runtime"]["tool_names_by_stage"] == {
+        "evidence_debate": [],
+        "decision_maker": [],
+    }
+    assert "route_tool_budgets" not in manifest["runtime"]
+    assert manifest["contracts"]["evidence_packet_schema_version"]
+
+
+def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> None:
+    runtime = PulseDecisionRuntimeService(db_pool=object())
+    packet = {
+        "evidence_packet_id": "pkt-1",
+        "evidence_packet_hash": "sha256:packet",
+        "schema_version": "pulse-evidence-packet-v1",
+        "candidate_id": "candidate-1",
+        "target_id": "asset:pepe",
+        "allowed_evidence_refs": [
+            {"ref_id": "event:evt-1", "summary_zh": "高粉账号提及"},
+            {"ref_id": "metric:market:price_usd", "summary_zh": "价格快照"},
+        ],
+    }
+
+    spec = runtime.evidence_debate_stage_spec(
+        route="meme",
+        evidence_packet=packet,
+        evidence_gate={"status": "complete"},
+    )
+
+    assert spec.stage == "evidence_debate"
+    assert spec.input_payload["evidence_packet_hash"] == "sha256:packet"
+    assert spec.input_payload["allowed_evidence_ref_ids"] == [
+        "event:evt-1",
+        "metric:market:price_usd",
+    ]

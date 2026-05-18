@@ -5,9 +5,20 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
+
 DecisionRoute = Literal["cex", "meme", "research_only"]
 DecisionRecommendation = Literal["high_conviction", "trade_candidate", "watchlist", "ignore", "abstain"]
-StageName = Literal["investigator", "decision_maker", "research_only_gate"]
+StageName = Literal[
+    "evidence_pack",
+    "evidence_completeness_gate",
+    "evidence_debate",
+    "claim_verifier",
+    "decision_maker",
+    "recommendation_clipper",
+    "deterministic_eval",
+    "write_gate",
+]
 StageStatus = Literal["ok", "failed", "timeout", "skipped"]
 
 BullBearStrength = Literal["absent", "weak", "moderate", "strong"]
@@ -23,7 +34,7 @@ _FORBIDDEN_EXECUTION_RE = re.compile(
 
 
 class BullBearView(BaseModel):
-    """Symmetric bull-or-bear opinion attached to InvestigationReport / FinalDecision.
+    """Symmetric bull-or-bear opinion attached to FinalDecision.
 
     `strength="absent"` means the side is intentionally empty (no evidence at
     all). All other strengths must carry a non-empty thesis and at least one
@@ -77,51 +88,51 @@ class TradePlaybook(BaseModel):
         return self
 
 
-class InvestigationReport(BaseModel):
-    """Phase-1 Investigator stage output.
+class EvidenceClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    `narrative_archetype_candidate` is free-text in phase 1 (≤ 20 chars). Phase
-    2 may tighten to a Literal enum. `narrative_observation_zh` is the
-    investigator's compact prose summary (30-300 chars). No markdown_report,
-    no tool_call_summary — tool metadata lives in
-    `pulse_agent_run_steps.input_json.tool_calls` (worker-side, P1-1).
-    """
+    claim: str
+    evidence_refs: tuple[str, ...]
+    stance: Literal["bull", "bear", "gap", "risk"]
 
-    model_config = ConfigDict(extra="ignore")
-
-    narrative_archetype_candidate: str = ""
-    narrative_observation_zh: str
-    bull_observation: BullBearView
-    bear_observation: BullBearView
-    data_gaps: list[str] = Field(default_factory=list)
-
-    @field_validator("narrative_archetype_candidate", mode="after")
+    @field_validator("claim", mode="after")
     @classmethod
-    def _archetype_len(cls, value: str) -> str:
+    def _clean_claim(cls, value: str) -> str:
         cleaned = _clean_text(value)
-        if len(cleaned) > 20:
-            raise ValueError("narrative_archetype_candidate exceeds 20 chars")
+        if not cleaned:
+            raise ValueError("claim is required")
+        _reject_execution_language(cleaned)
         return cleaned
 
-    @field_validator("narrative_observation_zh", mode="after")
+    @field_validator("evidence_refs", mode="after")
     @classmethod
-    def _observation_len(cls, value: str) -> str:
+    def _stable_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
+
+
+class EvidenceDebateMemo(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    bull_claims: tuple[EvidenceClaim, ...] = ()
+    bear_claims: tuple[EvidenceClaim, ...] = ()
+    rebuttal_claims: tuple[EvidenceClaim, ...] = ()
+    data_gap_claims: tuple[EvidenceClaim, ...] = ()
+    summary_zh: str
+    allowed_evidence_ref_ids: tuple[str, ...]
+
+    @field_validator("summary_zh", mode="after")
+    @classmethod
+    def _clean_summary(cls, value: str) -> str:
         cleaned = _clean_text(value)
-        if not (30 <= len(cleaned) <= 300):
-            raise ValueError("narrative_observation_zh must be 30-300 chars")
+        if not cleaned:
+            raise ValueError("summary_zh is required")
+        _reject_execution_language(cleaned)
         return cleaned
 
-    @model_validator(mode="after")
-    def _archetype_observation_consistency(self) -> InvestigationReport:
-        archetype_present = bool(self.narrative_archetype_candidate.strip())
-        bull_present = self.bull_observation.strength != "absent"
-        bear_present = self.bear_observation.strength != "absent"
-        if archetype_present and not (bull_present or bear_present):
-            raise ValueError(
-                "non-empty archetype requires at least one non-absent observation",
-            )
-        _reject_execution_language(self.model_dump(mode="json"))
-        return self
+    @field_validator("allowed_evidence_ref_ids", mode="after")
+    @classmethod
+    def _stable_allowed_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
 
 
 class FinalDecision(BaseModel):
@@ -149,6 +160,9 @@ class FinalDecision(BaseModel):
     invalidation_conditions: list[str] = Field(default_factory=list)
     residual_risks: list[str] = Field(default_factory=list)
     evidence_event_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_refs: tuple[str, ...] = ()
+    risk_evidence_refs: tuple[str, ...] = ()
+    data_gap_refs: tuple[str, ...] = ()
 
     @field_validator("confidence", mode="after")
     @classmethod
@@ -188,6 +202,11 @@ class FinalDecision(BaseModel):
                 result.append(cleaned)
         return result
 
+    @field_validator("supporting_evidence_refs", "risk_evidence_refs", "data_gap_refs", mode="after")
+    @classmethod
+    def _stable_ref_ids(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
+
     @model_validator(mode="after")
     def _validate_decision(self) -> FinalDecision:
         if self.recommendation == "abstain":
@@ -195,8 +214,8 @@ class FinalDecision(BaseModel):
                 raise ValueError("abstain_reason is required when recommendation is abstain")
             if self.playbook.has_playbook:
                 raise ValueError("recommendation=abstain requires playbook.has_playbook=false")
-        elif not (self.evidence_event_ids or self.residual_risks):
-            raise ValueError("non-abstain decisions require evidence_event_ids or residual_risks")
+        elif not self.supporting_evidence_refs:
+            raise ValueError("non-abstain decisions require supporting_evidence_refs")
         if self.recommendation == "high_conviction":
             if self.bull_view.strength not in ("moderate", "strong"):
                 raise ValueError("high_conviction requires bull_view.strength >= moderate")
@@ -242,6 +261,17 @@ class PulseDecisionPayload(BaseModel):
     stage_audits: tuple[StageRunAudit, ...]
 
 
+class PulseAgentDecisionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_packet: PulseEvidencePacket
+    evidence_gate: dict[str, Any]
+    debate_memo: EvidenceDebateMemo
+    final_decision: FinalDecision
+    claim_verification: dict[str, Any]
+    stage_audits: tuple[StageRunAudit, ...]
+
+
 class PulseStageFailure(Exception):
     """Raised when an agent decision stage fails.
 
@@ -284,9 +314,11 @@ __all__ = [
     "BullBearView",
     "DecisionRecommendation",
     "DecisionRoute",
+    "EvidenceClaim",
+    "EvidenceDebateMemo",
     "FinalDecision",
-    "InvestigationReport",
     "MonitoringHorizon",
+    "PulseAgentDecisionResult",
     "PulseDecisionPayload",
     "PulseStageFailure",
     "StageName",

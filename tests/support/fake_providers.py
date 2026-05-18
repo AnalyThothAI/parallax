@@ -9,6 +9,8 @@ from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexToke
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
+    EvidenceClaim,
+    EvidenceDebateMemo,
     FinalDecision,
     StageRunAudit,
     TradePlaybook,
@@ -153,21 +155,31 @@ class FakePulseDecisionProvider:
     ) -> PulseDecisionResult:
         self.contexts.append(context)
         evidence_ids = _event_ids(context)
-        investigation = {
-            "narrative_archetype_candidate": "social_spread",
-            "narrative_observation_zh": "Deterministic social spread with resolved market context.",
-            "bull_observation": {
-                "strength": "strong",
-                "thesis_zh": "Fresh attention and market data align.",
-                "supporting_event_ids": evidence_ids,
-            },
-            "bear_observation": {
-                "strength": "weak",
-                "thesis_zh": "Single captured event still limits confidence.",
-                "supporting_event_ids": evidence_ids,
-            },
-            "data_gaps": [],
-        }
+        allowed_refs = [
+            str(ref.get("ref_id"))
+            for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
+            if isinstance(ref, dict) and ref.get("ref_id")
+        ]
+        supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1] or tuple(allowed_refs[:1])
+        risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1] or supporting_refs
+        debate = EvidenceDebateMemo(
+            bull_claims=(
+                EvidenceClaim(
+                    claim="Fresh attention and market data align.",
+                    evidence_refs=supporting_refs,
+                    stance="bull",
+                ),
+            ),
+            bear_claims=(
+                EvidenceClaim(
+                    claim="Single captured event still limits confidence.",
+                    evidence_refs=risk_refs,
+                    stance="risk",
+                ),
+            ),
+            summary_zh="Deterministic evidence debate uses only packet refs.",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
         final = FinalDecision(
             route=route,  # type: ignore[arg-type]
             recommendation="trade_candidate",
@@ -195,6 +207,8 @@ class FakePulseDecisionProvider:
             invalidation_conditions=["No follow-through in the next window."],
             residual_risks=["Fixture path uses deterministic providers."],
             evidence_event_ids=evidence_ids,
+            supporting_evidence_refs=supporting_refs,
+            risk_evidence_refs=risk_refs,
         )
         audit = self.request_audit(
             context=context,
@@ -209,16 +223,12 @@ class FakePulseDecisionProvider:
             agent_run_audit={**audit, "output_hash": "output-hot-path"},
             stage_audits=(
                 StageRunAudit(
-                    stage="investigator",
+                    stage="evidence_debate",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
-                    input_json={
-                        "context": context,
-                        "completeness": completeness,
-                        "tool_calls": [{"tool_name": "get_target_recent_tweets"}],
-                    },
-                    prompt_text="investigator prompt",
-                    response_json=investigation,
+                    input_json={"context": context, "completeness": completeness},
+                    prompt_text="evidence debate prompt",
+                    response_json=debate.model_dump(mode="json"),
                     trace_metadata_json={},
                     usage_json={"input_tokens": 80},
                     latency_ms=8,
@@ -228,7 +238,7 @@ class FakePulseDecisionProvider:
                     stage="decision_maker",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
-                    input_json={"context": context, "completeness": completeness, "investigation": investigation},
+                    input_json={"context": context, "completeness": completeness, "debate_memo": debate.model_dump(mode="json")},
                     prompt_text="decision maker prompt",
                     response_json=final.model_dump(mode="json"),
                     trace_metadata_json={},

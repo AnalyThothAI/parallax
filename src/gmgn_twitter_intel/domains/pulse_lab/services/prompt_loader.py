@@ -2,7 +2,7 @@
 
 Each prompt file lives at ``domains/pulse_lab/prompts/{role}.md`` and contains:
 
-- a static base preamble (anti-injection prefix + role / schema / tools)
+- a static base preamble (anti-injection prefix + role / schema)
 - one or more ``## Route: <name>`` sections, exactly one of which is selected
   per call based on the runtime ``DecisionRoute``.
 
@@ -20,7 +20,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRo
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _ROUTE_HEADING_RE = re.compile(r"^##\s+Route:\s+(?P<route>\w+)\s*$", re.MULTILINE)
-_KNOWN_ROLES = ("investigator", "decision_maker")
+_KNOWN_ROLES = ("evidence_debate", "decision_maker")
 
 
 @lru_cache(maxsize=8)
@@ -65,9 +65,9 @@ def load_prompt(role: str, route: DecisionRoute) -> str:
     )
 
 
-def load_investigator_prompt(route: DecisionRoute) -> str:
-    """Convenience wrapper for the Investigator stage prompt."""
-    return load_prompt("investigator", route)
+def load_evidence_debate_prompt(route: DecisionRoute) -> str:
+    """Convenience wrapper for the evidence debate stage prompt."""
+    return load_prompt("evidence_debate", route)
 
 
 def load_decision_maker_prompt(route: DecisionRoute) -> str:
@@ -77,6 +77,6 @@ def load_decision_maker_prompt(route: DecisionRoute) -> str:
 
 __all__ = [
     "load_decision_maker_prompt",
-    "load_investigator_prompt",
+    "load_evidence_debate_prompt",
     "load_prompt",
 ]

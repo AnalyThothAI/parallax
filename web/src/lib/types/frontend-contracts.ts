@@ -1176,6 +1176,28 @@ export type SignalPulseHealth = {
   blocked_low_information_count: number;
   dead_job_count: number;
   market_ready_rate: number;
+  window?: string | null;
+  scope?: string | null;
+  since_hours?: number | null;
+  publish_status?: "healthy" | "degraded" | "hold_publish" | string | null;
+  reasons?: string[];
+  latest_packet_created_at_ms?: number | null;
+  latest_agent_run_finished_at_ms?: number | null;
+  latest_public_candidate_updated_at_ms?: number | null;
+  due_jobs?: number | null;
+  claimed_jobs?: number | null;
+  failed_jobs_4h?: number | null;
+  agent_runs_4h?: number | null;
+  agent_failed_4h?: number | null;
+  agent_failure_rate_4h?: number | null;
+  unknown_ref_failures_4h?: number | null;
+  unknown_ref_failure_rate_4h?: number | null;
+  unsupported_claim_failures_4h?: number | null;
+  unsupported_claim_failure_rate_4h?: number | null;
+  hidden_abstain_4h?: number | null;
+  hidden_hold_publish_4h?: number | null;
+  hidden_insufficient_evidence_4h?: number | null;
+  public_candidates_4h?: number | null;
 };
 
 export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number> & {
@@ -1287,6 +1309,9 @@ export type PulseDecision = {
   invalidation_conditions: string[];
   residual_risks: string[];
   evidence_event_ids?: string[];
+  supporting_evidence_refs?: string[];
+  risk_evidence_refs?: string[];
+  data_gap_refs?: string[];
   // v2 新字段 — 全部可选 + 缺时前端 fallback 显示 "—"
   narrative_archetype?: string;
   narrative_thesis_zh?: string;
@@ -1296,7 +1321,15 @@ export type PulseDecision = {
   evidence_event_urls?: Record<string, string>;
 };
 
-export type SignalPulseStageName = "investigator" | "decision_maker" | "research_only_gate";
+export type SignalPulseStageName =
+  | "evidence_pack"
+  | "evidence_completeness_gate"
+  | "evidence_debate"
+  | "claim_verifier"
+  | "decision_maker"
+  | "recommendation_clipper"
+  | "deterministic_eval"
+  | "write_gate";
 
 export type SignalPulseStagePayload = {
   stage: SignalPulseStageName | string | null;
@@ -1312,9 +1345,14 @@ export type SignalPulseStagePayload = {
 };
 
 export type SignalPulseStages = {
-  investigator?: SignalPulseStagePayload | null;
+  evidence_pack?: SignalPulseStagePayload | null;
+  evidence_completeness_gate?: SignalPulseStagePayload | null;
+  evidence_debate?: SignalPulseStagePayload | null;
+  claim_verifier?: SignalPulseStagePayload | null;
   decision_maker?: SignalPulseStagePayload | null;
-  research_only_gate?: SignalPulseStagePayload | null;
+  recommendation_clipper?: SignalPulseStagePayload | null;
+  deterministic_eval?: SignalPulseStagePayload | null;
+  write_gate?: SignalPulseStagePayload | null;
 };
 
 export type SignalPulseItem = {
@@ -1327,6 +1365,10 @@ export type SignalPulseItem = {
   window: WindowKey | string;
   scope: ScopeKey | string;
   pulse_status: SignalPulseStatus;
+  evidence_status?: string | null;
+  decision_status?: string | null;
+  display_status?: string | null;
+  evidence_packet_hash?: string | null;
   verdict?: string | null;
   social_phase?: string | null;
   candidate_score?: number | null;
@@ -1337,6 +1379,8 @@ export type SignalPulseItem = {
   factor_snapshot: TokenFactorSnapshot;
   decision: PulseDecision;
   gate: Record<string, unknown>;
+  claim_verification?: Record<string, unknown> | null;
+  evidence_gate?: Record<string, unknown> | null;
   fact_card: Record<string, unknown>;
   agent_run_id?: string | null;
   pulse_version?: string | null;

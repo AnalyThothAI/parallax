@@ -341,39 +341,16 @@ def test_openai_providers_receive_llm_gateway() -> None:
     assert providers.social_enrichment.event_enrichment._llm_gateway is gateway
     assert providers.pulse_lab.decision_provider is not None
     contract = providers.pulse_lab.decision_provider.runtime_contract
-    assert contract.stage_names == ("investigator", "decision_maker")
-    assert contract.tool_names_by_stage["investigator"] == (
-        "get_target_recent_tweets",
-        "get_target_price_action",
-        "get_official_token_profile",
-    )
-    assert contract.decision_maker_fallback_tool_enabled is True
+    assert contract.stage_names == ("evidence_debate", "decision_maker")
+    assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
     assert contract.safety_net_enabled is True
     assert providers.watchlist_intel.summary_provider is not None
     assert providers.watchlist_intel.summary_provider._llm_gateway is gateway
 
 
-def test_openai_pulse_provider_uses_configured_investigator_tool_budgets() -> None:
+def test_openai_pulse_provider_rejects_removed_tool_budget_config() -> None:
     settings = _settings_with_all_llm_models()
-    settings.workers.pulse_candidate.investigator_max_tool_calls = {
-        "cex": 2,
-        "meme": 4,
-        "research_only": 1,
-    }
-
-    providers = providers_wiring.wire_providers(
-        settings,
-        start_collector=True,
-        llm_gateway=FakeGateway(),
-        db_pool=object(),
-    )
-
-    assert providers.pulse_lab.decision_provider is not None
-    assert providers.pulse_lab.decision_provider.runtime_contract.route_tool_budgets == {
-        "cex": 2,
-        "meme": 4,
-        "research_only": 1,
-    }
+    assert not hasattr(settings.workers.pulse_candidate, "investigator_max_tool_calls")
 
 
 def test_openai_provider_wiring_requires_llm_gateway() -> None:
