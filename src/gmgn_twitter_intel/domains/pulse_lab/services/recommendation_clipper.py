@@ -16,6 +16,10 @@ _RECOMMENDATION_RANK = {
 def clip_recommendation(decision: FinalDecision, *, gate: Any, evidence_gate: Any | None = None) -> FinalDecision:
     """Apply deterministic gate ceilings before public write/eval."""
 
+    if evidence_gate is not None:
+        decision = _apply_evidence_gate(decision, evidence_gate=evidence_gate)
+        if decision.recommendation == "abstain":
+            return decision
     pulse_status = str(getattr(gate, "pulse_status", "") or "")
     max_recommendation = str(getattr(gate, "max_recommendation", "") or "")
     if pulse_status == "risk_rejected_high_info":
@@ -25,8 +29,6 @@ def clip_recommendation(decision: FinalDecision, *, gate: Any, evidence_gate: An
             return _clip_to_ignore(decision, reason="gate_recommendation_ceiling")
         if max_recommendation in {"watch", "watchlist", "token_watch"}:
             return _replace_recommendation(decision, recommendation="watchlist")
-    if evidence_gate is not None:
-        return _apply_evidence_gate(decision, evidence_gate=evidence_gate)
     return decision
 
 

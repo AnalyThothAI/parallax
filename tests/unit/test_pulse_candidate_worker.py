@@ -532,7 +532,9 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
 def test_hard_blocked_evidence_gate_does_not_call_agent() -> None:
     repos = FakeRepos()
     repos.pulse_evidence_sources.market_facts = []
-    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    context = _pulse_context(
+        factor_snapshot=_factor_snapshot(rank_score=82, blocked_reasons=["duplicate_text_share_high"])
+    )
     repos.pulse_jobs.enqueue_job(
         candidate_id=context.candidate_id,
         candidate_type=context.candidate_type,
