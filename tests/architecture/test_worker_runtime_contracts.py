@@ -233,6 +233,22 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
 
 
 @pytest.mark.architecture
+def test_long_running_workers_do_not_override_worker_base_run_without_allowlist() -> None:
+    allowlist = {
+        "live_price_gateway",
+    }
+    violations: list[str] = []
+    for worker_key, qualified_name in EXPECTED_WORKERS.items():
+        worker_class = _import_qualified_name(qualified_name)
+        if worker_key in allowlist:
+            continue
+        if "run" in worker_class.__dict__:
+            violations.append(f"{worker_key} overrides run()")
+
+    assert violations == []
+
+
+@pytest.mark.architecture
 def test_worker_registry_matches_workers_yaml_schema() -> None:
     from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES, CANONICAL_WORKER_NAMES
     from gmgn_twitter_intel.app.runtime.worker_scheduler import _START_PRIORITY
