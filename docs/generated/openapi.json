@@ -751,6 +751,98 @@
         "title": "ApiEnvelope[NotificationsData]",
         "type": "object"
       },
+      "ApiEnvelope_OpsDiagnosticsData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpsDiagnosticsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[OpsDiagnosticsData]",
+        "type": "object"
+      },
+      "ApiEnvelope_OpsQueueData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpsQueueData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[OpsQueueData]",
+        "type": "object"
+      },
       "ApiEnvelope_RecentData_": {
         "additionalProperties": true,
         "properties": {
@@ -1924,6 +2016,136 @@
           }
         },
         "title": "NotificationsData",
+        "type": "object"
+      },
+      "OpsDiagnosticsData": {
+        "additionalProperties": true,
+        "properties": {
+          "collector": {
+            "additionalProperties": true,
+            "title": "Collector",
+            "type": "object"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "database": {
+            "additionalProperties": true,
+            "title": "Database",
+            "type": "object"
+          },
+          "domains": {
+            "additionalProperties": true,
+            "title": "Domains",
+            "type": "object"
+          },
+          "generated_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At Ms"
+          },
+          "overall": {
+            "additionalProperties": true,
+            "title": "Overall",
+            "type": "object"
+          },
+          "providers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "queues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queues",
+            "type": "array"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "suggested_checks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Suggested Checks",
+            "type": "array"
+          },
+          "workers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Workers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version"
+        ],
+        "title": "OpsDiagnosticsData",
+        "type": "object"
+      },
+      "OpsQueueData": {
+        "additionalProperties": true,
+        "properties": {
+          "counts_by_status": {
+            "additionalProperties": true,
+            "title": "Counts By Status",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "queue_name": {
+            "title": "Queue Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status_filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Filter"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "queue_name"
+        ],
+        "title": "OpsQueueData",
         "type": "object"
       },
       "RecentData": {
@@ -3466,6 +3688,18 @@
       "StatusData": {
         "additionalProperties": true,
         "properties": {
+          "agent_execution": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Execution"
+          },
           "db": {
             "anyOf": [
               {
@@ -5189,6 +5423,139 @@
           }
         },
         "summary": "Mark Notification Read",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/ops/diagnostics": {
+      "get": {
+        "operationId": "ops_diagnostics_api_ops_diagnostics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since_hours",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 168,
+              "minimum": 1,
+              "title": "Since Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "1h",
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_OpsDiagnosticsData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ops Diagnostics",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/ops/queues/{queue_name}": {
+      "get": {
+        "operationId": "ops_queue_api_ops_queues__queue_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "queue_name",
+            "required": true,
+            "schema": {
+              "title": "Queue Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_OpsQueueData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ops Queue",
         "tags": [
           "api"
         ]

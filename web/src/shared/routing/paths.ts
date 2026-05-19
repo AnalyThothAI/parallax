@@ -47,6 +47,10 @@ export function newsPath(): string {
   return "/news";
 }
 
+export function opsPath(): string {
+  return "/ops";
+}
+
 export function newsItemPath(newsItemId: string): string {
   return `/news/${encodeURIComponent(newsItemId)}`;
 }

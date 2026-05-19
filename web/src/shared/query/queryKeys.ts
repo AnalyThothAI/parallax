@@ -66,6 +66,10 @@ export const queryKeys = {
   accountQuality: (handles: string) => ["account-quality", handles] as const,
   notifications: () => ["notifications"] as const,
   notificationSummary: () => ["notification-summary"] as const,
+  opsDiagnostics: (window: WindowKey, scope: ScopeKey, sinceHours: number) =>
+    ["ops-diagnostics", window, scope, sinceHours] as const,
+  opsQueue: (queueName: string | null, status: string | null, limit: number) =>
+    ["ops-queue", queueName ?? "", status ?? "", limit] as const,
   watchlistHandlesOverview: () => ["watchlist-handles-overview"] as const,
   watchlistHandleOverview: (handle: string, scope: WatchlistTimelineScope) =>
     ["watchlist-handle-overview", handle, scope] as const,

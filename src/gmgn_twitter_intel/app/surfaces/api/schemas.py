@@ -459,5 +459,28 @@ class EnrichmentJobsData(ApiSchema):
     counts: JsonObject = Field(default_factory=dict)
 
 
+class OpsDiagnosticsData(ApiSchema):
+    schema_version: str
+    generated_at_ms: int | None = None
+    overall: JsonObject = Field(default_factory=dict)
+    config: JsonObject = Field(default_factory=dict)
+    database: JsonObject = Field(default_factory=dict)
+    collector: JsonObject = Field(default_factory=dict)
+    providers: list[JsonObject] = Field(default_factory=list)
+    workers: list[JsonObject] = Field(default_factory=list)
+    queues: list[JsonObject] = Field(default_factory=list)
+    domains: JsonObject = Field(default_factory=dict)
+    suggested_checks: list[JsonObject] = Field(default_factory=list)
+
+
+class OpsQueueData(ApiSchema):
+    schema_version: str
+    queue_name: str
+    status_filter: str | None = None
+    counts_by_status: JsonObject = Field(default_factory=dict)
+    summary: JsonObject = Field(default_factory=dict)
+    items: list[JsonObject] = Field(default_factory=list)
+
+
 class LooseData(ApiSchema):
     pass
