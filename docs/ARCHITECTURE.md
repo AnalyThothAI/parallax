@@ -112,10 +112,11 @@ Cross-cutting primitives that implement these invariants:
   `DBPoolBundle`, provider wiring, repositories, the canonical worker
   map, `WorkerScheduler`, API/WebSocket surfaces, readiness dependencies,
   and lifecycle ownership.
-- `DBPoolBundle` — owns `api_pool`, `worker_pool`, and `wake_pool`.
-  HTTP/WebSocket reads use the API pool, background workers use the
-  worker pool, and wake emit/listen traffic uses the wake pool so read
-  traffic cannot be starved by projection or listener work.
+- `DBPoolBundle` — owns `api_pool`, `worker_pool`, `lock_pool`, and
+  `wake_pool`. HTTP/WebSocket reads use the API pool, background worker
+  SQL uses the worker pool, long-lived single-writer advisory locks use
+  the lock pool, and wake emit/listen traffic uses the wake pool so read
+  and worker traffic cannot be starved by projection locks or listeners.
 - `worker_registry.py` and `WorkerScheduler` — declare the canonical
   worker keys/classes and own worker start/stop/status semantics.
 - Wake emission/listening is composed via

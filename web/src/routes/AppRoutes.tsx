@@ -247,7 +247,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
             />
           }
         />
-        <Route path="news" element={<NewsRoute />} />
+        <Route path="news" element={<NewsRoute token={token ?? ""} />} />
         <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
         <Route
           path="signal-lab"

@@ -559,7 +559,7 @@ def _worker_settings_with_overrides(config: object, **overrides: object) -> Simp
 
 
 def _close_db_bundle(db: object) -> None:
-    for name in ("api_pool", "worker_pool", "tool_pool", "wake_pool"):
+    for name in ("api_pool", "worker_pool", "lock_pool", "tool_pool", "wake_pool"):
         pool = getattr(db, name, None)
         close = getattr(pool, "close", None)
         if close:

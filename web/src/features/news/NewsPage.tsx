@@ -5,10 +5,10 @@ import clsx from "clsx";
 import { ExternalLink } from "lucide-react";
 
 import "./news.css";
-import { useNewsPage } from "./useNewsPage";
+import { useNewsPageWithToken } from "./useNewsPage";
 
-export function NewsPage() {
-  const query = useNewsPage();
+export function NewsPage({ token }: { token: string }) {
+  const query = useNewsPageWithToken(token);
   const rows = query.data?.items ?? [];
 
   return (

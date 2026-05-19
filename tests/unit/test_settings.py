@@ -56,6 +56,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.ws_token == "secret"
     assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "postgres_password"
+    assert settings.postgres_pool_max_size == 16
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120

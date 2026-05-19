@@ -9,7 +9,8 @@ One ASGI worker. Multiple workers duplicate the upstream collector. If collector
 ## PostgreSQL pool isolation
 
 `DBPoolBundle` owns separate PostgreSQL pools for HTTP/WebSocket reads
-(`api_pool`), background workers (`worker_pool`), and wake listeners /
+(`api_pool`), background worker SQL (`worker_pool`), long-lived
+single-writer advisory locks (`lock_pool`), and wake listeners /
 emitters (`wake_pool`). API routes are synchronous FastAPI handlers
 because the repository layer uses synchronous psycopg; FastAPI runs
 those handlers in its worker threadpool. Do not add per-endpoint
@@ -23,6 +24,11 @@ Workers must use `DBPoolBundle.worker_session()`, not
 `repository_session()` or raw pool connections. External provider IO,
 publish calls, and wake waits must happen outside DB sessions so worker
 transactions stay short and cancellable.
+
+Workers that require single-writer advisory locks must acquire them via
+`DBPoolBundle.acquire_advisory_lock_connection()`. Advisory locks are
+session-scoped and may be held for the worker lifetime, so they must not
+consume `worker_pool` connections needed for actual worker sessions.
 
 ## Foreground-only run model
 

@@ -76,6 +76,7 @@ export async function fetchNewsRows(params: {
   limit?: number;
   cursor?: string | null;
   status?: string | null;
+  token?: string | null;
 } = {}): Promise<NewsRowsData> {
   const response = await getApi<NewsRowsData>("/api/news", {
     params: {
@@ -83,6 +84,7 @@ export async function fetchNewsRows(params: {
       limit: params.limit ?? 100,
       status: params.status,
     },
+    token: params.token ?? undefined,
   });
   return {
     ...response.data,

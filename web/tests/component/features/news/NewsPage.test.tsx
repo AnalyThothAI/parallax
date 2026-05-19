@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@lib/api/client", () => ({
-  fetchNewsRows: async () => ({
+  fetchNewsRows: vi.fn(async () => ({
     items: [
       {
         row_id: "row-1",
@@ -18,7 +18,7 @@ vi.mock("@lib/api/client", () => ({
       },
     ],
     next_cursor: null,
-  }),
+  })),
 }));
 
 describe("NewsPage", () => {
@@ -29,7 +29,7 @@ describe("NewsPage", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <NewsPage />
+        <NewsPage token="test-token" />
       </QueryClientProvider>,
     );
 

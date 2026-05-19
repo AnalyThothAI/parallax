@@ -26,7 +26,7 @@ storage:
     dsn: "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     password_file: "postgres_password"
     pool_min_size: 1
-    pool_max_size: 10
+    pool_max_size: 16
     connect_timeout_seconds: 5
 
 llm:

@@ -1,2 +1,2 @@
 export { NewsPage } from "./NewsPage";
-export { useNewsPage } from "./useNewsPage";
+export { useNewsPageWithToken } from "./useNewsPage";

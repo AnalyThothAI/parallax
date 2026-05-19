@@ -106,7 +106,7 @@ class WorkerScheduler:
             except Exception as exc:
                 errors.append(exc)
             return
-        for attr in ("api_pool", "worker_pool", "tool_pool", "wake_pool"):
+        for attr in ("api_pool", "worker_pool", "lock_pool", "tool_pool", "wake_pool"):
             pool = getattr(self.db, attr, None)
             if pool is not None:
                 try:

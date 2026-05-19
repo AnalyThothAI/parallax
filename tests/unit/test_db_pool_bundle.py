@@ -105,24 +105,29 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
     bundle = DBPoolBundle.create(FakeSettings())
 
     assert isinstance(bundle.api_pool, FakePool)
+    assert isinstance(bundle.lock_pool, FakePool)
     assert [item["application_name"] for item in created] == [
         "gmgn_api",
         "gmgn_worker",
+        "gmgn_worker_lock",
         "gmgn_agent_tools",
         "gmgn_wake",
     ]
     assert created[0]["statement_timeout_seconds"] == 5.0
     assert created[1]["statement_timeout_seconds"] == 30.0
     assert created[1]["idle_in_transaction_session_timeout_seconds"] == 60.0
+    assert created[2]["min_size"] == 0
+    assert created[2]["max_size"] == 10
     assert created[2]["statement_timeout_seconds"] == 5.0
-    assert created[2]["read_only"] is True
-    assert created[2]["max_size"] == 3
-    assert created[3]["statement_timeout_seconds"] is None
-    assert created[3]["keepalives"] is True
-    assert created[3]["keepalives_idle"] > 0
-    assert created[3]["keepalives_interval"] > 0
-    assert created[3]["keepalives_count"] > 0
+    assert created[3]["statement_timeout_seconds"] == 5.0
+    assert created[3]["read_only"] is True
     assert created[3]["max_size"] == 3
+    assert created[4]["statement_timeout_seconds"] is None
+    assert created[4]["keepalives"] is True
+    assert created[4]["keepalives_idle"] > 0
+    assert created[4]["keepalives_interval"] > 0
+    assert created[4]["keepalives_count"] > 0
+    assert created[4]["max_size"] == 3
 
 
 def test_api_session_yields_repositories_and_records_pool_wait(monkeypatch) -> None:
@@ -192,6 +197,31 @@ def test_acquire_advisory_lock_connection_returns_held_connection_until_release(
         ("SELECT set_config(%s, %s, false)", ("application_name", "gmgn_worker")),
     ]
     assert telemetry.pool_waits[0][0] == "worker"
+
+
+def test_acquire_advisory_lock_connection_uses_lock_pool_when_present() -> None:
+    worker_pool = FakePool(FakeConn(advisory_lock=True))
+    lock_pool = FakePool(FakeConn(advisory_lock=True))
+    bundle = DBPoolBundle(
+        api_pool=FakePool(),
+        worker_pool=worker_pool,
+        wake_pool=FakePool(),
+        lock_pool=lock_pool,
+    )
+
+    locked = bundle.acquire_advisory_lock_connection("token_radar_projection", 2026051501)
+
+    assert worker_pool.conn.executed == []
+    assert lock_pool.conn.executed[:2] == [
+        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:token_radar_projection")),
+        ("SELECT pg_try_advisory_lock(%s) AS locked", (2026051501,)),
+    ]
+    locked.release()
+    assert lock_pool.put_back == [lock_pool.conn]
+    assert lock_pool.conn.executed[-2:] == [
+        ("SELECT pg_advisory_unlock(%s)", (2026051501,)),
+        ("SELECT set_config(%s, %s, false)", ("application_name", "gmgn_worker_lock")),
+    ]
 
 
 def test_acquire_advisory_lock_connection_releases_unlocked_connection() -> None:

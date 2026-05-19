@@ -26,6 +26,7 @@ class DBPoolBundle:
     worker_pool: Any
     wake_pool: Any
     tool_pool: Any | None = None
+    lock_pool: Any | None = None
     telemetry: TelemetryRegistry | None = field(default_factory=TelemetryRegistry)
 
     @classmethod
@@ -51,6 +52,18 @@ class DBPoolBundle:
                 statement_timeout_seconds=_WORKER_STATEMENT_TIMEOUT_SECONDS,
                 idle_in_transaction_session_timeout_seconds=_WORKER_IDLE_IN_TRANSACTION_TIMEOUT_SECONDS,
             )
+            lock_pool = create_pool(
+                dsn,
+                min_size=0,
+                max_size=worker_pool_max,
+                connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
+                application_name="gmgn_worker_lock",
+                statement_timeout_seconds=_API_STATEMENT_TIMEOUT_SECONDS,
+                keepalives=True,
+                keepalives_idle=_WAKE_KEEPALIVES_IDLE_SECONDS,
+                keepalives_interval=_WAKE_KEEPALIVES_INTERVAL_SECONDS,
+                keepalives_count=_WAKE_KEEPALIVES_COUNT,
+            )
             tool_pool = create_pool(
                 dsn,
                 min_size=0,
@@ -73,7 +86,13 @@ class DBPoolBundle:
                 keepalives_count=_WAKE_KEEPALIVES_COUNT,
             )
         except Exception:
-            for pool in (locals().get("api_pool"), locals().get("worker_pool"), locals().get("tool_pool")):
+            for pool in (
+                locals().get("api_pool"),
+                locals().get("worker_pool"),
+                locals().get("lock_pool"),
+                locals().get("tool_pool"),
+                locals().get("wake_pool"),
+            ):
                 close = getattr(pool, "close", None)
                 if close:
                     close()
@@ -83,6 +102,7 @@ class DBPoolBundle:
             worker_pool=worker_pool,
             wake_pool=wake_pool,
             tool_pool=tool_pool,
+            lock_pool=lock_pool,
             telemetry=telemetry if telemetry is not None else TelemetryRegistry(),
         )
 
@@ -133,17 +153,25 @@ class DBPoolBundle:
         return WakeWaiter(self.wake_pool, channels=channels)
 
     def acquire_advisory_lock_connection(self, worker_name: str, key: int) -> AdvisoryLockConnection:
+        pool = self.lock_pool if self.lock_pool is not None else self.worker_pool
+        pool_name = "worker_lock" if self.lock_pool is not None else "worker"
+        reset_application_name = "gmgn_worker_lock" if self.lock_pool is not None else "gmgn_worker"
         started = time.perf_counter()
-        conn = self.worker_pool.getconn()
-        self._record_pool_wait("worker", (time.perf_counter() - started) * 1000)
+        conn = pool.getconn()
+        self._record_pool_wait(pool_name, (time.perf_counter() - started) * 1000)
         try:
             _set_config(conn, "application_name", f"worker:{_normalize_worker_name(worker_name)}")
             row = conn.execute("SELECT pg_try_advisory_lock(%s) AS locked", (int(key),)).fetchone()
             if not row or not bool(row["locked"]):
                 raise RuntimeError("advisory_lock_unavailable")
-            return AdvisoryLockConnection(pool=self.worker_pool, conn=conn, key=int(key))
+            return AdvisoryLockConnection(
+                pool=pool,
+                conn=conn,
+                key=int(key),
+                reset_application_name=reset_application_name,
+            )
         except Exception:
-            _return_or_discard(self.worker_pool, conn)
+            _return_or_discard(pool, conn, application_name=reset_application_name)
             raise
 
     @contextmanager
@@ -173,6 +201,7 @@ class AdvisoryLockConnection:
     pool: Any
     conn: Any
     key: int
+    reset_application_name: str = "gmgn_worker"
     _released: bool = False
 
     def __getattr__(self, name: str) -> Any:
@@ -183,7 +212,7 @@ class AdvisoryLockConnection:
             return
         try:
             self.conn.execute("SELECT pg_advisory_unlock(%s)", (self.key,))
-            _set_config(self.conn, "application_name", "gmgn_worker")
+            _set_config(self.conn, "application_name", self.reset_application_name)
         except Exception:
             self._discard()
             raise
@@ -232,9 +261,9 @@ def _reset_worker_connection(conn: Any, *, statement_timeout_seconds: float | No
     _set_config(conn, "application_name", "gmgn_worker")
 
 
-def _return_or_discard(pool: Any, conn: Any) -> None:
+def _return_or_discard(pool: Any, conn: Any, *, application_name: str = "gmgn_worker") -> None:
     try:
-        _set_config(conn, "application_name", "gmgn_worker")
+        _set_config(conn, "application_name", application_name)
     except Exception:
         _discard_connection(pool, conn)
         return

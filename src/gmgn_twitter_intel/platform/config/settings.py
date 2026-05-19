@@ -150,7 +150,7 @@ class PostgresConfig(BaseModel):
     dsn: str = "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     password_file: str | None = "postgres_password"
     pool_min_size: int = 1
-    pool_max_size: int = 10
+    pool_max_size: int = 16
     connect_timeout_seconds: float = 5.0
 
     @field_validator("dsn", mode="before")
@@ -1197,7 +1197,7 @@ storage:
     dsn: "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     password_file: "postgres_password"
     pool_min_size: 1
-    pool_max_size: 10
+    pool_max_size: 16
     connect_timeout_seconds: 5
 
 llm:

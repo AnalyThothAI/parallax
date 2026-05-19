@@ -123,7 +123,13 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             for error in _cleanup_provider_roots_sync(llm_gateway):
                 exc.add_note(f"llm gateway cleanup failed: {type(error).__name__}: {error}")
         if db is not None:
-            _close_db_pools(db.api_pool, db.worker_pool, db.tool_pool, db.wake_pool)
+            _close_db_pools(
+                db.api_pool,
+                db.worker_pool,
+                getattr(db, "lock_pool", None),
+                db.tool_pool,
+                db.wake_pool,
+            )
         raise
     return runtime
 
