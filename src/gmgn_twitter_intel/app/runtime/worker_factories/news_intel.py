@@ -25,7 +25,8 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
         return {}
 
     constructed: dict[str, WorkerBase] = {}
-    feed_client = getattr(ctx.providers.news_intel, "feed_client", None)
+    news_providers = getattr(ctx.providers, "news_intel", None)
+    feed_client = getattr(news_providers, "feed_client", None)
     if workers.news_fetch.enabled and feed_client is not None:
         constructed["news_fetch"] = NewsFetchWorker(
             name="news_fetch",

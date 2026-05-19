@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -19,17 +20,26 @@ class MarketlaneQuoteProvider:
         cached = self._cache.get(normalized_symbol)
         if cached is not None and cached[0] > now:
             return dict(cached[1])
-        payload = self._client_instance().quote(normalized_symbol)
+        payload = self._quote_with_timeout(normalized_symbol)
         quote = _normalize_marketlane_quote(payload)
         if self.cache_ttl_seconds > 0:
             self._cache[normalized_symbol] = (now + self.cache_ttl_seconds, quote)
         return dict(quote)
 
-    def _client_instance(self) -> Any:
-        if self._client is None:
-            from marketlane.client import MarketlaneClient  # type: ignore[import-untyped]
+    def _quote_with_timeout(self, symbol: str) -> dict[str, Any]:
+        async_client = self._async_client_instance()
 
-            self._client = MarketlaneClient()
+        async def quote() -> dict[str, Any]:
+            payload = await asyncio.wait_for(async_client.quote(symbol), timeout=self.timeout_seconds)
+            return payload if isinstance(payload, dict) else {}
+
+        return asyncio.run(quote())
+
+    def _async_client_instance(self) -> Any:
+        if self._client is None:
+            from marketlane.client import AsyncMarketlaneClient  # type: ignore[import-untyped]
+
+            self._client = AsyncMarketlaneClient()
         return self._client
 
 

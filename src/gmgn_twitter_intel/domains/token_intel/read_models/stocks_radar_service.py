@@ -1,16 +1,33 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.queries.stocks_radar_query import StocksRadarQuery
 
 from .asset_flow_service import WINDOW_MS
 
+DEFAULT_QUOTE_TIMEOUT_SECONDS = 2.0
+DEFAULT_QUOTE_MAX_WORKERS = 8
+
 
 class StocksRadarService:
-    def __init__(self, *, conn: Any, quote_provider: Any | None = None, stock_rows_query: Any | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        conn: Any,
+        quote_provider: Any | None = None,
+        quote_timeout_seconds: float | None = None,
+        quote_max_workers: int = DEFAULT_QUOTE_MAX_WORKERS,
+        stock_rows_query: Any | None = None,
+    ) -> None:
         self.stock_rows_query = stock_rows_query or StocksRadarQuery(conn)
         self.quote_provider = quote_provider
+        self.quote_timeout_seconds = _positive_float(
+            quote_timeout_seconds,
+            default=DEFAULT_QUOTE_TIMEOUT_SECONDS,
+        )
+        self.quote_max_workers = max(1, int(quote_max_workers))
 
     def stocks_radar(
         self,
@@ -74,7 +91,22 @@ class StocksRadarService:
             except Exception as exc:
                 return symbol, _unavailable_quote(type(exc).__name__)
 
-        return dict(quote_one(symbol) for symbol in unique_symbols)
+        results: dict[str, dict[str, Any]] = {}
+        executor = ThreadPoolExecutor(max_workers=min(self.quote_max_workers, len(unique_symbols)))
+        futures = {executor.submit(quote_one, symbol): symbol for symbol in unique_symbols}
+        try:
+            for future in as_completed(futures, timeout=self.quote_timeout_seconds):
+                symbol, quote = future.result()
+                results[symbol] = quote
+        except TimeoutError:
+            pass
+        finally:
+            for future, symbol in futures.items():
+                if symbol not in results:
+                    future.cancel()
+                    results[symbol] = _unavailable_quote("quote_timeout")
+            executor.shutdown(wait=False, cancel_futures=True)
+        return results
 
 
 def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]:
@@ -175,3 +207,11 @@ def _str_or_none(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _positive_float(value: Any, *, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default

@@ -441,6 +441,8 @@ class NarrativeRepository:
             filters.append("admissions.scope = %s")
             params.append(scope)
         admission_filter = " AND ".join(filters)
+        semantic_admission_filter = "admissions.status = 'admitted' AND admissions.schema_version = %s"
+        semantic_params: list[Any] = [schema_version]
         obsolete = self.conn.execute(
             f"""
             WITH current_sources AS (
@@ -449,7 +451,7 @@ class NarrativeRepository:
                 admissions.target_id,
                 jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
               FROM narrative_admissions AS admissions
-              WHERE {admission_filter}
+              WHERE {semantic_admission_filter}
             )
             DELETE FROM token_mention_semantics AS semantics
             WHERE semantics.schema_version = %s
@@ -462,7 +464,7 @@ class NarrativeRepository:
                   AND current_sources.target_id = semantics.target_id
               )
             """,
-            (*params, schema_version),
+            (*semantic_params, schema_version),
         )
         reset_retryable = self.conn.execute(
             f"""
@@ -472,7 +474,7 @@ class NarrativeRepository:
                 admissions.target_id,
                 jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
               FROM narrative_admissions AS admissions
-              WHERE {admission_filter}
+              WHERE {semantic_admission_filter}
             )
             UPDATE token_mention_semantics AS semantics
             SET status = 'queued',
@@ -488,7 +490,7 @@ class NarrativeRepository:
                   AND current_sources.target_id = semantics.target_id
               )
             """,
-            (*params, schema_version),
+            (*semantic_params, schema_version),
         )
         stale_digests = self.conn.execute(
             f"""

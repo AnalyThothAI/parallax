@@ -400,6 +400,103 @@ def test_replace_current_digest_is_idempotent_for_same_digest(tmp_path):
     assert rows[0]["superseded_at_ms"] is None
 
 
+def test_cleanup_current_backlog_preserves_sources_current_in_other_windows(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-1h", "event-24h", "event-obsolete"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:OneHour",
+                    "window": "1h",
+                    "scope": "all",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-1h"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 1,
+                },
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:Day",
+                    "window": "24h",
+                    "scope": "all",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-24h"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 1,
+                },
+            ],
+            now_ms=2_000,
+        )
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-1h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:OneHour",
+                    "text_clean": "one hour source",
+                    "source_received_at_ms": 2_000,
+                },
+                {
+                    "event_id": "event-24h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Day",
+                    "text_clean": "day source",
+                    "source_received_at_ms": 2_000,
+                },
+                {
+                    "event_id": "event-obsolete",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Old",
+                    "text_clean": "obsolete source",
+                    "source_received_at_ms": 2_000,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_100,
+        )
+        conn.execute(
+            """
+            UPDATE token_mention_semantics
+            SET status = 'retryable_error',
+                error = 'transient',
+                next_retry_at_ms = 9_999_999
+            WHERE event_id = 'event-1h'
+            """
+        )
+        conn.commit()
+
+        result = repo.cleanup_current_backlog(
+            schema_version="narrative_intel_v1",
+            window="1h",
+            scope="all",
+            now_ms=3_000,
+        )
+        rows = {
+            row["event_id"]: row["status"]
+            for row in conn.execute(
+                """
+                SELECT event_id, status
+                FROM token_mention_semantics
+                ORDER BY event_id
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert result["deleted_obsolete_semantics"] == 1
+    assert result["reset_retryable_semantics"] == 1
+    assert rows == {
+        "event-1h": "queued",
+        "event-24h": "queued",
+    }
+
+
 def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:
     conn.execute(
         """
