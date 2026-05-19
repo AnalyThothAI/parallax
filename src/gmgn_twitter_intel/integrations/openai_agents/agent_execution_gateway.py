@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -382,9 +383,10 @@ class AgentExecutionGateway:
         )
         if self._safety_net is not None:
             runner_entered["value"] = True
+            runner_input = _runner_input_payload(stage.input_payload)
             final_output, audit_extra, raw_result = await self._safety_net.run_with_safety_net(
                 agent=agent,
-                input_payload=stage.input_payload,
+                input_payload=runner_input,
                 run_config=run_config,
                 pydantic_output_type=getattr(output_schema, "output_type", stage.output_type),
                 context=None,
@@ -394,9 +396,10 @@ class AgentExecutionGateway:
             return final_output, raw_result, dict(audit_extra)
 
         runner_entered["value"] = True
+        runner_input = _runner_input_payload(stage.input_payload)
         raw_result = await self._runner.run(
             agent,
-            stage.input_payload,
+            runner_input,
             max_turns=stage.max_turns,
             run_config=run_config,
         )
@@ -567,6 +570,15 @@ def _audit_trace_extra(audit_extra: dict[str, Any]) -> dict[str, Any]:
         for key, value in audit_extra.items()
         if key in {"safety_net_used", "safety_net_retries", "parse_mode"}
     }
+
+
+def _runner_input_payload(input_payload: Any) -> Any:
+    if isinstance(input_payload, str | list):
+        return input_payload
+    try:
+        return json.dumps(input_payload, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError):
+        return str(input_payload)
 
 
 def _classify_provider_error(exc: Exception) -> AgentExecutionErrorClass:

@@ -46,10 +46,12 @@ class FakeRunner:
         self.calls = 0
         self.delay_seconds = delay_seconds
         self.run_configs: list[Any] = []
+        self.input_payloads: list[Any] = []
 
     async def run(self, agent: Any, input_payload: Any, *, max_turns: int, run_config: Any) -> FakeResult:
-        _ = agent, input_payload, max_turns
+        _ = agent, max_turns
         self.calls += 1
+        self.input_payloads.append(input_payload)
         self.run_configs.append(run_config)
         if self.delay_seconds:
             await asyncio.sleep(self.delay_seconds)
@@ -138,6 +140,7 @@ def test_execute_returns_normalized_audit_using_fake_runner() -> None:
         assert result.audit.output_hash is not None
         assert result.audit.trace_metadata["source"] == "unit"
         assert runner.calls == 1
+        assert runner.input_payloads == ['{"x": 1}']
         assert llm_gateway.openai_client_calls == [
             {"model": "qwen3.6", "base_url": "https://example.com/v1", "timeout_s": 10.0}
         ]
@@ -360,6 +363,7 @@ def test_safety_net_path_uses_injected_runner_and_returns_safety_metadata() -> N
 
         assert isinstance(result.final_output, Payload)
         assert runner.calls == 1
+        assert runner.input_payloads == ['{"x": 1}']
         assert result.audit.parse_mode == "strict"
         assert result.audit.safety_net == {"safety_net_used": False, "safety_net_retries": 0}
         assert result.audit.trace_metadata["safety_net_used"] is False
