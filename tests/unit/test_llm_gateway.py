@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
 
 
@@ -77,49 +75,12 @@ def test_llm_gateway_exports_explicit_trace_key_for_custom_provider(monkeypatch)
     assert gateway.trace_export_enabled is True
 
 
-def test_run_with_limits_serializes_global_concurrency() -> None:
-    async def scenario() -> None:
-        gateway = LLMGateway(api_key="sk-test", trace_enabled=False, max_concurrency=1, rpm_limit=10_000)
-        first_started = asyncio.Event()
-        second_started = asyncio.Event()
-        release_first = asyncio.Event()
+def test_llm_gateway_no_longer_exposes_execution_limit_api() -> None:
+    gateway = LLMGateway(api_key="sk-test", trace_enabled=False)
 
-        async def first_call() -> str:
-            first_started.set()
-            await release_first.wait()
-            return "first"
-
-        async def second_call() -> str:
-            second_started.set()
-            return "second"
-
-        first_task = asyncio.create_task(gateway.run_with_limits("enrichment", "social_event", 1.0, first_call))
-        await first_started.wait()
-        second_task = asyncio.create_task(gateway.run_with_limits("pulse_candidate", "analyst", 1.0, second_call))
-        await asyncio.sleep(0)
-
-        assert second_started.is_set() is False
-
-        release_first.set()
-        assert await first_task == "first"
-        assert await second_task == "second"
-        assert second_started.is_set() is True
-
-    asyncio.run(scenario())
-
-
-def test_run_with_limits_applies_timeout() -> None:
-    async def scenario() -> None:
-        gateway = LLMGateway(api_key="sk-test", trace_enabled=False, max_concurrency=1, rpm_limit=10_000)
-
-        async def slow_call() -> str:
-            await asyncio.sleep(0.1)
-            return "late"
-
-        with pytest.raises(TimeoutError):
-            await gateway.run_with_limits("handle_summary", "summary", 0.01, slow_call)
-
-    asyncio.run(scenario())
+    assert not hasattr(gateway, "run_with_limits")
+    assert not hasattr(gateway, "last_worker_name")
+    assert not hasattr(gateway, "last_stage")
 
 
 def test_openai_client_uses_shared_headers_and_owned_http_clients(monkeypatch) -> None:
