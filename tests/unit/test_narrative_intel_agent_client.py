@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
@@ -12,46 +11,87 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentExecutionRequestAudit,
+    AgentExecutionResult,
+    AgentExecutionResultAudit,
+    AgentExecutionStatus,
+)
 from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import (
     OpenAIAgentsNarrativeIntelClient,
 )
 
 
-class FakeRunner:
+class FakeGateway:
     def __init__(self, output):
         self.output = output
-        self.calls = []
+        self.audit_calls = []
+        self.execute_calls = []
 
-    async def run(self, starting_agent, input, *, max_turns, run_config):
-        self.calls.append(
-            {
-                "agent": starting_agent,
-                "input": input,
-                "max_turns": max_turns,
-                "run_config": run_config,
-            }
+    def request_audit(self, stage):
+        self.audit_calls.append(stage)
+        return AgentExecutionRequestAudit(
+            model=stage.model,
+            lane=stage.lane,
+            stage=stage.stage,
+            workflow_name=stage.workflow_name,
+            agent_name=stage.agent_name,
+            sdk_trace_id=f"trace-{stage.stage}",
+            group_id=stage.group_id,
+            prompt_version=stage.prompt_version,
+            schema_version=stage.schema_version,
+            artifact_version_hash="artifact:test",
+            input_hash=stage.input_hash,
+            trace_metadata=dict(stage.trace_metadata),
         )
-        return SimpleNamespace(final_output=self.output)
+
+    async def execute(self, stage):
+        self.execute_calls.append(stage)
+        request_audit = self.request_audit(stage)
+        return AgentExecutionResult(
+            final_output=self.output,
+            audit=AgentExecutionResultAudit(
+                **request_audit.model_dump(
+                    mode="json",
+                    exclude={
+                        "status",
+                        "execution_started",
+                        "output_hash",
+                        "parse_mode",
+                        "safety_net",
+                    },
+                ),
+                status=AgentExecutionStatus.DONE,
+                execution_started=True,
+                output_hash="sha256:output",
+                parse_mode="strict",
+                safety_net={"safety_net_used": False, "safety_net_retries": 0},
+            ),
+            raw_result=SimpleNamespace(final_output=self.output),
+        )
 
 
-class FakeGateway:
-    trace_export_enabled = True
+def test_narrative_label_mentions_request_audit_builds_gateway_stage():
+    gateway = FakeGateway({"labels": [], "failures": []})
+    client = OpenAIAgentsNarrativeIntelClient(model="qwen3.6", agent_gateway=gateway)
+    request = _mention_request()
 
-    def __init__(self) -> None:
-        self.calls = []
+    audit = client.request_audit_for_label_mentions(run_id="run-mention-1", request=request)
 
-    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        self.calls.append({"worker_name": worker_name, "stage": stage, "timeout_s": timeout_s})
-        return await coro_factory()
+    assert audit["lane"] == "narrative.mention_semantics"
+    assert audit["stage"] == "mention_semantics"
+    assert audit["agent_name"] == "NarrativeMentionSemanticsAgent"
+    assert audit["workflow_name"] == "gmgn-twitter-intel.narrative_intel"
+    assert audit["trace_metadata"]["run_id"] == "run-mention-1"
+    assert audit["trace_metadata"]["mention_count"] == 1
+    stage = gateway.audit_calls[0]
+    assert stage.output_type.__name__ == "MentionSemanticsAgentPayload"
+    assert '"event_id": "event-1"' in stage.input_payload
+    assert "Label only the supplied token mention text" in stage.instructions
 
-    def openai_client(self, *, model, base_url, timeout_s):
-        return object()
 
-
-def test_narrative_client_labels_mentions_through_typed_agent():
-    gateway = FakeGateway()
-    runner = FakeRunner(
+def test_narrative_client_labels_mentions_through_execution_gateway():
+    gateway = FakeGateway(
         {
             "labels": [
                 {
@@ -74,13 +114,72 @@ def test_narrative_client_labels_mentions_through_typed_agent():
         }
     )
     client = OpenAIAgentsNarrativeIntelClient(
-        api_key="sk-test",
         model="gpt-narrative",
-        llm_gateway=gateway,
-        timeout_seconds=11,
-        runner=runner,
+        agent_gateway=gateway,
+        max_turns=2,
     )
-    request = MentionSemanticsBatchRequest(
+    request = _mention_request()
+
+    result = asyncio.run(client.label_mentions(run_id="run-mention-1", request=request))
+
+    assert isinstance(result, MentionSemanticsBatchResult)
+    assert result.labels[0].trade_stance == "bullish"
+    assert result.raw_response["labels"][0]["event_id"] == "event-1"
+    assert result.agent_run_audit["backend"] == "openai_agents_sdk"
+    assert result.agent_run_audit["input_hash"].startswith("sha256:")
+    assert result.agent_run_audit["output_hash"] == "sha256:output"
+    assert len(gateway.execute_calls) == 1
+    stage = gateway.execute_calls[0]
+    assert stage.lane == "narrative.mention_semantics"
+    assert stage.model == "gpt-narrative"
+    assert stage.group_id == "event-1"
+    assert stage.max_turns == 2
+
+
+def test_narrative_summarize_discussion_request_audit_builds_gateway_stage():
+    gateway = FakeGateway({"digest": _digest_payload()})
+    client = OpenAIAgentsNarrativeIntelClient(model="qwen3.6", agent_gateway=gateway)
+    request = _digest_request()
+
+    audit = client.request_audit_for_summarize_discussion(run_id="run-digest-1", request=request)
+
+    assert audit["lane"] == "narrative.discussion_digest"
+    assert audit["stage"] == "discussion_digest"
+    assert audit["agent_name"] == "TokenDiscussionDigestAgent"
+    assert audit["trace_metadata"]["run_id"] == "run-digest-1"
+    assert audit["trace_metadata"]["target_id"] == request.target_id
+    assert audit["trace_metadata"]["window"] == "24h"
+    assert audit["trace_metadata"]["scope"] == "matched"
+    stage = gateway.audit_calls[0]
+    assert stage.output_type.__name__ == "DiscussionDigestAgentPayload"
+    assert '"target_id": "' + request.target_id + '"' in stage.input_payload
+    assert "Summarize only the supplied labeled mentions" in stage.instructions
+
+
+def test_narrative_client_summarizes_discussion_through_execution_gateway():
+    gateway = FakeGateway({"digest": _digest_payload()})
+    client = OpenAIAgentsNarrativeIntelClient(
+        model="gpt-narrative",
+        agent_gateway=gateway,
+    )
+    request = _digest_request()
+
+    result = asyncio.run(client.summarize_discussion(run_id="run-digest-1", request=request))
+
+    assert isinstance(result, DiscussionDigestResult)
+    assert result.digest.headline_zh == "SOL 讨论从价格防守切到轮动叙事。"
+    assert result.raw_response["digest"]["target_id"] == request.target_id
+    assert result.agent_run_audit["output_hash"] == "sha256:output"
+    assert len(gateway.execute_calls) == 1
+    stage = gateway.execute_calls[0]
+    assert stage.lane == "narrative.discussion_digest"
+    assert stage.agent_name == "TokenDiscussionDigestAgent"
+    assert stage.group_id == request.target_id
+    assert stage.trace_metadata["mention_count"] == 1
+
+
+def _mention_request() -> MentionSemanticsBatchRequest:
+    return MentionSemanticsBatchRequest(
         run_id="run-mention-1",
         schema_version="narrative_v1",
         prompt_version="mention-v1",
@@ -95,30 +194,26 @@ def test_narrative_client_labels_mentions_through_typed_agent():
         ],
     )
 
-    result = asyncio.run(client.label_mentions(run_id="run-mention-1", request=request))
 
-    assert isinstance(result, MentionSemanticsBatchResult)
-    assert result.labels[0].trade_stance == "bullish"
-    assert result.raw_response["labels"][0]["event_id"] == "event-1"
-    assert result.agent_run_audit["backend"] == "openai_agents_sdk"
-    assert result.agent_run_audit["input_hash"].startswith("sha256:")
-    assert gateway.calls == [{"worker_name": "narrative_intel", "stage": "mention_semantics", "timeout_s": 11}]
-    call = runner.calls[0]
-    assert call["agent"].name == "NarrativeMentionSemanticsAgent"
-    assert isinstance(call["agent"].output_type, StrictJsonOutputSchema)
-    assert call["agent"].model is None
-    assert "Label only the supplied token mention text" in call["agent"].instructions
-    assert json.loads(call["input"])["mentions"][0]["event_id"] == "event-1"
-    assert call["run_config"].workflow_name == "gmgn-twitter-intel.narrative_intel"
-    assert call["run_config"].group_id == "event-1"
-    assert call["run_config"].trace_metadata["stage"] == "mention_semantics"
-    assert call["run_config"].trace_metadata["schema_version"] == "narrative_v1"
-
-
-def test_narrative_client_summarizes_discussion_through_typed_agent():
-    gateway = FakeGateway()
+def _digest_request() -> DiscussionDigestRequest:
     target_id = "asset:solana:token:So11111111111111111111111111111111111111112"
-    digest_payload = {
+    return DiscussionDigestRequest(
+        run_id="run-digest-1",
+        schema_version="narrative_v1",
+        prompt_version="digest-v1",
+        target_type="asset",
+        target_id=target_id,
+        window="24h",
+        scope="matched",
+        mentions=[{"event_id": "event-1", "summary_zh": "SOL 轮动。"}],
+        context={"source_event_count": 3, "independent_author_count": 3},
+        allowed_refs=[{"ref_id": "event:event-1", "kind": "event"}],
+    )
+
+
+def _digest_payload() -> dict:
+    target_id = "asset:solana:token:So11111111111111111111111111111111111111112"
+    return {
         "target_type": "asset",
         "target_id": target_id,
         "window": "24h",
@@ -160,40 +255,3 @@ def test_narrative_client_summarizes_discussion_through_typed_agent():
         "model_run_id": "run-digest-1",
         "computed_at_ms": 1_800_000_000_000,
     }
-    runner = FakeRunner({"digest": digest_payload})
-    client = OpenAIAgentsNarrativeIntelClient(
-        api_key="sk-test",
-        model="gpt-narrative",
-        llm_gateway=gateway,
-        timeout_seconds=11,
-        runner=runner,
-    )
-    request = DiscussionDigestRequest(
-        run_id="run-digest-1",
-        schema_version="narrative_v1",
-        prompt_version="digest-v1",
-        target_type="asset",
-        target_id=target_id,
-        window="24h",
-        scope="matched",
-        mentions=[{"event_id": "event-1", "summary_zh": "SOL 轮动。"}],
-        context={"source_event_count": 3, "independent_author_count": 3},
-        allowed_refs=[{"ref_id": "event:event-1", "kind": "event"}],
-    )
-
-    result = asyncio.run(client.summarize_discussion(run_id="run-digest-1", request=request))
-
-    assert isinstance(result, DiscussionDigestResult)
-    assert result.digest.headline_zh == "SOL 讨论从价格防守切到轮动叙事。"
-    assert result.raw_response["digest"]["target_id"] == target_id
-    assert result.agent_run_audit["output_hash"].startswith("sha256:")
-    assert gateway.calls == [{"worker_name": "narrative_intel", "stage": "discussion_digest", "timeout_s": 11}]
-    call = runner.calls[0]
-    assert call["agent"].name == "TokenDiscussionDigestAgent"
-    assert isinstance(call["agent"].output_type, StrictJsonOutputSchema)
-    assert "Summarize only the supplied labeled mentions" in call["agent"].instructions
-    assert json.loads(call["input"])["target_id"] == target_id
-    assert call["run_config"].workflow_name == "gmgn-twitter-intel.narrative_intel"
-    assert call["run_config"].group_id == target_id
-    assert call["run_config"].trace_metadata["stage"] == "discussion_digest"
-    assert call["run_config"].trace_metadata["window"] == "24h"
