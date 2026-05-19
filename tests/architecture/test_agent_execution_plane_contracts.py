@@ -51,6 +51,8 @@ def _import_aliases(tree: ast.AST) -> dict[str, str]:
 
 
 def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Subscript):
+        return _call_name(node.value)
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -59,6 +61,8 @@ def _call_name(node: ast.AST) -> str:
 
 
 def _call_leaf(node: ast.AST) -> str:
+    if isinstance(node, ast.Subscript):
+        return _call_leaf(node.value)
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
