@@ -448,37 +448,61 @@ class WatchlistIntelRepository:
         normalized = [normalize_watchlist_handle(handle) for handle in handles]
         if not normalized:
             return []
-        values_sql = ",".join("(%s, %s)" for _ in normalized)
-        values_params: list[Any] = []
-        for index, handle in enumerate(normalized):
-            values_params.extend([handle, index])
-        rows = self.conn.execute(
-            f"""
-            WITH configured(handle, ord) AS (
-              VALUES {values_sql}
-            )
-            SELECT
-              configured.handle,
-              MAX(e.received_at_ms) AS last_source_event_at_ms,
-              COUNT(DISTINCT e.event_id) FILTER (WHERE e.received_at_ms >= %s) AS recent_source_event_count,
-              COUNT(DISTINCT e.event_id) FILTER (
-                WHERE e.received_at_ms >= %s AND se.is_signal_event = TRUE
-              ) AS recent_signal_event_count,
-              COUNT(DISTINCT e.event_id) FILTER (WHERE se.is_signal_event = TRUE) AS total_signal_event_count,
-              s.generated_at_ms AS summary_generated_at_ms
-            FROM configured
-            LEFT JOIN events e
-              ON lower(e.author_handle) = configured.handle
-            LEFT JOIN social_event_extractions se
-              ON se.event_id = e.event_id
-            LEFT JOIN watchlist_handle_summaries s
-              ON s.handle = configured.handle
-            GROUP BY configured.handle, configured.ord, s.generated_at_ms
-            ORDER BY configured.ord ASC
+        return [self._handle_overview_counts(handle=handle, since_ms=since_ms) for handle in normalized]
+
+    def _handle_overview_counts(self, *, handle: str, since_ms: int) -> dict[str, Any]:
+        last_event = self.conn.execute(
+            """
+            SELECT received_at_ms
+            FROM events
+            WHERE lower(author_handle) = %s
+            ORDER BY received_at_ms DESC, event_id DESC
+            LIMIT 1
             """,
-            (*values_params, int(since_ms), int(since_ms)),
-        ).fetchall()
-        return [_decode_handle_overview_row(dict(row)) for row in rows]
+            (handle,),
+        ).fetchone()
+        recent_source = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM events
+            WHERE lower(author_handle) = %s
+              AND received_at_ms >= %s
+            """,
+            (handle, int(since_ms)),
+        ).fetchone()
+        recent_signal = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM social_event_extractions
+            WHERE author_handle = %s
+              AND received_at_ms >= %s
+              AND is_signal_event = TRUE
+            """,
+            (handle, int(since_ms)),
+        ).fetchone()
+        summary = self.conn.execute(
+            """
+            SELECT generated_at_ms, signal_count_at_generation
+            FROM watchlist_handle_summaries
+            WHERE handle = %s
+            """,
+            (handle,),
+        ).fetchone()
+        summary_row = dict(summary) if summary else {}
+        recent_signal_count = int(recent_signal["count"] if recent_signal else 0)
+        return _decode_handle_overview_row(
+            {
+                "handle": handle,
+                "last_source_event_at_ms": last_event["received_at_ms"] if last_event else None,
+                "recent_source_event_count": int(recent_source["count"] if recent_source else 0),
+                "recent_signal_event_count": recent_signal_count,
+                "total_signal_event_count": max(
+                    int(summary_row.get("signal_count_at_generation") or 0),
+                    recent_signal_count,
+                ),
+                "summary_generated_at_ms": summary_row.get("generated_at_ms"),
+            }
+        )
 
     def handle_overview(self, *, handle: str, scope: str, since_ms: int, limit: int = 500) -> dict[str, Any]:
         normalized = normalize_watchlist_handle(handle)
