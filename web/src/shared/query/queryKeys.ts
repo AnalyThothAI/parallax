@@ -43,8 +43,16 @@ export const queryKeys = {
     ["search-inspect", token, q, window, scope] as const,
   stocksRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
     ["stocks-radar", window, scope, limit] as const,
-  newsRows: ({ limit, cursor, status }: { limit: number; cursor?: string | null; status?: string | null }) =>
-    ["news", limit, cursor ?? "", status ?? ""] as const,
+  newsRows: ({
+    limit,
+    cursor,
+    status,
+  }: {
+    limit: number;
+    cursor?: string | null;
+    status?: string | null;
+  }) => ["news", limit, cursor ?? "", status ?? ""] as const,
+  newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,
   targetSocialTimeline: (targetKey: string | null, window: WindowKey, scope: ScopeKey) =>
     ["target-social-timeline", targetKey, window, scope] as const,
   targetPosts: (

@@ -8,8 +8,11 @@ export type NewsTokenLane = {
 };
 
 export type NewsFactLane = {
+  claim?: string | null;
   event_type?: string | null;
+  realis?: string | null;
   status?: "accepted" | "rejected" | "attention" | string | null;
+  affected_targets?: unknown[];
   rejection_reasons?: string[];
 };
 
@@ -20,6 +23,7 @@ export type NewsRow = {
   latest_at_ms?: number | null;
   lifecycle_status: string;
   headline: string;
+  title?: string | null;
   summary?: string | null;
   source_domain?: string | null;
   canonical_url?: string | null;
@@ -27,6 +31,26 @@ export type NewsRow = {
   fact_lanes?: NewsFactLane[];
   token_lanes_json?: NewsTokenLane[];
   fact_lanes_json?: NewsFactLane[];
+};
+
+export type NewsItemDetail = NewsRow & {
+  content?: string | null;
+  body_text?: string | null;
+  source?: {
+    source_name?: string | null;
+    source_domain?: string | null;
+    trust_tier?: string | null;
+    source_role?: string | null;
+  } | null;
+  story_members?: Array<{
+    story_id?: string | null;
+    status?: string | null;
+    representative_title?: string | null;
+    latest_seen_at_ms?: number | null;
+  }>;
+  entities?: unknown[];
+  token_mentions?: unknown[];
+  fact_candidates?: NewsFactLane[];
 };
 
 export type NewsRowsData = {

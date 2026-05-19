@@ -47,6 +47,10 @@ export function newsPath(): string {
   return "/news";
 }
 
+export function newsItemPath(newsItemId: string): string {
+  return `/news/${encodeURIComponent(newsItemId)}`;
+}
+
 export function signalLabPulsePath(candidateId: string, search = ""): string {
   return `/signal-lab/pulse/${encodeURIComponent(candidateId)}${search}`;
 }
