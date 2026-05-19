@@ -4,9 +4,10 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.bootstrap import bootstrap
+from gmgn_twitter_intel.app.runtime.bootstrap import _cleanup_provider_roots_sync, bootstrap
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
+from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.provider_wiring.okx import OkxCexMarketProvider
 from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
@@ -434,13 +435,20 @@ def _run_narrative_intel_rebuild(
     telemetry = TelemetryRegistry()
     db = None
     llm_gateway = None
+    agent_execution_gateway = None
     provider_resource = None
     workers: list[object] = []
     locks: list[object] = []
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
         llm_gateway = LLMGateway.create(settings)
-        providers = wire_providers(settings, start_collector=False, llm_gateway=llm_gateway, db_pool=db.tool_pool)
+        agent_execution_gateway = build_agent_execution_gateway(settings, llm_gateway=llm_gateway)
+        providers = wire_providers(
+            settings,
+            start_collector=False,
+            agent_execution_gateway=agent_execution_gateway,
+            db_pool=db.tool_pool,
+        )
         provider = providers.narrative_intel.narrative_provider
         provider_resource = provider
         if provider is None:
@@ -521,10 +529,7 @@ def _run_narrative_intel_rebuild(
             _release_advisory_lock_connection(lock)
         for worker in reversed(workers):
             asyncio.run(worker.aclose())
-        if provider_resource is not None and provider_resource is not llm_gateway:
-            _close_runtime_resource(provider_resource)
-        if llm_gateway is not None:
-            _close_runtime_resource(llm_gateway)
+        _cleanup_provider_roots_sync(provider_resource, agent_execution_gateway, llm_gateway)
         if db is not None:
             _close_db_bundle(db)
 

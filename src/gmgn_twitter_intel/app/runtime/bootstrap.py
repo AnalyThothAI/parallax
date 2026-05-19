@@ -11,6 +11,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
+from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.providers_wiring import WiredProviders, wire_providers
 from gmgn_twitter_intel.app.runtime.repository_session import PooledRepository
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
@@ -45,6 +46,7 @@ class Runtime:
     workers: Mapping[str, Any]
     scheduler: WorkerScheduler
     llm_gateway: Any | None = None
+    agent_execution_gateway: Any | None = None
     evidence: Any | None = None
     entities: Any | None = None
     signals: Any | None = None
@@ -86,6 +88,7 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
     telemetry = TelemetryRegistry()
     db: DBPoolBundle | None = None
     llm_gateway: LLMGateway | None = None
+    agent_execution_gateway: Any | None = None
     providers: WiredProviders | None = None
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
@@ -101,10 +104,11 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             or settings.narrative_intel_configured
         ):
             llm_gateway = LLMGateway.create(settings)
+            agent_execution_gateway = build_agent_execution_gateway(settings, llm_gateway=llm_gateway)
         providers = wire_providers(
             settings,
             start_collector=start_collector,
-            llm_gateway=llm_gateway,
+            agent_execution_gateway=agent_execution_gateway,
             db_pool=db.tool_pool,
         )
         runtime = _assemble_runtime(
@@ -114,14 +118,11 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             providers=providers,
             start_collector=start_collector,
             llm_gateway=llm_gateway,
+            agent_execution_gateway=agent_execution_gateway,
         )
     except Exception as exc:
-        if providers is not None:
-            for error in _cleanup_provider_roots_sync(providers):
-                exc.add_note(f"provider cleanup failed: {type(error).__name__}: {error}")
-        if llm_gateway is not None:
-            for error in _cleanup_provider_roots_sync(llm_gateway):
-                exc.add_note(f"llm gateway cleanup failed: {type(error).__name__}: {error}")
+        for error in _cleanup_provider_roots_sync(providers, agent_execution_gateway, llm_gateway):
+            exc.add_note(f"provider cleanup failed: {type(error).__name__}: {error}")
         if db is not None:
             _close_db_pools(
                 db.api_pool,
@@ -142,6 +143,7 @@ def _assemble_runtime(
     providers: WiredProviders,
     start_collector: bool,
     llm_gateway: Any | None,
+    agent_execution_gateway: Any | None = None,
 ) -> Runtime:
     workers = settings.workers
     worker_collector_enabled = bool(
@@ -195,6 +197,7 @@ def _assemble_runtime(
         workers=runtime_workers,
         scheduler=scheduler,
         llm_gateway=llm_gateway,
+        agent_execution_gateway=agent_execution_gateway,
         evidence=evidence,
         entities=entities,
         signals=signals,
@@ -332,7 +335,12 @@ async def _maybe_await(value: Any) -> Any:
 
 async def _cleanup_runtime_providers(runtime: Runtime) -> list[Exception]:
     errors: list[Exception] = []
-    for provider in _provider_cleanup_targets(runtime.providers, runtime.stock_quote_provider, runtime.llm_gateway):
+    for provider in _provider_cleanup_targets(
+        runtime.providers,
+        runtime.stock_quote_provider,
+        runtime.agent_execution_gateway,
+        runtime.llm_gateway,
+    ):
         close = getattr(provider, "aclose", None) or getattr(provider, "close", None)
         if close is None:
             continue

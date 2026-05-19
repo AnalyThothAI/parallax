@@ -88,6 +88,7 @@ class WiredProviders:
     pulse_lab: PulseLabProviders
     watchlist_intel: WatchlistIntelProviders
     marketlane: MarketlaneProviders
+    agent_execution_gateway: object | None = None
 
 
 __all__ = [
