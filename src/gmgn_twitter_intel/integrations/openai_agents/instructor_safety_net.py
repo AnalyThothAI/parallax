@@ -47,7 +47,7 @@ def _json_safe(value: Any, depth: int = 0) -> Any:
     return str(value)
 
 
-def _extract_sdk_usage(result: Any) -> dict[str, Any]:
+def extract_sdk_usage(result: Any) -> dict[str, Any]:
     """Pull a JSON-safe usage dict out of an Agents SDK RunResult, if any."""
     if result is None:
         return {}
@@ -76,7 +76,7 @@ def _extract_instructor_usage(obj: Any) -> dict[str, Any]:
     raw = getattr(obj, "_raw_response", None)
     if raw is None:
         return {}
-    return _extract_sdk_usage(raw)
+    return extract_sdk_usage(raw)
 
 
 class SafetyNetExhausted(Exception):
@@ -171,7 +171,7 @@ class InstructorSafetyNet:
                 "safety_net_used": False,
                 "safety_net_retries": 0,
                 "parse_mode": "strict",
-                "usage": _extract_sdk_usage(result),
+                "usage": extract_sdk_usage(result),
             }
             if return_result:
                 return result.final_output, audit_extra, result
@@ -281,4 +281,7 @@ def _repair_instruction(error_text: str, *, output_type: type[BaseModel] | None)
     return "\n".join(lines)
 
 
-__all__ = ["InstructorSafetyNet", "SafetyNetExhausted"]
+_extract_sdk_usage = extract_sdk_usage
+
+
+__all__ = ["InstructorSafetyNet", "SafetyNetExhausted", "extract_sdk_usage"]
