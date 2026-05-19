@@ -27,3 +27,26 @@ def test_telemetry_records_pool_wait_samples_and_returns_p99_by_pool() -> None:
     assert telemetry.pool_wait_p99_ms("worker") == 20
     assert telemetry.pool_wait_p99_ms("api") == 100
     assert telemetry.pool_wait_p99_ms("missing") is None
+
+
+def test_telemetry_exposes_agent_execution_metrics() -> None:
+    telemetry = TelemetryRegistry()
+
+    telemetry.increment_agent_execution_in_flight(lane="pulse.decision_maker", stage="decision_maker")
+    telemetry.decrement_agent_execution_in_flight(lane="pulse.decision_maker", stage="decision_maker")
+    telemetry.record_agent_execution_backpressure(lane="pulse.pipeline", reason="capacity_denied")
+    telemetry.record_agent_execution_call(
+        lane="pulse.decision_maker",
+        stage="decision_maker",
+        model="gpt-test",
+        status="done",
+        seconds=0.25,
+    )
+
+    text = telemetry.render_prometheus_text()
+    assert "gmgn_agent_execution_calls_total" in text
+    assert "gmgn_agent_execution_seconds" in text
+    assert "gmgn_agent_execution_in_flight" in text
+    assert "gmgn_agent_execution_backpressure_total" in text
+    assert 'lane="pulse.decision_maker"' in text
+    assert 'reason="capacity_denied"' in text

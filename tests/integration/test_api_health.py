@@ -551,10 +551,25 @@ def test_notification_delivery_starts_when_rule_worker_disabled(monkeypatch, tmp
 
 
 def test_readiness_uses_scheduler_workers_payload(monkeypatch):
+    agent_execution = {
+        "global_max_concurrency": 4,
+        "global_in_flight": 0,
+        "lanes": {
+            "pulse.decision_maker": {
+                "max_concurrency": 1,
+                "in_flight": 0,
+                "circuit_state": "closed",
+                "capacity_denied_total": 0,
+                "circuit_open_total": 0,
+                "timeout_total": 0,
+            }
+        },
+    }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
         scheduler=SimpleNamespace(
             status_payload=lambda: {
                 "pulse_candidate": {
@@ -579,4 +594,5 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     assert status_code == 200
     assert payload["workers"]["pulse_candidate"]["running"] is True
     assert payload["workers"]["pulse_candidate"]["last_result"] == {"processed": 1}
+    assert payload["agent_execution"] == agent_execution
     assert "pulse_agent" not in payload

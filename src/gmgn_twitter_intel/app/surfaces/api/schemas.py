@@ -32,6 +32,7 @@ class StatusData(ApiSchema):
     snapshot_gate: JsonObject = Field(default_factory=dict)
     db: JsonObject | None = None
     provider_states: JsonObject = Field(default_factory=dict)
+    agent_execution: JsonObject | None = None
     workers: dict[str, WorkerStatusData] = Field(default_factory=dict)
 
 

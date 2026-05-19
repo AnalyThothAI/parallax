@@ -182,6 +182,7 @@ def build_agent_execution_gateway(
     settings: Settings,
     *,
     llm_gateway: object | None,
+    telemetry: Any | None = None,
 ) -> AgentExecutionGateway:
     gateway = _require_llm_gateway(llm_gateway)
     policy = AgentRuntimePolicy.model_validate(settings.workers.agent_runtime.model_dump(mode="json"))
@@ -193,6 +194,7 @@ def build_agent_execution_gateway(
         trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
         policy=policy,
         safety_net=safety_net,
+        telemetry=telemetry,
     )
 
 

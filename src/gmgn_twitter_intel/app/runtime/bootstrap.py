@@ -104,7 +104,11 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             or settings.narrative_intel_configured
         ):
             llm_gateway = LLMGateway.create(settings)
-            agent_execution_gateway = build_agent_execution_gateway(settings, llm_gateway=llm_gateway)
+            agent_execution_gateway = build_agent_execution_gateway(
+                settings,
+                llm_gateway=llm_gateway,
+                telemetry=telemetry,
+            )
         providers = wire_providers(
             settings,
             start_collector=start_collector,

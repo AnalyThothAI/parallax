@@ -62,6 +62,7 @@ class AgentExecutionGateway:
         policy: AgentRuntimePolicy,
         runner: Any | None = None,
         safety_net: InstructorSafetyNet | None = None,
+        telemetry: Any | None = None,
     ) -> None:
         if llm_gateway is None:
             raise ValueError("llm_gateway is required")
@@ -72,6 +73,7 @@ class AgentExecutionGateway:
         self._policy = policy
         self._runner = runner or Runner
         self._safety_net = safety_net
+        self._telemetry = telemetry
         self._model_cache: dict[tuple[str, str, float], Any] = {}
         self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
@@ -118,6 +120,7 @@ class AgentExecutionGateway:
         lane_state = self._lane_state(lane_key)
         if self._is_circuit_open(lane_key, lane_state):
             lane_state.circuit_open_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CIRCUIT_OPEN)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
@@ -125,6 +128,7 @@ class AgentExecutionGateway:
             )
         if not _try_acquire_nowait(self._global_semaphore):
             lane_state.capacity_denied_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
@@ -133,6 +137,7 @@ class AgentExecutionGateway:
         if not _try_acquire_nowait(lane_state.semaphore):
             self._global_semaphore.release()
             lane_state.capacity_denied_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
@@ -188,7 +193,10 @@ class AgentExecutionGateway:
 
         started = time.perf_counter()
         runner_entered = {"value": False}
+        in_flight_recorded = False
         try:
+            self._record_in_flight(stage, delta=1)
+            in_flight_recorded = True
             async with self._global_limiter:
                 try:
                     final_output, raw_result, audit_extra = await asyncio.wait_for(
@@ -205,6 +213,12 @@ class AgentExecutionGateway:
                         error_class=AgentExecutionErrorClass.TIMEOUT,
                         message=f"agent lane timed out after {lane_state.policy.timeout_seconds:g}s",
                         execution_started=True,
+                    )
+                    self._record_execution_call(
+                        stage,
+                        status=failed.status,
+                        error_class=failed.error_class,
+                        started=started,
                     )
                     raise AgentExecutionError(
                         AgentExecutionErrorClass.TIMEOUT,
@@ -226,6 +240,12 @@ class AgentExecutionGateway:
                 trace_metadata={**audit.trace_metadata, **_audit_trace_extra(audit_extra)},
                 output_hash=json_sha256(final_output),
             )
+            self._record_execution_call(
+                stage,
+                status=result_audit.status,
+                error_class=result_audit.error_class,
+                started=started,
+            )
             return AgentExecutionResult(final_output=final_output, audit=result_audit, raw_result=raw_result)
         except AgentExecutionError:
             raise
@@ -239,6 +259,12 @@ class AgentExecutionGateway:
                 message=str(exc),
                 execution_started=True,
                 audit_extra=audit_extra,
+            )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
             )
             raise AgentExecutionError(
                 AgentExecutionErrorClass.SCHEMA_INVALID,
@@ -254,6 +280,12 @@ class AgentExecutionGateway:
                 error_class=AgentExecutionErrorClass.SCHEMA_INVALID,
                 message=str(exc),
                 execution_started=True,
+            )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
             )
             raise AgentExecutionError(
                 AgentExecutionErrorClass.SCHEMA_INVALID,
@@ -271,6 +303,12 @@ class AgentExecutionGateway:
                 message=str(exc),
                 execution_started=runner_entered["value"],
             )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
+            )
             raise AgentExecutionError(
                 error_class,
                 str(exc),
@@ -278,6 +316,8 @@ class AgentExecutionGateway:
                 execution_started=runner_entered["value"],
             ) from exc
         finally:
+            if in_flight_recorded:
+                self._record_in_flight(stage, delta=-1)
             if release_reservation:
                 await reservation.release()
 
@@ -445,6 +485,41 @@ class AgentExecutionGateway:
         )
         self._model_cache[key] = model
         return model
+
+    def _record_in_flight(self, stage: AgentStageSpec, *, delta: int) -> None:
+        telemetry = self._telemetry
+        if telemetry is None:
+            return
+        method_name = "increment_agent_execution_in_flight" if delta > 0 else "decrement_agent_execution_in_flight"
+        method = getattr(telemetry, method_name, None)
+        if callable(method):
+            method(lane=stage.lane, stage=stage.stage)
+
+    def _record_backpressure(self, lane: str, reason: AgentExecutionErrorClass) -> None:
+        telemetry = self._telemetry
+        method = getattr(telemetry, "record_agent_execution_backpressure", None)
+        if callable(method):
+            method(lane=lane, reason=str(reason.value))
+
+    def _record_execution_call(
+        self,
+        stage: AgentStageSpec,
+        *,
+        status: AgentExecutionStatus,
+        error_class: AgentExecutionErrorClass | None,
+        started: float,
+    ) -> None:
+        telemetry = self._telemetry
+        method = getattr(telemetry, "record_agent_execution_call", None)
+        if callable(method):
+            method(
+                lane=stage.lane,
+                stage=stage.stage,
+                model=stage.model,
+                status=str(status.value),
+                error_class=error_class.value if error_class is not None else None,
+                seconds=max(0.0, time.perf_counter() - started),
+            )
 
 
 def _api_base(base_url: str) -> str:
