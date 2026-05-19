@@ -1,40 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
-from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from pydantic import BaseModel, Field
-
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
+from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_runtime import (
+    build_handle_summary_stage,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
-
-BACKEND = "openai_agents_sdk"
-WORKFLOW_NAME = "gmgn-twitter-intel.watchlist_handle_summary"
-AGENT_NAME = "WatchlistHandleSummaryAgent"
-PROMPT_VERSION = "watchlist-handle-summary-v1"
-SCHEMA_VERSION = "watchlist_handle_summary_v1"
-
-
-class WatchlistTopicPayload(BaseModel):
-    title: str
-    description: str
-    event_count: int = Field(ge=0)
-    top_event_ids: list[str] = Field(default_factory=list)
-    symbols: list[str] = Field(default_factory=list)
-    confidence: float = Field(ge=0, le=1)
-
-
-class WatchlistHandleSummaryPayload(BaseModel):
-    summary_zh: str
-    topics: list[WatchlistTopicPayload] = Field(default_factory=list)
-    residual_risks: list[str] = Field(default_factory=list)
+from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent import HANDLE_SUMMARY_PAYLOAD_TYPE
 
 
 class OpenAIAgentsWatchlistSummaryClient:
@@ -43,34 +16,17 @@ class OpenAIAgentsWatchlistSummaryClient:
     def __init__(
         self,
         *,
-        api_key: str,
         model: str,
-        llm_gateway: Any,
-        base_url: str = "https://api.openai.com/v1",
-        timeout_seconds: float = 120.0,
-        runner: Any | None = None,
-        safety_net: InstructorSafetyNet | None = None,
-        trace_enabled: bool = True,
-        trace_include_sensitive_data: bool = False,
-        workflow_name: str = WORKFLOW_NAME,
+        agent_gateway: Any,
         max_turns: int = 1,
     ) -> None:
-        self.api_key = api_key
         self.model = str(model or "").strip()
         if not self.model:
             raise ValueError("watchlist_handle_summary_model is required")
-        if llm_gateway is None:
-            raise ValueError("llm_gateway is required")
-        self._llm_gateway = llm_gateway
-        self.base_url = _api_base(base_url)
-        self.timeout_seconds = max(1.0, float(timeout_seconds))
-        self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        self.trace_enabled = bool(trace_enabled and getattr(self._llm_gateway, "trace_export_enabled", False))
-        self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
+        if agent_gateway is None:
+            raise ValueError("agent_gateway is required")
+        self._agent_gateway = agent_gateway
         self.max_turns = max(1, min(2, int(max_turns)))
-        self._runner = runner or Runner
-        self._safety_net = safety_net
-        self._model = None if runner is not None else self._build_model()
 
     @property
     def artifact_version_hash(self) -> str:
@@ -85,8 +41,16 @@ class OpenAIAgentsWatchlistSummaryClient:
         job: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        _, audit = self._request_context(handle=handle, events=events, run_id=run_id, job=job, context=context)
-        return audit
+        stage = build_handle_summary_stage(
+            model=self.model,
+            handle=handle,
+            events=events,
+            run_id=run_id,
+            job=job,
+            context=context,
+            max_turns=self.max_turns,
+        )
+        return self._agent_gateway.request_audit(stage).model_dump(mode="json")
 
     async def summarize_handle(
         self,
@@ -97,178 +61,50 @@ class OpenAIAgentsWatchlistSummaryClient:
         job: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        input_payload, audit = self._request_context(
+        stage = build_handle_summary_stage(
+            model=self.model,
             handle=handle,
             events=events,
             run_id=run_id,
             job=job,
             context=context,
+            max_turns=self.max_turns,
         )
-        agent = Agent(
-            name=AGENT_NAME,
-            instructions=_instructions(),
-            output_type=StrictJsonOutputSchema(WatchlistHandleSummaryPayload),
-            tools=[],
-            model=self._model,
-            model_settings=default_agent_model_settings(),
-        )
-        run_config = RunConfig(
-            workflow_name=self.workflow_name,
-            trace_id=audit["sdk_trace_id"],
-            group_id=handle,
-            trace_include_sensitive_data=self.trace_include_sensitive_data,
-            tracing_disabled=not self.trace_enabled,
-            trace_metadata=audit["trace_metadata"],
-        )
-        audit_extra: dict[str, Any] = {
-            "safety_net_used": False,
-            "safety_net_retries": 0,
-            "parse_mode": "strict",
-        }
-        if self._safety_net is not None:
-            final_output, audit_extra = await self._llm_gateway.run_with_limits(
-                "handle_summary",
-                "summary",
-                self.timeout_seconds,
-                lambda: self._safety_net.run_with_safety_net(
-                    agent=agent,
-                    input_payload=input_payload,
-                    run_config=run_config,
-                    pydantic_output_type=WatchlistHandleSummaryPayload,
-                ),
-            )
-        else:
-            result = await self._llm_gateway.run_with_limits(
-                "handle_summary",
-                "summary",
-                self.timeout_seconds,
-                lambda: self._runner.run(
-                    agent,
-                    input_payload,
-                    max_turns=self.max_turns,
-                    run_config=run_config,
-                ),
-            )
-            final_output = result.final_output
-        payload = _coerce_summary_payload(final_output)
+        execution = await self._agent_gateway.execute(stage)
+        payload = _coerce_summary_payload(execution.final_output)
         output_json = payload.model_dump(mode="json")
         return {
             **output_json,
-            "agent_run_audit": {**audit, "output_hash": _sha256(output_json), **audit_extra},
+            "agent_run_audit": execution.audit.model_dump(mode="json"),
         }
 
     async def aclose(self) -> None:
         return None
 
-    def _request_context(
-        self,
-        *,
-        handle: str,
-        events: list[dict[str, Any]],
-        run_id: str,
-        job: dict[str, Any],
-        context: dict[str, Any],
-    ) -> tuple[str, dict[str, Any]]:
-        input_json = {
-            "handle": handle,
-            "context": context,
-            "events": [_event_payload(item) for item in events],
-        }
-        input_payload = json.dumps(input_json, ensure_ascii=False, sort_keys=True)
-        input_hash = _sha256(input_json)
-        trace_metadata = {
-            "backend": BACKEND,
-            "run_id": run_id,
-            "handle": handle,
-            "job_handle": str(job.get("handle") or ""),
-            "attempt_count": int(job.get("attempt_count") or 0),
-            "prompt_version": PROMPT_VERSION,
-            "schema_version": SCHEMA_VERSION,
-            "model": self.model,
-            "artifact_version_hash": self.artifact_version_hash,
-            "input_hash": input_hash,
-        }
-        audit = {
-            "backend": BACKEND,
-            "sdk_trace_id": _trace_id(run_id),
-            "workflow_name": self.workflow_name,
-            "agent_name": AGENT_NAME,
-            "prompt_version": PROMPT_VERSION,
-            "schema_version": SCHEMA_VERSION,
-            "artifact_version_hash": self.artifact_version_hash,
-            "trace_metadata": trace_metadata,
-            "input_hash": input_hash,
-        }
-        return input_payload, audit
 
-    def _build_model(self):
-        return OpenAIChatCompletionsModel(
-            model=self.model,
-            openai_client=self._llm_gateway.openai_client(
-                model=self.model,
-                base_url=self.base_url,
-                timeout_s=self.timeout_seconds,
-            ),
-        )
-
-
-def _instructions() -> str:
-    return (
-        "You summarize a watched crypto Twitter account's recent structured signal events for a Chinese trader UI. "
-        "Write concise Simplified Chinese. Identify 1-5 recurring topics, catalysts, or narrative changes. "
-        "Use only provided events. Do not invent prices, market caps, or facts absent from input. "
-        "Return one valid JSON object only. Do not return Markdown, bullets, code fences, or prose outside JSON. "
-        'Schema: {"summary_zh": string, "topics": [{"title": string, "description": string, '
-        '"event_count": integer, "top_event_ids": string[], "symbols": string[], "confidence": number}], '
-        '"residual_risks": string[]}. Keep titles short.'
-    )
-
-
-def _event_payload(item: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "event_id": item.get("event_id"),
-        "received_at_ms": item.get("received_at_ms"),
-        "event_type": item.get("event_type"),
-        "subject": item.get("subject"),
-        "summary_zh": item.get("summary_zh"),
-        "anchor_terms": item.get("anchor_terms") or [],
-        "token_candidates": item.get("token_candidates") or [],
-        "cashtags": item.get("cashtags") or [],
-        "hashtags": item.get("hashtags") or [],
-        "text": item.get("event_text") or "",
-    }
-
-
-def _api_base(base_url: str) -> str:
-    value = str(base_url or "").strip().rstrip("/")
-    if not value:
-        return "https://api.openai.com/v1"
-    return value if value.endswith("/v1") else f"{value}/v1"
-
-
-def _coerce_summary_payload(value: Any) -> WatchlistHandleSummaryPayload:
-    if isinstance(value, WatchlistHandleSummaryPayload):
+def _coerce_summary_payload(value: Any) -> Any:
+    if isinstance(value, HANDLE_SUMMARY_PAYLOAD_TYPE):
         return value
     if isinstance(value, dict):
         if "summary_zh" not in value and _looks_like_topic(value):
             value = _payload_from_topics([value])
-        return WatchlistHandleSummaryPayload.model_validate(value)
+        return HANDLE_SUMMARY_PAYLOAD_TYPE.model_validate(value)
     if isinstance(value, list) and all(isinstance(item, dict) for item in value):
-        return WatchlistHandleSummaryPayload.model_validate(_payload_from_topics(value))
+        return HANDLE_SUMMARY_PAYLOAD_TYPE.model_validate(_payload_from_topics(value))
     if isinstance(value, str):
         text = value.strip()
         parsed = _parse_json_object(text)
         if parsed is not None:
             if "summary_zh" not in parsed and _looks_like_topic(parsed):
                 parsed = _payload_from_topics([parsed])
-            return WatchlistHandleSummaryPayload.model_validate(parsed)
+            return HANDLE_SUMMARY_PAYLOAD_TYPE.model_validate(parsed)
         parsed_list = _parse_json_list(text)
         if parsed_list is not None:
-            return WatchlistHandleSummaryPayload.model_validate(_payload_from_topics(parsed_list))
+            return HANDLE_SUMMARY_PAYLOAD_TYPE.model_validate(_payload_from_topics(parsed_list))
         markdown_payload = _parse_markdown_summary(text)
         if markdown_payload is not None:
-            return WatchlistHandleSummaryPayload.model_validate(markdown_payload)
-    return WatchlistHandleSummaryPayload.model_validate(value)
+            return HANDLE_SUMMARY_PAYLOAD_TYPE.model_validate(markdown_payload)
+    return HANDLE_SUMMARY_PAYLOAD_TYPE.model_validate(value)
 
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:
@@ -451,15 +287,6 @@ def _clean_markdown(value: str) -> str:
     cleaned = re.sub(r"^\s*[-*]\s*", "", value.strip())
     cleaned = cleaned.replace("**", "").replace("__", "").replace("`", "")
     return cleaned.strip(" \t\r\n-*：:")
-
-
-def _trace_id(run_id: str) -> str:
-    return "trace_" + hashlib.sha256(str(run_id or "").encode("utf-8")).hexdigest()[:32]
-
-
-def _sha256(value: Any) -> str:
-    data = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
-    return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
 __all__ = ["OpenAIAgentsWatchlistSummaryClient"]

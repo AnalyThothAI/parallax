@@ -113,9 +113,17 @@ class HandleSummaryWorker(WorkerBase):
 
     async def _process_job(self, job: dict[str, Any], *, now_ms: int) -> str:
         started_at_ms = _now_ms()
+        request_audit: dict[str, Any] | None = None
         try:
             inputs = await asyncio.to_thread(self._summary_inputs_sync, job=job, now_ms=now_ms)
             if inputs.events:
+                request_audit = self.provider.request_audit(
+                    handle=inputs.handle,
+                    events=inputs.events,
+                    run_id=inputs.run_id,
+                    job=job,
+                    context=inputs.context,
+                )
                 response = await self._summarize_with_timeout(job=job, inputs=inputs)
                 model = str(getattr(self.provider, "model", "") or "")
             else:
@@ -141,6 +149,7 @@ class HandleSummaryWorker(WorkerBase):
                     self._record_failed_summary_sync,
                     job=job,
                     error=str(exc),
+                    request_audit=request_audit,
                     started_at_ms=started_at_ms,
                     failed_at_ms=_now_ms(),
                 )
@@ -218,23 +227,29 @@ class HandleSummaryWorker(WorkerBase):
         *,
         job: dict[str, Any],
         error: str,
+        request_audit: dict[str, Any] | None,
         started_at_ms: int,
         failed_at_ms: int,
     ) -> None:
         handle = str(job.get("handle") or "")
+        audit = dict(request_audit or {})
+        usage = dict(audit.get("usage") or {})
         with self._repository_session() as repos, _unit_of_work(repos):
             repos.watchlist_intel.insert_summary_run(
                 run_id=f"watchlist-summary-failed-{handle}-{job.get('attempt_count')}-{failed_at_ms}",
                 handle=handle,
                 status="failed",
                 model=str(getattr(self.provider, "model", "") or ""),
-                request_json={"job": dict(job)},
+                request_json={"job": dict(job), "agent_run_audit": audit} if audit else {"job": dict(job)},
                 response_json=None,
                 input_event_count=0,
-                usage_json={},
+                usage_json=usage,
                 error=error,
                 started_at_ms=started_at_ms,
                 finished_at_ms=failed_at_ms,
+                safety_net_used=bool(audit.get("safety_net_used", False)),
+                safety_net_retries=int(audit.get("safety_net_retries") or 0),
+                parse_mode=str(audit.get("parse_mode") or "strict"),
                 commit=False,
             )
             repos.watchlist_intel.mark_summary_job_failed(job, error, now_ms=failed_at_ms, commit=False)

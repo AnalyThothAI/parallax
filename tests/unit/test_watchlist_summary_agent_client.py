@@ -3,46 +3,69 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentExecutionRequestAudit,
+    AgentExecutionResult,
+    AgentExecutionResultAudit,
+    AgentExecutionStatus,
+)
 from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
     OpenAIAgentsWatchlistSummaryClient,
     _coerce_summary_payload,
 )
 
 
-class FakeRunner:
+class FakeAgentGateway:
     def __init__(self, output):
         self.output = output
-        self.calls = []
+        self.audit_calls = []
+        self.execute_calls = []
 
-    async def run(self, starting_agent, input, *, max_turns, run_config):
-        self.calls.append(
-            {
-                "agent": starting_agent,
-                "input": input,
-                "max_turns": max_turns,
-                "run_config": run_config,
-            }
+    def request_audit(self, stage):
+        self.audit_calls.append(stage)
+        return AgentExecutionRequestAudit(
+            model=stage.model,
+            lane=stage.lane,
+            stage=stage.stage,
+            workflow_name=stage.workflow_name,
+            agent_name=stage.agent_name,
+            sdk_trace_id="trace-run-1",
+            group_id=stage.group_id,
+            prompt_version=stage.prompt_version,
+            schema_version=stage.schema_version,
+            artifact_version_hash="artifact:test",
+            input_hash=stage.input_hash,
+            trace_metadata={"handle": stage.group_id},
         )
-        return SimpleNamespace(final_output=self.output)
 
-
-class FakeGateway:
-    trace_export_enabled = True
-
-    def __init__(self) -> None:
-        self.calls = []
-
-    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        self.calls.append({"worker_name": worker_name, "stage": stage, "timeout_s": timeout_s})
-        return await coro_factory()
-
-    def openai_client(self, *, model, base_url, timeout_s):
-        return object()
+    async def execute(self, stage):
+        self.execute_calls.append(stage)
+        request_audit = self.request_audit(stage)
+        return AgentExecutionResult(
+            final_output=self.output,
+            audit=AgentExecutionResultAudit(
+                **request_audit.model_dump(
+                    mode="json",
+                    exclude={
+                        "status",
+                        "execution_started",
+                        "output_hash",
+                        "parse_mode",
+                        "safety_net",
+                    },
+                ),
+                status=AgentExecutionStatus.DONE,
+                execution_started=True,
+                output_hash="sha256:output",
+                parse_mode="strict",
+                safety_net={"safety_net_used": False, "safety_net_retries": 0},
+            ),
+            raw_result=SimpleNamespace(final_output=self.output),
+        )
 
 
 def test_watchlist_summary_client_runs_summary_through_gateway():
-    gateway = FakeGateway()
-    runner = FakeRunner(
+    gateway = FakeAgentGateway(
         {
             "summary_zh": "账户围绕 SOL 客户端进展反复发声。",
             "topics": [],
@@ -50,11 +73,9 @@ def test_watchlist_summary_client_runs_summary_through_gateway():
         }
     )
     client = OpenAIAgentsWatchlistSummaryClient(
-        api_key="sk-test",
         model="gpt-test",
-        llm_gateway=gateway,
-        timeout_seconds=9,
-        runner=runner,
+        agent_gateway=gateway,
+        max_turns=2,
     )
 
     result = asyncio.run(
@@ -67,10 +88,14 @@ def test_watchlist_summary_client_runs_summary_through_gateway():
         )
     )
 
-    assert gateway.calls == [{"worker_name": "handle_summary", "stage": "summary", "timeout_s": 9}]
-    assert runner.calls[0]["run_config"].group_id == "watched"
-    assert runner.calls[0]["run_config"].tracing_disabled is False
+    assert len(gateway.execute_calls) == 1
+    stage = gateway.execute_calls[0]
+    assert stage.lane == "watchlist.handle_summary"
+    assert stage.model == "gpt-test"
+    assert stage.group_id == "watched"
+    assert stage.max_turns == 2
     assert result["summary_zh"] == "账户围绕 SOL 客户端进展反复发声。"
+    assert result["agent_run_audit"]["status"] == "done"
 
 
 def test_watchlist_summary_client_parses_fenced_json_output():
