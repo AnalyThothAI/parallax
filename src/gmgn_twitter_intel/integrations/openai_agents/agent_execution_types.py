@@ -24,6 +24,14 @@ class AgentExecutionErrorClass(StrEnum):
     DETERMINISTIC_NO_INPUT = "deterministic_no_input"
 
 
+class AgentExecutionStatus(StrEnum):
+    PLANNED = "planned"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class AgentCircuitBreakerPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -100,8 +108,8 @@ class AgentExecutionRequestAudit(BaseModel):
     safety_net: dict[str, Any] = Field(default_factory=dict)
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
     execution_started: bool = False
-    status: str = "planned"
-    error_class: str | None = None
+    status: AgentExecutionStatus = AgentExecutionStatus.PLANNED
+    error_class: AgentExecutionErrorClass | None = None
     error_message: str | None = None
 
     @classmethod
@@ -141,7 +149,7 @@ class AgentExecutionRequestAudit(BaseModel):
 
 
 class AgentExecutionResultAudit(AgentExecutionRequestAudit):
-    status: str
+    status: AgentExecutionStatus
 
 
 class AgentExecutionResult(BaseModel):
@@ -196,6 +204,7 @@ __all__ = [
     "AgentExecutionRequestAudit",
     "AgentExecutionResult",
     "AgentExecutionResultAudit",
+    "AgentExecutionStatus",
     "AgentLanePolicy",
     "AgentRuntimePolicy",
     "AgentStageSpec",

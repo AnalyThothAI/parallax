@@ -4,9 +4,23 @@ import hashlib
 import json
 from typing import Any
 
+from pydantic import BaseModel
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {key: _json_ready(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_json_ready(child) for child in value]
+    if isinstance(value, tuple):
+        return [_json_ready(child) for child in value]
+    return value
+
 
 def json_sha256(value: Any) -> str:
-    data = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    data = json.dumps(_json_ready(value), ensure_ascii=False, sort_keys=True, allow_nan=False).encode("utf-8")
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import math
 
-from pydantic import ValidationError
+import pytest
+from pydantic import BaseModel, ValidationError
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
     RUNTIME_VERSION,
@@ -13,6 +15,7 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentExecutionRequestAudit,
     AgentExecutionResult,
     AgentExecutionResultAudit,
+    AgentExecutionStatus,
     AgentLanePolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
@@ -23,6 +26,11 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import (
     text_sha256,
     trace_id_for,
 )
+
+
+class _HashPayload(BaseModel):
+    name: str
+    count: int
 
 
 def test_hash_helpers_are_stable() -> None:
@@ -58,6 +66,25 @@ def test_artifact_hash_changes_when_runtime_behavior_changes() -> None:
     assert base != changed
 
 
+def test_json_sha256_rejects_unsupported_objects_and_sets() -> None:
+    with pytest.raises(TypeError):
+        json_sha256(object())
+
+    with pytest.raises(TypeError):
+        json_sha256({"unsupported": {1, 2, 3}})
+
+
+def test_json_sha256_rejects_nan_values() -> None:
+    with pytest.raises(ValueError):
+        json_sha256({"score": math.nan})
+
+
+def test_json_sha256_handles_pydantic_model_payloads_explicitly() -> None:
+    payload = _HashPayload(name="alpha", count=2)
+
+    assert json_sha256(payload) == json_sha256({"name": "alpha", "count": 2})
+
+
 def test_agent_stage_spec_request_audit_shape() -> None:
     spec = AgentStageSpec(
         lane="social.event_enrichment",
@@ -86,7 +113,8 @@ def test_agent_stage_spec_request_audit_shape() -> None:
     assert audit.runtime_version == RUNTIME_VERSION
     assert audit.input_hash == json_sha256({"event_id": "e1"})
     assert audit.execution_started is False
-    assert audit.status == "planned"
+    assert audit.status is AgentExecutionStatus.PLANNED
+    assert audit.model_dump(mode="json")["status"] == "planned"
     assert audit.usage == {}
     assert audit.safety_net == {}
     assert audit.trace_metadata["event_id"] == "e1"
@@ -139,14 +167,40 @@ def test_result_audit_and_result_keep_execution_facts_separate() -> None:
         output_hash="sha256:output",
         latency_ms=12.5,
         usage={"input_tokens": 10},
-        status="succeeded",
+        status=AgentExecutionStatus.DONE,
         execution_started=True,
+        error_class=AgentExecutionErrorClass.TIMEOUT,
     )
     result = AgentExecutionResult(final_output={"ok": True}, audit=audit, raw_result={"id": "r1"})
 
-    assert result.audit.status == "succeeded"
+    assert result.audit.status is AgentExecutionStatus.DONE
+    assert result.audit.error_class is AgentExecutionErrorClass.TIMEOUT
+    assert result.audit.model_dump(mode="json")["status"] == "done"
+    assert result.audit.model_dump(mode="json")["error_class"] == "timeout"
     assert result.audit.output_hash == "sha256:output"
     assert result.final_output == {"ok": True}
+
+
+def test_audit_rejects_invalid_status_and_error_class() -> None:
+    base = {
+        "model": "qwen3.6",
+        "lane": "lane",
+        "stage": "stage",
+        "workflow_name": "workflow",
+        "agent_name": "agent",
+        "sdk_trace_id": "trace_abc",
+        "group_id": "g1",
+        "prompt_version": "p1",
+        "schema_version": "s1",
+        "artifact_version_hash": "sha256:artifact",
+        "input_hash": "sha256:input",
+    }
+
+    with pytest.raises(ValidationError):
+        AgentExecutionResultAudit(**base, status="succeeded")
+
+    with pytest.raises(ValidationError):
+        AgentExecutionRequestAudit(**base, error_class="unknown")
 
 
 def test_execution_error_carries_class_audit_and_started_flag() -> None:
