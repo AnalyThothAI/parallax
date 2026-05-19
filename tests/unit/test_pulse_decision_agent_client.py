@@ -1,9 +1,8 @@
-"""SDK plumbing tests for the packet-only pulse decision client.
+"""Execution gateway tests for the packet-only pulse decision client.
 
 Coverage focus:
 - ``StrictJsonOutputSchema`` strict + jsonref flattening (qwen3.6 / llama.cpp).
-- ``_extract_usage`` reflective object → dict serialization.
-- Base URL normalization on construction.
+- Pulse stages route through ``AgentExecutionGateway`` stage specs.
 - Pulse public runtime no longer registers critical data-acquisition tools.
 """
 
@@ -20,87 +19,111 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     FinalDecision,
+    PulseStageFailure,
 )
 from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
-    _extract_usage,
+)
+from gmgn_twitter_intel.platform.agent_execution import (
+    AgentExecutionError,
+    AgentExecutionErrorClass,
+    AgentExecutionRequestAudit,
+    AgentExecutionResult,
+    AgentExecutionResultAudit,
+    AgentExecutionStatus,
 )
 
 
-class _FakeGateway:
-    trace_export_enabled = True
+class _FakeAgentGateway:
+    def __init__(self, outputs: dict[str, object] | None = None) -> None:
+        self.outputs = outputs or {}
+        self.execute_calls = []
 
-    def __init__(self) -> None:
-        self.openai_client_calls: list[dict[str, object]] = []
+    def request_audit(self, stage):
+        return AgentExecutionRequestAudit(
+            model=stage.model,
+            lane=stage.lane,
+            stage=stage.stage,
+            workflow_name=stage.workflow_name,
+            agent_name=stage.agent_name,
+            sdk_trace_id=f"trace-{stage.stage}",
+            group_id=stage.group_id,
+            prompt_version=stage.prompt_version,
+            schema_version=stage.schema_version,
+            artifact_version_hash=f"artifact:{stage.model}",
+            input_hash=stage.input_hash,
+            trace_metadata={
+                "stage": stage.stage,
+                "lane": stage.lane,
+                "input_hash": stage.input_hash,
+            },
+        )
 
-    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        return await coro_factory()
-
-    def openai_client(self, *, model, base_url, timeout_s):
-        self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
-        return object()
-
-
-class _RawOutputRunner:
-    def __init__(self, raw_output: object) -> None:
-        self.raw_output = raw_output
-
-    async def run(self, agent, stage_input, *, max_turns, run_config, context):
-        return SimpleNamespace(final_output=self.raw_output, usage=SimpleNamespace(total_tokens=3))
-
-
-def test_extract_usage_recursively_returns_json_safe_payload() -> None:
-    class InputTokensDetails:
-        cached_tokens = 4
-
-    class OutputTokensDetails:
-        def __init__(self) -> None:
-            self.reasoning_tokens = 7
-
-    class Usage:
-        def __init__(self) -> None:
-            self.input_tokens = 10
-            self.output_tokens = 3
-            self.total_tokens = 13
-            self.input_tokens_details = InputTokensDetails()
-            self.output_tokens_details = OutputTokensDetails()
-
-    payload = _extract_usage(SimpleNamespace(usage=Usage()))
-
-    json.dumps(payload, ensure_ascii=False)
-    assert payload == {
-        "input_tokens": 10,
-        "output_tokens": 3,
-        "total_tokens": 13,
-        "input_tokens_details": {"cached_tokens": 4},
-        "output_tokens_details": {"reasoning_tokens": 7},
-    }
+    async def execute(self, stage):
+        self.execute_calls.append(stage)
+        request_audit = self.request_audit(stage)
+        output = self.outputs[stage.stage]
+        return AgentExecutionResult(
+            final_output=output,
+            audit=AgentExecutionResultAudit(
+                **_request_audit_base(request_audit),
+                status=AgentExecutionStatus.DONE,
+                execution_started=True,
+                latency_ms=17.0,
+                usage={"input_tokens": 11, "output_tokens": 5},
+                parse_mode="safety_net_repaired",
+                safety_net={"safety_net_used": True, "safety_net_retries": 1},
+                output_hash=f"sha256:output-{stage.stage}",
+                trace_metadata={
+                    **request_audit.trace_metadata,
+                    "parse_mode": "safety_net_repaired",
+                    "safety_net_used": True,
+                },
+            ),
+            raw_result=SimpleNamespace(final_output=output),
+        )
 
 
-def test_extract_usage_serializes_pure_slotted_usage_objects() -> None:
-    class Details:
-        __slots__ = ("cached_tokens",)
+class _FailingAgentGateway(_FakeAgentGateway):
+    async def execute(self, stage):
+        self.execute_calls.append(stage)
+        request_audit = self.request_audit(stage)
+        failed = AgentExecutionResultAudit(
+            **_request_audit_base(request_audit),
+            status=AgentExecutionStatus.FAILED,
+            execution_started=True,
+            latency_ms=23.0,
+            usage={"input_tokens": 2},
+            parse_mode="strict",
+            safety_net={"safety_net_used": False, "safety_net_retries": 0},
+            error_class=AgentExecutionErrorClass.TIMEOUT,
+            error_message="agent lane timed out",
+        )
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.TIMEOUT,
+            "agent lane timed out",
+            audit=failed,
+            execution_started=True,
+        )
 
-        def __init__(self) -> None:
-            self.cached_tokens = 4
 
-    class Usage:
-        __slots__ = ("input_tokens", "input_tokens_details", "total_tokens")
-
-        def __init__(self) -> None:
-            self.input_tokens = 10
-            self.input_tokens_details = Details()
-            self.total_tokens = 10
-
-    payload = _extract_usage(SimpleNamespace(usage=Usage()))
-
-    json.dumps(payload, ensure_ascii=False)
-    assert payload == {
-        "input_tokens": 10,
-        "input_tokens_details": {"cached_tokens": 4},
-        "total_tokens": 10,
-    }
+def _request_audit_base(audit: AgentExecutionRequestAudit) -> dict:
+    return audit.model_dump(
+        mode="json",
+        exclude={
+            "status",
+            "execution_started",
+            "latency_ms",
+            "usage",
+            "parse_mode",
+            "safety_net",
+            "trace_metadata",
+            "output_hash",
+            "error_class",
+            "error_message",
+        },
+    )
 
 
 def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
@@ -125,47 +148,29 @@ def test_json_output_schema_final_decision_also_flattens_refs() -> None:
     assert "$defs" not in serialized
 
 
-def test_pulse_client_normalizes_openai_root_base_url_before_building_model() -> None:
-    gateway = _FakeGateway()
-
-    OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test",
-        model="gpt-test",
-        llm_gateway=gateway,
-        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        base_url="https://api.openai.com",
-    )
-
-    assert gateway.openai_client_calls == [
-        {"model": "gpt-test", "base_url": "https://api.openai.com/v1", "timeout_s": 20.0}
-    ]
-
-
 def test_pulse_client_requires_decision_runtime_only() -> None:
     import pytest
 
     with pytest.raises(ValueError, match="decision_runtime is required"):
         OpenAIAgentsPulseDecisionClient(
-            api_key="sk-test",
             model="gpt-test",
-            llm_gateway=_FakeGateway(),
+            agent_gateway=_FakeAgentGateway(),
             decision_runtime=None,  # type: ignore[arg-type]
         )
 
 
 def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
     client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test",
         model="gpt-test",
-        llm_gateway=_FakeGateway(),
+        agent_gateway=_FakeAgentGateway(),
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        runner=object(),
     )
 
     contract = client.runtime_contract
 
     assert contract.stage_names == ("evidence_debate", "decision_maker")
     assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
+    assert contract.safety_net_enabled is True
     assert contract.manifest_kwargs()["tool_names_by_stage"] == {
         "evidence_debate": (),
         "decision_maker": (),
@@ -218,110 +223,192 @@ def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> 
     ]
 
 
-def test_run_stage_normalizes_raw_dict_before_pydantic_validation_and_records_trace_metadata() -> None:
-    raw_output = _final_decision_raw(
-        supporting_refs=["event:event-l"],
-        playbook={
-            "has_playbook": False,
-            "watch_signals": ["继续观察链上流动性"],
-            "exit_triggers": ["叙事降温"],
-            "monitoring_horizon": "4h",
-        },
+def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fields() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "evidence_debate": _evidence_debate_raw(["event:event-1"]),
+            "decision_maker": _final_decision_raw(
+                supporting_refs=["event:event-1"],
+                playbook={
+                    "has_playbook": True,
+                    "watch_signals": ["成交量继续扩张"],
+                    "exit_triggers": ["叙事降温"],
+                    "monitoring_horizon": "4h",
+                },
+            ),
+        }
     )
     client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test",
         model="gpt-test",
-        llm_gateway=_FakeGateway(),
+        agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        runner=_RawOutputRunner(raw_output),
+        evidence_debate_max_turns=2,
+        decision_maker_max_turns=4,
     )
 
-    step = asyncio.run(
-        client._run_stage(
-            stage="decision_maker",
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            agent=object(),  # type: ignore[arg-type]
-            output_type=FinalDecision,
-            input_payload={
-                "evidence_packet": {
-                    "candidate_id": "candidate-1",
-                    "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event"}],
-                }
-            },
-            prompt="decision prompt",
-            audit={"trace_metadata": {"run_id": "run-1"}, "sdk_trace_id": "trace-1"},
-            max_turns=1,
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
         )
     )
 
-    assert step.status == "ok"
-    assert step.response_json["supporting_evidence_refs"] == ["event:event-1"]
-    assert step.response_json["playbook"]["watch_signals"] == []
-    assert step.response_json["playbook"]["exit_triggers"] == []
-    assert step.trace_metadata_json["schema_normalization"]["repairs"] == [
+    assert [stage.lane for stage in gateway.execute_calls] == [
+        "pulse.evidence_debate",
+        "pulse.decision_maker",
+    ]
+    assert [stage.stage for stage in gateway.execute_calls] == ["evidence_debate", "decision_maker"]
+    assert gateway.execute_calls[0].output_type is EvidenceDebateMemo
+    assert gateway.execute_calls[1].output_type is FinalDecision
+    assert [stage.max_turns for stage in gateway.execute_calls] == [2, 4]
+    assert isinstance(gateway.execute_calls[0].input_payload, dict)
+    assert result.stage_audits[0].usage_json == {"input_tokens": 11, "output_tokens": 5}
+    assert result.stage_audits[0].parse_mode == "safety_net_repaired"
+    assert result.stage_audits[0].safety_net_used is True
+    assert result.stage_audits[0].safety_net_retries == 1
+    assert result.stage_audits[0].input_hash == gateway.execute_calls[0].input_hash
+    assert result.stage_audits[0].output_hash == "sha256:output-evidence_debate"
+    assert result.stage_audits[1].output_hash == "sha256:output-decision_maker"
+
+
+def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "evidence_debate": _evidence_debate_raw(["event:event-l"]),
+            "decision_maker": _final_decision_raw(
+                supporting_refs=["event:event-l"],
+                playbook={
+                    "has_playbook": False,
+                    "watch_signals": ["继续观察链上流动性"],
+                    "exit_triggers": ["叙事降温"],
+                    "monitoring_horizon": "4h",
+                },
+            ),
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+        )
+    )
+
+    assert result.stage_audits[0].status == "ok"
+    assert result.stage_audits[0].response_json["allowed_evidence_ref_ids"] == ["event:event-1"]
+    assert result.stage_audits[1].response_json["supporting_evidence_refs"] == ["event:event-1"]
+    assert result.stage_audits[1].response_json["playbook"]["watch_signals"] == []
+    assert result.stage_audits[1].response_json["playbook"]["exit_triggers"] == []
+    assert result.stage_audits[1].trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
+        {
+            "path": "supporting_evidence_refs[0]",
+            "from": "event:event-l",
+            "to": "event:event-1",
+            "ref_type": "event",
+            "reason": "unique_same_type_edit_distance_1",
+        }
+    ]
+    assert result.stage_audits[1].trace_metadata_json["schema_normalization"]["repairs"] == [
         {"path": "playbook.watch_signals", "action": "cleared", "reason": "playbook_has_playbook_false"},
         {"path": "playbook.exit_triggers", "action": "cleared", "reason": "playbook_has_playbook_false"},
     ]
-    assert step.trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
-        {
-            "path": "supporting_evidence_refs[0]",
-            "from": "event:event-l",
-            "to": "event:event-1",
-            "ref_type": "event",
-            "reason": "unique_same_type_edit_distance_1",
-        }
-    ]
 
 
-def test_run_stage_normalizes_pydantic_output_instance_before_audit() -> None:
-    raw_output = FinalDecision.model_validate(
-        _final_decision_raw(
-            supporting_refs=["event:event-l"],
-            playbook={
-                "has_playbook": True,
-                "watch_signals": ["成交量继续扩张"],
-                "exit_triggers": ["叙事降温"],
-                "monitoring_horizon": "4h",
-            },
-        )
-    )
+def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures() -> None:
+    gateway = _FakeAgentGateway({"evidence_debate": _evidence_debate_raw(["event:outside"])})
     client = OpenAIAgentsPulseDecisionClient(
-        api_key="sk-test",
         model="gpt-test",
-        llm_gateway=_FakeGateway(),
+        agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        runner=_RawOutputRunner(raw_output),
     )
 
-    step = asyncio.run(
-        client._run_stage(
-            stage="decision_maker",
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
             route="meme",
-            agent=object(),  # type: ignore[arg-type]
-            output_type=FinalDecision,
-            input_payload={
-                "evidence_packet": {
-                    "candidate_id": "candidate-1",
-                    "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event"}],
-                }
-            },
-            prompt="decision prompt",
-            audit={"trace_metadata": {"run_id": "run-1"}, "sdk_trace_id": "trace-1"},
-            max_turns=1,
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
         )
     )
 
-    assert step.status == "ok"
-    assert step.response_json["supporting_evidence_refs"] == ["event:event-1"]
-    assert step.trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
-        {
-            "path": "supporting_evidence_refs[0]",
-            "from": "event:event-l",
-            "to": "event:event-1",
-            "ref_type": "event",
-            "reason": "unique_same_type_edit_distance_1",
-        }
-    ]
+    assert len(gateway.execute_calls) == 1
+    assert result.final_decision.recommendation == "abstain"
+    assert result.stage_audits[0].status == "failed"
+    assert "outside allowed_evidence_refs" in (result.stage_audits[0].error or "")
+
+
+def test_gateway_execution_error_becomes_failed_stage_audit() -> None:
+    gateway = _FailingAgentGateway()
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    import pytest
+
+    with pytest.raises(PulseStageFailure) as exc:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness={"status": "complete"},
+                runtime_manifest={"runtime_version": "test"},
+            )
+        )
+
+    assert exc.value.audits[0].stage == "evidence_debate"
+    assert exc.value.audits[0].status == "timeout"
+    assert exc.value.audits[0].error == "agent lane timed out"
+    assert exc.value.audits[0].usage_json == {"input_tokens": 2}
+    assert exc.value.audits[0].input_hash == gateway.execute_calls[0].input_hash
+
+
+def _pipeline_context() -> dict:
+    return {
+        "candidate_id": "candidate-1",
+        "candidate_type": "token_target",
+        "subject_key": "pepe",
+        "target_type": "Asset",
+        "target_id": "asset:pepe",
+        "evidence_packet": {
+            "evidence_packet_id": "pkt-1",
+            "evidence_packet_hash": "sha256:packet",
+            "schema_version": "pulse-evidence-packet-v1",
+            "candidate_id": "candidate-1",
+            "target_id": "asset:pepe",
+            "source_event_ids": ["event-1"],
+            "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event", "summary_zh": "高粉账号提及"}],
+        },
+    }
+
+
+def _evidence_debate_raw(refs: list[str]) -> dict:
+    return {
+        "bull_claims": [{"claim": "社交证据形成早期扩散。", "evidence_refs": refs, "stance": "bull"}],
+        "bear_claims": [],
+        "rebuttal_claims": [],
+        "data_gap_claims": [],
+        "summary_zh": "证据显示社交扩散开始出现，但仍需要观察市场确认。",
+        "allowed_evidence_ref_ids": refs,
+    }
 
 
 def _final_decision_raw(*, supporting_refs: list[str], playbook: dict) -> dict:

@@ -276,6 +276,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ops Diagnostics */
+        get: operations["ops_diagnostics_api_ops_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/queues/{queue_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ops Queue */
+        get: operations["ops_queue_api_ops_queues__queue_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recent": {
         parameters: {
             query?: never;
@@ -843,6 +877,30 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ApiEnvelope[OpsDiagnosticsData] */
+        ApiEnvelope_OpsDiagnosticsData_: {
+            data?: components["schemas"]["OpsDiagnosticsData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[OpsQueueData] */
+        ApiEnvelope_OpsQueueData_: {
+            data?: components["schemas"]["OpsQueueData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ApiEnvelope[RecentData] */
         ApiEnvelope_RecentData_: {
             data?: components["schemas"]["RecentData"] | null;
@@ -1283,6 +1341,74 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** OpsDiagnosticsData */
+        OpsDiagnosticsData: {
+            /** Collector */
+            collector?: {
+                [key: string]: unknown;
+            };
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Database */
+            database?: {
+                [key: string]: unknown;
+            };
+            /** Domains */
+            domains?: {
+                [key: string]: unknown;
+            };
+            /** Generated At Ms */
+            generated_at_ms?: number | null;
+            /** Overall */
+            overall?: {
+                [key: string]: unknown;
+            };
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            }[];
+            /** Queues */
+            queues?: {
+                [key: string]: unknown;
+            }[];
+            /** Schema Version */
+            schema_version: string;
+            /** Suggested Checks */
+            suggested_checks?: {
+                [key: string]: unknown;
+            }[];
+            /** Workers */
+            workers?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** OpsQueueData */
+        OpsQueueData: {
+            /** Counts By Status */
+            counts_by_status?: {
+                [key: string]: unknown;
+            };
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Queue Name */
+            queue_name: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Status Filter */
+            status_filter?: string | null;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         /** RecentData */
         RecentData: {
             /** Events */
@@ -1669,6 +1795,10 @@ export interface components {
         };
         /** StatusData */
         StatusData: {
+            /** Agent Execution */
+            agent_execution?: {
+                [key: string]: unknown;
+            } | null;
             /** Db */
             db?: {
                 [key: string]: unknown;
@@ -2552,6 +2682,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_NotificationReadData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_diagnostics_api_ops_diagnostics_get: {
+        parameters: {
+            query?: {
+                since_hours?: number;
+                window?: string;
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_OpsDiagnosticsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_queue_api_ops_queues__queue_name__get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                queue_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_OpsQueueData_"];
                 };
             };
             /** @description Validation Error */

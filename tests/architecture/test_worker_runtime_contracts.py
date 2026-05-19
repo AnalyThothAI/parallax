@@ -233,13 +233,34 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
 
 
 @pytest.mark.architecture
+def test_long_running_workers_do_not_override_worker_base_run_without_allowlist() -> None:
+    allowlist = {
+        "live_price_gateway",
+    }
+    violations: list[str] = []
+    for worker_key, qualified_name in EXPECTED_WORKERS.items():
+        try:
+            worker_class = _import_qualified_name(qualified_name)
+        except ModuleNotFoundError as exc:
+            if ".narrative_intel." in qualified_name:
+                pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
+            raise
+        if worker_key in allowlist:
+            continue
+        if "run" in worker_class.__dict__:
+            violations.append(f"{worker_key} overrides run()")
+
+    assert violations == []
+
+
+@pytest.mark.architecture
 def test_worker_registry_matches_workers_yaml_schema() -> None:
     from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES, CANONICAL_WORKER_NAMES
     from gmgn_twitter_intel.app.runtime.worker_scheduler import _START_PRIORITY
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 
     expected_keys = set(EXPECTED_WORKERS)
-    settings_keys = set(WorkersSettings.model_fields) - {"defaults"}
+    settings_keys = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
     docs_keys = _worker_inventory_keys()
 
     assert CANONICAL_WORKER_CLASSES == EXPECTED_WORKERS
@@ -396,7 +417,7 @@ def test_no_old_worker_runtime_settings() -> None:
         for field_name in model.model_fields
         if field_name in OLD_RUNTIME_SETTINGS
     }
-    worker_fields = set(WorkersSettings.model_fields) - {"defaults"}
+    worker_fields = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
 
     assert violations == set()
     assert worker_fields == set(EXPECTED_WORKERS)

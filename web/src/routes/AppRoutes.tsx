@@ -24,6 +24,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { LiveRadarRoute, LiveRoute } from "./live.route";
 import { NewsRoute } from "./news.route";
+import { OpsRoute } from "./ops.route";
 import { SearchRoute } from "./search.route";
 import { SignalLabPulseRoute } from "./signal-lab.pulse.route";
 import { SignalLabRoute } from "./signal-lab.route";
@@ -249,6 +250,10 @@ export function AppRoutes({ session }: { session: AppSession }) {
         />
         <Route path="news" element={<NewsRoute token={token ?? ""} />} />
         <Route path="news/:newsItemId" element={<NewsRoute token={token ?? ""} />} />
+        <Route
+          path="ops"
+          element={<OpsRoute token={token ?? ""} windowKey={windowKey} scope={scope} />}
+        />
         <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
         <Route
           path="signal-lab"

@@ -41,87 +41,109 @@ class EnrichmentWorker(WorkerBase):
         return await self.process_one(now_ms=now_ms)
 
     async def process_one(self, *, now_ms: int | None = None) -> WorkerResult:
-        job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=now_ms or _now_ms())
-        if job is None:
-            return WorkerResult(skipped=1, notes={"reason": "no_job"})
-
-        event = await asyncio.to_thread(self._event_by_id_sync, event_id=str(job["event_id"]))
-        if event is None:
-            await asyncio.to_thread(self._fail_job_sync, job=job, error="event_not_found")
-            return WorkerResult(failed=1, notes={"reason": "event_not_found", "job_id": job.get("job_id")})
-
-        entities = await asyncio.to_thread(self._entities_for_event_sync, event_id=str(job["event_id"]))
-        run_id = _run_id(job)
-        request = {
-            "run_id": run_id,
-            "job_id": job["job_id"],
-            "event_id": job["event_id"],
-            "job_type": job["job_type"],
-            "attempt_count": job.get("attempt_count"),
-        }
-        request_audit = {}
-        if hasattr(self.client, "request_audit"):
-            request_audit = self.client.request_audit(event=event, entities=entities, run_id=run_id, job=job)
-        started_at_ms = _now_ms()
+        reservation = self.client.try_reserve_execution("social.event_enrichment")
+        if not reservation.acquired:
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "agent_backpressure_capacity_denied",
+                    "agent_backpressure": _reservation_reason(reservation),
+                    "agent_backpressure_capacity_denied": 1,
+                },
+            )
         try:
-            timeout_seconds = max(0.1, float(getattr(self.client, "timeout_seconds", 30.0) or 30.0))
-            result = await asyncio.wait_for(
-                self.client.enrich_event(event=event, entities=entities, run_id=run_id, job=job),
-                timeout=timeout_seconds,
-            )
-        except TimeoutError:
-            error = f"Agents SDK request timed out after {timeout_seconds:g}s"
-            await asyncio.to_thread(
-                self._record_model_run_failure_sync,
-                job=job,
-                run_id=run_id,
-                request=request,
-                error=error,
-                audit=request_audit,
-                started_at_ms=started_at_ms,
-                finished_at_ms=_now_ms(),
-            )
-            return WorkerResult(failed=1, notes={"reason": "model_timeout", "job_id": job.get("job_id")})
-        except Exception as exc:
-            error = str(exc)
-            await asyncio.to_thread(
-                self._record_model_run_failure_sync,
-                job=job,
-                run_id=run_id,
-                request=request,
-                error=error,
-                audit=request_audit,
-                started_at_ms=started_at_ms,
-                finished_at_ms=_now_ms(),
-            )
-            return WorkerResult(failed=1, notes={"reason": "model_error", "job_id": job.get("job_id")})
+            job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=now_ms or _now_ms())
+            if job is None:
+                return WorkerResult(skipped=1, notes={"reason": "no_job"})
 
-        try:
-            materialized = await asyncio.to_thread(
-                self._complete_job_sync,
-                job=job,
-                event=event,
-                result=result,
-                run_id=run_id,
-                request=request,
-                started_at_ms=started_at_ms,
-                finished_at_ms=_now_ms(),
-            )
-        except Exception as exc:
-            logger.exception(f"enrichment persistence failed event_id={event.get('event_id')}: {exc}")
-            await asyncio.to_thread(self._fail_job_sync, job=job, error=str(exc))
-            return WorkerResult(failed=1, notes={"reason": "enrichment_persistence_error", "job_id": job.get("job_id")})
+            event = await asyncio.to_thread(self._event_by_id_sync, event_id=str(job["event_id"]))
+            if event is None:
+                await asyncio.to_thread(self._fail_job_sync, job=job, error="event_not_found")
+                return WorkerResult(failed=1, notes={"reason": "event_not_found", "job_id": job.get("job_id")})
 
-        if self.publisher is not None:
-            await self.publisher.publish(
-                {
-                    "type": "social_event_enrichment_update",
-                    "event": event,
-                    "entities": entities,
-                    **materialized,
-                }
-            )
-        return WorkerResult(processed=1, notes={"job_id": job.get("job_id"), "event_id": job.get("event_id")})
+            entities = await asyncio.to_thread(self._entities_for_event_sync, event_id=str(job["event_id"]))
+            run_id = _run_id(job)
+            request = {
+                "run_id": run_id,
+                "job_id": job["job_id"],
+                "event_id": job["event_id"],
+                "job_type": job["job_type"],
+                "attempt_count": job.get("attempt_count"),
+            }
+            request_audit = {}
+            if hasattr(self.client, "request_audit"):
+                request_audit = self.client.request_audit(event=event, entities=entities, run_id=run_id, job=job)
+            started_at_ms = _now_ms()
+            try:
+                timeout_seconds = max(0.1, float(getattr(self.client, "timeout_seconds", 30.0) or 30.0))
+                result = await asyncio.wait_for(
+                    self.client.enrich_event(
+                        event=event,
+                        entities=entities,
+                        run_id=run_id,
+                        job=job,
+                        reservation=reservation,
+                    ),
+                    timeout=timeout_seconds,
+                )
+            except TimeoutError:
+                error = f"Agents SDK request timed out after {timeout_seconds:g}s"
+                await asyncio.to_thread(
+                    self._record_model_run_failure_sync,
+                    job=job,
+                    run_id=run_id,
+                    request=request,
+                    error=error,
+                    audit=request_audit,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=_now_ms(),
+                )
+                return WorkerResult(failed=1, notes={"reason": "model_timeout", "job_id": job.get("job_id")})
+            except Exception as exc:
+                error = str(exc)
+                await asyncio.to_thread(
+                    self._record_model_run_failure_sync,
+                    job=job,
+                    run_id=run_id,
+                    request=request,
+                    error=error,
+                    audit=request_audit,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=_now_ms(),
+                )
+                return WorkerResult(failed=1, notes={"reason": "model_error", "job_id": job.get("job_id")})
+
+            try:
+                materialized = await asyncio.to_thread(
+                    self._complete_job_sync,
+                    job=job,
+                    event=event,
+                    result=result,
+                    run_id=run_id,
+                    request=request,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=_now_ms(),
+                )
+            except Exception as exc:
+                logger.exception(f"enrichment persistence failed event_id={event.get('event_id')}: {exc}")
+                await asyncio.to_thread(self._fail_job_sync, job=job, error=str(exc))
+                return WorkerResult(
+                    failed=1,
+                    notes={"reason": "enrichment_persistence_error", "job_id": job.get("job_id")},
+                )
+
+            if self.publisher is not None:
+                await self.publisher.publish(
+                    {
+                        "type": "social_event_enrichment_update",
+                        "event": event,
+                        "entities": entities,
+                        **materialized,
+                    }
+                )
+            return WorkerResult(processed=1, notes={"job_id": job.get("job_id"), "event_id": job.get("event_id")})
+        finally:
+            await reservation.release()
 
     def _claim_next_job_sync(self, *, now_ms: int) -> dict[str, Any] | None:
         with self._repository_session() as repos:
@@ -239,6 +261,11 @@ class EnrichmentWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _reservation_reason(reservation: Any) -> str:
+    reason = getattr(reservation, "reason", None)
+    return str(getattr(reason, "value", reason) or "capacity_denied")
 
 
 def _run_id(job: dict[str, Any]) -> str:

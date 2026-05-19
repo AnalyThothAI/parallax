@@ -26,7 +26,7 @@ where token identity is extracted, resolved, refreshed, scored, and served.
 
 ## Architecture Invariants (Kappa/CQRS)
 
-These ten invariants govern how data flows through the service. Code that
+These eleven invariants govern how data flows through the service. Code that
 violates them is wrong even if tests pass; tests that depend on a violation
 are wrong too.
 
@@ -98,6 +98,14 @@ are wrong too.
    finishes as an abstain decision with the audit row written; no path may
    return a decision without an audit row, and no path may invent a
    confidence or display status to avoid abstaining.
+11. **Agent execution is an operational plane, not product truth.**
+   `AgentExecutionGateway` owns OpenAI Agents SDK execution mechanics:
+   runner construction, strict schema wrapping, trace metadata, usage,
+   safety-net fallback, lane bulkheads, rate limits, timeouts, circuit
+   breakers, reservation, and request/result audit envelopes. Domain
+   workers still own admission, claim, retry, finalize, read-model writes,
+   and business validation. There is no central durable `agent_tasks`
+   queue; PostgreSQL domain facts and read models remain the truth.
 
 Cross-cutting primitives that implement these invariants:
 
@@ -119,6 +127,10 @@ Cross-cutting primitives that implement these invariants:
   and worker traffic cannot be starved by projection locks or listeners.
 - `worker_registry.py` and `WorkerScheduler` — declare the canonical
   worker keys/classes and own worker start/stop/status semantics.
+- `LLMGateway` and `AgentExecutionGateway` — `LLMGateway` owns low-level
+  OpenAI transport/client/trace-export lifecycle; `AgentExecutionGateway`
+  is the single OpenAI Agents SDK execution path used by Social,
+  Watchlist, Narrative, Pulse, and future LLM lanes.
 - Wake emission/listening is composed via
   `DBPoolBundle.wake_emitter()` and `DBPoolBundle.wake_listener()`.
   Domain workers receive wake dependencies by injection and never call

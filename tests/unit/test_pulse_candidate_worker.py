@@ -38,6 +38,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     TradePlaybook,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
+from gmgn_twitter_intel.platform.agent_execution import (
+    AgentCapacityReservation,
+    AgentExecutionErrorClass,
+)
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 NOW_MS = 1_800_000
@@ -754,7 +758,7 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
     wired = providers_wiring.wire_providers(
         settings,
         start_collector=True,
-        llm_gateway=FakeGateway(),
+        agent_execution_gateway=FakeAgentExecutionGateway(),
         db_pool=object(),
     )
     repos = FakeRepos()
@@ -802,6 +806,26 @@ def test_pulse_worker_aclose_keeps_base_cleanup_owner() -> None:
     assert lock.released is True
     assert worker._advisory_lock_connection is None
     assert worker._closed is True
+
+
+def test_process_due_jobs_does_not_claim_when_agent_capacity_denied() -> None:
+    repos = FakeRepos()
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": "job-1",
+            "status": "pending",
+            "attempt_count": 0,
+            "context_json": _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82)).__dict__,
+        }
+    )
+    worker = _worker(repos, client=CapacityDeniedFakeClient())
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["claimed"] == 0
+    assert result["agent_backpressure_capacity_denied"] == 1
+    assert repos.pulse_jobs.claim_due_job_calls == 0
+    assert repos.pulse_jobs.jobs[0]["attempt_count"] == 0
 
 
 def _worker(
@@ -920,14 +944,85 @@ class FakeDB:
         return FakeAdvisoryLock()
 
 
-class FakeGateway:
-    trace_export_enabled = True
+class FakeAgentExecutionGateway:
+    def try_reserve(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
 
-    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        return await coro_factory()
-
-    def openai_client(self, *, model, base_url, timeout_s):
-        return object()
+    async def execute(self, stage):
+        allowed_refs = [
+            str(ref.get("ref_id"))
+            for ref in stage.input_payload.get("allowed_evidence_refs", [])
+            if isinstance(ref, dict) and ref.get("ref_id")
+        ]
+        supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1] or tuple(allowed_refs[:1])
+        risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
+        evidence_packet = stage.input_payload.get("evidence_packet") or {}
+        evidence_ids = evidence_packet.get("source_event_ids") or ["event-1"]
+        if stage.stage == "evidence_debate":
+            final_output = EvidenceDebateMemo(
+                bull_claims=(
+                    EvidenceClaim(
+                        claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                        evidence_refs=supporting_refs,
+                        stance="bull",
+                    ),
+                ),
+                bear_claims=(
+                    EvidenceClaim(
+                        claim="价格响应和流动性确认仍不足，热度可能快速降温。",
+                        evidence_refs=risk_refs or supporting_refs,
+                        stance="risk",
+                    ),
+                ),
+                rebuttal_claims=(),
+                data_gap_claims=(),
+                summary_zh="基于封闭证据包的多空综合完成。",
+                allowed_evidence_ref_ids=tuple(allowed_refs),
+            )
+        else:
+            final_output = FinalDecision(
+                route=stage.input_payload.get("route") or "meme",
+                recommendation="watchlist",
+                confidence=0.7,
+                abstain_reason=None,
+                summary_zh="因子快照显示信号值得继续观察。",
+                narrative_archetype="社交扩散",
+                narrative_thesis_zh="当前独立作者与社交热度同步抬升，链上质量尚可，适合继续观察扩散是否持续。",
+                bull_view=BullBearView(
+                    strength="moderate",
+                    thesis_zh="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                    supporting_event_ids=list(evidence_ids),
+                ),
+                bear_view=BullBearView(
+                    strength="weak",
+                    thesis_zh="价格响应和流动性确认仍不足，热度可能快速降温。",
+                    supporting_event_ids=list(evidence_ids),
+                ),
+                playbook=TradePlaybook(
+                    has_playbook=True,
+                    watch_signals=["关注独立作者是否继续扩散"],
+                    exit_triggers=["独立作者讨论快速降温"],
+                    monitoring_horizon="4h",
+                ),
+                invalidation_conditions=["独立作者数回落。"],
+                residual_risks=["价格响应仍可能变化。"],
+                evidence_event_ids=list(evidence_ids),
+                supporting_evidence_refs=supporting_refs,
+                risk_evidence_refs=risk_refs,
+            )
+        return SimpleNamespace(
+            final_output=final_output,
+            audit=SimpleNamespace(
+                trace_metadata={"stage": stage.stage},
+                input_hash=stage.input_hash,
+                output_hash=f"sha256:{stage.stage}",
+                safety_net={"safety_net_used": False, "safety_net_retries": 0},
+                usage={},
+                latency_ms=1,
+                parse_mode="strict",
+                error_class=None,
+            ),
+        )
 
 
 class FakeAdvisoryLock:
@@ -1040,6 +1135,7 @@ class FakePulseStore:
         self.packets: list[Any] = []
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
+        self.claim_due_job_calls = 0
         self.admission_claims: list[dict[str, Any]] = []
         self.pending_job_counts_by_window_scope: dict[tuple[str, str], int] = {}
         self.market_facts: list[dict[str, Any]] = [
@@ -1223,6 +1319,7 @@ class FakePulseStore:
         return job
 
     def claim_due_job(self, now_ms: int | None = None) -> dict[str, Any] | None:
+        self.claim_due_job_calls += 1
         for job in self.jobs:
             if job["status"] == "pending":
                 job["status"] = "running"
@@ -1313,6 +1410,9 @@ class FakeClient:
         self.recommendation = recommendation
         self.contexts: list[dict[str, Any]] = []
         self.run_calls = 0
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(
         self,
@@ -1455,6 +1555,15 @@ class FakeClient:
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
             stage_audits=(evidence_debate_audit, stage_audit),
+        )
+
+
+class CapacityDeniedFakeClient(FakeClient):
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(
+            lane=lane,
+            acquired=False,
+            reason=AgentExecutionErrorClass.CAPACITY_DENIED,
         )
 
 

@@ -85,13 +85,33 @@ class WatchlistHandleSummaryService:
         else:
             if self.provider is None:
                 raise RuntimeError("watchlist_handle_summary_provider_not_configured")
-            response = await self.provider.summarize_handle(
-                handle=inputs.handle,
-                events=inputs.events,
-                run_id=inputs.run_id,
-                job=job,
-                context=inputs.context,
-            )
+            request_audit: dict[str, Any] | None = None
+            try:
+                request_audit = self.provider.request_audit(
+                    handle=inputs.handle,
+                    events=inputs.events,
+                    run_id=inputs.run_id,
+                    job=job,
+                    context=inputs.context,
+                )
+                response = await self.provider.summarize_handle(
+                    handle=inputs.handle,
+                    events=inputs.events,
+                    run_id=inputs.run_id,
+                    job=job,
+                    context=inputs.context,
+                )
+            except Exception as exc:
+                self.record_failed_summary(
+                    job=job,
+                    inputs=inputs,
+                    model=str(getattr(self.provider, "model", "") or ""),
+                    request_audit=request_audit,
+                    error=str(exc),
+                    started_at_ms=inputs.now_ms,
+                    failed_at_ms=_now_ms(),
+                )
+                raise
             model = str(getattr(self.provider, "model", "") or "")
         return self.complete_summary(
             job=job,
@@ -180,6 +200,37 @@ class WatchlistHandleSummaryService:
         if summary is None:
             raise RuntimeError("watchlist_summary_job_lease_lost")
         return cast(dict[str, Any], summary)
+
+    def record_failed_summary(
+        self,
+        *,
+        job: dict[str, Any],
+        inputs: HandleSummaryInputs,
+        model: str,
+        request_audit: dict[str, Any] | None,
+        error: str,
+        started_at_ms: int,
+        failed_at_ms: int,
+    ) -> None:
+        audit = _mapping(request_audit)
+        self.repository.insert_summary_run(
+            run_id=inputs.run_id,
+            handle=inputs.handle,
+            status="failed",
+            model=model,
+            request_json={"context": inputs.context, "agent_run_audit": audit} if audit else inputs.context,
+            response_json=None,
+            input_event_count=len(inputs.events),
+            usage_json=_mapping(audit.get("usage")),
+            error=error,
+            started_at_ms=started_at_ms,
+            finished_at_ms=failed_at_ms,
+            safety_net_used=bool(audit.get("safety_net_used", False)),
+            safety_net_retries=int(audit.get("safety_net_retries") or 0),
+            parse_mode=str(audit.get("parse_mode") or "strict"),
+            commit=False,
+        )
+        self.repository.mark_summary_job_failed(job, error, now_ms=failed_at_ms, commit=True)
 
 
 class WatchlistHandleReadService:

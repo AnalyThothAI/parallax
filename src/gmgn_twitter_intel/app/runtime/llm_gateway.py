@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
-from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar
+from typing import Any
 
 import httpx
 from agents import set_tracing_export_api_key
-from aiolimiter import AsyncLimiter
 from openai import AsyncOpenAI
 
 from gmgn_twitter_intel.platform.config.settings import Settings
 
-T = TypeVar("T")
-
-DEFAULT_MAX_CONCURRENCY = 8
-DEFAULT_RPM_LIMIT = 3000
 SHARED_HEADERS = {"User-Agent": "gmgn-twitter-intel/0.1"}
 
 
@@ -27,16 +20,10 @@ class LLMGateway:
         base_url: str = "https://api.openai.com/v1",
         trace_enabled: bool = True,
         trace_api_key: str | None = None,
-        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
-        rpm_limit: int = DEFAULT_RPM_LIMIT,
     ) -> None:
         self.api_key = str(api_key or "")
         self.base_url = _api_base(base_url)
-        self._semaphore = asyncio.Semaphore(max(1, int(max_concurrency)))
-        self._limiter = AsyncLimiter(max(1, int(rpm_limit)), 60)
         self._clients: list[Any] = []
-        self.last_worker_name: str | None = None
-        self.last_stage: str | None = None
 
         tracing_export_key = str(trace_api_key or "").strip()
         if not tracing_export_key and _is_openai_base_url(self.base_url):
@@ -53,18 +40,6 @@ class LLMGateway:
             trace_enabled=settings.llm_trace_enabled,
             trace_api_key=settings.llm_trace_api_key,
         )
-
-    async def run_with_limits(
-        self,
-        worker_name: str,
-        stage: str,
-        timeout_s: float,
-        coro_factory: Callable[[], Awaitable[T]],
-    ) -> T:
-        self.last_worker_name = str(worker_name)
-        self.last_stage = str(stage)
-        async with self._semaphore, self._limiter:
-            return await asyncio.wait_for(coro_factory(), timeout=float(timeout_s))
 
     def openai_client(self, *, model: str, base_url: str, timeout_s: float) -> AsyncOpenAI:
         _ = model

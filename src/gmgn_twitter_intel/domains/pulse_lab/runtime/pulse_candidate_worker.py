@@ -197,10 +197,10 @@ class PulseCandidateWorker(WorkerBase):
                             result["asset_skipped"] += 1
         return result
 
-    def process_due_jobs_once(self, *, now_ms: int | None = None) -> dict[str, int]:
+    def process_due_jobs_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         return asyncio.run(self.process_due_jobs_once_async(now_ms=now_ms))
 
-    async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, int]:
+    async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
         result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0, "stale_jobs_terminalized": 0}
         with self._repository_session() as repos:
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -211,33 +211,40 @@ class PulseCandidateWorker(WorkerBase):
             )
         for _ in range(self.batch_size):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-            with self._repository_session() as repos:
-                job = repos.pulse_jobs.claim_due_job(now_ms=resolved_now_ms)
-            if job is None:
-                break
-            result["claimed"] += 1
-            context = _context_from_job(job)
-            if context is None:
-                with self._repository_session() as repos:
-                    repos.pulse_jobs.mark_job_failed(
-                        job,
-                        "pulse_candidate_context_missing",
-                        now_ms=resolved_now_ms,
-                    )
-                result["missing_context"] += 1
-                result["failed"] += 1
-                continue
+            reservation = self.decision_client.try_reserve_execution("pulse.pipeline")
+            if not reservation.acquired:
+                _record_agent_backpressure(result, reservation)
+                return result
             try:
-                await self.job_service.run_job(job, context, now_ms=resolved_now_ms)
-            except Exception as exc:  # pragma: no cover - job service records failure before re-raising
-                logger.warning(
-                    "pulse candidate job failed: job_id={} error={}",
-                    job.get("job_id"),
-                    _compact_error(exc),
-                )
-                result["failed"] += 1
-                continue
-            result["processed"] += 1
+                with self._repository_session() as repos:
+                    job = repos.pulse_jobs.claim_due_job(now_ms=resolved_now_ms)
+                if job is None:
+                    break
+                result["claimed"] += 1
+                context = _context_from_job(job)
+                if context is None:
+                    with self._repository_session() as repos:
+                        repos.pulse_jobs.mark_job_failed(
+                            job,
+                            "pulse_candidate_context_missing",
+                            now_ms=resolved_now_ms,
+                        )
+                    result["missing_context"] += 1
+                    result["failed"] += 1
+                    continue
+                try:
+                    await self.job_service.run_job(job, context, now_ms=resolved_now_ms)
+                except Exception as exc:  # pragma: no cover - job service records failure before re-raising
+                    logger.warning(
+                        "pulse candidate job failed: job_id={} error={}",
+                        job.get("job_id"),
+                        _compact_error(exc),
+                    )
+                    result["failed"] += 1
+                    continue
+                result["processed"] += 1
+            finally:
+                await reservation.release()
         return result
 
     def _asset_context(
@@ -730,3 +737,9 @@ def _stable_hash(payload: Any) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _record_agent_backpressure(result: dict[str, Any], reservation: Any) -> None:
+    result["agent_backpressure_capacity_denied"] = int(result.get("agent_backpressure_capacity_denied") or 0) + 1
+    reason = getattr(reservation, "reason", None)
+    result["agent_backpressure"] = getattr(reason, "value", reason) or "capacity_denied"

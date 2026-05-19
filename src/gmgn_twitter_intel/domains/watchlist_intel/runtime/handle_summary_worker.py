@@ -91,32 +91,49 @@ class HandleSummaryWorker(WorkerBase):
                     result["skipped"] += 1
         return result
 
-    async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, int]:
+    async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
         result = {"claimed": 0, "processed": 0, "failed": 0}
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-        jobs: list[dict[str, Any]] = []
+        jobs: list[tuple[dict[str, Any], Any]] = []
         for _ in range(self.concurrency):
-            job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=resolved_now_ms)
-            if job is None:
+            reservation = self.provider.try_reserve_execution("watchlist.handle_summary")
+            if not reservation.acquired:
+                _record_agent_backpressure(result, reservation)
                 break
-            jobs.append(job)
+            try:
+                job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=resolved_now_ms)
+            except Exception:
+                await reservation.release()
+                raise
+            if job is None:
+                await reservation.release()
+                break
+            jobs.append((job, reservation))
         result["claimed"] = len(jobs)
         if not jobs:
             return result
         outcomes = await asyncio.gather(
-            *(self._process_job(job, now_ms=resolved_now_ms) for job in jobs),
+            *(self._process_job(job, now_ms=resolved_now_ms, reservation=reservation) for job, reservation in jobs),
             return_exceptions=False,
         )
         for outcome in outcomes:
             result[outcome] += 1
         return result
 
-    async def _process_job(self, job: dict[str, Any], *, now_ms: int) -> str:
+    async def _process_job(self, job: dict[str, Any], *, now_ms: int, reservation: Any) -> str:
         started_at_ms = _now_ms()
+        request_audit: dict[str, Any] | None = None
         try:
             inputs = await asyncio.to_thread(self._summary_inputs_sync, job=job, now_ms=now_ms)
             if inputs.events:
-                response = await self._summarize_with_timeout(job=job, inputs=inputs)
+                request_audit = self.provider.request_audit(
+                    handle=inputs.handle,
+                    events=inputs.events,
+                    run_id=inputs.run_id,
+                    job=job,
+                    context=inputs.context,
+                )
+                response = await self._summarize_with_timeout(job=job, inputs=inputs, reservation=reservation)
                 model = str(getattr(self.provider, "model", "") or "")
             else:
                 response = not_enough_input_response()
@@ -141,6 +158,7 @@ class HandleSummaryWorker(WorkerBase):
                     self._record_failed_summary_sync,
                     job=job,
                     error=str(exc),
+                    request_audit=request_audit,
                     started_at_ms=started_at_ms,
                     failed_at_ms=_now_ms(),
                 )
@@ -151,9 +169,17 @@ class HandleSummaryWorker(WorkerBase):
                     str(record_exc)[:300],
                 )
             return "failed"
+        finally:
+            await reservation.release()
         return "processed"
 
-    async def _summarize_with_timeout(self, *, job: dict[str, Any], inputs: HandleSummaryInputs) -> dict[str, Any]:
+    async def _summarize_with_timeout(
+        self,
+        *,
+        job: dict[str, Any],
+        inputs: HandleSummaryInputs,
+        reservation: Any,
+    ) -> dict[str, Any]:
         try:
             return await asyncio.wait_for(
                 self.provider.summarize_handle(
@@ -162,6 +188,7 @@ class HandleSummaryWorker(WorkerBase):
                     run_id=inputs.run_id,
                     job=job,
                     context=inputs.context,
+                    reservation=reservation,
                 ),
                 timeout=self.provider_timeout_seconds,
             )
@@ -218,23 +245,29 @@ class HandleSummaryWorker(WorkerBase):
         *,
         job: dict[str, Any],
         error: str,
+        request_audit: dict[str, Any] | None,
         started_at_ms: int,
         failed_at_ms: int,
     ) -> None:
         handle = str(job.get("handle") or "")
+        audit = dict(request_audit or {})
+        usage = dict(audit.get("usage") or {})
         with self._repository_session() as repos, _unit_of_work(repos):
             repos.watchlist_intel.insert_summary_run(
                 run_id=f"watchlist-summary-failed-{handle}-{job.get('attempt_count')}-{failed_at_ms}",
                 handle=handle,
                 status="failed",
                 model=str(getattr(self.provider, "model", "") or ""),
-                request_json={"job": dict(job)},
+                request_json={"job": dict(job), "agent_run_audit": audit} if audit else {"job": dict(job)},
                 response_json=None,
                 input_event_count=0,
-                usage_json={},
+                usage_json=usage,
                 error=error,
                 started_at_ms=started_at_ms,
                 finished_at_ms=failed_at_ms,
+                safety_net_used=bool(audit.get("safety_net_used", False)),
+                safety_net_retries=int(audit.get("safety_net_retries") or 0),
+                parse_mode=str(audit.get("parse_mode") or "strict"),
                 commit=False,
             )
             repos.watchlist_intel.mark_summary_job_failed(job, error, now_ms=failed_at_ms, commit=False)
@@ -271,6 +304,12 @@ def _unit_of_work(repos: Any) -> Iterator[None]:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _record_agent_backpressure(result: dict[str, int | str], reservation: Any) -> None:
+    result["agent_backpressure_capacity_denied"] = int(result.get("agent_backpressure_capacity_denied") or 0) + 1
+    reason = getattr(reservation, "reason", None)
+    result["agent_backpressure"] = getattr(reason, "value", reason) or "capacity_denied"
 
 
 __all__ = ["HandleSummaryWorker"]

@@ -182,6 +182,8 @@ def test_mention_semantics_worker_records_provider_failure_without_poisoning_wor
         assert result.failed == 1
         assert result.notes["provider_error"] == "TimeoutError"
         assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.mention_semantics"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
         assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
 
     asyncio.run(scenario())
@@ -369,6 +371,8 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
         assert result.failed == 1
         assert repo.recorded_runs[0]["stage"] == "discussion_digest"
         assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.discussion_digest"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
 
     asyncio.run(scenario())
 
@@ -707,8 +711,14 @@ class BarrierNarrativeProvider:
             agent_run_audit={"usage": {"input_tokens": 1}},
         )
 
+    def request_audit_for_label_mentions(self, *, run_id, request):
+        return _request_audit(stage="mention_semantics", run_id=run_id)
+
     async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
         raise NotImplementedError
+
+    def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+        return _request_audit(stage="discussion_digest", run_id=run_id)
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
@@ -722,8 +732,14 @@ class FailingNarrativeProvider:
     async def label_mentions(self, *, run_id, request):
         raise TimeoutError("provider timed out")
 
+    def request_audit_for_label_mentions(self, *, run_id, request):
+        return _request_audit(stage="mention_semantics", run_id=run_id)
+
     async def summarize_discussion(self, *, run_id, request):
         raise TimeoutError("provider timed out")
+
+    def request_audit_for_summarize_discussion(self, *, run_id, request):
+        return _request_audit(stage="discussion_digest", run_id=run_id)
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
@@ -737,8 +753,14 @@ class UnexpectedDigestProvider:
     async def label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
+    def request_audit_for_label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
+        return _request_audit(stage="mention_semantics", run_id=run_id)
+
     async def summarize_discussion(self, *, run_id, request):
         raise AssertionError("digest provider should not be called while semantics are still pending")
+
+    def request_audit_for_summarize_discussion(self, *, run_id, request):
+        return _request_audit(stage="discussion_digest", run_id=run_id)
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
@@ -760,8 +782,14 @@ class PartialFailureNarrativeProvider:
             agent_run_audit={"usage": {"input_tokens": 1}},
         )
 
+    def request_audit_for_label_mentions(self, *, run_id, request):
+        return _request_audit(stage="mention_semantics", run_id=run_id)
+
     async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
         raise NotImplementedError
+
+    def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+        return _request_audit(stage="discussion_digest", run_id=run_id)
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
@@ -803,8 +831,25 @@ class UnknownLabelNarrativeProvider:
             agent_run_audit={"usage": {"input_tokens": 1}},
         )
 
+    def request_audit_for_label_mentions(self, *, run_id, request):
+        return _request_audit(stage="mention_semantics", run_id=run_id)
+
     async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
         raise NotImplementedError
 
+    def request_audit_for_summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+        return _request_audit(stage="discussion_digest", run_id=run_id)
+
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
+
+
+def _request_audit(*, stage, run_id):
+    return {
+        "backend": "openai_agents_sdk",
+        "stage": stage,
+        "run_id": run_id,
+        "lane": f"narrative.{stage}",
+        "input_hash": "sha256:request",
+        "usage": {},
+    }

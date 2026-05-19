@@ -137,7 +137,7 @@ def fake_wired_providers(
     settings,
     *,
     start_collector,
-    llm_gateway=None,
+    agent_execution_gateway=None,
     asset_market=None,
     upstream_client_factory=None,
 ):
@@ -158,6 +158,7 @@ def fake_wired_providers(
         pulse_lab=SimpleNamespace(decision_provider=FakePulseProvider(model=settings.pulse_agent_model)),
         watchlist_intel=SimpleNamespace(summary_provider=None),
         marketlane=SimpleNamespace(stock_quote_provider=None),
+        agent_execution_gateway=agent_execution_gateway,
     )
 
 
@@ -167,10 +168,10 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_clien
     monkeypatch.setattr(
         bootstrap_module,
         "wire_providers",
-        lambda settings, *, start_collector, llm_gateway=None, db_pool=None: fake_wired_providers(
+        lambda settings, *, start_collector, agent_execution_gateway=None, db_pool=None: fake_wired_providers(
             settings,
             start_collector=start_collector,
-            llm_gateway=llm_gateway,
+            agent_execution_gateway=agent_execution_gateway,
             asset_market=asset_market,
             upstream_client_factory=upstream_client_factory,
         ),
@@ -550,10 +551,25 @@ def test_notification_delivery_starts_when_rule_worker_disabled(monkeypatch, tmp
 
 
 def test_readiness_uses_scheduler_workers_payload(monkeypatch):
+    agent_execution = {
+        "global_max_concurrency": 4,
+        "global_in_flight": 0,
+        "lanes": {
+            "pulse.decision_maker": {
+                "max_concurrency": 1,
+                "in_flight": 0,
+                "circuit_state": "closed",
+                "capacity_denied_total": 0,
+                "circuit_open_total": 0,
+                "timeout_total": 0,
+            }
+        },
+    }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
+        agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
         scheduler=SimpleNamespace(
             status_payload=lambda: {
                 "pulse_candidate": {
@@ -578,4 +594,5 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     assert status_code == 200
     assert payload["workers"]["pulse_candidate"]["running"] is True
     assert payload["workers"]["pulse_candidate"]["last_result"] == {"processed": 1}
+    assert payload["agent_execution"] == agent_execution
     assert "pulse_agent" not in payload

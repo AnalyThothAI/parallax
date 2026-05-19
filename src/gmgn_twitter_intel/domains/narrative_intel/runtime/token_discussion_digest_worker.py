@@ -98,6 +98,12 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 schema_version=NARRATIVE_SCHEMA_VERSION,
                 prompt_version=DISCUSSION_DIGEST_PROMPT_VERSION,
             )
+            request_audit = _provider_request_audit(
+                self.provider,
+                "request_audit_for_summarize_discussion",
+                run_id=run_id,
+                request=request,
+            )
             try:
                 result = await self.provider.summarize_discussion(run_id=run_id, request=request)
             except Exception as exc:
@@ -120,8 +126,11 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         "output_hash": None,
                         "request_json": request.model_dump(mode="json"),
                         "response_json": None,
-                        "usage_json": {},
-                        "trace_metadata_json": {"error_type": type(exc).__name__},
+                        "usage_json": request_audit.get("usage") or {},
+                        "trace_metadata_json": {
+                            **request_audit,
+                            "error_type": type(exc).__name__,
+                        },
                         "status": "failed",
                         "error": str(exc),
                         "started_at_ms": started_at_ms,
@@ -266,3 +275,10 @@ def _hash_json(payload: Any) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _provider_request_audit(provider: Any, method_name: str, **kwargs: Any) -> dict[str, Any]:
+    method = getattr(provider, method_name, None)
+    if method is None:
+        method = getattr(getattr(provider, "_client", None), method_name)
+    return dict(method(**kwargs))

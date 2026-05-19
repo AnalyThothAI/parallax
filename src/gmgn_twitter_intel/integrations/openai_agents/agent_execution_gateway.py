@@ -11,7 +11,16 @@ from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from aiolimiter import AsyncLimiter
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
+    default_agent_model_settings,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
+    InstructorSafetyNet,
+    SafetyNetExhausted,
+    extract_sdk_usage,
+)
+from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionError,
@@ -24,19 +33,10 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import (
+from gmgn_twitter_intel.platform.agent_hashing import (
     artifact_hash_for,
     json_sha256,
     trace_id_for,
-)
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
-)
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
-    InstructorSafetyNet,
-    SafetyNetExhausted,
-    extract_sdk_usage,
 )
 
 
@@ -62,6 +62,7 @@ class AgentExecutionGateway:
         policy: AgentRuntimePolicy,
         runner: Any | None = None,
         safety_net: InstructorSafetyNet | None = None,
+        telemetry: Any | None = None,
     ) -> None:
         if llm_gateway is None:
             raise ValueError("llm_gateway is required")
@@ -72,6 +73,9 @@ class AgentExecutionGateway:
         self._policy = policy
         self._runner = runner or Runner
         self._safety_net = safety_net
+        self._telemetry = telemetry
+        self._model_cache: dict[tuple[str, str, float], Any] = {}
+        self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
         self._global_limiter = AsyncLimiter(policy.global_rpm_limit, 60)
         self._lanes: dict[str, _LaneState] = {
@@ -116,6 +120,7 @@ class AgentExecutionGateway:
         lane_state = self._lane_state(lane_key)
         if self._is_circuit_open(lane_key, lane_state):
             lane_state.circuit_open_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CIRCUIT_OPEN)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
@@ -123,6 +128,7 @@ class AgentExecutionGateway:
             )
         if not _try_acquire_nowait(self._global_semaphore):
             lane_state.capacity_denied_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
@@ -131,6 +137,7 @@ class AgentExecutionGateway:
         if not _try_acquire_nowait(lane_state.semaphore):
             self._global_semaphore.release()
             lane_state.capacity_denied_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
             return AgentCapacityReservation(
                 lane=lane_key,
                 acquired=False,
@@ -147,11 +154,24 @@ class AgentExecutionGateway:
             lane_state.semaphore.release()
             self._global_semaphore.release()
 
-        return AgentCapacityReservation(lane=lane_key, acquired=True, _release=release)
+        return AgentCapacityReservation(
+            lane=lane_key,
+            acquired=True,
+            _release=release,
+            _owner_token=self._reservation_owner_token,
+        )
 
-    async def execute(self, stage: AgentStageSpec) -> AgentExecutionResult:
+    async def execute(
+        self,
+        stage: AgentStageSpec,
+        *,
+        reservation: AgentCapacityReservation | None = None,
+    ) -> AgentExecutionResult:
         audit = self.request_audit(stage)
         lane_state = self._lane_state(stage.lane)
+        release_reservation = reservation is None
+        if reservation is not None:
+            self._validate_external_reservation(stage, reservation)
         if self._is_circuit_open(stage.lane, lane_state):
             lane_state.circuit_open_total += 1
             raise AgentExecutionError(
@@ -161,7 +181,7 @@ class AgentExecutionGateway:
                 execution_started=False,
             )
 
-        reservation = self.try_reserve(stage.lane)
+        reservation = reservation or self.try_reserve(stage.lane)
         if not reservation.acquired:
             error_class = reservation.reason or AgentExecutionErrorClass.CAPACITY_DENIED
             raise AgentExecutionError(
@@ -173,7 +193,10 @@ class AgentExecutionGateway:
 
         started = time.perf_counter()
         runner_entered = {"value": False}
+        in_flight_recorded = False
         try:
+            self._record_in_flight(stage, delta=1)
+            in_flight_recorded = True
             async with self._global_limiter:
                 try:
                     final_output, raw_result, audit_extra = await asyncio.wait_for(
@@ -190,6 +213,12 @@ class AgentExecutionGateway:
                         error_class=AgentExecutionErrorClass.TIMEOUT,
                         message=f"agent lane timed out after {lane_state.policy.timeout_seconds:g}s",
                         execution_started=True,
+                    )
+                    self._record_execution_call(
+                        stage,
+                        status=failed.status,
+                        error_class=failed.error_class,
+                        started=started,
                     )
                     raise AgentExecutionError(
                         AgentExecutionErrorClass.TIMEOUT,
@@ -211,6 +240,12 @@ class AgentExecutionGateway:
                 trace_metadata={**audit.trace_metadata, **_audit_trace_extra(audit_extra)},
                 output_hash=json_sha256(final_output),
             )
+            self._record_execution_call(
+                stage,
+                status=result_audit.status,
+                error_class=result_audit.error_class,
+                started=started,
+            )
             return AgentExecutionResult(final_output=final_output, audit=result_audit, raw_result=raw_result)
         except AgentExecutionError:
             raise
@@ -224,6 +259,12 @@ class AgentExecutionGateway:
                 message=str(exc),
                 execution_started=True,
                 audit_extra=audit_extra,
+            )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
             )
             raise AgentExecutionError(
                 AgentExecutionErrorClass.SCHEMA_INVALID,
@@ -239,6 +280,12 @@ class AgentExecutionGateway:
                 error_class=AgentExecutionErrorClass.SCHEMA_INVALID,
                 message=str(exc),
                 execution_started=True,
+            )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
             )
             raise AgentExecutionError(
                 AgentExecutionErrorClass.SCHEMA_INVALID,
@@ -256,6 +303,12 @@ class AgentExecutionGateway:
                 message=str(exc),
                 execution_started=runner_entered["value"],
             )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
+            )
             raise AgentExecutionError(
                 error_class,
                 str(exc),
@@ -263,7 +316,10 @@ class AgentExecutionGateway:
                 execution_started=runner_entered["value"],
             ) from exc
         finally:
-            await reservation.release()
+            if in_flight_recorded:
+                self._record_in_flight(stage, delta=-1)
+            if release_reservation:
+                await reservation.release()
 
     def record_lane_failure(self, lane: str) -> None:
         now = time.monotonic()
@@ -307,14 +363,7 @@ class AgentExecutionGateway:
     ) -> tuple[Any, Any | None, dict[str, Any]]:
         lane_policy = self._lane_state(stage.lane).policy
         output_schema = StrictJsonOutputSchema(stage.output_type)
-        model = OpenAIChatCompletionsModel(
-            model=stage.model,
-            openai_client=self._llm_gateway.openai_client(
-                model=stage.model,
-                base_url=self._base_url,
-                timeout_s=float(lane_policy.timeout_seconds),
-            ),
-        )
+        model = self._model_for(stage.model, timeout_s=float(lane_policy.timeout_seconds))
         agent = Agent(
             name=stage.agent_name,
             instructions=stage.instructions,
@@ -404,6 +453,73 @@ class AgentExecutionGateway:
             error_class=error_class,
             error_message=str(message or "")[:1000],
         )
+
+    def _validate_external_reservation(
+        self,
+        stage: AgentStageSpec,
+        reservation: AgentCapacityReservation,
+    ) -> None:
+        if reservation.lane != stage.lane:
+            raise ValueError(
+                f"reservation lane {reservation.lane!r} does not match stage lane {stage.lane!r}"
+            )
+        if not reservation.acquired:
+            raise ValueError("execute requires an active acquired reservation")
+        if reservation._owner_token is not self._reservation_owner_token:
+            raise ValueError("reservation was not issued by this gateway")
+        if not reservation.active:
+            raise ValueError("execute requires an active acquired reservation")
+
+    def _model_for(self, model_name: str, *, timeout_s: float) -> Any:
+        key = (str(model_name), self._base_url, float(timeout_s))
+        cached = self._model_cache.get(key)
+        if cached is not None:
+            return cached
+        model = OpenAIChatCompletionsModel(
+            model=model_name,
+            openai_client=self._llm_gateway.openai_client(
+                model=model_name,
+                base_url=self._base_url,
+                timeout_s=float(timeout_s),
+            ),
+        )
+        self._model_cache[key] = model
+        return model
+
+    def _record_in_flight(self, stage: AgentStageSpec, *, delta: int) -> None:
+        telemetry = self._telemetry
+        if telemetry is None:
+            return
+        method_name = "increment_agent_execution_in_flight" if delta > 0 else "decrement_agent_execution_in_flight"
+        method = getattr(telemetry, method_name, None)
+        if callable(method):
+            method(lane=stage.lane, stage=stage.stage)
+
+    def _record_backpressure(self, lane: str, reason: AgentExecutionErrorClass) -> None:
+        telemetry = self._telemetry
+        method = getattr(telemetry, "record_agent_execution_backpressure", None)
+        if callable(method):
+            method(lane=lane, reason=str(reason.value))
+
+    def _record_execution_call(
+        self,
+        stage: AgentStageSpec,
+        *,
+        status: AgentExecutionStatus,
+        error_class: AgentExecutionErrorClass | None,
+        started: float,
+    ) -> None:
+        telemetry = self._telemetry
+        method = getattr(telemetry, "record_agent_execution_call", None)
+        if callable(method):
+            method(
+                lane=stage.lane,
+                stage=stage.stage,
+                model=stage.model,
+                status=str(status.value),
+                error_class=error_class.value if error_class is not None else None,
+                seconds=max(0.0, time.perf_counter() - started),
+            )
 
 
 def _api_base(base_url: str) -> str:

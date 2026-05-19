@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
     DiscussionDigestRequest,
@@ -29,6 +29,8 @@ class NarrativeIntelProvider(Protocol):
         request: MentionSemanticsBatchRequest,
     ) -> MentionSemanticsBatchResult: ...
 
+    def request_audit_for_label_mentions(self, **kwargs: Any) -> dict[str, Any]: ...
+
     async def summarize_discussion(
         self,
         *,
@@ -36,5 +38,6 @@ class NarrativeIntelProvider(Protocol):
         request: DiscussionDigestRequest,
     ) -> DiscussionDigestResult: ...
 
-    async def aclose(self) -> None: ...
+    def request_audit_for_summarize_discussion(self, **kwargs: Any) -> dict[str, Any]: ...
 
+    async def aclose(self) -> None: ...

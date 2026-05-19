@@ -109,6 +109,8 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
     app.add_api_route("/signal-lab/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/news", frontend_index, include_in_schema=False)
     app.add_api_route("/news/{path:path}", frontend_index, include_in_schema=False)
+    app.add_api_route("/ops", frontend_index, include_in_schema=False)
+    app.add_api_route("/ops/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/search", frontend_index, include_in_schema=False)
     app.add_api_route("/search/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/stocks", frontend_index, include_in_schema=False)
@@ -153,6 +155,7 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
             "gmgn_direct_ws": _provider_state_payload(getattr(runtime.collector, "upstream_client", None)),
             "okx_dex_ws": _provider_state_payload(stream_dex_market),
         },
+        "agent_execution": _agent_execution_status(runtime),
         "workers": workers_status_payload(runtime),
     }
     return payload, 503 if reasons else 200
@@ -166,6 +169,21 @@ def _stream_dex_market(runtime: Any) -> Any | None:
     providers = getattr(runtime, "providers", None)
     asset_market = getattr(providers, "asset_market", None)
     return getattr(asset_market, "stream_dex_market", None)
+
+
+def _agent_execution_status(runtime: Any) -> dict[str, Any] | None:
+    gateway = getattr(runtime, "agent_execution_gateway", None)
+    if gateway is None:
+        providers = getattr(runtime, "providers", None)
+        gateway = getattr(providers, "agent_execution_gateway", None)
+    snapshot = getattr(gateway, "status_snapshot", None)
+    if not callable(snapshot):
+        return None
+    try:
+        payload = snapshot()
+    except Exception as exc:
+        return {"status": "unavailable", "error": type(exc).__name__}
+    return payload if isinstance(payload, dict) else {"status": "unavailable"}
 
 
 def _unhealthy_reasons(runtime: Runtime, *, db_status: dict[str, object]) -> list[str]:

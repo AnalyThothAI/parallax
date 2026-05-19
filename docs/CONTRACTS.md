@@ -58,6 +58,13 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 The schema is `WorkersSettings`; the canonical key list is guarded
 against `worker_registry.py` and `docs/WORKERS.md`.
 
+`workers.agent_runtime` configures the shared agent execution plane. It
+contains global concurrency/RPM limits plus named lane policies for
+Pulse, Narrative, Social enrichment, Watchlist summaries, and future
+News fact-candidate extraction. Lane status and backpressure counters
+are operational signals only; they are not product readiness and are not
+business facts.
+
 ## WebSocket at `/ws`
 
 - Auth: `{"type":"auth","token":"..."}`
@@ -92,6 +99,12 @@ Runtime health/status contract:
   provider counters, and `snapshot_gate_outcomes`.
 - `snapshot_gate` is a global health field copied from collector
   snapshot-gate counters; it is not a worker section.
+- `agent_execution` is an optional ops-only block copied from
+  `AgentExecutionGateway.status_snapshot()`. It exposes global
+  concurrency, in-flight counts, lane circuit state, capacity denials,
+  circuit-open counts, and timeout counts. Clients must not use this as
+  product truth; domain facts and read models remain the source for
+  user-facing readiness.
 - `/api/status/narrative-health` is an authenticated ops read for Narrative
   backlog health. It returns domain-owned aggregates for current admissions
   (`current_admissions`, `suppressed_admissions`, source-event and independent

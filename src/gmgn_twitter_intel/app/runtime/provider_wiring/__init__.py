@@ -20,7 +20,7 @@ def wire_providers(
     settings: Settings,
     *,
     start_collector: bool,
-    llm_gateway: object | None = None,
+    agent_execution_gateway: object | None = None,
     db_pool: Any | None = None,
 ) -> WiredProviders:
     from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market, gmgn, marketlane, news, openai
@@ -31,12 +31,18 @@ def wire_providers(
         ),
         asset_market=asset_market.wire_asset_market(settings),
         social_enrichment=SocialEnrichmentProviders(
-            event_enrichment=openai.openai_social_event_provider(settings, llm_gateway=llm_gateway)
+            event_enrichment=openai.openai_social_event_provider(
+                settings,
+                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
+            )
             if settings.llm_configured
             else None,
         ),
         narrative_intel=NarrativeIntelProviders(
-            narrative_provider=openai.openai_narrative_intel_provider(settings, llm_gateway=llm_gateway)
+            narrative_provider=openai.openai_narrative_intel_provider(
+                settings,
+                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
+            )
             if (
                 settings.workers.mention_semantics.enabled
                 or settings.workers.token_discussion_digest.enabled
@@ -52,18 +58,22 @@ def wire_providers(
         pulse_lab=PulseLabProviders(
             decision_provider=openai.openai_pulse_decision_provider(
                 settings,
-                llm_gateway=llm_gateway,
+                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
                 db_pool=db_pool,
             )
             if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
             else None,
         ),
         watchlist_intel=WatchlistIntelProviders(
-            summary_provider=openai.openai_watchlist_summary_provider(settings, llm_gateway=llm_gateway)
+            summary_provider=openai.openai_watchlist_summary_provider(
+                settings,
+                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
+            )
             if settings.workers.handle_summary.enabled and settings.watchlist_handle_summary_configured
             else None,
         ),
         marketlane=marketlane.wire_marketlane(settings),
+        agent_execution_gateway=agent_execution_gateway,
     )
 
 
@@ -71,6 +81,12 @@ def wire_asset_market_providers(settings: Settings, *, start_collector: bool) ->
     from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market
 
     return asset_market.wire_asset_market_providers(settings, start_collector=start_collector)
+
+
+def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> object:
+    if agent_execution_gateway is None:
+        raise RuntimeError("AgentExecutionGateway is required for configured OpenAI providers")
+    return agent_execution_gateway
 
 
 __all__ = [

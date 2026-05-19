@@ -537,6 +537,69 @@ class BackoffPolicy(BaseModel):
     max_ms: int = Field(default=60_000, ge=0)
 
 
+class AgentCircuitBreakerSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    failure_threshold: int = Field(default=5, ge=1)
+    window_seconds: int = Field(default=300, ge=1)
+    open_seconds: int = Field(default=120, ge=1)
+
+
+class AgentLaneSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    priority: Literal["high", "normal", "bulk", "low"] = "normal"
+    max_concurrency: int = Field(default=1, ge=1)
+    timeout_seconds: float = Field(default=120.0, ge=1)
+    rpm_limit: int | None = Field(default=None, ge=1)
+    circuit_breaker: AgentCircuitBreakerSettings = Field(default_factory=AgentCircuitBreakerSettings)
+
+
+def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
+    return {
+        "pulse.pipeline": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=240.0),
+        "pulse.evidence_debate": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=120.0),
+        "pulse.decision_maker": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=120.0),
+        "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=120.0),
+        "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=120.0),
+        "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=120.0),
+        "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=120.0),
+        "news.fact_candidate": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=120.0),
+    }
+
+
+class AgentRuntimeSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    global_max_concurrency: int = Field(default=4, ge=1)
+    global_rpm_limit: int = Field(default=60, ge=1)
+    lanes: dict[str, AgentLaneSettings] = Field(default_factory=_default_agent_lanes)
+
+    @field_validator("lanes", mode="before")
+    @classmethod
+    def merge_default_lanes(cls, value: Any) -> dict[str, Any]:
+        default_lanes = _default_agent_lanes()
+        if value is None:
+            return default_lanes
+        if not isinstance(value, Mapping):
+            raise ValueError("agent_runtime.lanes must be a mapping")
+
+        unknown_keys = set(value) - set(default_lanes)
+        if unknown_keys:
+            unknown = ", ".join(sorted(str(key) for key in unknown_keys))
+            raise ValueError(f"agent_runtime.lanes contains unknown lane keys: {unknown}")
+
+        merged: dict[str, Any] = {key: lane.model_dump() for key, lane in default_lanes.items()}
+        for key, lane_value in value.items():
+            if isinstance(lane_value, AgentLaneSettings):
+                merged[key] = lane_value.model_dump()
+            elif isinstance(lane_value, Mapping):
+                merged[key].update(dict(lane_value))
+            else:
+                raise ValueError(f"agent_runtime.lanes.{key} must be a mapping")
+        return merged
+
+
 class PerWorkerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -814,6 +877,7 @@ class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     defaults: WorkerDefaults = Field(default_factory=WorkerDefaults)
+    agent_runtime: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
     market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
     market_tick_poll: MarketTickPollWorkerSettings = Field(default_factory=MarketTickPollWorkerSettings)
