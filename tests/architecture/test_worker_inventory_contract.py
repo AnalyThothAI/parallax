@@ -41,7 +41,7 @@ def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
     table_keys = set(inventory)
     registry_keys = set(CANONICAL_WORKER_NAMES)
     class_keys = set(CANONICAL_WORKER_CLASSES)
-    settings_keys = set(WorkersSettings.model_fields) - {"defaults"}
+    settings_keys = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
 
     assert marker_keys == registry_keys, _key_diff_message("worker-inventory marker", marker_keys, registry_keys)
     assert table_keys == registry_keys, _key_diff_message("Worker Inventory table", table_keys, registry_keys)
@@ -56,7 +56,7 @@ def test_documented_wake_inputs_match_default_worker_settings() -> None:
     inventory = _worker_inventory()
     settings = WorkersSettings()
     mismatches: list[str] = []
-    for worker_key in sorted(set(WorkersSettings.model_fields) - {"defaults"}):
+    for worker_key in sorted(set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}):
         expected = set(getattr(getattr(settings, worker_key), "wakes_on", ()))
         documented = _cell_code_values(inventory[worker_key]["Wake-in"])
         missing = sorted(expected - documented)

@@ -135,7 +135,7 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
 
 
-def test_agent_runtime_settings_parse_workers_yaml_shape() -> None:
+def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() -> None:
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings(
@@ -162,6 +162,24 @@ def test_agent_runtime_settings_parse_workers_yaml_shape() -> None:
     assert settings.agent_runtime.global_rpm_limit == 30
     assert lane.timeout_seconds == 90
     assert lane.circuit_breaker.failure_threshold == 3
+    assert settings.agent_runtime.lanes["pulse.pipeline"].timeout_seconds == 240
+    assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
+    assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
+
+
+def test_agent_runtime_settings_reject_unknown_lane_key() -> None:
+    with pytest.raises(ValidationError):
+        WorkersSettings(
+            agent_runtime={
+                "lanes": {
+                    "pulse.decision-maker": {
+                        "priority": "high",
+                        "max_concurrency": 1,
+                        "timeout_seconds": 90,
+                    }
+                }
+            }
+        )
 
 
 def test_worker_settings_reject_zero_pulse_candidate_budgets():

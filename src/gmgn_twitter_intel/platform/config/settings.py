@@ -575,6 +575,30 @@ class AgentRuntimeSettings(BaseModel):
     global_rpm_limit: int = Field(default=60, ge=1)
     lanes: dict[str, AgentLaneSettings] = Field(default_factory=_default_agent_lanes)
 
+    @field_validator("lanes", mode="before")
+    @classmethod
+    def merge_default_lanes(cls, value: Any) -> dict[str, Any]:
+        default_lanes = _default_agent_lanes()
+        if value is None:
+            return default_lanes
+        if not isinstance(value, Mapping):
+            raise ValueError("agent_runtime.lanes must be a mapping")
+
+        unknown_keys = set(value) - set(default_lanes)
+        if unknown_keys:
+            unknown = ", ".join(sorted(str(key) for key in unknown_keys))
+            raise ValueError(f"agent_runtime.lanes contains unknown lane keys: {unknown}")
+
+        merged: dict[str, Any] = {key: lane.model_dump() for key, lane in default_lanes.items()}
+        for key, lane_value in value.items():
+            if isinstance(lane_value, AgentLaneSettings):
+                merged[key] = lane_value.model_dump()
+            elif isinstance(lane_value, Mapping):
+                merged[key].update(dict(lane_value))
+            else:
+                raise ValueError(f"agent_runtime.lanes.{key} must be a mapping")
+        return merged
+
 
 class PerWorkerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
