@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentCapacityReservation
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +129,8 @@ class PulseDecisionProvider(Protocol):
 
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract: ...
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation: ...
 
     def request_audit(
         self,

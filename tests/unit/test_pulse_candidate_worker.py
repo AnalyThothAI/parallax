@@ -38,6 +38,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     TradePlaybook,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentCapacityReservation,
+    AgentExecutionErrorClass,
+)
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 NOW_MS = 1_800_000
@@ -804,6 +808,26 @@ def test_pulse_worker_aclose_keeps_base_cleanup_owner() -> None:
     assert worker._closed is True
 
 
+def test_process_due_jobs_does_not_claim_when_agent_capacity_denied() -> None:
+    repos = FakeRepos()
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": "job-1",
+            "status": "pending",
+            "attempt_count": 0,
+            "context_json": _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82)).__dict__,
+        }
+    )
+    worker = _worker(repos, client=CapacityDeniedFakeClient())
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["claimed"] == 0
+    assert result["agent_backpressure_capacity_denied"] == 1
+    assert repos.pulse_jobs.claim_due_job_calls == 0
+    assert repos.pulse_jobs.jobs[0]["attempt_count"] == 0
+
+
 def _worker(
     repos: FakeRepos,
     *,
@@ -921,6 +945,9 @@ class FakeDB:
 
 
 class FakeAgentExecutionGateway:
+    def try_reserve(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
     async def execute(self, stage):
         allowed_refs = [
             str(ref.get("ref_id"))
@@ -1108,6 +1135,7 @@ class FakePulseStore:
         self.packets: list[Any] = []
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
+        self.claim_due_job_calls = 0
         self.admission_claims: list[dict[str, Any]] = []
         self.pending_job_counts_by_window_scope: dict[tuple[str, str], int] = {}
         self.market_facts: list[dict[str, Any]] = [
@@ -1291,6 +1319,7 @@ class FakePulseStore:
         return job
 
     def claim_due_job(self, now_ms: int | None = None) -> dict[str, Any] | None:
+        self.claim_due_job_calls += 1
         for job in self.jobs:
             if job["status"] == "pending":
                 job["status"] = "running"
@@ -1381,6 +1410,9 @@ class FakeClient:
         self.recommendation = recommendation
         self.contexts: list[dict[str, Any]] = []
         self.run_calls = 0
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(
         self,
@@ -1523,6 +1555,15 @@ class FakeClient:
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
             stage_audits=(evidence_debate_audit, stage_audit),
+        )
+
+
+class CapacityDeniedFakeClient(FakeClient):
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(
+            lane=lane,
+            acquired=False,
+            reason=AgentExecutionErrorClass.CAPACITY_DENIED,
         )
 
 

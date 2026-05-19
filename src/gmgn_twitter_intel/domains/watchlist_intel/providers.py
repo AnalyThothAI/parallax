@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentCapacityReservation
+
 
 class HandleTopicSummaryProvider(Protocol):
     provider: str
     model: str
     timeout_seconds: float
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation: ...
 
     def request_audit(
         self,
@@ -26,6 +30,7 @@ class HandleTopicSummaryProvider(Protocol):
         run_id: str,
         job: dict[str, Any],
         context: dict[str, Any],
+        reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]: ...
 
 

@@ -8,7 +8,10 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentRuntimePolicy
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentCapacityReservation,
+    AgentRuntimePolicy,
+)
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import OpenAIAgentsNarrativeIntelClient
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
@@ -68,6 +71,9 @@ class OpenAIPulseDecisionProvider:
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         return self._client.runtime_contract
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return self._client.try_reserve_execution(lane)
 
     def request_audit(
         self,

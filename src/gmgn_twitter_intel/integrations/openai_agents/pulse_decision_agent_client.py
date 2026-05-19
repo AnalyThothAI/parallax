@@ -28,12 +28,13 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     TradePlaybook,
 )
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    RUNTIME_VERSION,
+    AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentExecutionRequestAudit,
     AgentExecutionResultAudit,
     AgentStageSpec,
-    RUNTIME_VERSION,
 )
 from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
@@ -111,6 +112,9 @@ class OpenAIAgentsPulseDecisionClient:
             safety_net_enabled=True,
             evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
         )
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane)
 
     def request_audit(
         self,

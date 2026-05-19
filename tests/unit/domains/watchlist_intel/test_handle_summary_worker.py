@@ -5,6 +5,10 @@ from types import SimpleNamespace
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentCapacityReservation,
+    AgentExecutionErrorClass,
+)
 
 
 def test_handle_summary_worker_processes_due_jobs_concurrently():
@@ -104,6 +108,32 @@ def test_handle_summary_worker_reports_reconcile_failure_as_iteration_result():
     asyncio.run(scenario())
 
 
+def test_handle_summary_worker_does_not_claim_when_agent_capacity_denied():
+    async def scenario():
+        repo = FakeWatchlistRepository(
+            [{"handle": "toly", "attempt_count": 1, "max_attempts": 3, "lease_token": "lease-1"}]
+        )
+        db = FakeDB(repo)
+        worker = HandleSummaryWorker(
+            name="handle_summary",
+            settings=fake_settings(concurrency=1),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=CapacityDeniedSummaryProvider(),
+            handles=("toly",),
+        )
+
+        result = await worker.run_once(now_ms=1_000)
+
+        assert result.processed == 0
+        assert result.skipped == 1
+        assert result.notes["agent_backpressure_capacity_denied"] == 1
+        assert result.notes["claimed"] == 0
+        assert repo.claim_calls == 0
+
+    asyncio.run(scenario())
+
+
 def fake_settings(*, concurrency=1):
     return SimpleNamespace(
         enabled=True,
@@ -154,11 +184,13 @@ class FakeWatchlistRepository:
         self.completed = []
         self.failed_jobs = []
         self.failed_runs = []
+        self.claim_calls = 0
 
     def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
         return []
 
     def claim_next_summary_job(self, *, now_ms, lease_ms):
+        self.claim_calls += 1
         if not self.jobs:
             return None
         return self.jobs.pop(0)
@@ -197,6 +229,9 @@ class BarrierSummaryProvider:
         self.closed = False
         self.release = asyncio.Event()
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
     def request_audit(self, *, handle, events, run_id, job, context):
         return {"sdk_trace_id": f"trace-{handle}", "usage": {"input_tokens": 12}}
 
@@ -213,11 +248,23 @@ class BarrierSummaryProvider:
 class FailingSummaryProvider:
     model = "test-model"
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
     def request_audit(self, *, handle, events, run_id, job, context):
         return {"sdk_trace_id": f"trace-{handle}", "usage": {"input_tokens": 12}}
 
     async def summarize_handle(self, **kwargs):
         raise RuntimeError("provider exploded")
+
+
+class CapacityDeniedSummaryProvider(FailingSummaryProvider):
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(
+            lane=lane,
+            acquired=False,
+            reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+        )
 
 
 def test_handle_summary_worker_aclose_does_not_close_runtime_owned_provider():

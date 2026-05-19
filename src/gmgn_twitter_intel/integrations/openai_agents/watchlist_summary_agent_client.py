@@ -12,7 +12,10 @@ from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent impor
     PROMPT_VERSION,
     SCHEMA_VERSION,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import RUNTIME_VERSION
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    RUNTIME_VERSION,
+    AgentCapacityReservation,
+)
 from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
 
@@ -44,6 +47,9 @@ class OpenAIAgentsWatchlistSummaryClient:
             output_schema_hash=json_sha256(HANDLE_SUMMARY_PAYLOAD_TYPE.model_json_schema()),
         )
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane)
+
     def request_audit(
         self,
         *,
@@ -72,6 +78,7 @@ class OpenAIAgentsWatchlistSummaryClient:
         run_id: str,
         job: dict[str, Any],
         context: dict[str, Any],
+        reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]:
         stage = build_handle_summary_stage(
             model=self.model,
@@ -82,7 +89,7 @@ class OpenAIAgentsWatchlistSummaryClient:
             context=context,
             max_turns=self.max_turns,
         )
-        execution = await self._agent_gateway.execute(stage)
+        execution = await self._agent_gateway.execute(stage, reservation=reservation)
         payload = _coerce_summary_payload(execution.final_output)
         output_json = payload.model_dump(mode="json")
         return {

@@ -13,7 +13,11 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     social_event_agent_instructions,
     social_event_extraction_from_payload,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import RUNTIME_VERSION, AgentStageSpec
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    RUNTIME_VERSION,
+    AgentCapacityReservation,
+    AgentStageSpec,
+)
 from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
 
@@ -51,6 +55,9 @@ class OpenAIAgentsSocialEventClient:
     def timeout_seconds(self) -> float:
         return 120.0
 
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane)
+
     def request_audit(self, *, event: dict, entities: list[dict], run_id: str, job: dict) -> dict[str, Any]:
         stage = self._stage(event=event, entities=entities, run_id=run_id, job=job)
         audit = self._agent_gateway.request_audit(stage)
@@ -58,9 +65,17 @@ class OpenAIAgentsSocialEventClient:
             return audit.model_dump(mode="json")
         return dict(audit)
 
-    async def enrich_event(self, *, event: dict, entities: list[dict], run_id: str, job: dict):
+    async def enrich_event(
+        self,
+        *,
+        event: dict,
+        entities: list[dict],
+        run_id: str,
+        job: dict,
+        reservation: AgentCapacityReservation | None = None,
+    ):
         stage = self._stage(event=event, entities=entities, run_id=run_id, job=job)
-        execution = await self._agent_gateway.execute(stage)
+        execution = await self._agent_gateway.execute(stage, reservation=reservation)
         payload = payload_from_output(execution.final_output)
         audit = execution.audit.model_dump(mode="json")
         return social_event_extraction_from_payload(
