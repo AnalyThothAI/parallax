@@ -260,7 +260,7 @@ def test_worker_registry_matches_workers_yaml_schema() -> None:
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 
     expected_keys = set(EXPECTED_WORKERS)
-    settings_keys = set(WorkersSettings.model_fields) - {"defaults"}
+    settings_keys = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
     docs_keys = _worker_inventory_keys()
 
     assert CANONICAL_WORKER_CLASSES == EXPECTED_WORKERS

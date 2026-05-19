@@ -123,6 +123,47 @@ def test_worker_settings_reject_unknown_nested_key():
         WorkersSettings(**payload)
 
 
+def test_agent_runtime_settings_default_lanes() -> None:
+    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+
+    settings = WorkersSettings()
+
+    assert settings.agent_runtime.global_max_concurrency == 4
+    assert settings.agent_runtime.global_rpm_limit == 60
+    assert settings.agent_runtime.lanes["pulse.decision_maker"].priority == "high"
+    assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
+    assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
+
+
+def test_agent_runtime_settings_parse_workers_yaml_shape() -> None:
+    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+
+    settings = WorkersSettings(
+        agent_runtime={
+            "global_max_concurrency": 2,
+            "global_rpm_limit": 30,
+            "lanes": {
+                "pulse.decision_maker": {
+                    "priority": "high",
+                    "max_concurrency": 1,
+                    "timeout_seconds": 90,
+                    "circuit_breaker": {
+                        "failure_threshold": 3,
+                        "window_seconds": 120,
+                        "open_seconds": 60,
+                    },
+                }
+            },
+        }
+    )
+
+    lane = settings.agent_runtime.lanes["pulse.decision_maker"]
+    assert settings.agent_runtime.global_max_concurrency == 2
+    assert settings.agent_runtime.global_rpm_limit == 30
+    assert lane.timeout_seconds == 90
+    assert lane.circuit_breaker.failure_threshold == 3
+
+
 def test_worker_settings_reject_zero_pulse_candidate_budgets():
     payload = yaml.safe_load(default_workers_yaml())
     payload["pulse_candidate"]["max_enqueues_per_cycle"] = 0
