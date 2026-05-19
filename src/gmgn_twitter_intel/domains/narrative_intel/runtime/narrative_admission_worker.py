@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,7 +34,7 @@ class NarrativeAdmissionWorker(WorkerBase):
         )
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
-        return self.run_once_sync(now_ms=now_ms)
+        return await asyncio.to_thread(self.run_once_sync, now_ms=now_ms)
 
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
