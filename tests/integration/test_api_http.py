@@ -25,6 +25,7 @@ from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+TOKEN_RADAR_TEST_REBUILD_OFFSET_MS = 60_000
 
 
 def _pulse_factor_snapshot(
@@ -523,7 +524,15 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        event = make_token_event("event-1", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
+        now_ms = int(time.time() * 1000)
+        rebuild_now_ms = now_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
+        event = make_token_event(
+            "event-1",
+            symbol="PEPE",
+            address=PEPE,
+            text=f"$PEPE ignition {PEPE}",
+            received_at_ms=now_ms - 1_000,
+        )
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
         with client.app.state.service.repositories() as repos:
             repos.social_event_extractions.upsert_extraction(
@@ -548,7 +557,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
                 summary_zh="PEPE ignition 形成 social-event extraction。",
                 raw_response={"ok": True},
             )
-        rebuild_token_radar(client)
+        rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         headers = {"Authorization": "Bearer secret"}
         recent = client.get("/api/recent?limit=5", headers=headers)
@@ -606,9 +615,10 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
 
 def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
-    now_ms = 1_778_562_000_000
 
     with TestClient(app) as client:
+        now_ms = int(time.time() * 1000)
+        rebuild_now_ms = now_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
         runtime = client.app.state.service
         runtime.ingest.ingest_event(
             make_token_event(
@@ -616,7 +626,7 @@ def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_pat
                 symbol="PEPE",
                 address=PEPE,
                 text=f"$PEPE {PEPE}",
-                received_at_ms=now_ms,
+                received_at_ms=now_ms - 1_000,
             ),
             is_watched=True,
         )
@@ -624,11 +634,11 @@ def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_pat
             make_event(
                 "event-unknown-diagnostics",
                 text="$NEWTOKEN soon",
-                received_at_ms=now_ms + 1_000,
+                received_at_ms=now_ms - 500,
             ),
             is_watched=True,
         )
-        rebuild_token_radar(client, now_ms=now_ms + 2_000)
+        rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         response = client.get(
             "/api/token-radar",
@@ -674,9 +684,10 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
             }
 
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
-    now_ms = 1_778_562_100_000
 
     with TestClient(app) as client:
+        now_ms = int(time.time() * 1000)
+        rebuild_now_ms = now_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
         runtime = client.app.state.service
         runtime.ingest.ingest_event(
             make_token_event(
@@ -684,12 +695,12 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
                 symbol="PEPE",
                 address=PEPE,
                 text=f"$PEPE {PEPE}",
-                received_at_ms=now_ms,
+                received_at_ms=now_ms - 1_000,
             ),
             is_watched=True,
         )
         runtime.workers["live_price_gateway"].worker = FakeLiveGateway()
-        rebuild_token_radar(client, now_ms=now_ms + 1_000)
+        rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         response = client.get(
             "/api/token-radar",
@@ -1317,11 +1328,14 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
+        now_ms = int(time.time() * 1000)
+        rebuild_now_ms = now_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
         watched_event = make_token_event(
             "event-watched",
             symbol="PEPE",
             address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
             text="$PEPE watched",
+            received_at_ms=now_ms - 1_000,
         )
         public_event = make_token_event(
             "event-public",
@@ -1329,10 +1343,11 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
             address="0x44b28991b167582f18ba0259e0173176ca125505",
             handle="anon",
             text="$BONK public",
+            received_at_ms=now_ms - 900,
         )
         client.app.state.service.ingest.ingest_event(watched_event, is_watched=True)
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
-        rebuild_token_radar(client)
+        rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         headers = {"Authorization": "Bearer secret"}
         all_flow = client.get("/api/token-radar", params={"window": "5m", "scope": "all"}, headers=headers)
@@ -1480,6 +1495,7 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
 
     with TestClient(app) as client:
         base_ms = int(time.time() * 1000)
+        rebuild_now_ms = base_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
         for index in range(3):
             event = make_token_event(
                 f"event-pepe-post-{index}",
@@ -1490,7 +1506,7 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
                 received_at_ms=base_ms - index * 1_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
-        rebuild_token_radar(client, now_ms=base_ms + 1_000)
+        rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         asset_flow = client.get(
             "/api/token-radar",
@@ -1561,6 +1577,7 @@ def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):
 
     with TestClient(app) as client:
         base_ms = int(time.time() * 1000)
+        rebuild_now_ms = base_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
         for index in range(3):
             event = make_token_event(
                 f"event-pepe-timeline-{index}",
@@ -1571,7 +1588,7 @@ def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):
                 received_at_ms=base_ms - index * 30_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
-        rebuild_token_radar(client, now_ms=base_ms + 1_000)
+        rebuild_token_radar(client, now_ms=rebuild_now_ms)
 
         asset_flow = client.get(
             "/api/token-radar",

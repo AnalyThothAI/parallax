@@ -391,6 +391,192 @@
 | `finished_at_ms` | `BIGINT` | False | `None` |
 | `latency_ms` | `BIGINT` | False | `0` |
 
+## `news_fact_candidates`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `fact_candidate_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `event_type` | `TEXT` | False | `None` |
+| `claim` | `TEXT` | False | `None` |
+| `realis` | `TEXT` | False | `None` |
+| `evidence_quote` | `TEXT` | False | `None` |
+| `evidence_span_start` | `INTEGER` | False | `None` |
+| `evidence_span_end` | `INTEGER` | False | `None` |
+| `source_role` | `TEXT` | False | `None` |
+| `required_slots_json` | `JSONB` | False | `'{}'::jsonb` |
+| `affected_targets_json` | `JSONB` | False | `'[]'::jsonb` |
+| `validation_status` | `TEXT` | False | `None` |
+| `rejection_reasons_json` | `JSONB` | False | `'[]'::jsonb` |
+| `extraction_method` | `TEXT` | False | `None` |
+| `policy_version` | `TEXT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `news_fetch_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `fetch_run_id` | `TEXT` | False | `None` |
+| `source_id` | `TEXT` | False | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `0` |
+| `status` | `TEXT` | False | `None` |
+| `fetched_count` | `INTEGER` | False | `0` |
+| `inserted_count` | `INTEGER` | False | `0` |
+| `updated_count` | `INTEGER` | False | `0` |
+| `duplicate_count` | `INTEGER` | False | `0` |
+| `http_status` | `INTEGER` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `extra_json` | `JSONB` | False | `'{}'::jsonb` |
+
+## `news_item_entities`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `entity_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `entity_type` | `TEXT` | False | `None` |
+| `raw_value` | `TEXT` | False | `None` |
+| `normalized_value` | `TEXT` | False | `None` |
+| `chain` | `TEXT` | True | `None` |
+| `span_start` | `INTEGER` | False | `None` |
+| `span_end` | `INTEGER` | False | `None` |
+| `text_surface` | `TEXT` | False | `None` |
+| `confidence` | `DOUBLE PRECISION` | False | `None` |
+| `extraction_policy_version` | `TEXT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
+## `news_items`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `news_item_id` | `TEXT` | False | `None` |
+| `provider_item_id` | `TEXT` | False | `None` |
+| `source_id` | `TEXT` | False | `None` |
+| `source_domain` | `TEXT` | False | `None` |
+| `canonical_url` | `TEXT` | False | `None` |
+| `title` | `TEXT` | False | `None` |
+| `summary` | `TEXT` | False | `''::text` |
+| `body_text` | `TEXT` | False | `''::text` |
+| `language` | `TEXT` | False | `'en'::text` |
+| `published_at_ms` | `BIGINT` | False | `None` |
+| `fetched_at_ms` | `BIGINT` | False | `None` |
+| `content_hash` | `TEXT` | False | `None` |
+| `title_fingerprint` | `TEXT` | False | `None` |
+| `lifecycle_status` | `TEXT` | False | `'raw'::text` |
+| `processing_attempts` | `INTEGER` | False | `0` |
+| `processing_error` | `TEXT` | True | `None` |
+| `processed_at_ms` | `BIGINT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `news_page_rows`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `row_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `story_id` | `TEXT` | True | `None` |
+| `latest_at_ms` | `BIGINT` | False | `None` |
+| `lifecycle_status` | `TEXT` | False | `None` |
+| `headline` | `TEXT` | False | `None` |
+| `summary` | `TEXT` | False | `None` |
+| `source_domain` | `TEXT` | False | `None` |
+| `canonical_url` | `TEXT` | False | `None` |
+| `token_lanes_json` | `JSONB` | False | `'[]'::jsonb` |
+| `fact_lanes_json` | `JSONB` | False | `'[]'::jsonb` |
+| `story_json` | `JSONB` | False | `'{}'::jsonb` |
+| `source_json` | `JSONB` | False | `'{}'::jsonb` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+| `projection_version` | `TEXT` | False | `None` |
+
+## `news_provider_items`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `provider_item_id` | `TEXT` | False | `None` |
+| `source_id` | `TEXT` | False | `None` |
+| `fetch_run_id` | `TEXT` | True | `None` |
+| `source_item_key` | `TEXT` | False | `None` |
+| `canonical_url` | `TEXT` | False | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
+| `raw_payload_json` | `JSONB` | False | `None` |
+| `fetched_at_ms` | `BIGINT` | False | `None` |
+
+## `news_sources`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `source_id` | `TEXT` | False | `None` |
+| `provider_type` | `TEXT` | False | `None` |
+| `feed_url` | `TEXT` | False | `None` |
+| `source_domain` | `TEXT` | False | `None` |
+| `source_name` | `TEXT` | False | `None` |
+| `source_role` | `TEXT` | False | `'observed_source'::text` |
+| `trust_tier` | `TEXT` | False | `'standard'::text` |
+| `managed_by_config` | `BOOLEAN` | False | `true` |
+| `enabled` | `BOOLEAN` | False | `true` |
+| `refresh_interval_seconds` | `INTEGER` | False | `300` |
+| `etag` | `TEXT` | True | `None` |
+| `last_modified` | `TEXT` | True | `None` |
+| `last_fetch_at_ms` | `BIGINT` | True | `None` |
+| `last_success_at_ms` | `BIGINT` | True | `None` |
+| `next_fetch_after_ms` | `BIGINT` | False | `0` |
+| `consecutive_failures` | `INTEGER` | False | `0` |
+| `last_error` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `news_story_groups`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `story_id` | `TEXT` | False | `None` |
+| `policy_version` | `TEXT` | False | `None` |
+| `representative_title` | `TEXT` | False | `None` |
+| `canonical_url` | `TEXT` | True | `None` |
+| `first_seen_at_ms` | `BIGINT` | False | `None` |
+| `latest_seen_at_ms` | `BIGINT` | False | `None` |
+| `source_count` | `INTEGER` | False | `0` |
+| `item_count` | `INTEGER` | False | `0` |
+| `token_targets_json` | `JSONB` | False | `'[]'::jsonb` |
+| `status` | `TEXT` | False | `'active'::text` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `news_story_members`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `story_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `relation` | `TEXT` | False | `None` |
+| `match_reason` | `TEXT` | False | `None` |
+| `match_score` | `DOUBLE PRECISION` | False | `0` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
+## `news_token_mentions`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `mention_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `entity_id` | `TEXT` | True | `None` |
+| `observed_symbol` | `TEXT` | True | `None` |
+| `chain_id` | `TEXT` | True | `None` |
+| `address` | `TEXT` | True | `None` |
+| `resolution_status` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | True | `None` |
+| `target_id` | `TEXT` | True | `None` |
+| `display_symbol` | `TEXT` | True | `None` |
+| `display_name` | `TEXT` | True | `None` |
+| `reason_codes_json` | `JSONB` | False | `'[]'::jsonb` |
+| `candidate_targets_json` | `JSONB` | False | `'[]'::jsonb` |
+| `evidence_strength` | `TEXT` | False | `None` |
+| `confidence` | `DOUBLE PRECISION` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
 ## `notification_deliveries`
 
 | Column | Type | Nullable | Default |

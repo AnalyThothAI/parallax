@@ -32,6 +32,7 @@ def test_project_uses_domain_package_src_layout():
         "routes_events.py",
         "routes_news.py",
         "routes_notifications.py",
+        "routes_ops.py",
         "routes_pulse.py",
         "routes_radar.py",
         "routes_search.py",

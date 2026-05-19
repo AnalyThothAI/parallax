@@ -28,6 +28,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     TradePlaybook,
 )
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 from tests.unit.test_pulse_candidate_worker import (
@@ -213,6 +214,9 @@ class _EvidenceFirstClient:
     model = "fake-pulse"
     timeout_seconds = 1.0
     artifact_version_hash = "artifact:fake-evidence-first"
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(
         self,

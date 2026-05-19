@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import HandleSummaryTriggerConfig
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from tests.integration.test_enrichment_repository import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -54,7 +55,10 @@ class FakeClient:
             raw_response={"ok": True},
         )
 
-    async def enrich_event(self, *, event, entities, run_id, job):
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
+    async def enrich_event(self, *, event, entities, run_id, job, reservation=None):
         return self.result
 
 
@@ -62,6 +66,9 @@ class HangingClient:
     provider = "fake"
     model = "fake-model"
     timeout_seconds = 0.01
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(self, *, event, entities, run_id, job):
         return {
@@ -75,7 +82,7 @@ class HangingClient:
             "trace_metadata": {"event_id": event["event_id"], "run_id": run_id},
         }
 
-    async def enrich_event(self, *, event, entities, run_id, job):
+    async def enrich_event(self, *, event, entities, run_id, job, reservation=None):
         await asyncio.sleep(60)
 
 
