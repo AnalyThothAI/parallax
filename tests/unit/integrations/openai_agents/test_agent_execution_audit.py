@@ -225,3 +225,4 @@ def test_capacity_reservation_release_is_idempotent() -> None:
     asyncio.run(reservation.release())
 
     assert calls == ["released"]
+    assert reservation.acquired is False

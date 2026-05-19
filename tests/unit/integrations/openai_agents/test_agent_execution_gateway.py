@@ -164,7 +164,9 @@ def test_try_reserve_denies_when_lane_full_and_releases_idempotently() -> None:
         assert second.reason is AgentExecutionErrorClass.CAPACITY_DENIED
 
         await first.release()
+        assert first.acquired is False
         await first.release()
+        assert first.acquired is False
         third = gateway.try_reserve("test.lane")
         assert third.acquired is True
         await third.release()
@@ -229,6 +231,83 @@ def test_execute_rejects_invalid_reservation_before_provider_call() -> None:
                     reason=AgentExecutionErrorClass.CAPACITY_DENIED,
                 ),
             )
+
+        assert runner.calls == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_rejects_released_reservation_before_provider_call() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+        reservation = gateway.try_reserve("test.lane")
+        await reservation.release()
+
+        with pytest.raises(ValueError, match="active acquired reservation"):
+            await gateway.execute(_spec(), reservation=reservation)
+
+        assert runner.calls == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_rejects_manual_acquired_reservation_before_provider_call() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+
+        with pytest.raises(ValueError, match="not issued by this gateway"):
+            await gateway.execute(
+                _spec(),
+                reservation=AgentCapacityReservation(lane="test.lane", acquired=True),
+            )
+
+        assert runner.calls == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_rejects_other_gateway_reservation_before_provider_call() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+        other_gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=FakeRunner(),
+        )
+        reservation = other_gateway.try_reserve("test.lane")
+
+        try:
+            with pytest.raises(ValueError, match="not issued by this gateway"):
+                await gateway.execute(_spec(), reservation=reservation)
+        finally:
+            await reservation.release()
 
         assert runner.calls == 0
 

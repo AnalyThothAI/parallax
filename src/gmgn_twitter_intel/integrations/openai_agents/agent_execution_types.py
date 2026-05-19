@@ -184,12 +184,19 @@ class AgentCapacityReservation:
     acquired: bool
     reason: AgentExecutionErrorClass | None = None
     _release: ReleaseCallback | None = None
+    _owner_token: object | None = None
+
+    @property
+    def active(self) -> bool:
+        return self.acquired and self._release is not None
 
     async def release(self) -> None:
         if self._release is None:
+            self.acquired = False
             return
         release = self._release
         self._release = None
+        self.acquired = False
         result = release()
         if result is not None:
             await result

@@ -73,6 +73,7 @@ class AgentExecutionGateway:
         self._runner = runner or Runner
         self._safety_net = safety_net
         self._model_cache: dict[tuple[str, str, float], Any] = {}
+        self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
         self._global_limiter = AsyncLimiter(policy.global_rpm_limit, 60)
         self._lanes: dict[str, _LaneState] = {
@@ -148,7 +149,12 @@ class AgentExecutionGateway:
             lane_state.semaphore.release()
             self._global_semaphore.release()
 
-        return AgentCapacityReservation(lane=lane_key, acquired=True, _release=release)
+        return AgentCapacityReservation(
+            lane=lane_key,
+            acquired=True,
+            _release=release,
+            _owner_token=self._reservation_owner_token,
+        )
 
     async def execute(
         self,
@@ -408,8 +414,8 @@ class AgentExecutionGateway:
             error_message=str(message or "")[:1000],
         )
 
-    @staticmethod
     def _validate_external_reservation(
+        self,
         stage: AgentStageSpec,
         reservation: AgentCapacityReservation,
     ) -> None:
@@ -418,7 +424,11 @@ class AgentExecutionGateway:
                 f"reservation lane {reservation.lane!r} does not match stage lane {stage.lane!r}"
             )
         if not reservation.acquired:
-            raise ValueError("execute requires an acquired reservation")
+            raise ValueError("execute requires an active acquired reservation")
+        if reservation._owner_token is not self._reservation_owner_token:
+            raise ValueError("reservation was not issued by this gateway")
+        if not reservation.active:
+            raise ValueError("execute requires an active acquired reservation")
 
     def _model_for(self, model_name: str, *, timeout_s: float) -> Any:
         key = (str(model_name), self._base_url, float(timeout_s))
