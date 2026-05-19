@@ -32,11 +32,20 @@ class NarrativeReadModel:
             schema_version=NARRATIVE_SCHEMA_VERSION,
         )
         hydrated = dict(dossier)
-        hydrated["discussion_digest"] = digests.get(
-            (str(target.get("target_type")), str(target.get("target_id"))),
-            _missing_digest("digest_not_ready"),
+        hydrated["discussion_digest"] = _public_digest(
+            digests.get(
+                (str(target.get("target_type")), str(target.get("target_id"))),
+                _missing_digest("digest_not_ready"),
+            )
         )
-        hydrated.setdefault("narrative_clusters", hydrated["discussion_digest"].get("dominant_narratives_json", []))
+        hydrated.setdefault("narrative_clusters", hydrated["discussion_digest"].get("dominant_narratives", []))
+        if isinstance(hydrated.get("posts"), dict):
+            hydrated["posts"] = self.hydrate_target_posts(
+                hydrated["posts"],
+                window=window,
+                scope=scope,
+                now_ms=now_ms,
+            )
         return hydrated
 
     def hydrate_target_posts(
@@ -65,7 +74,9 @@ class NarrativeReadModel:
         target_id = str(row.get("target_id") or row.get("id") or "")
         return {
             **row,
-            "discussion_digest": digests.get((target_type, target_id), _missing_digest("digest_not_ready")),
+            "discussion_digest": _public_digest(
+                digests.get((target_type, target_id), _missing_digest("digest_not_ready"))
+            ),
             "pulse_overlay": row.get("pulse_overlay") or {"status": "absent"},
         }
 
@@ -88,10 +99,131 @@ def _normalize_scope(scope: str) -> str:
 def _missing_digest(reason: str) -> dict[str, Any]:
     return {
         "status": "pending",
-        "data_gaps": [{"reason": reason}],
+        "data_gaps_json": [{"reason": reason}],
         "semantic_coverage": 0,
-        "evidence_refs": [],
+        "evidence_refs_json": [],
     }
+
+
+def _public_digest(digest: dict[str, Any]) -> dict[str, Any]:
+    row = dict(digest)
+    narratives = _list(row.get("dominant_narratives_json"))
+    dominant = _dict(narratives[0]) if narratives else {}
+    bull = _dict(row.get("bull_view_json"))
+    bear = _dict(row.get("bear_view_json"))
+    propagation = _dict(row.get("propagation_read_json"))
+    data_gaps = [_public_gap(gap) for gap in _list(row.get("data_gaps_json"))]
+    semantic_coverage = _float(row.get("semantic_coverage"))
+    return {
+        **row,
+        "dominant_narratives": narratives,
+        "dominant_narrative": _dominant_narrative(row, dominant),
+        "coverage": {
+            "semantic_coverage": semantic_coverage,
+            "source_mentions": _int(row.get("source_event_count")),
+            "labeled_mentions": _int(row.get("labeled_event_count")),
+            "independent_authors": _int(row.get("independent_author_count")),
+        },
+        "stance_mix": _dict(row.get("stance_mix_json")),
+        "attention_valence_mix": _dict(row.get("attention_valence_mix_json")),
+        "propagation": _propagation(propagation),
+        "bull_bear": {
+            "stance": _bull_bear_stance(row.get("status"), semantic_coverage),
+            "bull": _argument(bull),
+            "bear": _argument(bear),
+        },
+        "timeline_pills": _timeline_pills(narratives),
+        "data_gaps": data_gaps,
+        "evidence_refs": _list(row.get("evidence_refs_json")),
+    }
+
+
+def _dominant_narrative(row: dict[str, Any], dominant: dict[str, Any]) -> dict[str, Any] | None:
+    title = dominant.get("label_zh") or dominant.get("title") or row.get("headline_zh") or dominant.get("cluster_key")
+    summary = dominant.get("summary_zh") or row.get("headline_zh")
+    if not title and not summary:
+        return None
+    return {
+        "title": title or "narrative",
+        "summary_zh": summary or "",
+        "propagation_state": dominant.get("propagation_state") or dominant.get("cluster_key"),
+        "trade_stance": _top_key(_dict(dominant.get("stance_mix"))),
+        "attention_valence": _top_key(_dict(dominant.get("attention_valence_mix"))),
+        "evidence_refs": _list(dominant.get("evidence_refs")),
+    }
+
+
+def _argument(value: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "summary_zh": value.get("summary_zh") or "",
+        "strength": value.get("strength") or "unknown",
+        "evidence_refs": _list(value.get("evidence_refs")),
+    }
+
+
+def _propagation(value: dict[str, Any]) -> dict[str, Any] | None:
+    if not value:
+        return None
+    return {
+        "state": value.get("state") or value.get("phase") or value.get("primary_channel") or "unknown",
+        "summary_zh": value.get("summary_zh") or value.get("summary") or "",
+        "evidence_refs": _list(value.get("evidence_refs")),
+    }
+
+
+def _public_gap(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    reason = value.get("reason") or value.get("message") or value.get("concrete_reason")
+    if not reason:
+        reason = value.get("gap_type") or value.get("code")
+    return {**value, "reason": reason} if reason else value
+
+
+def _timeline_pills(narratives: list[Any]) -> list[dict[str, Any]]:
+    pills = []
+    for narrative in narratives[:3]:
+        item = _dict(narrative)
+        label = item.get("label_zh") or item.get("cluster_key")
+        if label:
+            pills.append({"label": label, "tone": "info", "evidence_refs": _list(item.get("evidence_refs"))})
+    return pills
+
+
+def _bull_bear_stance(status: Any, semantic_coverage: float) -> str:
+    if status == "ready" and semantic_coverage >= 0.35:
+        return "research"
+    if status == "insufficient":
+        return "unknown"
+    return "watch"
+
+
+def _top_key(values: dict[str, Any]) -> str | None:
+    if not values:
+        return None
+    return max(values.items(), key=lambda item: float(item[1] or 0))[0]
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _missing_semantic() -> dict[str, Any]:

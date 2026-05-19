@@ -7,6 +7,7 @@ import {
 } from "@lib/format";
 import type { NarrativeStatus, TokenDiscussionDigest, TokenFlowItem } from "@lib/types";
 
+import { narrativeGapLabel } from "./narrativeDataGaps";
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
 import { tokenImageUrl } from "./tokenImageUrl";
 
@@ -188,7 +189,7 @@ function compactWhyNowDetail(item: TokenFlowItem): string {
   if (!digest) {
     return "discussion digest missing";
   }
-  const gap = digest.data_gaps.find(Boolean);
+  const gap = narrativeGapLabel(digest.data_gaps.find(Boolean));
   if (digest.status !== "ready") {
     return gap ?? narrativeStatusTitle(digest.status);
   }

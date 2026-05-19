@@ -455,7 +455,15 @@ export type TokenDiscussionDigest = {
     first_seen_ms?: number | null;
     evidence_refs?: EvidenceRef[];
   }>;
-  data_gaps: string[];
+  data_gaps: Array<
+    | string
+    | {
+        code?: string | null;
+        message?: string | null;
+        reason?: string | null;
+        [key: string]: unknown;
+      }
+  >;
   evidence_refs?: EvidenceRef[];
 };
 
@@ -703,6 +711,8 @@ export type AssetFlowRow = {
   source_event_ids?: string[];
   market: MarketContext;
   radar?: TokenRadarRowMeta;
+  discussion_digest?: TokenDiscussionDigest | null;
+  pulse_overlay?: PulseOverlay | null;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;

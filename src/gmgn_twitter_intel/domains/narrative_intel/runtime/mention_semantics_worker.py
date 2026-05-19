@@ -127,7 +127,15 @@ class MentionSemanticsWorker(WorkerBase):
         self.service.validate_batch_result(rows, result)
         finished_at_ms = _now_ms()
         labels = [label.model_dump(mode="json") for label in result.labels]
-        failures = list(result.failures)
+        labeled_keys = {
+            (str(label.get("event_id")), str(label.get("target_type")), str(label.get("target_id"))) for label in labels
+        }
+        failures = self.service.normalize_failures(
+            rows,
+            list(result.failures),
+            labeled_keys=labeled_keys,
+            default_next_retry_at_ms=finished_at_ms + 60_000,
+        )
         audit = dict(result.agent_run_audit or {})
         run_payload = {
             "run_id": run_id,

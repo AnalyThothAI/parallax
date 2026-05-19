@@ -136,6 +136,37 @@ describe("token radar factor snapshot mapper", () => {
     expect((item as { profile?: unknown }).profile).toEqual(profile);
   });
 
+  it("preserves hydrated narrative and pulse overlays from asset flow rows", () => {
+    const row = productionFactorSnapshotRow();
+    row.discussion_digest = {
+      status: "ready",
+      dominant_narrative: {
+        title: "privacy rotation",
+        summary_zh: "隐私币重新获得注意力",
+        evidence_refs: [],
+      },
+      stance_mix: { bullish: 0.7, bearish: 0.1, neutral: 0.2 },
+      coverage: {
+        semantic_coverage: 0.8,
+        source_mentions: 5,
+        labeled_mentions: 4,
+        independent_authors: 3,
+      },
+      data_gaps: [],
+      evidence_refs: [],
+    };
+    row.pulse_overlay = {
+      status: "ready",
+      pulse_status: "trade_candidate",
+      verdict: "agent confirms",
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.discussion_digest).toEqual(row.discussion_digest);
+    expect(item.pulse_overlay).toEqual(row.pulse_overlay);
+  });
+
   it("preserves radar row metadata for ranking and listed-at UI", () => {
     const row = productionChainAssetRow() as AssetFlowRow & {
       radar: NonNullable<TokenFlowItem["radar"]>;

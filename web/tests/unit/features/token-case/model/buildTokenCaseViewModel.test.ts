@@ -51,6 +51,25 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.bullBear.stance).toBe("watch");
   });
 
+  it("normalizes structured digest data gaps for the details rail", () => {
+    const dossier = tokenCaseFixture();
+
+    const vm = buildTokenCaseViewModel({
+      dossier: {
+        ...dossier,
+        discussion_digest: {
+          ...dossier.discussion_digest,
+          status: "pending",
+          data_gaps: [{ reason: "digest_not_ready" }],
+        },
+      },
+      route: { window: "1h", scope: "all", postSort: "recent" },
+      posts: dossier.posts,
+    });
+
+    expect(vm.dataGaps).toEqual(["digest not ready"]);
+  });
+
   it("surfaces event-level token prices in timeline pills", () => {
     const dossier = tokenCaseFixture();
     const firstPost = dossier.posts.items[0];

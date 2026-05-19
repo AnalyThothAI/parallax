@@ -53,6 +53,19 @@ describe("buildSearchCaseView", () => {
     expect(view.narrative.value).toBe("Topic agent memo");
   });
 
+  it("normalizes structured token digest data gaps", () => {
+    const data = searchInspectFixture();
+    data.token_result!.discussion_digest = {
+      status: "pending",
+      data_gaps: [{ reason: "digest_not_ready" }],
+    };
+
+    const view = buildSearchCaseView(data);
+
+    expect(view.narrative.value).toBe("Narrative pending");
+    expect(view.narrative.detail).toBe("digest not ready");
+  });
+
   it("reads token market facts from market_live instead of market candle metadata", () => {
     const data = searchInspectFixture();
     data.token_result!.market_live = {

@@ -54,3 +54,85 @@ class MentionSemanticsService:
         if unknown:
             raise ValueError(f"provider returned labels for unknown mentions: {', '.join(sorted(unknown))}")
         return result
+
+    def normalize_failures(
+        self,
+        rows: list[dict[str, Any]],
+        failures: list[dict[str, Any]],
+        *,
+        labeled_keys: set[tuple[str, str, str]],
+        default_next_retry_at_ms: int,
+    ) -> list[dict[str, Any]]:
+        row_by_key = {
+            (str(row.get("event_id")), str(row.get("target_type")), str(row.get("target_id"))): row for row in rows
+        }
+        rows_by_event: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            event_id = str(row.get("event_id") or "")
+            if not event_id:
+                continue
+            rows_by_event.setdefault(event_id, []).append(row)
+
+        normalized: list[dict[str, Any]] = []
+        global_errors: list[str] = []
+        seen: set[tuple[str, str, str]] = set()
+        for failure in failures:
+            failure_rows = self._failure_rows(failure, row_by_key, rows_by_event)
+            if failure_rows is None:
+                global_errors.append(str(failure.get("error") or "provider_failure"))
+                continue
+            for row in failure_rows:
+                key = (str(row.get("event_id")), str(row.get("target_type")), str(row.get("target_id")))
+                if key in labeled_keys or key in seen:
+                    continue
+                seen.add(key)
+                normalized.append(_failure_for_row(row, failure, default_next_retry_at_ms=default_next_retry_at_ms))
+
+        if global_errors:
+            error = "; ".join(sorted(set(global_errors)))
+            for key, row in row_by_key.items():
+                if key in labeled_keys or key in seen:
+                    continue
+                seen.add(key)
+                normalized.append(
+                    _failure_for_row(
+                        row,
+                        {"error": error, "next_retry_at_ms": default_next_retry_at_ms},
+                        default_next_retry_at_ms=default_next_retry_at_ms,
+                    )
+                )
+        return normalized
+
+    def _failure_rows(
+        self,
+        failure: dict[str, Any],
+        row_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        rows_by_event: dict[str, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]] | None:
+        event_id = str(failure.get("event_id") or "")
+        target_type = str(failure.get("target_type") or "")
+        target_id = str(failure.get("target_id") or "")
+        if event_id and target_type and target_id:
+            row = row_by_key.get((event_id, target_type, target_id))
+            return [row] if row else []
+        if event_id:
+            return list(rows_by_event.get(event_id, []))
+        if target_type or target_id:
+            return []
+        return None
+
+
+def _failure_for_row(
+    row: dict[str, Any],
+    failure: dict[str, Any],
+    *,
+    default_next_retry_at_ms: int,
+) -> dict[str, Any]:
+    return {
+        **failure,
+        "event_id": str(row.get("event_id") or ""),
+        "target_type": str(row.get("target_type") or ""),
+        "target_id": str(row.get("target_id") or ""),
+        "error": str(failure.get("error") or "provider_failure"),
+        "next_retry_at_ms": int(failure.get("next_retry_at_ms") or default_next_retry_at_ms),
+    }

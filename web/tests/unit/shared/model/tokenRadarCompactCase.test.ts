@@ -30,6 +30,19 @@ describe("buildTokenRadarCompactCase", () => {
     expect(view.narrative.detail).not.toContain("关注源");
     expect(view.narrative.detail).not.toContain("催化");
   });
+
+  it("renders structured data gaps without crashing JSX", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      discussion_digest: {
+        status: "pending",
+        data_gaps: [{ reason: "digest_not_ready" }],
+      },
+    });
+
+    expect(view.narrative.value).toBe("叙事读取中");
+    expect(view.narrative.detail).toBe("digest not ready");
+  });
 });
 
 function tokenFlowFixture(): TokenFlowItem {

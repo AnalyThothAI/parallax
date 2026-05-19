@@ -1348,6 +1348,8 @@ def test_api_token_case_returns_dossier_for_resolved_asset(tmp_path):
     assert body["data"]["discussion_digest"]["status"] in {"pending", "semantic_unavailable"}
     assert body["data"]["discussion_digest"]["data_gaps"]
     assert body["data"]["posts"]["items"][0]["post_quality"]["contributions"]
+    assert body["data"]["posts"]["items"][0]["semantic"]["status"] == "pending"
+    assert body["data"]["posts"]["items"][0]["semantic"]["data_gaps"]
 
 
 def test_api_token_case_returns_404_when_target_not_found(tmp_path):

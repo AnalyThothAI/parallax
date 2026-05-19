@@ -47,7 +47,9 @@ describe("TokenRadarTable rows", () => {
     expect(within(row).getByText("eth · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
     expect(within(row).getByText("关注源 0 · 较前窗 +1")).toBeInTheDocument();
-    expect(within(row).getByText("种子中 · 1 条有效讨论")).toBeInTheDocument();
+    expect(within(row).getByText("叙事不可用")).toBeInTheDocument();
+    expect(within(row).getByText("discussion digest missing")).toBeInTheDocument();
+    expect(within(row).queryByText("种子中 · 1 条有效讨论")).not.toBeInTheDocument();
     expect(within(row).queryByText("profile")).not.toBeInTheDocument();
     expect(within(row).queryByText("links")).not.toBeInTheDocument();
     expect(within(row).queryByText("unverified")).not.toBeInTheDocument();
@@ -69,6 +71,35 @@ describe("TokenRadarTable rows", () => {
     expect(market).not.toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("$0.104");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("renders hydrated narrative digest in the why-now cell", () => {
+    renderTokenRadarTable([
+      {
+        ...mixedFreshnessToken(),
+        discussion_digest: {
+          status: "ready",
+          dominant_narrative: {
+            title: "隐私轮动",
+            summary_zh: "资金转向隐私叙事",
+            evidence_refs: [],
+          },
+          stance_mix: { bullish: 0.7 },
+          coverage: {
+            semantic_coverage: 0.75,
+            source_mentions: 4,
+            labeled_mentions: 3,
+            independent_authors: 2,
+          },
+          data_gaps: [],
+          evidence_refs: [],
+        },
+      },
+    ]);
+
+    const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
+    expect(within(row).getByText("隐私轮动 · bullish 70%")).toBeInTheDocument();
+    expect(within(row).getByText("资金转向隐私叙事 · coverage 75%")).toBeInTheDocument();
   });
 
   it("renders empty state when not loading and no items, instead of a skeleton", () => {

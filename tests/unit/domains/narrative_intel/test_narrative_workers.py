@@ -113,6 +113,78 @@ def test_mention_semantics_worker_records_provider_failure_without_poisoning_wor
     asyncio.run(scenario())
 
 
+def test_mention_semantics_worker_normalizes_provider_failure_keys():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=PartialFailureNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.processed == 0
+        assert result.failed == 1
+        assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
+        assert repo.completed_batches[0]["failures"][0]["target_type"] == "chain_token"
+        assert repo.completed_batches[0]["failures"][0]["target_id"] == "solana:So111"
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_worker_scopes_event_only_failures_to_matching_rows():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            due_mentions=[
+                {
+                    "semantic_id": "semantic-1",
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "SOL breakout",
+                    "text_fingerprint": "fp-1",
+                },
+                {
+                    "semantic_id": "semantic-2",
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Bonk",
+                    "text_clean": "SOL and BONK rotate together",
+                    "text_fingerprint": "fp-2",
+                },
+                {
+                    "semantic_id": "semantic-3",
+                    "event_id": "event-2",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Wif",
+                    "text_clean": "WIF separate setup",
+                    "text_fingerprint": "fp-3",
+                },
+            ]
+        )
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=PartialFailureNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        target_ids = {failure["target_id"] for failure in repo.completed_batches[0]["failures"]}
+        assert result.processed == 0
+        assert result.failed == 2
+        assert target_ids == {"solana:So111", "solana:Bonk"}
+
+    asyncio.run(scenario())
+
+
 def test_token_discussion_digest_worker_records_provider_failure_without_poisoning_worker_loop():
     async def scenario():
         repo = FakeDigestRepository()
@@ -343,6 +415,29 @@ class FailingNarrativeProvider:
 
     async def summarize_discussion(self, *, run_id, request):
         raise TimeoutError("provider timed out")
+
+    async def aclose(self):  # pragma: no cover - runtime-owned provider
+        return None
+
+
+class PartialFailureNarrativeProvider:
+    provider = "test-provider"
+    model = "gpt-test"
+    artifact_version_hash = "artifact-test"
+
+    async def label_mentions(self, *, run_id, request):
+        return MentionSemanticsBatchResult(
+            run_id=run_id,
+            schema_version=request.schema_version,
+            prompt_version=request.prompt_version,
+            labels=[],
+            failures=[{"event_id": "event-1", "error": "semantic_unavailable"}],
+            raw_response={"ok": False},
+            agent_run_audit={"usage": {"input_tokens": 1}},
+        )
+
+    async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+        raise NotImplementedError
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None

@@ -8,6 +8,7 @@ import type {
   TokenMentionSemantic,
   TokenPostItem,
 } from "@lib/types";
+import { narrativeGapLabels } from "@shared/model/narrativeDataGaps";
 import type {
   TokenCaseMarketView,
   TokenCasePostEvent,
@@ -57,7 +58,7 @@ export function buildTokenCaseViewModel({
   const visibleTimelineItems =
     route.postSort === "watched" ? timelineItems.filter((item) => item.isWatched) : timelineItems;
   const digest = dossier.discussion_digest;
-  const dataGaps = digest.data_gaps.filter(Boolean);
+  const dataGaps = narrativeGapLabels(digest.data_gaps);
   const propagationState = digestPropagationState(digest) ?? dossier.timeline.summary.phase;
 
   return {

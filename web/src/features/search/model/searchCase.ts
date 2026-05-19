@@ -6,6 +6,7 @@ import {
   shortAddress,
 } from "@lib/format";
 import type { SearchInspectData, SearchTargetCandidate, SearchTokenResult } from "@lib/types";
+import { narrativeGapLabel } from "@shared/model/narrativeDataGaps";
 import type {
   ObsidianSource,
   ObsidianStringField,
@@ -197,7 +198,7 @@ function tokenDigestNarrative(result: SearchTokenResult): SearchCaseFact {
       ? `${Math.round(coverage * 100)}% semantic coverage`
       : digest.status.replaceAll("_", " ");
   return {
-    detail: cleanText(dominant?.summary_zh) ?? digest.data_gaps[0] ?? coverageDetail,
+    detail: cleanText(dominant?.summary_zh) ?? narrativeGapLabel(digest.data_gaps[0]) ?? coverageDetail,
     label: "Narrative",
     source: "social",
     tone: digest.status === "ready" ? "health" : "info",
