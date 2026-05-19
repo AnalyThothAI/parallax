@@ -129,7 +129,6 @@ export function CockpitTopbar({
         onClick={() => navigate(opsPath())}
       >
         <ServerCog aria-hidden />
-        <span>Ops</span>
       </button>
 
       <NotificationBell

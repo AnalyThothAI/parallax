@@ -23,7 +23,8 @@ describe("CockpitSideRail", () => {
 
     expect(screen.getByRole("button", { name: /Radar/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Stocks/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ops/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /News/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ops/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Watchlist/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Signal Pulse/ })).not.toBeInTheDocument();
     expect(screen.getByLabelText("watchlist handles")).toBeInTheDocument();

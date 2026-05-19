@@ -912,7 +912,7 @@
   display: grid;
   grid-template-columns:
     var(--cockpit-rail-width) minmax(360px, 1fr) clamp(172px, 15vw, 240px)
-    68px 32px 32px;
+    32px 32px 32px;
   gap: 10px;
   align-items: center;
   min-height: var(--cockpit-topbar-height);
@@ -1009,9 +1009,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
   min-width: 0;
-  width: 68px;
+  width: 32px;
   height: 32px;
   border: 1px solid var(--info-line);
   border-radius: 6px;
@@ -1020,7 +1019,6 @@
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 800;
-  text-transform: uppercase;
 }
 
 .topbar-ops-button svg {
@@ -1204,7 +1202,7 @@
   }
 
   .topbar {
-    grid-template-columns: minmax(0, 1fr) clamp(150px, 24vw, 210px) 42px 32px 32px;
+    grid-template-columns: minmax(0, 1fr) clamp(150px, 24vw, 210px) 32px 32px 32px;
     padding: 0 8px;
   }
 
@@ -1224,11 +1222,7 @@
 
   .topbar-ops-button {
     grid-column: 3;
-    width: 42px;
-  }
-
-  .topbar-ops-button span {
-    display: none;
+    width: 32px;
   }
 
   .topbar > .notification-bell {
@@ -1274,11 +1268,7 @@
     grid-column: 1;
     grid-row: 3;
     justify-self: start;
-    width: 68px;
-  }
-
-  .topbar-ops-button span {
-    display: inline;
+    width: 32px;
   }
 
   .topbar > .notification-bell {
