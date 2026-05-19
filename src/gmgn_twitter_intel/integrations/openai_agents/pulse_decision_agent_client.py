@@ -1,24 +1,19 @@
 from __future__ import annotations
 
-import inspect
 import json
-import time
 from dataclasses import dataclass
-from types import GetSetDescriptorType, MemberDescriptorType
-from typing import Any, cast
+from typing import Any
 
-from agents import (
-    Agent,
-    RunConfig,
-    Runner,
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
+    PULSE_DECISION_PROMPT_VERSION,
+    PULSE_DECISION_SCHEMA_VERSION,
 )
-from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
     DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
     EvidenceDebateMemo,
     PulseAgentRuntimeContract,
     PulseDecisionRuntime,
+    PulseDecisionStageSpec,
     PulseEvidencePacket,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
@@ -32,17 +27,17 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageStatus,
     TradePlaybook,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
-)
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
-    InstructorSafetyNet,
-    SafetyNetExhausted,
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentExecutionError,
+    AgentExecutionErrorClass,
+    AgentExecutionRequestAudit,
+    AgentExecutionResultAudit,
+    AgentStageSpec,
 )
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionDesk"
+_DEFAULT_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -53,52 +48,36 @@ class PulseDecisionAgentResult:
 
 
 class OpenAIAgentsPulseDecisionClient:
-    """Packet-only EvidenceDebate → DecisionMaker pulse decision client.
-
-    Critical evidence acquisition is owned by the worker before this client is
-    called. Both LLM stages receive the sealed evidence packet, the gate result,
-    and the packet's allowed citation refs; neither stage registers tools.
-    """
+    """Packet-only EvidenceDebate -> DecisionMaker pulse decision client."""
 
     provider = "openai"
 
     def __init__(
         self,
         *,
-        api_key: str,
         model: str,
-        llm_gateway: Any,
+        agent_gateway: Any,
         decision_runtime: PulseDecisionRuntime,
-        base_url: str = "https://api.openai.com/v1",
-        timeout_seconds: float = 20.0,
-        runner: Any | None = None,
-        safety_net: InstructorSafetyNet | None = None,
-        trace_enabled: bool = True,
-        trace_include_sensitive_data: bool = False,
         workflow_name: str = WORKFLOW_NAME,
         decision_maker_max_turns: int = 3,
         evidence_debate_max_turns: int = 3,
     ) -> None:
-        self.api_key = api_key
         self.model = str(model or "").strip()
         if not self.model:
             raise ValueError("llm.pulse_agent_model or llm.model is required")
-        if llm_gateway is None:
-            raise ValueError("llm_gateway is required")
+        if agent_gateway is None:
+            raise ValueError("agent_gateway is required")
         if decision_runtime is None:
             raise ValueError("decision_runtime is required")
-        self._llm_gateway = llm_gateway
+        self._agent_gateway = agent_gateway
         self._decision_runtime = decision_runtime
-        self.base_url = _api_base(base_url)
-        self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        self.trace_enabled = bool(trace_enabled and getattr(self._llm_gateway, "trace_export_enabled", False))
-        self.trace_include_sensitive_data = bool(trace_include_sensitive_data)
-        self._runner = runner or Runner
-        self._safety_net = safety_net
-        self._model = None if runner is not None else self._build_model()
         self._decision_maker_max_turns = max(1, int(decision_maker_max_turns))
         self._evidence_debate_max_turns = max(1, int(evidence_debate_max_turns))
+
+    @property
+    def timeout_seconds(self) -> float:
+        return _DEFAULT_TIMEOUT_SECONDS
 
     @property
     def artifact_version_hash(self) -> str:
@@ -116,7 +95,7 @@ class OpenAIAgentsPulseDecisionClient:
                 "evidence_debate": (),
                 "decision_maker": (),
             },
-            safety_net_enabled=self._safety_net is not None,
+            safety_net_enabled=True,
             evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
         )
 
@@ -153,17 +132,13 @@ class OpenAIAgentsPulseDecisionClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
     ) -> PulseDecisionAgentResult:
-        audit = self._decision_runtime.request_audit(
+        audit = self.request_audit(
             context=context,
             run_id=run_id,
             job=job,
             route=route,
             completeness=completeness,
             runtime_manifest=runtime_manifest,
-            model=self.model,
-            artifact_version_hash=self.artifact_version_hash,
-            workflow_name=self.workflow_name,
-            agent_name=AGENT_NAME,
         )
         evidence_packet = _evidence_packet_from_context(context)
         evidence_gate = completeness
@@ -184,11 +159,7 @@ class OpenAIAgentsPulseDecisionClient:
                     evidence_packet=evidence_packet,
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
-                return PulseDecisionAgentResult(
-                    final_decision=final,
-                    run_audit=audit,
-                    stage_audits=tuple(stage_audits),
-                )
+                return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
             raise PulseStageFailure(
                 f"evidence_debate stage {debate_step.status}: {debate_step.error}",
                 audits=tuple(stage_audits),
@@ -205,11 +176,7 @@ class OpenAIAgentsPulseDecisionClient:
             stage_audits[-1] = failed_step
             final = _invalid_ref_abstain_decision(route=route, reason=str(exc), evidence_packet=evidence_packet)
             audit = self._decision_runtime.with_output_hash(audit, final=final)
-            return PulseDecisionAgentResult(
-                final_decision=final,
-                run_audit=audit,
-                stage_audits=tuple(stage_audits),
-            )
+            return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
 
         decision_step = await self._run_decision_maker(
             route=route,
@@ -228,11 +195,7 @@ class OpenAIAgentsPulseDecisionClient:
                     evidence_packet=evidence_packet,
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
-                return PulseDecisionAgentResult(
-                    final_decision=final,
-                    run_audit=audit,
-                    stage_audits=tuple(stage_audits),
-                )
+                return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
             raise PulseStageFailure(
                 f"decision_maker stage {decision_step.status}: {decision_step.error}",
                 audits=tuple(stage_audits),
@@ -249,16 +212,11 @@ class OpenAIAgentsPulseDecisionClient:
             stage_audits[-1] = failed_step
             final = _invalid_ref_abstain_decision(route=route, reason=str(exc), evidence_packet=evidence_packet)
 
-        # Evidence URL enrichment (best-effort JOIN against events).
         final = self._decision_runtime.enrich_evidence_urls(final)
 
         PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
         audit = self._decision_runtime.with_output_hash(audit, final=final)
-        return PulseDecisionAgentResult(
-            final_decision=final,
-            run_audit=audit,
-            stage_audits=tuple(stage_audits),
-        )
+        return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
 
     async def _run_evidence_debate(
         self,
@@ -274,23 +232,13 @@ class OpenAIAgentsPulseDecisionClient:
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
         )
-        agent = Agent[Any](
-            name=f"PulseEvidenceDebate{_route_label(route)}",
-            instructions=spec.prompt_text,
-            output_type=StrictJsonOutputSchema(EvidenceDebateMemo),
-            tools=[],
-            model=self._model,
-            model_settings=default_agent_model_settings(),
-        )
         return await self._run_stage(
-            stage="evidence_debate",
+            spec=spec,
             route=route,
-            agent=agent,
             output_type=EvidenceDebateMemo,
-            input_payload=spec.input_payload,
-            prompt=spec.prompt_text,
-            audit=audit,
             max_turns=self._evidence_debate_max_turns,
+            run_id=run_id,
+            audit=audit,
         )
 
     async def _run_decision_maker(
@@ -310,188 +258,199 @@ class OpenAIAgentsPulseDecisionClient:
             debate_memo=debate_memo,
             recommendation_constraints=_recommendation_constraints(route=route, completeness=evidence_gate),
         )
-        agent = Agent[Any](
-            name=f"PulseDecisionMaker{_route_label(route)}",
-            instructions=spec.prompt_text,
-            output_type=StrictJsonOutputSchema(FinalDecision),
-            tools=[],
-            model=self._model,
-            model_settings=default_agent_model_settings(),
-        )
         return await self._run_stage(
-            stage="decision_maker",
+            spec=spec,
             route=route,
-            agent=agent,
             output_type=FinalDecision,
-            input_payload=spec.input_payload,
-            prompt=spec.prompt_text,
-            audit=audit,
             max_turns=self._decision_maker_max_turns,
+            run_id=run_id,
+            audit=audit,
         )
 
     async def _run_stage(
         self,
         *,
-        stage: str,
+        spec: PulseDecisionStageSpec,
         route: DecisionRoute,
-        agent: Agent[Any],
         output_type: type[Any],
-        input_payload: dict[str, Any],
-        prompt: str,
-        audit: dict[str, Any],
         max_turns: int,
+        run_id: str,
+        audit: dict[str, Any],
     ) -> StageRunAudit:
-        stage_input = json.dumps(input_payload, ensure_ascii=False, sort_keys=True)
-        base_trace_metadata = {**audit["trace_metadata"], "stage": stage, "route": route}
-        run_config = RunConfig(
-            workflow_name=self.workflow_name,
-            trace_id=audit["sdk_trace_id"],
-            group_id=_group_id(input_payload.get("evidence_packet")),
-            trace_include_sensitive_data=self.trace_include_sensitive_data,
-            tracing_disabled=not self.trace_enabled,
-            trace_metadata=base_trace_metadata,
+        stage_spec = self._agent_stage_spec(
+            spec=spec,
+            route=route,
+            output_type=output_type,
+            max_turns=max_turns,
+            run_id=run_id,
+            audit=audit,
         )
-        started = int(time.time() * 1000)
         raw_output: Any = None
-        result_obj: Any = None
-        audit_extra: dict[str, Any] = {
-            "safety_net_used": False,
-            "safety_net_retries": 0,
-            "parse_mode": "strict",
-            "usage": {},
-        }
+        execution_audit: AgentExecutionResultAudit | None = None
         try:
-            if self._safety_net is not None:
-                final_output, audit_extra, result_obj = await self._llm_gateway.run_with_limits(
-                    "pulse_candidate",
-                    stage,
-                    self.timeout_seconds,
-                    lambda: self._safety_net.run_with_safety_net(
-                        agent=agent,
-                        input_payload=stage_input,
-                        run_config=run_config,
-                        pydantic_output_type=output_type,
-                        context=None,
-                        max_turns=max_turns,
-                        return_result=True,
-                    ),
-                )
-                raw_output = final_output
-            else:
-                result_obj = await self._llm_gateway.run_with_limits(
-                    "pulse_candidate",
-                    stage,
-                    self.timeout_seconds,
-                    lambda: self._runner.run(
-                        agent,
-                        stage_input,
-                        max_turns=max_turns,
-                        run_config=run_config,
-                        context=None,
-                    ),
-                )
-                raw_output = getattr(result_obj, "final_output", None)
-                audit_extra = {**audit_extra, "usage": _extract_usage(result_obj)}
+            execution = await self._agent_gateway.execute(stage_spec)
+            execution_audit = execution.audit
+            raw_output = execution.final_output
             normalization_input = (
                 raw_output.model_dump(mode="json") if isinstance(raw_output, output_type) else raw_output
             )
             normalized = normalize_pulse_stage_output(
                 output_type=output_type,
                 raw_output=normalization_input,
-                evidence_packet=input_payload.get("evidence_packet"),
+                evidence_packet=spec.input_payload.get("evidence_packet"),
             )
-            audit_extra = {**audit_extra, **normalized.trace_metadata}
             output = output_type.model_validate(normalized.payload)
-        except SafetyNetExhausted as exhausted:
-            finished = int(time.time() * 1000)
-            audit_extra = exhausted.audit_extra
-            trace_metadata_failed = {
-                **base_trace_metadata,
-                **audit_extra,
-            }
-            return _stage_audit(
-                stage=stage,
+            return _stage_audit_from_execution(
+                stage_spec=stage_spec,
                 route=route,
-                attempt_index=0,
-                input_json=dict(input_payload),
-                prompt_text=prompt,
-                response_json=None,
-                trace_metadata_json=trace_metadata_failed,
-                usage_json=audit_extra.get("usage") or {},
-                latency_ms=max(0, finished - started),
-                started_at_ms=started,
-                finished_at_ms=finished,
-                status="failed",
-                error=f"{type(exhausted.original).__name__}: {exhausted.original}"[:1000],
-                safety_net_used=True,
-                safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
-                parse_mode=str(audit_extra.get("parse_mode") or "instructor_failed"),
+                prompt=spec.prompt_text,
+                response_json=output.model_dump(mode="json"),
+                execution_audit=execution.audit,
+                status="ok",
+                error=None,
+                trace_extra=normalized.trace_metadata,
+            )
+        except AgentExecutionError as exc:
+            return _stage_audit_from_execution_error(
+                stage_spec=stage_spec,
+                route=route,
+                prompt=spec.prompt_text,
+                exc=exc,
             )
         except Exception as exc:
-            finished = int(time.time() * 1000)
-            status: StageStatus = "timeout" if isinstance(exc, TimeoutError) else "failed"
-            trace_metadata_failed = {
-                **base_trace_metadata,
-                **audit_extra,
-            }
-            return _stage_audit(
-                stage=stage,
+            return _stage_audit_from_execution(
+                stage_spec=stage_spec,
                 route=route,
-                attempt_index=0,
-                input_json=dict(input_payload),
-                prompt_text=prompt,
+                prompt=spec.prompt_text,
                 response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
-                trace_metadata_json=trace_metadata_failed,
-                usage_json=audit_extra.get("usage") or {},
-                latency_ms=max(0, finished - started),
-                started_at_ms=started,
-                finished_at_ms=finished,
-                status=status,
+                execution_audit=execution_audit,
+                status="failed",
                 error=f"{type(exc).__name__}: {exc}"[:1000],
-                safety_net_used=bool(audit_extra.get("safety_net_used")),
-                safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
-                parse_mode=str(audit_extra.get("parse_mode") or "strict"),
+                trace_extra={},
             )
-        finished = int(time.time() * 1000)
-        trace_metadata_ok = {
-            **base_trace_metadata,
-            **audit_extra,
-        }
-        return _stage_audit(
-            stage=stage,
-            route=route,
-            attempt_index=0,
-            input_json=dict(input_payload),
-            prompt_text=prompt,
-            response_json=output.model_dump(mode="json"),
-            trace_metadata_json=trace_metadata_ok,
-            usage_json=audit_extra.get("usage") or {},
-            latency_ms=max(0, finished - started),
-            started_at_ms=started,
-            finished_at_ms=finished,
-            status="ok",
-            error=None,
-            safety_net_used=bool(audit_extra.get("safety_net_used")),
-            safety_net_retries=int(audit_extra.get("safety_net_retries") or 0),
-            parse_mode=str(audit_extra.get("parse_mode") or "strict"),
-        )
 
-    def _build_model(self):
-        return OpenAIChatCompletionsModel(
+    def _agent_stage_spec(
+        self,
+        *,
+        spec: PulseDecisionStageSpec,
+        route: DecisionRoute,
+        output_type: type[Any],
+        max_turns: int,
+        run_id: str,
+        audit: dict[str, Any],
+    ) -> AgentStageSpec:
+        return AgentStageSpec(
+            lane=_stage_lane(spec.stage),
+            stage=spec.stage,
             model=self.model,
-            openai_client=self._llm_gateway.openai_client(
-                model=self.model,
-                base_url=self.base_url,
-                timeout_s=self.timeout_seconds,
-            ),
+            instructions=spec.prompt_text,
+            input_payload=spec.input_payload,
+            output_type=output_type,
+            prompt_version=PULSE_DECISION_PROMPT_VERSION,
+            schema_version=PULSE_DECISION_SCHEMA_VERSION,
+            workflow_name=self.workflow_name,
+            agent_name=_stage_agent_name(spec.stage, route),
+            group_id=_group_id(spec.input_payload.get("evidence_packet")) or str(run_id or ""),
+            trace_metadata={
+                **dict(audit.get("trace_metadata") or {}),
+                "run_id": str(run_id or ""),
+                "stage": spec.stage,
+                "route": route,
+                "lane": _stage_lane(spec.stage),
+            },
+            max_turns=max_turns,
         )
 
     async def aclose(self) -> None:
         return None
 
 
+def _stage_lane(stage: str) -> str:
+    if stage == "evidence_debate":
+        return "pulse.evidence_debate"
+    if stage == "decision_maker":
+        return "pulse.decision_maker"
+    raise ValueError(f"unsupported pulse stage: {stage}")
+
+
+def _stage_agent_name(stage: str, route: DecisionRoute) -> str:
+    if stage == "evidence_debate":
+        return f"PulseEvidenceDebate{_route_label(route)}"
+    if stage == "decision_maker":
+        return f"PulseDecisionMaker{_route_label(route)}"
+    return AGENT_NAME
+
+
 def _route_label(route: DecisionRoute) -> str:
     return {"cex": "Cex", "meme": "Meme", "research_only": "ResearchOnly"}.get(str(route), "Cex")
+
+
+def _stage_audit_from_execution(
+    *,
+    stage_spec: AgentStageSpec,
+    route: DecisionRoute,
+    prompt: str,
+    response_json: dict[str, Any] | None,
+    execution_audit: AgentExecutionRequestAudit | AgentExecutionResultAudit | None,
+    status: StageStatus,
+    error: str | None,
+    trace_extra: dict[str, Any],
+) -> StageRunAudit:
+    audit = execution_audit
+    safety = dict(getattr(audit, "safety_net", {}) or {}) if audit is not None else {}
+    input_hash = str(getattr(audit, "input_hash", None) or stage_spec.input_hash)
+    output_hash = getattr(audit, "output_hash", None) if audit is not None else None
+    trace_metadata = {
+        **dict(getattr(audit, "trace_metadata", {}) or {}),
+        **dict(trace_extra or {}),
+        "input_hash": input_hash,
+        "output_hash": output_hash,
+        "safety_net": safety,
+    }
+    if getattr(audit, "error_class", None):
+        trace_metadata["error_class"] = str(audit.error_class)
+    return _stage_audit(
+        stage=stage_spec.stage,
+        route=route,
+        attempt_index=0,
+        input_json=_input_json(stage_spec.input_payload),
+        prompt_text=prompt,
+        response_json=response_json,
+        trace_metadata_json=trace_metadata,
+        usage_json=dict(getattr(audit, "usage", {}) or {}),
+        latency_ms=_latency_ms(getattr(audit, "latency_ms", None)),
+        started_at_ms=None,
+        finished_at_ms=None,
+        status=status,
+        error=error,
+        safety_net_used=bool(safety.get("safety_net_used", False)),
+        safety_net_retries=int(safety.get("safety_net_retries") or 0),
+        parse_mode=str(getattr(audit, "parse_mode", None) or "strict"),
+        input_hash=input_hash,
+        output_hash=output_hash,
+    )
+
+
+def _stage_audit_from_execution_error(
+    *,
+    stage_spec: AgentStageSpec,
+    route: DecisionRoute,
+    prompt: str,
+    exc: AgentExecutionError,
+) -> StageRunAudit:
+    audit = exc.audit
+    status: StageStatus = "timeout" if exc.error_class == AgentExecutionErrorClass.TIMEOUT else "failed"
+    error = str(getattr(audit, "error_message", None) or exc)[:1000]
+    return _stage_audit_from_execution(
+        stage_spec=stage_spec,
+        route=route,
+        prompt=prompt,
+        response_json=None,
+        execution_audit=audit,
+        status=status,
+        error=error,
+        trace_extra={},
+    )
 
 
 def _stage_audit(**kwargs: Any) -> StageRunAudit:
@@ -503,11 +462,10 @@ def _stage_audit(**kwargs: Any) -> StageRunAudit:
         raise
 
 
-def _api_base(base_url: str) -> str:
-    value = str(base_url or "").strip().rstrip("/")
-    if not value:
-        return "https://api.openai.com/v1"
-    return value if value.endswith("/v1") else f"{value}/v1"
+def _input_json(input_payload: Any) -> dict[str, Any]:
+    if isinstance(input_payload, dict):
+        return dict(input_payload)
+    return {"input_payload": input_payload}
 
 
 def _group_id(context: Any) -> str | None:
@@ -588,6 +546,7 @@ def _is_model_contract_stage_failure(step: StageRunAudit) -> bool:
             "instructorretryexception",
             "trading execution language",
             "invalid json",
+            "schema_invalid",
             "outside allowed_evidence_refs",
         )
     )
@@ -619,116 +578,11 @@ def _truncate(value: Any, *, limit: int = 4000) -> str:
     return text[:limit]
 
 
-def _extract_usage(result: Any) -> dict[str, Any]:
-    for candidate in _usage_candidates(result):
-        payload = _usage_payload(candidate)
-        if payload:
-            return payload
-    return {}
-
-
-def _usage_candidates(result: Any) -> list[Any]:
-    if result is None:
-        return []
-    candidates = [
-        getattr(result, "usage", None),
-        getattr(getattr(result, "context_wrapper", None), "usage", None),
-    ]
-    for attr in ("raw_response", "response", "final_response"):
-        response = getattr(result, attr, None)
-        candidates.append(getattr(response, "usage", None))
-        candidates.append(response)
-    responses = getattr(result, "raw_responses", None) or getattr(result, "responses", None)
-    if isinstance(responses, list | tuple):
-        for response in responses:
-            candidates.append(getattr(response, "usage", None))
-            candidates.append(response)
-    return candidates
-
-
-def _usage_payload(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        data = model_dump(mode="json")
-        if isinstance(data, dict):
-            return cast(dict[str, Any], _json_safe_usage(data))
-    data = _json_safe_usage(value)
-    if isinstance(data, dict):
-        return data
-    return {}
-
-
-def _json_safe_usage(value: Any, *, depth: int = 0) -> Any:
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if depth > 8:
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): _json_safe_usage(item, depth=depth + 1) for key, item in value.items() if item is not None}
-    if isinstance(value, list | tuple):
-        return [_json_safe_usage(item, depth=depth + 1) for item in value if item is not None]
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        data = model_dump(mode="json")
-        return _json_safe_usage(data, depth=depth + 1)
-    object_values = _public_object_values(value)
-    if object_values:
-        return {key: _json_safe_usage(item, depth=depth + 1) for key, item in object_values.items() if item is not None}
-    return str(value)
-
-
-def _public_object_values(value: Any) -> dict[str, Any]:
-    if not hasattr(value, "__dict__") and not hasattr(value, "__slots__"):
-        return {}
-    data = {}
-    if hasattr(value, "__dict__"):
-        data.update(
-            {str(key): item for key, item in vars(value).items() if not str(key).startswith("_") and item is not None}
-        )
-    slot_names = set(_public_slot_names(value))
-    for name in slot_names:
-        if name in data:
-            continue
-        try:
-            item = getattr(value, name)
-        except AttributeError:
-            continue
-        if item is not None:
-            data[name] = item
-    for name, item in inspect.getmembers_static(value):
-        if name.startswith("_") or name in data:
-            continue
-        if isinstance(item, property | classmethod | staticmethod):
-            continue
-        if isinstance(item, GetSetDescriptorType | MemberDescriptorType):
-            continue
-        if item is None or callable(item):
-            continue
-        if isinstance(item, type):
-            continue
-        data[name] = item
-    return data
-
-
-def _public_slot_names(value: Any) -> tuple[str, ...]:
-    names: list[str] = []
-    for cls in type(value).__mro__:
-        slots = getattr(cls, "__slots__", ())
-        if isinstance(slots, str):
-            slot_items = (slots,)
-        else:
-            try:
-                slot_items = tuple(slots)
-            except TypeError:
-                continue
-        for name in slot_items:
-            text = str(name)
-            if text.startswith("_") or text in {"__dict__", "__weakref__"}:
-                continue
-            names.append(text)
-    return tuple(names)
+def _latency_ms(value: Any) -> int:
+    try:
+        return max(0, int(float(value or 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 __all__ = [
@@ -736,5 +590,4 @@ __all__ = [
     "WORKFLOW_NAME",
     "OpenAIAgentsPulseDecisionClient",
     "PulseDecisionAgentResult",
-    "_extract_usage",
 ]

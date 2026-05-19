@@ -252,6 +252,8 @@ class StageRunAudit(BaseModel):
     safety_net_used: bool = False
     safety_net_retries: int = Field(default=0, ge=0)
     parse_mode: str = "strict"
+    input_hash: str | None = None
+    output_hash: str | None = None
 
 
 class PulseDecisionPayload(BaseModel):
