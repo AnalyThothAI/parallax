@@ -144,11 +144,8 @@ def test_policy_models_forbid_extra_fields_and_invalid_non_positive_values() -> 
         (AgentRuntimePolicy, {"global_rpm_limit": 0}),
         (AgentStageSpec, {"lane": "x", "unknown": True}),
     ):
-        try:
+        with pytest.raises(ValidationError):
             model(**kwargs)
-        except ValidationError:
-            continue
-        raise AssertionError(f"{model.__name__} accepted invalid values")
 
 
 def test_result_audit_and_result_keep_execution_facts_separate() -> None:
