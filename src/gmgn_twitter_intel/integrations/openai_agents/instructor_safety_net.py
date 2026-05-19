@@ -115,12 +115,14 @@ class InstructorSafetyNet:
         model: str,
         max_retries: int = 2,
         enabled: bool = True,
+        runner: Any | None = None,
     ) -> None:
         self._base_url = base_url
         self._api_key = api_key
         self._model = model
         self._max_retries = max(0, int(max_retries))
         self._enabled = bool(enabled)
+        self._runner = runner or Runner
         # Independent AsyncOpenAI: instructor.from_openai patches chat.completions.create
         # on the client object, so we MUST NOT share with the SDK's client.
         self._inst_client: AsyncOpenAI | None = None
@@ -162,7 +164,7 @@ class InstructorSafetyNet:
         if context is not None:
             run_kwargs["context"] = context
         try:
-            result = await Runner.run(
+            result = await self._runner.run(
                 agent,
                 input_payload,
                 **run_kwargs,

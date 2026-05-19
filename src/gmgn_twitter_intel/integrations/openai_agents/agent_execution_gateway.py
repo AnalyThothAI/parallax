@@ -72,6 +72,7 @@ class AgentExecutionGateway:
         self._policy = policy
         self._runner = runner or Runner
         self._safety_net = safety_net
+        self._model_cache: dict[tuple[str, str, float], Any] = {}
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
         self._global_limiter = AsyncLimiter(policy.global_rpm_limit, 60)
         self._lanes: dict[str, _LaneState] = {
@@ -149,9 +150,17 @@ class AgentExecutionGateway:
 
         return AgentCapacityReservation(lane=lane_key, acquired=True, _release=release)
 
-    async def execute(self, stage: AgentStageSpec) -> AgentExecutionResult:
+    async def execute(
+        self,
+        stage: AgentStageSpec,
+        *,
+        reservation: AgentCapacityReservation | None = None,
+    ) -> AgentExecutionResult:
         audit = self.request_audit(stage)
         lane_state = self._lane_state(stage.lane)
+        release_reservation = reservation is None
+        if reservation is not None:
+            self._validate_external_reservation(stage, reservation)
         if self._is_circuit_open(stage.lane, lane_state):
             lane_state.circuit_open_total += 1
             raise AgentExecutionError(
@@ -161,9 +170,7 @@ class AgentExecutionGateway:
                 execution_started=False,
             )
 
-        # First cut does not accept an external reservation object; callers that
-        # preflight with try_reserve() and then call execute() will reserve twice.
-        reservation = self.try_reserve(stage.lane)
+        reservation = reservation or self.try_reserve(stage.lane)
         if not reservation.acquired:
             error_class = reservation.reason or AgentExecutionErrorClass.CAPACITY_DENIED
             raise AgentExecutionError(
@@ -265,7 +272,8 @@ class AgentExecutionGateway:
                 execution_started=runner_entered["value"],
             ) from exc
         finally:
-            await reservation.release()
+            if release_reservation:
+                await reservation.release()
 
     def record_lane_failure(self, lane: str) -> None:
         now = time.monotonic()
@@ -309,14 +317,7 @@ class AgentExecutionGateway:
     ) -> tuple[Any, Any | None, dict[str, Any]]:
         lane_policy = self._lane_state(stage.lane).policy
         output_schema = StrictJsonOutputSchema(stage.output_type)
-        model = OpenAIChatCompletionsModel(
-            model=stage.model,
-            openai_client=self._llm_gateway.openai_client(
-                model=stage.model,
-                base_url=self._base_url,
-                timeout_s=float(lane_policy.timeout_seconds),
-            ),
-        )
+        model = self._model_for(stage.model, timeout_s=float(lane_policy.timeout_seconds))
         agent = Agent(
             name=stage.agent_name,
             instructions=stage.instructions,
@@ -406,6 +407,34 @@ class AgentExecutionGateway:
             error_class=error_class,
             error_message=str(message or "")[:1000],
         )
+
+    @staticmethod
+    def _validate_external_reservation(
+        stage: AgentStageSpec,
+        reservation: AgentCapacityReservation,
+    ) -> None:
+        if reservation.lane != stage.lane:
+            raise ValueError(
+                f"reservation lane {reservation.lane!r} does not match stage lane {stage.lane!r}"
+            )
+        if not reservation.acquired:
+            raise ValueError("execute requires an acquired reservation")
+
+    def _model_for(self, model_name: str, *, timeout_s: float) -> Any:
+        key = (str(model_name), self._base_url, float(timeout_s))
+        cached = self._model_cache.get(key)
+        if cached is not None:
+            return cached
+        model = OpenAIChatCompletionsModel(
+            model=model_name,
+            openai_client=self._llm_gateway.openai_client(
+                model=model_name,
+                base_url=self._base_url,
+                timeout_s=float(timeout_s),
+            ),
+        )
+        self._model_cache[key] = model
+        return model
 
 
 def _api_base(base_url: str) -> str:

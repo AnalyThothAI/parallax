@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+    AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentExecutionStatus,
@@ -15,6 +16,7 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentRuntimePolicy,
     AgentStageSpec,
 )
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 
 
 class Payload(BaseModel):
@@ -166,6 +168,123 @@ def test_try_reserve_denies_when_lane_full_and_releases_idempotently() -> None:
         third = gateway.try_reserve("test.lane")
         assert third.acquired is True
         await third.release()
+
+    asyncio.run(scenario())
+
+
+def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+        reservation = gateway.try_reserve("test.lane")
+
+        try:
+            result = await gateway.execute(_spec(), reservation=reservation)
+            snapshot_while_reserved = gateway.status_snapshot()
+            assert snapshot_while_reserved["global_in_flight"] == 1
+            assert snapshot_while_reserved["lanes"]["test.lane"]["in_flight"] == 1
+        finally:
+            await reservation.release()
+
+        assert result.audit.status is AgentExecutionStatus.DONE
+        assert runner.calls == 1
+        snapshot_after_release = gateway.status_snapshot()
+        assert snapshot_after_release["global_in_flight"] == 0
+        assert snapshot_after_release["lanes"]["test.lane"]["in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_rejects_invalid_reservation_before_provider_call() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+
+        with pytest.raises(ValueError, match="reservation lane"):
+            await gateway.execute(
+                _spec(),
+                reservation=AgentCapacityReservation(lane="other.lane", acquired=True),
+            )
+
+        with pytest.raises(ValueError, match="acquired reservation"):
+            await gateway.execute(
+                _spec(),
+                reservation=AgentCapacityReservation(
+                    lane="test.lane",
+                    acquired=False,
+                    reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+                ),
+            )
+
+        assert runner.calls == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_reuses_model_client_for_same_stage_policy() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        llm_gateway = FakeLLMGateway()
+        gateway = AgentExecutionGateway(
+            llm_gateway=llm_gateway,
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+
+        await gateway.execute(_spec())
+        await gateway.execute(_spec())
+
+        assert runner.calls == 2
+        assert llm_gateway.openai_client_calls == [
+            {"model": "qwen3.6", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_safety_net_path_uses_injected_runner_and_returns_safety_metadata() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+            safety_net=InstructorSafetyNet(
+                base_url="https://example.com/v1",
+                api_key="test-key",
+                model="qwen3.6",
+                runner=runner,
+            ),
+        )
+
+        result = await gateway.execute(_spec())
+
+        assert isinstance(result.final_output, Payload)
+        assert runner.calls == 1
+        assert result.audit.parse_mode == "strict"
+        assert result.audit.safety_net == {"safety_net_used": False, "safety_net_retries": 0}
+        assert result.audit.trace_metadata["safety_net_used"] is False
+        assert result.audit.trace_metadata["parse_mode"] == "strict"
 
     asyncio.run(scenario())
 
