@@ -417,7 +417,7 @@ def test_no_old_worker_runtime_settings() -> None:
         for field_name in model.model_fields
         if field_name in OLD_RUNTIME_SETTINGS
     }
-    worker_fields = set(WorkersSettings.model_fields) - {"defaults"}
+    worker_fields = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
 
     assert violations == set()
     assert worker_fields == set(EXPECTED_WORKERS)
