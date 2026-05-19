@@ -34,6 +34,15 @@ class WakeBus:
             },
         )
 
+    def notify_news_item_written(self, *, source_id: str, count: int) -> None:
+        self._notify("news_item_written", {"source_id": str(source_id), "count": int(count)})
+
+    def notify_news_item_processed(self, *, count: int) -> None:
+        self._notify("news_item_processed", {"count": int(count)})
+
+    def notify_news_story_updated(self, *, count: int) -> None:
+        self._notify("news_story_updated", {"count": int(count)})
+
     def _notify(self, channel: str, payload: dict[str, Any]) -> None:
         conn_or_context = self._conn_factory()
         if hasattr(conn_or_context, "__enter__"):

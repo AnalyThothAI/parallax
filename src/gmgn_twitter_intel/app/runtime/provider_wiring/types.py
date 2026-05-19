@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     ProviderHealth,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
+from gmgn_twitter_intel.domains.news_intel.providers import NewsFeedProvider
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 
@@ -63,6 +64,11 @@ class NarrativeIntelProviders:
 
 
 @dataclass(frozen=True, slots=True)
+class NewsIntelProviders:
+    feed_client: NewsFeedProvider | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WatchlistIntelProviders:
     summary_provider: object | None = None
 
@@ -78,6 +84,7 @@ class WiredProviders:
     asset_market: AssetMarketProviders
     social_enrichment: SocialEnrichmentProviders
     narrative_intel: NarrativeIntelProviders
+    news_intel: NewsIntelProviders
     pulse_lab: PulseLabProviders
     watchlist_intel: WatchlistIntelProviders
     marketlane: MarketlaneProviders
@@ -88,6 +95,7 @@ __all__ = [
     "IngestionProviders",
     "MarketlaneProviders",
     "NarrativeIntelProviders",
+    "NewsIntelProviders",
     "OkxProviderBundle",
     "PulseLabProviders",
     "SocialEnrichmentProviders",

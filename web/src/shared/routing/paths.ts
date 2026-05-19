@@ -43,6 +43,10 @@ export function watchlistPath(params: { handle?: string | null } = {}): string {
   return "/watchlist" + (search ? `?${search}` : "");
 }
 
+export function newsPath(): string {
+  return "/news";
+}
+
 export function signalLabPulsePath(candidateId: string, search = ""): string {
   return `/signal-lab/pulse/${encodeURIComponent(candidateId)}${search}`;
 }

@@ -15,6 +15,10 @@ from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker imp
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
 from gmgn_twitter_intel.platform.config.settings import Settings
@@ -162,6 +166,43 @@ def test_worker_factory_wires_notification_workers_with_shared_local_wake_waiter
     assert workers["notification_rule"].delivery_wake is workers["notification_delivery"].wake_waiter
 
 
+def test_worker_factory_wires_news_fetch_when_news_intel_enabled() -> None:
+    db = FakeDB()
+    providers = FakeProviders()
+
+    workers = construct_workers(
+        settings=_settings(news_intel_enabled=True),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["news_fetch"], NewsFetchWorker)
+    assert workers["news_fetch"].wake_bus is db.wake
+    assert workers["news_fetch"].feed_client is providers.news_intel.feed_client
+    assert isinstance(workers["news_item_process"], NewsItemProcessWorker)
+    assert workers["news_item_process"].wake_bus is db.wake
+    assert workers["news_item_process"].identity_lookup is not None
+    assert workers["news_item_process"].wake_waiter.channels == ("news_item_written",)
+    assert workers["news_item_process"].settings.advisory_lock_key == 2026051902
+    assert isinstance(workers["news_story_projection"], NewsStoryProjectionWorker)
+    assert workers["news_story_projection"].wake_bus is db.wake
+    assert workers["news_story_projection"].wake_waiter.channels == ("news_item_processed",)
+    assert workers["news_story_projection"].settings.advisory_lock_key == 2026051903
+    assert isinstance(workers["news_page_projection"], NewsPageProjectionWorker)
+    assert workers["news_page_projection"].wake_bus is db.wake
+    assert workers["news_page_projection"].wake_waiter.channels == (
+        "news_item_written",
+        "news_item_processed",
+        "news_story_updated",
+    )
+    assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
+
+
 def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     def rogue_factory(ctx):
         return {"token_radar_projection": ctx.collector}
@@ -191,9 +232,26 @@ def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pyt
         )
 
 
-def _settings(*, collector_enabled: bool = False, notifications_enabled: bool = False) -> Settings:
+def _settings(
+    *,
+    collector_enabled: bool = False,
+    notifications_enabled: bool = False,
+    news_intel_enabled: bool = False,
+) -> Settings:
     return Settings(
         ws_token="secret",
+        news_intel={
+            "enabled": news_intel_enabled,
+            "sources": [
+                {
+                    "source_id": "example-rss",
+                    "provider_type": "rss",
+                    "feed_url": "https://example.com/rss.xml",
+                    "source_domain": "example.com",
+                    "source_name": "Example",
+                }
+            ],
+        },
         notifications={
             "enabled": notifications_enabled,
             "channels": {
@@ -245,6 +303,7 @@ class FakeProviders:
         self.social_enrichment = SimpleNamespace(event_enrichment=None)
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
         self.marketlane = SimpleNamespace(stock_quote_provider=None)
+        self.news_intel = SimpleNamespace(feed_client=object())
 
 
 class FakeDB:

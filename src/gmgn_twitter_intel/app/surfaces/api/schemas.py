@@ -131,6 +131,19 @@ class StocksRadarData(ApiSchema):
     projection: JsonObject | None = None
 
 
+class NewsData(ApiSchema):
+    items: list[JsonObject] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
+class NewsObjectData(ApiSchema):
+    pass
+
+
+class NewsSourceStatusData(ApiSchema):
+    sources: list[JsonObject] = Field(default_factory=list)
+
+
 class LiveMarketData(ApiSchema):
     target_type: str
     target_id: str

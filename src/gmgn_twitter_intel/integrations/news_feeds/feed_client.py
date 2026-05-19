@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+import feedparser
+import httpx
+
+
+@dataclass(frozen=True, slots=True)
+class FeedFetchResult:
+    status_code: int
+    entries: list[dict[str, Any]] = field(default_factory=list)
+    etag: str | None = None
+    last_modified: str | None = None
+    not_modified: bool = False
+    feed: dict[str, Any] = field(default_factory=dict)
+
+
+class FeedClient:
+    def __init__(self, *, timeout_seconds: float = 20.0, user_agent: str = "gmgn-twitter-intel/1.0") -> None:
+        self._client = httpx.Client(
+            timeout=max(0.1, float(timeout_seconds)),
+            headers={"User-Agent": user_agent},
+            follow_redirects=True,
+        )
+
+    def fetch(
+        self,
+        url: str,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+    ) -> FeedFetchResult:
+        headers: dict[str, str] = {}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_modified:
+            headers["If-Modified-Since"] = last_modified
+        response = self._client.get(str(url), headers=headers)
+        if response.status_code == 304:
+            return FeedFetchResult(
+                status_code=304,
+                etag=response.headers.get("etag") or etag,
+                last_modified=response.headers.get("last-modified") or last_modified,
+                not_modified=True,
+            )
+        response.raise_for_status()
+        parsed = feedparser.parse(response.content)
+        return FeedFetchResult(
+            status_code=response.status_code,
+            entries=[dict(entry) for entry in parsed.entries],
+            etag=response.headers.get("etag") or getattr(parsed, "etag", None),
+            last_modified=response.headers.get("last-modified") or getattr(parsed, "modified", None),
+            not_modified=False,
+            feed=dict(getattr(parsed, "feed", {}) or {}),
+        )
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self) -> FeedClient:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()

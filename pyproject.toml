@@ -12,6 +12,7 @@ dependencies = [
     "eth-hash[pycryptodome]>=0.8.0",
     "eth-utils>=5.0.0",
     "fastapi>=0.115.0",
+    "feedparser>=6.0,<7.0",
     "httpx[socks]>=0.27.0",
     "instructor>=1.15.1",
     "jsonref>=1.1.0",

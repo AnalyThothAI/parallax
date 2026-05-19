@@ -35,6 +35,14 @@ CANONICAL_WORKER_CLASSES = {
         "gmgn_twitter_intel.domains.narrative_intel.runtime."
         "token_discussion_digest_worker.TokenDiscussionDigestWorker"
     ),
+    "news_fetch": "gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
+    "news_item_process": "gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker.NewsItemProcessWorker",
+    "news_story_projection": (
+        "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
+    ),
+    "news_page_projection": (
+        "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
+    ),
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
     "handle_summary": "gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker.HandleSummaryWorker",
@@ -60,7 +68,11 @@ WORKER_START_PRIORITY = {
     "narrative_admission": 87,
     "mention_semantics": 88,
     "token_discussion_digest": 89,
-    "pulse_candidate": 90,
+    "news_fetch": 90,
+    "news_item_process": 91,
+    "news_story_projection": 92,
+    "news_page_projection": 93,
+    "pulse_candidate": 95,
     "enrichment": 100,
     "handle_summary": 110,
     "notification_rule": 120,

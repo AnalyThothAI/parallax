@@ -14,6 +14,7 @@ GMGN public stream
   → domains/social_enrichment   (watched-event extraction)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
+  → domains/news_intel          (configured news ingestion, news facts, story and page read models)
   → domains/notifications       (rules, delivery)
   → app/surfaces/api + app/surfaces/cli
 ```
@@ -32,8 +33,10 @@ are wrong too.
 1. **Facts-first persistence.** `events`, `event_entities`, `token_evidence`,
    `token_intents`, `token_intent_lookup_keys`, `token_intent_resolutions`,
    `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
-   `market_ticks`, and `enriched_events` are the business fact tables. Control
-   plane tables such as `event_anchor_backfill_jobs` own worker scheduling state
+   `market_ticks`, `enriched_events`, `news_provider_items`, `news_items`,
+   `news_item_entities`, `news_token_mentions`, and `news_fact_candidates` are
+   the business fact tables. Control plane tables such as
+   `event_anchor_backfill_jobs` and `news_fetch_runs` own worker scheduling state
    and are not product truth. Every derived read model can be rebuilt from the
    facts.
 2. **Append-only market tick facts.** Market data from any provider is
@@ -68,7 +71,9 @@ are wrong too.
    `TokenDiscussionDigestWorker`. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
-   `TokenProfileCurrentWorker`.
+   `TokenProfileCurrentWorker`. `news_story_groups` and `news_story_members`
+   are written only by `NewsStoryProjectionWorker`; `news_page_rows` is written
+   only by `NewsPageProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
@@ -162,6 +167,7 @@ direction is still enforced by the package rules below.
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
+| `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, deterministic story grouping, fact candidates, and the News page read model. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
 
 ## Module Architecture Documents
@@ -175,6 +181,7 @@ own maps next to the code they describe, and this file links to them.
 | Narrative intelligence | `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
 | Asset market and market tick capture | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
+| News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, story grouping, fact candidates, and the News page read model. |
 
 When a subsystem needs more than a short row here, add
 `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this

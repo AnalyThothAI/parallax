@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
@@ -90,6 +91,7 @@ class RepositorySession:
     pulse_playbooks: PulsePlaybooksRepository
     narratives: NarrativeRepository
     watchlist_intel: WatchlistIntelRepository
+    news: NewsRepository
 
     def unit_of_work(self):
         return transaction(self.conn)
@@ -133,6 +135,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         pulse_playbooks=PulsePlaybooksRepository(conn),
         narratives=NarrativeRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
+        news=NewsRepository(conn),
     )
 
 

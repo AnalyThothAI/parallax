@@ -23,6 +23,7 @@ import { useMemo, useRef, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { LiveRadarRoute, LiveRoute } from "./live.route";
+import { NewsRoute } from "./news.route";
 import { SearchRoute } from "./search.route";
 import { SignalLabPulseRoute } from "./signal-lab.pulse.route";
 import { SignalLabRoute } from "./signal-lab.route";
@@ -245,6 +246,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
             />
           }
         />
+        <Route path="news" element={<NewsRoute />} />
         <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
         <Route
           path="signal-lab"

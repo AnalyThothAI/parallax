@@ -355,6 +355,64 @@ class ProvidersConfig(BaseModel):
     marketlane: MarketlaneProviderConfig = Field(default_factory=MarketlaneProviderConfig)
 
 
+class NewsSourceSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    provider_type: Literal["rss", "atom", "json_feed"] = "rss"
+    feed_url: str
+    source_domain: str
+    source_name: str
+    source_role: Literal[
+        "official_exchange",
+        "official_regulator",
+        "official_protocol",
+        "official_issuer",
+        "specialist_media",
+        "aggregator",
+        "social",
+        "observed_source",
+    ] = "observed_source"
+    trust_tier: Literal["official", "high", "standard", "low"] = "standard"
+    managed_by_config: bool = True
+    enabled: bool = True
+    refresh_interval_seconds: int = Field(default=300, ge=1)
+
+    @field_validator("source_id", "feed_url", "source_domain", "source_name", mode="before")
+    @classmethod
+    def parse_required_string(cls, value: Any) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("news source field must not be empty")
+        return normalized
+
+    @field_validator("source_domain", mode="before")
+    @classmethod
+    def parse_source_domain(cls, value: Any) -> str:
+        normalized = str(value or "").strip().lower()
+        if not normalized:
+            raise ValueError("news source field must not be empty")
+        return normalized
+
+
+class NewsIntelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    sources: tuple[NewsSourceSettings, ...] = Field(default_factory=tuple)
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def parse_sources(cls, value: Any) -> tuple[Any, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, tuple):
+            return value
+        if isinstance(value, list):
+            return tuple(value)
+        raise ValueError("news_intel.sources must be a list")
+
+
 class BackoffPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -598,6 +656,43 @@ class NotificationDeliveryWorkerSettings(PerWorkerSettings):
     max_attempts: int = Field(default=5, ge=1)
 
 
+class NewsFetchWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    timeout_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=10, ge=1)
+    advisory_lock_key: int = 2026051901
+
+
+class NewsItemProcessWorkerSettings(PerWorkerSettings):
+    advisory_lock_key: int = 2026051902
+    wakes_on: tuple[str, ...] = ("news_item_written",)
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class NewsStoryProjectionWorkerSettings(PerWorkerSettings):
+    advisory_lock_key: int = 2026051903
+    wakes_on: tuple[str, ...] = ("news_item_processed",)
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
+class NewsPageProjectionWorkerSettings(PerWorkerSettings):
+    advisory_lock_key: int = 2026051904
+    wakes_on: tuple[str, ...] = ("news_item_written", "news_item_processed", "news_story_updated")
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -626,6 +721,12 @@ class WorkersSettings(BaseModel):
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
         default_factory=NotificationDeliveryWorkerSettings
     )
+    news_fetch: NewsFetchWorkerSettings = Field(default_factory=NewsFetchWorkerSettings)
+    news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
+    news_story_projection: NewsStoryProjectionWorkerSettings = Field(
+        default_factory=NewsStoryProjectionWorkerSettings
+    )
+    news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
 
 
 class Settings(BaseModel):
@@ -640,6 +741,7 @@ class Settings(BaseModel):
     llm: LlmConfig = Field(default_factory=LlmConfig)
     gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
+    news_intel: NewsIntelSettings = Field(default_factory=NewsIntelSettings)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     workers: WorkersSettings = Field(default_factory=WorkersSettings)
@@ -1019,6 +1121,10 @@ providers:
     cex_base_url: "https://www.binance.com"
     timeout_seconds: 15
 
+news_intel:
+  enabled: false
+  sources: []
+
 upstream:
   chains: ["sol", "eth", "base", "bsc"]
   channels: ["twitter_monitor_basic", "twitter_monitor_token"]
@@ -1189,6 +1295,24 @@ token_discussion_digest:
     1h: 300
     4h: 600
     24h: 900
+news_fetch:
+  enabled: true
+  interval_seconds: 60.0
+  timeout_seconds: 30.0
+  batch_size: 10
+  advisory_lock_key: 2026051901
+news_item_process:
+  enabled: true
+  advisory_lock_key: 2026051902
+  wakes_on: ["news_item_written"]
+news_story_projection:
+  enabled: true
+  advisory_lock_key: 2026051903
+  wakes_on: ["news_item_processed"]
+news_page_projection:
+  enabled: true
+  advisory_lock_key: 2026051904
+  wakes_on: ["news_item_written", "news_item_processed", "news_story_updated"]
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0

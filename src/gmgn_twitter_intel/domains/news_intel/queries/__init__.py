@@ -1,0 +1,1 @@
+"""News Intel read queries."""

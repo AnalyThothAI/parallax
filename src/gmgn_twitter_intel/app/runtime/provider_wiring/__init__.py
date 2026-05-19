@@ -7,6 +7,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     IngestionProviders,
     MarketlaneProviders,
     NarrativeIntelProviders,
+    NewsIntelProviders,
     PulseLabProviders,
     SocialEnrichmentProviders,
     WatchlistIntelProviders,
@@ -22,7 +23,7 @@ def wire_providers(
     llm_gateway: object | None = None,
     db_pool: Any | None = None,
 ) -> WiredProviders:
-    from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market, gmgn, marketlane, openai
+    from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market, gmgn, marketlane, news, openai
 
     return WiredProviders(
         ingestion=IngestionProviders(
@@ -41,6 +42,11 @@ def wire_providers(
                 or settings.workers.token_discussion_digest.enabled
             )
             and settings.narrative_intel_configured
+            else None,
+        ),
+        news_intel=NewsIntelProviders(
+            feed_client=news.news_feed_client(settings)
+            if settings.news_intel.enabled and settings.workers.news_fetch.enabled
             else None,
         ),
         pulse_lab=PulseLabProviders(
@@ -72,6 +78,7 @@ __all__ = [
     "IngestionProviders",
     "MarketlaneProviders",
     "NarrativeIntelProviders",
+    "NewsIntelProviders",
     "PulseLabProviders",
     "SocialEnrichmentProviders",
     "WatchlistIntelProviders",

@@ -1,5 +1,6 @@
 import { env } from "@lib/env/env";
 import type { ApiResponse, BootstrapData } from "@lib/types";
+import type { NewsRowsData } from "@shared/model/newsIntel";
 
 export type RequestOptions = {
   token?: string;
@@ -69,6 +70,28 @@ async function requestApi<T>(
 
 export function getBootstrap(): Promise<ApiResponse<BootstrapData>> {
   return getApi<BootstrapData>("/api/bootstrap");
+}
+
+export async function fetchNewsRows(params: {
+  limit?: number;
+  cursor?: string | null;
+  status?: string | null;
+} = {}): Promise<NewsRowsData> {
+  const response = await getApi<NewsRowsData>("/api/news", {
+    params: {
+      cursor: params.cursor,
+      limit: params.limit ?? 100,
+      status: params.status,
+    },
+  });
+  return {
+    ...response.data,
+    items: response.data.items.map((row) => ({
+      ...row,
+      token_lanes: row.token_lanes ?? row.token_lanes_json ?? [],
+      fact_lanes: row.fact_lanes ?? row.fact_lanes_json ?? [],
+    })),
+  };
 }
 
 export function websocketUrl(): string {

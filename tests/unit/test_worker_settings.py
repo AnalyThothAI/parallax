@@ -136,3 +136,23 @@ def test_worker_settings_reject_legacy_live_gateway_fields():
 
     with pytest.raises(ValidationError):
         WorkersSettings(**payload)
+
+
+def test_news_workers_have_defaults():
+    payload = yaml.safe_load(default_workers_yaml())
+    settings = WorkersSettings(**payload)
+
+    assert settings.news_fetch.interval_seconds == 60
+    assert settings.news_fetch.timeout_seconds == 30
+    assert settings.news_fetch.batch_size == 10
+    assert settings.news_fetch.advisory_lock_key == 2026051901
+    assert settings.news_item_process.advisory_lock_key == 2026051902
+    assert settings.news_item_process.wakes_on == ("news_item_written",)
+    assert settings.news_story_projection.advisory_lock_key == 2026051903
+    assert settings.news_story_projection.wakes_on == ("news_item_processed",)
+    assert settings.news_page_projection.advisory_lock_key == 2026051904
+    assert settings.news_page_projection.wakes_on == (
+        "news_item_written",
+        "news_item_processed",
+        "news_story_updated",
+    )

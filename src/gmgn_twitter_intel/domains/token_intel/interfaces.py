@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Protocol
+
 from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -40,6 +43,24 @@ from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver impor
     TokenIntentResolver,
 )
 
+
+@dataclass(frozen=True, slots=True)
+class TokenIdentityLookupResult:
+    resolution_status: str
+    target_type: str | None
+    target_id: str | None
+    display_symbol: str | None
+    display_name: str | None
+    reason_codes: list[str]
+    candidate_targets: list[dict[str, object]]
+
+
+class TokenIdentityLookup(Protocol):
+    def resolve_address(self, *, chain_id: str | None, address: str) -> TokenIdentityLookupResult: ...
+
+    def resolve_symbol(self, *, symbol: str) -> TokenIdentityLookupResult: ...
+
+
 __all__ = [
     "DEFAULT_REPROCESS_LIMIT",
     "DEFAULT_REPROCESS_WINDOW",
@@ -55,6 +76,8 @@ __all__ = [
     "SignalAlert",
     "SignalRepository",
     "TokenEvidenceRepository",
+    "TokenIdentityLookup",
+    "TokenIdentityLookupResult",
     "TokenIntentLookupRepository",
     "TokenIntentRepository",
     "TokenIntentResolutionDecision",
