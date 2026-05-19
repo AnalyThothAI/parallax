@@ -38,7 +38,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     TradePlaybook,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionErrorClass,
 )

@@ -7,8 +7,8 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.bootstrap import _cleanup_provider_roots_sync, bootstrap
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
-from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.provider_wiring.okx import OkxCexMarketProvider
+from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
 from gmgn_twitter_intel.app.runtime.worker_status import canonical_workers_status_payload

@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import json_sha256
+from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
 RUNTIME_VERSION = "agent-execution-plane-v1"
 

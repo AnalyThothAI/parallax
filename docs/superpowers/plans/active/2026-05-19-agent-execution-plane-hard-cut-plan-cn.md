@@ -539,14 +539,14 @@ Create `tests/unit/integrations/openai_agents/test_agent_execution_audit.py`:
 ```python
 from __future__ import annotations
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionErrorClass,
     AgentExecutionRequestAudit,
     AgentLanePolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256, trace_id_for
+from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256, trace_id_for
 
 
 def test_hash_helpers_are_stable() -> None:
@@ -663,7 +663,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import json_sha256
+from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
 
 RUNTIME_VERSION = "agent-execution-plane-v1"
@@ -891,7 +891,7 @@ import pytest
 from pydantic import BaseModel
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentLanePolicy,
@@ -1488,7 +1488,7 @@ from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent impor
     WORKFLOW_NAME,
     WatchlistHandleSummaryPayload,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentStageSpec
+from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
 
 
 @lru_cache(maxsize=1)

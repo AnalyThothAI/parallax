@@ -1,6 +1,6 @@
 # Spec - Agent Execution Plane Hard Cut
 
-**Status**: Draft
+**Status**: Implemented
 **Date**: 2026-05-19
 **Owner**: Qinghuan / Codex
 **Related**:
@@ -22,7 +22,7 @@
 - domain worker 继续拥有 admission、claim、retry、finalize、read-model write；
 - domain provider 继续拥有 prompt、input construction、schema、业务 validator、post-processing；
 - `integrations/openai_agents` 统一 OpenAI Agents SDK execution envelope、runner、schema wrapper、usage、safety-net、trace、timeout、lane/bulkhead、circuit breaker、request/result audit；
-- 现有 `LLMGateway` 保留为低层 transport/budget/client primitive，或者被收敛为同等职责的低层对象；
+- 现有 `LLMGateway` 收敛为低层 transport/client/trace primitive；
 - 不新增 central `agent_tasks` 表，不新增 agent worker，不让 gateway 写任何 domain queue/read model/audit table。
 
 这个取舍符合现有 Kappa/CQRS：PostgreSQL 事实和 domain read model 是业务 truth，agent execution plane 只是外部 provider 调用的控制面。
@@ -48,16 +48,19 @@
 
 ## Current Code Facts
 
-已有的 runtime foundation 不需要推倒：
+2026-05-19 hard cut 后的 runtime foundation：
 
 - `WorkerBase` 已经统一 lifecycle、advisory lock、wake-aware loop、timeout、metrics、status。
 - `DBPoolBundle` 已经拆成 `api_pool`, `worker_pool`, `wake_pool`, `tool_pool`, `lock_pool`。
 - `worker_session(worker_name)` 设置 `application_name=worker:<name>` 和 statement timeout。
-- `LLMGateway` 已经是单例，负责 `AsyncOpenAI` client、trace export key、global semaphore、RPM limiter、per-call timeout。
-- `provider_wiring/openai.py` 已经是 OpenAI provider composition root。
-- OpenAI SDK imports 基本已限制在 `integrations/openai_agents` 与 `app/runtime/llm_gateway.py`。
+- `LLMGateway` 是 transport-only：负责 `AsyncOpenAI` client、trace export key、shared headers、`trust_env=False`、close；不暴露 `run_with_limits`，不记录 worker/stage metadata，不拥有 lane/global budget。
+- `AgentExecutionGateway` 是唯一 OpenAI Agents SDK execution path：负责 `Agent` / `RunConfig` / `Runner.run` envelope、strict schema wrapper、usage、safety-net、trace metadata、timeout、lane bulkhead、RPM、circuit breaker、reservation、request/result audit、telemetry、status snapshot。
+- `provider_wiring/openai.py` 是 OpenAI provider composition root；bootstrap 构造一个进程级 `AgentExecutionGateway` 并注入 Social、Watchlist、Narrative、Pulse provider adapters。
+- `workers.agent_runtime` 是全局/lane agent 执行策略来源，包含 `pulse.pipeline`, `pulse.evidence_debate`, `pulse.decision_maker`, `narrative.mention_semantics`, `narrative.discussion_digest`, `social.event_enrichment`, `watchlist.handle_summary`, `news.fact_candidate`。
+- OpenAI SDK direct construction 被限制在 `integrations/openai_agents/agent_execution_gateway.py`、safety-net runner、schema helper；domain-specific clients 只构造 `AgentStageSpec` 并调用 gateway。
+- 没有 central durable `agent_tasks` queue；domain workers 继续拥有 admission、claim、retry、finalize、read-model writes、business validation。
 
-真正缺的是统一 agent execution envelope。现在 Pulse、Narrative、Social、Watchlist 四套 client 各自手写：
+Hard cut 删除了 Pulse、Narrative、Social、Watchlist 四套 client 曾经各自手写的重复 envelope：
 
 - `Agent` / `RunConfig` / `Runner.run`
 - model/client construction
@@ -69,7 +72,7 @@
 - failure audit path
 - artifact/runtime hash
 
-这些差异导致 usage 丢失、failure audit 不完整、timeout/error taxonomy 不一致、safety-net lifecycle 不统一，以及 bulk semantics lane 和 high-value Pulse lane 互相挤占。
+上述能力现在由 `AgentExecutionGateway` 统一；domain adapters 保留 prompt/input/schema/business validator/post-processing。
 
 ## Problem
 
@@ -141,7 +144,7 @@ WorkerScheduler / WorkerBase / DBPoolBundle
   -> domain admission / claim / context materialization
   -> domain provider adapter
   -> AgentExecutionGateway
-  -> LLMGateway transport/budget/client
+  -> LLMGateway transport/client
   -> OpenAI-compatible provider
   -> domain validator / finalizer
   -> domain audit table + read model
@@ -154,7 +157,8 @@ WorkerScheduler / WorkerBase / DBPoolBundle
 - owns `AsyncOpenAI` construction and close;
 - owns trace export key setup;
 - owns shared headers and `trust_env=False`;
-- may own global hard cap and RPM limiter;
+- does not own global/lane hard cap or RPM limiter; those live in
+  `AgentExecutionGateway`;
 - does not know prompts, schemas, business stages, or DB tables.
 
 `AgentExecutionGateway` owns OpenAI agent execution mechanics:
@@ -384,7 +388,7 @@ This status must not become product truth.
 ### Always
 
 - All OpenAI Agents SDK stage execution goes through `AgentExecutionGateway`.
-- All provider calls still pass through `LLMGateway` or its renamed low-level equivalent for client, headers, timeout, trace export, and global budget.
+- All provider calls still pass through `LLMGateway` or its renamed low-level equivalent for client, headers, and trace export. Timeout, lane limits, RPM limits, and circuit policy live in `AgentExecutionGateway`.
 - Domain workers own admission/claim/finalize.
 - Domain repositories own all writes to domain queues, audit tables, facts, and read models.
 - Capacity/circuit backpressure does not consume provider attempts.
@@ -449,7 +453,7 @@ Add or extend architecture tests to enforce:
 | Pulse multi-stage semantics get flattened | High | Gateway executes stages only; `PulseCandidateJobService` owns pipeline, verifier, eval, write gate. |
 | Capacity denied still burns attempts due to claim-first code | High | Workers with attempt-on-claim must reserve before claim or explicitly map no-start paths to no attempt burn. |
 | Safety-net double retries hide true provider health | Medium | Gateway owns retry/safety-net metadata and records parse mode/retry count. |
-| `LLMGateway` and `AgentExecutionGateway` split feels abstract | Low | Keep `LLMGateway` tiny: client/transport/global budget only. All SDK stage execution lives in one gateway. |
+| `LLMGateway` and `AgentExecutionGateway` split feels abstract | Low | Keep `LLMGateway` tiny: client/transport/trace only. All SDK stage execution, limits, and audit envelopes live in one gateway. |
 | Old runtime spec causes implementation drift | Medium | Mark old worker-runtime spec as superseded for worker inventory/pool/wake counts during plan phase. |
 
 ## Alternatives Considered
@@ -464,7 +468,7 @@ Rejected as insufficient. Worker-local budgets are still required, but they do n
 
 ### C. Only expand `LLMGateway`
 
-Rejected as too low-level. `LLMGateway` is correctly shaped around transport/client/global budget. Agent SDK execution needs prompt/schema/audit/stage concepts; putting all of that into a generic runtime object would blur the transport boundary.
+Rejected as too low-level. `LLMGateway` is correctly shaped around transport/client/trace setup. Agent SDK execution needs prompt/schema/audit/stage concepts; putting all of that into a generic runtime object would blur the transport boundary.
 
 ### D. Adopt Temporal/LangGraph/Celery
 

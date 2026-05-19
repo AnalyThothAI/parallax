@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentCapacityReservation
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
 
 class HandleTopicSummaryProvider(Protocol):

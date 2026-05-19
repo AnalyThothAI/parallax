@@ -7,7 +7,8 @@ import pytest
 from pydantic import BaseModel
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionError,
     AgentExecutionErrorClass,
@@ -16,7 +17,6 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 
 
 class Payload(BaseModel):

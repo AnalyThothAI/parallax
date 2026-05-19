@@ -12,11 +12,11 @@ from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent impor
     PROMPT_VERSION,
     SCHEMA_VERSION,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
+from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 
 
 class OpenAIAgentsWatchlistSummaryClient:

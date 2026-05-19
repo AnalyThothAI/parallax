@@ -11,7 +11,16 @@ from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from aiolimiter import AsyncLimiter
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
+    default_agent_model_settings,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
+    InstructorSafetyNet,
+    SafetyNetExhausted,
+    extract_sdk_usage,
+)
+from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionError,
@@ -24,19 +33,10 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import (
+from gmgn_twitter_intel.platform.agent_hashing import (
     artifact_hash_for,
     json_sha256,
     trace_id_for,
-)
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
-)
-from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
-    InstructorSafetyNet,
-    SafetyNetExhausted,
-    extract_sdk_usage,
 )
 
 

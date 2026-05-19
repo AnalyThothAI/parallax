@@ -10,6 +10,8 @@
 - `docs/superpowers/specs/active/2026-05-13-target-agent-architecture-design-cn.md`
 - 业界参考：[Tapoueh — PostgreSQL LISTEN/NOTIFY](https://tapoueh.org/blog/2018/07/postgresql-listen-notify/)，[psycopg pool 高级文档](https://www.psycopg.org/psycopg3/docs/advanced/pool.html)，[Sidekiq Best Practices](https://sidekiq.org/wiki/Best-Practices)，[Inferable — Unreasonable Effectiveness of SKIP LOCKED](https://www.inferable.ai/blog/posts/postgres-skip-locked)，[OpenAI Cookbook — How to handle rate limits](https://cookbook.openai.com/examples/how_to_handle_rate_limits)，[Jeremy Miller — Postgres advisory locks for leader election](https://jeremydmiller.com/2020/05/05/using-postgresql-advisory-locks-for-leader-election/)，[Debezium — Materializing aggregate views](https://debezium.io/blog/2018/09/20/materializing-aggregate-views-with-hibernate-and-debezium/)，[OpenTelemetry — Messaging metrics conventions](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-metrics/)，[Confluent — Kafka Streams Stateful Fault Tolerance](https://developer.confluent.io/courses/kafka-streams/stateful-fault-tolerance/)
 
+**Supersession note (2026-05-19):** WorkerBase/DBPoolBundle principles remain valid, but worker inventory, DB pool count, wake connection behavior, and LLM runtime details are superseded by current runtime code and `2026-05-19-agent-execution-plane-hard-cut-cn.md`. Do not implement this spec literally where it says 12 workers, 3 DB pools, or central `LLMGateway` execution limits.
+
 ---
 
 ## 一句话结论

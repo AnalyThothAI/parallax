@@ -11,14 +11,14 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import (
+    OpenAIAgentsNarrativeIntelClient,
+)
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionRequestAudit,
     AgentExecutionResult,
     AgentExecutionResultAudit,
     AgentExecutionStatus,
-)
-from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import (
-    OpenAIAgentsNarrativeIntelClient,
 )
 
 

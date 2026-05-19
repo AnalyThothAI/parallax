@@ -196,6 +196,39 @@ Adding a wake channel requires all of these in one change:
   interval, batch, concurrency, lease, max-attempt, timeout, advisory
   lock, or wake-channel settings.
 
+## Agent Execution Plane
+
+LLM-backed workers use one shared `AgentExecutionGateway` per process.
+The gateway is an operational control plane only: it owns OpenAI Agents
+SDK execution, lane bulkheads, request/result audit envelopes, timeout,
+circuit breaker, safety-net fallback, and ops status. It does not claim
+domain jobs, write domain queues, or persist product read models.
+
+The low-level `LLMGateway` is transport-only. It owns OpenAI client
+construction, trace export configuration, and cleanup. It does not expose
+worker/stage execution limits.
+
+Current lanes are configured under `workers.agent_runtime` in
+`workers.yaml`: `pulse.pipeline`, `pulse.evidence_debate`,
+`pulse.decision_maker`, `narrative.mention_semantics`,
+`narrative.discussion_digest`, `social.event_enrichment`,
+`watchlist.handle_summary`, and `news.fact_candidate`. Attempt-burning
+workers reserve capacity before claiming DB work:
+
+- `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`
+  claim; stage execution later uses `pulse.evidence_debate` and
+  `pulse.decision_maker`.
+- `enrichment` reserves `social.event_enrichment` before claiming
+  enrichment jobs and passes that reservation into the actual stage.
+- `handle_summary` reserves `watchlist.handle_summary` before claiming
+  summary jobs and passes that reservation into the actual stage.
+
+If reservation is denied, the worker records
+`agent_backpressure_capacity_denied` in its iteration notes and does not
+claim a job, so provider congestion does not burn attempts. Narrative
+workers currently rely on provider-stage reservations because their claim
+semantics do not burn attempts before model execution in the same way.
+
 ## Layered State Machines
 
 Worker bugs often look confusing because several state machines are

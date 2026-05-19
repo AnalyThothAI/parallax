@@ -57,6 +57,27 @@ calls `aclose()`, and closes the pool bundle. Runtime health endpoints
 and CLI status must read worker state from the scheduler's `workers`
 map, not bespoke top-level runtime fields.
 
+## Agent execution backpressure
+
+LLM-backed providers share one `AgentExecutionGateway` per process. The
+gateway owns provider-side execution mechanics: lane concurrency, RPM
+limits, circuit breakers, timeouts, usage capture, safety-net fallback,
+and request/result audit metadata. It does not own domain claims,
+attempt counters, product audit tables, or read-model writes.
+
+Workers that burn attempts when claiming DB work must reserve agent
+capacity before claiming. `pulse_candidate` reserves `pulse.pipeline`;
+`enrichment` reserves `social.event_enrichment`; `handle_summary`
+reserves `watchlist.handle_summary`. If a reservation is denied, the
+worker returns an `agent_backpressure_capacity_denied` note and leaves
+the job unclaimed. This preserves retry budgets during provider
+congestion and lets the next bounded catch-up cycle retry naturally.
+
+`/api/status` exposes the gateway snapshot under `agent_execution`, and
+Prometheus exposes `gmgn_agent_execution_*` metrics. These are ops
+signals only. Product readiness still comes from persisted domain facts
+and read models.
+
 ## Coverage semantics
 
 `coverage=public_stream` flags events as filtered from GMGN's anonymous public stream — not a full Twitter firehose guarantee. Do not advertise broader coverage in payloads or docs.

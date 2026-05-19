@@ -137,9 +137,11 @@ def test_domain_packages_do_not_import_openai_agents_sdk() -> None:
     violations: list[str] = []
     for path in _py_files(domain_root):
         imports = _imported_modules(_parse(path))
-        for module in sorted(imports):
-            if module.startswith(forbidden_prefixes):
-                violations.append(f"{path.relative_to(ROOT)} imports {module}")
+        violations.extend(
+            f"{path.relative_to(ROOT)} imports {module}"
+            for module in sorted(imports)
+            if module.startswith(forbidden_prefixes)
+        )
 
     assert violations == []
 

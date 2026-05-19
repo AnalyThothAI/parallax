@@ -81,6 +81,10 @@ OPERATOR_CLI_PROVIDER_FAMILY_IMPORTS = {
         SRC_ROOT / "app" / "surfaces" / "cli" / "commands" / "ops.py",
         "gmgn_twitter_intel.app.runtime.provider_wiring.okx",
     ),
+    (
+        SRC_ROOT / "app" / "surfaces" / "cli" / "commands" / "ops.py",
+        "gmgn_twitter_intel.app.runtime.provider_wiring.openai",
+    ),
 }
 FACADE_CONCRETE_EXPORTS = {
     "BinanceWeb3DexProfileProvider",

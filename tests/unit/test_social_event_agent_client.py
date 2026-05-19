@@ -37,7 +37,7 @@ class FakeGateway:
             trace_metadata=stage.trace_metadata,
         )
 
-    async def execute(self, stage):
+    async def execute(self, stage, reservation=None):
         self.executed_stage = stage
 
         class Result:

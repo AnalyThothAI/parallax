@@ -6,7 +6,7 @@ import math
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentCircuitBreakerPolicy,
@@ -20,7 +20,7 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentRuntimePolicy,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import (
+from gmgn_twitter_intel.platform.agent_hashing import (
     artifact_hash_for,
     json_sha256,
     text_sha256,

@@ -16,7 +16,6 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import (
     PulseDecisionStageSpec,
     PulseEvidencePacket,
 )
-from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     DecisionRoute,
@@ -27,7 +26,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageStatus,
     TradePlaybook,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionError,
@@ -36,7 +35,7 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentExecutionResultAudit,
     AgentStageSpec,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
+from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionDesk"
@@ -311,7 +310,7 @@ class OpenAIAgentsPulseDecisionClient:
             normalization_input = (
                 raw_output.model_dump(mode="json") if isinstance(raw_output, output_type) else raw_output
             )
-            normalized = normalize_pulse_stage_output(
+            normalized = self._decision_runtime.normalize_stage_output(
                 output_type=output_type,
                 raw_output=normalization_input,
                 evidence_packet=spec.input_payload.get("evidence_packet"),

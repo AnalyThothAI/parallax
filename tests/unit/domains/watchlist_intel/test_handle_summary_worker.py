@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionErrorClass,
 )

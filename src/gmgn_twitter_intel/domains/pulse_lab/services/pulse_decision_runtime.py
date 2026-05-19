@@ -17,6 +17,7 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import (
     PulseEvidencePacket,
 )
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
     load_decision_maker_prompt,
@@ -118,6 +119,19 @@ class PulseDecisionRuntimeService:
                 preview = unknown[:5]
                 suffix = "..." if len(unknown) > 5 else ""
                 raise ValueError(f"{field_name} contains refs outside allowed_evidence_refs: {preview}{suffix}")
+
+    def normalize_stage_output(
+        self,
+        *,
+        output_type: type[Any],
+        raw_output: Any,
+        evidence_packet: Any,
+    ) -> Any:
+        return normalize_pulse_stage_output(
+            output_type=output_type,
+            raw_output=raw_output,
+            evidence_packet=evidence_packet,
+        )
 
     def enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision:
         event_ids = _final_url_event_ids(final)

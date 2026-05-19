@@ -30,6 +30,7 @@ def test_project_uses_domain_package_src_layout():
     assert (cli / "main.py").is_file()
     assert {path.name for path in api.glob("routes_*.py")} == {
         "routes_events.py",
+        "routes_news.py",
         "routes_notifications.py",
         "routes_pulse.py",
         "routes_radar.py",

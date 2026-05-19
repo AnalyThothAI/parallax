@@ -3,15 +3,15 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
+    OpenAIAgentsWatchlistSummaryClient,
+    _coerce_summary_payload,
+)
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionRequestAudit,
     AgentExecutionResult,
     AgentExecutionResultAudit,
     AgentExecutionStatus,
-)
-from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
-    OpenAIAgentsWatchlistSummaryClient,
-    _coerce_summary_payload,
 )
 
 
@@ -38,7 +38,7 @@ class FakeAgentGateway:
             trace_metadata={"handle": stage.group_id},
         )
 
-    async def execute(self, stage):
+    async def execute(self, stage, reservation=None):
         self.execute_calls.append(stage)
         request_audit = self.request_audit(stage)
         return AgentExecutionResult(

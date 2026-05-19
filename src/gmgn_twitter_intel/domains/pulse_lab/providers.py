@@ -13,7 +13,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentCapacityReservation
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +92,14 @@ class PulseDecisionRuntime(Protocol):
         evidence_packet: PulseEvidencePacket,
         debate_memo: EvidenceDebateMemo,
     ) -> None: ...
+
+    def normalize_stage_output(
+        self,
+        *,
+        output_type: type[Any],
+        raw_output: Any,
+        evidence_packet: Any,
+    ) -> Any: ...
 
     def enrich_evidence_urls(self, final: FinalDecision) -> FinalDecision: ...
 

@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent impor
     SCHEMA_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentStageSpec
+from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
 
 
 @lru_cache(maxsize=1)

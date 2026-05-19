@@ -7,7 +7,7 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import (
+from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionErrorClass,
 )
