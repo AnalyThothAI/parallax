@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import (
     MentionSemanticsWorker,
 )
@@ -31,6 +32,13 @@ def test_mention_semantics_worker_does_not_own_admission_reconciliation():
     assert "upsert_admissions_from_radar_rows" not in source
     assert "admitted_radar_rows" not in source
     assert "source_mentions_for_admission" not in source
+
+
+def test_source_set_query_uses_indexable_current_resolution_predicate():
+    source = inspect.getsource(NarrativeRepository.source_set_for_admission)
+
+    assert "COALESCE(resolution.is_current" not in source
+    assert "resolution.is_current = true" in source
 
 
 def test_mention_semantics_worker_calls_provider_outside_db_session():

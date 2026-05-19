@@ -183,7 +183,7 @@ class NarrativeRepository:
             JOIN events ON events.event_id = resolution.event_id
             WHERE resolution.target_type = %s
               AND resolution.target_id = %s
-              AND COALESCE(resolution.is_current, true) = true
+              AND resolution.is_current = true
               AND events.received_at_ms >= %s
               AND events.received_at_ms <= %s
               {watched_clause}
