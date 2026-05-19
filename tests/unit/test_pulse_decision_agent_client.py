@@ -60,8 +60,8 @@ class _FakeAgentGateway:
             },
         )
 
-    async def execute(self, stage):
-        self.execute_calls.append(stage)
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
         request_audit = self.request_audit(stage)
         output = self.outputs[stage.stage]
         return AgentExecutionResult(
@@ -86,8 +86,8 @@ class _FakeAgentGateway:
 
 
 class _FailingAgentGateway(_FakeAgentGateway):
-    async def execute(self, stage):
-        self.execute_calls.append(stage)
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
         request_audit = self.request_audit(stage)
         failed = AgentExecutionResultAudit(
             **_request_audit_base(request_audit),
@@ -105,6 +105,29 @@ class _FailingAgentGateway(_FakeAgentGateway):
             "agent lane timed out",
             audit=failed,
             execution_started=True,
+        )
+
+
+class _NoStartBackpressureGateway(_FakeAgentGateway):
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
+        request_audit = self.request_audit(stage)
+        audit = AgentExecutionResultAudit(
+            **_request_audit_base(request_audit),
+            status=AgentExecutionStatus.FAILED,
+            execution_started=False,
+            latency_ms=0.0,
+            usage={},
+            parse_mode="strict",
+            safety_net={},
+            error_class=AgentExecutionErrorClass.CAPACITY_DENIED,
+            error_message="agent lane unavailable",
+        )
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            "agent lane unavailable",
+            audit=audit,
+            execution_started=False,
         )
 
 
@@ -257,22 +280,97 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
         )
     )
 
-    assert [stage.lane for stage in gateway.execute_calls] == [
+    assert [call["stage"].lane for call in gateway.execute_calls] == [
         "pulse.evidence_debate",
         "pulse.decision_maker",
     ]
-    assert [stage.stage for stage in gateway.execute_calls] == ["evidence_debate", "decision_maker"]
-    assert gateway.execute_calls[0].output_type is EvidenceDebateMemo
-    assert gateway.execute_calls[1].output_type is FinalDecision
-    assert [stage.max_turns for stage in gateway.execute_calls] == [2, 4]
-    assert isinstance(gateway.execute_calls[0].input_payload, dict)
+    assert [call["stage"].stage for call in gateway.execute_calls] == ["evidence_debate", "decision_maker"]
+    assert gateway.execute_calls[0]["stage"].output_type is EvidenceDebateMemo
+    assert gateway.execute_calls[1]["stage"].output_type is FinalDecision
+    assert [call["stage"].max_turns for call in gateway.execute_calls] == [2, 4]
+    assert isinstance(gateway.execute_calls[0]["stage"].input_payload, dict)
     assert result.stage_audits[0].usage_json == {"input_tokens": 11, "output_tokens": 5}
     assert result.stage_audits[0].parse_mode == "safety_net_repaired"
     assert result.stage_audits[0].safety_net_used is True
     assert result.stage_audits[0].safety_net_retries == 1
-    assert result.stage_audits[0].input_hash == gateway.execute_calls[0].input_hash
+    assert result.stage_audits[0].input_hash == gateway.execute_calls[0]["stage"].input_hash
     assert result.stage_audits[0].output_hash == "sha256:output-evidence_debate"
     assert result.stage_audits[1].output_hash == "sha256:output-decision_maker"
+
+
+def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "evidence_debate": _evidence_debate_raw(["event:event-1"]),
+            "decision_maker": _final_decision_raw(
+                supporting_refs=["event:event-1"],
+                playbook={
+                    "has_playbook": False,
+                    "watch_signals": [],
+                    "exit_triggers": [],
+                    "monitoring_horizon": "4h",
+                },
+            ),
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+    parent = object()
+
+    asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+            parent_reservation=parent,
+        )
+    )
+
+    assert [call["kwargs"] for call in gateway.execute_calls] == [
+        {"parent_reservation": parent},
+        {"parent_reservation": parent},
+    ]
+
+
+def test_pulse_client_omits_parent_reservation_keyword_for_legacy_gateway() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "evidence_debate": _evidence_debate_raw(["event:event-1"]),
+            "decision_maker": _final_decision_raw(
+                supporting_refs=["event:event-1"],
+                playbook={
+                    "has_playbook": False,
+                    "watch_signals": [],
+                    "exit_triggers": [],
+                    "monitoring_horizon": "4h",
+                },
+            ),
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+        )
+    )
+
+    assert [call["kwargs"] for call in gateway.execute_calls] == [{}, {}]
 
 
 def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -> None:
@@ -378,7 +476,33 @@ def test_gateway_execution_error_becomes_failed_stage_audit() -> None:
     assert exc.value.audits[0].status == "timeout"
     assert exc.value.audits[0].error == "agent lane timed out"
     assert exc.value.audits[0].usage_json == {"input_tokens": 2}
-    assert exc.value.audits[0].input_hash == gateway.execute_calls[0].input_hash
+    assert exc.value.audits[0].input_hash == gateway.execute_calls[0]["stage"].input_hash
+
+
+def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() -> None:
+    gateway = _NoStartBackpressureGateway()
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    import pytest
+
+    with pytest.raises(AgentExecutionError) as exc:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness={"status": "complete"},
+                runtime_manifest={"runtime_version": "test"},
+            )
+        )
+
+    assert exc.value.error_class is AgentExecutionErrorClass.CAPACITY_DENIED
+    assert exc.value.execution_started is False
 
 
 def _pipeline_context() -> dict:

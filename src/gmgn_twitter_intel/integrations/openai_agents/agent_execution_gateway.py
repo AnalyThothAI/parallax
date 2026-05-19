@@ -48,6 +48,11 @@ class _LaneState:
     capacity_denied_total: int = 0
     circuit_open_total: int = 0
     timeout_total: int = 0
+    provider_running_count: int = 0
+    rpm_waiting_count: int = 0
+    last_denied_at_ms: int | None = None
+    last_timeout_at_ms: int | None = None
+    in_flight_started_at: list[float] = field(default_factory=list)
     failure_timestamps: list[float] = field(default_factory=list)
     circuit_open_until: float = 0
 
@@ -79,6 +84,11 @@ class AgentExecutionGateway:
         self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
         self._global_limiter = AsyncLimiter(policy.global_rpm_limit, 60)
+        self._lane_limiters = {
+            lane: AsyncLimiter(lane_policy.rpm_limit, 60)
+            for lane, lane_policy in policy.lanes.items()
+            if lane_policy.rpm_limit is not None
+        }
         self._lanes: dict[str, _LaneState] = {
             lane: _LaneState(
                 policy=lane_policy,
@@ -116,7 +126,13 @@ class AgentExecutionGateway:
             artifact_version_hash=artifact_version_hash,
         )
 
-    def try_reserve(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str = "execution",
+    ) -> AgentCapacityReservation:
         lane_key = str(lane)
         lane_state = self._lane_state(lane_key)
         if self._is_circuit_open(lane_key, lane_state):
@@ -146,18 +162,67 @@ class AgentExecutionGateway:
             )
 
         released = False
+        acquired_at = time.monotonic()
+        lane_state.in_flight_started_at.append(acquired_at)
 
         def release() -> None:
             nonlocal released
             if released:
                 return
             released = True
+            _remove_in_flight_start(lane_state, acquired_at)
             lane_state.semaphore.release()
             self._global_semaphore.release()
 
         return AgentCapacityReservation(
             lane=lane_key,
             acquired=True,
+            child_lanes=tuple(str(child_lane) for child_lane in child_lanes),
+            scope=str(scope),
+            _release=release,
+            _owner_token=self._reservation_owner_token,
+        )
+
+    def _try_reserve_lane_only(self, lane: str) -> AgentCapacityReservation:
+        lane_key = str(lane)
+        lane_state = self._lane_state(lane_key)
+
+        if self._is_circuit_open(lane_key, lane_state):
+            lane_state.circuit_open_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CIRCUIT_OPEN)
+            return AgentCapacityReservation(
+                lane=lane_key,
+                acquired=False,
+                reason=AgentExecutionErrorClass.CIRCUIT_OPEN,
+                owns_global=False,
+            )
+
+        if not _try_acquire_nowait(lane_state.semaphore):
+            lane_state.capacity_denied_total += 1
+            self._record_backpressure(lane_key, AgentExecutionErrorClass.CAPACITY_DENIED)
+            return AgentCapacityReservation(
+                lane=lane_key,
+                acquired=False,
+                reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+                owns_global=False,
+            )
+
+        released = False
+        acquired_at = time.monotonic()
+        lane_state.in_flight_started_at.append(acquired_at)
+
+        def release() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            _remove_in_flight_start(lane_state, acquired_at)
+            lane_state.semaphore.release()
+
+        return AgentCapacityReservation(
+            lane=lane_key,
+            acquired=True,
+            owns_global=False,
             _release=release,
             _owner_token=self._reservation_owner_token,
         )
@@ -167,22 +232,21 @@ class AgentExecutionGateway:
         stage: AgentStageSpec,
         *,
         reservation: AgentCapacityReservation | None = None,
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> AgentExecutionResult:
         audit = self.request_audit(stage)
         lane_state = self._lane_state(stage.lane)
+        if reservation is not None and parent_reservation is not None:
+            raise ValueError("reservation and parent_reservation are mutually exclusive")
         release_reservation = reservation is None
         if reservation is not None:
             self._validate_external_reservation(stage, reservation)
-        if self._is_circuit_open(stage.lane, lane_state):
-            lane_state.circuit_open_total += 1
-            raise AgentExecutionError(
-                AgentExecutionErrorClass.CIRCUIT_OPEN,
-                f"agent lane circuit is open: {stage.lane}",
-                audit=audit,
-                execution_started=False,
-            )
+        elif parent_reservation is not None:
+            self._validate_parent_reservation(stage, parent_reservation)
+            reservation = self._try_reserve_lane_only(stage.lane)
+        else:
+            reservation = self.try_reserve(stage.lane)
 
-        reservation = reservation or self.try_reserve(stage.lane)
         if not reservation.acquired:
             error_class = reservation.reason or AgentExecutionErrorClass.CAPACITY_DENIED
             raise AgentExecutionError(
@@ -194,39 +258,40 @@ class AgentExecutionGateway:
 
         started = time.perf_counter()
         runner_entered = {"value": False}
-        in_flight_recorded = False
+        provider_running_recorded = False
         try:
-            self._record_in_flight(stage, delta=1)
-            in_flight_recorded = True
-            async with self._global_limiter:
-                try:
-                    final_output, raw_result, audit_extra = await asyncio.wait_for(
-                        self._run_stage(stage, audit, runner_entered=runner_entered),
-                        timeout=float(lane_state.policy.timeout_seconds),
-                    )
-                except TimeoutError as exc:
-                    runner_entered["value"] = True
-                    lane_state.timeout_total += 1
-                    self.record_lane_failure(stage.lane)
-                    failed = self._failed_audit(
-                        audit,
-                        started=started,
-                        error_class=AgentExecutionErrorClass.TIMEOUT,
-                        message=f"agent lane timed out after {lane_state.policy.timeout_seconds:g}s",
-                        execution_started=True,
-                    )
-                    self._record_execution_call(
-                        stage,
-                        status=failed.status,
-                        error_class=failed.error_class,
-                        started=started,
-                    )
-                    raise AgentExecutionError(
-                        AgentExecutionErrorClass.TIMEOUT,
-                        failed.error_message or "agent execution timed out",
-                        audit=failed,
-                        execution_started=True,
-                    ) from exc
+            await self._consume_rate_limit_or_raise(stage, audit)
+            self._record_provider_running(stage, delta=1)
+            provider_running_recorded = True
+            try:
+                final_output, raw_result, audit_extra = await asyncio.wait_for(
+                    self._run_stage(stage, audit, runner_entered=runner_entered),
+                    timeout=float(lane_state.policy.timeout_seconds),
+                )
+            except TimeoutError as exc:
+                runner_entered["value"] = True
+                lane_state.timeout_total += 1
+                lane_state.last_timeout_at_ms = _epoch_ms()
+                self.record_lane_failure(stage.lane)
+                failed = self._failed_audit(
+                    audit,
+                    started=started,
+                    error_class=AgentExecutionErrorClass.TIMEOUT,
+                    message=f"agent lane timed out after {lane_state.policy.timeout_seconds:g}s",
+                    execution_started=True,
+                )
+                self._record_execution_call(
+                    stage,
+                    status=failed.status,
+                    error_class=failed.error_class,
+                    started=started,
+                )
+                raise AgentExecutionError(
+                    AgentExecutionErrorClass.TIMEOUT,
+                    failed.error_message or "agent execution timed out",
+                    audit=failed,
+                    execution_started=True,
+                ) from exc
             result_audit = AgentExecutionResultAudit(
                 **_audit_base(audit),
                 status=AgentExecutionStatus.DONE,
@@ -317,8 +382,8 @@ class AgentExecutionGateway:
                 execution_started=runner_entered["value"],
             ) from exc
         finally:
-            if in_flight_recorded:
-                self._record_in_flight(stage, delta=-1)
+            if provider_running_recorded:
+                self._record_provider_running(stage, delta=-1)
             if release_reservation:
                 await reservation.release()
 
@@ -337,16 +402,25 @@ class AgentExecutionGateway:
         lanes: dict[str, Any] = {}
         for lane, lane_state in self._lanes.items():
             lanes[lane] = {
+                "priority_label": lane_state.policy.priority,
+                "rpm_limit": lane_state.policy.rpm_limit,
                 "max_concurrency": lane_state.policy.max_concurrency,
                 "timeout_seconds": float(lane_state.policy.timeout_seconds),
                 "in_flight": _in_flight(lane_state.semaphore),
+                "provider_running": lane_state.provider_running_count,
+                "rpm_waiting_count": lane_state.rpm_waiting_count,
                 "circuit_state": "open" if lane_state.circuit_open_until > now else "closed",
+                "circuit_open_until_ms": _monotonic_deadline_to_epoch_ms(lane_state.circuit_open_until),
                 "capacity_denied_total": lane_state.capacity_denied_total,
                 "circuit_open_total": lane_state.circuit_open_total,
                 "timeout_total": lane_state.timeout_total,
+                "last_denied_at_ms": lane_state.last_denied_at_ms,
+                "last_timeout_at_ms": lane_state.last_timeout_at_ms,
+                "oldest_in_flight_age_ms": _oldest_in_flight_age_ms(lane_state, now=now),
             }
         return {
             "global_max_concurrency": self._policy.global_max_concurrency,
+            "global_rpm_limit": self._policy.global_rpm_limit,
             "global_in_flight": _in_flight(self._global_semaphore),
             "lanes": lanes,
         }
@@ -426,6 +500,32 @@ class AgentExecutionGateway:
             self._lanes[lane_key] = state
         return state
 
+    async def _consume_rate_limit_or_raise(
+        self,
+        stage: AgentStageSpec,
+        audit: AgentExecutionRequestAudit,
+    ) -> None:
+        lane_limiter = self._lane_limiters.get(stage.lane)
+        if not self._global_limiter.has_capacity(1):
+            self._record_backpressure(stage.lane, AgentExecutionErrorClass.RATE_LIMITED)
+            raise AgentExecutionError(
+                AgentExecutionErrorClass.RATE_LIMITED,
+                f"global agent rpm limit is exhausted: {self._policy.global_rpm_limit}",
+                audit=audit,
+                execution_started=False,
+            )
+        if lane_limiter is not None and not lane_limiter.has_capacity(1):
+            self._record_backpressure(stage.lane, AgentExecutionErrorClass.RATE_LIMITED)
+            raise AgentExecutionError(
+                AgentExecutionErrorClass.RATE_LIMITED,
+                f"agent lane rpm limit is exhausted: {stage.lane}",
+                audit=audit,
+                execution_started=False,
+            )
+        await self._global_limiter.acquire(1)
+        if lane_limiter is not None:
+            await lane_limiter.acquire(1)
+
     def _is_circuit_open(self, lane: str, lane_state: _LaneState | None = None) -> bool:
         state = lane_state or self._lane_state(lane)
         return state.circuit_open_until > time.monotonic()
@@ -473,6 +573,24 @@ class AgentExecutionGateway:
         if not reservation.active:
             raise ValueError("execute requires an active acquired reservation")
 
+    def _validate_parent_reservation(
+        self,
+        stage: AgentStageSpec,
+        reservation: AgentCapacityReservation,
+    ) -> None:
+        if not reservation.acquired or not reservation.active:
+            raise ValueError("execute requires an active acquired parent reservation")
+        if reservation._owner_token is not self._reservation_owner_token:
+            raise ValueError("parent reservation was not issued by this gateway")
+        if not reservation.owns_global:
+            raise ValueError("parent reservation must own global capacity")
+        if reservation.scope != "parent":
+            raise ValueError("parent reservation scope must be 'parent'")
+        if stage.lane not in reservation.child_lanes:
+            raise ValueError(
+                f"parent reservation for {reservation.lane!r} does not allow child lane {stage.lane!r}"
+            )
+
     def _model_for(self, model_name: str, *, timeout_s: float) -> Any:
         key = (str(model_name), self._base_url, float(timeout_s))
         cached = self._model_cache.get(key)
@@ -489,7 +607,9 @@ class AgentExecutionGateway:
         self._model_cache[key] = model
         return model
 
-    def _record_in_flight(self, stage: AgentStageSpec, *, delta: int) -> None:
+    def _record_provider_running(self, stage: AgentStageSpec, *, delta: int) -> None:
+        lane_state = self._lane_state(stage.lane)
+        lane_state.provider_running_count = max(0, lane_state.provider_running_count + delta)
         telemetry = self._telemetry
         if telemetry is None:
             return
@@ -499,6 +619,8 @@ class AgentExecutionGateway:
             method(lane=stage.lane, stage=stage.stage)
 
     def _record_backpressure(self, lane: str, reason: AgentExecutionErrorClass) -> None:
+        lane_state = self._lane_state(lane)
+        lane_state.last_denied_at_ms = _epoch_ms()
         telemetry = self._telemetry
         method = getattr(telemetry, "record_agent_execution_backpressure", None)
         if callable(method):
@@ -558,6 +680,32 @@ def _try_acquire_nowait(semaphore: asyncio.BoundedSemaphore) -> bool:
 
 def _in_flight(semaphore: asyncio.BoundedSemaphore) -> int:
     return int(getattr(semaphore, "_bound_value", 0) - getattr(semaphore, "_value", 0))
+
+
+def _remove_in_flight_start(lane_state: _LaneState, acquired_at: float) -> None:
+    try:
+        lane_state.in_flight_started_at.remove(acquired_at)
+    except ValueError:
+        return
+
+
+def _oldest_in_flight_age_ms(lane_state: _LaneState, *, now: float) -> float | None:
+    if not lane_state.in_flight_started_at:
+        return None
+    return max(0.0, (now - min(lane_state.in_flight_started_at)) * 1000)
+
+
+def _epoch_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _monotonic_deadline_to_epoch_ms(deadline: float) -> int | None:
+    if deadline <= 0:
+        return None
+    now = time.monotonic()
+    if deadline <= now:
+        return None
+    return int(time.time() * 1000 + (deadline - now) * 1000)
 
 
 def _latency_ms(started: float) -> float:

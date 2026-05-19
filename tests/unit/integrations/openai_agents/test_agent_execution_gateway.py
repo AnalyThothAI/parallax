@@ -42,9 +42,17 @@ class FakeResult:
 
 
 class FakeRunner:
-    def __init__(self, *, delay_seconds: float = 0) -> None:
+    def __init__(
+        self,
+        *,
+        delay_seconds: float = 0,
+        exception: BaseException | None = None,
+        entered: asyncio.Event | None = None,
+    ) -> None:
         self.calls = 0
         self.delay_seconds = delay_seconds
+        self.exception = exception
+        self.entered = entered
         self.run_configs: list[Any] = []
         self.input_payloads: list[Any] = []
 
@@ -53,8 +61,12 @@ class FakeRunner:
         self.calls += 1
         self.input_payloads.append(input_payload)
         self.run_configs.append(run_config)
+        if self.entered is not None:
+            self.entered.set()
         if self.delay_seconds:
             await asyncio.sleep(self.delay_seconds)
+        if self.exception is not None:
+            raise self.exception
         return FakeResult(Payload(value="ok"))
 
 
@@ -111,6 +123,32 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
                     "window_seconds": 60,
                     "open_seconds": 60,
                 },
+            )
+        },
+    )
+
+
+def _pulse_policy() -> AgentRuntimePolicy:
+    return AgentRuntimePolicy(
+        global_max_concurrency=1,
+        global_rpm_limit=1000,
+        lanes={
+            "pulse.pipeline": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "pulse.evidence_debate": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "pulse.decision_maker": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+        },
+    )
+
+
+def _lane_rpm_policy() -> AgentRuntimePolicy:
+    return AgentRuntimePolicy(
+        global_max_concurrency=2,
+        global_rpm_limit=1000,
+        lanes={
+            "test.lane": AgentLanePolicy(
+                max_concurrency=2,
+                timeout_seconds=10,
+                rpm_limit=1,
             )
         },
     )
@@ -203,6 +241,76 @@ def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity(
         snapshot_after_release = gateway.status_snapshot()
         assert snapshot_after_release["global_in_flight"] == 0
         assert snapshot_after_release["lanes"]["test.lane"]["in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_pulse_policy(),
+            runner=runner,
+        )
+        parent = gateway.try_reserve(
+            "pulse.pipeline",
+            child_lanes=("pulse.evidence_debate", "pulse.decision_maker"),
+            scope="parent",
+        )
+
+        try:
+            assert parent.acquired is True
+            result = await gateway.execute(
+                _spec("pulse.evidence_debate"),
+                parent_reservation=parent,
+            )
+            assert result.audit.status == AgentExecutionStatus.DONE
+            assert gateway.status_snapshot()["global_in_flight"] == 1
+        finally:
+            await parent.release()
+
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
+        assert snapshot["lanes"]["pulse.evidence_debate"]["in_flight"] == 0
+        assert runner.calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_lane_rpm_limit_applies_even_when_global_rpm_is_high() -> None:
+    async def scenario() -> None:
+        runner = FakeRunner()
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_lane_rpm_policy(),
+            runner=runner,
+        )
+
+        first = await gateway.execute(_spec())
+        assert first.audit.status is AgentExecutionStatus.DONE
+
+        with pytest.raises(AgentExecutionError) as err:
+            await gateway.execute(_spec())
+
+        assert err.value.error_class is AgentExecutionErrorClass.RATE_LIMITED
+        assert err.value.execution_started is False
+        assert runner.calls == 1
+        snapshot = gateway.status_snapshot()
+        lane = snapshot["lanes"]["test.lane"]
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["global_rpm_limit"] == 1000
+        assert lane["rpm_limit"] == 1
+        assert lane["provider_running"] == 0
+        assert lane["rpm_waiting_count"] == 0
+        assert lane["in_flight"] == 0
 
     asyncio.run(scenario())
 
@@ -452,5 +560,75 @@ def test_status_snapshot_includes_lane_counters() -> None:
         assert snapshot["lanes"]["test.lane"]["timeout_total"] == 0
 
         await reservation.release()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("runner", "expected_error"),
+    [
+        (FakeRunner(), None),
+        (
+            FakeRunner(
+                exception=AgentExecutionError(
+                    AgentExecutionErrorClass.PROVIDER_ERROR,
+                    "provider failed",
+                    execution_started=True,
+                )
+            ),
+            AgentExecutionError,
+        ),
+        (FakeRunner(exception=RuntimeError("boom")), AgentExecutionError),
+    ],
+)
+def test_execute_releases_internal_reservation_after_success_and_errors(
+    runner: FakeRunner,
+    expected_error: type[BaseException] | None,
+) -> None:
+    async def scenario() -> None:
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+
+        if expected_error is None:
+            await gateway.execute(_spec())
+        else:
+            with pytest.raises(expected_error):
+                await gateway.execute(_spec())
+
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["test.lane"]["in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_execute_releases_internal_reservation_after_cancellation() -> None:
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        runner = FakeRunner(delay_seconds=60, entered=entered)
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+
+        task = asyncio.create_task(gateway.execute(_spec()))
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["test.lane"]["in_flight"] == 0
 
     asyncio.run(scenario())

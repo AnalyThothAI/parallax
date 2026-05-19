@@ -11,6 +11,7 @@ from gmgn_twitter_intel.app.runtime.ops_diagnostics import (
     redact_diagnostics,
 )
 from gmgn_twitter_intel.domains.asset_market.providers import MarketCapability, ProviderHealth
+from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 
 
 def test_redact_diagnostics_masks_secret_like_keys() -> None:
@@ -71,6 +72,114 @@ def test_ops_queue_payload_marks_dead_queue_blocked() -> None:
     assert payload["summary"]["status"] == "blocked"
 
 
+def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:
+    runtime = FakeRuntime(
+        agent_execution_snapshot={
+            "global_max_concurrency": 4,
+            "global_in_flight": 1,
+            "prompt": "do not expose",
+            "api_key": "sk-live",
+            "lanes": {
+                "pulse.pipeline": {
+                    "policy": {"priority": "high", "max_concurrency": 1},
+                    "in_flight": 1,
+                    "input_payload": {"secret": "value"},
+                    "provider_running": 1,
+                }
+            },
+        }
+    )
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    assert payload["agent_execution"]["status"] == "ok"
+    assert "prompt" not in payload["agent_execution"]
+    assert "api_key" not in payload["agent_execution"]
+    assert set(payload["agent_execution"]["lanes"]["pulse.pipeline"]) <= {
+        "status",
+        "reason",
+        "policy",
+        "counters",
+    }
+    assert "input_payload" not in payload["agent_execution"]["lanes"]["pulse.pipeline"]
+
+
+def test_ops_diagnostics_agent_execution_disabled_without_gateway() -> None:
+    runtime = FakeRuntime()
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    assert payload["agent_execution"]["status"] == "disabled"
+    assert payload["agent_execution"]["policy"] == {}
+    assert payload["agent_execution"]["counters"] == {}
+
+
+def test_ops_diagnostics_agent_execution_snapshot_failure_is_unavailable() -> None:
+    runtime = FakeRuntime(agent_execution_error=RuntimeError("snapshot exploded"))
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    assert payload["agent_execution"]["status"] == "unknown"
+    assert payload["agent_execution"]["status_reason"] == "unavailable"
+
+
+def test_ops_diagnostics_overall_includes_blocked_agent_execution() -> None:
+    runtime = FakeRuntime(
+        agent_execution_snapshot={
+            "global_max_concurrency": 4,
+            "global_in_flight": 0,
+            "lanes": {
+                "pulse.pipeline": {
+                    "policy": {"priority": "high", "max_concurrency": 1},
+                    "circuit_state": "open",
+                    "last_circuit_open_at_ms": 9_900,
+                    "circuit_open_total": 1,
+                }
+            },
+        }
+    )
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000, since_hours=4, window="1h", scope="all")
+
+    assert payload["agent_execution"]["status"] == "blocked"
+    assert payload["overall"]["status"] == "blocked"
+    assert payload["overall"]["section_status_counts"]["blocked"] >= 1
+
+
+def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> None:
+    runtime = FakeRuntime(
+        agent_execution_snapshot={
+            "global_max_concurrency": 4,
+            "global_in_flight": 0,
+            "lanes": {
+                "narrative.mention_semantics": {
+                    "policy": {"priority": "standard", "max_concurrency": 2},
+                    "capacity_denied_total": 17,
+                    "timeout_total": 3,
+                    "circuit_open_total": 2,
+                    "last_denied_at_ms": 100,
+                    "last_timeout_at_ms": 200,
+                    "last_rpm_wait_at_ms": 300,
+                    "rpm_waiting_count": 0,
+                    "provider_running": 0,
+                }
+            },
+        }
+    )
+
+    stale_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000, since_hours=4, window="1h", scope="all")
+    assert stale_payload["agent_execution"]["status"] == "ok"
+    assert stale_payload["overall"]["status"] == "ok"
+
+    runtime.agent_execution_gateway.snapshot["lanes"]["narrative.mention_semantics"][
+        "last_rpm_wait_at_ms"
+    ] = 999_800
+    recent_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000, since_hours=4, window="1h", scope="all")
+
+    assert recent_payload["agent_execution"]["status"] == "degraded"
+    assert recent_payload["overall"]["status"] == "degraded"
+
+
 class FakeRows:
     def __init__(self, rows: Iterable[dict[str, Any]]) -> None:
         self.rows = list(rows)
@@ -89,6 +198,8 @@ class FakeConn:
 
     def execute(self, sql: str, params: object = ()) -> FakeRows:
         self.executed.append(sql)
+        if "SELECT version_num FROM alembic_version" in sql:
+            return FakeRows([{"version_num": latest_migration_version()}])
         if "COUNT(*)" in sql and "GROUP BY status" in sql:
             return FakeRows(self.queue_rows)
         if "oldest_due_at_ms" in sql:
@@ -163,6 +274,8 @@ class FakeRuntime:
         *,
         news_error: Exception | None = None,
         queue_rows: list[dict[str, Any]] | None = None,
+        agent_execution_snapshot: dict[str, Any] | None = None,
+        agent_execution_error: Exception | None = None,
     ) -> None:
         self.settings = SimpleNamespace(
             app_home="/var/lib/gmgn-twitter-intel-test",
@@ -226,6 +339,17 @@ class FakeRuntime:
                 }
             },
         )
+        if agent_execution_error is not None:
+            self.agent_execution_gateway = SimpleNamespace(
+                status_snapshot=lambda: (_ for _ in ()).throw(agent_execution_error)
+            )
+        elif agent_execution_snapshot is not None:
+            self.agent_execution_gateway = SimpleNamespace(
+                snapshot=agent_execution_snapshot,
+                status_snapshot=lambda: self.agent_execution_gateway.snapshot,
+            )
+        else:
+            self.agent_execution_gateway = None
         self._news_error = news_error
 
     def repositories(self) -> FakeRepos:

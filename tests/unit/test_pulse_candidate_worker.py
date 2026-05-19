@@ -40,6 +40,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
+    AgentExecutionError,
     AgentExecutionErrorClass,
 )
 from gmgn_twitter_intel.platform.config.settings import Settings
@@ -828,6 +829,57 @@ def test_process_due_jobs_does_not_claim_when_agent_capacity_denied() -> None:
     assert repos.pulse_jobs.jobs[0]["attempt_count"] == 0
 
 
+def test_pulse_pipeline_parent_reservation_is_passed_to_stage_execution() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    client = TrackingParentReservationClient()
+    worker = _worker(repos, client=client)
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    assert client.reserve_calls
+    assert all(
+        call
+        == {
+            "lane": "pulse.pipeline",
+            "child_lanes": ("pulse.evidence_debate", "pulse.decision_maker"),
+            "scope": "parent",
+        }
+        for call in client.reserve_calls
+    )
+    assert client.parent_reservations == [client.reservation]
+
+
+def test_no_start_agent_backpressure_reschedules_job_without_provider_failure() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos, client=NoStartBackpressureClient())
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 0
+    assert result["failed"] == 0
+    assert repos.pulse_jobs.failures == []
+    assert len(repos.pulse_jobs.backpressure_releases) == 1
+    released = repos.pulse_jobs.backpressure_releases[0]
+    assert released["reason"] == "capacity_denied"
+    job = repos.pulse_jobs.jobs[0]
+    assert job["status"] == "pending"
+    assert job["attempt_count"] == 0
+    assert job["next_run_at_ms"] == NOW_MS + 30_000
+    skipped_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "skipped")
+    assert skipped_run["outcome"] == "backpressure_capacity_denied"
+    assert skipped_run["trace_metadata_json_patch"] == {
+        "agent_backpressure": True,
+        "agent_error_class": "capacity_denied",
+    }
+
+
 def _worker(
     repos: FakeRepos,
     *,
@@ -945,10 +997,10 @@ class FakeDB:
 
 
 class FakeAgentExecutionGateway:
-    def try_reserve(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve(self, lane: str, **_: Any) -> AgentCapacityReservation:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
-    async def execute(self, stage):
+    async def execute(self, stage, **_: Any):
         allowed_refs = [
             str(ref.get("ref_id"))
             for ref in stage.input_payload.get("allowed_evidence_refs", [])
@@ -1135,6 +1187,7 @@ class FakePulseStore:
         self.packets: list[Any] = []
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
+        self.backpressure_releases: list[dict[str, Any]] = []
         self.claim_due_job_calls = 0
         self.admission_claims: list[dict[str, Any]] = []
         self.pending_job_counts_by_window_scope: dict[tuple[str, str], int] = {}
@@ -1398,6 +1451,33 @@ class FakePulseStore:
         self.failures.append({"job": job, "error": error, "failure_reason": kwargs.get("failure_reason")})
         return {"job_id": job["job_id"], "status": "failed"}
 
+    def release_running_job_for_backpressure(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        delay_ms: int = 30_000,
+        **_: Any,
+    ) -> dict[str, Any]:
+        self.backpressure_releases.append(
+            {
+                "job": job,
+                "reason": reason,
+                "now_ms": now_ms,
+                "delay_ms": delay_ms,
+            }
+        )
+        for stored in self.jobs:
+            if stored["job_id"] == job["job_id"] and stored.get("status") == "running":
+                stored["status"] = "pending"
+                stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
+                stored["next_run_at_ms"] = int(now_ms) + int(delay_ms)
+                stored["last_error"] = reason
+                stored["updated_at_ms"] = now_ms
+                return dict(stored)
+        return {"job_id": job["job_id"], "status": "pending"}
+
 
 class FakeClient:
     provider = "fake"
@@ -1411,7 +1491,7 @@ class FakeClient:
         self.contexts: list[dict[str, Any]] = []
         self.run_calls = 0
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, **_: Any) -> AgentCapacityReservation:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(
@@ -1454,6 +1534,7 @@ class FakeClient:
         route: str,
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> PulseDecisionResult:
         self.run_calls += 1
         allowed_refs = [
@@ -1559,11 +1640,44 @@ class FakeClient:
 
 
 class CapacityDeniedFakeClient(FakeClient):
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(self, lane: str, **_: Any) -> AgentCapacityReservation:
         return AgentCapacityReservation(
             lane=lane,
             acquired=False,
             reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+        )
+
+
+class TrackingParentReservationClient(FakeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.reservation = AgentCapacityReservation(lane="pulse.pipeline", acquired=True)
+        self.reserve_calls: list[dict[str, Any]] = []
+        self.parent_reservations: list[AgentCapacityReservation | None] = []
+
+    def try_reserve_execution(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str = "execution",
+    ) -> AgentCapacityReservation:
+        self.reserve_calls.append({"lane": lane, "child_lanes": child_lanes, "scope": scope})
+        return self.reservation
+
+    async def run_decision_pipeline(self, **kwargs: Any) -> PulseDecisionResult:
+        self.parent_reservations.append(kwargs.get("parent_reservation"))
+        return await super().run_decision_pipeline(**kwargs)
+
+
+class NoStartBackpressureClient(FakeClient):
+    async def run_decision_pipeline(self, **kwargs: Any) -> PulseDecisionResult:
+        self.run_calls += 1
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            "agent lane unavailable: pulse.evidence_debate",
+            audit=None,
+            execution_started=False,
         )
 
 

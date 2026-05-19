@@ -249,6 +249,44 @@ class PulseJobsRepository:
             self.conn.commit()
         return _optional_row(row)
 
+    def release_running_job_for_backpressure(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        delay_ms: int = 30_000,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        if job is None:
+            return None
+        now = int(now_ms)
+        attempts = int(job.get("attempt_count") or 0)
+        row = self.conn.execute(
+            """
+            UPDATE pulse_agent_jobs
+            SET status = 'pending',
+                next_run_at_ms = %s,
+                last_error = %s,
+                attempt_count = GREATEST(0, attempt_count - 1),
+                updated_at_ms = %s
+            WHERE job_id = %s
+              AND status = 'running'
+              AND attempt_count = %s
+            RETURNING *
+            """,
+            (
+                now + int(delay_ms),
+                str(reason)[:1000],
+                now,
+                str(job["job_id"]),
+                attempts,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _optional_row(row)
+
     def job_for_candidate(self, candidate_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """

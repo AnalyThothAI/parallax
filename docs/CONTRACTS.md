@@ -105,6 +105,11 @@ Runtime health/status contract:
   circuit-open counts, and timeout counts. Clients must not use this as
   product truth; domain facts and read models remain the source for
   user-facing readiness.
+- `/api/ops/diagnostics.agent_execution` is a sanitized ops view of the
+  same plane. It exposes policy labels, counters, lane status, and
+  aggregate status only; it must not include prompts, inputs, outputs,
+  provider secrets, API keys, or tokens. `priority` is an
+  operator-facing policy label, not strict scheduling behavior.
 - `/api/status/narrative-health` is an authenticated ops read for Narrative
   backlog health. It returns domain-owned aggregates for current admissions
   (`current_admissions`, `suppressed_admissions`, source-event and independent

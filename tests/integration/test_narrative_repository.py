@@ -260,6 +260,98 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     assert context["mentions"][0]["text_clean"] == "SOL breakout discussion"
 
 
+def test_complete_mention_semantics_targets_current_semantic_identity(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        assert evidence.insert_event(make_event("event-identity"), is_watched=True) is True
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-identity",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "SOL breakout discussion",
+                    "text_fingerprint": "fingerprint-old",
+                    "source_received_at_ms": 1_000,
+                },
+                {
+                    "event_id": "event-identity",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "SOL breakout discussion updated",
+                    "text_fingerprint": "fingerprint-current",
+                    "source_received_at_ms": 2_000,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_000,
+        )
+        current = conn.execute(
+            """
+            SELECT semantic_id, schema_version, text_fingerprint
+            FROM token_mention_semantics
+            WHERE text_fingerprint = 'fingerprint-current'
+            """
+        ).fetchone()
+        run = repo.record_narrative_model_run(
+            {
+                "stage": "mention_semantics",
+                "provider": "test-provider",
+                "model": "gpt-test",
+                "schema_version": "narrative_intel_v1",
+                "prompt_version": "mention_semantics_v1",
+                "input_hash": "identity-input-hash",
+                "request_json": {"event_ids": ["event-identity"]},
+                "status": "done",
+                "started_at_ms": 2_000,
+                "finished_at_ms": 2_010,
+                "latency_ms": 10,
+            }
+        )
+
+        complete = repo.complete_mention_semantics_batch(
+            run_id=run["run_id"],
+            labels=[
+                {
+                    "semantic_id": current["semantic_id"],
+                    "event_id": "event-identity",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "schema_version": current["schema_version"],
+                    "text_fingerprint": current["text_fingerprint"],
+                    "trade_stance": "bullish",
+                    "attention_valence": "celebratory",
+                    "claim_type": "price-action",
+                    "evidence_type": "scanner-alert",
+                    "semantic_confidence": 0.8,
+                    "evidence_refs": [],
+                    "raw_label": {"ok": True},
+                }
+            ],
+            failures=[],
+            now_ms=2_020,
+        )
+        rows = {
+            row["text_fingerprint"]: row
+            for row in conn.execute(
+                """
+                SELECT text_fingerprint, status, model_run_id
+                FROM token_mention_semantics
+                WHERE event_id = 'event-identity'
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert complete["labeled"] == 1
+    assert rows["fingerprint-current"]["status"] == "labeled"
+    assert rows["fingerprint-current"]["model_run_id"] == run["run_id"]
+    assert rows["fingerprint-old"]["status"] == "queued"
+    assert rows["fingerprint-old"]["model_run_id"] is None
+
+
 def test_digest_context_counts_admission_source_set_without_semantics(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:

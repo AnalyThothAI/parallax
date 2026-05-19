@@ -105,7 +105,12 @@ are wrong too.
    breakers, reservation, and request/result audit envelopes. Domain
    workers still own admission, claim, retry, finalize, read-model writes,
    and business validation. There is no central durable `agent_tasks`
-   queue; PostgreSQL domain facts and read models remain the truth.
+   queue; PostgreSQL domain facts and read models remain the truth. Pulse
+   multi-stage runs use `pulse.pipeline` as a parent reservation; child
+   stages reuse the parent global slot and acquire only their stage lane
+   bulkhead. No-start backpressure does not burn provider attempts, and
+   lane `priority` is an operator-facing policy label rather than a
+   strict scheduler.
 
 Cross-cutting primitives that implement these invariants:
 

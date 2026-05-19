@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import time
@@ -62,8 +61,23 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_state import run_outcome_from_failure
+from gmgn_twitter_intel.platform.agent_execution import (
+    AgentCapacityReservation,
+    AgentExecutionErrorClass,
+)
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+_NO_START_BACKPRESSURE_CLASSES = {
+    AgentExecutionErrorClass.CAPACITY_DENIED,
+    AgentExecutionErrorClass.CIRCUIT_OPEN,
+    AgentExecutionErrorClass.RATE_LIMITED,
+}
+
+
+class PulseAgentBackpressureReleased(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class PulseCandidateJobService:
@@ -84,7 +98,14 @@ class PulseCandidateJobService:
         self.gate_func = gate_func
         self.gate_thresholds = gate_thresholds
 
-    async def run_job(self, job: dict[str, Any], context: PulseCandidateContext, *, now_ms: int) -> None:
+    async def run_job(
+        self,
+        job: dict[str, Any],
+        context: PulseCandidateContext,
+        *,
+        now_ms: int,
+        parent_reservation: AgentCapacityReservation | None = None,
+    ) -> None:
         run_id = ""
         audit: dict[str, Any] | None = None
         agent_context: dict[str, Any] = {}
@@ -240,21 +261,15 @@ class PulseCandidateJobService:
                 stage_audits = pre_stage_audits
                 result_audit = audit
             else:
-                timeout_seconds = max(0.1, float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0))
-                try:
-                    result = await asyncio.wait_for(
-                        self.decision_client.run_decision_pipeline(
-                            context=agent_context,
-                            run_id=run_id,
-                            job=job,
-                            route=route,
-                            completeness=completeness_json,
-                            runtime_manifest=runtime_manifest,
-                        ),
-                        timeout=timeout_seconds,
-                    )
-                except TimeoutError as exc:
-                    raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
+                result = await self.decision_client.run_decision_pipeline(
+                    context=agent_context,
+                    run_id=run_id,
+                    job=job,
+                    route=route,
+                    completeness=completeness_json,
+                    runtime_manifest=runtime_manifest,
+                    parent_reservation=parent_reservation,
+                )
                 final_decision = result.final_decision
                 stage_audits = (*pre_stage_audits, *result.stage_audits)
                 result_audit = result.agent_run_audit or audit
@@ -476,78 +491,104 @@ class PulseCandidateJobService:
                 )
                 repos.pulse_jobs.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
         except Exception as exc:
-            failed_at_ms = _now_ms()
+            backpressure_reason = _agent_no_start_backpressure_reason(exc)
+            failed_at_ms = int(now_ms) if backpressure_reason else _now_ms()
             failure_reason = _normalized_failure_reason(exc)
             compact_error = _compact_error(exc)
             failed_audits: tuple[StageRunAudit, ...] = ()
             if isinstance(exc, PulseStageFailure):
                 failed_audits = exc.audits
             with self._repository_session() as repos, _transaction(repos.conn):
-                for stage_audit in failed_audits:
-                    repos.pulse_runs.insert_agent_run_step(
-                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
-                        run_id=run_id,
-                        stage=stage_audit.stage,
-                        route=stage_audit.route,
-                        attempt_index=stage_audit.attempt_index,
-                        provider=getattr(self.decision_client, "provider", "openai"),
-                        model=getattr(self.decision_client, "model", ""),
-                        prompt_version=str(audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION),
-                        schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
-                        input_json=stage_audit.input_json,
-                        prompt_text=stage_audit.prompt_text,
-                        response_json=stage_audit.response_json,
-                        trace_metadata_json=stage_audit.trace_metadata_json,
-                        usage_json=stage_audit.usage_json,
-                        latency_ms=stage_audit.latency_ms,
-                        status=stage_audit.status,
-                        error=stage_audit.error,
-                        started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
-                        finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
-                        created_at_ms=failed_at_ms,
-                        safety_net_used=stage_audit.safety_net_used,
-                        safety_net_retries=stage_audit.safety_net_retries,
-                        parse_mode=stage_audit.parse_mode,
+                if backpressure_reason:
+                    if audit is not None and run_started:
+                        repos.pulse_runs.finish_agent_run(
+                            run_id,
+                            "skipped",
+                            error=compact_error,
+                            outcome=f"backpressure_{backpressure_reason}",
+                            trace_metadata_json_patch={
+                                "agent_backpressure": True,
+                                "agent_error_class": backpressure_reason,
+                            },
+                            finished_at_ms=failed_at_ms,
+                            commit=False,
+                        )
+                    repos.pulse_jobs.release_running_job_for_backpressure(
+                        job,
+                        reason=backpressure_reason,
+                        now_ms=failed_at_ms,
                         commit=False,
                     )
-                if audit is not None and run_started:
-                    repos.pulse_runs.finish_agent_run(
-                        run_id,
-                        "failed",
-                        error=compact_error,
-                        outcome=run_outcome_from_failure(failure_reason),
-                        trace_metadata_json_patch={"failure_reason": failure_reason},
-                        finished_at_ms=failed_at_ms,
-                        commit=False,
-                    )
-                    eval_case = build_pulse_failed_eval_case(
-                        run_id=run_id,
-                        runtime_hash=runtime_hash,
-                        context=agent_context,
-                        route=route,
-                        completeness=completeness_json,
-                        stage_audits=failed_audits,
+                else:
+                    for stage_audit in failed_audits:
+                        repos.pulse_runs.insert_agent_run_step(
+                            step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
+                            run_id=run_id,
+                            stage=stage_audit.stage,
+                            route=stage_audit.route,
+                            attempt_index=stage_audit.attempt_index,
+                            provider=getattr(self.decision_client, "provider", "openai"),
+                            model=getattr(self.decision_client, "model", ""),
+                            prompt_version=str(
+                                audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION
+                            ),
+                            schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
+                            input_json=stage_audit.input_json,
+                            prompt_text=stage_audit.prompt_text,
+                            response_json=stage_audit.response_json,
+                            trace_metadata_json=stage_audit.trace_metadata_json,
+                            usage_json=stage_audit.usage_json,
+                            latency_ms=stage_audit.latency_ms,
+                            status=stage_audit.status,
+                            error=stage_audit.error,
+                            started_at_ms=_stage_started_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
+                            finished_at_ms=_stage_finished_at_ms(stage_audit, fallback_finished_at_ms=failed_at_ms),
+                            created_at_ms=failed_at_ms,
+                            safety_net_used=stage_audit.safety_net_used,
+                            safety_net_retries=stage_audit.safety_net_retries,
+                            parse_mode=stage_audit.parse_mode,
+                            commit=False,
+                        )
+                    if audit is not None and run_started:
+                        repos.pulse_runs.finish_agent_run(
+                            run_id,
+                            "failed",
+                            error=compact_error,
+                            outcome=run_outcome_from_failure(failure_reason),
+                            trace_metadata_json_patch={"failure_reason": failure_reason},
+                            finished_at_ms=failed_at_ms,
+                            commit=False,
+                        )
+                        eval_case = build_pulse_failed_eval_case(
+                            run_id=run_id,
+                            runtime_hash=runtime_hash,
+                            context=agent_context,
+                            route=route,
+                            completeness=completeness_json,
+                            stage_audits=failed_audits,
+                            failure_reason=failure_reason,
+                        )
+                        stored_eval_case = repos.pulse_agent_eval.insert_agent_eval_case(
+                            **eval_case,
+                            status="active",
+                            created_at_ms=failed_at_ms,
+                            commit=False,
+                        )
+                        eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
+                        repos.pulse_agent_eval.upsert_agent_eval_result(
+                            **eval_result,
+                            created_at_ms=failed_at_ms,
+                            commit=False,
+                        )
+                    repos.pulse_jobs.mark_job_failed(
+                        job,
+                        compact_error,
+                        now_ms=failed_at_ms,
                         failure_reason=failure_reason,
-                    )
-                    stored_eval_case = repos.pulse_agent_eval.insert_agent_eval_case(
-                        **eval_case,
-                        status="active",
-                        created_at_ms=failed_at_ms,
                         commit=False,
                     )
-                    eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
-                    repos.pulse_agent_eval.upsert_agent_eval_result(
-                        **eval_result,
-                        created_at_ms=failed_at_ms,
-                        commit=False,
-                    )
-                repos.pulse_jobs.mark_job_failed(
-                    job,
-                    compact_error,
-                    now_ms=failed_at_ms,
-                    failure_reason=failure_reason,
-                    commit=False,
-                )
+            if backpressure_reason:
+                raise PulseAgentBackpressureReleased(backpressure_reason) from exc
             raise
 
     @contextmanager
@@ -673,6 +714,39 @@ def _normalized_failure_reason(exc: Exception) -> str:
     if "provider unavailable" in text or "503" in text:
         return "provider_unavailable"
     return "unexpected_exception"
+
+
+def _agent_no_start_backpressure_reason(exc: Exception) -> str | None:
+    error_class = _agent_error_class(exc)
+    if error_class not in _NO_START_BACKPRESSURE_CLASSES:
+        return None
+    execution_started = getattr(exc, "execution_started", None)
+    if execution_started is None and isinstance(exc, PulseStageFailure):
+        execution_started = getattr(exc, "agent_execution_started", None)
+    if execution_started is None:
+        audit = getattr(exc, "audit", None) or getattr(exc, "agent_audit", None)
+        if isinstance(audit, dict):
+            execution_started = audit.get("execution_started")
+        else:
+            execution_started = getattr(audit, "execution_started", None)
+    if execution_started is not False:
+        return None
+    return str(error_class.value if isinstance(error_class, AgentExecutionErrorClass) else error_class)
+
+
+def _agent_error_class(exc: Exception) -> AgentExecutionErrorClass | None:
+    raw = getattr(exc, "error_class", None)
+    if raw is None and isinstance(exc, PulseStageFailure):
+        raw = getattr(exc, "agent_error_class", None)
+    if raw is None:
+        audit = getattr(exc, "audit", None) or getattr(exc, "agent_audit", None)
+        raw = audit.get("error_class") if isinstance(audit, dict) else getattr(audit, "error_class", None)
+    if isinstance(raw, AgentExecutionErrorClass):
+        return raw
+    try:
+        return AgentExecutionErrorClass(str(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 def _playbook_snapshot_payload(

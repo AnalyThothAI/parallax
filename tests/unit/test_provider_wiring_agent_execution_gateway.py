@@ -124,3 +124,31 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         ("pulse", "gpt-pulse", agent_gateway),
         ("watchlist", "gpt-watchlist", agent_gateway),
     ]
+
+
+def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
+    settings = Settings(
+        ws_token="secret",
+        llm={
+            "api_key": "sk-test",
+            "model": "gpt-social",
+            "pulse_agent_model": "gpt-pulse",
+        },
+        workers={
+            "agent_runtime": {
+                "lanes": {
+                    "pulse.pipeline": {
+                        "timeout_seconds": 305,
+                    }
+                },
+            }
+        },
+    )
+
+    provider = openai.openai_pulse_decision_provider(
+        settings,
+        agent_gateway=object(),
+        db_pool=object(),
+    )
+
+    assert provider.timeout_seconds == 305

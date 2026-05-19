@@ -72,11 +72,20 @@ reserves `watchlist.handle_summary`. If a reservation is denied, the
 worker returns an `agent_backpressure_capacity_denied` note and leaves
 the job unclaimed. This preserves retry budgets during provider
 congestion and lets the next bounded catch-up cycle retry naturally.
+For Pulse, `pulse.pipeline` is a parent reservation: child stages reuse
+the parent global slot and acquire only the stage lane bulkhead. A
+no-start response from capacity, circuit, RPM, or parent-reservation
+pressure is backpressure, not a provider attempt. Provider-started
+latency timeouts remain started execution failures and follow the
+domain retry/audit policy.
 
 `/api/status` exposes the gateway snapshot under `agent_execution`, and
 Prometheus exposes `gmgn_agent_execution_*` metrics. These are ops
-signals only. Product readiness still comes from persisted domain facts
-and read models.
+signals only. `/api/ops/diagnostics` also exposes a sanitized
+`agent_execution` section with policy labels, counters, and status
+classification. Lane `priority` is an operator-facing label for
+diagnostics and triage, not a strict scheduler. Product readiness still
+comes from persisted domain facts and read models.
 
 ## Coverage semantics
 

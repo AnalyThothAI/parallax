@@ -648,12 +648,10 @@ class NarrativeRepository:
         failed = 0
         for label in labels:
             status = str(label.get("status") or "labeled")
-            if status == "semantic_unavailable":
-                unavailable += 1
-            else:
+            is_unavailable = status == "semantic_unavailable"
+            if not is_unavailable:
                 status = "labeled"
-                labeled += 1
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 UPDATE token_mention_semantics
                 SET status = %s,
@@ -669,7 +667,31 @@ class NarrativeRepository:
                     model_run_id = %s,
                     computed_at_ms = %s,
                     error = NULL
-                WHERE event_id = %s AND target_type = %s AND target_id = %s
+                WHERE (
+                    semantic_id = %s
+                    OR (
+                      COALESCE(%s, '') = ''
+                      AND event_id = %s
+                      AND target_type = %s
+                      AND target_id = %s
+                      AND schema_version = %s
+                      AND text_fingerprint = %s
+                    )
+                    OR (
+                      COALESCE(%s, '') = ''
+                      AND COALESCE(%s, '') = ''
+                      AND event_id = %s
+                      AND target_type = %s
+                      AND target_id = %s
+                      AND (
+                        SELECT COUNT(*)
+                        FROM token_mention_semantics AS matching
+                        WHERE matching.event_id = token_mention_semantics.event_id
+                          AND matching.target_type = token_mention_semantics.target_type
+                          AND matching.target_id = token_mention_semantics.target_id
+                      ) = 1
+                    )
+                )
                 """,
                 (
                     status,
@@ -684,16 +706,29 @@ class NarrativeRepository:
                     _json(label.get("raw_label") or label),
                     run_id,
                     now_ms,
+                    str(label.get("semantic_id") or ""),
+                    str(label.get("semantic_id") or ""),
+                    _required(label, "event_id"),
+                    _required(label, "target_type"),
+                    _required(label, "target_id"),
+                    str(label.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
+                    str(label.get("text_fingerprint") or ""),
+                    str(label.get("semantic_id") or ""),
+                    str(label.get("text_fingerprint") or ""),
                     _required(label, "event_id"),
                     _required(label, "target_type"),
                     _required(label, "target_id"),
                 ),
             )
+            if int(getattr(cursor, "rowcount", 0) or 0) > 0:
+                if is_unavailable:
+                    unavailable += 1
+                else:
+                    labeled += 1
         for failure in failures:
             failure_status = str(failure.get("status") or "retryable_error")
             if failure_status == "semantic_unavailable":
-                unavailable += 1
-                self.conn.execute(
+                cursor = self.conn.execute(
                     """
                     UPDATE token_mention_semantics
                     SET status = 'semantic_unavailable',
@@ -701,35 +736,102 @@ class NarrativeRepository:
                         next_retry_at_ms = 0,
                         computed_at_ms = %s,
                         error = %s
-                    WHERE event_id = %s AND target_type = %s AND target_id = %s
+                    WHERE (
+                        semantic_id = %s
+                        OR (
+                          COALESCE(%s, '') = ''
+                          AND event_id = %s
+                          AND target_type = %s
+                          AND target_id = %s
+                          AND schema_version = %s
+                          AND text_fingerprint = %s
+                        )
+                        OR (
+                          COALESCE(%s, '') = ''
+                          AND COALESCE(%s, '') = ''
+                          AND event_id = %s
+                          AND target_type = %s
+                          AND target_id = %s
+                          AND (
+                            SELECT COUNT(*)
+                            FROM token_mention_semantics AS matching
+                            WHERE matching.event_id = token_mention_semantics.event_id
+                              AND matching.target_type = token_mention_semantics.target_type
+                              AND matching.target_id = token_mention_semantics.target_id
+                          ) = 1
+                        )
+                    )
                     """,
                     (
                         now_ms,
                         str(failure.get("error") or "provider_failure"),
+                        str(failure.get("semantic_id") or ""),
+                        str(failure.get("semantic_id") or ""),
+                        _required(failure, "event_id"),
+                        _required(failure, "target_type"),
+                        _required(failure, "target_id"),
+                        str(failure.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
+                        str(failure.get("text_fingerprint") or ""),
+                        str(failure.get("semantic_id") or ""),
+                        str(failure.get("text_fingerprint") or ""),
                         _required(failure, "event_id"),
                         _required(failure, "target_type"),
                         _required(failure, "target_id"),
                     ),
                 )
+                unavailable += int(getattr(cursor, "rowcount", 0) or 0)
             else:
-                failed += 1
-                self.conn.execute(
+                cursor = self.conn.execute(
                     """
                     UPDATE token_mention_semantics
                     SET status = 'retryable_error',
                         retry_count = retry_count + 1,
                         next_retry_at_ms = %s,
                         error = %s
-                    WHERE event_id = %s AND target_type = %s AND target_id = %s
+                    WHERE (
+                        semantic_id = %s
+                        OR (
+                          COALESCE(%s, '') = ''
+                          AND event_id = %s
+                          AND target_type = %s
+                          AND target_id = %s
+                          AND schema_version = %s
+                          AND text_fingerprint = %s
+                        )
+                        OR (
+                          COALESCE(%s, '') = ''
+                          AND COALESCE(%s, '') = ''
+                          AND event_id = %s
+                          AND target_type = %s
+                          AND target_id = %s
+                          AND (
+                            SELECT COUNT(*)
+                            FROM token_mention_semantics AS matching
+                            WHERE matching.event_id = token_mention_semantics.event_id
+                              AND matching.target_type = token_mention_semantics.target_type
+                              AND matching.target_id = token_mention_semantics.target_id
+                          ) = 1
+                        )
+                    )
                     """,
                     (
                         int(failure.get("next_retry_at_ms") or now_ms + 60_000),
                         str(failure.get("error") or "provider_failure"),
+                        str(failure.get("semantic_id") or ""),
+                        str(failure.get("semantic_id") or ""),
+                        _required(failure, "event_id"),
+                        _required(failure, "target_type"),
+                        _required(failure, "target_id"),
+                        str(failure.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
+                        str(failure.get("text_fingerprint") or ""),
+                        str(failure.get("semantic_id") or ""),
+                        str(failure.get("text_fingerprint") or ""),
                         _required(failure, "event_id"),
                         _required(failure, "target_type"),
                         _required(failure, "target_id"),
                     ),
                 )
+                failed += int(getattr(cursor, "rowcount", 0) or 0)
         _commit_if_available(self.conn)
         return {"labeled": labeled, "semantic_unavailable": unavailable, "failed": failed}
 

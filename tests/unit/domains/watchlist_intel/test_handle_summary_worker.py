@@ -7,6 +7,7 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
+    AgentExecutionError,
     AgentExecutionErrorClass,
 )
 
@@ -134,6 +135,43 @@ def test_handle_summary_worker_does_not_claim_when_agent_capacity_denied():
     asyncio.run(scenario())
 
 
+def test_handle_summary_no_start_after_claim_releases_without_attempt_burn():
+    async def scenario():
+        repo = FakeWatchlistRepository(
+            [{"handle": "toly", "attempt_count": 2, "max_attempts": 3, "lease_token": "lease-1"}]
+        )
+        db = FakeDB(repo)
+        worker = HandleSummaryWorker(
+            name="handle_summary",
+            settings=fake_settings(concurrency=1),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=NoStartAfterClaimSummaryProvider(),
+            handles=("toly",),
+        )
+
+        result = await worker.run_once(now_ms=1_000)
+
+        assert result.processed == 0
+        assert result.failed == 0
+        assert result.skipped == 0
+        assert result.notes["claimed"] == 1
+        assert result.notes["agent_backpressure"] == "capacity_denied"
+        assert result.notes["agent_backpressure_capacity_denied"] == 1
+        assert repo.failed_runs == []
+        assert repo.failed_jobs == []
+        assert repo.released_for_backpressure == [
+            {
+                "handle": "toly",
+                "reason": "capacity_denied",
+                "now_ms": 1_000,
+                "delay_ms": 30_000,
+            }
+        ]
+
+    asyncio.run(scenario())
+
+
 def fake_settings(*, concurrency=1):
     return SimpleNamespace(
         enabled=True,
@@ -184,6 +222,7 @@ class FakeWatchlistRepository:
         self.completed = []
         self.failed_jobs = []
         self.failed_runs = []
+        self.released_for_backpressure = []
         self.claim_calls = 0
 
     def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
@@ -212,6 +251,25 @@ class FakeWatchlistRepository:
     def insert_summary_run(self, **run):
         self.failed_runs.append(run)
         return run
+
+    def release_job_for_backpressure(
+        self,
+        job,
+        *,
+        reason,
+        now_ms,
+        delay_ms=30_000,
+        commit=True,
+    ):
+        self.released_for_backpressure.append(
+            {
+                "handle": job["handle"],
+                "reason": reason,
+                "now_ms": now_ms,
+                "delay_ms": delay_ms,
+            }
+        )
+        return {**job, "status": "pending", "last_error": f"agent_backpressure:{reason}"}
 
 
 class ReconcileFailingWatchlistRepository(FakeWatchlistRepository):
@@ -264,6 +322,15 @@ class CapacityDeniedSummaryProvider(FailingSummaryProvider):
             lane=lane,
             acquired=False,
             reason=AgentExecutionErrorClass.CAPACITY_DENIED,
+        )
+
+
+class NoStartAfterClaimSummaryProvider(FailingSummaryProvider):
+    async def summarize_handle(self, **kwargs):
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            "agent lane capacity denied",
+            execution_started=False,
         )
 
 

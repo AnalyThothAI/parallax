@@ -469,6 +469,7 @@ class OpsDiagnosticsData(ApiSchema):
     providers: list[JsonObject] = Field(default_factory=list)
     workers: list[JsonObject] = Field(default_factory=list)
     queues: list[JsonObject] = Field(default_factory=list)
+    agent_execution: JsonObject = Field(default_factory=dict)
     domains: JsonObject = Field(default_factory=dict)
     suggested_checks: list[JsonObject] = Field(default_factory=list)
 

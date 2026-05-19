@@ -28,6 +28,9 @@ AgentRunOutcome = Literal[
     "provider_rate_limited",
     "provider_unavailable",
     "unexpected_exception",
+    "backpressure_capacity_denied",
+    "backpressure_circuit_open",
+    "backpressure_rate_limited",
 ]
 
 PUBLIC_DISPLAY_STATUSES: tuple[DisplayStatus, ...] = (

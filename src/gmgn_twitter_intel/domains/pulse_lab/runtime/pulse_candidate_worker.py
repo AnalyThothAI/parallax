@@ -29,6 +29,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     gate_pulse_candidate_from_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
+    PulseAgentBackpressureReleased,
     PulseCandidateJobService,
     _compact_error,
     _context_with_gate,
@@ -211,7 +212,11 @@ class PulseCandidateWorker(WorkerBase):
             )
         for _ in range(self.batch_size):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-            reservation = self.decision_client.try_reserve_execution("pulse.pipeline")
+            reservation = self.decision_client.try_reserve_execution(
+                "pulse.pipeline",
+                child_lanes=("pulse.evidence_debate", "pulse.decision_maker"),
+                scope="parent",
+            )
             if not reservation.acquired:
                 _record_agent_backpressure(result, reservation)
                 return result
@@ -233,7 +238,16 @@ class PulseCandidateWorker(WorkerBase):
                     result["failed"] += 1
                     continue
                 try:
-                    await self.job_service.run_job(job, context, now_ms=resolved_now_ms)
+                    await self.job_service.run_job(
+                        job,
+                        context,
+                        now_ms=resolved_now_ms,
+                        parent_reservation=reservation,
+                    )
+                except PulseAgentBackpressureReleased as exc:
+                    result["agent_backpressure"] = exc.reason
+                    _increment_agent_backpressure_reason(result, exc.reason)
+                    return result
                 except Exception as exc:  # pragma: no cover - job service records failure before re-raising
                     logger.warning(
                         "pulse candidate job failed: job_id={} error={}",
@@ -740,6 +754,13 @@ def _now_ms() -> int:
 
 
 def _record_agent_backpressure(result: dict[str, Any], reservation: Any) -> None:
-    result["agent_backpressure_capacity_denied"] = int(result.get("agent_backpressure_capacity_denied") or 0) + 1
     reason = getattr(reservation, "reason", None)
-    result["agent_backpressure"] = getattr(reason, "value", reason) or "capacity_denied"
+    resolved_reason = str(getattr(reason, "value", reason) or "capacity_denied")
+    result["agent_backpressure"] = resolved_reason
+    _increment_agent_backpressure_reason(result, resolved_reason)
+
+
+def _increment_agent_backpressure_reason(result: dict[str, Any], reason: str) -> None:
+    resolved_reason = str(reason or "capacity_denied")
+    key = f"agent_backpressure_{resolved_reason}"
+    result[key] = int(result.get(key) or 0) + 1

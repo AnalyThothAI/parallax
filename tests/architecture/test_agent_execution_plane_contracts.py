@@ -153,3 +153,13 @@ def test_watchlist_prompt_not_owned_by_openai_integration() -> None:
     text = path.read_text(encoding="utf-8")
     assert "You summarize a watched crypto Twitter account" not in text
     assert "WatchlistHandleSummaryPayload" not in text
+
+
+def test_agent_execution_types_have_single_live_source() -> None:
+    stale = OPENAI_AGENTS / "agent_execution_types.py"
+    assert not stale.exists()
+
+
+def test_agent_hashing_has_single_live_source() -> None:
+    stale = OPENAI_AGENTS / "agent_hashing.py"
+    assert not stale.exists()

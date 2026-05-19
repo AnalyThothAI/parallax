@@ -49,8 +49,9 @@ class OpenAINarrativeIntelProvider:
 
 
 class OpenAIPulseDecisionProvider:
-    def __init__(self, client: OpenAIAgentsPulseDecisionClient) -> None:
+    def __init__(self, client: OpenAIAgentsPulseDecisionClient, *, pipeline_timeout_seconds: float) -> None:
         self._client = client
+        self._pipeline_timeout_seconds = float(pipeline_timeout_seconds)
 
     @property
     def provider(self) -> str:
@@ -62,7 +63,7 @@ class OpenAIPulseDecisionProvider:
 
     @property
     def timeout_seconds(self) -> float:
-        return self._client.timeout_seconds
+        return self._pipeline_timeout_seconds
 
     @property
     def artifact_version_hash(self) -> str:
@@ -72,8 +73,14 @@ class OpenAIPulseDecisionProvider:
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         return self._client.runtime_contract
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._client.try_reserve_execution(lane)
+    def try_reserve_execution(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str = "execution",
+    ) -> AgentCapacityReservation:
+        return self._client.try_reserve_execution(lane, child_lanes=child_lanes, scope=scope)
 
     def request_audit(
         self,
@@ -103,6 +110,7 @@ class OpenAIPulseDecisionProvider:
         route: DecisionRoute,
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> PulseDecisionResult:
         result = await self._client.run_decision_pipeline(
             context=context,
@@ -111,6 +119,7 @@ class OpenAIPulseDecisionProvider:
             route=route,
             completeness=completeness,
             runtime_manifest=runtime_manifest,
+            parent_reservation=parent_reservation,
         )
         return PulseDecisionResult(
             final_decision=result.final_decision,
@@ -148,7 +157,8 @@ def openai_pulse_decision_provider(
             model=model,
             decision_runtime=PulseDecisionRuntimeService(db_pool=db_pool),
             agent_gateway=agent_gateway,
-        )
+        ),
+        pipeline_timeout_seconds=_agent_runtime_lane_timeout_seconds(settings, "pulse.pipeline"),
     )
 
 
@@ -218,6 +228,14 @@ def _safety_net_model(settings: Settings) -> str:
         or settings.watchlist_handle_summary_model
         or ""
     )
+
+
+def _agent_runtime_lane_timeout_seconds(settings: Settings, lane: str) -> float:
+    lanes = getattr(settings.workers.agent_runtime, "lanes", {}) or {}
+    lane_policy = lanes.get(lane)
+    if lane_policy is None:
+        return 120.0
+    return float(getattr(lane_policy, "timeout_seconds", 120.0) or 120.0)
 
 
 def _require_llm_gateway(llm_gateway: object | None) -> object:

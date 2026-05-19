@@ -112,8 +112,14 @@ class OpenAIAgentsPulseDecisionClient:
             evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
         )
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane)
+    def try_reserve_execution(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str = "execution",
+    ) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(lane, child_lanes=child_lanes, scope=scope)
 
     def request_audit(
         self,
@@ -147,6 +153,7 @@ class OpenAIAgentsPulseDecisionClient:
         route: DecisionRoute,
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> PulseDecisionAgentResult:
         audit = self.request_audit(
             context=context,
@@ -165,6 +172,7 @@ class OpenAIAgentsPulseDecisionClient:
             evidence_gate=evidence_gate,
             run_id=run_id,
             audit=audit,
+            parent_reservation=parent_reservation,
         )
         stage_audits: list[StageRunAudit] = [debate_step]
         if debate_step.status != "ok":
@@ -201,6 +209,7 @@ class OpenAIAgentsPulseDecisionClient:
             debate_memo=debate_memo,
             run_id=run_id,
             audit=audit,
+            parent_reservation=parent_reservation,
         )
         stage_audits.append(decision_step)
         if decision_step.status != "ok":
@@ -242,6 +251,7 @@ class OpenAIAgentsPulseDecisionClient:
         evidence_gate: dict[str, Any],
         run_id: str,
         audit: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> StageRunAudit:
         spec = self._decision_runtime.evidence_debate_stage_spec(
             route=route,
@@ -255,6 +265,7 @@ class OpenAIAgentsPulseDecisionClient:
             max_turns=self._evidence_debate_max_turns,
             run_id=run_id,
             audit=audit,
+            parent_reservation=parent_reservation,
         )
 
     async def _run_decision_maker(
@@ -266,6 +277,7 @@ class OpenAIAgentsPulseDecisionClient:
         debate_memo: EvidenceDebateMemo,
         run_id: str,
         audit: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> StageRunAudit:
         spec = self._decision_runtime.decision_maker_stage_spec(
             route=route,
@@ -281,6 +293,7 @@ class OpenAIAgentsPulseDecisionClient:
             max_turns=self._decision_maker_max_turns,
             run_id=run_id,
             audit=audit,
+            parent_reservation=parent_reservation,
         )
 
     async def _run_stage(
@@ -292,6 +305,7 @@ class OpenAIAgentsPulseDecisionClient:
         max_turns: int,
         run_id: str,
         audit: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> StageRunAudit:
         stage_spec = self._agent_stage_spec(
             spec=spec,
@@ -304,7 +318,13 @@ class OpenAIAgentsPulseDecisionClient:
         raw_output: Any = None
         execution_audit: AgentExecutionResultAudit | None = None
         try:
-            execution = await self._agent_gateway.execute(stage_spec)
+            if parent_reservation is None:
+                execution = await self._agent_gateway.execute(stage_spec)
+            else:
+                execution = await self._agent_gateway.execute(
+                    stage_spec,
+                    parent_reservation=parent_reservation,
+                )
             execution_audit = execution.audit
             raw_output = execution.final_output
             normalization_input = (
@@ -327,6 +347,8 @@ class OpenAIAgentsPulseDecisionClient:
                 trace_extra=normalized.trace_metadata,
             )
         except AgentExecutionError as exc:
+            if _is_no_start_agent_backpressure(exc):
+                raise
             return _stage_audit_from_execution_error(
                 stage_spec=stage_spec,
                 route=route,
@@ -466,6 +488,18 @@ def _stage_audit_from_execution_error(
         status=status,
         error=error,
         trace_extra={},
+    )
+
+
+def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
+    return (
+        bool(getattr(exc, "execution_started", True)) is False
+        and exc.error_class
+        in {
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            AgentExecutionErrorClass.CIRCUIT_OPEN,
+            AgentExecutionErrorClass.RATE_LIMITED,
+        }
     )
 
 

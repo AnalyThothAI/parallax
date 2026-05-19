@@ -107,6 +107,16 @@ class TokenDiscussionDigestWorker(WorkerBase):
             try:
                 result = await self.provider.summarize_discussion(run_id=run_id, request=request)
             except Exception as exc:
+                if _is_agent_no_start_backpressure(exc):
+                    await asyncio.to_thread(
+                        self._mark_digest_scanned_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                        next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
+                    )
+                    counts["pending"] += 1
+                    refresh_reasons["agent_backpressure"] = refresh_reasons.get("agent_backpressure", 0) + 1
+                    continue
                 finished_at_ms = _now_ms()
                 await asyncio.to_thread(
                     self._record_failed_run_sync,
@@ -249,6 +259,10 @@ class TokenDiscussionDigestWorker(WorkerBase):
         interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 120.0) or 120.0) * 1000))
         return int(now_ms) + interval_ms
 
+    def _backpressure_next_due_at_ms(self, *, now_ms: int) -> int:
+        interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 120.0) or 120.0) * 1000))
+        return int(now_ms) + min(interval_ms, 30_000)
+
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
@@ -264,6 +278,13 @@ def _window_ms(window: str) -> int:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _is_agent_no_start_backpressure(exc: Exception) -> bool:
+    error_class = getattr(exc, "error_class", None)
+    execution_started = bool(getattr(exc, "execution_started", True))
+    value = getattr(error_class, "value", error_class)
+    return not execution_started and value in {"capacity_denied", "circuit_open", "rate_limited"}
 
 
 def _hash_json(payload: Any) -> str:

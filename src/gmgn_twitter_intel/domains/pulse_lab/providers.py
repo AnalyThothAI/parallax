@@ -138,7 +138,13 @@ class PulseDecisionProvider(Protocol):
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract: ...
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation: ...
+    def try_reserve_execution(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str = "execution",
+    ) -> AgentCapacityReservation: ...
 
     def request_audit(
         self,
@@ -160,6 +166,7 @@ class PulseDecisionProvider(Protocol):
         route: DecisionRoute,
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> PulseDecisionResult: ...
 
 

@@ -41,6 +41,7 @@ class EnrichmentWorker(WorkerBase):
         return await self.process_one(now_ms=now_ms)
 
     async def process_one(self, *, now_ms: int | None = None) -> WorkerResult:
+        resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         reservation = self.client.try_reserve_execution("social.event_enrichment")
         if not reservation.acquired:
             return WorkerResult(
@@ -52,7 +53,7 @@ class EnrichmentWorker(WorkerBase):
                 },
             )
         try:
-            job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=now_ms or _now_ms())
+            job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=resolved_now_ms)
             if job is None:
                 return WorkerResult(skipped=1, notes={"reason": "no_job"})
 
@@ -100,6 +101,23 @@ class EnrichmentWorker(WorkerBase):
                 )
                 return WorkerResult(failed=1, notes={"reason": "model_timeout", "job_id": job.get("job_id")})
             except Exception as exc:
+                if _is_agent_no_start_backpressure(exc):
+                    reason = _agent_backpressure_reason(exc)
+                    await asyncio.to_thread(
+                        self._release_job_for_backpressure_sync,
+                        job=job,
+                        reason=reason,
+                        now_ms=resolved_now_ms,
+                    )
+                    return WorkerResult(
+                        skipped=1,
+                        notes={
+                            "reason": "agent_backpressure",
+                            "job_id": job.get("job_id"),
+                            "agent_backpressure": reason,
+                            f"agent_backpressure_{reason}": 1,
+                        },
+                    )
                 error = str(exc)
                 await asyncio.to_thread(
                     self._record_model_run_failure_sync,
@@ -163,6 +181,15 @@ class EnrichmentWorker(WorkerBase):
     def _fail_job_sync(self, *, job: dict[str, Any], error: str) -> None:
         with self._repository_session() as repos:
             repos.enrichment.fail_job(job=job, error=error)
+
+    def _release_job_for_backpressure_sync(self, *, job: dict[str, Any], reason: str, now_ms: int) -> None:
+        with self._repository_session() as repos:
+            repos.enrichment.release_job_for_backpressure(
+                job=job,
+                reason=reason,
+                now_ms=now_ms,
+                delay_ms=30_000,
+            )
 
     def _record_model_run_failure_sync(
         self,
@@ -266,6 +293,18 @@ def _now_ms() -> int:
 def _reservation_reason(reservation: Any) -> str:
     reason = getattr(reservation, "reason", None)
     return str(getattr(reason, "value", reason) or "capacity_denied")
+
+
+def _is_agent_no_start_backpressure(exc: Exception) -> bool:
+    error_class = getattr(exc, "error_class", None)
+    execution_started = bool(getattr(exc, "execution_started", True))
+    value = getattr(error_class, "value", error_class)
+    return not execution_started and value in {"capacity_denied", "circuit_open", "rate_limited"}
+
+
+def _agent_backpressure_reason(exc: Exception) -> str:
+    error_class = getattr(exc, "error_class", None)
+    return str(getattr(error_class, "value", error_class) or "capacity_denied")
 
 
 def _run_id(job: dict[str, Any]) -> str:

@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticLabel,
     MentionSemanticsBatchResult,
 )
+from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
 
 
 def test_workers_are_workerbase_subclasses():
@@ -61,6 +62,7 @@ def test_mention_semantics_worker_calls_provider_outside_db_session():
         assert provider.max_sessions_seen == 0
         assert repo.completed_batches[0]["labels"][0]["event_id"] == "event-1"
         assert repo.recorded_runs[0]["stage"] == "mention_semantics"
+        assert repo.recorded_run_commits == [False]
 
     asyncio.run(scenario())
 
@@ -185,6 +187,30 @@ def test_mention_semantics_worker_records_provider_failure_without_poisoning_wor
         assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.mention_semantics"
         assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
         assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_capacity_denied_does_not_increment_retry_count():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=NoStartNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.processed == 0
+        assert result.failed == 0
+        assert result.skipped == 1
+        assert result.notes["agent_backpressure"] == "capacity_denied"
+        assert repo.recorded_runs == []
+        assert repo.completed_batches == []
 
     asyncio.run(scenario())
 
@@ -377,6 +403,31 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
     asyncio.run(scenario())
 
 
+def test_digest_capacity_denied_marks_pending_not_failed():
+    async def scenario():
+        repo = FakeDigestRepository()
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=NoStartNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.processed == 1
+        assert result.failed == 0
+        assert result.notes["pending"] == 1
+        assert result.notes["failed"] == 0
+        assert result.notes["refresh_reasons"]["agent_backpressure"] == 1
+        assert repo.recorded_runs == []
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 11_000, "now_ms": 10_000}]
+
+    asyncio.run(scenario())
+
+
 def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedules():
     async def scenario():
         repo = FakeDigestRepository(
@@ -503,6 +554,7 @@ class FakeNarrativeRepository:
         self.pending_semantics = dict(pending_semantics or {})
         self.prune_result = dict(prune_result or {"deleted_old_semantics": 0, "deleted_overflow_semantics": 0})
         self.recorded_runs = []
+        self.recorded_run_commits = []
         self.completed_batches = []
         self.upserted_admissions = []
         self.suppressed_frontiers = []
@@ -603,6 +655,7 @@ class FakeNarrativeRepository:
         ]
 
     def record_narrative_model_run(self, run, *, commit=True):
+        self.recorded_run_commits.append(commit)
         self.recorded_runs.append(run)
         return run
 
@@ -743,6 +796,22 @@ class FailingNarrativeProvider:
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
+
+
+class NoStartNarrativeProvider(FailingNarrativeProvider):
+    async def label_mentions(self, *, run_id, request):
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            "agent lane capacity denied",
+            execution_started=False,
+        )
+
+    async def summarize_discussion(self, *, run_id, request):
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            "agent lane capacity denied",
+            execution_started=False,
+        )
 
 
 class UnexpectedDigestProvider:

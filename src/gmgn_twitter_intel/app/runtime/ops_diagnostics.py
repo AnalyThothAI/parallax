@@ -46,6 +46,37 @@ SECRET_TOKEN_KEYS = (
 )
 TERMINAL_SUCCESS_STATUSES = {"done", "delivered"}
 QUEUE_ALLOWED_STATUSES = {"pending", "running", "failed", "dead", "done", "delivered"}
+AGENT_EXECUTION_RECENT_SIGNAL_MS = 5 * 60 * 1000
+AGENT_EXECUTION_POLICY_KEYS = {
+    "allowed_child_lanes",
+    "global_max_concurrency",
+    "max_concurrency",
+    "priority",
+    "priority_label",
+    "rpm_limit",
+    "timeout_seconds",
+}
+AGENT_EXECUTION_COUNTER_KEYS = {
+    "capacity_denied_total",
+    "circuit_open_total",
+    "global_in_flight",
+    "in_flight",
+    "last_capacity_denied_at_ms",
+    "last_circuit_open_at_ms",
+    "last_denied_at_ms",
+    "last_parent_reservation_denied_at_ms",
+    "last_provider_latency_timeout_at_ms",
+    "last_rate_limit_at_ms",
+    "last_rpm_wait_at_ms",
+    "last_timeout_at_ms",
+    "oldest_in_flight_age_ms",
+    "parent_reservation_denied_total",
+    "provider_latency_timeout_total",
+    "provider_running",
+    "rate_limit_denied_total",
+    "rpm_waiting_count",
+    "timeout_total",
+}
 
 
 def ops_diagnostics_payload(
@@ -63,6 +94,7 @@ def ops_diagnostics_payload(
     providers = _providers_payload(runtime)
     workers = _workers_payload(runtime)
     queues = _queues_payload(runtime, now_ms=generated_at_ms)
+    agent_execution = _agent_execution_payload(runtime, now_ms=generated_at_ms)
     domains = _domains_payload(
         runtime,
         now_ms=generated_at_ms,
@@ -80,6 +112,7 @@ def ops_diagnostics_payload(
             providers=providers,
             workers=workers,
             queues=queues,
+            agent_execution=agent_execution,
             domains=domains,
         ),
         "config": _config_payload(runtime),
@@ -88,6 +121,7 @@ def ops_diagnostics_payload(
         "providers": providers,
         "workers": workers,
         "queues": queues,
+        "agent_execution": agent_execution,
         "domains": domains,
         "suggested_checks": _suggested_checks(queues=queues, domains=domains),
     }
@@ -597,6 +631,136 @@ def _notifications_domain(runtime: Any) -> dict[str, Any]:
     return {"status": "ok", "summary": summary}
 
 
+def _agent_execution_payload(runtime: Any, *, now_ms: int) -> dict[str, Any]:
+    gateway = getattr(runtime, "agent_execution_gateway", None)
+    if gateway is None:
+        providers = getattr(runtime, "providers", None)
+        gateway = getattr(providers, "agent_execution_gateway", None)
+    snapshot = getattr(gateway, "status_snapshot", None)
+    if not callable(snapshot):
+        return {"status": "disabled", "policy": {}, "counters": {}, "lanes": {}}
+    try:
+        raw_snapshot = snapshot()
+    except Exception:
+        return {"status": "unknown", "status_reason": "unavailable", "policy": {}, "counters": {}, "lanes": {}}
+    if not isinstance(raw_snapshot, Mapping):
+        return {"status": "unknown", "status_reason": "unavailable", "policy": {}, "counters": {}, "lanes": {}}
+
+    policy = _agent_policy_fields(raw_snapshot)
+    counters = _agent_counter_fields(raw_snapshot)
+    lanes: dict[str, dict[str, Any]] = {}
+    statuses: list[str] = []
+    raw_lanes = raw_snapshot.get("lanes")
+    if isinstance(raw_lanes, Mapping):
+        for lane_name, lane_snapshot in sorted(raw_lanes.items(), key=lambda item: str(item[0])):
+            if not isinstance(lane_snapshot, Mapping):
+                continue
+            lane_policy = _agent_policy_fields(lane_snapshot)
+            nested_policy = lane_snapshot.get("policy")
+            if isinstance(nested_policy, Mapping):
+                lane_policy.update(_agent_policy_fields(nested_policy))
+            lane_counters = _agent_counter_fields(lane_snapshot)
+            lane_status = _agent_lane_status(
+                lane_snapshot,
+                policy=lane_policy,
+                counters=lane_counters,
+                now_ms=now_ms,
+            )
+            statuses.append(lane_status)
+            lanes[str(lane_name)] = {
+                "status": lane_status,
+                "policy": lane_policy,
+                "counters": lane_counters,
+            }
+
+    status = (
+        "blocked"
+        if "blocked" in statuses
+        else "degraded"
+        if "degraded" in statuses
+        else "ok"
+    )
+    return {
+        "status": status,
+        "policy": policy,
+        "counters": counters,
+        "lanes": lanes,
+    }
+
+
+def _agent_policy_fields(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: snapshot.get(key) for key in AGENT_EXECUTION_POLICY_KEYS if key in snapshot}
+
+
+def _agent_counter_fields(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: snapshot.get(key) for key in AGENT_EXECUTION_COUNTER_KEYS if key in snapshot}
+
+
+def _agent_lane_status(
+    snapshot: Mapping[str, Any],
+    *,
+    policy: Mapping[str, Any],
+    counters: Mapping[str, Any],
+    now_ms: int,
+) -> str:
+    circuit_open = str(snapshot.get("circuit_state") or "").lower() == "open"
+    if circuit_open and _agent_priority_label(policy) == "high":
+        return "blocked"
+    if circuit_open:
+        return "degraded"
+    if _positive_counter(counters.get("rpm_waiting_count")):
+        return "degraded"
+    timeout_seconds = _float_or_none(policy.get("timeout_seconds"))
+    oldest_in_flight_age_ms = _float_or_none(counters.get("oldest_in_flight_age_ms"))
+    if (
+        timeout_seconds is not None
+        and oldest_in_flight_age_ms is not None
+        and oldest_in_flight_age_ms >= timeout_seconds * 1000
+        and _positive_counter(counters.get("provider_running"))
+    ):
+        return "degraded"
+    recent_fields = (
+        "last_capacity_denied_at_ms",
+        "last_parent_reservation_denied_at_ms",
+        "last_denied_at_ms",
+        "last_provider_latency_timeout_at_ms",
+        "last_rate_limit_at_ms",
+        "last_rpm_wait_at_ms",
+        "last_timeout_at_ms",
+    )
+    if any(_is_recent_ms(counters.get(field), now_ms=now_ms) for field in recent_fields):
+        return "degraded"
+    return "ok"
+
+
+def _agent_priority_label(policy: Mapping[str, Any]) -> str:
+    return str(policy.get("priority_label") or policy.get("priority") or "").strip().lower()
+
+
+def _positive_counter(value: Any) -> bool:
+    try:
+        return int(value or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_recent_ms(value: Any, *, now_ms: int) -> bool:
+    try:
+        timestamp_ms = int(value)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= int(now_ms) - timestamp_ms <= AGENT_EXECUTION_RECENT_SIGNAL_MS
+
+
 def _overall_payload(
     *,
     database: dict[str, Any],
@@ -604,6 +768,7 @@ def _overall_payload(
     providers: list[dict[str, Any]],
     workers: list[dict[str, Any]],
     queues: list[dict[str, Any]],
+    agent_execution: dict[str, Any],
     domains: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     statuses = [
@@ -612,6 +777,7 @@ def _overall_payload(
         *(str(item.get("status")) for item in providers),
         *(str(item.get("status")) for item in workers),
         *(str(item.get("status")) for item in queues),
+        str(agent_execution.get("status")),
         *(str(item.get("status")) for item in domains.values()),
     ]
     counts = dict(Counter(statuses))
@@ -622,6 +788,8 @@ def _overall_payload(
             for item in source
             if item.get("status") in {"blocked", "degraded", "unknown"}
         )
+    if agent_execution.get("status") in {"blocked", "degraded", "unknown"}:
+        reasons.append(f"agent_execution_{agent_execution.get('status')}")
     if database.get("status") != "ok":
         reasons.append(str(database.get("reason") or "database_not_ready"))
     status = (

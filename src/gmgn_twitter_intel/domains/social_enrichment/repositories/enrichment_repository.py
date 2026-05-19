@@ -380,6 +380,39 @@ class EnrichmentRepository:
         )
         self.conn.commit()
 
+    def release_job_for_backpressure(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        delay_ms: int = 30_000,
+    ) -> dict[str, Any] | None:
+        attempt_count = int(job.get("attempt_count") or 0)
+        row = self.conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET status = 'pending',
+                attempt_count = GREATEST(0, attempt_count - 1),
+                next_run_at_ms = %s,
+                last_error = %s,
+                updated_at_ms = %s
+            WHERE job_id = %s
+              AND status = 'running'
+              AND attempt_count = %s
+            RETURNING *
+            """,
+            (
+                int(now_ms) + max(0, int(delay_ms)),
+                f"agent_backpressure:{reason}"[:1000],
+                int(now_ms),
+                str(job["job_id"]),
+                attempt_count,
+            ),
+        ).fetchone()
+        self.conn.commit()
+        return dict(row) if row else None
+
     def list_jobs(self, *, limit: int, status: str | None = None) -> list[dict[str, Any]]:
         clauses: list[str] = []
         params: list[Any] = []

@@ -9,6 +9,7 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
+    AgentExecutionError,
     AgentExecutionErrorClass,
 )
 
@@ -129,6 +130,35 @@ def test_enrichment_worker_does_not_claim_when_agent_capacity_denied():
     assert enrichment_repo.claim_calls == 0
 
 
+def test_enrichment_worker_no_start_after_claim_releases_without_attempt_burn():
+    enrichment_repo = ClaimingEnrichmentRepository()
+    db = FakeDB(CompleteRepos(enrichment=enrichment_repo))
+    worker = EnrichmentWorker(
+        name="enrichment",
+        settings=SimpleNamespace(interval_seconds=0.2),
+        db=db,
+        telemetry=SimpleNamespace(),
+        client=NoStartAfterClaimClient(),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
+
+    assert result.processed == 0
+    assert result.failed == 0
+    assert result.skipped == 1
+    assert result.notes["agent_backpressure"] == "capacity_denied"
+    assert enrichment_repo.failures == []
+    assert enrichment_repo.model_run_failures == []
+    assert enrichment_repo.released_for_backpressure == [
+        {
+            "job_id": "job-1",
+            "reason": "capacity_denied",
+            "now_ms": 1_700_000_000_000,
+            "delay_ms": 30_000,
+        }
+    ]
+
+
 class CapacityDeniedClient(FakeClient):
     def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
         return AgentCapacityReservation(
@@ -136,3 +166,60 @@ class CapacityDeniedClient(FakeClient):
             acquired=False,
             reason=AgentExecutionErrorClass.CAPACITY_DENIED,
         )
+
+
+class NoStartAfterClaimClient(FakeClient):
+    async def enrich_event(self, **kwargs):
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.CAPACITY_DENIED,
+            "agent lane capacity denied",
+            execution_started=False,
+        )
+
+
+class ClaimingEnrichmentRepository(SlowEnrichmentRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.failures: list[dict[str, Any]] = []
+        self.model_run_failures: list[dict[str, Any]] = []
+        self.released_for_backpressure: list[dict[str, Any]] = []
+
+    def claim_next_job(self, *, now_ms: int) -> dict[str, Any]:
+        self.claim_calls += 1
+        return {
+            "job_id": "job-1",
+            "event_id": "event-1",
+            "job_type": "watched_social_event_extraction",
+            "attempt_count": 2,
+            "max_attempts": 3,
+        }
+
+    def fail_job(self, *, job: dict[str, Any], error: str) -> None:
+        self.failures.append({"job": job, "error": error})
+
+    def record_model_run_failure(self, **kwargs) -> None:
+        self.model_run_failures.append(kwargs)
+
+    def release_job_for_backpressure(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        delay_ms: int = 30_000,
+    ) -> None:
+        self.released_for_backpressure.append(
+            {
+                "job_id": job["job_id"],
+                "reason": reason,
+                "now_ms": now_ms,
+                "delay_ms": delay_ms,
+            }
+        )
+
+
+class CompleteRepos(FakeRepos):
+    def __init__(self, enrichment: ClaimingEnrichmentRepository) -> None:
+        super().__init__(enrichment=enrichment)
+        self.evidence = SimpleNamespace(events_by_ids=lambda event_ids: {"event-1": {"event_id": "event-1"}})
+        self.entities = SimpleNamespace(entities_for_event=lambda event_id: [])

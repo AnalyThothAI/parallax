@@ -117,6 +117,9 @@ class HandleSummaryWorker(WorkerBase):
             return_exceptions=False,
         )
         for outcome in outcomes:
+            if outcome.startswith("agent_backpressure:"):
+                _record_agent_backpressure_reason(result, outcome.split(":", 1)[1])
+                continue
             result[outcome] += 1
         return result
 
@@ -148,6 +151,15 @@ class HandleSummaryWorker(WorkerBase):
                 finished_at_ms=_now_ms(),
             )
         except Exception as exc:
+            if _is_agent_no_start_backpressure(exc):
+                reason = _agent_backpressure_reason(exc)
+                await asyncio.to_thread(
+                    self._release_job_for_backpressure_sync,
+                    job=job,
+                    reason=reason,
+                    now_ms=now_ms,
+                )
+                return f"agent_backpressure:{reason}"
             logger.warning(
                 "watchlist handle summary job failed: handle={} error={}",
                 job.get("handle"),
@@ -272,6 +284,15 @@ class HandleSummaryWorker(WorkerBase):
             )
             repos.watchlist_intel.mark_summary_job_failed(job, error, now_ms=failed_at_ms, commit=False)
 
+    def _release_job_for_backpressure_sync(self, *, job: dict[str, Any], reason: str, now_ms: int) -> None:
+        with self._repository_session() as repos:
+            repos.watchlist_intel.release_job_for_backpressure(
+                job,
+                reason=reason,
+                now_ms=now_ms,
+                delay_ms=30_000,
+            )
+
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
@@ -310,6 +331,23 @@ def _record_agent_backpressure(result: dict[str, int | str], reservation: Any) -
     result["agent_backpressure_capacity_denied"] = int(result.get("agent_backpressure_capacity_denied") or 0) + 1
     reason = getattr(reservation, "reason", None)
     result["agent_backpressure"] = getattr(reason, "value", reason) or "capacity_denied"
+
+
+def _record_agent_backpressure_reason(result: dict[str, int | str], reason: str) -> None:
+    result[f"agent_backpressure_{reason}"] = int(result.get(f"agent_backpressure_{reason}") or 0) + 1
+    result["agent_backpressure"] = reason
+
+
+def _is_agent_no_start_backpressure(exc: Exception) -> bool:
+    error_class = getattr(exc, "error_class", None)
+    execution_started = bool(getattr(exc, "execution_started", True))
+    value = getattr(error_class, "value", error_class)
+    return not execution_started and value in {"capacity_denied", "circuit_open", "rate_limited"}
+
+
+def _agent_backpressure_reason(exc: Exception) -> str:
+    error_class = getattr(exc, "error_class", None)
+    return str(getattr(error_class, "value", error_class) or "capacity_denied")
 
 
 __all__ = ["HandleSummaryWorker"]

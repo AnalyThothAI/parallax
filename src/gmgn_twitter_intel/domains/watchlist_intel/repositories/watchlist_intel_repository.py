@@ -180,6 +180,49 @@ class WatchlistIntelRepository:
             self.conn.commit()
         return dict(row) if row else None
 
+    def release_job_for_backpressure(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        delay_ms: int = 30_000,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        handle = normalize_watchlist_handle(str(job.get("handle") or ""))
+        lease_token = str(job.get("lease_token") or "")
+        if not lease_token:
+            return None
+        attempt_count = int(job.get("attempt_count") or 0)
+        row = self.conn.execute(
+            """
+            UPDATE watchlist_handle_summary_jobs
+            SET status = 'pending',
+                lease_expires_at_ms = NULL,
+                lease_token = NULL,
+                attempt_count = GREATEST(0, attempt_count - 1),
+                next_run_at_ms = %s,
+                last_error = %s,
+                updated_at_ms = %s
+            WHERE handle = %s
+              AND status = 'running'
+              AND lease_token = %s
+              AND attempt_count = %s
+            RETURNING *
+            """,
+            (
+                int(now_ms) + max(0, int(delay_ms)),
+                _compact_error(f"agent_backpressure:{reason}"),
+                int(now_ms),
+                handle,
+                lease_token,
+                attempt_count,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row) if row else None
+
     def delete_summary_job(self, handle: str, *, commit: bool = True) -> bool:
         cursor = self.conn.execute(
             "DELETE FROM watchlist_handle_summary_jobs WHERE handle = %s",

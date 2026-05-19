@@ -86,6 +86,18 @@ class MentionSemanticsWorker(WorkerBase):
         try:
             result = await self.provider.label_mentions(run_id=run_id, request=request)
         except Exception as exc:
+            if _is_agent_no_start_backpressure(exc):
+                reason = _agent_backpressure_reason(exc)
+                return WorkerResult(
+                    skipped=len(rows),
+                    notes={
+                        "claimed": len(rows),
+                        **_prefixed(prune_stats, "prune_"),
+                        **_prefixed(enqueue_stats, "enqueue_"),
+                        "agent_backpressure": reason,
+                        f"agent_backpressure_{reason}": 1,
+                    },
+                )
             finished_at_ms = _now_ms()
             failures = [
                 _provider_failure_for_row(
@@ -145,15 +157,21 @@ class MentionSemanticsWorker(WorkerBase):
             )
         result = self.service.validate_batch_result(rows, result)
         finished_at_ms = _now_ms()
-        labels = [label.model_dump(mode="json") for label in result.labels]
+        labels = _attach_semantic_identity(
+            [label.model_dump(mode="json") for label in result.labels],
+            rows=rows,
+        )
         labeled_keys = {
             (str(label.get("event_id")), str(label.get("target_type")), str(label.get("target_id"))) for label in labels
         }
-        failures = self.service.normalize_failures(
-            rows,
-            list(result.failures),
-            labeled_keys=labeled_keys,
-            default_next_retry_at_ms=finished_at_ms + 60_000,
+        failures = _attach_semantic_identity(
+            self.service.normalize_failures(
+                rows,
+                list(result.failures),
+                labeled_keys=labeled_keys,
+                default_next_retry_at_ms=finished_at_ms + 60_000,
+            ),
+            rows=rows,
         )
         failures = _terminalize_failures_after_max_attempts(
             rows=rows,
@@ -298,7 +316,7 @@ class MentionSemanticsWorker(WorkerBase):
         now_ms: int,
     ) -> dict[str, int]:
         with self._repository_session() as repos:
-            repos.narratives.record_narrative_model_run(run, commit=True)
+            repos.narratives.record_narrative_model_run(run, commit=False)
             return dict(
                 repos.narratives.complete_mention_semantics_batch(
                     run_id=str(run["run_id"]),
@@ -321,6 +339,18 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _is_agent_no_start_backpressure(exc: Exception) -> bool:
+    error_class = getattr(exc, "error_class", None)
+    execution_started = bool(getattr(exc, "execution_started", True))
+    value = getattr(error_class, "value", error_class)
+    return not execution_started and value in {"capacity_denied", "circuit_open", "rate_limited"}
+
+
+def _agent_backpressure_reason(exc: Exception) -> str:
+    error_class = getattr(exc, "error_class", None)
+    return str(getattr(error_class, "value", error_class) or "capacity_denied")
+
+
 def _prefixed(values: dict[str, int], prefix: str) -> dict[str, int]:
     return {f"{prefix}{key}": value for key, value in values.items()}
 
@@ -338,9 +368,12 @@ def _provider_failure_for_row(
     max_attempts: int,
 ) -> dict[str, Any]:
     failure = {
+        "semantic_id": row.get("semantic_id"),
         "event_id": row.get("event_id"),
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
+        "schema_version": row.get("schema_version") or NARRATIVE_SCHEMA_VERSION,
+        "text_fingerprint": row.get("text_fingerprint"),
         "error": error,
         "next_retry_at_ms": default_next_retry_at_ms,
     }
@@ -370,6 +403,26 @@ def _terminalize_failures_after_max_attempts(
             item["next_retry_at_ms"] = 0
         terminalized.append(item)
     return terminalized
+
+
+def _attach_semantic_identity(items: list[dict[str, Any]], *, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows_by_key: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        key = (str(row.get("event_id")), str(row.get("target_type")), str(row.get("target_id")))
+        rows_by_key.setdefault(key, []).append(row)
+
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        next_item = dict(item)
+        key = (str(next_item.get("event_id")), str(next_item.get("target_type")), str(next_item.get("target_id")))
+        matching_rows = rows_by_key.get(key) or []
+        if len(matching_rows) == 1:
+            row = matching_rows[0]
+            next_item.setdefault("semantic_id", row.get("semantic_id"))
+            next_item.setdefault("schema_version", row.get("schema_version") or NARRATIVE_SCHEMA_VERSION)
+            next_item.setdefault("text_fingerprint", row.get("text_fingerprint"))
+        enriched.append(next_item)
+    return enriched
 
 
 def _hash_json(payload: Any) -> str:

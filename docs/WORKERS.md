@@ -216,8 +216,10 @@ Current lanes are configured under `workers.agent_runtime` in
 workers reserve capacity before claiming DB work:
 
 - `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`
-  claim; stage execution later uses `pulse.evidence_debate` and
-  `pulse.decision_maker`.
+  claim. The pipeline reservation owns the parent global slot for the
+  full decision run; child stages reuse that parent global slot and
+  acquire only their stage lane bulkhead (`pulse.evidence_debate` or
+  `pulse.decision_maker`).
 - `enrichment` reserves `social.event_enrichment` before claiming
   enrichment jobs and passes that reservation into the actual stage.
 - `handle_summary` reserves `watchlist.handle_summary` before claiming
@@ -225,9 +227,16 @@ workers reserve capacity before claiming DB work:
 
 If reservation is denied, the worker records
 `agent_backpressure_capacity_denied` in its iteration notes and does not
-claim a job, so provider congestion does not burn attempts. Narrative
+claim a job, so no-start backpressure does not burn attempts. Workers
+that discover no-start backpressure after claiming must release or
+reschedule without charging the claim as a provider attempt. Narrative
 workers currently rely on provider-stage reservations because their claim
 semantics do not burn attempts before model execution in the same way.
+
+Lane `priority` is an operator-facing policy label used in diagnostics
+and incident triage. It is not a strict scheduler; fairness still comes
+from explicit global concurrency, lane bulkheads, RPM limits, and domain
+queue cadence.
 
 ## Layered State Machines
 
