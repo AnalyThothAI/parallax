@@ -61,8 +61,8 @@ class OpenAIAgentsPulseDecisionClient:
         agent_gateway: Any,
         decision_runtime: PulseDecisionRuntime,
         workflow_name: str = WORKFLOW_NAME,
-        decision_maker_max_turns: int = 3,
-        evidence_debate_max_turns: int = 3,
+        decision_maker_max_turns: int = 1,
+        evidence_debate_max_turns: int = 1,
     ) -> None:
         self.model = str(model or "").strip()
         if not self.model:
@@ -177,10 +177,11 @@ class OpenAIAgentsPulseDecisionClient:
         stage_audits: list[StageRunAudit] = [debate_step]
         if debate_step.status != "ok":
             if _is_model_contract_stage_failure(debate_step):
-                final = _invalid_ref_abstain_decision(
+                final = _stage_failure_abstain_decision(
                     route=route,
                     reason=debate_step.error or "evidence_debate_contract_failed",
                     evidence_packet=evidence_packet,
+                    abstain_reason=_abstain_reason_for_stage_failure(debate_step),
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
                 return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
@@ -198,7 +199,12 @@ class OpenAIAgentsPulseDecisionClient:
         except ValueError as exc:
             failed_step = self._decision_runtime.mark_step_failed(debate_step, error=str(exc))
             stage_audits[-1] = failed_step
-            final = _invalid_ref_abstain_decision(route=route, reason=str(exc), evidence_packet=evidence_packet)
+            final = _stage_failure_abstain_decision(
+                route=route,
+                reason=str(exc),
+                evidence_packet=evidence_packet,
+                abstain_reason="invalid_unknown_evidence_ref",
+            )
             audit = self._decision_runtime.with_output_hash(audit, final=final)
             return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
 
@@ -214,10 +220,11 @@ class OpenAIAgentsPulseDecisionClient:
         stage_audits.append(decision_step)
         if decision_step.status != "ok":
             if _is_model_contract_stage_failure(decision_step):
-                final = _invalid_ref_abstain_decision(
+                final = _stage_failure_abstain_decision(
                     route=route,
                     reason=decision_step.error or "decision_maker_contract_failed",
                     evidence_packet=evidence_packet,
+                    abstain_reason=_abstain_reason_for_stage_failure(decision_step),
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
                 return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
@@ -235,7 +242,12 @@ class OpenAIAgentsPulseDecisionClient:
         except ValueError as exc:
             failed_step = self._decision_runtime.mark_step_failed(decision_step, error=str(exc))
             stage_audits[-1] = failed_step
-            final = _invalid_ref_abstain_decision(route=route, reason=str(exc), evidence_packet=evidence_packet)
+            final = _stage_failure_abstain_decision(
+                route=route,
+                reason=str(exc),
+                evidence_packet=evidence_packet,
+                abstain_reason="invalid_unknown_evidence_ref",
+            )
 
         final = self._decision_runtime.enrich_evidence_urls(final)
 
@@ -550,11 +562,12 @@ def _recommendation_constraints(*, route: DecisionRoute, completeness: dict[str,
     }
 
 
-def _invalid_ref_abstain_decision(
+def _stage_failure_abstain_decision(
     *,
     route: DecisionRoute,
     reason: str,
     evidence_packet: PulseEvidencePacket | dict[str, Any],
+    abstain_reason: str,
 ) -> FinalDecision:
     gate_refs = tuple(
         ref_id
@@ -565,10 +578,10 @@ def _invalid_ref_abstain_decision(
         route=route,
         recommendation="abstain",
         confidence=0.0,
-        abstain_reason="invalid_unknown_evidence_ref",
-        summary_zh="模型输出引用了证据包外的 ref，本次不发布候选。",
+        abstain_reason=abstain_reason,
+        summary_zh=_stage_failure_summary(abstain_reason),
         narrative_archetype="unclear",
-        narrative_thesis_zh="模型输出包含证据包以外的引用，违反封闭证据合同；本次仅记录无效输出并等待下一轮有效证据综合。",
+        narrative_thesis_zh=_stage_failure_thesis(abstain_reason),
         bull_view=BullBearView(strength="absent"),
         bear_view=BullBearView(strength="absent"),
         playbook=TradePlaybook(
@@ -585,6 +598,8 @@ def _invalid_ref_abstain_decision(
 
 
 def _is_model_contract_stage_failure(step: StageRunAudit) -> bool:
+    if step.status == "timeout":
+        return True
     if step.status != "failed":
         return False
     text = str(step.error or "").lower()
@@ -600,6 +615,24 @@ def _is_model_contract_stage_failure(step: StageRunAudit) -> bool:
             "outside allowed_evidence_refs",
         )
     )
+
+
+def _abstain_reason_for_stage_failure(step: StageRunAudit) -> str:
+    if step.status == "timeout":
+        return "stage_timeout"
+    return "invalid_unknown_evidence_ref"
+
+
+def _stage_failure_summary(abstain_reason: str) -> str:
+    if abstain_reason == "stage_timeout":
+        return "LLM 证据辩论阶段超时，本次不发布候选。"
+    return "模型输出引用了证据包外的 ref，本次不发布候选。"
+
+
+def _stage_failure_thesis(abstain_reason: str) -> str:
+    if abstain_reason == "stage_timeout":
+        return "LLM 阶段超过实时预算，没有形成可验证的完整结论；本次仅记录超时并等待下一轮有效证据综合。"
+    return "模型输出包含证据包以外的引用，违反封闭证据合同；本次仅记录无效输出并等待下一轮有效证据综合。"
 
 
 def _allowed_refs_from_packet(packet: PulseEvidencePacket | dict[str, Any]) -> tuple[Any, ...]:

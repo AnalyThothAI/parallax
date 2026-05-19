@@ -183,6 +183,8 @@ def test_risk_rejected_high_info_clips_recommendation_and_playbook(monkeypatch: 
     upsert = repos.pulse_candidates.candidate_upserts[0]
     assert upsert["pulse_status"] == "risk_rejected_high_info"
     assert upsert["decision_recommendation"] == "ignore"
+    assert upsert["decision_status"] == "risk_rejected_high_info"
+    assert upsert["display_status"] == "display_risk_rejected_high_info"
     assert upsert["decision_json"]["playbook"]["has_playbook"] is False
     assert repos.pulse_playbooks.playbook_upserts == []
 

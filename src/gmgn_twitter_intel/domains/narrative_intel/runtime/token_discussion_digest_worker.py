@@ -16,7 +16,10 @@ from gmgn_twitter_intel.domains.narrative_intel._constants import (
 )
 from gmgn_twitter_intel.domains.narrative_intel.providers import NarrativeIntelProvider
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import deterministic_run_id
-from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_service import DiscussionDigestService
+from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_service import (
+    DEFAULT_MAX_MENTIONS_PER_DIGEST,
+    DiscussionDigestService,
+)
 from gmgn_twitter_intel.domains.narrative_intel.services.evidence_ref_validator import EvidenceRefValidator
 from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
 
@@ -39,7 +42,10 @@ class TokenDiscussionDigestWorker(WorkerBase):
             min_source_mentions=int(getattr(settings, "min_source_mentions", 3) or 3),
             min_independent_authors=int(getattr(settings, "min_independent_authors", 2) or 2),
             min_semantic_coverage=float(getattr(settings, "min_semantic_coverage", 0.35) or 0.35),
-            max_mentions_per_digest=int(getattr(settings, "max_mentions_per_digest", 120) or 120),
+            max_mentions_per_digest=int(
+                getattr(settings, "max_mentions_per_digest", DEFAULT_MAX_MENTIONS_PER_DIGEST)
+                or DEFAULT_MAX_MENTIONS_PER_DIGEST
+            ),
         )
         self.validator = EvidenceRefValidator()
 
@@ -156,10 +162,14 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 )
                 counts["failed"] += 1
                 continue
-            allowed_refs = [EvidenceRef.model_validate(ref) for ref in request.allowed_refs]
-            validation = self.validator.validate_digest_refs(result.digest, allowed_refs)
-            if not validation.ok:
-                finished_at_ms = _now_ms()
+            finished_at_ms = _now_ms()
+            try:
+                ready_digest = self.service.publish_ready_digest(
+                    result.digest,
+                    context=context,
+                    now_ms=finished_at_ms,
+                )
+            except Exception:
                 await asyncio.to_thread(
                     self._mark_digest_scanned_sync,
                     target=target,
@@ -168,7 +178,19 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 )
                 counts["failed"] += 1
                 continue
-            finished_at_ms = _now_ms()
+            allowed_refs = [EvidenceRef.model_validate(ref) for ref in request.allowed_refs]
+            validation = self.validator.validate_digest_refs(ready_digest, allowed_refs)
+            if not validation.ok:
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=finished_at_ms,
+                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                )
+                counts["failed"] += 1
+                continue
+            result_payload = result.model_dump(mode="json")
+            result_payload["digest"] = ready_digest.model_dump(mode="json")
             run = {
                 "run_id": run_id,
                 "stage": "discussion_digest",
@@ -178,11 +200,11 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 "scope": target["scope"],
                 "provider": self.provider.provider,
                 "model": self.provider.model,
-                "schema_version": result.schema_version,
+                "schema_version": ready_digest.schema_version,
                 "prompt_version": result.prompt_version,
                 "artifact_version_hash": self.provider.artifact_version_hash,
                 "input_hash": input_hash,
-                "output_hash": _hash_json(result.model_dump(mode="json")),
+                "output_hash": _hash_json(result_payload),
                 "request_json": request.model_dump(mode="json"),
                 "response_json": result.raw_response,
                 "usage_json": (result.agent_run_audit or {}).get("usage") or {},
@@ -192,7 +214,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 "finished_at_ms": finished_at_ms,
                 "latency_ms": finished_at_ms - started_at_ms,
             }
-            digest_payload = result.digest.model_dump(mode="json")
+            digest_payload = ready_digest.model_dump(mode="json")
             digest_payload["model_run_id"] = run_id
             await asyncio.to_thread(
                 self._record_ready_digest_sync,
@@ -227,7 +249,10 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     window=str(target["window"]),
                     scope=str(target["scope"]),
                     since_ms=since_ms,
-                    max_mentions=int(getattr(self.settings, "max_mentions_per_digest", 120) or 120),
+                    max_mentions=int(
+                        getattr(self.settings, "max_mentions_per_digest", DEFAULT_MAX_MENTIONS_PER_DIGEST)
+                        or DEFAULT_MAX_MENTIONS_PER_DIGEST
+                    ),
                 )
             )
 

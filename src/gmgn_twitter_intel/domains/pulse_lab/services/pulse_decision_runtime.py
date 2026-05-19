@@ -41,7 +41,7 @@ class PulseDecisionRuntimeService:
         evidence_packet: PulseEvidencePacket,
         evidence_gate: EvidenceCompletenessGateResult,
     ) -> PulseDecisionStageSpec:
-        packet_payload = _model_payload(evidence_packet)
+        packet_payload = _agent_packet_payload(evidence_packet)
         gate_payload = _model_payload(evidence_gate)
         return PulseDecisionStageSpec(
             stage="evidence_debate",
@@ -66,7 +66,7 @@ class PulseDecisionRuntimeService:
         debate_memo: EvidenceDebateMemo,
         recommendation_constraints: dict[str, Any],
     ) -> PulseDecisionStageSpec:
-        packet_payload = _model_payload(evidence_packet)
+        packet_payload = _agent_packet_payload(evidence_packet)
         gate_payload = _model_payload(evidence_gate)
         debate_payload = _model_payload(debate_memo)
         return PulseDecisionStageSpec(
@@ -114,7 +114,11 @@ class PulseDecisionRuntimeService:
         fields = _final_ref_fields(final)
         for field_name, values in fields:
             allowed = allowed_events if field_name.endswith("event_ids") else (allowed_refs | memo_refs)
-            unknown = [ref_id for ref_id in values if ref_id not in allowed]
+            unknown = [
+                ref_id
+                for ref_id in values
+                if ref_id not in allowed and not (field_name == "data_gap_refs" and ref_id.startswith("missing:"))
+            ]
             if unknown:
                 preview = unknown[:5]
                 suffix = "..." if len(unknown) > 5 else ""
@@ -220,6 +224,23 @@ def _model_payload(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _agent_packet_payload(value: Any) -> dict[str, Any]:
+    payload = _model_payload(value)
+    if not payload and isinstance(value, dict):
+        payload = dict(value)
+    if not payload:
+        return {}
+    return {
+        key: item
+        for key, item in payload.items()
+        if key
+        not in {
+            "summary_json",
+            "admission_context",
+        }
+    }
+
+
 def _context_packet_payload(context: dict[str, Any]) -> dict[str, Any]:
     packet = context.get("evidence_packet") if isinstance(context, dict) else None
     if isinstance(packet, dict):
@@ -292,10 +313,13 @@ def _debate_ref_ids(memo_payload: dict[str, Any]) -> set[str]:
             claim_payload = _model_payload(claim)
             values = claim_payload.get("evidence_refs") if claim_payload else None
             if isinstance(values, list | tuple):
-                refs.update(_string_value(value) for value in values if _string_value(value))
-    values = memo_payload.get("allowed_evidence_ref_ids")
-    if isinstance(values, list | tuple):
-        refs.update(_string_value(value) for value in values if _string_value(value))
+                for value in values:
+                    ref_id = _string_value(value)
+                    if not ref_id:
+                        continue
+                    if ref_id.startswith("missing:"):
+                        continue
+                    refs.add(ref_id)
     return refs
 
 

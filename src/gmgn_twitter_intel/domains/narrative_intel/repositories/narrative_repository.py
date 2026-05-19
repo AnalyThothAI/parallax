@@ -306,6 +306,49 @@ class NarrativeRepository:
             for row in rows
         ]
 
+    def missing_source_rows_for_mention_semantics(
+        self,
+        admission: dict[str, Any],
+        *,
+        limit: int,
+        schema_version: str,
+    ) -> list[dict[str, Any]]:
+        source_event_ids = _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
+        if not source_event_ids:
+            return []
+        target_type = _required(admission, "target_type")
+        target_id = _required(admission, "target_id")
+        rows = self.conn.execute(
+            """
+            SELECT
+              events.event_id,
+              events.text_clean AS text_clean,
+              events.author_handle,
+              events.received_at_ms AS source_received_at_ms,
+              events.tweet_id,
+              events.raw_json AS reference_json
+            FROM events
+            LEFT JOIN token_mention_semantics AS semantics
+              ON semantics.event_id = events.event_id
+             AND semantics.target_type = %s
+             AND semantics.target_id = %s
+             AND semantics.schema_version = %s
+            WHERE events.event_id = ANY(%s)
+              AND semantics.semantic_id IS NULL
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
+            LIMIT %s
+            """,
+            (target_type, target_id, schema_version, source_event_ids, int(limit)),
+        ).fetchall()
+        return [
+            {
+                **_row(row),
+                "target_type": target_type,
+                "target_id": target_id,
+            }
+            for row in rows
+        ]
+
     def due_mentions_for_labeling(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """

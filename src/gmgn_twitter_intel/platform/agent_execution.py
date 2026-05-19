@@ -45,7 +45,7 @@ class AgentLanePolicy(BaseModel):
 
     priority: str = "normal"
     max_concurrency: int = Field(default=1, ge=1)
-    timeout_seconds: float = Field(default=120.0, ge=1)
+    timeout_seconds: float = Field(default=180.0, ge=1)
     rpm_limit: int | None = Field(default=None, ge=1)
     circuit_breaker: AgentCircuitBreakerPolicy = Field(default_factory=AgentCircuitBreakerPolicy)
 

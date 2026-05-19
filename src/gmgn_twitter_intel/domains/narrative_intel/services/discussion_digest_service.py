@@ -9,13 +9,16 @@ from gmgn_twitter_intel.domains.narrative_intel._constants import (
     NARRATIVE_SCHEMA_VERSION,
 )
 from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
+    DigestArgument,
     DiscussionDigestRequest,
+    NarrativeCluster,
     TokenDiscussionDigest,
 )
 
-MAX_MENTION_TEXT_CHARS = 600
+MAX_MENTION_TEXT_CHARS = 360
 MAX_MENTION_REFS = 8
 MAX_CO_MENTIONS = 12
+DEFAULT_MAX_MENTIONS_PER_DIGEST = 24
 PENDING_SEMANTIC_STATUSES = {"queued", "retryable_error", "stale"}
 
 
@@ -32,7 +35,7 @@ class DiscussionDigestService:
         min_source_mentions: int = 3,
         min_independent_authors: int = 2,
         min_semantic_coverage: float = 0.35,
-        max_mentions_per_digest: int = 120,
+        max_mentions_per_digest: int = DEFAULT_MAX_MENTIONS_PER_DIGEST,
     ) -> None:
         self.min_source_mentions = max(1, int(min_source_mentions))
         self.min_independent_authors = max(1, int(min_independent_authors))
@@ -185,6 +188,35 @@ class DiscussionDigestService:
             allowed_refs=allowed_refs,
         )
 
+    def publish_ready_digest(
+        self,
+        digest: TokenDiscussionDigest | dict[str, Any],
+        *,
+        context: dict[str, Any],
+        now_ms: int,
+    ) -> TokenDiscussionDigest:
+        source_count = int(context.get("source_event_count") or len(context.get("mentions") or []))
+        labeled_count = int(
+            context.get("labeled_event_count")
+            if context.get("labeled_event_count") is not None
+            else sum(1 for row in list(context.get("semantic_rows") or []) if str(row.get("status") or "") == "labeled")
+        )
+        payload = digest.model_dump(mode="json") if isinstance(digest, TokenDiscussionDigest) else dict(digest or {})
+        payload.update(
+            {
+                "status": "ready",
+                "semantic_coverage": 0.0 if source_count == 0 else labeled_count / source_count,
+                "source_event_count": source_count,
+                "labeled_event_count": labeled_count,
+                "independent_author_count": int(
+                    context.get("independent_author_count") or _author_count(context.get("mentions") or [])
+                ),
+                "computed_at_ms": int(now_ms),
+            }
+        )
+        _ensure_ready_public_claims(payload, context=context)
+        return TokenDiscussionDigest.model_validate(payload)
+
 
 def _author_count(mentions: list[dict[str, Any]]) -> int:
     return len({str(row.get("author_handle") or "") for row in mentions if str(row.get("author_handle") or "")})
@@ -257,6 +289,68 @@ def _compact_allowed_refs(refs: list[Any], mentions: list[dict[str, Any]]) -> li
             }
         )
     return compact_refs
+
+
+def _ensure_ready_public_claims(payload: dict[str, Any], *, context: dict[str, Any]) -> None:
+    refs = _ready_refs(payload, context=context)
+    if not refs:
+        return
+    payload["evidence_refs"] = _dedupe_ref_payloads(list(payload.get("evidence_refs") or []) + refs)[:6]
+    if not payload.get("dominant_narratives"):
+        payload["dominant_narratives"] = [
+            NarrativeCluster(
+                cluster_key="realtime-discussion",
+                label_zh="实时讨论",
+                summary_zh=_fallback_summary(context),
+                confidence=0.45,
+                evidence_refs=refs[:2],
+            ).model_dump(mode="json")
+        ]
+    bull_view = payload.get("bull_view") if isinstance(payload.get("bull_view"), dict) else {}
+    bear_view = payload.get("bear_view") if isinstance(payload.get("bear_view"), dict) else {}
+    if not bull_view.get("evidence_refs") and not bear_view.get("evidence_refs"):
+        payload["bull_view"] = DigestArgument(
+            summary_zh=_fallback_summary(context),
+            strength="moderate",
+            evidence_refs=refs[:2],
+        ).model_dump(mode="json")
+    if not payload.get("headline_zh"):
+        payload["headline_zh"] = "实时讨论达到发布阈值"
+
+
+def _ready_refs(payload: dict[str, Any], *, context: dict[str, Any]) -> list[dict[str, Any]]:
+    refs = _dedupe_ref_payloads(list(payload.get("evidence_refs") or []))
+    if refs:
+        return refs
+    mentions = [_compact_mention(row) for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"]
+    allowed_refs = _compact_allowed_refs(list(context.get("allowed_refs") or []), mentions)
+    if allowed_refs:
+        return allowed_refs
+    for mention in mentions:
+        evidence_refs = mention.get("evidence_refs")
+        if isinstance(evidence_refs, list) and evidence_refs:
+            return _dedupe_ref_payloads(evidence_refs)
+    return []
+
+
+def _dedupe_ref_payloads(refs: list[Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        ref_id = _clean_str(ref.get("ref_id"))
+        if not ref_id or ref_id in seen:
+            continue
+        seen.add(ref_id)
+        result.append({key: value for key, value in ref.items() if value not in (None, "")})
+    return result
+
+
+def _fallback_summary(context: dict[str, Any]) -> str:
+    labeled = int(context.get("labeled_event_count") or 0)
+    authors = int(context.get("independent_author_count") or 0)
+    return f"{labeled} 条已标注讨论来自 {authors} 个独立作者，达到实时叙事发布阈值。"
 
 
 def _clean_str(value: Any) -> str | None:

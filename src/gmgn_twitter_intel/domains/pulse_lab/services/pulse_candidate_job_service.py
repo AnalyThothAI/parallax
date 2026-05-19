@@ -273,9 +273,9 @@ class PulseCandidateJobService:
                 final_decision = result.final_decision
                 stage_audits = (*pre_stage_audits, *result.stage_audits)
                 result_audit = result.agent_run_audit or audit
+            final_decision = clip_recommendation(final_decision, gate=gate, evidence_gate=evidence_gate)
             debate_memo = _debate_memo_from_stage_audits(stage_audits)
             claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, debate_memo, final_decision)
-            final_decision = clip_recommendation(final_decision, gate=gate, evidence_gate=evidence_gate)
             finished_at_ms = _now_ms()
             claim_stage = _deterministic_stage_audit(
                 stage="claim_verifier",

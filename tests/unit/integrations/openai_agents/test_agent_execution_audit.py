@@ -132,7 +132,7 @@ def test_runtime_policy_uses_default_lane_when_missing() -> None:
     missing = policy.lane_for("missing")
 
     assert known.timeout_seconds == 15
-    assert missing.timeout_seconds == 120
+    assert missing.timeout_seconds == 180
     assert missing is not policy.lane_for("missing")
     assert AgentExecutionErrorClass.TIMEOUT.value == "timeout"
 

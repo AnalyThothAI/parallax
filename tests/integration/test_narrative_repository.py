@@ -260,6 +260,44 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     assert context["mentions"][0]["text_clean"] == "SOL breakout discussion"
 
 
+def test_missing_source_rows_for_mention_semantics_excludes_existing_semantics(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-missing-1", "event-existing", "event-missing-2"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-existing",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "existing source",
+                    "source_received_at_ms": 1_000,
+                }
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_000,
+        )
+
+        admission = {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "source_event_ids_json": ["event-missing-1", "event-existing", "event-missing-2"],
+        }
+        missing_rows = repo.missing_source_rows_for_mention_semantics(
+            admission,
+            limit=10,
+            schema_version="narrative_intel_v1",
+        )
+    finally:
+        conn.close()
+
+    assert {row["event_id"] for row in missing_rows} == {"event-missing-1", "event-missing-2"}
+    assert all(row["target_id"] == "solana:So111" for row in missing_rows)
+
+
 def test_complete_mention_semantics_targets_current_semantic_identity(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:

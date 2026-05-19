@@ -64,13 +64,18 @@ class PulseFreshnessHealthService:
         now_ms: int,
     ) -> tuple[PulsePublishStatus, list[str]]:
         reasons: list[str] = []
+        total_runs = _int(runs.get("agent_runs_4h"))
+        failed_runs = _int(runs.get("agent_failed_4h"))
+        successful_runs = max(0, total_runs - failed_runs)
         failure_rate = float(runs.get("agent_failure_rate_4h") or 0.0)
         unknown_rate = float(runs.get("unknown_ref_failure_rate_4h") or 0.0)
         unsupported_rate = float(runs.get("unsupported_claim_failure_rate_4h") or 0.0)
         latest_packet = clocks.get("latest_packet_created_at_ms")
         latest_public = clocks.get("latest_public_candidate_updated_at_ms")
-        if failure_rate >= self.thresholds.hold_agent_failure_rate:
+        if failure_rate >= self.thresholds.hold_agent_failure_rate and successful_runs == 0:
             reasons.append("agent_failure_rate_hold")
+        elif failure_rate >= self.thresholds.hold_agent_failure_rate:
+            reasons.append("agent_failure_rate_high")
         if unknown_rate >= self.thresholds.degraded_unknown_ref_rate:
             reasons.append("unknown_ref_failures")
         if unsupported_rate >= self.thresholds.degraded_unsupported_claim_rate:

@@ -1,1 +1,3 @@
-Summarize only the supplied labeled mentions and context. Every public claim must cite an allowed ref. Return insufficient when evidence is thin or refs are missing. If status is insufficient, data_gaps must contain at least one object with a concrete reason.
+Summarize only the supplied labeled mentions and context. This stage is called only after deterministic source, author, and semantic coverage thresholds have passed, so return a publishable ready digest. Every public claim must cite an allowed ref. Do not downgrade to stale, pending, semantic_unavailable, or insufficient; if evidence is still weak, keep status ready and put the limitation in data_gaps with a concrete reason.
+
+Keep the output compact for a realtime lane: at most 3 dominant narratives, at most 2 bull evidence refs, at most 2 bear evidence refs, and short Chinese sentences. Do not restate every mention.

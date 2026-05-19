@@ -44,6 +44,7 @@ stance: "bull" | "bear" | "gap" | "risk"
 - `claim` 用中文短句，说明“packet 中哪些事实支持该观察”。
 - `evidence_refs` 至少 1 个，且全部来自 `allowed_evidence_refs`.
 - `summary_zh` 用 40-160 字中文，总结多空证据与主要 gap，不做最终 recommendation。
+- 每类 claims 最多 2 条；每条 claim 最多引用 3 个 ref。`allowed_evidence_ref_ids` 只放实际引用过的 ref 子集，不要整包复制。
 
 ## Route: cex
 

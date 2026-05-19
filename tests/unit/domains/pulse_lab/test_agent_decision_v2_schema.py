@@ -48,9 +48,9 @@ def test_bull_bear_view_absent_with_supporting_ids_rejected() -> None:
         BullBearView(strength="absent", supporting_event_ids=["event-1"])
 
 
-def test_bull_bear_view_non_absent_without_supporting_ids_rejected() -> None:
-    with pytest.raises(ValidationError, match="at least one supporting_event_id"):
-        BullBearView(strength="moderate", thesis_zh="社交热度持续上升")
+def test_bull_bear_view_non_absent_without_supporting_ids_ok() -> None:
+    view = BullBearView(strength="moderate", thesis_zh="社交热度持续上升")
+    assert view.supporting_event_ids == []
 
 
 def test_bull_bear_view_non_absent_without_thesis_rejected() -> None:
@@ -88,22 +88,22 @@ def test_trade_playbook_no_playbook_with_empty_lists_ok() -> None:
     assert playbook.exit_triggers == []
 
 
-def test_trade_playbook_no_playbook_with_watch_signals_rejected() -> None:
-    with pytest.raises(ValidationError, match="empty watch_signals"):
-        TradePlaybook(
-            has_playbook=False,
-            watch_signals=["流动性回撤"],
-            monitoring_horizon="1h",
-        )
+def test_trade_playbook_no_playbook_with_watch_signals_cleared() -> None:
+    playbook = TradePlaybook(
+        has_playbook=False,
+        watch_signals=["流动性回撤"],
+        monitoring_horizon="1h",
+    )
+    assert playbook.watch_signals == []
 
 
-def test_trade_playbook_no_playbook_with_exit_triggers_rejected() -> None:
-    with pytest.raises(ValidationError, match="empty watch_signals"):
-        TradePlaybook(
-            has_playbook=False,
-            exit_triggers=["提及量下降"],
-            monitoring_horizon="4h",
-        )
+def test_trade_playbook_no_playbook_with_exit_triggers_cleared() -> None:
+    playbook = TradePlaybook(
+        has_playbook=False,
+        exit_triggers=["提及量下降"],
+        monitoring_horizon="4h",
+    )
+    assert playbook.exit_triggers == []
 
 
 def test_trade_playbook_has_playbook_with_only_exit_triggers_ok() -> None:

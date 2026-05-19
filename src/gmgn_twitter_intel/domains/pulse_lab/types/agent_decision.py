@@ -37,8 +37,9 @@ class BullBearView(BaseModel):
     """Symmetric bull-or-bear opinion attached to FinalDecision.
 
     `strength="absent"` means the side is intentionally empty (no evidence at
-    all). All other strengths must carry a non-empty thesis and at least one
-    supporting event id so downstream UI cannot render a blank bullet.
+    all). All other strengths must carry a non-empty thesis. Event ids are best
+    effort because the SDK response_format should not reject otherwise useful
+    model output before the runtime can normalize refs.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -57,8 +58,6 @@ class BullBearView(BaseModel):
         else:
             if not _clean_text(self.thesis_zh):
                 raise ValueError("strength != absent requires non-empty thesis_zh")
-            if not self.supporting_event_ids:
-                raise ValueError("strength != absent requires at least one supporting_event_id")
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
@@ -81,9 +80,8 @@ class TradePlaybook(BaseModel):
     @model_validator(mode="after")
     def _consistency(self) -> TradePlaybook:
         if self.has_playbook is False and (self.watch_signals or self.exit_triggers):
-            raise ValueError(
-                "has_playbook=false requires empty watch_signals and exit_triggers",
-            )
+            self.watch_signals = []
+            self.exit_triggers = []
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
@@ -91,8 +89,8 @@ class TradePlaybook(BaseModel):
 class EvidenceClaim(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    claim: str
-    evidence_refs: tuple[str, ...]
+    claim: str = Field(max_length=180)
+    evidence_refs: tuple[str, ...] = Field(max_length=3)
     stance: Literal["bull", "bear", "gap", "risk"]
 
     @field_validator("claim", mode="after")
@@ -113,12 +111,12 @@ class EvidenceClaim(BaseModel):
 class EvidenceDebateMemo(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    bull_claims: tuple[EvidenceClaim, ...] = ()
-    bear_claims: tuple[EvidenceClaim, ...] = ()
-    rebuttal_claims: tuple[EvidenceClaim, ...] = ()
-    data_gap_claims: tuple[EvidenceClaim, ...] = ()
-    summary_zh: str
-    allowed_evidence_ref_ids: tuple[str, ...]
+    bull_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
+    bear_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
+    rebuttal_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
+    data_gap_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
+    summary_zh: str = Field(max_length=240)
+    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=16)
 
     @field_validator("summary_zh", mode="after")
     @classmethod

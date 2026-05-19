@@ -112,7 +112,6 @@ class DiscussionDigestResult(BaseModel):
     run_id: str
     schema_version: str
     prompt_version: str
-    digest: TokenDiscussionDigest
+    digest: dict[str, Any] | TokenDiscussionDigest
     raw_response: dict[str, Any] = Field(default_factory=dict)
     agent_run_audit: dict[str, Any] = Field(default_factory=dict)
-

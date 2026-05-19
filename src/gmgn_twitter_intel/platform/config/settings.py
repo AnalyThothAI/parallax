@@ -550,7 +550,7 @@ class AgentLaneSettings(BaseModel):
 
     priority: Literal["high", "normal", "bulk", "low"] = "normal"
     max_concurrency: int = Field(default=1, ge=1)
-    timeout_seconds: float = Field(default=120.0, ge=1)
+    timeout_seconds: float = Field(default=180.0, ge=1)
     rpm_limit: int | None = Field(default=None, ge=1)
     circuit_breaker: AgentCircuitBreakerSettings = Field(default_factory=AgentCircuitBreakerSettings)
 
@@ -558,13 +558,13 @@ class AgentLaneSettings(BaseModel):
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
         "pulse.pipeline": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=240.0),
-        "pulse.evidence_debate": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=120.0),
-        "pulse.decision_maker": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=120.0),
-        "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=120.0),
-        "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=120.0),
-        "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=120.0),
-        "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=120.0),
-        "news.fact_candidate": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=120.0),
+        "pulse.evidence_debate": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.decision_maker": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
+        "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
+        "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=180.0),
+        "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
+        "news.fact_candidate": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
     }
 
 
@@ -790,7 +790,7 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     min_new_labeled_mentions: int = Field(default=3, ge=1)
     min_new_authors: int = Field(default=2, ge=1)
     min_semantic_coverage: float = Field(default=0.35, ge=0, le=1)
-    max_mentions_per_digest: int = Field(default=120, ge=1)
+    max_mentions_per_digest: int = Field(default=24, ge=1)
     stance_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     price_move_refresh_pct: float = Field(default=12.0, ge=0)
@@ -1478,7 +1478,7 @@ token_discussion_digest:
   min_new_labeled_mentions: 3
   min_new_authors: 2
   min_semantic_coverage: 0.35
-  max_mentions_per_digest: 120
+  max_mentions_per_digest: 24
   stance_mix_change_threshold: 0.20
   attention_mix_change_threshold: 0.20
   price_move_refresh_pct: 12.0

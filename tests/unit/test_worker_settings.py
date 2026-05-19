@@ -72,6 +72,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_discussion_digest.windows == ("5m", "1h", "4h", "24h")
     assert settings.token_discussion_digest.scopes == ("all", "matched")
     assert settings.token_discussion_digest.min_semantic_coverage == 0.35
+    assert settings.token_discussion_digest.max_mentions_per_digest == 24
     assert settings.token_discussion_digest.digest_ttl_by_window_seconds["24h"] == 900
     assert settings.pulse_candidate.timeout_seconds == 0
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
@@ -131,6 +132,8 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.global_max_concurrency == 4
     assert settings.agent_runtime.global_rpm_limit == 60
     assert settings.agent_runtime.lanes["pulse.decision_maker"].priority == "high"
+    assert settings.agent_runtime.lanes["pulse.evidence_debate"].timeout_seconds == 180
+    assert settings.agent_runtime.lanes["narrative.discussion_digest"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
 

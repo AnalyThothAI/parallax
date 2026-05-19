@@ -24,7 +24,7 @@ class PulseDecisionStageSpec:
 
 
 _DEFAULT_STAGE_NAMES = ("evidence_debate", "decision_maker")
-_DEFAULT_MAX_TURNS_PER_STAGE = {"evidence_debate": 3, "decision_maker": 3}
+_DEFAULT_MAX_TURNS_PER_STAGE = {"evidence_debate": 1, "decision_maker": 1}
 _DEFAULT_TOOL_NAMES_BY_STAGE = {"evidence_debate": (), "decision_maker": ()}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",

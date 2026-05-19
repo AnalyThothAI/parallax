@@ -43,15 +43,10 @@ class PulseWriteGate:
         evidence_status = str(getattr(evidence_gate, "evidence_status", "") or "complete")
         claim_valid = bool(getattr(claim_verification, "valid", True))
         decision_status = str(getattr(claim_verification, "decision_status", "") or _decision_status(final_decision))
-        if health_status and health_status.get("publish_status") == "hold_publish":
-            return PulseWriteGateDecision(
-                write_allowed=True,
-                public_write_allowed=False,
-                playbook_write_allowed=False,
-                decision_status=decision_status,
-                display_status="hidden_hold_publish",
-                reason="hold_publish",
-            )
+        # Aggregate freshness health is diagnostic, not a per-candidate truth.
+        # If it gates writes here, historical failures can self-lock the public
+        # read model: fresh valid runs get hidden, keeping public freshness stale.
+        _ = health_status
         if not claim_valid:
             return PulseWriteGateDecision(
                 write_allowed=True,

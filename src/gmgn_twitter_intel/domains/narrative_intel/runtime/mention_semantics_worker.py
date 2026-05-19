@@ -267,6 +267,13 @@ class MentionSemanticsWorker(WorkerBase):
             scanned_ids: list[str] = []
             for admission in due_admissions:
                 source_rows = repos.narratives.source_rows_for_admission(admission, limit=source_limit)
+                missing_source_rows = _missing_source_rows_for_semantics(
+                    repos.narratives,
+                    admission,
+                    limit=source_limit,
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
+                    fallback_source_rows=source_rows,
+                )
                 pending_count = repos.narratives.pending_mention_semantics_count(
                     target_type=str(admission["target_type"]),
                     target_id=str(admission["target_id"]),
@@ -274,15 +281,17 @@ class MentionSemanticsWorker(WorkerBase):
                 )
                 stats["semantic_pending_before"] += pending_count
                 target_budget = max(0, max_pending_per_target - pending_count)
-                allowed_count = min(len(source_rows), target_budget, remaining_cycle_budget)
+                existing_count = max(0, len(source_rows) - len(missing_source_rows))
+                stats["semantic_existing"] += existing_count
+                allowed_count = min(len(missing_source_rows), target_budget, remaining_cycle_budget)
                 if allowed_count <= 0:
-                    if source_rows and target_budget <= 0:
+                    if missing_source_rows and target_budget <= 0:
                         stats["semantic_pending_cap_hits"] += 1
                     stats["source_rows"] += len(source_rows)
-                    stats["semantic_suppressed_budget"] += len(source_rows)
+                    stats["semantic_suppressed_budget"] += len(missing_source_rows)
                     scanned_ids.append(str(admission["admission_id"]))
                     continue
-                selected_mentions = source_rows[:allowed_count]
+                selected_mentions = missing_source_rows[:allowed_count]
                 enqueued = repos.narratives.enqueue_missing_mention_semantics(
                     selected_mentions,
                     schema_version=NARRATIVE_SCHEMA_VERSION,
@@ -292,8 +301,8 @@ class MentionSemanticsWorker(WorkerBase):
                 stats["source_rows"] += len(source_rows)
                 stats["semantic_inserted"] += int(enqueued.get("inserted") or 0)
                 stats["semantic_existing"] += int(enqueued.get("existing") or 0)
-                stats["semantic_suppressed_budget"] += max(0, len(source_rows) - allowed_count)
-                remaining_cycle_budget -= allowed_count
+                stats["semantic_suppressed_budget"] += max(0, len(missing_source_rows) - allowed_count)
+                remaining_cycle_budget -= int(enqueued.get("inserted") or 0)
                 scanned_ids.append(str(admission["admission_id"]))
             marked = repos.narratives.mark_admissions_semantics_scanned(
                 scanned_ids,
@@ -337,6 +346,20 @@ class MentionSemanticsWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _missing_source_rows_for_semantics(
+    narrative_repository: Any,
+    admission: dict[str, Any],
+    *,
+    limit: int,
+    schema_version: str,
+    fallback_source_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    method = getattr(narrative_repository, "missing_source_rows_for_mention_semantics", None)
+    if callable(method):
+        return list(method(admission, limit=limit, schema_version=schema_version))
+    return list(fallback_source_rows)
 
 
 def _is_agent_no_start_backpressure(exc: Exception) -> bool:

@@ -63,7 +63,7 @@ def test_digest_request_uses_compact_agent_payload():
 
     assert len(request.mentions) == 1
     assert request.mentions[0]["text_clean"].endswith("...")
-    assert len(request.mentions[0]["text_clean"]) <= 603
+    assert len(request.mentions[0]["text_clean"]) <= 363
     assert "reference_json" not in request.mentions[0]
     assert "raw_label_json" not in request.mentions[0]
     assert "semantic_rows" not in request.context
@@ -78,6 +78,46 @@ def test_digest_request_uses_compact_agent_payload():
     }
     assert {ref["ref_id"] for ref in request.allowed_refs} == {"event:event-1", "semantic:semantic-1"}
     assert "not for agent" not in encoded
+
+
+def test_digest_request_default_prompt_budget_stays_small_for_realtime_latency():
+    service = DiscussionDigestService()
+    mentions = [
+        {
+            "event_id": f"event-{index}",
+            "semantic_id": f"semantic-{index}",
+            "target_type": "Asset",
+            "target_id": "asset:solana:token:So111",
+            "text_clean": "x" * 500,
+            "status": "labeled",
+            "author_handle": f"author-{index}",
+            "evidence_refs_json": [{"ref_id": f"event:event-{index}", "kind": "event"}],
+        }
+        for index in range(40)
+    ]
+
+    request = service.build_digest_request(
+        run_id="run-1",
+        target_type="Asset",
+        target_id="asset:solana:token:So111",
+        window="24h",
+        scope="all",
+        context={
+            "mentions": mentions,
+            "allowed_refs": [
+                {"ref_id": f"event:event-{index}", "kind": "event", "source_table": "events"}
+                for index in range(40)
+            ],
+            "source_event_count": 40,
+            "labeled_event_count": 40,
+            "independent_author_count": 40,
+        },
+    )
+
+    assert len(request.mentions) == 24
+    assert request.context["mention_limit"] == 24
+    assert max(len(mention["text_clean"]) for mention in request.mentions) <= 363
+    assert len(request.allowed_refs) == 24
 
 
 def test_refresh_decision_waits_for_pending_semantics_instead_of_insufficient():

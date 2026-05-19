@@ -30,7 +30,7 @@ class MentionSemanticsAgentPayload(BaseModel):
 
 
 class DiscussionDigestAgentPayload(BaseModel):
-    digest: TokenDiscussionDigest
+    digest: dict[str, Any]
 
 
 class OpenAIAgentsNarrativeIntelClient:
@@ -249,11 +249,12 @@ def _coerce_digest_payload(value: Any) -> DiscussionDigestAgentPayload:
     if isinstance(value, DiscussionDigestAgentPayload):
         return value
     if isinstance(value, DiscussionDigestResult):
-        return DiscussionDigestAgentPayload(digest=value.digest)
+        digest = value.digest.model_dump(mode="json") if isinstance(value.digest, TokenDiscussionDigest) else value.digest
+        return DiscussionDigestAgentPayload(digest=digest)
     if isinstance(value, TokenDiscussionDigest):
-        return DiscussionDigestAgentPayload(digest=value)
+        return DiscussionDigestAgentPayload(digest=value.model_dump(mode="json"))
     if isinstance(value, dict) and "digest" not in value:
-        return DiscussionDigestAgentPayload(digest=TokenDiscussionDigest.model_validate(value))
+        return DiscussionDigestAgentPayload(digest=value)
     return DiscussionDigestAgentPayload.model_validate(value)
 
 

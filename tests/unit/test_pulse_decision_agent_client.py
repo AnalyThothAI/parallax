@@ -192,6 +192,7 @@ def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
     contract = client.runtime_contract
 
     assert contract.stage_names == ("evidence_debate", "decision_maker")
+    assert contract.max_turns_per_stage == {"evidence_debate": 1, "decision_maker": 1}
     assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
     assert contract.safety_net_enabled is True
     assert contract.manifest_kwargs()["tool_names_by_stage"] == {
@@ -226,6 +227,8 @@ def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> 
         "schema_version": "pulse-evidence-packet-v1",
         "candidate_id": "candidate-1",
         "target_id": "asset:pepe",
+        "summary_json": {"social_rows": [{"unref_field": "must stay out of agent prompt"}]},
+        "admission_context": {"factor_snapshot": {"social_heat": {"watched_seed_strength": 10}}},
         "allowed_evidence_refs": [
             {"ref_id": "event:evt-1", "summary_zh": "高粉账号提及"},
             {"ref_id": "metric:market:price_usd", "summary_zh": "价格快照"},
@@ -244,6 +247,8 @@ def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> 
         "event:evt-1",
         "metric:market:price_usd",
     ]
+    assert "summary_json" not in spec.input_payload["evidence_packet"]
+    assert "admission_context" not in spec.input_payload["evidence_packet"]
 
 
 def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fields() -> None:
@@ -450,7 +455,7 @@ def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures
     assert "outside allowed_evidence_refs" in (result.stage_audits[0].error or "")
 
 
-def test_gateway_execution_error_becomes_failed_stage_audit() -> None:
+def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() -> None:
     gateway = _FailingAgentGateway()
     client = OpenAIAgentsPulseDecisionClient(
         model="gpt-test",
@@ -458,25 +463,24 @@ def test_gateway_execution_error_becomes_failed_stage_audit() -> None:
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
 
-    import pytest
-
-    with pytest.raises(PulseStageFailure) as exc:
-        asyncio.run(
-            client.run_decision_pipeline(
-                context=_pipeline_context(),
-                run_id="run-1",
-                job={"job_id": "job-1", "attempt_count": 1},
-                route="meme",
-                completeness={"status": "complete"},
-                runtime_manifest={"runtime_version": "test"},
-            )
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
         )
+    )
 
-    assert exc.value.audits[0].stage == "evidence_debate"
-    assert exc.value.audits[0].status == "timeout"
-    assert exc.value.audits[0].error == "agent lane timed out"
-    assert exc.value.audits[0].usage_json == {"input_tokens": 2}
-    assert exc.value.audits[0].input_hash == gateway.execute_calls[0]["stage"].input_hash
+    assert result.final_decision.recommendation == "abstain"
+    assert result.final_decision.abstain_reason == "stage_timeout"
+    assert result.stage_audits[0].stage == "evidence_debate"
+    assert result.stage_audits[0].status == "timeout"
+    assert result.stage_audits[0].error == "agent lane timed out"
+    assert result.stage_audits[0].usage_json == {"input_tokens": 2}
+    assert result.stage_audits[0].input_hash == gateway.execute_calls[0]["stage"].input_hash
 
 
 def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() -> None:

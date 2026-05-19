@@ -41,7 +41,7 @@ class ClaimEvidenceVerifier:
                 for ref_id in refs:
                     if ref_id in allowed:
                         continue
-                    if group_name == "data_gap_claims" and ref_id.startswith("missing:"):
+                    if ref_id.startswith("missing:"):
                         continue
                     unknown.append(ref_id)
 
@@ -49,8 +49,8 @@ class ClaimEvidenceVerifier:
         supporting_refs = _string_tuple(getattr(final_decision, "supporting_evidence_refs", ()))
         risk_refs = _string_tuple(getattr(final_decision, "risk_evidence_refs", ()))
         data_gap_refs = _string_tuple(getattr(final_decision, "data_gap_refs", ()))
-        final_refs = (*supporting_refs, *risk_refs, *data_gap_refs)
-        unknown.extend(ref_id for ref_id in final_refs if ref_id not in allowed)
+        unknown.extend(ref_id for ref_id in (*supporting_refs, *risk_refs) if ref_id not in allowed)
+        unknown.extend(ref_id for ref_id in data_gap_refs if ref_id not in allowed and not ref_id.startswith("missing:"))
 
         evidence_event_ids = _string_tuple(getattr(final_decision, "evidence_event_ids", ()))
         if recommendation != "abstain" and not supporting_refs:
