@@ -17,6 +17,7 @@ class FakePulseReadRepository:
         self.pages = pages or {}
         self.health = health or {
             "candidate_count": 0,
+            "public_candidate_count": 0,
             "blocked_low_information_count": 0,
             "dead_job_count": 0,
             "market_ready_rate": 0.0,
@@ -97,8 +98,10 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
     }
     assert result["health"] == {
         "pulse_ready": False,
+        "public_ready": False,
         "agent_worker_running": False,
         "candidate_count": 0,
+        "public_candidate_count": 0,
         "blocked_low_information_count": 0,
         "dead_job_count": 0,
         "market_ready_rate": 0.0,
@@ -157,6 +160,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         },
         health={
             "candidate_count": 3,
+            "public_candidate_count": 2,
             "blocked_low_information_count": 1,
             "dead_job_count": 2,
             "market_ready_rate": 0.5,
@@ -203,8 +207,10 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
     }
     assert result["health"] == {
         "pulse_ready": True,
+        "public_ready": True,
         "agent_worker_running": True,
         "candidate_count": 3,
+        "public_candidate_count": 2,
         "blocked_low_information_count": 1,
         "dead_job_count": 2,
         "market_ready_rate": 0.5,
@@ -349,6 +355,46 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
     assert result["health"]["market_ready_rate"] == 0.5
     assert result["returned_count"] == 1
     assert result["has_more"] is True
+
+
+def test_signal_pulse_health_distinguishes_hidden_candidates_from_public_readiness() -> None:
+    pulse = FakePulseReadRepository(
+        health={
+            "candidate_count": 5,
+            "public_candidate_count": 0,
+            "blocked_low_information_count": 0,
+            "dead_job_count": 0,
+            "market_ready_rate": 0.0,
+            "summary": {
+                "trade_candidate": 0,
+                "token_watch": 0,
+                "risk_rejected_high_info": 0,
+            },
+            "publish_status": "hold_publish",
+            "reasons": ["agent_failure_rate_hold"],
+            "hidden_hold_publish_4h": 5,
+            "public_candidates_4h": 0,
+        },
+    )
+
+    result = _service(pulse).pulse(
+        window="1h",
+        scope="all",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+    )
+
+    assert result["health"]["candidate_count"] == 5
+    assert result["health"]["public_candidate_count"] == 0
+    assert result["health"]["pulse_ready"] is False
+    assert result["health"]["public_ready"] is False
+    assert result["health"]["publish_status"] == "hold_publish"
+    assert result["health"]["reasons"] == ["agent_failure_rate_hold"]
+    assert result["items"] == []
 
 
 def _candidate_row(

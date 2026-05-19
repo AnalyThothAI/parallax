@@ -211,6 +211,32 @@ class NarrativeRepository:
         ).fetchall()
         return [_row(row) for row in rows]
 
+    def pending_mention_semantics_count(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        schema_version: str,
+        model_version: str | None = None,
+    ) -> int:
+        model_clause = "AND model_version = %s" if model_version else ""
+        params: list[Any] = [target_type, target_id, schema_version]
+        if model_version:
+            params.append(model_version)
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(*) AS count
+            FROM token_mention_semantics
+            WHERE target_type = %s
+              AND target_id = %s
+              AND schema_version = %s
+              {model_clause}
+              AND status IN ('queued', 'retryable_error', 'stale')
+            """,
+            tuple(params),
+        ).fetchone()
+        return int(row["count"] if row else 0)
+
     def enqueue_missing_mention_semantics(
         self,
         source_rows: Sequence[dict[str, Any]],
@@ -406,24 +432,46 @@ class NarrativeRepository:
                 ),
             )
         for failure in failures:
-            failed += 1
-            self.conn.execute(
-                """
-                UPDATE token_mention_semantics
-                SET status = 'retryable_error',
-                    retry_count = retry_count + 1,
-                    next_retry_at_ms = %s,
-                    error = %s
-                WHERE event_id = %s AND target_type = %s AND target_id = %s
-                """,
-                (
-                    int(failure.get("next_retry_at_ms") or now_ms + 60_000),
-                    str(failure.get("error") or "provider_failure"),
-                    _required(failure, "event_id"),
-                    _required(failure, "target_type"),
-                    _required(failure, "target_id"),
-                ),
-            )
+            failure_status = str(failure.get("status") or "retryable_error")
+            if failure_status == "semantic_unavailable":
+                unavailable += 1
+                self.conn.execute(
+                    """
+                    UPDATE token_mention_semantics
+                    SET status = 'semantic_unavailable',
+                        retry_count = retry_count + 1,
+                        next_retry_at_ms = 0,
+                        computed_at_ms = %s,
+                        error = %s
+                    WHERE event_id = %s AND target_type = %s AND target_id = %s
+                    """,
+                    (
+                        now_ms,
+                        str(failure.get("error") or "provider_failure"),
+                        _required(failure, "event_id"),
+                        _required(failure, "target_type"),
+                        _required(failure, "target_id"),
+                    ),
+                )
+            else:
+                failed += 1
+                self.conn.execute(
+                    """
+                    UPDATE token_mention_semantics
+                    SET status = 'retryable_error',
+                        retry_count = retry_count + 1,
+                        next_retry_at_ms = %s,
+                        error = %s
+                    WHERE event_id = %s AND target_type = %s AND target_id = %s
+                    """,
+                    (
+                        int(failure.get("next_retry_at_ms") or now_ms + 60_000),
+                        str(failure.get("error") or "provider_failure"),
+                        _required(failure, "event_id"),
+                        _required(failure, "target_type"),
+                        _required(failure, "target_id"),
+                    ),
+                )
         _commit_if_available(self.conn)
         return {"labeled": labeled, "semantic_unavailable": unavailable, "failed": failed}
 
@@ -561,6 +609,28 @@ class NarrativeRepository:
             "is_current": True,
         }
 
+    def mark_admissions_digest_scanned(
+        self,
+        admission_ids: Sequence[str],
+        *,
+        next_due_at_ms: int,
+        now_ms: int,
+    ) -> dict[str, int]:
+        ids = _stable_ids(admission_ids)
+        if not ids:
+            return {"updated": 0}
+        cursor = self.conn.execute(
+            """
+            UPDATE narrative_admissions
+            SET next_digest_due_at_ms = %s,
+                updated_at_ms = %s
+            WHERE admission_id = ANY(%s)
+            """,
+            (int(next_due_at_ms), int(now_ms), ids),
+        )
+        _commit_if_available(self.conn)
+        return {"updated": int(getattr(cursor, "rowcount", 0) or 0)}
+
     def current_digests_for_targets(
         self,
         targets: Sequence[dict[str, str]],
@@ -573,14 +643,33 @@ class NarrativeRepository:
         for target in targets:
             row = self.conn.execute(
                 """
-                SELECT *
-                FROM token_discussion_digests
-                WHERE target_type = %s
-                  AND target_id = %s
-                  AND "window" = %s
-                  AND scope = %s
-                  AND schema_version = %s
-                  AND is_current = true
+                SELECT digest.*,
+                       COALESCE(backlog.pending, 0) AS semantic_backlog_pending,
+                       COALESCE(backlog.retryable, 0) AS semantic_backlog_retryable,
+                       COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
+                       backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
+                FROM token_discussion_digests AS digest
+                LEFT JOIN LATERAL (
+                  SELECT
+                    COUNT(*) FILTER (
+                      WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                    ) AS pending,
+                    COUNT(*) FILTER (WHERE semantics.status = 'retryable_error') AS retryable,
+                    COUNT(*) FILTER (WHERE semantics.status = 'semantic_unavailable') AS unavailable,
+                    MIN(semantics.next_retry_at_ms) FILTER (
+                      WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                    ) AS oldest_due_at_ms
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.target_type = digest.target_type
+                    AND semantics.target_id = digest.target_id
+                    AND semantics.schema_version = digest.schema_version
+                ) AS backlog ON true
+                WHERE digest.target_type = %s
+                  AND digest.target_id = %s
+                  AND digest."window" = %s
+                  AND digest.scope = %s
+                  AND digest.schema_version = %s
+                  AND digest.is_current = true
                 """,
                 (target["target_type"], target["target_id"], window, scope, schema_version),
             ).fetchone()

@@ -88,6 +88,7 @@ export function SignalLabWorkbench({
     (Boolean(isAccountEventsLoading) || accountEvents.length > 0);
   const statusLabel = statusFilter === "all" ? "all statuses" : labelForStatus(statusFilter);
   const totalPulse = totalByStatus(summary);
+  const healthNotice = buildPulseHealthNotice(health);
   return (
     <section className="signal-lab-workbench">
       <header className="signal-lab-workbench-head">
@@ -158,6 +159,18 @@ export function SignalLabWorkbench({
           重置
         </button>
       </div>
+
+      {healthNotice ? (
+        <div
+          aria-label="Signal Pulse health"
+          className={clsx("signal-pulse-health-banner", healthNotice.tone)}
+          role="status"
+        >
+          <strong>{healthNotice.title}</strong>
+          <span>{healthNotice.detail}</span>
+          <em>{healthNotice.meta}</em>
+        </div>
+      ) : null}
 
       <section className="signal-pulse-workbench-list">
         <header>
@@ -283,6 +296,46 @@ function SignalLabEmptyState({
       }
     />
   );
+}
+
+function buildPulseHealthNotice(health: SignalPulseData["health"] | null | undefined) {
+  if (!health) {
+    return null;
+  }
+  const publishStatus = String(health.publish_status ?? "healthy");
+  const publicReady = health.public_ready ?? health.pulse_ready;
+  const hiddenHold = Number(health.hidden_hold_publish_4h ?? 0);
+  const publicCount = Number(health.public_candidate_count ?? health.public_candidates_4h ?? 0);
+  const shouldShow =
+    publishStatus === "hold_publish" ||
+    publishStatus === "degraded" ||
+    (!publicReady && hiddenHold > 0);
+  if (!shouldShow) {
+    return null;
+  }
+  const reason = health.reasons?.[0] ? cleanHealthReason(health.reasons[0]) : "health gate active";
+  const title =
+    publishStatus === "hold_publish"
+      ? "发布暂停"
+      : publishStatus === "degraded"
+        ? "质量降级"
+        : "Public 队列为空";
+  const detail =
+    publishStatus === "hold_publish"
+      ? `public write gate hold: ${reason}`
+      : publishStatus === "degraded"
+        ? `health degraded: ${reason}`
+        : `hidden rows present: ${reason}`;
+  return {
+    title,
+    detail,
+    meta: `public ${publicCount} · hidden ${hiddenHold}`,
+    tone: publishStatus === "hold_publish" ? "hold" : "degraded",
+  };
+}
+
+function cleanHealthReason(value: string): string {
+  return value.trim().replaceAll("_", " ");
 }
 
 function accountEventChips(item: LivePayload): string[] {

@@ -9,6 +9,7 @@ Coverage focus:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -39,6 +40,14 @@ class _FakeGateway:
     def openai_client(self, *, model, base_url, timeout_s):
         self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
         return object()
+
+
+class _RawOutputRunner:
+    def __init__(self, raw_output: object) -> None:
+        self.raw_output = raw_output
+
+    async def run(self, agent, stage_input, *, max_turns, run_config, context):
+        return SimpleNamespace(final_output=self.raw_output, usage=SimpleNamespace(total_tokens=3))
 
 
 def test_extract_usage_recursively_returns_json_safe_payload() -> None:
@@ -207,3 +216,138 @@ def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> 
         "event:evt-1",
         "metric:market:price_usd",
     ]
+
+
+def test_run_stage_normalizes_raw_dict_before_pydantic_validation_and_records_trace_metadata() -> None:
+    raw_output = _final_decision_raw(
+        supporting_refs=["event:event-l"],
+        playbook={
+            "has_playbook": False,
+            "watch_signals": ["继续观察链上流动性"],
+            "exit_triggers": ["叙事降温"],
+            "monitoring_horizon": "4h",
+        },
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test",
+        model="gpt-test",
+        llm_gateway=_FakeGateway(),
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+        runner=_RawOutputRunner(raw_output),
+    )
+
+    step = asyncio.run(
+        client._run_stage(
+            stage="decision_maker",
+            route="meme",
+            agent=object(),  # type: ignore[arg-type]
+            output_type=FinalDecision,
+            input_payload={
+                "evidence_packet": {
+                    "candidate_id": "candidate-1",
+                    "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event"}],
+                }
+            },
+            prompt="decision prompt",
+            audit={"trace_metadata": {"run_id": "run-1"}, "sdk_trace_id": "trace-1"},
+            max_turns=1,
+        )
+    )
+
+    assert step.status == "ok"
+    assert step.response_json["supporting_evidence_refs"] == ["event:event-1"]
+    assert step.response_json["playbook"]["watch_signals"] == []
+    assert step.response_json["playbook"]["exit_triggers"] == []
+    assert step.trace_metadata_json["schema_normalization"]["repairs"] == [
+        {"path": "playbook.watch_signals", "action": "cleared", "reason": "playbook_has_playbook_false"},
+        {"path": "playbook.exit_triggers", "action": "cleared", "reason": "playbook_has_playbook_false"},
+    ]
+    assert step.trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
+        {
+            "path": "supporting_evidence_refs[0]",
+            "from": "event:event-l",
+            "to": "event:event-1",
+            "ref_type": "event",
+            "reason": "unique_same_type_edit_distance_1",
+        }
+    ]
+
+
+def test_run_stage_normalizes_pydantic_output_instance_before_audit() -> None:
+    raw_output = FinalDecision.model_validate(
+        _final_decision_raw(
+            supporting_refs=["event:event-l"],
+            playbook={
+                "has_playbook": True,
+                "watch_signals": ["成交量继续扩张"],
+                "exit_triggers": ["叙事降温"],
+                "monitoring_horizon": "4h",
+            },
+        )
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        api_key="sk-test",
+        model="gpt-test",
+        llm_gateway=_FakeGateway(),
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+        runner=_RawOutputRunner(raw_output),
+    )
+
+    step = asyncio.run(
+        client._run_stage(
+            stage="decision_maker",
+            route="meme",
+            agent=object(),  # type: ignore[arg-type]
+            output_type=FinalDecision,
+            input_payload={
+                "evidence_packet": {
+                    "candidate_id": "candidate-1",
+                    "allowed_evidence_refs": [{"ref_id": "event:event-1", "ref_type": "event"}],
+                }
+            },
+            prompt="decision prompt",
+            audit={"trace_metadata": {"run_id": "run-1"}, "sdk_trace_id": "trace-1"},
+            max_turns=1,
+        )
+    )
+
+    assert step.status == "ok"
+    assert step.response_json["supporting_evidence_refs"] == ["event:event-1"]
+    assert step.trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
+        {
+            "path": "supporting_evidence_refs[0]",
+            "from": "event:event-l",
+            "to": "event:event-1",
+            "ref_type": "event",
+            "reason": "unique_same_type_edit_distance_1",
+        }
+    ]
+
+
+def _final_decision_raw(*, supporting_refs: list[str], playbook: dict) -> dict:
+    return {
+        "route": "meme",
+        "recommendation": "trade_candidate",
+        "confidence": 0.63,
+        "abstain_reason": None,
+        "summary_zh": "社交与市场证据形成观察。",
+        "narrative_archetype": "memetic",
+        "narrative_thesis_zh": "社交扩散与市场反馈形成同步观察，但仍需要继续监控证据质量和后续确认。",
+        "bull_view": {
+            "strength": "moderate",
+            "thesis_zh": "社交流量与市场反馈同步增强。",
+            "supporting_event_ids": ["event-1"],
+        },
+        "bear_view": {
+            "strength": "weak",
+            "thesis_zh": "流动性仍然偏薄，需要观察延续性。",
+            "supporting_event_ids": ["event-1"],
+        },
+        "playbook": playbook,
+        "evidence_event_ids": ["event-1"],
+        "supporting_evidence_refs": supporting_refs,
+        "risk_evidence_refs": [],
+        "data_gap_refs": [],
+        "invalidation_conditions": [],
+        "residual_risks": [],
+    }

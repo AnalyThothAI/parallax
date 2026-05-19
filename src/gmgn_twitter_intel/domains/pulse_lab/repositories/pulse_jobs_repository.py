@@ -11,6 +11,8 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared 
     _row,
 )
 
+ACTIVE_JOB_STATUSES = ("pending", "failed", "running")
+
 
 class PulseJobsRepository:
     def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
@@ -259,6 +261,62 @@ class PulseJobsRepository:
             (candidate_id,),
         ).fetchone()
         return _optional_row(row)
+
+    def pending_agent_job_count(self) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM pulse_agent_jobs
+            WHERE status = ANY(%s)
+            """,
+            (list(ACTIVE_JOB_STATUSES),),
+        ).fetchone()
+        return int(row["count"] if row else 0)
+
+    def pending_agent_job_count_for_window_scope(self, *, window: str, scope: str) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM pulse_agent_jobs
+            WHERE status = ANY(%s)
+              AND "window" = %s
+              AND scope = %s
+            """,
+            (list(ACTIVE_JOB_STATUSES), window, scope),
+        ).fetchone()
+        return int(row["count"] if row else 0)
+
+    def terminalize_stale_jobs_by_window(
+        self,
+        *,
+        now_ms: int | None = None,
+        ttl_by_window_seconds: dict[str, int],
+        commit: bool = True,
+    ) -> int:
+        if not ttl_by_window_seconds:
+            return 0
+        now = int(now_ms if now_ms is not None else _now_ms())
+        terminalized = 0
+        for window, ttl_seconds in ttl_by_window_seconds.items():
+            ttl = int(ttl_seconds)
+            if ttl <= 0:
+                continue
+            cursor = self.conn.execute(
+                """
+                UPDATE pulse_agent_jobs
+                SET status = 'dead',
+                    last_error = 'stale_window_ttl',
+                    updated_at_ms = %s
+                WHERE "window" = %s
+                  AND status = ANY(%s)
+                  AND created_at_ms < %s
+                """,
+                (now, str(window), list(ACTIVE_JOB_STATUSES), now - ttl * 1000),
+            )
+            terminalized += int(cursor.rowcount or 0)
+        if commit:
+            self.conn.commit()
+        return terminalized
 
     def mark_stale_agent_runs_failed(
         self,

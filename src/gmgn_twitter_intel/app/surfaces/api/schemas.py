@@ -48,6 +48,30 @@ class WorkerStatusData(ApiSchema):
     details: JsonObject = Field(default_factory=dict)
 
 
+class NarrativeSemanticBacklog(ApiSchema):
+    total_pending: int = 0
+    queued: int = 0
+    retryable: int = 0
+    stale: int = 0
+    unavailable: int = 0
+    oldest_due_age_ms: int | None = None
+
+
+class NarrativeRunHealth(ApiSchema):
+    success: int = 0
+    failure: int = 0
+    timeout: int = 0
+
+
+class NarrativeBacklogHealthData(ApiSchema):
+    schema_version: str | None = None
+    now_ms: int | None = None
+    since_hours: int = 4
+    semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
+    recent_runs: dict[str, NarrativeRunHealth] = Field(default_factory=dict)
+    pending_digest_count: int = 0
+
+
 class RecentData(ApiSchema):
     scope: str
     events: list[JsonObject] = Field(default_factory=list)
@@ -227,8 +251,10 @@ class SignalPulseDecision(ApiSchema):
 
 class SignalPulseHealth(ApiSchema):
     pulse_ready: bool | None = None
+    public_ready: bool | None = None
     agent_worker_running: bool | None = None
     candidate_count: int | None = None
+    public_candidate_count: int | None = None
     blocked_low_information_count: int | None = None
     dead_job_count: int | None = None
     market_ready_rate: float | None = None
@@ -240,6 +266,7 @@ class SignalPulseHealth(ApiSchema):
     latest_packet_created_at_ms: int | None = None
     latest_agent_run_finished_at_ms: int | None = None
     latest_public_candidate_updated_at_ms: int | None = None
+    latest_hidden_hold_candidate_updated_at_ms: int | None = None
     due_jobs: int | None = None
     claimed_jobs: int | None = None
     failed_jobs_4h: int | None = None

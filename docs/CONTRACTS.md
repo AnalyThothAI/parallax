@@ -91,6 +91,11 @@ Runtime health/status contract:
   provider counters, and `snapshot_gate_outcomes`.
 - `snapshot_gate` is a global health field copied from collector
   snapshot-gate counters; it is not a worker section.
+- `/api/status/narrative-health` is an authenticated ops read for Narrative
+  backlog health. It returns domain-owned aggregates for semantic backlog
+  (`queued`, `retryable`, `stale`, `unavailable`, `oldest_due_age_ms`), recent
+  Narrative model-run success/failure/timeout counts, and current pending digest
+  count. API/frontend consumers must use this surface instead of writing raw SQL.
 
 Token Radar market contract:
 
@@ -101,7 +106,9 @@ Token Radar market contract:
   narrative read model and may expose a read-only public `pulse_overlay`.
   Digest status is `ready`, `pending`, `insufficient`,
   `semantic_unavailable`, or `stale`; clients must render data gaps instead of
-  recreating narrative text from factor snapshots.
+  recreating narrative text from factor snapshots. A digest may include optional
+  compact `processing.backlog` metadata for ops visibility, but `status` and
+  `data_gaps` remain the truth for user-facing readiness.
 - `market.event_anchor` and `market.decision_latest` are public response keys
   generated from `enriched_events` and `market_ticks`. They are not internal
   market concepts, DB tables, worker names, or provider runtime semantics.
@@ -270,7 +277,8 @@ Search V2 contract:
   - `data.posts`: the initial recent post page for the same target/window/scope.
     Additional pages use `/api/target-posts` with the returned `next_cursor`.
   - `data.discussion_digest`: persisted narrative digest with explicit status,
-    semantic coverage, evidence refs, and data gaps.
+    semantic coverage, evidence refs, data gaps, and optional compact
+    `processing.backlog`.
   - `data.narrative_clusters`: digest cluster summaries when available.
   - `data.pulse_overlay`: optional public Signal Pulse overlay; it is
     display-gated and never changes Radar rank or Token Case narrative.

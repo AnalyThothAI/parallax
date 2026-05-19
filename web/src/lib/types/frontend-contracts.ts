@@ -448,6 +448,14 @@ export type TokenDiscussionDigest = {
     bear: NarrativeArgument;
   } | null;
   timeline_pills?: Array<{ label: string; tone?: string | null; evidence_refs?: EvidenceRef[] }>;
+  processing?: {
+    backlog?: {
+      semantic?: number | null;
+      retryable?: number | null;
+      unavailable?: number | null;
+      oldest_due_age_ms?: number | null;
+    } | null;
+  } | null;
   key_accounts?: Array<{
     handle: string;
     role: string;
@@ -1327,8 +1335,10 @@ export type SignalPulseQuery = {
 
 export type SignalPulseHealth = {
   pulse_ready: boolean;
+  public_ready?: boolean | null;
   agent_worker_running: boolean;
   candidate_count: number;
+  public_candidate_count?: number | null;
   blocked_low_information_count: number;
   dead_job_count: number;
   market_ready_rate: number;
@@ -1340,6 +1350,7 @@ export type SignalPulseHealth = {
   latest_packet_created_at_ms?: number | null;
   latest_agent_run_finished_at_ms?: number | null;
   latest_public_candidate_updated_at_ms?: number | null;
+  latest_hidden_hold_candidate_updated_at_ms?: number | null;
   due_jobs?: number | null;
   claimed_jobs?: number | null;
   failed_jobs_4h?: number | null;

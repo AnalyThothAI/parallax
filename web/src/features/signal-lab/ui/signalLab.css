@@ -333,7 +333,7 @@
 
 .signal-lab-workbench {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   min-height: calc(100vh - 46px);
   min-width: 0;
   background: rgba(7, 9, 9, 0.88);
@@ -459,6 +459,50 @@
   border-color: var(--line);
   color: var(--dim);
   background: #090d0d;
+}
+
+.signal-pulse-health-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: rgba(20, 23, 18, 0.92);
+  padding: 9px 22px;
+  font-family: var(--mono);
+}
+
+.signal-pulse-health-banner.hold {
+  border-color: rgba(230, 177, 84, 0.34);
+  background: rgba(46, 33, 14, 0.72);
+}
+
+.signal-pulse-health-banner.degraded {
+  border-color: rgba(134, 184, 255, 0.24);
+  background: rgba(14, 23, 35, 0.72);
+}
+
+.signal-pulse-health-banner strong {
+  color: var(--bone);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.signal-pulse-health-banner span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ash);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-pulse-health-banner em {
+  color: var(--dim);
+  font-size: 10px;
+  font-style: normal;
+  white-space: nowrap;
 }
 
 .signal-stage-grid {
@@ -1088,6 +1132,15 @@
 .signal-lab-layout-with-detail .signal-filter-bar {
   grid-template-columns: minmax(110px, 0.9fr) minmax(120px, 1fr) minmax(160px, 1.3fr);
   padding: 8px 20px 10px;
+}
+
+.signal-lab-layout-with-detail .signal-pulse-health-banner {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px 20px;
+}
+
+.signal-lab-layout-with-detail .signal-pulse-health-banner span {
+  display: none;
 }
 
 .signal-lab-layout-with-detail .filter-cell {

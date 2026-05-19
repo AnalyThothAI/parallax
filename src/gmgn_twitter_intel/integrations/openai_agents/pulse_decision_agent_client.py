@@ -21,6 +21,7 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import (
     PulseDecisionRuntime,
     PulseEvidencePacket,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     DecisionRoute,
@@ -391,7 +392,16 @@ class OpenAIAgentsPulseDecisionClient:
                 )
                 raw_output = getattr(result_obj, "final_output", None)
                 audit_extra = {**audit_extra, "usage": _extract_usage(result_obj)}
-            output = raw_output if isinstance(raw_output, output_type) else output_type.model_validate(raw_output)
+            normalization_input = (
+                raw_output.model_dump(mode="json") if isinstance(raw_output, output_type) else raw_output
+            )
+            normalized = normalize_pulse_stage_output(
+                output_type=output_type,
+                raw_output=normalization_input,
+                evidence_packet=input_payload.get("evidence_packet"),
+            )
+            audit_extra = {**audit_extra, **normalized.trace_metadata}
+            output = output_type.model_validate(normalized.payload)
         except SafetyNetExhausted as exhausted:
             finished = int(time.time() * 1000)
             audit_extra = exhausted.audit_extra

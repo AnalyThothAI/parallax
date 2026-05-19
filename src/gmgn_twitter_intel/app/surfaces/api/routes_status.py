@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
-from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime, _runtime
+from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms, _runtime
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
+from gmgn_twitter_intel.domains.narrative_intel.queries import NarrativeBacklogHealthQuery
 
 router = APIRouter()
 
@@ -26,6 +27,23 @@ def bootstrap(request: Request) -> JSONResponse:
             },
         }
     )
+
+
+@router.get(
+    "/status/narrative-health",
+    response_model=api_schemas.ApiEnvelope[api_schemas.NarrativeBacklogHealthData],
+)
+def narrative_health(
+    request: Request,
+    since_hours: Annotated[int, Query(ge=1, le=168)] = 4,
+) -> JSONResponse:
+    runtime = _authenticated_runtime(request)
+    with runtime.repositories() as repos:
+        health = NarrativeBacklogHealthQuery(repos.conn).health(
+            now_ms=_now_ms(),
+            since_hours=since_hours,
+        )
+    return _json({"ok": True, "data": health})
 
 
 def create_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:

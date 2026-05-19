@@ -60,7 +60,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
             decision = self.service.refresh_decision(context)
             refresh_reasons[decision.reason] = refresh_reasons.get(decision.reason, 0) + 1
             if not decision.should_refresh:
-                digest = self.service.build_insufficient_digest(
+                digest = self.service.build_status_digest(
                     target_type=str(target["target_type"]),
                     target_id=str(target["target_id"]),
                     window=str(target["window"]),
@@ -68,13 +68,21 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     context=context,
                     reason=decision.reason,
                     now_ms=resolved_now_ms,
+                    status=decision.status_if_not_refresh,
+                    model_version=f"deterministic:{decision.status_if_not_refresh}",
                 )
                 await asyncio.to_thread(
                     self._replace_digest_sync,
                     digest=digest.model_dump(mode="json"),
                     now_ms=resolved_now_ms,
                 )
-                counts["insufficient"] += 1
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=resolved_now_ms,
+                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=resolved_now_ms),
+                )
+                counts[decision.status_if_not_refresh] += 1
                 continue
 
             started_at_ms = _now_ms()
@@ -121,11 +129,24 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         "latency_ms": finished_at_ms - started_at_ms,
                     },
                 )
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=finished_at_ms,
+                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                )
                 counts["failed"] += 1
                 continue
             allowed_refs = [EvidenceRef.model_validate(ref) for ref in request.allowed_refs]
             validation = self.validator.validate_digest_refs(result.digest, allowed_refs)
             if not validation.ok:
+                finished_at_ms = _now_ms()
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=finished_at_ms,
+                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                )
                 counts["failed"] += 1
                 continue
             finished_at_ms = _now_ms()
@@ -160,9 +181,15 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 digest=digest_payload,
                 now_ms=finished_at_ms,
             )
+            await asyncio.to_thread(
+                self._mark_digest_scanned_sync,
+                target=target,
+                now_ms=finished_at_ms,
+                next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+            )
             counts["ready"] += 1
         return WorkerResult(
-            processed=counts["ready"] + counts["insufficient"],
+            processed=counts["ready"] + counts["insufficient"] + counts["pending"],
             failed=counts["failed"],
             notes={"claimed": len(targets), **counts, "refresh_reasons": refresh_reasons},
         )
@@ -197,6 +224,21 @@ class TokenDiscussionDigestWorker(WorkerBase):
     def _record_failed_run_sync(self, *, run: dict[str, Any]) -> None:
         with self._repository_session() as repos:
             repos.narratives.record_narrative_model_run(run, commit=True)
+
+    def _mark_digest_scanned_sync(self, *, target: dict[str, Any], now_ms: int, next_due_at_ms: int) -> None:
+        admission_id = str(target.get("admission_id") or "").strip()
+        if not admission_id:
+            return
+        with self._repository_session() as repos:
+            repos.narratives.mark_admissions_digest_scanned(
+                [admission_id],
+                next_due_at_ms=next_due_at_ms,
+                now_ms=now_ms,
+            )
+
+    def _next_due_at_ms(self, *, target: dict[str, Any], now_ms: int) -> int:
+        interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 120.0) or 120.0) * 1000))
+        return int(now_ms) + interval_ms
 
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:

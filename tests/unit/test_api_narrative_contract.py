@@ -5,7 +5,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any
 
-from gmgn_twitter_intel.app.surfaces.api import routes_radar, routes_search
+from gmgn_twitter_intel.app.surfaces.api import routes_radar, routes_search, routes_status
 
 NOW_MS = 1_778_562_000_000
 
@@ -117,6 +117,27 @@ def test_token_radar_route_hydrates_targets_and_attention(monkeypatch) -> None:
     assert calls == [{"method": "radar", "window": "1h", "scope": "all", "now_ms": NOW_MS}]
 
 
+def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    runtime = _runtime()
+    monkeypatch.setattr(routes_status, "_authenticated_runtime", lambda _request: runtime)
+    monkeypatch.setattr(routes_status, "_now_ms", lambda: NOW_MS)
+    monkeypatch.setattr(
+        routes_status,
+        "NarrativeBacklogHealthQuery",
+        lambda conn: _NarrativeBacklogHealthQuery(conn=conn, calls=calls),
+        raising=False,
+    )
+
+    response = routes_status.narrative_health(_request(), since_hours=4)
+
+    body = _body(response)
+    assert body["ok"] is True
+    assert body["data"]["semantic_backlog"]["total_pending"] == 5
+    assert body["data"]["pending_digest_count"] == 2
+    assert calls == [{"conn": runtime.conn, "now_ms": NOW_MS, "since_hours": 4}]
+
+
 class _NarrativeReadModel:
     def __init__(self, *, calls: list[dict[str, Any]], **_kwargs: Any) -> None:
         self.calls = calls
@@ -184,8 +205,9 @@ def _asset_flow_service_factory(**_kwargs: Any) -> Any:
 
 
 def _runtime() -> SimpleNamespace:
+    conn = object()
     repos = SimpleNamespace(
-        conn=object(),
+        conn=conn,
         token_profiles=object(),
         token_radar=object(),
         token_targets=object(),
@@ -193,10 +215,35 @@ def _runtime() -> SimpleNamespace:
         pulse_read=object(),
     )
     return SimpleNamespace(
+        conn=conn,
         repositories=lambda: nullcontext(repos),
         providers=SimpleNamespace(asset_market=SimpleNamespace(message_cex_market=None, dex_candle_market=None)),
         workers={},
     )
+
+
+class _NarrativeBacklogHealthQuery:
+    def __init__(self, *, conn: Any, calls: list[dict[str, Any]]) -> None:
+        self.conn = conn
+        self.calls = calls
+
+    def health(self, *, now_ms: int, since_hours: int) -> dict[str, Any]:
+        self.calls.append({"conn": self.conn, "now_ms": now_ms, "since_hours": since_hours})
+        return {
+            "schema_version": "narrative_intel_v1",
+            "now_ms": now_ms,
+            "since_hours": since_hours,
+            "semantic_backlog": {
+                "total_pending": 5,
+                "queued": 3,
+                "retryable": 2,
+                "stale": 0,
+                "unavailable": 1,
+                "oldest_due_age_ms": 4_000,
+            },
+            "recent_runs": {},
+            "pending_digest_count": 2,
+        }
 
 
 def _request() -> SimpleNamespace:

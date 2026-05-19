@@ -105,6 +105,9 @@ def fetch_pulse_health_candidates(conn: Any, *, window: str, scope: str, since_m
         SELECT
           COUNT(*) FILTER (WHERE display_status = 'hidden_abstain') AS hidden_abstain_4h,
           COUNT(*) FILTER (WHERE display_status = 'hidden_hold_publish') AS hidden_hold_publish_4h,
+          MAX(updated_at_ms) FILTER (
+            WHERE display_status = 'hidden_hold_publish'
+          ) AS latest_hidden_hold_candidate_updated_at_ms,
           COUNT(*) FILTER (
             WHERE display_status = 'hidden_insufficient_evidence'
           ) AS hidden_insufficient_evidence_4h,
@@ -120,6 +123,9 @@ def fetch_pulse_health_candidates(conn: Any, *, window: str, scope: str, since_m
     return {
         "hidden_abstain_4h": _int(payload.get("hidden_abstain_4h")),
         "hidden_hold_publish_4h": _int(payload.get("hidden_hold_publish_4h")),
+        "latest_hidden_hold_candidate_updated_at_ms": _optional_int(
+            payload.get("latest_hidden_hold_candidate_updated_at_ms")
+        ),
         "hidden_insufficient_evidence_4h": _int(payload.get("hidden_insufficient_evidence_4h")),
         "public_candidates_4h": _int(payload.get("public_candidates_4h")),
     }

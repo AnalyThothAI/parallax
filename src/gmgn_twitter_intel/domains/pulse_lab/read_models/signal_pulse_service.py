@@ -50,15 +50,27 @@ class SignalPulseService:
         aggregate = self.pulse_read_repository.pulse_summary(window=window, scope=scope, q=q, handle=handle)
         candidate_count = int(aggregate.get("candidate_count") or 0)
         freshness_health = _freshness_health(self.pulse_read_repository, window=window, scope=scope)
+        public_candidate_count = _first_int(
+            aggregate.get("public_candidate_count"),
+            aggregate.get("displayable_count"),
+            freshness_health.get("public_candidates_4h"),
+            candidate_count,
+        )
         result_health = {
-            "pulse_ready": candidate_count > 0,
+            "pulse_ready": public_candidate_count > 0,
+            "public_ready": public_candidate_count > 0,
             "agent_worker_running": bool(agent_worker_running),
             "candidate_count": candidate_count,
+            "public_candidate_count": public_candidate_count,
             "blocked_low_information_count": int(aggregate.get("blocked_low_information_count") or 0),
             "dead_job_count": int(aggregate.get("dead_job_count") or 0),
             "market_ready_rate": float(aggregate.get("market_ready_rate") or 0.0),
+            **_health_passthrough(aggregate),
             **freshness_health,
         }
+        result_health["pulse_ready"] = public_candidate_count > 0
+        result_health["public_ready"] = public_candidate_count > 0
+        result_health["public_candidate_count"] = public_candidate_count
         return {
             "query": {
                 "window": window,
@@ -131,6 +143,35 @@ def _summary(aggregate: dict[str, Any]) -> dict[str, Any]:
     counts["decision_abstain_reason_counts"] = _int_dict(aggregate.get("decision_abstain_reason_counts"))
     counts["decision_error_count"] = int(aggregate.get("decision_error_count") or 0)
     return counts
+
+
+def _health_passthrough(aggregate: dict[str, Any]) -> dict[str, Any]:
+    keys = {
+        "window",
+        "scope",
+        "since_hours",
+        "publish_status",
+        "reasons",
+        "latest_packet_created_at_ms",
+        "latest_agent_run_finished_at_ms",
+        "latest_public_candidate_updated_at_ms",
+        "latest_hidden_hold_candidate_updated_at_ms",
+        "due_jobs",
+        "claimed_jobs",
+        "failed_jobs_4h",
+        "agent_runs_4h",
+        "agent_failed_4h",
+        "agent_failure_rate_4h",
+        "unknown_ref_failures_4h",
+        "unknown_ref_failure_rate_4h",
+        "unsupported_claim_failures_4h",
+        "unsupported_claim_failure_rate_4h",
+        "hidden_abstain_4h",
+        "hidden_hold_publish_4h",
+        "hidden_insufficient_evidence_4h",
+        "public_candidates_4h",
+    }
+    return {key: aggregate[key] for key in keys if key in aggregate}
 
 
 def _freshness_health(repository: Any, *, window: str, scope: str) -> dict[str, Any]:
@@ -211,6 +252,16 @@ def _dict(value: Any) -> dict[str, Any]:
 def _int_dict(value: Any) -> dict[str, int]:
     payload = _dict(value)
     return {str(key): int(count or 0) for key, count in payload.items()}
+
+
+def _first_int(*values: Any) -> int:
+    for value in values:
+        if value is not None:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+    return 0
 
 
 def _decision(row: dict[str, Any]) -> dict[str, Any]:

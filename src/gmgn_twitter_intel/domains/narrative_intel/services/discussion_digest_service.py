@@ -16,6 +16,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
 MAX_MENTION_TEXT_CHARS = 600
 MAX_MENTION_REFS = 8
 MAX_CO_MENTIONS = 12
+PENDING_SEMANTIC_STATUSES = {"queued", "retryable_error", "stale"}
 
 
 class DigestRefreshDecision(BaseModel):
@@ -41,8 +42,15 @@ class DiscussionDigestService:
     def refresh_decision(self, context: dict[str, Any]) -> DigestRefreshDecision:
         source_count = int(context.get("source_event_count") or len(context.get("mentions") or []))
         authors = int(context.get("independent_author_count") or _author_count(context.get("mentions") or []))
-        labeled = int(context.get("labeled_event_count") or len(context.get("semantic_rows") or []))
+        semantic_rows = list(context.get("semantic_rows") or context.get("mentions") or [])
+        labeled = int(
+            context.get("labeled_event_count")
+            if context.get("labeled_event_count") is not None
+            else sum(1 for row in semantic_rows if str(row.get("status") or "") == "labeled")
+        )
         coverage = 0.0 if source_count == 0 else labeled / source_count
+        has_pending_semantics = any(str(row.get("status") or "") in PENDING_SEMANTIC_STATUSES for row in semantic_rows)
+        has_unseen_semantics = len(semantic_rows) < source_count
         if source_count < self.min_source_mentions:
             return DigestRefreshDecision(
                 should_refresh=False,
@@ -56,6 +64,12 @@ class DiscussionDigestService:
                 status_if_not_refresh="insufficient",
             )
         if coverage < self.min_semantic_coverage:
+            if has_pending_semantics or has_unseen_semantics:
+                return DigestRefreshDecision(
+                    should_refresh=False,
+                    reason="semantic_labeling_pending",
+                    status_if_not_refresh="pending",
+                )
             return DigestRefreshDecision(
                 should_refresh=False,
                 reason="low_semantic_coverage",
@@ -76,8 +90,40 @@ class DiscussionDigestService:
         schema_version: str = NARRATIVE_SCHEMA_VERSION,
         model_version: str = "deterministic:insufficient",
     ) -> TokenDiscussionDigest:
+        return self.build_status_digest(
+            target_type=target_type,
+            target_id=target_id,
+            window=window,
+            scope=scope,
+            context=context,
+            reason=reason,
+            now_ms=now_ms,
+            status="insufficient",
+            schema_version=schema_version,
+            model_version=model_version,
+        )
+
+    def build_status_digest(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        context: dict[str, Any],
+        reason: str,
+        now_ms: int,
+        status: Literal["pending", "insufficient", "semantic_unavailable", "stale"] = "pending",
+        schema_version: str = NARRATIVE_SCHEMA_VERSION,
+        model_version: str = "deterministic:not_ready",
+    ) -> TokenDiscussionDigest:
         source_count = int(context.get("source_event_count") or len(context.get("mentions") or []))
-        labeled_count = int(context.get("labeled_event_count") or len(context.get("semantic_rows") or []))
+        semantic_rows = list(context.get("semantic_rows") or context.get("mentions") or [])
+        labeled_count = int(
+            context.get("labeled_event_count")
+            if context.get("labeled_event_count") is not None
+            else sum(1 for row in semantic_rows if str(row.get("status") or "") == "labeled")
+        )
         return TokenDiscussionDigest(
             target_type=target_type,
             target_id=target_id,
@@ -85,7 +131,7 @@ class DiscussionDigestService:
             scope=scope,
             schema_version=schema_version,
             model_version=model_version,
-            status="insufficient",
+            status=status,
             data_gaps=[{"reason": reason}],
             semantic_coverage=0.0 if source_count == 0 else labeled_count / source_count,
             source_event_count=source_count,
@@ -108,8 +154,11 @@ class DiscussionDigestService:
         schema_version: str = NARRATIVE_SCHEMA_VERSION,
         prompt_version: str = DISCUSSION_DIGEST_PROMPT_VERSION,
     ) -> DiscussionDigestRequest:
+        labeled_rows = [
+            row for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"
+        ]
         mentions = [
-            _compact_mention(row) for row in list(context.get("mentions") or [])[: self.max_mentions_per_digest]
+            _compact_mention(row) for row in labeled_rows[: self.max_mentions_per_digest]
         ]
         allowed_refs = _compact_allowed_refs(list(context.get("allowed_refs") or []), mentions)
         return DiscussionDigestRequest(

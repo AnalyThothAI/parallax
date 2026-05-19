@@ -90,6 +90,57 @@ def test_mention_semantics_worker_reconciles_radar_admission_before_labeling():
     asyncio.run(scenario())
 
 
+def test_mention_semantics_worker_bounds_semantic_admission_per_cycle_and_target():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            radar_rows=[
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "rank": 1,
+                    "rank_score": 90,
+                    "source_event_ids_json": ["event-1"],
+                    "computed_at_ms": 10_000,
+                }
+            ],
+            due_mentions=[],
+            source_mentions=[
+                {
+                    "event_id": f"event-{index}",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": f"SOL breakout {index}",
+                    "source_received_at_ms": 9_000 + index,
+                }
+                for index in range(1, 6)
+            ],
+            pending_semantics={("chain_token", "solana:So111"): 1},
+        )
+        db = FakeDB(repo)
+        provider = BarrierNarrativeProvider(db)
+        settings = fake_settings(
+            max_semantic_rows_enqueued_per_cycle=3,
+            max_pending_semantics_per_target=3,
+        )
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=settings,
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=provider,
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["admission_semantic_inserted"] == 2
+        assert result.notes["admission_semantic_suppressed_budget"] == 3
+        assert result.notes["admission_semantic_pending_before"] == 1
+        assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
+        assert result.processed == 1
+
+    asyncio.run(scenario())
+
+
 def test_mention_semantics_worker_records_provider_failure_without_poisoning_worker_loop():
     async def scenario():
         repo = FakeNarrativeRepository()
@@ -109,6 +160,42 @@ def test_mention_semantics_worker_records_provider_failure_without_poisoning_wor
         assert result.notes["provider_error"] == "TimeoutError"
         assert repo.recorded_runs[0]["status"] == "failed"
         assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_worker_terminalizes_provider_failure_after_max_attempts():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            due_mentions=[
+                {
+                    "semantic_id": "semantic-1",
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "SOL breakout",
+                    "text_fingerprint": "fp-1",
+                    "retry_count": 2,
+                }
+            ]
+        )
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=FailingNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        failure = repo.completed_batches[0]["failures"][0]
+        assert failure["status"] == "semantic_unavailable"
+        assert failure["error"] == "TimeoutError: provider timed out"
+        assert result.processed == 1
+        assert result.failed == 0
+        assert result.notes["semantic_unavailable"] == 1
 
     asyncio.run(scenario())
 
@@ -207,8 +294,52 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
     asyncio.run(scenario())
 
 
-def fake_settings():
-    return SimpleNamespace(
+def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedules():
+    async def scenario():
+        repo = FakeDigestRepository(
+            context={
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+                "mentions": [
+                    {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "queued"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
+                ],
+                "semantic_rows": [
+                    {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "queued"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
+                ],
+                "source_event_count": 3,
+                "labeled_event_count": 1,
+                "independent_author_count": 3,
+                "allowed_refs": [],
+            }
+        )
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=UnexpectedDigestProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["pending"] == 1
+        assert result.notes["insufficient"] == 0
+        assert repo.replaced_digests[0]["status"] == "pending"
+        assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 11_000, "now_ms": 10_000}]
+
+    asyncio.run(scenario())
+
+
+def fake_settings(**overrides):
+    values = dict(
         enabled=True,
         interval_seconds=1.0,
         timeout_seconds=0.0,
@@ -219,6 +350,10 @@ def fake_settings():
         admission_limit=10,
         source_limit=100,
         model_version="gpt-test",
+    )
+    values.update(overrides)
+    return SimpleNamespace(
+        **values,
     )
 
 
@@ -251,14 +386,16 @@ class FakeDB:
 
 
 class FakeNarrativeRepository:
-    def __init__(self, *, radar_rows=None, source_mentions=None, due_mentions=None):
+    def __init__(self, *, radar_rows=None, source_mentions=None, due_mentions=None, pending_semantics=None):
         self.radar_rows = list(radar_rows or [])
         self.source_mentions = list(source_mentions or [])
         self.due_mentions = due_mentions
+        self.pending_semantics = dict(pending_semantics or {})
         self.recorded_runs = []
         self.completed_batches = []
         self.upserted_admissions = []
         self.scanned_admission_ids = []
+        self.enqueued_source_event_ids = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
         return self.radar_rows[:limit]
@@ -287,7 +424,11 @@ class FakeNarrativeRepository:
     def source_mentions_for_admission(self, *, target_type, target_id, since_ms, watched_only, limit):
         return self.source_mentions[:limit]
 
+    def pending_mention_semantics_count(self, *, target_type, target_id, schema_version, model_version=None):
+        return int(self.pending_semantics.get((target_type, target_id), 0))
+
     def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms):
+        self.enqueued_source_event_ids.extend(str(row["event_id"]) for row in source_rows)
         if self.due_mentions is not None:
             self.due_mentions.extend(source_rows)
         return {"inserted": len(source_rows), "existing": 0}
@@ -316,16 +457,25 @@ class FakeNarrativeRepository:
 
     def complete_mention_semantics_batch(self, *, run_id, labels, failures, now_ms):
         self.completed_batches.append({"run_id": run_id, "labels": labels, "failures": failures, "now_ms": now_ms})
-        return {"labeled": len(labels), "semantic_unavailable": 0, "failed": len(failures)}
+        unavailable = sum(1 for failure in failures if failure.get("status") == "semantic_unavailable")
+        return {
+            "labeled": len(labels),
+            "semantic_unavailable": unavailable,
+            "failed": len(failures) - unavailable,
+        }
 
 
 class FakeDigestRepository:
-    def __init__(self):
+    def __init__(self, *, context=None):
         self.recorded_runs = []
+        self.context = context
+        self.replaced_digests = []
+        self.digest_scans = []
 
     def due_digest_targets(self, *, now_ms, limit):
         return [
             {
+                "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
                 "window": "24h",
@@ -334,6 +484,8 @@ class FakeDigestRepository:
         ][:limit]
 
     def digest_context(self, *, target_type, target_id, window, scope, since_ms, max_mentions):
+        if self.context is not None:
+            return self.context
         mentions = [
             {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
             {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
@@ -355,6 +507,16 @@ class FakeDigestRepository:
     def record_narrative_model_run(self, run, *, commit=True):
         self.recorded_runs.append(run)
         return run
+
+    def replace_current_digest(self, digest, *, now_ms):
+        self.replaced_digests.append(digest)
+        return digest
+
+    def mark_admissions_digest_scanned(self, admission_ids, *, next_due_at_ms, now_ms):
+        self.digest_scans.append(
+            {"admission_ids": list(admission_ids), "next_due_at_ms": next_due_at_ms, "now_ms": now_ms}
+        )
+        return {"updated": len(admission_ids)}
 
 
 class BarrierNarrativeProvider:
@@ -415,6 +577,21 @@ class FailingNarrativeProvider:
 
     async def summarize_discussion(self, *, run_id, request):
         raise TimeoutError("provider timed out")
+
+    async def aclose(self):  # pragma: no cover - runtime-owned provider
+        return None
+
+
+class UnexpectedDigestProvider:
+    provider = "test-provider"
+    model = "gpt-test"
+    artifact_version_hash = "artifact-test"
+
+    async def label_mentions(self, *, run_id, request):  # pragma: no cover - protocol stub
+        raise NotImplementedError
+
+    async def summarize_discussion(self, *, run_id, request):
+        raise AssertionError("digest provider should not be called while semantics are still pending")
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None

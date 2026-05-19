@@ -337,6 +337,52 @@
         "title": "ApiEnvelope[LooseData]",
         "type": "object"
       },
+      "ApiEnvelope_NarrativeBacklogHealthData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NarrativeBacklogHealthData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[NarrativeBacklogHealthData]",
+        "type": "object"
+      },
       "ApiEnvelope_NotificationDeliveriesData_": {
         "additionalProperties": true,
         "properties": {
@@ -1410,6 +1456,120 @@
         "title": "LooseData",
         "type": "object"
       },
+      "NarrativeBacklogHealthData": {
+        "additionalProperties": true,
+        "properties": {
+          "now_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now Ms"
+          },
+          "pending_digest_count": {
+            "default": 0,
+            "title": "Pending Digest Count",
+            "type": "integer"
+          },
+          "recent_runs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NarrativeRunHealth"
+            },
+            "title": "Recent Runs",
+            "type": "object"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "semantic_backlog": {
+            "$ref": "#/components/schemas/NarrativeSemanticBacklog"
+          },
+          "since_hours": {
+            "default": 4,
+            "title": "Since Hours",
+            "type": "integer"
+          }
+        },
+        "title": "NarrativeBacklogHealthData",
+        "type": "object"
+      },
+      "NarrativeRunHealth": {
+        "additionalProperties": true,
+        "properties": {
+          "failure": {
+            "default": 0,
+            "title": "Failure",
+            "type": "integer"
+          },
+          "success": {
+            "default": 0,
+            "title": "Success",
+            "type": "integer"
+          },
+          "timeout": {
+            "default": 0,
+            "title": "Timeout",
+            "type": "integer"
+          }
+        },
+        "title": "NarrativeRunHealth",
+        "type": "object"
+      },
+      "NarrativeSemanticBacklog": {
+        "additionalProperties": true,
+        "properties": {
+          "oldest_due_age_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due Age Ms"
+          },
+          "queued": {
+            "default": 0,
+            "title": "Queued",
+            "type": "integer"
+          },
+          "retryable": {
+            "default": 0,
+            "title": "Retryable",
+            "type": "integer"
+          },
+          "stale": {
+            "default": 0,
+            "title": "Stale",
+            "type": "integer"
+          },
+          "total_pending": {
+            "default": 0,
+            "title": "Total Pending",
+            "type": "integer"
+          },
+          "unavailable": {
+            "default": 0,
+            "title": "Unavailable",
+            "type": "integer"
+          }
+        },
+        "title": "NarrativeSemanticBacklog",
+        "type": "object"
+      },
       "NotificationDeliveriesData": {
         "additionalProperties": true,
         "properties": {
@@ -2144,6 +2304,17 @@
             ],
             "title": "Latest Agent Run Finished At Ms"
           },
+          "latest_hidden_hold_candidate_updated_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Hidden Hold Candidate Updated At Ms"
+          },
           "latest_packet_created_at_ms": {
             "anyOf": [
               {
@@ -2177,6 +2348,17 @@
             ],
             "title": "Market Ready Rate"
           },
+          "public_candidate_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Candidate Count"
+          },
           "public_candidates_4h": {
             "anyOf": [
               {
@@ -2187,6 +2369,17 @@
               }
             ],
             "title": "Public Candidates 4H"
+          },
+          "public_ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Ready"
           },
           "publish_status": {
             "anyOf": [
@@ -5006,6 +5199,51 @@
           }
         },
         "summary": "Status",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/status/narrative-health": {
+      "get": {
+        "operationId": "narrative_health_api_status_narrative_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since_hours",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 168,
+              "minimum": 1,
+              "title": "Since Hours",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NarrativeBacklogHealthData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Narrative Health",
         "tags": [
           "api"
         ]

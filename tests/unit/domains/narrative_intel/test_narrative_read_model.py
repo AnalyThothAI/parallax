@@ -56,6 +56,48 @@ def test_hydrate_token_radar_projects_digest_storage_fields_to_public_contract()
     assert digest["evidence_refs"] == [{"ref_id": "event:event-1", "kind": "event"}]
 
 
+def test_hydrate_token_radar_adds_compact_processing_backlog_without_rewriting_status_truth():
+    repo = FakeNarrativeRepository(
+        {
+            ("Asset", "asset:solana:token:So111"): {
+                "digest_id": "digest-1",
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:So111",
+                "status": "pending",
+                "data_gaps_json": [{"reason": "semantic_labeling_pending"}],
+                "semantic_coverage": 0.25,
+                "source_event_count": 8,
+                "labeled_event_count": 2,
+                "independent_author_count": 5,
+                "semantic_backlog_pending": 6,
+                "semantic_backlog_retryable": 2,
+                "semantic_backlog_unavailable": 1,
+                "semantic_backlog_oldest_due_at_ms": 7_000,
+            }
+        }
+    )
+
+    result = NarrativeReadModel(repo).hydrate_token_radar(
+        {"targets": [{"target_type": "Asset", "target_id": "asset:solana:token:So111"}]},
+        window="24h",
+        scope="all",
+        now_ms=10_000,
+    )
+
+    digest = result["targets"][0]["discussion_digest"]
+
+    assert digest["status"] == "pending"
+    assert digest["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
+    assert digest["processing"] == {
+        "backlog": {
+            "semantic": 6,
+            "retryable": 2,
+            "unavailable": 1,
+            "oldest_due_age_ms": 3_000,
+        }
+    }
+
+
 class FakeNarrativeRepository:
     def __init__(self, digests):
         self.digests = digests

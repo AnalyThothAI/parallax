@@ -505,6 +505,91 @@ def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> No
     assert repos.pulse_admission.admission_claims[-1]["admission_reason"] == "escalation"
 
 
+def test_scan_global_pending_cap_bounds_enqueues_across_windows_and_scopes() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows_by_window_scope = {
+        ("5m", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-5m-all")],
+        ("5m", "matched"): [
+            _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-5m-matched")
+        ],
+        ("1h", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-1h-all")],
+        ("1h", "matched"): [
+            _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-1h-matched")
+        ],
+    }
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(
+        repos,
+        settings=_settings(
+            windows=("5m", "1h"),
+            scopes=("all", "matched"),
+            max_enqueues_per_cycle=10,
+            max_pending_jobs_global=2,
+            max_pending_jobs_per_window_scope=10,
+        ),
+    )
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 4
+    assert result["asset_enqueued"] == 2
+    assert result["asset_skipped"] == 2
+    assert result["asset_suppressed_pending_global"] == 2
+    assert len(repos.pulse_jobs.jobs) == 2
+
+
+def test_scan_window_scope_pending_cap_suppresses_enqueue_without_admission_claim() -> None:
+    repos = FakeRepos()
+    repos.pulse_jobs.pending_job_counts_by_window_scope[("1h", "all")] = 1
+    repos.token_radar.rows = [
+        _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-cap-a"),
+        _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-cap-b"),
+    ]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(
+        repos,
+        settings=_settings(
+            max_enqueues_per_cycle=10,
+            max_pending_jobs_global=10,
+            max_pending_jobs_per_window_scope=1,
+        ),
+    )
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 2
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 2
+    assert result["asset_suppressed_pending_window_scope"] == 2
+    assert repos.pulse_admission.admission_claims == []
+    assert repos.pulse_jobs.jobs == []
+
+
+def test_stale_short_window_jobs_are_terminalized_before_processing() -> None:
+    repos = FakeRepos()
+    repos.pulse_jobs.jobs.append(
+        {
+            "job_id": "job-stale-5m",
+            "candidate_id": "candidate-stale-5m",
+            "status": "pending",
+            "window": "5m",
+            "scope": "all",
+            "created_at_ms": NOW_MS - 301_000,
+            "updated_at_ms": NOW_MS - 301_000,
+            "attempt_count": 0,
+            "max_attempts": 3,
+        }
+    )
+    worker = _worker(repos, settings=_settings(stale_job_ttl_by_window_seconds={"5m": 300}))
+
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["stale_jobs_terminalized"] == 1
+    assert result["claimed"] == 0
+    assert repos.pulse_jobs.jobs[0]["status"] == "dead"
+    assert repos.pulse_jobs.jobs[0]["last_error"] == "stale_window_ttl"
+
+
 def test_normalized_failure_reason_maps_unknown_evidence() -> None:
     assert _normalized_failure_reason(ValueError("unknown evidence ids: event-x")) == "invalid_unknown_evidence_ref"
     assert _normalized_failure_reason(ValueError("bull_view.supporting_event_ids contains unknown event ids")) == (
@@ -748,6 +833,10 @@ def _settings(**overrides: Any) -> SimpleNamespace:
         "wakes_on": ("token_radar_updated",),
         "windows": ("1h",),
         "scopes": ("all",),
+        "max_enqueues_per_cycle": 10,
+        "max_pending_jobs_global": 100,
+        "max_pending_jobs_per_window_scope": 25,
+        "stale_job_ttl_by_window_seconds": {},
         "trigger_thresholds": SimpleNamespace(min_rank_score=45),
         "gate_thresholds": SimpleNamespace(
             trade_candidate_min=72,
@@ -913,10 +1002,14 @@ class FakeCursor:
 class FakeTokenRadar:
     def __init__(self) -> None:
         self.rows: list[dict[str, Any]] = []
+        self.rows_by_window_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self.latest_calls = 0
 
-    def latest_rows(self, **_: Any) -> list[dict[str, Any]]:
+    def latest_rows(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.latest_calls += 1
+        key = (kwargs.get("window"), kwargs.get("scope"))
+        if key in self.rows_by_window_scope:
+            return list(self.rows_by_window_scope[key])
         return list(self.rows)
 
 
@@ -948,6 +1041,7 @@ class FakePulseStore:
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
         self.admission_claims: list[dict[str, Any]] = []
+        self.pending_job_counts_by_window_scope: dict[tuple[str, str], int] = {}
         self.market_facts: list[dict[str, Any]] = [
             {
                 "ref_id": "market:pf-test",
@@ -1086,6 +1180,35 @@ class FakePulseStore:
     def recent_target_failure_count(self, **_: Any) -> int:
         return self.recent_failure_count
 
+    def pending_agent_job_count(self) -> int:
+        return sum(1 for job in self.jobs if job.get("status") in {"pending", "failed", "running"})
+
+    def pending_agent_job_count_for_window_scope(self, *, window: str, scope: str) -> int:
+        seeded = self.pending_job_counts_by_window_scope.get((window, scope), 0)
+        active = sum(
+            1
+            for job in self.jobs
+            if job.get("status") in {"pending", "failed", "running"}
+            and job.get("window") == window
+            and job.get("scope") == scope
+        )
+        return seeded + active
+
+    def terminalize_stale_jobs_by_window(self, *, now_ms: int, ttl_by_window_seconds: dict[str, int]) -> int:
+        count = 0
+        for job in self.jobs:
+            ttl_seconds = ttl_by_window_seconds.get(str(job.get("window") or ""))
+            if ttl_seconds is None or job.get("status") not in {"pending", "failed", "running"}:
+                continue
+            created_at_ms = int(job.get("created_at_ms") or job.get("updated_at_ms") or now_ms)
+            if created_at_ms >= now_ms - int(ttl_seconds) * 1000:
+                continue
+            job["status"] = "dead"
+            job["last_error"] = "stale_window_ttl"
+            job["updated_at_ms"] = now_ms
+            count += 1
+        return count
+
     def enqueue_job(self, **kwargs: Any) -> dict[str, Any]:
         job = {
             **kwargs,
@@ -1093,6 +1216,8 @@ class FakePulseStore:
             "status": "pending",
             "attempt_count": 0,
             "max_attempts": kwargs.get("max_attempts", 3),
+            "created_at_ms": kwargs.get("now_ms"),
+            "updated_at_ms": kwargs.get("now_ms"),
         }
         self.jobs.append(job)
         return job
@@ -1369,7 +1494,7 @@ async def _wait_until(predicate, *, timeout_seconds: float = 1.0) -> None:
         await asyncio.sleep(0.01)
 
 
-def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]:
+def _radar_row(*, factor_snapshot_json: dict[str, Any] | None, target_id: str = "asset-1") -> dict[str, Any]:
     return {
         "row_id": "row-1",
         "window": "1h",
@@ -1377,9 +1502,9 @@ def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]
         "computed_at_ms": NOW_MS - 1_000,
         "event_id": "event-1",
         "target_type": "Asset",
-        "target_id": "asset-1",
-        "target_json": {"target_type": "Asset", "target_id": "asset-1", "symbol": "TEST"},
-        "asset_json": {"target_type": "Asset", "target_id": "asset-1", "symbol": "TEST"},
+        "target_id": target_id,
+        "target_json": {"target_type": "Asset", "target_id": target_id, "symbol": "TEST"},
+        "asset_json": {"target_type": "Asset", "target_id": target_id, "symbol": "TEST"},
         "factor_snapshot_json": factor_snapshot_json,
         "source_event_ids_json": ["event-1"],
     }

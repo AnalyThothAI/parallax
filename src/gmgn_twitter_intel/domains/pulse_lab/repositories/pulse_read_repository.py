@@ -224,6 +224,8 @@ class PulseReadRepository:
             "decision_abstain_reason_counts": decision_abstain_reason_counts,
             "decision_error_count": 0,
             "candidate_count": int(row.get("candidate_count") or 0),
+            "public_candidate_count": displayable_count,
+            "displayable_count": displayable_count,
             "blocked_low_information_count": int(row.get("blocked_low_information_count") or 0),
             "dead_job_count": int(job_row["dead_job_count"] if job_row else 0),
             "market_ready_rate": 0.0 if displayable_count == 0 else market_fresh_count / displayable_count,

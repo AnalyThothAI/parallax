@@ -484,6 +484,10 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
     timeout_seconds: float = Field(default=0.0, ge=0)
     batch_size: int = Field(default=10, ge=1)
     max_attempts: int = Field(default=3, ge=1)
+    max_enqueues_per_cycle: int = Field(default=25, ge=1)
+    max_pending_jobs_global: int = Field(default=100, ge=1)
+    max_pending_jobs_per_window_scope: int = Field(default=25, ge=1)
+    stale_job_ttl_by_window_seconds: dict[str, int] = Field(default_factory=lambda: {"5m": 300})
     advisory_lock_key: int = 2026051502
     wakes_on: tuple[str, ...] = ("token_radar_updated",)
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
@@ -501,6 +505,7 @@ class MentionSemanticsWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     timeout_seconds: float = Field(default=0.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    provider_batch_size: int = Field(default=10, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026051801
     wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
@@ -508,6 +513,8 @@ class MentionSemanticsWorkerSettings(PerWorkerSettings):
     scopes: tuple[str, ...] = ("all", "matched")
     admission_limit: int = Field(default=200, ge=1)
     source_limit: int = Field(default=2000, ge=1)
+    max_semantic_rows_enqueued_per_cycle: int = Field(default=40, ge=1)
+    max_pending_semantics_per_target: int = Field(default=80, ge=1)
     min_rank_score: int = Field(default=30, ge=0)
     hot_rank_limit: int = Field(default=50, ge=1)
     carry_ttl_seconds: int = Field(default=3600, ge=1)
@@ -1125,6 +1132,7 @@ mention_semantics:
   interval_seconds: 60.0
   timeout_seconds: 0.0
   batch_size: 50
+  provider_batch_size: 10
   max_attempts: 3
   advisory_lock_key: 2026051801
   wakes_on: ["token_radar_updated", "resolution_updated"]
@@ -1132,6 +1140,8 @@ mention_semantics:
   scopes: ["all", "matched"]
   admission_limit: 200
   source_limit: 2000
+  max_semantic_rows_enqueued_per_cycle: 40
+  max_pending_semantics_per_target: 80
   min_rank_score: 30
   hot_rank_limit: 50
   carry_ttl_seconds: 3600
@@ -1166,6 +1176,11 @@ pulse_candidate:
   timeout_seconds: 0.0
   batch_size: 10
   max_attempts: 3
+  max_enqueues_per_cycle: 25
+  max_pending_jobs_global: 100
+  max_pending_jobs_per_window_scope: 25
+  stale_job_ttl_by_window_seconds:
+    5m: 300
   advisory_lock_key: 2026051502
   wakes_on: ["token_radar_updated"]
   windows: ["5m", "1h", "4h", "24h"]

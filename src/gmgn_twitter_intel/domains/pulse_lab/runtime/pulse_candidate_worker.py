@@ -84,6 +84,15 @@ class PulseCandidateWorker(WorkerBase):
         self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
         self.batch_size = max(1, int(getattr(settings, "batch_size", 10) or 10))
         self.max_attempts = max(1, int(getattr(settings, "max_attempts", 3) or 3))
+        self.max_enqueues_per_cycle = max(1, int(getattr(settings, "max_enqueues_per_cycle", 25) or 25))
+        self.max_pending_jobs_global = max(1, int(getattr(settings, "max_pending_jobs_global", 100) or 100))
+        self.max_pending_jobs_per_window_scope = max(
+            1,
+            int(getattr(settings, "max_pending_jobs_per_window_scope", 25) or 25),
+        )
+        self.stale_job_ttl_by_window_seconds = _window_ttl_seconds(
+            getattr(settings, "stale_job_ttl_by_window_seconds", None)
+        )
         self.trigger_thresholds = trigger_thresholds or _trigger_thresholds_from_settings(settings)
         self.gate_thresholds = gate_thresholds or _gate_thresholds_from_settings(settings)
         self.job_service = PulseCandidateJobService(
@@ -133,10 +142,28 @@ class PulseCandidateWorker(WorkerBase):
             "source_seen": 0,
             "source_enqueued": 0,
             "source_skipped": 0,
+            "asset_suppressed_cycle_budget": 0,
+            "asset_suppressed_pending_global": 0,
+            "asset_suppressed_pending_window_scope": 0,
+            "stale_jobs_terminalized": 0,
         }
         with self._repository_session() as repos:
+            result["stale_jobs_terminalized"] = _terminalize_stale_jobs(
+                repos,
+                now_ms=resolved_now_ms,
+                ttl_by_window_seconds=self.stale_job_ttl_by_window_seconds,
+            )
+            enqueued_this_cycle = 0
+            pending_jobs_global = _pending_agent_job_count(repos)
+            pending_jobs_by_window_scope: dict[tuple[str, str], int] = {}
             for window in self.windows:
                 for scope in self.scopes:
+                    scope_key = (window, scope)
+                    pending_jobs_by_window_scope[scope_key] = _pending_agent_job_count_for_window_scope(
+                        repos,
+                        window=window,
+                        scope=scope,
+                    )
                     rows = repos.token_radar.latest_rows(
                         window=window,
                         scope=scope,
@@ -145,12 +172,27 @@ class PulseCandidateWorker(WorkerBase):
                     )
                     for row in rows:
                         result["asset_seen"] += 1
+                        if enqueued_this_cycle >= self.max_enqueues_per_cycle:
+                            result["asset_skipped"] += 1
+                            result["asset_suppressed_cycle_budget"] += 1
+                            continue
+                        if pending_jobs_global >= self.max_pending_jobs_global:
+                            result["asset_skipped"] += 1
+                            result["asset_suppressed_pending_global"] += 1
+                            continue
+                        if pending_jobs_by_window_scope[scope_key] >= self.max_pending_jobs_per_window_scope:
+                            result["asset_skipped"] += 1
+                            result["asset_suppressed_pending_window_scope"] += 1
+                            continue
                         context = self._asset_context(repos, row, window=window, scope=scope, now_ms=resolved_now_ms)
                         if context is None:
                             result["asset_skipped"] += 1
                             continue
                         if self._enqueue_if_due(repos, context, now_ms=resolved_now_ms):
                             result["asset_enqueued"] += 1
+                            enqueued_this_cycle += 1
+                            pending_jobs_global += 1
+                            pending_jobs_by_window_scope[scope_key] += 1
                         else:
                             result["asset_skipped"] += 1
         return result
@@ -159,7 +201,14 @@ class PulseCandidateWorker(WorkerBase):
         return asyncio.run(self.process_due_jobs_once_async(now_ms=now_ms))
 
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, int]:
-        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0}
+        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0, "stale_jobs_terminalized": 0}
+        with self._repository_session() as repos:
+            resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
+            result["stale_jobs_terminalized"] = _terminalize_stale_jobs(
+                repos,
+                now_ms=resolved_now_ms,
+                ttl_by_window_seconds=self.stale_job_ttl_by_window_seconds,
+            )
         for _ in range(self.batch_size):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             with self._repository_session() as repos:
@@ -522,6 +571,45 @@ def _recent_target_failure_count(
             reasons=PULSE_FAILURE_CIRCUIT_REASONS,
         )
     )
+
+
+def _pending_agent_job_count(repos: Any) -> int:
+    count_func = getattr(repos.pulse_jobs, "pending_agent_job_count", None)
+    if count_func is None:
+        return 0
+    return safe_int(count_func())
+
+
+def _pending_agent_job_count_for_window_scope(repos: Any, *, window: str, scope: str) -> int:
+    count_func = getattr(repos.pulse_jobs, "pending_agent_job_count_for_window_scope", None)
+    if count_func is None:
+        return 0
+    return safe_int(count_func(window=window, scope=scope))
+
+
+def _terminalize_stale_jobs(repos: Any, *, now_ms: int, ttl_by_window_seconds: dict[str, int]) -> int:
+    if not ttl_by_window_seconds:
+        return 0
+    terminalize_func = getattr(repos.pulse_jobs, "terminalize_stale_jobs_by_window", None)
+    if terminalize_func is None:
+        return 0
+    return safe_int(
+        terminalize_func(
+            now_ms=now_ms,
+            ttl_by_window_seconds=ttl_by_window_seconds,
+        )
+    )
+
+
+def _window_ttl_seconds(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, int] = {}
+    for window, ttl_seconds in value.items():
+        ttl = safe_int(ttl_seconds)
+        if ttl > 0:
+            result[str(window)] = ttl
+    return result
 
 
 def _target_payload(row: dict[str, Any]) -> dict[str, Any]:

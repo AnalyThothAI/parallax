@@ -20,7 +20,7 @@ class NarrativeReadModel:
         hydrated = dict(data)
         for key in ("targets", "attention", "items"):
             if isinstance(hydrated.get(key), list):
-                hydrated[key] = [self._hydrate_row(row, digests) for row in hydrated[key]]
+                hydrated[key] = [self._hydrate_row(row, digests, now_ms=now_ms) for row in hydrated[key]]
         return hydrated
 
     def hydrate_token_case(self, dossier: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
@@ -36,7 +36,8 @@ class NarrativeReadModel:
             digests.get(
                 (str(target.get("target_type")), str(target.get("target_id"))),
                 _missing_digest("digest_not_ready"),
-            )
+            ),
+            now_ms=now_ms,
         )
         hydrated.setdefault("narrative_clusters", hydrated["discussion_digest"].get("dominant_narratives", []))
         if isinstance(hydrated.get("posts"), dict):
@@ -69,13 +70,20 @@ class NarrativeReadModel:
             hydrated["posts"] = hydrated_posts
         return hydrated
 
-    def _hydrate_row(self, row: dict[str, Any], digests: dict[tuple[str, str], dict[str, Any]]) -> dict[str, Any]:
+    def _hydrate_row(
+        self,
+        row: dict[str, Any],
+        digests: dict[tuple[str, str], dict[str, Any]],
+        *,
+        now_ms: int,
+    ) -> dict[str, Any]:
         target_type = str(row.get("target_type") or row.get("type") or "")
         target_id = str(row.get("target_id") or row.get("id") or "")
         return {
             **row,
             "discussion_digest": _public_digest(
-                digests.get((target_type, target_id), _missing_digest("digest_not_ready"))
+                digests.get((target_type, target_id), _missing_digest("digest_not_ready")),
+                now_ms=now_ms,
             ),
             "pulse_overlay": row.get("pulse_overlay") or {"status": "absent"},
         }
@@ -105,7 +113,7 @@ def _missing_digest(reason: str) -> dict[str, Any]:
     }
 
 
-def _public_digest(digest: dict[str, Any]) -> dict[str, Any]:
+def _public_digest(digest: dict[str, Any], *, now_ms: int | None = None) -> dict[str, Any]:
     row = dict(digest)
     narratives = _list(row.get("dominant_narratives_json"))
     dominant = _dict(narratives[0]) if narratives else {}
@@ -114,7 +122,7 @@ def _public_digest(digest: dict[str, Any]) -> dict[str, Any]:
     propagation = _dict(row.get("propagation_read_json"))
     data_gaps = [_public_gap(gap) for gap in _list(row.get("data_gaps_json"))]
     semantic_coverage = _float(row.get("semantic_coverage"))
-    return {
+    payload = {
         **row,
         "dominant_narratives": narratives,
         "dominant_narrative": _dominant_narrative(row, dominant),
@@ -136,6 +144,27 @@ def _public_digest(digest: dict[str, Any]) -> dict[str, Any]:
         "data_gaps": data_gaps,
         "evidence_refs": _list(row.get("evidence_refs_json")),
     }
+    processing = _processing(row, now_ms=now_ms)
+    if processing:
+        payload["processing"] = processing
+    return payload
+
+
+def _processing(row: dict[str, Any], *, now_ms: int | None) -> dict[str, Any] | None:
+    semantic = _int(row.get("semantic_backlog_pending"))
+    retryable = _int(row.get("semantic_backlog_retryable"))
+    unavailable = _int(row.get("semantic_backlog_unavailable"))
+    oldest_due_age_ms = _oldest_due_age(row.get("semantic_backlog_oldest_due_at_ms"), now_ms=now_ms)
+    if semantic <= 0 and retryable <= 0 and unavailable <= 0 and oldest_due_age_ms is None:
+        return None
+    backlog: dict[str, Any] = {
+        "semantic": semantic,
+        "retryable": retryable,
+        "unavailable": unavailable,
+    }
+    if oldest_due_age_ms is not None:
+        backlog["oldest_due_age_ms"] = oldest_due_age_ms
+    return {"backlog": backlog}
 
 
 def _dominant_narrative(row: dict[str, Any], dominant: dict[str, Any]) -> dict[str, Any] | None:
@@ -224,6 +253,15 @@ def _float(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _oldest_due_age(value: Any, *, now_ms: int | None) -> int | None:
+    if value is None or now_ms is None:
+        return None
+    try:
+        return max(0, int(now_ms) - int(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _missing_semantic() -> dict[str, Any]:

@@ -51,7 +51,10 @@ class MentionSemanticsWorker(WorkerBase):
 
     async def run_once_async(self, *, now_ms: int | None = None) -> WorkerResult:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-        batch_size = max(1, int(getattr(self.settings, "batch_size", 50) or 50))
+        configured_batch_size = max(1, int(getattr(self.settings, "batch_size", 50) or 50))
+        provider_batch_size = max(1, int(getattr(self.settings, "provider_batch_size", configured_batch_size) or 1))
+        batch_size = min(configured_batch_size, provider_batch_size)
+        max_attempts = max(1, int(getattr(self.settings, "max_attempts", 3) or 3))
         admission_stats = await asyncio.to_thread(self._reconcile_admissions_and_enqueue_sync, now_ms=resolved_now_ms)
         rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         if not rows:
@@ -74,13 +77,12 @@ class MentionSemanticsWorker(WorkerBase):
         except Exception as exc:
             finished_at_ms = _now_ms()
             failures = [
-                {
-                    "event_id": row.get("event_id"),
-                    "target_type": row.get("target_type"),
-                    "target_id": row.get("target_id"),
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "next_retry_at_ms": finished_at_ms + 60_000,
-                }
+                _provider_failure_for_row(
+                    row,
+                    error=f"{type(exc).__name__}: {exc}",
+                    default_next_retry_at_ms=finished_at_ms + 60_000,
+                    max_attempts=max_attempts,
+                )
                 for row in rows
             ]
             run_payload = {
@@ -111,15 +113,17 @@ class MentionSemanticsWorker(WorkerBase):
                 failures=failures,
                 now_ms=finished_at_ms,
             )
+            semantic_unavailable = int(complete.get("semantic_unavailable") or 0)
+            failed = int(complete.get("failed") or 0)
             return WorkerResult(
-                processed=0,
-                failed=int(complete.get("failed") or len(rows)),
+                processed=semantic_unavailable,
+                failed=failed,
                 notes={
                     "claimed": len(rows),
                     **_prefixed(admission_stats, "admission_"),
                     "labeled": 0,
-                    "semantic_unavailable": 0,
-                    "failed": int(complete.get("failed") or len(rows)),
+                    "semantic_unavailable": semantic_unavailable,
+                    "failed": failed,
                     "provider_error": type(exc).__name__,
                     "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
                 },
@@ -135,6 +139,11 @@ class MentionSemanticsWorker(WorkerBase):
             list(result.failures),
             labeled_keys=labeled_keys,
             default_next_retry_at_ms=finished_at_ms + 60_000,
+        )
+        failures = _terminalize_failures_after_max_attempts(
+            rows=rows,
+            failures=failures,
+            max_attempts=max_attempts,
         )
         audit = dict(result.agent_run_audit or {})
         run_payload = {
@@ -185,6 +194,14 @@ class MentionSemanticsWorker(WorkerBase):
         scopes = tuple(getattr(self.settings, "scopes", ("matched",)) or ("matched",))
         admission_limit = max(1, int(getattr(self.settings, "admission_limit", 200) or 200))
         source_limit = max(1, int(getattr(self.settings, "source_limit", 2000) or 2000))
+        cycle_enqueue_budget = max(
+            1,
+            int(getattr(self.settings, "max_semantic_rows_enqueued_per_cycle", 40) or 40),
+        )
+        max_pending_per_target = max(
+            1,
+            int(getattr(self.settings, "max_pending_semantics_per_target", 80) or 80),
+        )
         interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 60.0) or 60.0) * 1000))
         stats = {
             "radar_rows": 0,
@@ -194,8 +211,12 @@ class MentionSemanticsWorker(WorkerBase):
             "source_mentions": 0,
             "semantic_inserted": 0,
             "semantic_existing": 0,
+            "semantic_suppressed_budget": 0,
+            "semantic_pending_before": 0,
+            "semantic_pending_cap_hits": 0,
             "admissions_scanned": 0,
         }
+        remaining_cycle_budget = cycle_enqueue_budget
         with self._repository_session() as repos:
             for window in windows:
                 for scope in scopes:
@@ -245,8 +266,24 @@ class MentionSemanticsWorker(WorkerBase):
                     watched_only=str(admission.get("scope") or "") == "matched",
                     limit=source_limit,
                 )
+                pending_count = repos.narratives.pending_mention_semantics_count(
+                    target_type=str(admission["target_type"]),
+                    target_id=str(admission["target_id"]),
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
+                )
+                stats["semantic_pending_before"] += pending_count
+                target_budget = max(0, max_pending_per_target - pending_count)
+                allowed_count = min(len(source_mentions), target_budget, remaining_cycle_budget)
+                if allowed_count <= 0:
+                    if source_mentions and target_budget <= 0:
+                        stats["semantic_pending_cap_hits"] += 1
+                    stats["source_mentions"] += len(source_mentions)
+                    stats["semantic_suppressed_budget"] += len(source_mentions)
+                    scanned_ids.append(str(admission["admission_id"]))
+                    continue
+                selected_mentions = source_mentions[:allowed_count]
                 enqueued = repos.narratives.enqueue_missing_mention_semantics(
-                    source_mentions,
+                    selected_mentions,
                     schema_version=NARRATIVE_SCHEMA_VERSION,
                     model_version=self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
                     now_ms=now_ms,
@@ -254,6 +291,8 @@ class MentionSemanticsWorker(WorkerBase):
                 stats["source_mentions"] += len(source_mentions)
                 stats["semantic_inserted"] += int(enqueued.get("inserted") or 0)
                 stats["semantic_existing"] += int(enqueued.get("existing") or 0)
+                stats["semantic_suppressed_budget"] += max(0, len(source_mentions) - allowed_count)
+                remaining_cycle_budget -= allowed_count
                 scanned_ids.append(str(admission["admission_id"]))
             marked = repos.narratives.mark_admissions_semantics_scanned(
                 scanned_ids,
@@ -312,6 +351,48 @@ def _radar_row_for_admission(row: dict[str, Any]) -> dict[str, Any]:
 
 def _prefixed(values: dict[str, int], prefix: str) -> dict[str, int]:
     return {f"{prefix}{key}": value for key, value in values.items()}
+
+
+def _provider_failure_for_row(
+    row: dict[str, Any],
+    *,
+    error: str,
+    default_next_retry_at_ms: int,
+    max_attempts: int,
+) -> dict[str, Any]:
+    failure = {
+        "event_id": row.get("event_id"),
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "error": error,
+        "next_retry_at_ms": default_next_retry_at_ms,
+    }
+    if int(row.get("retry_count") or 0) + 1 >= max_attempts:
+        failure["status"] = "semantic_unavailable"
+        failure["next_retry_at_ms"] = 0
+    return failure
+
+
+def _terminalize_failures_after_max_attempts(
+    *,
+    rows: list[dict[str, Any]],
+    failures: list[dict[str, Any]],
+    max_attempts: int,
+) -> list[dict[str, Any]]:
+    row_by_key = {
+        (str(row.get("event_id")), str(row.get("target_type")), str(row.get("target_id"))): row for row in rows
+    }
+    terminalized = []
+    for failure in failures:
+        item = dict(failure)
+        row = row_by_key.get(
+            (str(item.get("event_id")), str(item.get("target_type")), str(item.get("target_id")))
+        )
+        if row is not None and int(row.get("retry_count") or 0) + 1 >= max_attempts:
+            item["status"] = "semantic_unavailable"
+            item["next_retry_at_ms"] = 0
+        terminalized.append(item)
+    return terminalized
 
 
 def _hash_json(payload: Any) -> str:

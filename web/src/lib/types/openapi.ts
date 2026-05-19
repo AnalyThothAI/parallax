@@ -310,6 +310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/status/narrative-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Narrative Health */
+        get: operations["narrative_health_api_status_narrative_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stocks-radar": {
         parameters: {
             query?: never;
@@ -607,6 +624,18 @@ export interface components {
         /** ApiEnvelope[LooseData] */
         ApiEnvelope_LooseData_: {
             data?: components["schemas"]["LooseData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[NarrativeBacklogHealthData] */
+        ApiEnvelope_NarrativeBacklogHealthData_: {
+            data?: components["schemas"]["NarrativeBacklogHealthData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -916,6 +945,82 @@ export interface components {
         LooseData: {
             [key: string]: unknown;
         };
+        /** NarrativeBacklogHealthData */
+        NarrativeBacklogHealthData: {
+            /** Now Ms */
+            now_ms?: number | null;
+            /**
+             * Pending Digest Count
+             * @default 0
+             */
+            pending_digest_count: number;
+            /** Recent Runs */
+            recent_runs?: {
+                [key: string]: components["schemas"]["NarrativeRunHealth"];
+            };
+            /** Schema Version */
+            schema_version?: string | null;
+            semantic_backlog?: components["schemas"]["NarrativeSemanticBacklog"];
+            /**
+             * Since Hours
+             * @default 4
+             */
+            since_hours: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NarrativeRunHealth */
+        NarrativeRunHealth: {
+            /**
+             * Failure
+             * @default 0
+             */
+            failure: number;
+            /**
+             * Success
+             * @default 0
+             */
+            success: number;
+            /**
+             * Timeout
+             * @default 0
+             */
+            timeout: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NarrativeSemanticBacklog */
+        NarrativeSemanticBacklog: {
+            /** Oldest Due Age Ms */
+            oldest_due_age_ms?: number | null;
+            /**
+             * Queued
+             * @default 0
+             */
+            queued: number;
+            /**
+             * Retryable
+             * @default 0
+             */
+            retryable: number;
+            /**
+             * Stale
+             * @default 0
+             */
+            stale: number;
+            /**
+             * Total Pending
+             * @default 0
+             */
+            total_pending: number;
+            /**
+             * Unavailable
+             * @default 0
+             */
+            unavailable: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** NotificationDeliveriesData */
         NotificationDeliveriesData: {
             /** Items */
@@ -1150,14 +1255,20 @@ export interface components {
             hidden_insufficient_evidence_4h?: number | null;
             /** Latest Agent Run Finished At Ms */
             latest_agent_run_finished_at_ms?: number | null;
+            /** Latest Hidden Hold Candidate Updated At Ms */
+            latest_hidden_hold_candidate_updated_at_ms?: number | null;
             /** Latest Packet Created At Ms */
             latest_packet_created_at_ms?: number | null;
             /** Latest Public Candidate Updated At Ms */
             latest_public_candidate_updated_at_ms?: number | null;
             /** Market Ready Rate */
             market_ready_rate?: number | null;
+            /** Public Candidate Count */
+            public_candidate_count?: number | null;
             /** Public Candidates 4H */
             public_candidates_4h?: number | null;
+            /** Public Ready */
+            public_ready?: boolean | null;
             /** Publish Status */
             publish_status?: string | null;
             /** Pulse Ready */
@@ -2331,6 +2442,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_StatusData_"];
+                };
+            };
+        };
+    };
+    narrative_health_api_status_narrative_health_get: {
+        parameters: {
+            query?: {
+                since_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NarrativeBacklogHealthData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -553,6 +553,100 @@ def test_claim_due_job_marks_exhausted_stale_running_dead(tmp_path) -> None:
     assert stored["status"] == "dead"
 
 
+def test_pending_job_counts_and_stale_window_ttl_terminalize_short_window_jobs(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
+            job_id="job-stale-5m",
+            candidate_id="candidate-stale-5m",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="5m",
+            scope="all",
+            trigger_signature="trigger-5m",
+            timeline_signature="timeline-5m",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=1_000,
+        )
+        repo.jobs.enqueue_job(
+            job_id="job-warm-1h",
+            candidate_id="candidate-warm-1h",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-1h",
+            timeline_signature="timeline-1h",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=1_000,
+        )
+
+        before_global = repo.jobs.pending_agent_job_count()
+        before_5m = repo.jobs.pending_agent_job_count_for_window_scope(window="5m", scope="all")
+        terminalized = repo.jobs.terminalize_stale_jobs_by_window(
+            now_ms=302_000,
+            ttl_by_window_seconds={"5m": 300},
+        )
+        after_global = repo.jobs.pending_agent_job_count()
+        stale_5m = conn.execute("SELECT * FROM pulse_agent_jobs WHERE job_id = 'job-stale-5m'").fetchone()
+        warm_1h = conn.execute("SELECT * FROM pulse_agent_jobs WHERE job_id = 'job-warm-1h'").fetchone()
+    finally:
+        conn.close()
+
+    assert before_global == 2
+    assert before_5m == 1
+    assert terminalized == 1
+    assert after_global == 1
+    assert stale_5m["status"] == "dead"
+    assert stale_5m["last_error"] == "stale_window_ttl"
+    assert warm_1h["status"] == "pending"
+
+
+def test_claim_due_job_keeps_priority_before_schedule_age_and_job_id(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
+            job_id="job-older-low",
+            candidate_id="candidate-older-low",
+            candidate_type="token_target",
+            subject_key="low",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-low",
+            timeline_signature="timeline-low",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=1_000,
+        )
+        repo.jobs.enqueue_job(
+            job_id="job-newer-high",
+            candidate_id="candidate-newer-high",
+            candidate_type="token_target",
+            subject_key="high",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-high",
+            timeline_signature="timeline-high",
+            priority=90,
+            next_run_at_ms=2_000,
+            now_ms=2_000,
+        )
+
+        claimed = repo.jobs.claim_due_job(now_ms=2_000)
+    finally:
+        conn.close()
+
+    assert claimed is not None
+    assert claimed["job_id"] == "job-newer-high"
+    assert claimed["priority"] == 90
+
+
 def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
