@@ -13,7 +13,8 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     social_event_agent_instructions,
     social_event_extraction_from_payload,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentStageSpec
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import RUNTIME_VERSION, AgentStageSpec
+from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
 
 class OpenAIAgentsSocialEventClient:
@@ -38,7 +39,13 @@ class OpenAIAgentsSocialEventClient:
 
     @property
     def artifact_version_hash(self) -> str:
-        return f"artifact:{self.model}"
+        return artifact_hash_for(
+            model=self.model,
+            prompt_version=PROMPT_VERSION,
+            schema_version=SCHEMA_VERSION,
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256(SocialEventPayload.model_json_schema()),
+        )
 
     @property
     def timeout_seconds(self) -> float:

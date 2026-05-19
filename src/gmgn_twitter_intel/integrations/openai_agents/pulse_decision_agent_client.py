@@ -33,7 +33,9 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import 
     AgentExecutionRequestAudit,
     AgentExecutionResultAudit,
     AgentStageSpec,
+    RUNTIME_VERSION,
 )
+from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionDesk"
@@ -81,7 +83,18 @@ class OpenAIAgentsPulseDecisionClient:
 
     @property
     def artifact_version_hash(self) -> str:
-        return f"artifact:{self.model}"
+        return artifact_hash_for(
+            model=self.model,
+            prompt_version=PULSE_DECISION_PROMPT_VERSION,
+            schema_version=PULSE_DECISION_SCHEMA_VERSION,
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256(
+                {
+                    "evidence_debate": EvidenceDebateMemo.model_json_schema(),
+                    "decision_maker": FinalDecision.model_json_schema(),
+                }
+            ),
+        )
 
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract:

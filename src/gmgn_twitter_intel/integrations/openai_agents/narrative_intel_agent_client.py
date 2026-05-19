@@ -16,8 +16,8 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchRequest,
     MentionSemanticsBatchResult,
 )
-from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import AgentStageSpec
-from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import json_sha256
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import RUNTIME_VERSION, AgentStageSpec
+from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
 WORKFLOW_NAME = "gmgn-twitter-intel.narrative_intel"
 MENTION_SEMANTICS_AGENT_NAME = "NarrativeMentionSemanticsAgent"
@@ -55,7 +55,18 @@ class OpenAIAgentsNarrativeIntelClient:
 
     @property
     def artifact_version_hash(self) -> str:
-        return f"artifact:{self.model}"
+        return artifact_hash_for(
+            model=self.model,
+            prompt_version="narrative-intel-provider",
+            schema_version="narrative-intel-provider",
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256(
+                {
+                    "mention_semantics": MentionSemanticsAgentPayload.model_json_schema(),
+                    "discussion_digest": DiscussionDigestAgentPayload.model_json_schema(),
+                }
+            ),
+        )
 
     def request_audit_for_label_mentions(
         self,

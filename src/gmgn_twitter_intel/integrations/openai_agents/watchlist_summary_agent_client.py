@@ -7,7 +7,13 @@ from typing import Any
 from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_runtime import (
     build_handle_summary_stage,
 )
-from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent import HANDLE_SUMMARY_PAYLOAD_TYPE
+from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent import (
+    HANDLE_SUMMARY_PAYLOAD_TYPE,
+    PROMPT_VERSION,
+    SCHEMA_VERSION,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_execution_types import RUNTIME_VERSION
+from gmgn_twitter_intel.integrations.openai_agents.agent_hashing import artifact_hash_for, json_sha256
 
 
 class OpenAIAgentsWatchlistSummaryClient:
@@ -30,7 +36,13 @@ class OpenAIAgentsWatchlistSummaryClient:
 
     @property
     def artifact_version_hash(self) -> str:
-        return f"artifact:{self.model}"
+        return artifact_hash_for(
+            model=self.model,
+            prompt_version=PROMPT_VERSION,
+            schema_version=SCHEMA_VERSION,
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256(HANDLE_SUMMARY_PAYLOAD_TYPE.model_json_schema()),
+        )
 
     def request_audit(
         self,
