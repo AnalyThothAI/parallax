@@ -705,6 +705,7 @@ class MentionSemanticsWorkerSettings(PerWorkerSettings):
     source_limit: int = Field(default=2000, ge=1)
     max_semantic_rows_enqueued_per_cycle: int = Field(default=40, ge=1)
     max_pending_semantics_per_target: int = Field(default=80, ge=1)
+    max_pending_source_age_seconds: int = Field(default=43_200, ge=0)
 
     @field_validator("wakes_on", mode="before")
     @classmethod
@@ -1397,6 +1398,7 @@ mention_semantics:
   source_limit: 2000
   max_semantic_rows_enqueued_per_cycle: 40
   max_pending_semantics_per_target: 80
+  max_pending_source_age_seconds: 43200
 token_discussion_digest:
   enabled: true
   interval_seconds: 120.0

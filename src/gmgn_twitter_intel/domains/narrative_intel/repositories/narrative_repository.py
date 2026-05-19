@@ -351,6 +351,58 @@ class NarrativeRepository:
         ).fetchone()
         return int(row["count"] if row else 0)
 
+    def prune_pending_mention_semantics_backlog(
+        self,
+        *,
+        schema_version: str,
+        now_ms: int,
+        max_source_age_ms: int | None = None,
+        max_pending_per_target: int | None = None,
+    ) -> dict[str, int]:
+        deleted_old = 0
+        if max_source_age_ms is not None and int(max_source_age_ms) > 0:
+            cutoff_ms = int(now_ms) - int(max_source_age_ms)
+            old_cursor = self.conn.execute(
+                """
+                DELETE FROM token_mention_semantics
+                WHERE schema_version = %s
+                  AND status IN ('queued', 'retryable_error', 'stale')
+                  AND source_received_at_ms < %s
+                """,
+                (schema_version, cutoff_ms),
+            )
+            deleted_old = int(getattr(old_cursor, "rowcount", 0) or 0)
+
+        deleted_overflow = 0
+        if max_pending_per_target is not None and int(max_pending_per_target) > 0:
+            overflow_cursor = self.conn.execute(
+                """
+                WITH ranked AS (
+                  SELECT
+                    semantic_id,
+                    row_number() OVER (
+                      PARTITION BY target_type, target_id
+                      ORDER BY source_received_at_ms DESC, queued_at_ms DESC, semantic_id DESC
+                    ) AS target_pending_rank
+                  FROM token_mention_semantics
+                  WHERE schema_version = %s
+                    AND status IN ('queued', 'retryable_error', 'stale')
+                )
+                DELETE FROM token_mention_semantics AS semantics
+                USING ranked
+                WHERE semantics.semantic_id = ranked.semantic_id
+                  AND ranked.target_pending_rank > %s
+                """,
+                (schema_version, int(max_pending_per_target)),
+            )
+            deleted_overflow = int(getattr(overflow_cursor, "rowcount", 0) or 0)
+
+        _commit_if_available(self.conn)
+        return {
+            "deleted_old_semantics": deleted_old,
+            "deleted_overflow_semantics": deleted_overflow,
+        }
+
     def enqueue_missing_mention_semantics(
         self,
         source_rows: Sequence[dict[str, Any]],

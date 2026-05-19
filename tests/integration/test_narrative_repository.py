@@ -497,6 +497,70 @@ def test_cleanup_current_backlog_preserves_sources_current_in_other_windows(tmp_
     }
 
 
+def test_prune_pending_mention_semantics_backlog_keeps_recent_per_target_rows(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-old", "event-mid", "event-new", "event-other"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-old",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "old source",
+                    "source_received_at_ms": 1_000,
+                },
+                {
+                    "event_id": "event-mid",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "mid source",
+                    "source_received_at_ms": 3_000,
+                },
+                {
+                    "event_id": "event-new",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "new source",
+                    "source_received_at_ms": 4_000,
+                },
+                {
+                    "event_id": "event-other",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Bonk",
+                    "text_clean": "other target",
+                    "source_received_at_ms": 4_500,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=5_000,
+        )
+
+        result = repo.prune_pending_mention_semantics_backlog(
+            schema_version="narrative_intel_v1",
+            now_ms=10_000,
+            max_source_age_ms=7_000,
+            max_pending_per_target=1,
+        )
+        rows = [
+            row["event_id"]
+            for row in conn.execute(
+                """
+                SELECT event_id
+                FROM token_mention_semantics
+                ORDER BY event_id
+                """
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+    assert result == {"deleted_old_semantics": 1, "deleted_overflow_semantics": 1}
+    assert rows == ["event-new", "event-other"]
+
+
 def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:
     conn.execute(
         """

@@ -47,15 +47,25 @@ class MentionSemanticsWorker(WorkerBase):
         provider_batch_size = max(1, int(getattr(self.settings, "provider_batch_size", configured_batch_size) or 1))
         batch_size = min(configured_batch_size, provider_batch_size)
         max_attempts = max(1, int(getattr(self.settings, "max_attempts", 3) or 3))
+        prune_stats = await asyncio.to_thread(self._prune_pending_backlog_sync, now_ms=resolved_now_ms)
         rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         enqueue_stats: dict[str, int] = {}
         if not rows:
             enqueue_stats = await asyncio.to_thread(self._enqueue_missing_from_admissions_sync, now_ms=resolved_now_ms)
+            prune_stats = _sum_counts(
+                prune_stats,
+                await asyncio.to_thread(self._prune_pending_backlog_sync, now_ms=resolved_now_ms),
+            )
             rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         if not rows:
             return WorkerResult(
                 skipped=1,
-                notes={"reason": "no_due_mentions", "claimed": 0, **_prefixed(enqueue_stats, "enqueue_")},
+                notes={
+                    "reason": "no_due_mentions",
+                    "claimed": 0,
+                    **_prefixed(prune_stats, "prune_"),
+                    **_prefixed(enqueue_stats, "enqueue_"),
+                },
             )
 
         started_at_ms = _now_ms()
@@ -115,6 +125,7 @@ class MentionSemanticsWorker(WorkerBase):
                 failed=failed,
                 notes={
                     "claimed": len(rows),
+                    **_prefixed(prune_stats, "prune_"),
                     **_prefixed(enqueue_stats, "enqueue_"),
                     "labeled": 0,
                     "semantic_unavailable": semantic_unavailable,
@@ -176,6 +187,7 @@ class MentionSemanticsWorker(WorkerBase):
             failed=int(complete.get("failed") or 0),
             notes={
                 "claimed": len(rows),
+                **_prefixed(prune_stats, "prune_"),
                 **_prefixed(enqueue_stats, "enqueue_"),
                 "labeled": int(complete.get("labeled") or 0),
                 "semantic_unavailable": int(complete.get("semantic_unavailable") or 0),
@@ -183,6 +195,21 @@ class MentionSemanticsWorker(WorkerBase):
                 "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
             },
         )
+
+    def _prune_pending_backlog_sync(self, *, now_ms: int) -> dict[str, int]:
+        max_source_age_seconds = int(getattr(self.settings, "max_pending_source_age_seconds", 43_200) or 0)
+        max_pending_per_target = int(getattr(self.settings, "max_pending_semantics_per_target", 80) or 0)
+        if max_source_age_seconds <= 0 and max_pending_per_target <= 0:
+            return {"deleted_old_semantics": 0, "deleted_overflow_semantics": 0}
+        with self._repository_session() as repos:
+            return dict(
+                repos.narratives.prune_pending_mention_semantics_backlog(
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
+                    now_ms=now_ms,
+                    max_source_age_ms=max_source_age_seconds * 1000 if max_source_age_seconds > 0 else None,
+                    max_pending_per_target=max_pending_per_target if max_pending_per_target > 0 else None,
+                )
+            )
 
     def _enqueue_missing_from_admissions_sync(self, *, now_ms: int) -> dict[str, int]:
         admission_limit = max(1, int(getattr(self.settings, "admission_limit", 200) or 200))
@@ -287,6 +314,11 @@ def _now_ms() -> int:
 
 def _prefixed(values: dict[str, int], prefix: str) -> dict[str, int]:
     return {f"{prefix}{key}": value for key, value in values.items()}
+
+
+def _sum_counts(left: dict[str, int], right: dict[str, int]) -> dict[str, int]:
+    keys = set(left) | set(right)
+    return {key: int(left.get(key, 0) or 0) + int(right.get(key, 0) or 0) for key in keys}
 
 
 def _provider_failure_for_row(

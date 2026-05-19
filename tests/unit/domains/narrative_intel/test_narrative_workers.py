@@ -295,6 +295,37 @@ def test_mention_semantics_worker_scopes_event_only_failures_to_matching_rows():
     asyncio.run(scenario())
 
 
+def test_mention_semantics_worker_prunes_old_pending_backlog_before_claiming():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            prune_result={"deleted_old_semantics": 2, "deleted_overflow_semantics": 1}
+        )
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(max_pending_source_age_seconds=3600, max_pending_semantics_per_target=5),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=BarrierNarrativeProvider(db),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert repo.prune_calls == [
+            {
+                "schema_version": "narrative_intel_v1",
+                "now_ms": 10_000,
+                "max_source_age_ms": 3_600_000,
+                "max_pending_per_target": 5,
+            }
+        ]
+        assert result.notes["prune_deleted_old_semantics"] == 2
+        assert result.notes["prune_deleted_overflow_semantics"] == 1
+        assert result.processed == 1
+
+    asyncio.run(scenario())
+
+
 def test_mention_semantics_worker_treats_unknown_provider_labels_as_retryable_failure():
     async def scenario():
         repo = FakeNarrativeRepository()
@@ -459,18 +490,21 @@ class FakeNarrativeRepository:
         due_mentions=None,
         due_admissions=None,
         pending_semantics=None,
+        prune_result=None,
     ):
         self.radar_rows = list(radar_rows or [])
         self.source_rows = list(source_rows or [])
         self.due_mentions = due_mentions
         self.due_admissions = due_admissions
         self.pending_semantics = dict(pending_semantics or {})
+        self.prune_result = dict(prune_result or {"deleted_old_semantics": 0, "deleted_overflow_semantics": 0})
         self.recorded_runs = []
         self.completed_batches = []
         self.upserted_admissions = []
         self.suppressed_frontiers = []
         self.scanned_admission_ids = []
         self.enqueued_source_event_ids = []
+        self.prune_calls = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
         return self.radar_rows[:limit]
@@ -521,6 +555,24 @@ class FakeNarrativeRepository:
 
     def pending_mention_semantics_count(self, *, target_type, target_id, schema_version, model_version=None):
         return int(self.pending_semantics.get((target_type, target_id), 0))
+
+    def prune_pending_mention_semantics_backlog(
+        self,
+        *,
+        schema_version,
+        now_ms,
+        max_source_age_ms=None,
+        max_pending_per_target=None,
+    ):
+        self.prune_calls.append(
+            {
+                "schema_version": schema_version,
+                "now_ms": now_ms,
+                "max_source_age_ms": max_source_age_ms,
+                "max_pending_per_target": max_pending_per_target,
+            }
+        )
+        return dict(self.prune_result)
 
     def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms):
         self.enqueued_source_event_ids.extend(str(row["event_id"]) for row in source_rows)

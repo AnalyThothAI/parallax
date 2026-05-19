@@ -57,6 +57,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.mention_semantics.provider_batch_size == 10
     assert settings.mention_semantics.max_semantic_rows_enqueued_per_cycle == 40
     assert settings.mention_semantics.max_pending_semantics_per_target == 80
+    assert settings.mention_semantics.max_pending_source_age_seconds == 43_200
     assert settings.mention_semantics.advisory_lock_key == 2026051801
     assert settings.mention_semantics.wakes_on == ("token_radar_updated", "resolution_updated")
     assert settings.token_discussion_digest.interval_seconds == 120
