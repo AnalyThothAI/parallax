@@ -137,7 +137,7 @@ def fake_wired_providers(
     settings,
     *,
     start_collector,
-    llm_gateway=None,
+    agent_execution_gateway=None,
     asset_market=None,
     upstream_client_factory=None,
 ):
@@ -158,6 +158,7 @@ def fake_wired_providers(
         pulse_lab=SimpleNamespace(decision_provider=FakePulseProvider(model=settings.pulse_agent_model)),
         watchlist_intel=SimpleNamespace(summary_provider=None),
         marketlane=SimpleNamespace(stock_quote_provider=None),
+        agent_execution_gateway=agent_execution_gateway,
     )
 
 
@@ -167,10 +168,10 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_clien
     monkeypatch.setattr(
         bootstrap_module,
         "wire_providers",
-        lambda settings, *, start_collector, llm_gateway=None, db_pool=None: fake_wired_providers(
+        lambda settings, *, start_collector, agent_execution_gateway=None, db_pool=None: fake_wired_providers(
             settings,
             start_collector=start_collector,
-            llm_gateway=llm_gateway,
+            agent_execution_gateway=agent_execution_gateway,
             asset_market=asset_market,
             upstream_client_factory=upstream_client_factory,
         ),

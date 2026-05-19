@@ -10,6 +10,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market as asset
 from gmgn_twitter_intel.app.runtime.provider_wiring import binance as binance_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import gmgn as gmgn_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import okx as okx_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import openai as openai_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring.gmgn import GmgnDexMarketProvider
 from gmgn_twitter_intel.app.runtime.provider_wiring.okx import (
     OkxDexDiscoveryProvider,
@@ -326,28 +327,71 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
     assert "cex close failed" in notes
 
 
-def test_openai_providers_receive_llm_gateway() -> None:
-    gateway = FakeGateway()
+def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
+    gateway = object()
     db_pool = object()
+    created: list[object] = []
+
+    def fake_social_client(**kwargs):
+        client = SimpleNamespace(provider="openai", model=kwargs["model"], _agent_gateway=kwargs["agent_gateway"])
+        created.append(client)
+        return client
+
+    def fake_narrative_client(**kwargs):
+        client = SimpleNamespace(
+            provider="openai",
+            model=kwargs["model"],
+            artifact_version_hash="artifact:narrative",
+            _agent_gateway=kwargs["agent_gateway"],
+        )
+        created.append(client)
+        return client
+
+    def fake_pulse_client(**kwargs):
+        client = SimpleNamespace(
+            provider="openai",
+            model=kwargs["model"],
+            timeout_seconds=120.0,
+            artifact_version_hash="artifact:pulse",
+            runtime_contract=SimpleNamespace(
+                stage_names=("evidence_debate", "decision_maker"),
+                tool_names_by_stage={"evidence_debate": (), "decision_maker": ()},
+                safety_net_enabled=True,
+            ),
+            _agent_gateway=kwargs["agent_gateway"],
+        )
+        created.append(client)
+        return client
+
+    def fake_watchlist_client(**kwargs):
+        client = SimpleNamespace(provider="openai", model=kwargs["model"], _agent_gateway=kwargs["agent_gateway"])
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(openai_wiring, "OpenAIAgentsSocialEventClient", fake_social_client)
+    monkeypatch.setattr(openai_wiring, "OpenAIAgentsNarrativeIntelClient", fake_narrative_client)
+    monkeypatch.setattr(openai_wiring, "OpenAIAgentsPulseDecisionClient", fake_pulse_client)
+    monkeypatch.setattr(openai_wiring, "OpenAIAgentsWatchlistSummaryClient", fake_watchlist_client)
 
     providers = providers_wiring.wire_providers(
         _settings_with_all_llm_models(),
         start_collector=True,
-        llm_gateway=gateway,
+        agent_execution_gateway=gateway,
         db_pool=db_pool,
     )
 
     assert providers.social_enrichment.event_enrichment is not None
-    assert providers.social_enrichment.event_enrichment._llm_gateway is gateway
+    assert providers.social_enrichment.event_enrichment._agent_gateway is gateway
     assert providers.pulse_lab.decision_provider is not None
     contract = providers.pulse_lab.decision_provider.runtime_contract
     assert contract.stage_names == ("evidence_debate", "decision_maker")
     assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
     assert contract.safety_net_enabled is True
     assert providers.narrative_intel.narrative_provider is not None
-    assert providers.narrative_intel.narrative_provider._client._llm_gateway is gateway
+    assert providers.narrative_intel.narrative_provider._client._agent_gateway is gateway
     assert providers.watchlist_intel.summary_provider is not None
-    assert providers.watchlist_intel.summary_provider._llm_gateway is gateway
+    assert providers.watchlist_intel.summary_provider._agent_gateway is gateway
+    assert all(getattr(client, "_agent_gateway", None) is gateway for client in created)
 
 
 def test_openai_pulse_provider_rejects_removed_tool_budget_config() -> None:
@@ -355,12 +399,12 @@ def test_openai_pulse_provider_rejects_removed_tool_budget_config() -> None:
     assert not hasattr(settings.workers.pulse_candidate, "investigator_max_tool_calls")
 
 
-def test_openai_provider_wiring_requires_llm_gateway() -> None:
-    with pytest.raises(RuntimeError, match="LLMGateway is required"):
+def test_openai_provider_wiring_requires_agent_execution_gateway() -> None:
+    with pytest.raises(RuntimeError, match="AgentExecutionGateway is required"):
         providers_wiring.wire_providers(
             _settings_with_all_llm_models(),
             start_collector=True,
-            llm_gateway=None,
+            agent_execution_gateway=None,
             db_pool=object(),
         )
 
@@ -370,7 +414,7 @@ def test_openai_pulse_provider_wiring_requires_db_pool() -> None:
         providers_wiring.wire_providers(
             _settings_with_all_llm_models(),
             start_collector=True,
-            llm_gateway=FakeGateway(),
+            agent_execution_gateway=object(),
             db_pool=None,
         )
 
@@ -673,16 +717,6 @@ class CloseCountingCexProvider:
 class CloseFailingCexProvider:
     def close(self) -> None:
         raise RuntimeError("cex close failed")
-
-
-class FakeGateway:
-    trace_export_enabled = True
-
-    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        return await coro_factory()
-
-    def openai_client(self, *, model, base_url, timeout_s):
-        return object()
 
 
 def _settings_with_okx_dex_credentials() -> Settings:

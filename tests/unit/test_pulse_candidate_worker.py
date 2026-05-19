@@ -754,7 +754,7 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
     wired = providers_wiring.wire_providers(
         settings,
         start_collector=True,
-        llm_gateway=FakeGateway(),
+        agent_execution_gateway=FakeAgentExecutionGateway(),
         db_pool=object(),
     )
     repos = FakeRepos()
@@ -920,14 +920,82 @@ class FakeDB:
         return FakeAdvisoryLock()
 
 
-class FakeGateway:
-    trace_export_enabled = True
-
-    async def run_with_limits(self, worker_name, stage, timeout_s, coro_factory):
-        return await coro_factory()
-
-    def openai_client(self, *, model, base_url, timeout_s):
-        return object()
+class FakeAgentExecutionGateway:
+    async def execute(self, stage):
+        allowed_refs = [
+            str(ref.get("ref_id"))
+            for ref in stage.input_payload.get("allowed_evidence_refs", [])
+            if isinstance(ref, dict) and ref.get("ref_id")
+        ]
+        supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1] or tuple(allowed_refs[:1])
+        risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
+        evidence_packet = stage.input_payload.get("evidence_packet") or {}
+        evidence_ids = evidence_packet.get("source_event_ids") or ["event-1"]
+        if stage.stage == "evidence_debate":
+            final_output = EvidenceDebateMemo(
+                bull_claims=(
+                    EvidenceClaim(
+                        claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                        evidence_refs=supporting_refs,
+                        stance="bull",
+                    ),
+                ),
+                bear_claims=(
+                    EvidenceClaim(
+                        claim="价格响应和流动性确认仍不足，热度可能快速降温。",
+                        evidence_refs=risk_refs or supporting_refs,
+                        stance="risk",
+                    ),
+                ),
+                rebuttal_claims=(),
+                data_gap_claims=(),
+                summary_zh="基于封闭证据包的多空综合完成。",
+                allowed_evidence_ref_ids=tuple(allowed_refs),
+            )
+        else:
+            final_output = FinalDecision(
+                route=stage.input_payload.get("route") or "meme",
+                recommendation="watchlist",
+                confidence=0.7,
+                abstain_reason=None,
+                summary_zh="因子快照显示信号值得继续观察。",
+                narrative_archetype="社交扩散",
+                narrative_thesis_zh="当前独立作者与社交热度同步抬升，链上质量尚可，适合继续观察扩散是否持续。",
+                bull_view=BullBearView(
+                    strength="moderate",
+                    thesis_zh="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
+                    supporting_event_ids=list(evidence_ids),
+                ),
+                bear_view=BullBearView(
+                    strength="weak",
+                    thesis_zh="价格响应和流动性确认仍不足，热度可能快速降温。",
+                    supporting_event_ids=list(evidence_ids),
+                ),
+                playbook=TradePlaybook(
+                    has_playbook=True,
+                    watch_signals=["关注独立作者是否继续扩散"],
+                    exit_triggers=["独立作者讨论快速降温"],
+                    monitoring_horizon="4h",
+                ),
+                invalidation_conditions=["独立作者数回落。"],
+                residual_risks=["价格响应仍可能变化。"],
+                evidence_event_ids=list(evidence_ids),
+                supporting_evidence_refs=supporting_refs,
+                risk_evidence_refs=risk_refs,
+            )
+        return SimpleNamespace(
+            final_output=final_output,
+            audit=SimpleNamespace(
+                trace_metadata={"stage": stage.stage},
+                input_hash=stage.input_hash,
+                output_hash=f"sha256:{stage.stage}",
+                safety_net={"safety_net_used": False, "safety_net_retries": 0},
+                usage={},
+                latency_ms=1,
+                parse_mode="strict",
+                error_class=None,
+            ),
+        )
 
 
 class FakeAdvisoryLock:
