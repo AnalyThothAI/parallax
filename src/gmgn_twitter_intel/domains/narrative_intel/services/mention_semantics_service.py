@@ -46,14 +46,31 @@ class MentionSemanticsService:
         result: MentionSemanticsBatchResult,
     ) -> MentionSemanticsBatchResult:
         allowed = {(str(row.get("event_id")), str(row.get("target_type")), str(row.get("target_id"))) for row in rows}
-        unknown = [
-            label.event_id
-            for label in result.labels
-            if (label.event_id, label.target_type, label.target_id) not in allowed
+        valid_labels = [
+            label for label in result.labels if (label.event_id, label.target_type, label.target_id) in allowed
         ]
-        if unknown:
-            raise ValueError(f"provider returned labels for unknown mentions: {', '.join(sorted(unknown))}")
-        return result
+        if len(valid_labels) == len(result.labels):
+            return result
+        unknown = sorted(
+            {
+                label.event_id
+                for label in result.labels
+                if (label.event_id, label.target_type, label.target_id) not in allowed
+            }
+        )
+        failures = list(result.failures)
+        failures.append({"error": f"provider_returned_unknown_labels:{','.join(unknown)}"})
+        audit = {
+            **dict(result.agent_run_audit or {}),
+            "unknown_label_count": len(result.labels) - len(valid_labels),
+        }
+        return result.model_copy(
+            update={
+                "labels": valid_labels,
+                "failures": failures,
+                "agent_run_audit": audit,
+            }
+        )
 
     def normalize_failures(
         self,

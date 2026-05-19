@@ -123,7 +123,7 @@ class MentionSemanticsWorker(WorkerBase):
                     "model": self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
                 },
             )
-        self.service.validate_batch_result(rows, result)
+        result = self.service.validate_batch_result(rows, result)
         finished_at_ms = _now_ms()
         labels = [label.model_dump(mode="json") for label in result.labels]
         labeled_keys = {

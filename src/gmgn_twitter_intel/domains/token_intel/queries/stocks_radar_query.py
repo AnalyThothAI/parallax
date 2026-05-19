@@ -19,8 +19,7 @@ class StocksRadarQuery:
                 e.event_id,
                 e.author_handle,
                 e.is_watched,
-                e.received_at_ms,
-                COALESCE(e.text_clean, e.text) AS event_text
+                e.received_at_ms
               FROM events e
               JOIN token_intents ti ON ti.event_id = e.event_id
               WHERE e.received_at_ms >= %s
@@ -36,8 +35,7 @@ class StocksRadarQuery:
                 recent_intents.event_id,
                 recent_intents.author_handle,
                 recent_intents.is_watched,
-                recent_intents.received_at_ms,
-                recent_intents.event_text
+                recent_intents.received_at_ms
               FROM recent_intents
               JOIN token_intent_resolutions tir
                 ON tir.intent_id = recent_intents.intent_id
@@ -49,25 +47,43 @@ class StocksRadarQuery:
               JOIN us_equity_symbols ues
                 ON ues.market_instrument_id = tir.target_id
                AND ues.status = 'active'
+            ),
+            ranked AS MATERIALIZED (
+              SELECT
+                target_id,
+                symbol,
+                security_name,
+                exchange,
+                instrument_type,
+                COUNT(*)::int AS mentions,
+                COUNT(DISTINCT NULLIF(LOWER(author_handle), ''))::int AS unique_authors,
+                SUM(CASE WHEN is_watched THEN 1 ELSE 0 END)::int AS watched_mentions,
+                MAX(received_at_ms)::bigint AS latest_seen_ms,
+                (ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_event_id,
+                (ARRAY_AGG(author_handle ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_author_handle,
+                ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC) AS source_event_ids
+              FROM stock_mentions
+              GROUP BY target_id, symbol, security_name, exchange, instrument_type
+              ORDER BY mentions DESC, watched_mentions DESC, latest_seen_ms DESC, symbol ASC
+              LIMIT %s
             )
             SELECT
-              target_id,
-              symbol,
-              security_name,
-              exchange,
-              instrument_type,
-              COUNT(*)::int AS mentions,
-              COUNT(DISTINCT NULLIF(LOWER(author_handle), ''))::int AS unique_authors,
-              SUM(CASE WHEN is_watched THEN 1 ELSE 0 END)::int AS watched_mentions,
-              MAX(received_at_ms)::bigint AS latest_seen_ms,
-              (ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_event_id,
-              (ARRAY_AGG(author_handle ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_author_handle,
-              (ARRAY_AGG(event_text ORDER BY received_at_ms DESC, event_id DESC))[1] AS latest_text,
-              ARRAY_AGG(event_id ORDER BY received_at_ms DESC, event_id DESC) AS source_event_ids
-            FROM stock_mentions
-            GROUP BY target_id, symbol, security_name, exchange, instrument_type
+              ranked.target_id,
+              ranked.symbol,
+              ranked.security_name,
+              ranked.exchange,
+              ranked.instrument_type,
+              ranked.mentions,
+              ranked.unique_authors,
+              ranked.watched_mentions,
+              ranked.latest_seen_ms,
+              ranked.latest_event_id,
+              ranked.latest_author_handle,
+              COALESCE(e.text_clean, e.text) AS latest_text,
+              ranked.source_event_ids
+            FROM ranked
+            LEFT JOIN events e ON e.event_id = ranked.latest_event_id
             ORDER BY mentions DESC, watched_mentions DESC, latest_seen_ms DESC, symbol ASC
-            LIMIT %s
             """,
             (
                 int(since_ms),

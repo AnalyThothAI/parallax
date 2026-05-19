@@ -14,6 +14,8 @@ def test_stock_rows_materializes_recent_intents_before_resolution_lookup() -> No
     assert "FROM events e" in sql
     assert "JOIN token_intents ti ON ti.event_id = e.event_id" in sql
     assert sql.index("WITH recent_intents AS MATERIALIZED") < sql.index("JOIN token_intent_resolutions tir")
+    assert "ranked AS MATERIALIZED" in sql
+    assert sql.index("ranked AS MATERIALIZED") < sql.index("COALESCE(e.text_clean, e.text) AS latest_text")
     assert conn.params == (1000, 2000, TOKEN_RADAR_RESOLVER_POLICY_VERSION, 25)
 
 

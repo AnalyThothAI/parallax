@@ -295,6 +295,31 @@ def test_mention_semantics_worker_scopes_event_only_failures_to_matching_rows():
     asyncio.run(scenario())
 
 
+def test_mention_semantics_worker_treats_unknown_provider_labels_as_retryable_failure():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=UnknownLabelNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        batch = repo.completed_batches[0]
+        assert result.processed == 0
+        assert result.failed == 1
+        assert batch["labels"] == []
+        assert batch["failures"][0]["event_id"] == "event-1"
+        assert "provider_returned_unknown_labels" in batch["failures"][0]["error"]
+        assert repo.recorded_runs[0]["status"] == "done"
+
+    asyncio.run(scenario())
+
+
 def test_token_discussion_digest_worker_records_provider_failure_without_poisoning_worker_loop():
     async def scenario():
         repo = FakeDigestRepository()
@@ -680,6 +705,49 @@ class PartialFailureNarrativeProvider:
             labels=[],
             failures=[{"event_id": "event-1", "error": "semantic_unavailable"}],
             raw_response={"ok": False},
+            agent_run_audit={"usage": {"input_tokens": 1}},
+        )
+
+    async def summarize_discussion(self, *, run_id, request):  # pragma: no cover - protocol stub
+        raise NotImplementedError
+
+    async def aclose(self):  # pragma: no cover - runtime-owned provider
+        return None
+
+
+class UnknownLabelNarrativeProvider:
+    provider = "test-provider"
+    model = "gpt-test"
+    artifact_version_hash = "artifact-test"
+
+    async def label_mentions(self, *, run_id, request):
+        return MentionSemanticsBatchResult(
+            run_id=run_id,
+            schema_version=request.schema_version,
+            prompt_version=request.prompt_version,
+            labels=[
+                MentionSemanticLabel(
+                    event_id="event-unknown",
+                    target_type="chain_token",
+                    target_id="solana:So111",
+                    trade_stance="bullish",
+                    attention_valence="celebratory",
+                    claim_type="price-action",
+                    evidence_type="scanner-alert",
+                    semantic_confidence=0.8,
+                    evidence_refs=[
+                        {
+                            "ref_id": "event:event-unknown",
+                            "kind": "event",
+                            "source_table": "events",
+                            "event_id": "event-unknown",
+                        }
+                    ],
+                    status="labeled",
+                )
+            ],
+            failures=[],
+            raw_response={"ok": True},
             agent_run_audit={"usage": {"input_tokens": 1}},
         )
 
