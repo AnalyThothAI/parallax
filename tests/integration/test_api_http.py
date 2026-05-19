@@ -876,6 +876,56 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     assert updated_summary.json()["data"]["unread_count"] == 1
 
 
+def test_api_marks_author_notifications_read(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        for suffix in ("1", "2"):
+            runtime.notifications.insert_notification(
+                dedup_key=f"activity:toly:{suffix}",
+                rule_id="watched_account_activity",
+                severity="info",
+                title="activity",
+                body="new post",
+                entity_type="account",
+                entity_key="account:toly",
+                author_handle="toly",
+                event_id=f"event-toly-{suffix}",
+                source_table="events",
+                source_id=f"event-toly-{suffix}",
+                occurrence_at_ms=1_700_000_000_000 + int(suffix),
+                payload={"event_id": f"event-toly-{suffix}"},
+                channels=["in_app"],
+            )
+        runtime.notifications.insert_notification(
+            dedup_key="activity:elon",
+            rule_id="watched_account_activity",
+            severity="info",
+            title="activity",
+            body="new post",
+            entity_type="account",
+            entity_key="account:elonmusk",
+            author_handle="elonmusk",
+            event_id="event-elon",
+            source_table="events",
+            source_id="event-elon",
+            occurrence_at_ms=1_700_000_000_010,
+            payload={"event_id": "event-elon"},
+            channels=["in_app"],
+        )
+
+        headers = {"Authorization": "Bearer secret"}
+        read = client.post("/api/notifications/author/toly/read", headers=headers)
+        summary = client.get("/api/notification-summary", headers=headers)
+
+    assert read.status_code == 200
+    assert read.json()["data"]["updated_count"] == 2
+    assert summary.status_code == 200
+    assert summary.json()["data"]["unread_count"] == 1
+    assert summary.json()["data"]["account_unread_counts"] == {"elonmusk": 1}
+
+
 def test_api_exposes_notification_delivery_audit(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

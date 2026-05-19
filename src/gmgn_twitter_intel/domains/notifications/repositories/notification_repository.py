@@ -401,6 +401,40 @@ class NotificationRepository:
                 )
         return len(rows)
 
+    def mark_author_read(
+        self,
+        *,
+        author_handle: str,
+        subscriber_key: str = "local",
+        read_at_ms: int | None = None,
+    ) -> int:
+        normalized_handle = _normalize_handle(author_handle)
+        if not normalized_handle:
+            return 0
+        now_ms = int(read_at_ms if read_at_ms is not None else _now_ms())
+        rows = self.conn.execute(
+            """
+            WITH unread AS (
+              SELECT n.notification_id
+              FROM notifications n
+              LEFT JOIN notification_reads r
+                ON r.notification_id = n.notification_id
+               AND r.subscriber_key = %s
+              WHERE r.read_at_ms IS NULL
+                AND n.author_handle = %s
+            )
+            INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
+            SELECT notification_id, %s, %s
+            FROM unread
+            ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
+              read_at_ms = excluded.read_at_ms
+            RETURNING notification_id
+            """,
+            (subscriber_key, normalized_handle, subscriber_key, now_ms),
+        ).fetchall()
+        self.conn.commit()
+        return len(rows)
+
     def enqueue_delivery(
         self,
         *,

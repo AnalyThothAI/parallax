@@ -1,6 +1,6 @@
 import type { WatchlistHandleOverviewData, WatchlistTimelineScope } from "@lib/types";
 import { RemoteState } from "@shared/ui/RemoteState";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useHandleOverviewQuery } from "../api/useHandleOverviewQuery";
 import { useHandleSummaryQuery } from "../api/useHandleSummaryQuery";
@@ -18,10 +18,16 @@ import "./watchlist.css";
 type WatchlistPageProps = {
   accountUnreadCounts?: Record<string, number> | null;
   handles: string[];
+  onMarkHandleRead?: (handle: string) => void;
   token: string;
 };
 
-export function WatchlistPage({ accountUnreadCounts, handles, token }: WatchlistPageProps) {
+export function WatchlistPage({
+  accountUnreadCounts,
+  handles,
+  onMarkHandleRead,
+  token,
+}: WatchlistPageProps) {
   const normalizedHandles = useMemo(
     () =>
       handles
@@ -44,6 +50,14 @@ export function WatchlistPage({ accountUnreadCounts, handles, token }: Watchlist
     token,
   });
   const overview = overviewQuery.data?.data ?? null;
+  const selectedUnreadCount = Number(accountUnreadCounts?.[selectedHandle ?? ""] ?? 0);
+
+  useEffect(() => {
+    if (!selectedHandle || selectedUnreadCount <= 0) {
+      return;
+    }
+    onMarkHandleRead?.(selectedHandle);
+  }, [onMarkHandleRead, selectedHandle, selectedUnreadCount]);
 
   if (!selectedHandle) {
     return (
@@ -62,7 +76,7 @@ export function WatchlistPage({ accountUnreadCounts, handles, token }: Watchlist
         />
         <WatchlistMetricStrip
           metrics={overview?.metrics ?? null}
-          unreadCount={Number(accountUnreadCounts?.[selectedHandle] ?? 0)}
+          unreadCount={selectedUnreadCount}
         />
         {overviewQuery.isError ? (
           <RemoteState.Error error={overviewQuery.error} onRetry={() => overviewQuery.refetch()} />

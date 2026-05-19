@@ -3,13 +3,14 @@ import type { NotificationItem, NotificationLivePayload, NotificationSummary } f
 import { queryKeys } from "@shared/query/queryKeys";
 import { signalLabPath, watchlistPath } from "@shared/routing/paths";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
   getNotifications,
   getNotificationSummary,
   markAllNotificationsRead,
+  markAuthorNotificationsRead,
   markNotificationRead,
 } from "./api/notifications";
 
@@ -59,6 +60,21 @@ export function useNotificationsController({
       void queryClient.invalidateQueries({ queryKey: queryKeys.notifications() });
     },
   });
+
+  const { mutate: markAuthorReadMutate } = useMutation({
+    mutationFn: (handle: string) => markAuthorNotificationsRead(token, handle),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationSummary() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications() });
+    },
+  });
+
+  const markAuthorRead = useCallback(
+    (handle: string) => {
+      markAuthorReadMutate(handle);
+    },
+    [markAuthorReadMutate],
+  );
 
   const latestSocketNotificationId = socketNotifications[0]?.notification.notification_id ?? null;
   useEffect(() => {
@@ -134,6 +150,7 @@ export function useNotificationsController({
     notificationSummary: summaryQuery.data?.data ?? fallbackSummary ?? null,
     notificationsLoading: notificationsQuery.isFetching && notifications.length === 0,
     markAllRead: () => markAllReadMutation.mutate(),
+    markAuthorRead,
     markRead: (notificationId: string) => markReadMutation.mutate(notificationId),
     openNotification,
     closeDrawer: () => setDrawerOpen(false),

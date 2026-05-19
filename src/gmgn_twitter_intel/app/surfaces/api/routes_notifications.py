@@ -150,6 +150,20 @@ def mark_all_notifications_read(request: Request) -> JSONResponse:
     return _json({"ok": True, "data": {"updated_count": updated_count}})
 
 
+@router.post(
+    "/notifications/author/{author_handle}/read",
+    response_model=api_schemas.ApiEnvelope[api_schemas.NotificationReadAllData],
+)
+def mark_author_notifications_read(request: Request, author_handle: str) -> JSONResponse:
+    runtime = _authenticated_runtime(request)
+    with runtime.repositories() as repos:
+        updated_count = repos.notifications.mark_author_read(
+            author_handle=author_handle,
+            subscriber_key="local",
+        )
+    return _json({"ok": True, "data": {"updated_count": updated_count}})
+
+
 def _notification_payload(row: dict[str, Any]) -> dict[str, Any]:
     payload = dict(row)
     payload["payload"] = _json_loads(payload.pop("payload_json", "{}"), {})

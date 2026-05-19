@@ -242,6 +242,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
                 notificationsController.notificationSummary?.account_unread_counts
               }
               handles={configuredWatchlistHandles}
+              onMarkHandleRead={notificationsController.markAuthorRead}
               token={token ?? ""}
             />
           }

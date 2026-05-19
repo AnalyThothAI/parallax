@@ -30,3 +30,13 @@ export function markAllNotificationsRead(
 ): Promise<ApiResponse<{ updated_count: number }>> {
   return postApi<{ updated_count: number }>("/api/notifications/read-all", { token });
 }
+
+export function markAuthorNotificationsRead(
+  token: string,
+  authorHandle: string,
+): Promise<ApiResponse<{ updated_count: number }>> {
+  return postApi<{ updated_count: number }>(
+    `/api/notifications/author/${encodeURIComponent(authorHandle)}/read`,
+    { token },
+  );
+}

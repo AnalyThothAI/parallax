@@ -143,9 +143,9 @@ def test_news_workers_have_defaults():
     settings = WorkersSettings(**payload)
 
     assert settings.news_fetch.interval_seconds == 60
-    assert settings.news_fetch.timeout_seconds == 30
-    assert settings.news_fetch.batch_size == 10
-    assert settings.news_fetch.advisory_lock_key == 2026051901
+    assert settings.news_fetch.timeout_seconds == 120
+    assert settings.news_fetch.batch_size == 5
+    assert settings.news_fetch.advisory_lock_key == 2026051905
     assert settings.news_item_process.advisory_lock_key == 2026051902
     assert settings.news_item_process.wakes_on == ("news_item_written",)
     assert settings.news_story_projection.advisory_lock_key == 2026051903
@@ -156,3 +156,14 @@ def test_news_workers_have_defaults():
         "news_item_processed",
         "news_story_updated",
     )
+
+
+def test_default_worker_advisory_lock_keys_are_unique():
+    settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+    keys = {
+        worker_name: getattr(worker_settings, "advisory_lock_key", None)
+        for worker_name, worker_settings in settings
+        if getattr(worker_settings, "advisory_lock_key", None) is not None
+    }
+
+    assert len(keys.values()) == len(set(keys.values()))

@@ -8,6 +8,7 @@ from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_reposi
 from gmgn_twitter_intel.platform.config.settings import (
     Settings,
     WorkersSettings,
+    default_config_yaml,
     default_workers_yaml,
     load_settings,
     write_default_config,
@@ -95,6 +96,56 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.workers.live_price_gateway.interval_seconds == 2
     assert not hasattr(settings.workers.live_price_gateway, "subscription_limit")
     assert settings.okx_dex_ws_configured is False
+
+
+def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
+    settings = Settings()
+    source_ids = {source.source_id for source in settings.news_intel.sources}
+
+    assert settings.news_intel.enabled is True
+    assert {
+        "coindesk",
+        "cointelegraph",
+        "theblock",
+        "decrypt",
+        "marketwatch-top-stories",
+        "wsj-markets",
+        "cnbc-economy",
+        "cnbc-markets",
+        "yahoo-finance",
+    }.issubset(source_ids)
+
+    enabled_source_ids = {source.source_id for source in settings.news_intel.sources if source.enabled}
+    assert {
+        "coindesk",
+        "cointelegraph",
+        "theblock",
+        "decrypt",
+        "marketwatch-top-stories",
+        "wsj-markets",
+        "cnbc-economy",
+        "cnbc-markets",
+        "yahoo-finance",
+    }.issubset(enabled_source_ids)
+
+
+def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
+    payload = yaml.safe_load(default_config_yaml())
+    news_intel = payload["news_intel"]
+
+    assert news_intel["enabled"] is True
+    assert len(news_intel["sources"]) >= 9
+    assert {source["source_id"] for source in news_intel["sources"] if source["enabled"]} >= {
+        "coindesk",
+        "cointelegraph",
+        "theblock",
+        "decrypt",
+        "marketwatch-top-stories",
+        "wsj-markets",
+        "cnbc-economy",
+        "cnbc-markets",
+        "yahoo-finance",
+    }
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):

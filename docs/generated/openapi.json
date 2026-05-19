@@ -383,6 +383,144 @@
         "title": "ApiEnvelope[NarrativeBacklogHealthData]",
         "type": "object"
       },
+      "ApiEnvelope_NewsData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[NewsData]",
+        "type": "object"
+      },
+      "ApiEnvelope_NewsObjectData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewsObjectData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[NewsObjectData]",
+        "type": "object"
+      },
+      "ApiEnvelope_NewsSourceStatusData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewsSourceStatusData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[NewsSourceStatusData]",
+        "type": "object"
+      },
       "ApiEnvelope_NotificationDeliveriesData_": {
         "additionalProperties": true,
         "properties": {
@@ -1612,6 +1750,53 @@
           }
         },
         "title": "NarrativeSemanticBacklog",
+        "type": "object"
+      },
+      "NewsData": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "title": "NewsData",
+        "type": "object"
+      },
+      "NewsObjectData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "NewsObjectData",
+        "type": "object"
+      },
+      "NewsSourceStatusData": {
+        "additionalProperties": true,
+        "properties": {
+          "sources": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "title": "NewsSourceStatusData",
         "type": "object"
       },
       "NotificationDeliveriesData": {
@@ -4511,6 +4696,256 @@
         ]
       }
     },
+    "/api/news": {
+      "get": {
+        "operationId": "list_news_api_news_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lane",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Lane",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Target",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NewsData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List News",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/news/facts/{fact_candidate_id}": {
+      "get": {
+        "operationId": "get_news_fact_api_news_facts__fact_candidate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NewsObjectData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get News Fact",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/news/items/{news_item_id}": {
+      "get": {
+        "operationId": "get_news_item_api_news_items__news_item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "title": "News Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NewsObjectData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get News Item",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/news/sources/status": {
+      "get": {
+        "operationId": "get_news_source_status_api_news_sources_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NewsSourceStatusData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get News Source Status",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/news/stories/{story_id}": {
+      "get": {
+        "operationId": "get_news_story_api_news_stories__story_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "story_id",
+            "required": true,
+            "schema": {
+              "title": "Story Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NewsObjectData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get News Story",
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/notification-deliveries": {
       "get": {
         "operationId": "notification_deliveries_api_notification_deliveries_get",
@@ -4649,6 +5084,48 @@
           }
         },
         "summary": "Notifications",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/notifications/author/{author_handle}/read": {
+      "post": {
+        "operationId": "mark_author_notifications_read_api_notifications_author__author_handle__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "author_handle",
+            "required": true,
+            "schema": {
+              "title": "Author Handle",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_NotificationReadAllData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Author Notifications Read",
         "tags": [
           "api"
         ]

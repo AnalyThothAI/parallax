@@ -166,12 +166,12 @@ def test_worker_factory_wires_notification_workers_with_shared_local_wake_waiter
     assert workers["notification_rule"].delivery_wake is workers["notification_delivery"].wake_waiter
 
 
-def test_worker_factory_wires_news_fetch_when_news_intel_enabled() -> None:
+def test_worker_factory_wires_news_fetch_by_default() -> None:
     db = FakeDB()
     providers = FakeProviders()
 
     workers = construct_workers(
-        settings=_settings(news_intel_enabled=True),
+        settings=_settings(),
         db=db,
         telemetry=object(),
         providers=providers,
@@ -236,22 +236,9 @@ def _settings(
     *,
     collector_enabled: bool = False,
     notifications_enabled: bool = False,
-    news_intel_enabled: bool = False,
 ) -> Settings:
     return Settings(
         ws_token="secret",
-        news_intel={
-            "enabled": news_intel_enabled,
-            "sources": [
-                {
-                    "source_id": "example-rss",
-                    "provider_type": "rss",
-                    "feed_url": "https://example.com/rss.xml",
-                    "source_domain": "example.com",
-                    "source_name": "Example",
-                }
-            ],
-        },
         notifications={
             "enabled": notifications_enabled,
             "channels": {

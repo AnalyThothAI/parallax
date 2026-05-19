@@ -21,6 +21,118 @@ NOTIFICATION_RULE_IDS = (
     "quality_token_5m",
     "signal_pulse_candidate",
 )
+DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
+    {
+        "source_id": "coindesk",
+        "provider_type": "rss",
+        "feed_url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "source_domain": "coindesk.com",
+        "source_name": "CoinDesk",
+        "source_role": "specialist_media",
+        "trust_tier": "high",
+        "enabled": True,
+        "refresh_interval_seconds": 300,
+    },
+    {
+        "source_id": "cointelegraph",
+        "provider_type": "rss",
+        "feed_url": "https://cointelegraph.com/rss",
+        "source_domain": "cointelegraph.com",
+        "source_name": "CoinTelegraph",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 300,
+    },
+    {
+        "source_id": "theblock",
+        "provider_type": "rss",
+        "feed_url": "https://www.theblock.co/rss.xml",
+        "source_domain": "theblock.co",
+        "source_name": "The Block",
+        "source_role": "specialist_media",
+        "trust_tier": "high",
+        "enabled": True,
+        "refresh_interval_seconds": 300,
+    },
+    {
+        "source_id": "bitcoinmagazine",
+        "provider_type": "rss",
+        "feed_url": "https://bitcoinmagazine.com/feed",
+        "source_domain": "bitcoinmagazine.com",
+        "source_name": "Bitcoin Magazine",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 600,
+    },
+    {
+        "source_id": "decrypt",
+        "provider_type": "rss",
+        "feed_url": "https://decrypt.co/feed",
+        "source_domain": "decrypt.co",
+        "source_name": "Decrypt",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 300,
+    },
+    {
+        "source_id": "marketwatch-top-stories",
+        "provider_type": "rss",
+        "feed_url": "http://feeds.marketwatch.com/marketwatch/topstories/",
+        "source_domain": "marketwatch.com",
+        "source_name": "MarketWatch Top Stories",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 600,
+    },
+    {
+        "source_id": "wsj-markets",
+        "provider_type": "rss",
+        "feed_url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+        "source_domain": "wsj.com",
+        "source_name": "WSJ Markets",
+        "source_role": "specialist_media",
+        "trust_tier": "high",
+        "enabled": True,
+        "refresh_interval_seconds": 600,
+    },
+    {
+        "source_id": "cnbc-economy",
+        "provider_type": "rss",
+        "feed_url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258",
+        "source_domain": "cnbc.com",
+        "source_name": "CNBC Economy",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 600,
+    },
+    {
+        "source_id": "cnbc-markets",
+        "provider_type": "rss",
+        "feed_url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069",
+        "source_domain": "cnbc.com",
+        "source_name": "CNBC Markets",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 600,
+    },
+    {
+        "source_id": "yahoo-finance",
+        "provider_type": "rss",
+        "feed_url": "https://finance.yahoo.com/news/rssindex",
+        "source_domain": "finance.yahoo.com",
+        "source_name": "Yahoo Finance",
+        "source_role": "aggregator",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 600,
+    },
+)
 
 
 class ApiConfig(BaseModel):
@@ -395,11 +507,15 @@ class NewsSourceSettings(BaseModel):
         return normalized
 
 
+def _default_news_source_settings() -> tuple[NewsSourceSettings, ...]:
+    return tuple(NewsSourceSettings(**source) for source in DEFAULT_NEWS_SOURCE_CONFIGS)
+
+
 class NewsIntelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
-    sources: tuple[NewsSourceSettings, ...] = Field(default_factory=tuple)
+    enabled: bool = True
+    sources: tuple[NewsSourceSettings, ...] = Field(default_factory=_default_news_source_settings)
 
     @field_validator("sources", mode="before")
     @classmethod
@@ -658,9 +774,9 @@ class NotificationDeliveryWorkerSettings(PerWorkerSettings):
 
 class NewsFetchWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
-    timeout_seconds: float = Field(default=30.0, ge=0)
-    batch_size: int = Field(default=10, ge=1)
-    advisory_lock_key: int = 2026051901
+    timeout_seconds: float = Field(default=120.0, ge=0)
+    batch_size: int = Field(default=5, ge=1)
+    advisory_lock_key: int = 2026051905
 
 
 class NewsItemProcessWorkerSettings(PerWorkerSettings):
@@ -1121,9 +1237,7 @@ providers:
     cex_base_url: "https://www.binance.com"
     timeout_seconds: 15
 
-news_intel:
-  enabled: false
-  sources: []
+{_default_news_intel_yaml()}
 
 upstream:
   chains: ["sol", "eth", "base", "bsc"]
@@ -1166,6 +1280,18 @@ notifications:
       cooldown_seconds: 0
   channels: {{}}
 """
+
+
+def _default_news_intel_yaml() -> str:
+    return yaml.safe_dump(
+        {
+            "news_intel": {
+                "enabled": True,
+                "sources": [dict(source) for source in DEFAULT_NEWS_SOURCE_CONFIGS],
+            }
+        },
+        sort_keys=False,
+    ).rstrip()
 
 
 def default_workers_yaml() -> str:
@@ -1298,9 +1424,9 @@ token_discussion_digest:
 news_fetch:
   enabled: true
   interval_seconds: 60.0
-  timeout_seconds: 30.0
-  batch_size: 10
-  advisory_lock_key: 2026051901
+  timeout_seconds: 120.0
+  batch_size: 5
+  advisory_lock_key: 2026051905
 news_item_process:
   enabled: true
   advisory_lock_key: 2026051902

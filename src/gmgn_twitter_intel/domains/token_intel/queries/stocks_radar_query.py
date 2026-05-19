@@ -10,25 +10,37 @@ class StocksRadarQuery:
         self.conn = conn
 
     def stock_rows(self, *, since_ms: int, now_ms: int, scope: str, limit: int) -> list[dict[str, Any]]:
-        watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
+        watched_clause = "AND e.is_watched = true" if scope == "matched" else ""
         rows = self.conn.execute(
             f"""
-            WITH stock_mentions AS MATERIALIZED (
+            WITH recent_intents AS MATERIALIZED (
+              SELECT
+                ti.intent_id,
+                e.event_id,
+                e.author_handle,
+                e.is_watched,
+                e.received_at_ms,
+                COALESCE(e.text_clean, e.text) AS event_text
+              FROM events e
+              JOIN token_intents ti ON ti.event_id = e.event_id
+              WHERE e.received_at_ms >= %s
+                AND e.received_at_ms <= %s {watched_clause}
+            ),
+            stock_mentions AS MATERIALIZED (
               SELECT
                 tir.target_id,
                 ues.symbol,
                 ues.security_name,
                 ues.exchange,
                 ues.instrument_type,
-                events.event_id,
-                events.author_handle,
-                events.is_watched,
-                events.received_at_ms,
-                COALESCE(events.text_clean, events.text) AS event_text
-              FROM events
-              JOIN token_intents ti ON ti.event_id = events.event_id
+                recent_intents.event_id,
+                recent_intents.author_handle,
+                recent_intents.is_watched,
+                recent_intents.received_at_ms,
+                recent_intents.event_text
+              FROM recent_intents
               JOIN token_intent_resolutions tir
-                ON tir.intent_id = ti.intent_id
+                ON tir.intent_id = recent_intents.intent_id
                AND tir.is_current = true
                AND tir.resolver_policy_version = %s
                AND tir.target_type = 'MarketInstrument'
@@ -37,8 +49,6 @@ class StocksRadarQuery:
               JOIN us_equity_symbols ues
                 ON ues.market_instrument_id = tir.target_id
                AND ues.status = 'active'
-              WHERE events.received_at_ms >= %s
-                AND events.received_at_ms <= %s {watched_clause}
             )
             SELECT
               target_id,
@@ -60,9 +70,9 @@ class StocksRadarQuery:
             LIMIT %s
             """,
             (
-                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
                 int(since_ms),
                 int(now_ms),
+                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
                 int(limit),
             ),
         ).fetchall()

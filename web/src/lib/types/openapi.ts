@@ -89,6 +89,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List News */
+        get: operations["list_news_api_news_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/facts/{fact_candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get News Fact */
+        get: operations["get_news_fact_api_news_facts__fact_candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/items/{news_item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get News Item */
+        get: operations["get_news_item_api_news_items__news_item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/sources/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get News Source Status */
+        get: operations["get_news_source_status_api_news_sources_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/stories/{story_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get News Story */
+        get: operations["get_news_story_api_news_stories__story_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notification-deliveries": {
         parameters: {
             query?: never;
@@ -134,6 +219,23 @@ export interface paths {
         get: operations["notifications_api_notifications_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/author/{author_handle}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Author Notifications Read */
+        post: operations["mark_author_notifications_read_api_notifications_author__author_handle__read_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -645,6 +747,42 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ApiEnvelope[NewsData] */
+        ApiEnvelope_NewsData_: {
+            data?: components["schemas"]["NewsData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[NewsObjectData] */
+        ApiEnvelope_NewsObjectData_: {
+            data?: components["schemas"]["NewsObjectData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[NewsSourceStatusData] */
+        ApiEnvelope_NewsSourceStatusData_: {
+            data?: components["schemas"]["NewsSourceStatusData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ApiEnvelope[NotificationDeliveriesData] */
         ApiEnvelope_NotificationDeliveriesData_: {
             data?: components["schemas"]["NotificationDeliveriesData"] | null;
@@ -1052,6 +1190,30 @@ export interface components {
              * @default 0
              */
             unavailable: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NewsData */
+        NewsData: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NewsObjectData */
+        NewsObjectData: {
+            [key: string]: unknown;
+        };
+        /** NewsSourceStatusData */
+        NewsSourceStatusData: {
+            /** Sources */
+            sources?: {
+                [key: string]: unknown;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -2086,6 +2248,156 @@ export interface operations {
             };
         };
     };
+    list_news_api_news_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                status?: string;
+                lane?: string;
+                source?: string;
+                target?: string;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NewsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_news_fact_api_news_facts__fact_candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NewsObjectData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_news_item_api_news_items__news_item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                news_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NewsObjectData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_news_source_status_api_news_sources_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NewsSourceStatusData_"];
+                };
+            };
+        };
+    };
+    get_news_story_api_news_stories__story_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                story_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NewsObjectData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     notification_deliveries_api_notification_deliveries_get: {
         parameters: {
             query?: {
@@ -2158,6 +2470,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_NotificationsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_author_notifications_read_api_notifications_author__author_handle__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                author_handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_NotificationReadAllData_"];
                 };
             };
             /** @description Validation Error */
