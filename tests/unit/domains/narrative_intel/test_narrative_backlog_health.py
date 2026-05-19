@@ -27,10 +27,15 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
     assert health["digest_status_counts"] == {"pending": 7, "ready": 3}
     assert health["digest_reason_counts"] == {"semantic_labeling_pending": 7}
     assert health["pending_digest_count"] == 7
+    assert any("queued_at_ms" in statement for statement in query.conn.statements)
 
 
 class FakeConn:
+    def __init__(self):
+        self.statements = []
+
     def execute(self, sql, params=()):
+        self.statements.append(sql)
         if "FROM narrative_admissions" in sql:
             return FakeCursor(
                 [

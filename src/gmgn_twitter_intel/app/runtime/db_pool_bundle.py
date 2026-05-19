@@ -155,12 +155,13 @@ class DBPoolBundle:
     def acquire_advisory_lock_connection(self, worker_name: str, key: int) -> AdvisoryLockConnection:
         pool = self.lock_pool if self.lock_pool is not None else self.worker_pool
         pool_name = "worker_lock" if self.lock_pool is not None else "worker"
+        application_prefix = "worker_lock" if self.lock_pool is not None else "worker"
         reset_application_name = "gmgn_worker_lock" if self.lock_pool is not None else "gmgn_worker"
         started = time.perf_counter()
         conn = pool.getconn()
         self._record_pool_wait(pool_name, (time.perf_counter() - started) * 1000)
         try:
-            _set_config(conn, "application_name", f"worker:{_normalize_worker_name(worker_name)}")
+            _set_config(conn, "application_name", f"{application_prefix}:{_normalize_worker_name(worker_name)}")
             row = conn.execute("SELECT pg_try_advisory_lock(%s) AS locked", (int(key),)).fetchone()
             if not row or not bool(row["locked"]):
                 raise RuntimeError("advisory_lock_unavailable")

@@ -64,14 +64,19 @@ class NarrativeBacklogHealthQuery:
               COUNT(*) FILTER (WHERE status = 'retryable_error') AS retryable,
               COUNT(*) FILTER (WHERE status = 'stale') AS stale,
               COUNT(*) FILTER (WHERE status = 'semantic_unavailable') AS unavailable,
-              MIN(next_retry_at_ms) FILTER (
-                WHERE status IN ('queued', 'retryable_error', 'stale')
-                  AND next_retry_at_ms <= %s
+              MIN(
+                CASE
+                  WHEN status = 'queued' AND next_retry_at_ms <= %s THEN
+                    COALESCE(NULLIF(queued_at_ms, 0), source_received_at_ms, next_retry_at_ms)
+                  WHEN status IN ('retryable_error', 'stale') AND next_retry_at_ms <= %s THEN
+                    next_retry_at_ms
+                  ELSE NULL
+                END
               ) AS oldest_due_at_ms
             FROM token_mention_semantics
             WHERE schema_version = %s
             """,
-            (int(now_ms), schema_version),
+            (int(now_ms), int(now_ms), schema_version),
         ).fetchone()
         data = _row(row)
         queued = _int(data.get("queued"))

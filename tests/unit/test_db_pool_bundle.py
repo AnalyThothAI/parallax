@@ -213,7 +213,7 @@ def test_acquire_advisory_lock_connection_uses_lock_pool_when_present() -> None:
 
     assert worker_pool.conn.executed == []
     assert lock_pool.conn.executed[:2] == [
-        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:token_radar_projection")),
+        ("SELECT set_config(%s, %s, false)", ("application_name", "worker_lock:token_radar_projection")),
         ("SELECT pg_try_advisory_lock(%s) AS locked", (2026051501,)),
     ]
     locked.release()
