@@ -34,6 +34,22 @@ def _imported_modules(tree: ast.AST) -> set[str]:
     return modules
 
 
+def _import_aliases(tree: ast.AST) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                local_name = alias.asname or alias.name.split(".", maxsplit=1)[0]
+                aliases[local_name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                local_name = alias.asname or alias.name
+                aliases[local_name] = f"{node.module}.{alias.name}"
+    return aliases
+
+
 def _call_name(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -42,17 +58,41 @@ def _call_name(node: ast.AST) -> str:
     return ""
 
 
+def _call_leaf(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _resolved_call_name(node: ast.AST, aliases: dict[str, str]) -> str:
+    name = _call_name(node)
+    base, separator, rest = name.partition(".")
+    if base not in aliases:
+        return name
+    return f"{aliases[base]}{separator}{rest}" if separator else aliases[base]
+
+
 def test_openai_agents_sdk_execution_only_in_gateway() -> None:
     violations: list[str] = []
     for path in _py_files(OPENAI_AGENTS):
         if path in GATEWAY_FILES:
             continue
         tree = _parse(path)
+        aliases = _import_aliases(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = _call_name(node.func)
-                if name in {"Agent", "RunConfig"} or name.endswith(".run") or name == "Runner.run":
-                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno} calls {name}")
+                leaf = _call_leaf(node.func)
+                resolved_name = _resolved_call_name(node.func, aliases)
+                if (
+                    leaf in {"Agent", "RunConfig"}
+                    or resolved_name in {"agents.Agent", "agents.RunConfig", "agents.run.RunConfig"}
+                    or resolved_name.endswith(".Runner.run")
+                    or name.endswith(".run")
+                ):
+                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno} calls {resolved_name}")
 
     assert violations == []
 
@@ -66,9 +106,14 @@ def test_async_openai_constructed_only_by_llm_gateway_or_safety_net() -> None:
     for path in _py_files(SRC):
         if path in allowlist:
             continue
-        for node in ast.walk(_parse(path)):
-            if isinstance(node, ast.Call) and _call_name(node.func) == "AsyncOpenAI":
-                violations.append(f"{path.relative_to(ROOT)}:{node.lineno} constructs AsyncOpenAI")
+        tree = _parse(path)
+        aliases = _import_aliases(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            resolved_name = _resolved_call_name(node.func, aliases)
+            if _call_leaf(node.func) == "AsyncOpenAI" or resolved_name == "openai.AsyncOpenAI":
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno} constructs {resolved_name}")
 
     assert violations == []
 
