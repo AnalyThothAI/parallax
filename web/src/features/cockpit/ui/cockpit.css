@@ -912,7 +912,7 @@
   display: grid;
   grid-template-columns:
     var(--cockpit-rail-width) minmax(360px, 1fr) clamp(172px, 15vw, 240px)
-    32px 32px;
+    68px 32px 32px;
   gap: 10px;
   align-items: center;
   min-height: var(--cockpit-topbar-height);
@@ -1003,6 +1003,38 @@
   font-size: 10px;
 }
 
+.topbar-ops-button {
+  grid-column: 4;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  width: 68px;
+  height: 32px;
+  border: 1px solid var(--info-line);
+  border-radius: 6px;
+  color: var(--info-ink);
+  background: var(--info-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.topbar-ops-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.topbar-ops-button:hover,
+.topbar-ops-button.active {
+  border-color: var(--opportunity-line);
+  color: var(--opportunity-ink);
+  background: var(--opportunity-soft);
+}
+
 .top-stats {
   grid-column: 2;
   grid-row: 1;
@@ -1054,12 +1086,12 @@
 }
 
 .topbar > .notification-bell {
-  grid-column: 4;
+  grid-column: 5;
   grid-row: 1;
 }
 
 .topbar-refresh-button {
-  grid-column: 5;
+  grid-column: 6;
   grid-row: 1;
 }
 
@@ -1172,7 +1204,7 @@
   }
 
   .topbar {
-    grid-template-columns: minmax(0, 1fr) clamp(150px, 24vw, 210px) 32px 32px;
+    grid-template-columns: minmax(0, 1fr) clamp(150px, 24vw, 210px) 42px 32px 32px;
     padding: 0 8px;
   }
 
@@ -1190,12 +1222,21 @@
     height: 32px;
   }
 
-  .topbar > .notification-bell {
+  .topbar-ops-button {
     grid-column: 3;
+    width: 42px;
+  }
+
+  .topbar-ops-button span {
+    display: none;
+  }
+
+  .topbar > .notification-bell {
+    grid-column: 4;
   }
 
   .topbar-refresh-button {
-    grid-column: 4;
+    grid-column: 5;
   }
 
   .cockpit-grid {
@@ -1227,6 +1268,17 @@
   .searchbar {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+
+  .topbar-ops-button {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    width: 68px;
+  }
+
+  .topbar-ops-button span {
+    display: inline;
   }
 
   .topbar > .notification-bell {

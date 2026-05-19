@@ -1,11 +1,12 @@
 import { NotificationBell } from "@features/notifications";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { NotificationSummary, StatusData, WindowKey } from "@lib/types";
+import { opsPath } from "@shared/routing/paths";
 import { IconButton } from "@shared/ui/IconButton";
 import clsx from "clsx";
-import { Clock3, Home, RefreshCw, Search, Wifi, Zap } from "lucide-react";
+import { Clock3, Home, RefreshCw, Search, ServerCog, Wifi, Zap } from "lucide-react";
 import { useState, type RefObject } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMatch, useNavigate } from "react-router-dom";
 
 export type CockpitTopbarProps = {
   search: {
@@ -44,6 +45,7 @@ export function CockpitTopbar({
   onRefresh,
 }: CockpitTopbarProps) {
   const navigate = useNavigate();
+  const opsRouteMatch = useMatch("/ops/*");
   const [searchDraft, setSearchDraft] = useState("");
   const matchedTwitterEvents = numberDetail(
     status.status?.workers.collector?.details?.matched_twitter_events,
@@ -117,6 +119,18 @@ export function CockpitTopbar({
           risk <b>{compactNumber(stats.signalLabSummaryRisk)}</b>
         </span>
       </div>
+
+      <button
+        aria-current={opsRouteMatch ? "page" : undefined}
+        aria-label="Open ops diagnostics"
+        className={clsx("topbar-ops-button", opsRouteMatch && "active")}
+        title="Open ops diagnostics"
+        type="button"
+        onClick={() => navigate(opsPath())}
+      >
+        <ServerCog aria-hidden />
+        <span>Ops</span>
+      </button>
 
       <NotificationBell
         open={notifications.drawerOpen}
