@@ -29,6 +29,22 @@ function cleanGap(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
-  const cleaned = value.trim().replaceAll("_", " ");
+  const reason = value.trim();
+  const translated = REASON_LABELS[reason];
+  if (translated) {
+    return translated;
+  }
+  const cleaned = reason.replaceAll("_", " ");
   return cleaned ? cleaned : null;
 }
+
+const REASON_LABELS: Record<string, string> = {
+  digest_not_ready: "叙事待刷新",
+  low_independent_author_count: "独立作者不足",
+  low_semantic_coverage: "有效语义覆盖不足",
+  low_source_volume: "叙事样本不足",
+  not_admitted: "叙事待入队",
+  semantic_labeling_pending: "叙事分析中",
+  semantic_provider_backpressure: "叙事分析中",
+  semantic_provider_unavailable: "叙事分析暂不可用",
+};

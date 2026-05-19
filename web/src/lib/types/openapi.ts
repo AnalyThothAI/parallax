@@ -945,8 +945,42 @@ export interface components {
         LooseData: {
             [key: string]: unknown;
         };
+        /** NarrativeAdmissionHealth */
+        NarrativeAdmissionHealth: {
+            /**
+             * Current Admissions
+             * @default 0
+             */
+            current_admissions: number;
+            /**
+             * Current Independent Authors
+             * @default 0
+             */
+            current_independent_authors: number;
+            /**
+             * Current Source Events
+             * @default 0
+             */
+            current_source_events: number;
+            /**
+             * Suppressed Admissions
+             * @default 0
+             */
+            suppressed_admissions: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** NarrativeBacklogHealthData */
         NarrativeBacklogHealthData: {
+            admissions?: components["schemas"]["NarrativeAdmissionHealth"];
+            /** Digest Reason Counts */
+            digest_reason_counts?: {
+                [key: string]: number;
+            };
+            /** Digest Status Counts */
+            digest_status_counts?: {
+                [key: string]: number;
+            };
             /** Now Ms */
             now_ms?: number | null;
             /**

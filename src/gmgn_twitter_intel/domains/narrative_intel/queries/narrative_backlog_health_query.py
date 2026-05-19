@@ -25,9 +25,35 @@ class NarrativeBacklogHealthQuery:
             "schema_version": schema_version,
             "now_ms": int(now_ms),
             "since_hours": since_hours,
+            "admissions": self._admission_health(schema_version=schema_version),
             "semantic_backlog": backlog,
             "recent_runs": self._recent_runs(since_ms=since_ms, schema_version=schema_version),
+            "digest_status_counts": self._digest_status_counts(schema_version=schema_version),
+            "digest_reason_counts": self._digest_reason_counts(schema_version=schema_version),
             "pending_digest_count": self._pending_digest_count(schema_version=schema_version),
+        }
+
+    def _admission_health(self, *, schema_version: str) -> dict[str, int]:
+        row = self.conn.execute(
+            """
+            SELECT
+              COUNT(*) FILTER (WHERE status = 'admitted') AS current_admissions,
+              COUNT(*) FILTER (WHERE status = 'suppressed') AS suppressed_admissions,
+              COALESCE(SUM(source_event_count) FILTER (WHERE status = 'admitted'), 0) AS current_source_events,
+              COALESCE(
+                SUM(independent_author_count) FILTER (WHERE status = 'admitted'), 0
+              ) AS current_independent_authors
+            FROM narrative_admissions
+            WHERE schema_version = %s
+            """,
+            (schema_version,),
+        ).fetchone()
+        data = _row(row)
+        return {
+            "current_admissions": _int(data.get("current_admissions")),
+            "suppressed_admissions": _int(data.get("suppressed_admissions")),
+            "current_source_events": _int(data.get("current_source_events")),
+            "current_independent_authors": _int(data.get("current_independent_authors")),
         }
 
     def _semantic_backlog(self, *, now_ms: int, schema_version: str) -> dict[str, int | None]:
@@ -113,6 +139,36 @@ class NarrativeBacklogHealthQuery:
             (schema_version,),
         ).fetchone()
         return _int(_row(row).get("pending_digest_count"))
+
+    def _digest_status_counts(self, *, schema_version: str) -> dict[str, int]:
+        rows = self.conn.execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM token_discussion_digests
+            WHERE schema_version = %s
+              AND is_current = true
+            GROUP BY status
+            """,
+            (schema_version,),
+        ).fetchall()
+        return {str(row["status"]): _int(row.get("count")) for row in rows}
+
+    def _digest_reason_counts(self, *, schema_version: str) -> dict[str, int]:
+        rows = self.conn.execute(
+            """
+            SELECT gap->>'reason' AS reason, COUNT(*) AS count
+            FROM token_discussion_digests
+            CROSS JOIN LATERAL jsonb_array_elements(data_gaps_json) AS gap
+            WHERE schema_version = %s
+              AND is_current = true
+              AND gap->>'reason' IS NOT NULL
+            GROUP BY gap->>'reason'
+            ORDER BY count DESC, reason ASC
+            LIMIT 20
+            """,
+            (schema_version,),
+        ).fetchall()
+        return {str(row["reason"]): _int(row.get("count")) for row in rows if row.get("reason")}
 
 
 def _row(row: Any) -> dict[str, Any]:

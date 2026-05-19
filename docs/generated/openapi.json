@@ -1456,9 +1456,53 @@
         "title": "LooseData",
         "type": "object"
       },
+      "NarrativeAdmissionHealth": {
+        "additionalProperties": true,
+        "properties": {
+          "current_admissions": {
+            "default": 0,
+            "title": "Current Admissions",
+            "type": "integer"
+          },
+          "current_independent_authors": {
+            "default": 0,
+            "title": "Current Independent Authors",
+            "type": "integer"
+          },
+          "current_source_events": {
+            "default": 0,
+            "title": "Current Source Events",
+            "type": "integer"
+          },
+          "suppressed_admissions": {
+            "default": 0,
+            "title": "Suppressed Admissions",
+            "type": "integer"
+          }
+        },
+        "title": "NarrativeAdmissionHealth",
+        "type": "object"
+      },
       "NarrativeBacklogHealthData": {
         "additionalProperties": true,
         "properties": {
+          "admissions": {
+            "$ref": "#/components/schemas/NarrativeAdmissionHealth"
+          },
+          "digest_reason_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Digest Reason Counts",
+            "type": "object"
+          },
+          "digest_status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Digest Status Counts",
+            "type": "object"
+          },
           "now_ms": {
             "anyOf": [
               {

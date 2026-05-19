@@ -1,10 +1,14 @@
 import asyncio
+import inspect
 from contextlib import contextmanager
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import (
     MentionSemanticsWorker,
+)
+from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import (
+    NarrativeAdmissionWorker,
 )
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
@@ -16,8 +20,17 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
 
 
 def test_workers_are_workerbase_subclasses():
+    assert issubclass(NarrativeAdmissionWorker, WorkerBase)
     assert issubclass(MentionSemanticsWorker, WorkerBase)
     assert issubclass(TokenDiscussionDigestWorker, WorkerBase)
+
+
+def test_mention_semantics_worker_does_not_own_admission_reconciliation():
+    source = inspect.getsource(MentionSemanticsWorker)
+
+    assert "upsert_admissions_from_radar_rows" not in source
+    assert "admitted_radar_rows" not in source
+    assert "source_mentions_for_admission" not in source
 
 
 def test_mention_semantics_worker_calls_provider_outside_db_session():
@@ -44,7 +57,7 @@ def test_mention_semantics_worker_calls_provider_outside_db_session():
     asyncio.run(scenario())
 
 
-def test_mention_semantics_worker_reconciles_radar_admission_before_labeling():
+def test_narrative_admission_worker_rebuilds_current_frontier_source_sets():
     async def scenario():
         repo = FakeNarrativeRepository(
             radar_rows=[
@@ -55,56 +68,58 @@ def test_mention_semantics_worker_reconciles_radar_admission_before_labeling():
                     "rank_score": 90,
                     "source_event_ids_json": ["event-1"],
                     "computed_at_ms": 10_000,
+                    "source_max_received_at_ms": 9_000,
                 }
             ],
-            due_mentions=[],
-            source_mentions=[
+            source_rows=[
                 {
                     "event_id": "event-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
                     "text_clean": "SOL breakout",
                     "source_received_at_ms": 9_000,
+                    "author_handle": "toly",
                 }
             ],
         )
         db = FakeDB(repo)
-        provider = BarrierNarrativeProvider(db)
-        worker = MentionSemanticsWorker(
-            name="mention_semantics",
-            settings=fake_settings(),
+        worker = NarrativeAdmissionWorker(
+            name="narrative_admission",
+            settings=fake_admission_settings(),
             db=db,
             telemetry=SimpleNamespace(),
-            provider=provider,
         )
 
         result = await worker.run_once(now_ms=10_000)
 
         assert result.processed == 1
-        assert result.notes["admission_radar_rows"] == 1
-        assert result.notes["admission_admissions_upserted"] == 1
-        assert result.notes["admission_semantic_inserted"] == 1
-        assert repo.scanned_admission_ids == ["admission-1"]
-        assert repo.completed_batches[0]["labels"][0]["event_id"] == "event-1"
+        assert result.notes["frontier_rows"] == 1
+        assert result.notes["source_events"] == 1
+        assert repo.upserted_admissions[0]["source_event_ids"] == ["event-1"]
+        assert repo.upserted_admissions[0]["projection_computed_at_ms"] == 10_000
+        assert repo.upserted_admissions[0]["source_window_end_ms"] == 10_000
+        assert repo.upserted_admissions[0]["source_max_received_at_ms"] == 9_000
+        assert repo.upserted_admissions[0]["source_event_count"] == 1
+        assert repo.upserted_admissions[0]["independent_author_count"] == 1
 
     asyncio.run(scenario())
 
 
-def test_mention_semantics_worker_bounds_semantic_admission_per_cycle_and_target():
+def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_sets():
     async def scenario():
         repo = FakeNarrativeRepository(
-            radar_rows=[
+            due_mentions=[],
+            due_admissions=[
                 {
+                    "admission_id": "admission-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "rank": 1,
-                    "rank_score": 90,
-                    "source_event_ids_json": ["event-1"],
-                    "computed_at_ms": 10_000,
+                    "window": "24h",
+                    "scope": "matched",
+                    "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
                 }
             ],
-            due_mentions=[],
-            source_mentions=[
+            source_rows=[
                 {
                     "event_id": f"event-{index}",
                     "target_type": "chain_token",
@@ -132,9 +147,9 @@ def test_mention_semantics_worker_bounds_semantic_admission_per_cycle_and_target
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.notes["admission_semantic_inserted"] == 2
-        assert result.notes["admission_semantic_suppressed_budget"] == 3
-        assert result.notes["admission_semantic_pending_before"] == 1
+        assert result.notes["enqueue_semantic_inserted"] == 2
+        assert result.notes["enqueue_semantic_suppressed_budget"] == 3
+        assert result.notes["enqueue_semantic_pending_before"] == 1
         assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
         assert result.processed == 1
 
@@ -357,6 +372,23 @@ def fake_settings(**overrides):
     )
 
 
+def fake_admission_settings(**overrides):
+    values = dict(
+        enabled=True,
+        interval_seconds=1.0,
+        timeout_seconds=0.0,
+        statement_timeout_seconds=9.0,
+        windows=("24h",),
+        scopes=("matched",),
+        admission_limit=10,
+        source_limit=100,
+        hot_rank_limit=50,
+        min_rank_score=30,
+    )
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def fake_digest_settings():
     return SimpleNamespace(
         enabled=True,
@@ -386,14 +418,24 @@ class FakeDB:
 
 
 class FakeNarrativeRepository:
-    def __init__(self, *, radar_rows=None, source_mentions=None, due_mentions=None, pending_semantics=None):
+    def __init__(
+        self,
+        *,
+        radar_rows=None,
+        source_rows=None,
+        due_mentions=None,
+        due_admissions=None,
+        pending_semantics=None,
+    ):
         self.radar_rows = list(radar_rows or [])
-        self.source_mentions = list(source_mentions or [])
+        self.source_rows = list(source_rows or [])
         self.due_mentions = due_mentions
+        self.due_admissions = due_admissions
         self.pending_semantics = dict(pending_semantics or {})
         self.recorded_runs = []
         self.completed_batches = []
         self.upserted_admissions = []
+        self.suppressed_frontiers = []
         self.scanned_admission_ids = []
         self.enqueued_source_event_ids = []
 
@@ -403,11 +445,31 @@ class FakeNarrativeRepository:
     def admissions_for_window_scope(self, *, window, scope, schema_version, limit):
         return []
 
-    def upsert_admissions_from_radar_rows(self, rows, *, window, scope, schema_version, now_ms, source_limit):
-        self.upserted_admissions.extend(rows[:source_limit])
-        return {"upserted": len(rows[:source_limit]), "seen": len(rows)}
+    def source_set_for_admission(self, *, target_type, target_id, since_ms, until_ms, watched_only, limit):
+        rows = [
+            row
+            for row in self.source_rows[:limit]
+            if row.get("target_type") == target_type and row.get("target_id") == target_id
+        ]
+        return {
+            "source_event_ids": [row["event_id"] for row in rows],
+            "source_event_count": len(rows),
+            "independent_author_count": len({row.get("author_handle") for row in rows if row.get("author_handle")}),
+            "source_max_received_at_ms": max((row.get("source_received_at_ms") or 0 for row in rows), default=None),
+        }
+
+    def upsert_admissions(self, rows, *, now_ms, limit=None):
+        selected = list(rows)[:limit] if limit is not None else list(rows)
+        self.upserted_admissions.extend(selected)
+        return {"upserted": len(selected), "seen": len(selected)}
+
+    def suppress_admissions_outside_frontier(self, *, window, scope, schema_version, active_target_keys, now_ms):
+        self.suppressed_frontiers.append(set(active_target_keys))
+        return {"suppressed": 0}
 
     def due_admissions_for_semantics(self, *, now_ms, limit):
+        if self.due_admissions is not None:
+            return self.due_admissions[:limit]
         if not self.upserted_admissions:
             return []
         first = self.upserted_admissions[0]
@@ -421,8 +483,8 @@ class FakeNarrativeRepository:
             }
         ][:limit]
 
-    def source_mentions_for_admission(self, *, target_type, target_id, since_ms, watched_only, limit):
-        return self.source_mentions[:limit]
+    def source_rows_for_admission(self, admission, *, limit):
+        return self.source_rows[:limit]
 
     def pending_mention_semantics_count(self, *, target_type, target_id, schema_version, model_version=None):
         return int(self.pending_semantics.get((target_type, target_id), 0))

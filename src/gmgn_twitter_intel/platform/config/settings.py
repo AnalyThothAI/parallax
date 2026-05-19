@@ -501,6 +501,24 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
+class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    timeout_seconds: float = Field(default=0.0, ge=0)
+    advisory_lock_key: int = 2026051901
+    wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
+    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
+    scopes: tuple[str, ...] = ("all", "matched")
+    admission_limit: int = Field(default=200, ge=1)
+    source_limit: int = Field(default=2000, ge=1)
+    min_rank_score: int = Field(default=30, ge=0)
+    hot_rank_limit: int = Field(default=50, ge=1)
+
+    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
 class MentionSemanticsWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     timeout_seconds: float = Field(default=0.0, ge=0)
@@ -509,18 +527,12 @@ class MentionSemanticsWorkerSettings(PerWorkerSettings):
     max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026051801
     wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
-    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
-    scopes: tuple[str, ...] = ("all", "matched")
     admission_limit: int = Field(default=200, ge=1)
     source_limit: int = Field(default=2000, ge=1)
     max_semantic_rows_enqueued_per_cycle: int = Field(default=40, ge=1)
     max_pending_semantics_per_target: int = Field(default=80, ge=1)
-    min_rank_score: int = Field(default=30, ge=0)
-    hot_rank_limit: int = Field(default=50, ge=1)
-    carry_ttl_seconds: int = Field(default=3600, ge=1)
-    suppression_ttl_seconds: int = Field(default=3600, ge=1)
 
-    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @field_validator("wakes_on", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -602,6 +614,7 @@ class WorkersSettings(BaseModel):
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
     )
+    narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
     mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
     token_discussion_digest: TokenDiscussionDigestWorkerSettings = Field(
         default_factory=TokenDiscussionDigestWorkerSettings
@@ -1127,6 +1140,18 @@ token_profile_current:
   enabled: true
   interval_seconds: 60.0
   batch_size: 500
+narrative_admission:
+  enabled: true
+  interval_seconds: 60.0
+  timeout_seconds: 0.0
+  advisory_lock_key: 2026051901
+  wakes_on: ["token_radar_updated", "resolution_updated"]
+  windows: ["5m", "1h", "4h", "24h"]
+  scopes: ["all", "matched"]
+  admission_limit: 200
+  source_limit: 2000
+  min_rank_score: 30
+  hot_rank_limit: 50
 mention_semantics:
   enabled: true
   interval_seconds: 60.0
@@ -1136,16 +1161,10 @@ mention_semantics:
   max_attempts: 3
   advisory_lock_key: 2026051801
   wakes_on: ["token_radar_updated", "resolution_updated"]
-  windows: ["5m", "1h", "4h", "24h"]
-  scopes: ["all", "matched"]
   admission_limit: 200
   source_limit: 2000
   max_semantic_rows_enqueued_per_cycle: 40
   max_pending_semantics_per_target: 80
-  min_rank_score: 30
-  hot_rank_limit: 50
-  carry_ttl_seconds: 3600
-  suppression_ttl_seconds: 3600
 token_discussion_digest:
   enabled: true
   interval_seconds: 120.0

@@ -46,6 +46,9 @@ EXPECTED_WORKERS = {
     "token_radar_projection": (
         "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
     ),
+    "narrative_admission": (
+        "gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker.NarrativeAdmissionWorker"
+    ),
     "mention_semantics": (
         "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
     ),
@@ -73,6 +76,7 @@ OLD_READYZ_WORKER_KEYS = {
     "asset_profile_refresh",
     "token_profile_current",
     "token_radar_projection",
+    "narrative_admission",
     "mention_semantics",
     "token_discussion_digest",
     "pulse_candidate",
@@ -154,6 +158,12 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/narrative_intel/repositories/narrative_repository.py",
         SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py",
         SRC / "platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py",
+    },
+    "narrative_admissions": {
+        SRC / "domains/narrative_intel/repositories/narrative_repository.py",
+        SRC / "domains/narrative_intel/runtime/narrative_admission_worker.py",
+        SRC / "platform/db/alembic/versions/20260518_0063_narrative_intel_read_models.py",
+        SRC / "platform/db/alembic/versions/20260519_0064_narrative_admission_source_sets.py",
     },
     "token_discussion_digests": {
         SRC / "domains/narrative_intel/repositories/narrative_repository.py",

@@ -148,6 +148,21 @@ class CliTests(unittest.TestCase):
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
             ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
+            [
+                "ops",
+                "rebuild-narrative-intel",
+                "--window",
+                "24h",
+                "--scope",
+                "matched",
+                "--semantic-limit",
+                "5",
+                "--digest-limit",
+                "5",
+                "--cycles",
+                "2",
+                "--drain",
+            ],
             ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "200"],
             [
                 "ops",
@@ -192,13 +207,17 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[13].ops_command, "audit-token-intent")
         self.assertEqual(parsed[14].ops_command, "rebuild-token-radar")
         self.assertEqual(parsed[15].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[16].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[16].limit, 200)
-        self.assertEqual(parsed[17].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[17].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[18].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[19].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[19].limit, 5)
+        self.assertEqual(parsed[16].ops_command, "rebuild-narrative-intel")
+        self.assertEqual(parsed[16].semantic_limit, 5)
+        self.assertEqual(parsed[16].digest_limit, 5)
+        self.assertTrue(parsed[16].drain)
+        self.assertEqual(parsed[17].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[17].limit, 200)
+        self.assertEqual(parsed[18].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[18].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[19].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[20].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[20].limit, 5)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:

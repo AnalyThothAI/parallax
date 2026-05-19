@@ -53,10 +53,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -93,6 +93,8 @@ positional arguments:
     audit-token-intent  inspect token intent evidence and resolution
     rebuild-token-radar
                         write the current token radar read model
+    rebuild-narrative-intel
+                        rebuild and drain Narrative Intelligence read models
     audit-token-radar   audit token radar rows for scoring and market-
                         readiness regressions
     factor-diagnostics  inspect token factor distribution health for latest

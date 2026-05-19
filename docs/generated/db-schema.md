@@ -356,6 +356,12 @@
 | `next_digest_due_at_ms` | `BIGINT` | False | `0` |
 | `suppressed_at_ms` | `BIGINT` | True | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `projection_computed_at_ms` | `BIGINT` | True | `None` |
+| `source_window_start_ms` | `BIGINT` | True | `None` |
+| `source_window_end_ms` | `BIGINT` | True | `None` |
+| `source_event_count` | `BIGINT` | False | `0` |
+| `independent_author_count` | `BIGINT` | False | `0` |
+| `admission_generation` | `TEXT` | True | `None` |
 
 ## `narrative_model_runs`
 

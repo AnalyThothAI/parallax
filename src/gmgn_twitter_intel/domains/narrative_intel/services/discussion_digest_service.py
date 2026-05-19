@@ -22,7 +22,7 @@ PENDING_SEMANTIC_STATUSES = {"queued", "retryable_error", "stale"}
 class DigestRefreshDecision(BaseModel):
     should_refresh: bool
     reason: str
-    status_if_not_refresh: Literal["pending", "insufficient", "ready", "stale"]
+    status_if_not_refresh: Literal["pending", "insufficient", "ready", "semantic_unavailable", "stale"]
 
 
 class DiscussionDigestService:
@@ -51,6 +51,7 @@ class DiscussionDigestService:
         coverage = 0.0 if source_count == 0 else labeled / source_count
         has_pending_semantics = any(str(row.get("status") or "") in PENDING_SEMANTIC_STATUSES for row in semantic_rows)
         has_unseen_semantics = len(semantic_rows) < source_count
+        terminal_unavailable = sum(1 for row in semantic_rows if str(row.get("status") or "") == "semantic_unavailable")
         if source_count < self.min_source_mentions:
             return DigestRefreshDecision(
                 should_refresh=False,
@@ -69,6 +70,12 @@ class DiscussionDigestService:
                     should_refresh=False,
                     reason="semantic_labeling_pending",
                     status_if_not_refresh="pending",
+                )
+            if terminal_unavailable and terminal_unavailable == len(semantic_rows):
+                return DigestRefreshDecision(
+                    should_refresh=False,
+                    reason="semantic_provider_unavailable",
+                    status_if_not_refresh="semantic_unavailable",
                 )
             return DigestRefreshDecision(
                 should_refresh=False,

@@ -13,9 +13,9 @@ describe("buildTokenRadarCompactCase", () => {
   });
 
   it.each([
-    ["pending", "叙事读取中", "waiting for mention semantics"],
+    ["pending", "叙事分析中", "waiting for mention semantics"],
     ["insufficient", "叙事样本不足", "need 3 independent authors"],
-    ["semantic_unavailable", "叙事不可用", "semantic worker disabled"],
+    ["semantic_unavailable", "叙事分析暂不可用", "semantic worker disabled"],
   ] as const)("surfaces %s digest state without falling back to factor text", (status, title, gap) => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
@@ -40,8 +40,8 @@ describe("buildTokenRadarCompactCase", () => {
       },
     });
 
-    expect(view.narrative.value).toBe("叙事读取中");
-    expect(view.narrative.detail).toBe("digest not ready");
+    expect(view.narrative.value).toBe("叙事分析中");
+    expect(view.narrative.detail).toBe("叙事待刷新");
   });
 });
 

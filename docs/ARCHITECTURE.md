@@ -62,6 +62,7 @@ are wrong too.
    `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`,
    `pulse_agent_eval_results`, `pulse_candidates`, and
    `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`.
+   `narrative_admissions` is written only by `NarrativeAdmissionWorker`;
    `token_mention_semantics` is written only by `MentionSemanticsWorker`;
    `token_discussion_digests` is written only by
    `TokenDiscussionDigestWorker`. New

@@ -102,6 +102,64 @@ def test_refresh_decision_waits_for_pending_semantics_instead_of_insufficient():
     assert decision.status_if_not_refresh == "pending"
 
 
+def test_refresh_decision_uses_source_set_count_when_semantic_rows_are_missing():
+    service = DiscussionDigestService(min_source_mentions=3, min_independent_authors=2, min_semantic_coverage=0.35)
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 10,
+            "labeled_event_count": 0,
+            "independent_author_count": 5,
+            "semantic_rows": [],
+        }
+    )
+
+    assert decision.should_refresh is False
+    assert decision.reason == "semantic_labeling_pending"
+    assert decision.status_if_not_refresh == "pending"
+
+
+def test_refresh_decision_reports_low_source_volume_only_from_source_set_count():
+    service = DiscussionDigestService(min_source_mentions=3, min_independent_authors=2, min_semantic_coverage=0.35)
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 2,
+            "labeled_event_count": 2,
+            "independent_author_count": 2,
+            "semantic_rows": [
+                {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
+                {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
+            ],
+        }
+    )
+
+    assert decision.should_refresh is False
+    assert decision.reason == "low_source_volume"
+    assert decision.status_if_not_refresh == "insufficient"
+
+
+def test_refresh_decision_reports_terminal_semantic_unavailable_after_all_sources_attempted():
+    service = DiscussionDigestService(min_source_mentions=3, min_independent_authors=2, min_semantic_coverage=0.35)
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 3,
+            "labeled_event_count": 0,
+            "independent_author_count": 3,
+            "semantic_rows": [
+                {"event_id": "event-1", "author_handle": "a", "status": "semantic_unavailable"},
+                {"event_id": "event-2", "author_handle": "b", "status": "semantic_unavailable"},
+                {"event_id": "event-3", "author_handle": "c", "status": "semantic_unavailable"},
+            ],
+        }
+    )
+
+    assert decision.should_refresh is False
+    assert decision.reason == "semantic_provider_unavailable"
+    assert decision.status_if_not_refresh == "semantic_unavailable"
+
+
 def test_digest_request_sends_only_labeled_mentions():
     service = DiscussionDigestService(max_mentions_per_digest=10)
 

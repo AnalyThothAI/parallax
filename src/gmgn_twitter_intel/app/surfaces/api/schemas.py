@@ -63,12 +63,22 @@ class NarrativeRunHealth(ApiSchema):
     timeout: int = 0
 
 
+class NarrativeAdmissionHealth(ApiSchema):
+    current_admissions: int = 0
+    suppressed_admissions: int = 0
+    current_source_events: int = 0
+    current_independent_authors: int = 0
+
+
 class NarrativeBacklogHealthData(ApiSchema):
     schema_version: str | None = None
     now_ms: int | None = None
     since_hours: int = 4
+    admissions: NarrativeAdmissionHealth = Field(default_factory=NarrativeAdmissionHealth)
     semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
     recent_runs: dict[str, NarrativeRunHealth] = Field(default_factory=dict)
+    digest_status_counts: dict[str, int] = Field(default_factory=dict)
+    digest_reason_counts: dict[str, int] = Field(default_factory=dict)
     pending_digest_count: int = 0
 
 

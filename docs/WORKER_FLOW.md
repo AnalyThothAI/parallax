@@ -72,8 +72,9 @@ The hot path from one public-stream frame to product output is:
    - emits token_radar_updated as a wake hint
 
 5. Narrative Intelligence read models
-   - mention_semantics reconciles admitted Radar targets and labels source mentions
-   - token_discussion_digest aggregates labeled mentions into discussion digests
+   - narrative_admission reads the latest ready Radar frontier and material facts, then writes current source-set admissions
+   - mention_semantics claims due semantic rows and labels only source events from current admissions
+   - token_discussion_digest left-joins admission source sets with semantics and writes honest digest status
    - emits narrative_semantics_updated only as a wake hint for digest refresh
 
 6. Consumers

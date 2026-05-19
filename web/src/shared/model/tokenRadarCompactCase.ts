@@ -215,8 +215,9 @@ function compactWhyNowTone(
 function narrativeStatusTitle(status: NarrativeStatus): string {
   const labels: Record<string, string> = {
     insufficient: "叙事样本不足",
-    pending: "叙事读取中",
-    semantic_unavailable: "叙事不可用",
+    pending: "叙事分析中",
+    semantic_unavailable: "叙事分析暂不可用",
+    stale: "叙事待刷新",
   };
   return labels[status] ?? status.replaceAll("_", " ");
 }

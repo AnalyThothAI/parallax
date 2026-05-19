@@ -50,9 +50,10 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 
 `collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
 `live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
-`token_radar_projection`, `token_profile_current`, `mention_semantics`,
-`token_discussion_digest`, `pulse_candidate`, `enrichment`, `handle_summary`,
-`notification_rule`, and `notification_delivery`.
+`token_radar_projection`, `token_profile_current`, `narrative_admission`,
+`mention_semantics`, `token_discussion_digest`, `pulse_candidate`,
+`enrichment`, `handle_summary`, `notification_rule`, and
+`notification_delivery`.
 
 The schema is `WorkersSettings`; the canonical key list is guarded
 against `worker_registry.py` and `docs/WORKERS.md`.
@@ -92,10 +93,13 @@ Runtime health/status contract:
 - `snapshot_gate` is a global health field copied from collector
   snapshot-gate counters; it is not a worker section.
 - `/api/status/narrative-health` is an authenticated ops read for Narrative
-  backlog health. It returns domain-owned aggregates for semantic backlog
-  (`queued`, `retryable`, `stale`, `unavailable`, `oldest_due_age_ms`), recent
-  Narrative model-run success/failure/timeout counts, and current pending digest
-  count. API/frontend consumers must use this surface instead of writing raw SQL.
+  backlog health. It returns domain-owned aggregates for current admissions
+  (`current_admissions`, `suppressed_admissions`, source-event and independent
+  author totals), semantic backlog (`queued`, `retryable`, `stale`,
+  `unavailable`, `oldest_due_age_ms`), recent Narrative model-run
+  success/failure/timeout counts, digest status/reason counts, and current
+  pending digest count. API/frontend consumers must use this surface instead of
+  writing raw SQL.
 
 Token Radar market contract:
 
@@ -305,7 +309,10 @@ skipped result when no profile source is configured. `ops
 sync-binance-cex-profiles` refreshes the Binance CEX profile source cache for
 existing routed CEX tokens. `ops rebuild-token-profiles` rebuilds canonical
 `token_profile_current` rows from persisted source facts without wiring
-upstream providers.
+upstream providers. `ops rebuild-narrative-intel` is the formal current
+frontier rebuild/drain path for Narrative Intelligence: it runs admission,
+cleans stale current-backlog rows, labels semantics, and refreshes digests
+without hand-written SQL or API-path side effects.
 
 ## Token Radar Factor Snapshot Discipline
 

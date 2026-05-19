@@ -44,6 +44,13 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_capture_tier.advisory_lock_key == 2026051503
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
     assert settings.token_radar_projection.wakes_on == ("market_tick_written", "resolution_updated")
+    assert settings.narrative_admission.interval_seconds == 60
+    assert settings.narrative_admission.advisory_lock_key == 2026051901
+    assert settings.narrative_admission.wakes_on == ("token_radar_updated", "resolution_updated")
+    assert settings.narrative_admission.windows == ("5m", "1h", "4h", "24h")
+    assert settings.narrative_admission.scopes == ("all", "matched")
+    assert settings.narrative_admission.hot_rank_limit == 50
+    assert settings.narrative_admission.min_rank_score == 30
     assert settings.mention_semantics.interval_seconds == 60
     assert settings.mention_semantics.timeout_seconds == 0
     assert settings.mention_semantics.batch_size == 50
@@ -52,10 +59,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.mention_semantics.max_pending_semantics_per_target == 80
     assert settings.mention_semantics.advisory_lock_key == 2026051801
     assert settings.mention_semantics.wakes_on == ("token_radar_updated", "resolution_updated")
-    assert settings.mention_semantics.windows == ("5m", "1h", "4h", "24h")
-    assert settings.mention_semantics.scopes == ("all", "matched")
-    assert settings.mention_semantics.hot_rank_limit == 50
-    assert settings.mention_semantics.min_rank_score == 30
     assert settings.token_discussion_digest.interval_seconds == 120
     assert settings.token_discussion_digest.timeout_seconds == 0
     assert settings.token_discussion_digest.batch_size == 25

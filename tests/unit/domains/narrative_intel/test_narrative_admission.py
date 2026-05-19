@@ -14,7 +14,7 @@ def row(target_id: str | None, *, rank: int, score: int, computed_at_ms: int = 1
     }
 
 
-def test_admission_selects_hot_high_score_and_recent_carry_rows():
+def test_admission_selects_current_frontier_and_suppresses_non_frontier_rows():
     service = NarrativeAdmissionService(hot_rank_limit=2, min_rank_score=50, carry_ttl_ms=5_000)
     decisions = service.reconcile_from_radar_rows(
         [
@@ -37,8 +37,8 @@ def test_admission_selects_hot_high_score_and_recent_carry_rows():
     admitted_ids = {decision.target_id for decision in decisions if decision.status == "admitted"}
     suppressed_ids = {decision.target_id for decision in decisions if decision.status == "suppressed"}
 
-    assert admitted_ids == {"hot-1", "hot-2", "high-score", "carry"}
-    assert suppressed_ids == {"expired"}
+    assert admitted_ids == {"hot-1", "hot-2", "high-score"}
+    assert suppressed_ids == {"carry", "expired"}
 
 
 def test_raw_rows_without_targets_do_not_create_admissions():

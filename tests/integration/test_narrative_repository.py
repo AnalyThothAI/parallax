@@ -1,5 +1,7 @@
 import time
 
+from psycopg.types.json import Jsonb
+
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
@@ -89,6 +91,73 @@ def test_admitted_radar_rows_query_matches_current_token_radar_schema(tmp_path):
     assert rows == []
 
 
+def test_admitted_radar_rows_uses_latest_ready_projection_frontier(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-old-1", "event-old-2", "event-latest"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+            _insert_intent(conn, intent_id=f"intent-{event_id}", event_id=event_id, observed_at_ms=1_000)
+        _insert_radar_coverage(
+            conn,
+            window="24h",
+            scope="all",
+            projection_version="token_radar_v3",
+            computed_at_ms=1_000,
+        )
+        _insert_radar_row(
+            conn,
+            row_id="radar-old-1",
+            event_id="event-old-1",
+            intent_id="intent-event-old-1",
+            target_id="asset:old:rank1",
+            rank=1,
+            computed_at_ms=1_000,
+        )
+        _insert_radar_row(
+            conn,
+            row_id="radar-old-2",
+            event_id="event-old-2",
+            intent_id="intent-event-old-2",
+            target_id="asset:old:rank2",
+            rank=2,
+            computed_at_ms=1_000,
+        )
+        conn.execute(
+            """
+            UPDATE token_radar_projection_coverage
+            SET computed_at_ms = 2_000,
+                started_at_ms = 2_000,
+                finished_at_ms = 2_000,
+                updated_at_ms = 2_000
+            WHERE projection_version = 'token_radar_v3'
+              AND "window" = '24h'
+              AND scope = 'all'
+            """
+        )
+        _insert_radar_row(
+            conn,
+            row_id="radar-latest",
+            event_id="event-latest",
+            intent_id="intent-event-latest",
+            target_id="asset:latest:rank10",
+            rank=10,
+            computed_at_ms=2_000,
+        )
+        conn.commit()
+
+        rows = repo.admitted_radar_rows(
+            window="24h",
+            scope="all",
+            limit=3,
+            projection_version="token_radar_v3",
+        )
+    finally:
+        conn.close()
+
+    assert [row["computed_at_ms"] for row in rows] == [2_000]
+    assert [row["target_id"] for row in rows] == ["asset:latest:rank10"]
+
+
 def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
@@ -155,6 +224,22 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
             [{"event_id": "event-1", "target_type": "chain_token", "target_id": "solana:So111"}],
             schema_version="narrative_intel_v1",
         )
+        conn.execute(
+            """
+            INSERT INTO narrative_admissions(
+              admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
+              priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
+              source_max_received_at_ms, admitted_at_ms, last_seen_at_ms, updated_at_ms
+            )
+            VALUES (
+              'admission-event-1', 'chain_token', 'solana:So111', '24h', 'matched',
+              'narrative_intel_v1', 'admitted', 'unit_test', 1, 1, 90.0, %s,
+              'source-fingerprint', 3_000, 3_000, 3_000, 3_000
+            )
+            """,
+            (Jsonb(["event-1"]),),
+        )
+        conn.commit()
         context = repo.digest_context(
             target_type="chain_token",
             target_id="solana:So111",
@@ -173,6 +258,44 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     assert hydrated[("event-1", "chain_token", "solana:So111")]["trade_stance"] == "bullish"
     assert context["independent_author_count"] == 1
     assert context["mentions"][0]["text_clean"] == "SOL breakout discussion"
+
+
+def test_digest_context_counts_admission_source_set_without_semantics(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-source-1", "event-source-2", "event-source-3"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+        conn.execute(
+            """
+            INSERT INTO narrative_admissions(
+              admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
+              priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
+              source_max_received_at_ms, admitted_at_ms, last_seen_at_ms, updated_at_ms
+            )
+            VALUES (
+              'admission-source-set', 'chain_token', 'solana:So111', '24h', 'matched',
+              'narrative_intel_v1', 'admitted', 'unit_test', 1, 1, 90.0, %s,
+              'source-fingerprint', 3_000, 3_000, 3_000, 3_000
+            )
+            """,
+            (Jsonb(["event-source-1", "event-source-2", "event-source-3"]),),
+        )
+        conn.commit()
+
+        context = repo.digest_context(
+            target_type="chain_token",
+            target_id="solana:So111",
+            window="24h",
+            scope="matched",
+            since_ms=0,
+            max_mentions=10,
+        )
+    finally:
+        conn.close()
+
+    assert context["source_event_count"] == 3
+    assert context["labeled_event_count"] == 0
+    assert context["semantic_rows"] == []
 
 
 def test_replace_current_digest_supersedes_previous_current(tmp_path):
@@ -275,3 +398,87 @@ def test_replace_current_digest_is_idempotent_for_same_digest(tmp_path):
     assert rows[0]["is_current"] is True
     assert rows[0]["computed_at_ms"] == 2_000
     assert rows[0]["superseded_at_ms"] is None
+
+
+def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:
+    conn.execute(
+        """
+        INSERT INTO token_intents(
+          intent_id, event_id, intent_key, construction_policy, intent_status,
+          intent_confidence, created_at_ms, updated_at_ms
+        )
+        VALUES (%s, %s, %s, 'unit-test', 'active', 1.0, %s, %s)
+        """,
+        (intent_id, event_id, f"intent-key:{intent_id}", observed_at_ms, observed_at_ms),
+    )
+
+
+def _insert_radar_coverage(
+    conn,
+    *,
+    window: str,
+    scope: str,
+    projection_version: str,
+    computed_at_ms: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO token_radar_projection_coverage(
+          projection_version, "window", scope, status, reason, source_rows, row_count,
+          computed_at_ms, started_at_ms, finished_at_ms, error, updated_at_ms
+        )
+        VALUES (%s, %s, %s, 'ready', NULL, 1, 1, %s, %s, %s, NULL, %s)
+        """,
+        (projection_version, window, scope, computed_at_ms, computed_at_ms, computed_at_ms, computed_at_ms),
+    )
+
+
+def _insert_radar_row(
+    conn,
+    *,
+    row_id: str,
+    event_id: str,
+    intent_id: str,
+    target_id: str,
+    rank: int,
+    computed_at_ms: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO token_radar_rows(
+          row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
+          lane, rank, intent_id, event_id, intent_json, asset_json, primary_venue_json,
+          attention_json, resolution_json, market_json, score_json, decision, data_health_json,
+          source_event_ids_json, created_at_ms, target_type, target_id, pricefeed_id, target_json,
+          price_json, factor_snapshot_json, factor_version
+        )
+        VALUES (
+          %s, 'token_radar_v3', '24h', 'all', %s, %s,
+          'all', %s, %s, %s, %s, %s, NULL,
+          %s, %s, %s, %s, 'watch', %s,
+          %s, %s, 'Asset', %s, NULL, %s,
+          %s, %s, 'token_factor_snapshot_v3_social_attention'
+        )
+        """,
+        (
+            row_id,
+            computed_at_ms,
+            computed_at_ms,
+            rank,
+            intent_id,
+            event_id,
+            Jsonb({"intent_id": intent_id}),
+            Jsonb({}),
+            Jsonb({}),
+            Jsonb({}),
+            Jsonb({}),
+            Jsonb({"rank_score": max(0, 100 - rank)}),
+            Jsonb({"alpha": "ready"}),
+            Jsonb([event_id]),
+            computed_at_ms,
+            target_id,
+            Jsonb({"target_id": target_id}),
+            Jsonb({}),
+            Jsonb({"composite": {"rank_score": max(0, 100 - rank)}}),
+        ),
+    )

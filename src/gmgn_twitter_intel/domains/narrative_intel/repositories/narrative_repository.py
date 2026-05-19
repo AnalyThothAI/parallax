@@ -21,24 +21,25 @@ class NarrativeRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def upsert_admissions_from_radar_rows(
+    def upsert_admissions(
         self,
         rows: Sequence[dict[str, Any]],
         *,
-        window: str,
-        scope: str,
-        schema_version: str,
         now_ms: int,
-        source_limit: int,
+        limit: int | None = None,
     ) -> dict[str, int]:
         upserted = 0
-        for row in list(rows)[: max(1, int(source_limit))]:
+        selected = list(rows)[: max(1, int(limit))] if limit is not None else list(rows)
+        for row in selected:
             target_type = _clean(row.get("target_type"))
             target_id = _clean(row.get("target_id"))
             if not target_type or not target_id:
                 continue
-            source_event_ids = list(row.get("source_event_ids") or row.get("source_event_ids_json") or [])
-            source_max_received_at_ms = _int(row.get("source_max_received_at_ms") or row.get("computed_at_ms"))
+            window = _required(row, "window")
+            scope = _required(row, "scope")
+            schema_version = str(row.get("schema_version") or NARRATIVE_SCHEMA_VERSION)
+            source_event_ids = _json_list(row.get("source_event_ids") or row.get("source_event_ids_json"))
+            source_max_received_at_ms = _int(row.get("source_max_received_at_ms") or row.get("source_window_end_ms"))
             payload = {
                 "admission_id": deterministic_admission_id(
                     target_type=target_type,
@@ -60,6 +61,16 @@ class NarrativeRepository:
                 "source_event_ids_json": _json(source_event_ids),
                 "source_fingerprint": build_source_fingerprint(source_event_ids, source_max_received_at_ms),
                 "source_max_received_at_ms": source_max_received_at_ms,
+                "projection_computed_at_ms": _int(row.get("projection_computed_at_ms") or row.get("computed_at_ms")),
+                "source_window_start_ms": _int(row.get("source_window_start_ms")),
+                "source_window_end_ms": _int(row.get("source_window_end_ms") or source_max_received_at_ms),
+                "source_event_count": (
+                    _int(row.get("source_event_count"))
+                    if row.get("source_event_count") is not None
+                    else len(source_event_ids)
+                ),
+                "independent_author_count": _int(row.get("independent_author_count")) or 0,
+                "admission_generation": row.get("admission_generation"),
                 "admitted_at_ms": now_ms,
                 "last_seen_at_ms": now_ms,
                 "updated_at_ms": now_ms,
@@ -69,12 +80,16 @@ class NarrativeRepository:
                 INSERT INTO narrative_admissions (
                   admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
                   priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
-                  source_max_received_at_ms, admitted_at_ms, last_seen_at_ms, updated_at_ms
+                  source_max_received_at_ms, projection_computed_at_ms, source_window_start_ms,
+                  source_window_end_ms, source_event_count, independent_author_count, admission_generation,
+                  admitted_at_ms, last_seen_at_ms, updated_at_ms
                 )
                 VALUES (
                   %(admission_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
                   %(status)s, %(reason)s, %(priority)s, %(last_radar_rank)s, %(last_rank_score)s,
                   %(source_event_ids_json)s, %(source_fingerprint)s, %(source_max_received_at_ms)s,
+                  %(projection_computed_at_ms)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
+                  %(source_event_count)s, %(independent_author_count)s, %(admission_generation)s,
                   %(admitted_at_ms)s, %(last_seen_at_ms)s, %(updated_at_ms)s
                 )
                 ON CONFLICT (target_type, target_id, "window", scope, schema_version)
@@ -87,6 +102,12 @@ class NarrativeRepository:
                   source_event_ids_json = EXCLUDED.source_event_ids_json,
                   source_fingerprint = EXCLUDED.source_fingerprint,
                   source_max_received_at_ms = EXCLUDED.source_max_received_at_ms,
+                  projection_computed_at_ms = EXCLUDED.projection_computed_at_ms,
+                  source_window_start_ms = EXCLUDED.source_window_start_ms,
+                  source_window_end_ms = EXCLUDED.source_window_end_ms,
+                  source_event_count = EXCLUDED.source_event_count,
+                  independent_author_count = EXCLUDED.independent_author_count,
+                  admission_generation = EXCLUDED.admission_generation,
                   last_seen_at_ms = EXCLUDED.last_seen_at_ms,
                   updated_at_ms = EXCLUDED.updated_at_ms
                 """,
@@ -94,7 +115,7 @@ class NarrativeRepository:
             )
             upserted += 1
         _commit_if_available(self.conn)
-        return {"upserted": upserted, "seen": len(rows)}
+        return {"upserted": upserted, "seen": len(selected)}
 
     def admitted_radar_rows(
         self,
@@ -106,21 +127,80 @@ class NarrativeRepository:
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            SELECT row_id, target_type, target_id, rank, computed_at_ms,
-                   NULLIF(factor_snapshot_json->'composite'->>'rank_score', '')::double precision AS rank_score,
-                   source_event_ids_json
+            WITH latest AS (
+              SELECT computed_at_ms
+              FROM token_radar_projection_coverage
+              WHERE projection_version = %s
+                AND "window" = %s
+                AND scope = %s
+                AND status = 'ready'
+                AND computed_at_ms IS NOT NULL
+              ORDER BY computed_at_ms DESC
+              LIMIT 1
+            )
+            SELECT token_radar_rows.row_id,
+                   token_radar_rows.target_type,
+                   token_radar_rows.target_id,
+                   token_radar_rows.rank,
+                   token_radar_rows.computed_at_ms,
+                   NULLIF(
+                     token_radar_rows.factor_snapshot_json->'composite'->>'rank_score', ''
+                   )::double precision AS rank_score,
+                   token_radar_rows.source_event_ids_json,
+                   token_radar_rows.source_max_received_at_ms
             FROM token_radar_rows
-            WHERE "window" = %s
-              AND scope = %s
-              AND projection_version = %s
-              AND target_type IS NOT NULL
-              AND target_id IS NOT NULL
-            ORDER BY computed_at_ms DESC, rank ASC
+            JOIN latest ON latest.computed_at_ms = token_radar_rows.computed_at_ms
+            WHERE token_radar_rows."window" = %s
+              AND token_radar_rows.scope = %s
+              AND token_radar_rows.projection_version = %s
+              AND token_radar_rows.target_type IS NOT NULL
+              AND token_radar_rows.target_id IS NOT NULL
+            ORDER BY token_radar_rows.rank ASC
             LIMIT %s
             """,
-            (window, scope, projection_version, int(limit)),
+            (projection_version, window, scope, window, scope, projection_version, int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
+
+    def source_set_for_admission(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        since_ms: int,
+        until_ms: int,
+        watched_only: bool,
+        limit: int,
+    ) -> dict[str, Any]:
+        watched_clause = "AND events.is_watched = true" if watched_only else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              events.event_id,
+              events.received_at_ms AS source_received_at_ms,
+              events.author_handle
+            FROM token_intent_resolutions AS resolution
+            JOIN events ON events.event_id = resolution.event_id
+            WHERE resolution.target_type = %s
+              AND resolution.target_id = %s
+              AND COALESCE(resolution.is_current, true) = true
+              AND events.received_at_ms >= %s
+              AND events.received_at_ms <= %s
+              {watched_clause}
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
+            LIMIT %s
+            """,
+            (target_type, target_id, int(since_ms), int(until_ms), int(limit)),
+        ).fetchall()
+        source_rows = [_row(row) for row in rows]
+        event_ids = [str(row["event_id"]) for row in source_rows if row.get("event_id")]
+        max_received_at_ms = max((_int(row.get("source_received_at_ms")) or 0 for row in source_rows), default=None)
+        return {
+            "source_event_ids": event_ids,
+            "source_event_count": len(event_ids),
+            "independent_author_count": _author_count(source_rows),
+            "source_max_received_at_ms": max_received_at_ms,
+        }
 
     def admissions_for_window_scope(
         self,
@@ -144,6 +224,44 @@ class NarrativeRepository:
         ).fetchall()
         return [_row(row) for row in rows]
 
+    def suppress_admissions_outside_frontier(
+        self,
+        *,
+        window: str,
+        scope: str,
+        schema_version: str,
+        active_target_keys: Sequence[tuple[str, str]],
+        now_ms: int,
+    ) -> dict[str, int]:
+        keys = {(str(target_type), str(target_id)) for target_type, target_id in active_target_keys}
+        existing = self.admissions_for_window_scope(
+            window=window,
+            scope=scope,
+            schema_version=schema_version,
+            limit=10_000,
+        )
+        suppress_ids = [
+            row["admission_id"]
+            for row in existing
+            if str(row.get("status") or "") == "admitted"
+            and (str(row.get("target_type") or ""), str(row.get("target_id") or "")) not in keys
+        ]
+        if not suppress_ids:
+            return {"suppressed": 0}
+        cursor = self.conn.execute(
+            """
+            UPDATE narrative_admissions
+            SET status = 'suppressed',
+                reason = 'not_in_current_frontier',
+                suppressed_at_ms = %s,
+                updated_at_ms = %s
+            WHERE admission_id = ANY(%s)
+            """,
+            (int(now_ms), int(now_ms), suppress_ids),
+        )
+        _commit_if_available(self.conn)
+        return {"suppressed": int(getattr(cursor, "rowcount", 0) or 0)}
+
     def due_admissions_for_semantics(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -156,6 +274,37 @@ class NarrativeRepository:
             (int(now_ms), int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
+
+    def source_rows_for_admission(self, admission: dict[str, Any], *, limit: int) -> list[dict[str, Any]]:
+        source_event_ids = _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
+        if not source_event_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT
+              events.event_id,
+              events.text_clean AS text_clean,
+              events.author_handle,
+              events.received_at_ms AS source_received_at_ms,
+              events.tweet_id,
+              events.raw_json AS reference_json
+            FROM events
+            WHERE events.event_id = ANY(%s)
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
+            LIMIT %s
+            """,
+            (source_event_ids, int(limit)),
+        ).fetchall()
+        target_type = _required(admission, "target_type")
+        target_id = _required(admission, "target_id")
+        return [
+            {
+                **_row(row),
+                "target_type": target_type,
+                "target_id": target_id,
+            }
+            for row in rows
+        ]
 
     def due_mentions_for_labeling(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -173,41 +322,6 @@ class NarrativeRepository:
             LIMIT %s
             """,
             (int(now_ms), int(limit)),
-        ).fetchall()
-        return [_row(row) for row in rows]
-
-    def source_mentions_for_admission(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        since_ms: int,
-        watched_only: bool,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        watched_clause = "AND events.is_watched = true" if watched_only else ""
-        rows = self.conn.execute(
-            f"""
-            SELECT
-              events.event_id,
-              resolution.target_type,
-              resolution.target_id,
-              events.text_clean AS text_clean,
-              events.author_handle,
-              events.received_at_ms AS source_received_at_ms,
-              events.tweet_id,
-              events.raw_json AS reference_json
-            FROM token_intent_resolutions AS resolution
-            JOIN events ON events.event_id = resolution.event_id
-            WHERE resolution.target_type = %s
-              AND resolution.target_id = %s
-              AND COALESCE(resolution.is_current, true) = true
-              AND events.received_at_ms >= %s
-              {watched_clause}
-            ORDER BY events.received_at_ms DESC, events.event_id DESC
-            LIMIT %s
-            """,
-            (target_type, target_id, int(since_ms), int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
 
@@ -309,6 +423,96 @@ class NarrativeRepository:
         )
         _commit_if_available(self.conn)
         return {"updated": int(getattr(cursor, "rowcount", 0) or 0)}
+
+    def cleanup_current_backlog(
+        self,
+        *,
+        schema_version: str,
+        window: str | None = None,
+        scope: str | None = None,
+        now_ms: int,
+    ) -> dict[str, int]:
+        filters = ["admissions.status = 'admitted'", "admissions.schema_version = %s"]
+        params: list[Any] = [schema_version]
+        if window is not None:
+            filters.append('admissions."window" = %s')
+            params.append(window)
+        if scope is not None:
+            filters.append("admissions.scope = %s")
+            params.append(scope)
+        admission_filter = " AND ".join(filters)
+        obsolete = self.conn.execute(
+            f"""
+            WITH current_sources AS (
+              SELECT
+                admissions.target_type,
+                admissions.target_id,
+                jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
+              FROM narrative_admissions AS admissions
+              WHERE {admission_filter}
+            )
+            DELETE FROM token_mention_semantics AS semantics
+            WHERE semantics.schema_version = %s
+              AND semantics.status IN ('queued', 'retryable_error', 'stale')
+              AND NOT EXISTS (
+                SELECT 1
+                FROM current_sources
+                WHERE current_sources.event_id = semantics.event_id
+                  AND current_sources.target_type = semantics.target_type
+                  AND current_sources.target_id = semantics.target_id
+              )
+            """,
+            (*params, schema_version),
+        )
+        reset_retryable = self.conn.execute(
+            f"""
+            WITH current_sources AS (
+              SELECT
+                admissions.target_type,
+                admissions.target_id,
+                jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
+              FROM narrative_admissions AS admissions
+              WHERE {admission_filter}
+            )
+            UPDATE token_mention_semantics AS semantics
+            SET status = 'queued',
+                next_retry_at_ms = 0,
+                error = NULL
+            WHERE semantics.schema_version = %s
+              AND semantics.status = 'retryable_error'
+              AND EXISTS (
+                SELECT 1
+                FROM current_sources
+                WHERE current_sources.event_id = semantics.event_id
+                  AND current_sources.target_type = semantics.target_type
+                  AND current_sources.target_id = semantics.target_id
+              )
+            """,
+            (*params, schema_version),
+        )
+        stale_digests = self.conn.execute(
+            f"""
+            UPDATE token_discussion_digests AS digest
+            SET status = 'stale',
+                superseded_at_ms = %s
+            FROM narrative_admissions AS admissions
+            WHERE {admission_filter}
+              AND digest.target_type = admissions.target_type
+              AND digest.target_id = admissions.target_id
+              AND digest."window" = admissions."window"
+              AND digest.scope = admissions.scope
+              AND digest.schema_version = admissions.schema_version
+              AND digest.is_current = true
+              AND COALESCE(digest.source_fingerprint, '') <> COALESCE(admissions.source_fingerprint, '')
+            """,
+            (int(now_ms), *params),
+        )
+        _commit_if_available(self.conn)
+        return {
+            "deleted_obsolete_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
+            "reset_retryable_semantics": int(getattr(reset_retryable, "rowcount", 0) or 0),
+            "stale_digests": int(getattr(stale_digests, "rowcount", 0) or 0),
+        }
 
     def record_narrative_model_run(self, run: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
         payload = dict(run)
@@ -498,34 +702,107 @@ class NarrativeRepository:
         since_ms: int,
         max_mentions: int,
     ) -> dict[str, Any]:
-        semantic_rows = self.conn.execute(
+        admission_row = self.conn.execute(
             """
-            SELECT semantics.*,
-                   events.text_clean AS text_clean,
-                   events.author_handle,
-                   events.tweet_id,
-                   events.raw_json AS reference_json
-            FROM token_mention_semantics AS semantics
-            JOIN events ON events.event_id = semantics.event_id
-            WHERE semantics.target_type = %s
-              AND semantics.target_id = %s
-              AND semantics.source_received_at_ms >= %s
-            ORDER BY semantics.source_received_at_ms DESC
+            SELECT *
+            FROM narrative_admissions
+            WHERE target_type = %s
+              AND target_id = %s
+              AND "window" = %s
+              AND scope = %s
+              AND schema_version = %s
+              AND status = 'admitted'
+            ORDER BY last_seen_at_ms DESC
+            LIMIT 1
+            """,
+            (target_type, target_id, window, scope, NARRATIVE_SCHEMA_VERSION),
+        ).fetchone()
+        if not admission_row:
+            return {
+                "target_type": target_type,
+                "target_id": target_id,
+                "window": window,
+                "scope": scope,
+                "mentions": [],
+                "semantic_rows": [],
+                "source_event_count": 0,
+                "labeled_event_count": 0,
+                "independent_author_count": 0,
+                "allowed_refs": [],
+                "data_gaps": [{"reason": "not_admitted"}],
+            }
+        admission = _row(admission_row)
+        source_event_ids = _json_list(admission.get("source_event_ids_json"))
+        if not source_event_ids:
+            return {
+                "target_type": target_type,
+                "target_id": target_id,
+                "window": window,
+                "scope": scope,
+                "mentions": [],
+                "semantic_rows": [],
+                "source_event_count": int(admission.get("source_event_count") or 0),
+                "labeled_event_count": 0,
+                "independent_author_count": int(admission.get("independent_author_count") or 0),
+                "allowed_refs": [],
+            }
+        joined_rows = self.conn.execute(
+            """
+            SELECT
+              events.event_id,
+              events.text_clean AS text_clean,
+              events.author_handle,
+              events.tweet_id,
+              events.raw_json AS reference_json,
+              events.received_at_ms AS source_received_at_ms,
+              semantics.semantic_id,
+              semantics.schema_version,
+              semantics.model_version,
+              semantics.text_fingerprint,
+              semantics.language,
+              semantics.status,
+              semantics.trade_stance,
+              semantics.attention_valence,
+              semantics.narrative_cluster_key,
+              semantics.claim_type,
+              semantics.evidence_type,
+              semantics.semantic_confidence,
+              semantics.co_mentioned_targets_json,
+              semantics.evidence_refs_json,
+              semantics.raw_label_json,
+              semantics.model_run_id,
+              semantics.computed_at_ms,
+              semantics.retry_count,
+              semantics.next_retry_at_ms,
+              semantics.error
+            FROM events
+            LEFT JOIN token_mention_semantics AS semantics
+              ON semantics.event_id = events.event_id
+             AND semantics.target_type = %s
+             AND semantics.target_id = %s
+             AND semantics.schema_version = %s
+            WHERE events.event_id = ANY(%s)
+              AND events.received_at_ms >= %s
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (target_type, target_id, int(since_ms), int(max_mentions)),
+            (target_type, target_id, NARRATIVE_SCHEMA_VERSION, source_event_ids, int(since_ms), int(max_mentions)),
         ).fetchall()
-        semantics = [_row(row) for row in semantic_rows]
+        mentions = [_row(row) for row in joined_rows]
+        semantics = [row for row in mentions if row.get("semantic_id")]
         return {
             "target_type": target_type,
             "target_id": target_id,
             "window": window,
             "scope": scope,
-            "mentions": semantics,
+            "admission_id": admission.get("admission_id"),
+            "source_fingerprint": admission.get("source_fingerprint"),
+            "source_event_ids": source_event_ids,
+            "mentions": mentions,
             "semantic_rows": semantics,
-            "source_event_count": len(semantics),
+            "source_event_count": int(admission.get("source_event_count") or len(source_event_ids)),
             "labeled_event_count": sum(1 for row in semantics if row.get("status") == "labeled"),
-            "independent_author_count": _author_count(semantics),
+            "independent_author_count": int(admission.get("independent_author_count") or _author_count(mentions)),
             "allowed_refs": _allowed_refs_for_semantics(semantics),
         }
 
@@ -841,6 +1118,20 @@ def _author_count(rows: Sequence[dict[str, Any]]) -> int:
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, default=str))
+
+
+def _json_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    decoded = value
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            decoded = [value]
+    if not isinstance(decoded, Sequence) or isinstance(decoded, (bytes, bytearray, str)):
+        return []
+    return [str(item) for item in decoded if str(item)]
 
 
 def _row(row: Any) -> dict[str, Any]:

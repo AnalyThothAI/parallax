@@ -18,6 +18,7 @@ class NarrativeAdmissionDecision:
     last_rank_score: float | None = None
     source_event_ids: tuple[str, ...] = ()
     source_max_received_at_ms: int | None = None
+    projection_computed_at_ms: int | None = None
 
 
 class NarrativeAdmissionService:
@@ -73,6 +74,7 @@ class NarrativeAdmissionService:
                 last_rank_score=score,
                 source_event_ids=source_event_ids,
                 source_max_received_at_ms=_int(row.get("source_max_received_at_ms") or row.get("computed_at_ms")),
+                projection_computed_at_ms=_int(row.get("computed_at_ms")),
             )
 
         seen = set(decisions)
@@ -83,29 +85,16 @@ class NarrativeAdmissionService:
                 continue
             if str(admission.get("status") or "") != "admitted":
                 continue
-            last_seen_at_ms = _int(admission.get("last_seen_at_ms")) or 0
-            if now_ms - last_seen_at_ms <= self.carry_ttl_ms:
-                decisions[(target_type, target_id)] = NarrativeAdmissionDecision(
-                    target_type=target_type,
-                    target_id=target_id,
-                    window=window,
-                    scope=scope,
-                    schema_version=schema_version,
-                    status="admitted",
-                    reason="carry",
-                    priority=1,
-                )
-            else:
-                decisions[(target_type, target_id)] = NarrativeAdmissionDecision(
-                    target_type=target_type,
-                    target_id=target_id,
-                    window=window,
-                    scope=scope,
-                    schema_version=schema_version,
-                    status="suppressed",
-                    reason="suppression_ttl_elapsed",
-                    priority=0,
-                )
+            decisions[(target_type, target_id)] = NarrativeAdmissionDecision(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version=schema_version,
+                status="suppressed",
+                reason="not_in_current_frontier",
+                priority=0,
+            )
         return sorted(decisions.values(), key=lambda item: (-item.priority, item.target_type, item.target_id))
 
 

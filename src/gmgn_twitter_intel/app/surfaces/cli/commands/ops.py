@@ -6,8 +6,9 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.bootstrap import bootstrap
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
+from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
 from gmgn_twitter_intel.app.runtime.provider_wiring.okx import OkxCexMarketProvider
-from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers
+from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
 from gmgn_twitter_intel.app.runtime.worker_status import canonical_workers_status_payload
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
@@ -21,6 +22,12 @@ from gmgn_twitter_intel.domains.asset_market.services.cex_token_profile_sync imp
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
+)
+from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
+from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
+from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
+    TokenDiscussionDigestWorker,
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -109,6 +116,21 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             windows=(args.window,),
             scopes=(args.scope,),
             limit=args.limit,
+            now_ms=_now_ms(),
+        )
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "rebuild-narrative-intel":
+        if not settings.narrative_intel_configured:
+            return 1, {"ok": False, "error": "narrative_intel_not_configured"}
+        data = _run_narrative_intel_rebuild(
+            settings,
+            window=args.window,
+            scope=args.scope,
+            semantic_limit=max(1, int(args.semantic_limit)),
+            digest_limit=max(1, int(args.digest_limit)),
+            cycles=max(1, int(args.cycles)),
+            drain=bool(args.drain),
             now_ms=_now_ms(),
         )
         return 0, {"ok": True, "data": data}
@@ -398,6 +420,137 @@ def _run_token_radar_projection_worker_once(
             _close_db_bundle(db)
 
 
+def _run_narrative_intel_rebuild(
+    settings: object,
+    *,
+    window: str,
+    scope: str,
+    semantic_limit: int,
+    digest_limit: int,
+    cycles: int,
+    drain: bool,
+    now_ms: int,
+) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    llm_gateway = None
+    provider_resource = None
+    workers: list[object] = []
+    locks: list[object] = []
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        llm_gateway = LLMGateway.create(settings)
+        providers = wire_providers(settings, start_collector=False, llm_gateway=llm_gateway, db_pool=db.tool_pool)
+        provider = providers.narrative_intel.narrative_provider
+        provider_resource = provider
+        if provider is None:
+            return {"cycles": 0, "error": "narrative_provider_not_configured"}
+        admission = NarrativeAdmissionWorker(
+            name="narrative_admission",
+            settings=_worker_settings_with_overrides(
+                settings.workers.narrative_admission,
+                windows=(window,),
+                scopes=(scope,),
+            ),
+            db=db,
+            telemetry=telemetry,
+            wake_bus=db.wake_emitter(),
+        )
+        semantics = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=_worker_settings_with_overrides(
+                settings.workers.mention_semantics,
+                batch_size=semantic_limit,
+                provider_batch_size=semantic_limit,
+            ),
+            db=db,
+            telemetry=telemetry,
+            provider=provider,
+            wake_bus=db.wake_emitter(),
+        )
+        digest = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=_worker_settings_with_overrides(settings.workers.token_discussion_digest, batch_size=digest_limit),
+            db=db,
+            telemetry=telemetry,
+            provider=provider,
+        )
+        workers = [admission, semantics, digest]
+        locks.extend(
+            [
+                db.acquire_advisory_lock_connection(
+                    str(getattr(worker, "name", worker.__class__.__name__)),
+                    _effective_worker_advisory_lock_key(worker),
+                )
+                for worker in workers
+            ]
+        )
+        results = []
+        for cycle in range(max(1, int(cycles))):
+            cycle_now_ms = int(now_ms) + cycle
+            admission_result = asyncio.run(admission.run_once(now_ms=cycle_now_ms))
+            cleanup = _cleanup_narrative_backlog(
+                db,
+                window=window,
+                scope=scope,
+                now_ms=cycle_now_ms,
+            )
+            semantics_result = asyncio.run(semantics.run_once(now_ms=cycle_now_ms))
+            digest_result = asyncio.run(digest.run_once(now_ms=cycle_now_ms))
+            item = {
+                "cycle": cycle + 1,
+                "narrative_admission": _worker_result_payload(admission_result),
+                "cleanup": cleanup,
+                "mention_semantics": _worker_result_payload(semantics_result),
+                "token_discussion_digest": _worker_result_payload(digest_result),
+            }
+            results.append(item)
+            if not drain:
+                break
+            if admission_result.skipped and semantics_result.skipped and digest_result.skipped:
+                break
+        return {
+            "window": window,
+            "scope": scope,
+            "drain": bool(drain),
+            "cycles": len(results),
+            "results": results,
+        }
+    finally:
+        for lock in reversed(locks):
+            _release_advisory_lock_connection(lock)
+        for worker in reversed(workers):
+            asyncio.run(worker.aclose())
+        if provider_resource is not None and provider_resource is not llm_gateway:
+            _close_runtime_resource(provider_resource)
+        if llm_gateway is not None:
+            _close_runtime_resource(llm_gateway)
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _worker_result_payload(result: object) -> dict[str, Any]:
+    return {
+        "processed": int(getattr(result, "processed", 0) or 0),
+        "failed": int(getattr(result, "failed", 0) or 0),
+        "dead": int(getattr(result, "dead", 0) or 0),
+        "skipped": int(getattr(result, "skipped", 0) or 0),
+        "notes": dict(getattr(result, "notes", {}) or {}),
+    }
+
+
+def _cleanup_narrative_backlog(db: object, *, window: str, scope: str, now_ms: int) -> dict[str, int]:
+    with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
+        return dict(
+            repos.narratives.cleanup_current_backlog(
+                schema_version=NARRATIVE_SCHEMA_VERSION,
+                window=window,
+                scope=scope,
+                now_ms=now_ms,
+            )
+        )
+
+
 def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:
     dump = getattr(config, "model_dump", None)
     values = dict(dump()) if dump is not None else dict(vars(config))
@@ -421,11 +574,20 @@ def _release_advisory_lock_connection(connection: object) -> None:
         releaser()
 
 
+def _close_runtime_resource(resource: object) -> None:
+    close = getattr(resource, "close", None)
+    aclose = getattr(resource, "aclose", None)
+    if close is not None:
+        close()
+    elif aclose is not None:
+        asyncio.run(aclose())
+
+
 def _effective_worker_advisory_lock_key(worker: object) -> int:
     resolve = getattr(worker, "_advisory_lock_key", None)
     key = resolve() if callable(resolve) else getattr(worker, "SINGLE_WRITER_KEY", None)
     if key is None:
-        raise RuntimeError("token_radar_projection advisory lock key is required")
+        raise RuntimeError(f"{getattr(worker, 'name', worker.__class__.__name__)} advisory lock key is required")
     return int(key)
 
 

@@ -25,6 +25,9 @@ CANONICAL_WORKER_CLASSES = {
     "token_radar_projection": (
         "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
     ),
+    "narrative_admission": (
+        "gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker.NarrativeAdmissionWorker"
+    ),
     "mention_semantics": (
         "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
     ),
@@ -54,6 +57,7 @@ WORKER_START_PRIORITY = {
     "asset_profile_refresh": 70,
     "token_radar_projection": 80,
     "token_profile_current": 85,
+    "narrative_admission": 87,
     "mention_semantics": 88,
     "token_discussion_digest": 89,
     "pulse_candidate": 90,

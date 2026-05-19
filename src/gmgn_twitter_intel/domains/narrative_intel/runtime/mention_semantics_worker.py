@@ -6,7 +6,6 @@ import json
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import asdict
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
@@ -19,8 +18,6 @@ from gmgn_twitter_intel.domains.narrative_intel._constants import (
 from gmgn_twitter_intel.domains.narrative_intel.providers import NarrativeIntelProvider
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import deterministic_run_id
 from gmgn_twitter_intel.domains.narrative_intel.services.mention_semantics_service import MentionSemanticsService
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_admission import NarrativeAdmissionService
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 
 
 class MentionSemanticsWorker(WorkerBase):
@@ -40,11 +37,6 @@ class MentionSemanticsWorker(WorkerBase):
         self.provider = provider
         self.wake_bus = wake_bus
         self.service = MentionSemanticsService()
-        self.admission = NarrativeAdmissionService(
-            hot_rank_limit=int(getattr(settings, "hot_rank_limit", 50) or 50),
-            min_rank_score=int(getattr(settings, "min_rank_score", 30) or 30),
-            carry_ttl_ms=int(getattr(settings, "carry_ttl_seconds", 3600) or 3600) * 1000,
-        )
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         return await self.run_once_async(now_ms=now_ms)
@@ -55,12 +47,15 @@ class MentionSemanticsWorker(WorkerBase):
         provider_batch_size = max(1, int(getattr(self.settings, "provider_batch_size", configured_batch_size) or 1))
         batch_size = min(configured_batch_size, provider_batch_size)
         max_attempts = max(1, int(getattr(self.settings, "max_attempts", 3) or 3))
-        admission_stats = await asyncio.to_thread(self._reconcile_admissions_and_enqueue_sync, now_ms=resolved_now_ms)
         rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
+        enqueue_stats: dict[str, int] = {}
+        if not rows:
+            enqueue_stats = await asyncio.to_thread(self._enqueue_missing_from_admissions_sync, now_ms=resolved_now_ms)
+            rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         if not rows:
             return WorkerResult(
                 skipped=1,
-                notes={"reason": "no_due_mentions", "claimed": 0, **_prefixed(admission_stats, "admission_")},
+                notes={"reason": "no_due_mentions", "claimed": 0, **_prefixed(enqueue_stats, "enqueue_")},
             )
 
         started_at_ms = _now_ms()
@@ -120,7 +115,7 @@ class MentionSemanticsWorker(WorkerBase):
                 failed=failed,
                 notes={
                     "claimed": len(rows),
-                    **_prefixed(admission_stats, "admission_"),
+                    **_prefixed(enqueue_stats, "enqueue_"),
                     "labeled": 0,
                     "semantic_unavailable": semantic_unavailable,
                     "failed": failed,
@@ -181,7 +176,7 @@ class MentionSemanticsWorker(WorkerBase):
             failed=int(complete.get("failed") or 0),
             notes={
                 "claimed": len(rows),
-                **_prefixed(admission_stats, "admission_"),
+                **_prefixed(enqueue_stats, "enqueue_"),
                 "labeled": int(complete.get("labeled") or 0),
                 "semantic_unavailable": int(complete.get("semantic_unavailable") or 0),
                 "failed": int(complete.get("failed") or 0),
@@ -189,9 +184,7 @@ class MentionSemanticsWorker(WorkerBase):
             },
         )
 
-    def _reconcile_admissions_and_enqueue_sync(self, *, now_ms: int) -> dict[str, int]:
-        windows = tuple(getattr(self.settings, "windows", ("24h",)) or ("24h",))
-        scopes = tuple(getattr(self.settings, "scopes", ("matched",)) or ("matched",))
+    def _enqueue_missing_from_admissions_sync(self, *, now_ms: int) -> dict[str, int]:
         admission_limit = max(1, int(getattr(self.settings, "admission_limit", 200) or 200))
         source_limit = max(1, int(getattr(self.settings, "source_limit", 2000) or 2000))
         cycle_enqueue_budget = max(
@@ -204,11 +197,8 @@ class MentionSemanticsWorker(WorkerBase):
         )
         interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 60.0) or 60.0) * 1000))
         stats = {
-            "radar_rows": 0,
-            "admissions_seen": 0,
-            "admissions_upserted": 0,
             "due_admissions": 0,
-            "source_mentions": 0,
+            "source_rows": 0,
             "semantic_inserted": 0,
             "semantic_existing": 0,
             "semantic_suppressed_budget": 0,
@@ -218,54 +208,11 @@ class MentionSemanticsWorker(WorkerBase):
         }
         remaining_cycle_budget = cycle_enqueue_budget
         with self._repository_session() as repos:
-            for window in windows:
-                for scope in scopes:
-                    radar_rows = [
-                        _radar_row_for_admission(row)
-                        for row in repos.narratives.admitted_radar_rows(
-                            window=str(window),
-                            scope=str(scope),
-                            limit=admission_limit,
-                            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                        )
-                    ]
-                    existing = repos.narratives.admissions_for_window_scope(
-                        window=str(window),
-                        scope=str(scope),
-                        schema_version=NARRATIVE_SCHEMA_VERSION,
-                        limit=admission_limit,
-                    )
-                    decisions = self.admission.reconcile_from_radar_rows(
-                        radar_rows,
-                        existing_admissions=existing,
-                        window=str(window),
-                        scope=str(scope),
-                        schema_version=NARRATIVE_SCHEMA_VERSION,
-                        now_ms=now_ms,
-                    )
-                    upserted = repos.narratives.upsert_admissions_from_radar_rows(
-                        [asdict(decision) for decision in decisions],
-                        window=str(window),
-                        scope=str(scope),
-                        schema_version=NARRATIVE_SCHEMA_VERSION,
-                        now_ms=now_ms,
-                        source_limit=admission_limit,
-                    )
-                    stats["radar_rows"] += len(radar_rows)
-                    stats["admissions_seen"] += int(upserted.get("seen") or 0)
-                    stats["admissions_upserted"] += int(upserted.get("upserted") or 0)
-
             due_admissions = repos.narratives.due_admissions_for_semantics(now_ms=now_ms, limit=admission_limit)
             stats["due_admissions"] = len(due_admissions)
             scanned_ids: list[str] = []
             for admission in due_admissions:
-                source_mentions = repos.narratives.source_mentions_for_admission(
-                    target_type=str(admission["target_type"]),
-                    target_id=str(admission["target_id"]),
-                    since_ms=max(0, now_ms - _window_ms(str(admission.get("window") or "24h"))),
-                    watched_only=str(admission.get("scope") or "") == "matched",
-                    limit=source_limit,
-                )
+                source_rows = repos.narratives.source_rows_for_admission(admission, limit=source_limit)
                 pending_count = repos.narratives.pending_mention_semantics_count(
                     target_type=str(admission["target_type"]),
                     target_id=str(admission["target_id"]),
@@ -273,25 +220,25 @@ class MentionSemanticsWorker(WorkerBase):
                 )
                 stats["semantic_pending_before"] += pending_count
                 target_budget = max(0, max_pending_per_target - pending_count)
-                allowed_count = min(len(source_mentions), target_budget, remaining_cycle_budget)
+                allowed_count = min(len(source_rows), target_budget, remaining_cycle_budget)
                 if allowed_count <= 0:
-                    if source_mentions and target_budget <= 0:
+                    if source_rows and target_budget <= 0:
                         stats["semantic_pending_cap_hits"] += 1
-                    stats["source_mentions"] += len(source_mentions)
-                    stats["semantic_suppressed_budget"] += len(source_mentions)
+                    stats["source_rows"] += len(source_rows)
+                    stats["semantic_suppressed_budget"] += len(source_rows)
                     scanned_ids.append(str(admission["admission_id"]))
                     continue
-                selected_mentions = source_mentions[:allowed_count]
+                selected_mentions = source_rows[:allowed_count]
                 enqueued = repos.narratives.enqueue_missing_mention_semantics(
                     selected_mentions,
                     schema_version=NARRATIVE_SCHEMA_VERSION,
                     model_version=self.provider.model or NARRATIVE_MODEL_VERSION_UNKNOWN,
                     now_ms=now_ms,
                 )
-                stats["source_mentions"] += len(source_mentions)
+                stats["source_rows"] += len(source_rows)
                 stats["semantic_inserted"] += int(enqueued.get("inserted") or 0)
                 stats["semantic_existing"] += int(enqueued.get("existing") or 0)
-                stats["semantic_suppressed_budget"] += max(0, len(source_mentions) - allowed_count)
+                stats["semantic_suppressed_budget"] += max(0, len(source_rows) - allowed_count)
                 remaining_cycle_budget -= allowed_count
                 scanned_ids.append(str(admission["admission_id"]))
             marked = repos.narratives.mark_admissions_semantics_scanned(
@@ -336,17 +283,6 @@ class MentionSemanticsWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _window_ms(window: str) -> int:
-    return {"5m": 300_000, "1h": 3_600_000, "4h": 14_400_000, "24h": 86_400_000}.get(window, 86_400_000)
-
-
-def _radar_row_for_admission(row: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(row)
-    source_event_ids = normalized.get("source_event_ids") or normalized.get("source_event_ids_json") or []
-    normalized["source_event_ids"] = [str(event_id) for event_id in source_event_ids if str(event_id)]
-    return normalized
 
 
 def _prefixed(values: dict[str, int], prefix: str) -> dict[str, int]:
