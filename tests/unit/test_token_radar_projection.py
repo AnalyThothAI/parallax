@@ -573,9 +573,10 @@ def test_token_radar_source_query_does_not_read_historical_market_fact_table():
     assert _public_market_key("decision") not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
-    assert "WITH window_events AS MATERIALIZED" in conn.sql
+    assert "WITH source_intents AS MATERIALIZED" in conn.sql
+    assert "WITH window_events AS MATERIALIZED" not in conn.sql
     assert "events.received_at_ms <= %s" in conn.sql
-    assert conn.params == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION, 2)
+    assert conn.params[:3] == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
 
 
 def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypatch):
@@ -601,6 +602,46 @@ def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypa
     assert recorder.finish_calls[-1]["commit"] is False
     assert token_radar.coverage[-1]["status"] == "ready"
     assert token_radar.coverage[-1]["commit"] is True
+
+
+def test_projection_passes_score_window_to_source_query(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    repos = type(
+        "Repos",
+        (),
+        {"conn": object(), "token_radar": token_radar},
+    )()
+    now_ms = 1_777_800_060_000
+    captured = {}
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    def source_rows(self, *, since_ms, score_since_ms, scope, now_ms):
+        captured.update(
+            {
+                "since_ms": since_ms,
+                "score_since_ms": score_since_ms,
+                "scope": scope,
+                "now_ms": now_ms,
+            }
+        )
+        return [source_row("event-1", received_at_ms=now_ms - 60_000)]
+
+    monkeypatch.setattr(TokenRadarSourceQuery, "source_rows", source_rows)
+
+    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert captured == {
+        "since_ms": _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["5m"]),
+        "score_since_ms": now_ms - WINDOW_MS["5m"],
+        "scope": "all",
+        "now_ms": now_ms,
+    }
 
 
 def test_resolved_missing_anchor_reports_market_missing_without_freshness_block():
@@ -660,7 +701,7 @@ def test_demoted_search_asset_does_not_project_as_resolved_high_alert():
 
 
 def patch_query_rows(monkeypatch: pytest.MonkeyPatch, rows: list[dict]) -> None:
-    def source_rows(self, *, since_ms, scope, now_ms):
+    def source_rows(self, *, since_ms, score_since_ms, scope, now_ms):
         return rows
 
     monkeypatch.setattr(TokenRadarSourceQuery, "source_rows", source_rows)

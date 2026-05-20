@@ -75,6 +75,7 @@ class TokenRadarProjection:
         try:
             source_rows = self._source_rows(
                 since_ms=analysis_since_ms,
+                score_since_ms=score_since_ms,
                 scope=scope,
                 now_ms=computed_at_ms,
             )
@@ -210,11 +211,13 @@ class TokenRadarProjection:
         self,
         *,
         since_ms: int,
+        score_since_ms: int,
         scope: str,
         now_ms: int,
     ) -> list[dict[str, Any]]:
         return TokenRadarSourceQuery(self.repos.conn).source_rows(
             since_ms=since_ms,
+            score_since_ms=score_since_ms,
             scope=scope,
             now_ms=now_ms,
         )

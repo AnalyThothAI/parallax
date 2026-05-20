@@ -13,15 +13,29 @@ class TokenRadarSourceQuery:
         self,
         *,
         since_ms: int,
+        score_since_ms: int | None = None,
         scope: str,
         now_ms: int,
     ) -> list[dict[str, Any]]:
+        resolved_score_since_ms = since_ms if score_since_ms is None else int(score_since_ms)
         watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
         rows = self.conn.execute(
             f"""
-            WITH window_events AS MATERIALIZED (
+            WITH source_intents AS MATERIALIZED (
               SELECT
-                events.event_id,
+                token_intents.intent_id,
+                token_intents.event_id,
+                token_intents.intent_key,
+                token_intents.construction_policy,
+                token_intents.primary_evidence_id,
+                token_intents.display_symbol,
+                token_intents.display_name,
+                token_intents.chain_hint,
+                token_intents.address_hint,
+                token_intents.intent_status,
+                token_intents.intent_confidence,
+                token_intents.created_at_ms,
+                token_intents.updated_at_ms,
                 events.author_handle,
                 events.is_watched,
                 events.received_at_ms,
@@ -29,13 +43,25 @@ class TokenRadarSourceQuery:
                 events.text_clean,
                 events.reference_json,
                 events.author_followers
-              FROM events
+              FROM token_intents
+              JOIN events ON events.event_id = token_intents.event_id
               WHERE events.received_at_ms >= %s
                 AND events.received_at_ms <= %s {watched_clause}
-              ORDER BY events.received_at_ms ASC, events.event_id ASC
             )
             SELECT
-              token_intents.*,
+              source_intents.intent_id,
+              source_intents.event_id,
+              source_intents.intent_key,
+              source_intents.construction_policy,
+              source_intents.primary_evidence_id,
+              source_intents.display_symbol,
+              source_intents.display_name,
+              source_intents.chain_hint,
+              source_intents.address_hint,
+              source_intents.intent_status,
+              source_intents.intent_confidence,
+              source_intents.created_at_ms,
+              source_intents.updated_at_ms,
               token_intent_resolutions.resolution_id,
               token_intent_resolutions.target_type,
               token_intent_resolutions.target_id,
@@ -46,13 +72,13 @@ class TokenRadarSourceQuery:
               token_intent_resolutions.lookup_keys_json,
               NULL AS discovery_results_json,
               token_intent_resolutions.decision_time_ms,
-              events.author_handle,
-              events.is_watched,
-              events.received_at_ms,
-              events.text,
-              events.text_clean,
-              events.reference_json,
-              events.author_followers AS ws_author_followers,
+              source_intents.author_handle,
+              source_intents.is_watched,
+              source_intents.received_at_ms,
+              source_intents.text,
+              source_intents.text_clean,
+              source_intents.reference_json,
+              source_intents.author_followers AS ws_author_followers,
               ap.gmgn_platform_followers AS gmgn_platform_followers,
               ap.gmgn_user_tags AS gmgn_user_tags,
               ap.first_seen_ms AS account_profile_first_seen_ms,
@@ -120,27 +146,29 @@ class TokenRadarSourceQuery:
               NULL::numeric AS before_event_price_quote,
               NULL::text AS before_event_price_quote_symbol,
               NULL::text AS before_event_price_basis
-            FROM window_events events
-            JOIN token_intents ON token_intents.event_id = events.event_id
-            JOIN LATERAL (
-              SELECT *
-              FROM token_intent_resolutions
-              WHERE token_intent_resolutions.intent_id = token_intents.intent_id
-                AND token_intent_resolutions.is_current = true
-                AND token_intent_resolutions.resolver_policy_version = %s
-                AND COALESCE(token_intent_resolutions.target_type, 'Asset') IN ('Asset', 'CexToken')
-              LIMIT 1
-            ) token_intent_resolutions ON true
-            LEFT JOIN account_profiles ap ON ap.handle = LOWER(events.author_handle)
-            LEFT JOIN social_event_extractions see ON see.event_id = events.event_id
+            FROM source_intents
+            JOIN token_intent_resolutions
+              ON token_intent_resolutions.intent_id = source_intents.intent_id
+             AND token_intent_resolutions.is_current = true
+             AND token_intent_resolutions.resolver_policy_version = %s
+             AND COALESCE(token_intent_resolutions.target_type, 'Asset') IN ('Asset', 'CexToken')
+            LEFT JOIN account_profiles ap
+              ON source_intents.received_at_ms >= %s
+             AND ap.handle = LOWER(source_intents.author_handle)
+            LEFT JOIN social_event_extractions see
+              ON source_intents.received_at_ms >= %s
+             AND see.event_id = source_intents.event_id
             LEFT JOIN registry_assets
-              ON token_intent_resolutions.target_type = 'Asset'
+              ON source_intents.received_at_ms >= %s
+             AND token_intent_resolutions.target_type = 'Asset'
              AND registry_assets.asset_id = token_intent_resolutions.target_id
             LEFT JOIN asset_identity_current
-              ON token_intent_resolutions.target_type = 'Asset'
+              ON source_intents.received_at_ms >= %s
+             AND token_intent_resolutions.target_type = 'Asset'
              AND asset_identity_current.asset_id = token_intent_resolutions.target_id
             LEFT JOIN cex_tokens
-              ON token_intent_resolutions.target_type = 'CexToken'
+              ON source_intents.received_at_ms >= %s
+             AND token_intent_resolutions.target_type = 'CexToken'
              AND cex_tokens.cex_token_id = token_intent_resolutions.target_id
             LEFT JOIN LATERAL (
               SELECT *
@@ -165,9 +193,10 @@ class TokenRadarSourceQuery:
                 price_feeds.updated_at_ms DESC,
                 price_feeds.native_market_id ASC
               LIMIT 1
-            ) preferred_price_feed ON true
+            ) preferred_price_feed ON source_intents.received_at_ms >= %s
             LEFT JOIN price_feeds
-              ON price_feeds.pricefeed_id = COALESCE(
+              ON source_intents.received_at_ms >= %s
+             AND price_feeds.pricefeed_id = COALESCE(
                 token_intent_resolutions.pricefeed_id,
                 preferred_price_feed.pricefeed_id
               )
@@ -195,7 +224,7 @@ class TokenRadarSourceQuery:
                     THEN price_feeds.provider || ':' || price_feeds.native_market_id
                   ELSE NULL
                 END AS target_id
-            ) market_target ON true
+            ) market_target ON source_intents.received_at_ms >= %s
             LEFT JOIN LATERAL (
               SELECT
                 enriched_events.tick_id,
@@ -204,8 +233,9 @@ class TokenRadarSourceQuery:
                 enriched_events.tick_lag_ms,
                 enriched_events.created_at_ms
               FROM enriched_events
-              WHERE enriched_events.event_id = events.event_id
-                AND enriched_events.intent_id = token_intents.intent_id
+              WHERE source_intents.received_at_ms >= %s
+                AND enriched_events.event_id = source_intents.event_id
+                AND enriched_events.intent_id = source_intents.intent_id
                 AND enriched_events.resolution_id = token_intent_resolutions.resolution_id
               ORDER BY enriched_events.created_at_ms DESC
               LIMIT 1
@@ -215,7 +245,8 @@ class TokenRadarSourceQuery:
             LEFT JOIN LATERAL (
               SELECT *
               FROM market_ticks
-              WHERE market_ticks.target_type = market_target.target_type
+              WHERE source_intents.received_at_ms >= %s
+                AND market_ticks.target_type = market_target.target_type
                 AND market_ticks.target_id = market_target.target_id
                 AND market_ticks.observed_at_ms <= %s
               ORDER BY market_ticks.observed_at_ms DESC, market_ticks.tick_id DESC
@@ -224,18 +255,30 @@ class TokenRadarSourceQuery:
             LEFT JOIN LATERAL (
               SELECT *
               FROM market_ticks
-              WHERE market_ticks.target_type = market_target.target_type
+              WHERE source_intents.received_at_ms >= %s
+                AND market_ticks.target_type = market_target.target_type
                 AND market_ticks.target_id = market_target.target_id
               ORDER BY market_ticks.observed_at_ms ASC, market_ticks.tick_id ASC
               LIMIT 1
             ) first_price_tick ON true
-            ORDER BY events.received_at_ms ASC, events.event_id ASC
+            ORDER BY source_intents.received_at_ms ASC, source_intents.event_id ASC
             """,
             (
                 since_ms,
                 now_ms,
                 TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
+                resolved_score_since_ms,
                 now_ms,
+                resolved_score_since_ms,
             ),
         ).fetchall()
         return [dict(row) for row in rows]
