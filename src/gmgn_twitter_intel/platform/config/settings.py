@@ -906,6 +906,16 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
 
+    @field_validator("digest_ttl_by_window_seconds")
+    @classmethod
+    def validate_digest_ttl_windows(cls, value: dict[str, int]) -> dict[str, int]:
+        allowed_windows = {"1h", "4h", "24h"}
+        unsupported_windows = set(value) - allowed_windows
+        if unsupported_windows:
+            unsupported = ", ".join(sorted(unsupported_windows))
+            raise ValueError(f"unsupported digest TTL window(s): {unsupported}")
+        return value
+
 
 class EnrichmentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=2.0, ge=0)

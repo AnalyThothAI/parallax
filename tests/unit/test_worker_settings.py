@@ -171,6 +171,14 @@ def test_token_discussion_digest_hard_cuts_old_epoch_chasing_settings() -> None:
         WorkersSettings(**invalid_payload)
 
 
+def test_token_discussion_digest_rejects_obsolete_digest_ttl_window() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["token_discussion_digest"]["digest_ttl_by_window_seconds"]["5m"] = 120
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
+
+
 def test_worker_settings_reject_unknown_worker_key():
     payload = yaml.safe_load(default_workers_yaml())
     payload["surprise_worker"] = {"enabled": True}
