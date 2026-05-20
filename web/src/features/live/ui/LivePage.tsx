@@ -15,6 +15,8 @@ type LivePageProps = {
   selectedTapeEventId: string | null;
   onTapeSelect: (item: LiveSignalTapeItem) => void;
   signalLabPulseData: SignalPulseData | null;
+  hiddenSignalLabPulseData?: SignalPulseData | null;
+  hiddenSignalPulseLoading?: boolean;
   signalPulseLoading: boolean;
   selectedPulseItemId: string | null;
   children?: ReactNode;
@@ -33,6 +35,8 @@ export function LivePage({
   selectedTapeEventId,
   onTapeSelect,
   signalLabPulseData,
+  hiddenSignalLabPulseData,
+  hiddenSignalPulseLoading,
   signalPulseLoading,
   selectedPulseItemId,
   children,
@@ -54,6 +58,8 @@ export function LivePage({
 
         <SignalLabPulse
           data={signalLabPulseData ?? undefined}
+          hiddenData={hiddenSignalLabPulseData ?? undefined}
+          hiddenIsLoading={hiddenSignalPulseLoading}
           isLoading={signalPulseLoading}
           mobileTaskPanel="lab"
           selectedItemId={selectedPulseItemId}

@@ -64,7 +64,8 @@ export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
     setSelectedSignal({ kind: "pulse", item });
     setSelectedTapeEventId(item.candidate_id);
     setMobileTask("lab");
-    navigate(signalLabPulsePath(item.candidate_id));
+    const search = item.display_status?.startsWith("hidden_") ? "?visibility=hidden" : "";
+    navigate(signalLabPulsePath(item.candidate_id, search));
   };
 
   const selectAccountEvent = (item: LivePayload) => {

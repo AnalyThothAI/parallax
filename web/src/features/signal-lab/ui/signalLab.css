@@ -41,6 +41,48 @@
   font-weight: 800;
 }
 
+.signal-compact-visibility-tabs {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.signal-compact-tab-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 24px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(7, 10, 10, 0.82);
+}
+
+.signal-compact-tab-list button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 58px;
+  min-height: 20px;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0 6px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.signal-compact-tab-list button[data-state="active"] {
+  color: var(--bone);
+  background: var(--opportunity-soft);
+}
+
+.signal-compact-tab-list button b {
+  color: var(--opportunity);
+}
+
 .signal-chain-list {
   display: grid;
   align-content: start;

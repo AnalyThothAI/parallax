@@ -75,5 +75,16 @@ describe("useSignalLabCompactQuery", () => {
         params: expect.objectContaining({ window: "4h", scope: "all" }),
       }),
     );
+    expect(apiMock.getApi).toHaveBeenCalledWith(
+      "/api/signal-lab/pulse",
+      expect.objectContaining({
+        token: "tok",
+        params: expect.objectContaining({
+          window: "4h",
+          scope: "all",
+          visibility: "hidden",
+        }),
+      }),
+    );
   });
 });

@@ -25,8 +25,11 @@ export const queryKeys = {
   ) => ["token-case", targetKey, window, scope, postsLimit] as const,
   signalLabOverview: (window: WindowKey, scope: ScopeKey) =>
     ["signal-lab-overview", window, scope] as const,
-  signalPulseCompact: (scope: ScopeKey, window: WindowKey) =>
-    ["signal-lab-pulse-compact", scope, window] as const,
+  signalPulseCompact: (
+    scope: ScopeKey,
+    window: WindowKey,
+    visibility: SignalPulseVisibilityFilter,
+  ) => ["signal-lab-pulse-compact", scope, window, visibility] as const,
   signalPulseList: (
     window: WindowKey,
     scope: ScopeKey,
