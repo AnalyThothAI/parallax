@@ -179,6 +179,9 @@ def test_agent_model_selection_is_worker_runtime_owned() -> None:
         assert forbidden not in settings_text
         assert forbidden not in config_example
 
-    assert "model: str" not in agent_execution_text.partition("class AgentStageSpec")[2].partition("class AgentExecutionRequestAudit")[0]
+    agent_stage_spec_text = agent_execution_text.partition("class AgentStageSpec")[2].partition(
+        "class AgentExecutionRequestAudit"
+    )[0]
+    assert "model: str" not in agent_stage_spec_text
     assert "agent_runtime:" in settings_text
     assert "defaults:" in settings_text
