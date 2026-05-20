@@ -430,6 +430,60 @@
 | `error` | `TEXT` | True | `None` |
 | `extra_json` | `JSONB` | False | `'{}'::jsonb` |
 
+## `news_item_agent_briefs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `news_item_id` | `TEXT` | False | `None` |
+| `agent_run_id` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `direction` | `TEXT` | False | `None` |
+| `decision_class` | `TEXT` | False | `None` |
+| `brief_json` | `JSONB` | False | `'{}'::jsonb` |
+| `input_hash` | `TEXT` | False | `None` |
+| `artifact_version_hash` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `validator_version` | `TEXT` | False | `None` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `news_item_agent_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `run_id` | `TEXT` | False | `None` |
+| `news_item_id` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `backend` | `TEXT` | False | `'openai_agents_sdk'::text` |
+| `sdk_trace_id` | `TEXT` | True | `None` |
+| `workflow_name` | `TEXT` | False | `None` |
+| `agent_name` | `TEXT` | False | `None` |
+| `lane` | `TEXT` | False | `None` |
+| `artifact_version_hash` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `validator_version` | `TEXT` | False | `None` |
+| `guardrail_version` | `TEXT` | False | `None` |
+| `input_hash` | `TEXT` | False | `None` |
+| `output_hash` | `TEXT` | True | `None` |
+| `execution_started` | `BOOLEAN` | False | `false` |
+| `status` | `TEXT` | False | `None` |
+| `outcome` | `TEXT` | False | `None` |
+| `error_class` | `TEXT` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `request_json` | `JSONB` | False | `'{}'::jsonb` |
+| `response_json` | `JSONB` | True | `None` |
+| `validation_errors_json` | `JSONB` | False | `'[]'::jsonb` |
+| `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
+| `usage_json` | `JSONB` | False | `'{}'::jsonb` |
+| `latency_ms` | `BIGINT` | False | `0` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
 ## `news_item_entities`
 
 | Column | Type | Nullable | Default |
@@ -490,6 +544,9 @@
 | `source_json` | `JSONB` | False | `'{}'::jsonb` |
 | `computed_at_ms` | `BIGINT` | False | `None` |
 | `projection_version` | `TEXT` | False | `None` |
+| `agent_brief_json` | `JSONB` | False | `'{"status": "pending"}'::jsonb` |
+| `agent_status` | `TEXT` | False | `'pending'::text` |
+| `agent_brief_computed_at_ms` | `BIGINT` | True | `None` |
 
 ## `news_provider_items`
 
@@ -1077,6 +1134,7 @@
 | `raw_response_json` | `JSONB` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `normalized_handle` | `TEXT` | True | `None` |
 
 ## `token_aliases`
 
@@ -1156,6 +1214,14 @@
 | `computed_at_ms` | `BIGINT` | False | `None` |
 | `expires_at_ms` | `BIGINT` | True | `None` |
 | `superseded_at_ms` | `BIGINT` | True | `None` |
+| `epoch_id` | `TEXT` | True | `None` |
+| `epoch_policy_version` | `TEXT` | True | `None` |
+| `source_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
+| `source_window_start_ms` | `BIGINT` | True | `None` |
+| `source_window_end_ms` | `BIGINT` | True | `None` |
+| `epoch_closed_at_ms` | `BIGINT` | True | `None` |
+| `display_current_until_ms` | `BIGINT` | True | `None` |
+| `refresh_reason` | `TEXT` | True | `None` |
 
 ## `token_evidence`
 
@@ -1360,6 +1426,24 @@
 | `error` | `TEXT` | True | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `token_radar_retention_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `run_id` | `TEXT` | False | `None` |
+| `mode` | `TEXT` | False | `None` |
+| `retention_days` | `INTEGER` | False | `None` |
+| `cutoff_ms` | `BIGINT` | False | `None` |
+| `batch_size` | `INTEGER` | False | `None` |
+| `max_batches` | `INTEGER` | True | `None` |
+| `rows_planned` | `BIGINT` | False | `0` |
+| `rows_deleted` | `BIGINT` | False | `0` |
+| `status` | `TEXT` | False | `None` |
+| `error` | `TEXT` | True | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
 ## `token_radar_rows`
 
 | Column | Type | Nullable | Default |
@@ -1393,6 +1477,22 @@
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_version` | `TEXT` | False | `'token_factor_snapshot_v3_social_attention'::text` |
 | `listed_at_ms` | `BIGINT` | True | `None` |
+
+## `token_radar_target_first_seen`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `projection_version` | `TEXT` | False | `None` |
+| `window` | `TEXT` | False | `None` |
+| `scope` | `TEXT` | False | `None` |
+| `target_type_key` | `TEXT` | False | `None` |
+| `identity_id` | `TEXT` | False | `None` |
+| `first_seen_ms` | `BIGINT` | False | `None` |
+| `last_seen_ms` | `BIGINT` | False | `None` |
+| `first_row_id` | `TEXT` | True | `None` |
+| `latest_row_id` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `token_score_evaluations`
 
@@ -1485,6 +1585,28 @@
 | `source` | `TEXT` | False | `None` |
 | `source_updated_at_ms` | `BIGINT` | False | `None` |
 | `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `watchlist_handle_signal_events`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `event_id` | `TEXT` | False | `None` |
+| `handle` | `TEXT` | False | `None` |
+| `received_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `watchlist_handle_signal_stats`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `handle` | `TEXT` | False | `None` |
+| `total_signal_count` | `BIGINT` | False | `0` |
+| `latest_signal_at_ms` | `BIGINT` | True | `None` |
+| `latest_signal_event_id` | `TEXT` | True | `None` |
+| `first_signal_at_ms` | `BIGINT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
