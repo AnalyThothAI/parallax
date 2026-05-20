@@ -98,7 +98,7 @@ class TokenRadarProjectionWorker(WorkerBase):
             "windows": {},
         }
         coverage = self._latest_coverage()
-        missing_items = self._missing_work_items(coverage)
+        missing_items = self._missing_work_items(coverage, computed_at_ms=computed_at_ms)
         if missing_items:
             work_items = _dedupe_work_items([*self._hot_work_items(), *missing_items])
             primary_item = missing_items[0]
@@ -194,13 +194,29 @@ class TokenRadarProjectionWorker(WorkerBase):
                 ),
             )
 
-    def _missing_work_items(self, coverage: dict[tuple[str, str], dict[str, Any]]) -> list[tuple[str, str]]:
-        return [
-            (window, scope)
-            for window in self.windows
-            for scope in self.scopes
-            if str(coverage.get((window, scope), {}).get("status") or "") != "ready"
-        ]
+    def _missing_work_items(
+        self,
+        coverage: dict[tuple[str, str], dict[str, Any]],
+        *,
+        computed_at_ms: int,
+    ) -> list[tuple[str, str]]:
+        missing: list[tuple[str, str]] = []
+        for window in self.windows:
+            for scope in self.scopes:
+                item = (window, scope)
+                item_coverage = coverage.get(item, {})
+                status = str(item_coverage.get("status") or "")
+                if status == "ready":
+                    continue
+                latest = item_coverage.get("computed_at_ms")
+                if (
+                    status == "failed"
+                    and latest is not None
+                    and computed_at_ms - int(latest) < self.cold_interval_ms
+                ):
+                    continue
+                missing.append(item)
+        return missing
 
     def _mark_failed_coverage(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
         try:

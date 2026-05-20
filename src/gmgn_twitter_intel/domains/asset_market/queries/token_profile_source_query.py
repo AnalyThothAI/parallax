@@ -14,6 +14,7 @@ from gmgn_twitter_intel.domains.asset_market.profile_source_selection import (
 _PROJECTION_VERSION = "token-radar-v13-social-attention"
 _RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 _PROFILE_LOOKBACK_MS = 24 * 60 * 60 * 1000
+_RECENT_RESOLUTION_SCAN_MULTIPLIER = 4
 
 
 class TokenProfileSourceQuery:
@@ -28,6 +29,8 @@ class TokenProfileSourceQuery:
         lookback_ms: int = _PROFILE_LOOKBACK_MS,
     ) -> list[dict[str, Any]]:
         since_ms = int(now_ms) - int(lookback_ms)
+        resolved_limit = max(1, int(limit))
+        recent_resolution_limit = max(resolved_limit, resolved_limit * _RECENT_RESOLUTION_SCAN_MULTIPLIER)
         rows = self.conn.execute(
             """
             WITH current_radar_sets AS MATERIALIZED (
@@ -54,13 +57,11 @@ class TokenProfileSourceQuery:
                 AND token_radar_rows.target_id IS NOT NULL
               GROUP BY token_radar_rows.target_type, token_radar_rows.target_id
             ),
-            recent_resolution_targets AS MATERIALIZED (
+            recent_resolution_rows AS MATERIALIZED (
               SELECT
                 token_intent_resolutions.target_type,
                 token_intent_resolutions.target_id,
-                NULL::integer AS best_radar_rank,
-                NULL::bigint AS latest_radar_computed_at_ms,
-                MAX(events.received_at_ms) AS latest_event_received_at_ms
+                events.received_at_ms AS latest_event_received_at_ms
               FROM events
               JOIN token_intent_resolutions
                 ON token_intent_resolutions.event_id = events.event_id
@@ -69,7 +70,18 @@ class TokenProfileSourceQuery:
                 AND token_intent_resolutions.resolver_policy_version = %s
                 AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
                 AND token_intent_resolutions.target_id IS NOT NULL
-              GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
+              ORDER BY events.received_at_ms DESC, token_intent_resolutions.resolution_id DESC
+              LIMIT %s
+            ),
+            recent_resolution_targets AS MATERIALIZED (
+              SELECT
+                target_type,
+                target_id,
+                NULL::integer AS best_radar_rank,
+                NULL::bigint AS latest_radar_computed_at_ms,
+                MAX(latest_event_received_at_ms) AS latest_event_received_at_ms
+              FROM recent_resolution_rows
+              GROUP BY target_type, target_id
             ),
             target_seeds AS (
               SELECT * FROM radar_targets
@@ -98,7 +110,8 @@ class TokenProfileSourceQuery:
                 _PROJECTION_VERSION,
                 since_ms,
                 _RESOLVER_POLICY_VERSION,
-                max(0, int(limit)),
+                recent_resolution_limit,
+                resolved_limit,
             ),
         ).fetchall()
         return [dict(row) for row in rows]

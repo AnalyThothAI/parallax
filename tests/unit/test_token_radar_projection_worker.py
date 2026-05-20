@@ -154,10 +154,59 @@ def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():
             ("5m", "matched"): {"status": "ready", "row_count": 0},
             ("1h", "all"): {"status": "ready", "row_count": 0},
             ("1h", "matched"): {"status": "ready", "row_count": 0},
-        }
+        },
+        computed_at_ms=1_777_800_000_000,
     )
 
     assert missing == []
+
+
+def test_projection_worker_backs_off_recently_failed_missing_windows():
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=("5m", "24h"),
+            scopes=("all",),
+            hot_windows=("5m",),
+            cold_interval_seconds=60,
+        ),
+        db=FakeDB({}),
+        telemetry=object(),
+    )
+
+    missing = worker._missing_work_items(
+        {
+            ("5m", "all"): {"status": "ready", "computed_at_ms": 1_000},
+            ("24h", "all"): {"status": "failed", "computed_at_ms": 1_000},
+        },
+        computed_at_ms=30_000,
+    )
+
+    assert missing == []
+
+
+def test_projection_worker_retries_failed_missing_windows_after_cold_interval():
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(
+            windows=("5m", "24h"),
+            scopes=("all",),
+            hot_windows=("5m",),
+            cold_interval_seconds=60,
+        ),
+        db=FakeDB({}),
+        telemetry=object(),
+    )
+
+    missing = worker._missing_work_items(
+        {
+            ("5m", "all"): {"status": "ready", "computed_at_ms": 1_000},
+            ("24h", "all"): {"status": "failed", "computed_at_ms": 1_000},
+        },
+        computed_at_ms=62_000,
+    )
+
+    assert missing == [("24h", "all")]
 
 
 def test_projection_worker_records_partial_window_results_before_background_failure(monkeypatch):
@@ -247,6 +296,7 @@ class FakeWakeWaiter:
 
     async def async_wait(self, timeout: float) -> bool:
         self.wait_calls += 1
+        await asyncio.sleep(0.01)
         return True
 
     def wake(self) -> None:
