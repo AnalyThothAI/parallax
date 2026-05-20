@@ -49,12 +49,19 @@ class TokenRadarRepository:
             return False
         for row in rows:
             _validate_factor_contract(row)
-        listed_at_by_key = self._listed_at_by_identity(
+        listed_at_by_key = self.first_seen_by_identity(
             projection_version=projection_version,
             window=window,
             scope=scope,
             rows=rows,
         )
+        rows_to_insert = [
+            {
+                **row,
+                "listed_at_ms": listed_at_by_key.get(_identity_key(row), int(computed_at_ms)),
+            }
+            for row in rows
+        ]
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
@@ -65,7 +72,7 @@ class TokenRadarRepository:
             """,
             (projection_version, window, scope, int(computed_at_ms)),
         )
-        for row in rows:
+        for row in rows_to_insert:
             self.conn.execute(
                 """
                 INSERT INTO token_radar_rows(
@@ -91,10 +98,17 @@ class TokenRadarRepository:
                         "window": window,
                         "scope": scope,
                         "computed_at_ms": computed_at_ms,
-                        "listed_at_ms": listed_at_by_key.get(_identity_key(row), int(computed_at_ms)),
                     }
                 ),
             )
+        self.upsert_first_seen_batch(
+            projection_version=projection_version,
+            window=window,
+            scope=scope,
+            rows=rows_to_insert,
+            computed_at_ms=int(computed_at_ms),
+            commit=False,
+        )
         if commit:
             self.conn.commit()
         return True
@@ -189,6 +203,278 @@ class TokenRadarRepository:
             (str(row["target_type_key"]), str(row["identity_id"])): int(row["listed_at_ms"])
             for row in rows
             if row.get("listed_at_ms") is not None
+        }
+
+    def first_seen_by_identity(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], int]:
+        identities = _nonempty_identities(rows)
+        if not identities:
+            return {}
+        target_type_keys = [target_type for target_type, _ in identities]
+        identity_ids = [identity_id for _, identity_id in identities]
+        compact_rows = self.conn.execute(
+            """
+            WITH requested(target_type_key, identity_id) AS (
+              SELECT *
+              FROM unnest(%s::text[], %s::text[])
+            )
+            SELECT
+              requested.target_type_key,
+              requested.identity_id,
+              first_seen.first_seen_ms
+            FROM token_radar_target_first_seen first_seen
+            JOIN requested
+              ON requested.target_type_key = first_seen.target_type_key
+             AND requested.identity_id = first_seen.identity_id
+            WHERE first_seen.projection_version = %s
+              AND first_seen."window" = %s
+              AND first_seen.scope = %s
+            """,
+            (target_type_keys, identity_ids, projection_version, window, scope),
+        ).fetchall()
+        listed_at_by_key = {
+            (str(row["target_type_key"]), str(row["identity_id"])): int(row["first_seen_ms"])
+            for row in compact_rows
+            if row.get("first_seen_ms") is not None
+        }
+        missing_rows = [
+            row for row in rows if _identity_key(row) in identities and _identity_key(row) not in listed_at_by_key
+        ]
+        if missing_rows:
+            listed_at_by_key.update(
+                self._listed_at_by_identity(
+                    projection_version=projection_version,
+                    window=window,
+                    scope=scope,
+                    rows=missing_rows,
+                )
+            )
+        return listed_at_by_key
+
+    def upsert_first_seen_batch(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        computed_at_ms: int,
+        commit: bool = True,
+    ) -> int:
+        now_ms = _now_ms()
+        records: list[tuple[Any, ...]] = []
+        seen: set[tuple[str, str]] = set()
+        for row in rows:
+            target_type_key, identity_id = _identity_key(row)
+            if not identity_id or (target_type_key, identity_id) in seen:
+                continue
+            seen.add((target_type_key, identity_id))
+            first_seen_ms = int(row.get("listed_at_ms") or computed_at_ms)
+            last_seen_ms = int(computed_at_ms)
+            row_id = row.get("row_id")
+            records.append(
+                (
+                    projection_version,
+                    window,
+                    scope,
+                    target_type_key,
+                    identity_id,
+                    first_seen_ms,
+                    last_seen_ms,
+                    row_id,
+                    row_id,
+                    now_ms,
+                    now_ms,
+                )
+            )
+        if not records:
+            return 0
+        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(records))
+        params = [value for record in records for value in record]
+        self.conn.execute(
+            f"""
+            INSERT INTO token_radar_target_first_seen(
+              projection_version, "window", scope, target_type_key, identity_id,
+              first_seen_ms, last_seen_ms, first_row_id, latest_row_id, created_at_ms, updated_at_ms
+            )
+            VALUES {values_sql}
+            ON CONFLICT(projection_version, "window", scope, target_type_key, identity_id)
+            DO UPDATE SET
+              first_seen_ms = LEAST(token_radar_target_first_seen.first_seen_ms, excluded.first_seen_ms),
+              last_seen_ms = GREATEST(token_radar_target_first_seen.last_seen_ms, excluded.last_seen_ms),
+              first_row_id = CASE
+                WHEN excluded.first_seen_ms <= token_radar_target_first_seen.first_seen_ms
+                  THEN excluded.first_row_id
+                ELSE token_radar_target_first_seen.first_row_id
+              END,
+              latest_row_id = CASE
+                WHEN excluded.last_seen_ms >= token_radar_target_first_seen.last_seen_ms
+                  THEN excluded.latest_row_id
+                ELSE token_radar_target_first_seen.latest_row_id
+              END,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            params,
+        )
+        if commit:
+            self.conn.commit()
+        return len(records)
+
+    def backfill_first_seen_from_history(
+        self,
+        *,
+        batch_size: int,
+        after_key: tuple[str, str, str, str, str] | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        limit = max(1, int(batch_size))
+        after_projection_version, after_window, after_scope, after_target_type_key, after_identity_id = after_key or (
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        rows = self.conn.execute(
+            """
+            WITH identity_page AS (
+              SELECT
+                projection_version,
+                "window",
+                scope,
+                COALESCE(target_type, '') AS target_type_key,
+                COALESCE(target_id, intent_id) AS identity_id
+              FROM token_radar_rows
+              WHERE COALESCE(target_id, intent_id, '') <> ''
+                AND (
+                  %s IS NULL
+                  OR (projection_version, "window", scope, COALESCE(target_type, ''), COALESCE(target_id, intent_id))
+                     > (%s, %s, %s, %s, %s)
+                )
+              GROUP BY
+                projection_version,
+                "window",
+                scope,
+                COALESCE(target_type, ''),
+                COALESCE(target_id, intent_id)
+              ORDER BY projection_version, "window", scope, target_type_key, identity_id
+              LIMIT %s
+            ),
+            grouped AS (
+              SELECT
+                identity_page.projection_version,
+                identity_page."window",
+                identity_page.scope,
+                identity_page.target_type_key,
+                identity_page.identity_id,
+                MIN(COALESCE(rows.listed_at_ms, rows.computed_at_ms)) AS first_seen_ms,
+                MAX(rows.computed_at_ms) AS last_seen_ms,
+                (
+                  ARRAY_AGG(
+                    rows.row_id
+                    ORDER BY
+                      COALESCE(rows.listed_at_ms, rows.computed_at_ms) ASC,
+                      rows.computed_at_ms ASC,
+                      rows.row_id ASC
+                  )
+                )[1] AS first_row_id,
+                (ARRAY_AGG(rows.row_id ORDER BY rows.computed_at_ms DESC, rows.row_id DESC))[1] AS latest_row_id
+              FROM identity_page
+              JOIN token_radar_rows rows
+                ON rows.projection_version = identity_page.projection_version
+               AND rows."window" = identity_page."window"
+               AND rows.scope = identity_page.scope
+               AND COALESCE(rows.target_type, '') = identity_page.target_type_key
+               AND COALESCE(rows.target_id, rows.intent_id) = identity_page.identity_id
+              GROUP BY
+                identity_page.projection_version,
+                identity_page."window",
+                identity_page.scope,
+                identity_page.target_type_key,
+                identity_page.identity_id
+            )
+            SELECT *
+            FROM grouped
+            ORDER BY projection_version, "window", scope, target_type_key, identity_id
+            """,
+            (
+                after_projection_version,
+                after_projection_version,
+                after_window,
+                after_scope,
+                after_target_type_key,
+                after_identity_id,
+                limit,
+            ),
+        ).fetchall()
+        records = [dict(row) for row in rows]
+        if records:
+            now_ms = _now_ms()
+            values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(records))
+            params: list[Any] = []
+            for row in records:
+                params.extend(
+                    [
+                        row["projection_version"],
+                        row["window"],
+                        row["scope"],
+                        row["target_type_key"],
+                        row["identity_id"],
+                        int(row["first_seen_ms"]),
+                        int(row["last_seen_ms"]),
+                        row.get("first_row_id"),
+                        row.get("latest_row_id"),
+                        now_ms,
+                        now_ms,
+                    ]
+                )
+            self.conn.execute(
+                f"""
+                INSERT INTO token_radar_target_first_seen(
+                  projection_version, "window", scope, target_type_key, identity_id,
+                  first_seen_ms, last_seen_ms, first_row_id, latest_row_id, created_at_ms, updated_at_ms
+                )
+                VALUES {values_sql}
+                ON CONFLICT(projection_version, "window", scope, target_type_key, identity_id)
+                DO UPDATE SET
+                  first_seen_ms = LEAST(token_radar_target_first_seen.first_seen_ms, excluded.first_seen_ms),
+                  last_seen_ms = GREATEST(token_radar_target_first_seen.last_seen_ms, excluded.last_seen_ms),
+                  first_row_id = CASE
+                    WHEN excluded.first_seen_ms <= token_radar_target_first_seen.first_seen_ms
+                      THEN excluded.first_row_id
+                    ELSE token_radar_target_first_seen.first_row_id
+                  END,
+                  latest_row_id = CASE
+                    WHEN excluded.last_seen_ms >= token_radar_target_first_seen.last_seen_ms
+                      THEN excluded.latest_row_id
+                    ELSE token_radar_target_first_seen.latest_row_id
+                  END,
+                  updated_at_ms = excluded.updated_at_ms
+                """,
+                params,
+            )
+        if commit:
+            self.conn.commit()
+        next_after_key = None
+        if records:
+            last = records[-1]
+            next_after_key = (
+                str(last["projection_version"]),
+                str(last["window"]),
+                str(last["scope"]),
+                str(last["target_type_key"]),
+                str(last["identity_id"]),
+            )
+        return {
+            "rows_upserted": len(records),
+            "next_after_key": next_after_key,
+            "has_more": len(records) == limit,
         }
 
     def mark_coverage(
@@ -307,6 +593,10 @@ def _identity_key(row: dict[str, Any]) -> tuple[str, str]:
     target_type = str(row.get("target_type") or "")
     identity_id = str(row.get("target_id") or row.get("intent_id") or "")
     return (target_type, identity_id)
+
+
+def _nonempty_identities(rows: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    return list(dict.fromkeys(identity for identity in (_identity_key(row) for row in rows) if identity[1]))
 
 
 def _now_ms() -> int:
