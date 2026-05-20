@@ -617,10 +617,26 @@ class TokenRadarRepository:
               FROM token_radar_projection_coverage
               WHERE computed_at_ms IS NOT NULL
             ),
+            coverage_keys AS (
+              SELECT DISTINCT projection_version, "window", scope
+              FROM coverage_batches
+            ),
             actual_latest_batches AS (
-              SELECT projection_version, "window", scope, MAX(computed_at_ms) AS computed_at_ms
-              FROM token_radar_rows
-              GROUP BY projection_version, "window", scope
+              SELECT
+                coverage_keys.projection_version,
+                coverage_keys."window",
+                coverage_keys.scope,
+                latest_rows.computed_at_ms
+              FROM coverage_keys
+              JOIN LATERAL (
+                SELECT token_radar_rows.computed_at_ms
+                FROM token_radar_rows
+                WHERE token_radar_rows.projection_version = coverage_keys.projection_version
+                  AND token_radar_rows."window" = coverage_keys."window"
+                  AND token_radar_rows.scope = coverage_keys.scope
+                ORDER BY token_radar_rows.computed_at_ms DESC
+                LIMIT 1
+              ) latest_rows ON true
             )
             SELECT
               (SELECT COUNT(*) FROM coverage_batches) AS protected_coverage_batches,
@@ -640,10 +656,26 @@ class TokenRadarRepository:
               FROM token_radar_projection_coverage
               WHERE computed_at_ms IS NOT NULL
             ),
+            coverage_keys AS (
+              SELECT DISTINCT projection_version, "window", scope
+              FROM coverage_batches
+            ),
             actual_latest_batches AS (
-              SELECT projection_version, "window", scope, MAX(computed_at_ms) AS computed_at_ms
-              FROM token_radar_rows
-              GROUP BY projection_version, "window", scope
+              SELECT
+                coverage_keys.projection_version,
+                coverage_keys."window",
+                coverage_keys.scope,
+                latest_rows.computed_at_ms
+              FROM coverage_keys
+              JOIN LATERAL (
+                SELECT token_radar_rows.computed_at_ms
+                FROM token_radar_rows
+                WHERE token_radar_rows.projection_version = coverage_keys.projection_version
+                  AND token_radar_rows."window" = coverage_keys."window"
+                  AND token_radar_rows.scope = coverage_keys.scope
+                ORDER BY token_radar_rows.computed_at_ms DESC
+                LIMIT 1
+              ) latest_rows ON true
             ),
             protected_batches AS (
               SELECT * FROM coverage_batches
@@ -681,10 +713,26 @@ class TokenRadarRepository:
               FROM token_radar_projection_coverage
               WHERE computed_at_ms IS NOT NULL
             ),
+            coverage_keys AS (
+              SELECT DISTINCT projection_version, "window", scope
+              FROM coverage_batches
+            ),
             actual_latest_batches AS (
-              SELECT projection_version, "window", scope, MAX(computed_at_ms) AS computed_at_ms
-              FROM token_radar_rows
-              GROUP BY projection_version, "window", scope
+              SELECT
+                coverage_keys.projection_version,
+                coverage_keys."window",
+                coverage_keys.scope,
+                latest_rows.computed_at_ms
+              FROM coverage_keys
+              JOIN LATERAL (
+                SELECT token_radar_rows.computed_at_ms
+                FROM token_radar_rows
+                WHERE token_radar_rows.projection_version = coverage_keys.projection_version
+                  AND token_radar_rows."window" = coverage_keys."window"
+                  AND token_radar_rows.scope = coverage_keys.scope
+                ORDER BY token_radar_rows.computed_at_ms DESC
+                LIMIT 1
+              ) latest_rows ON true
             ),
             protected_batches AS (
               SELECT * FROM coverage_batches

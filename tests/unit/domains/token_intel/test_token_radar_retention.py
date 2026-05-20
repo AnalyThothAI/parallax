@@ -20,7 +20,8 @@ def test_plan_prunable_rows_protects_coverage_and_actual_latest_batches() -> Non
     assert "coverage_batches AS" in conn.last_sql
     assert "actual_latest_batches AS" in conn.last_sql
     assert "protected_batches AS" in conn.last_sql
-    assert "MAX(computed_at_ms) AS computed_at_ms" in conn.last_sql
+    assert "JOIN LATERAL" in conn.last_sql
+    assert "ORDER BY token_radar_rows.computed_at_ms DESC" in conn.last_sql
     assert "NOT EXISTS" in conn.last_sql
     assert conn.last_params == (1_000, 25)
 
