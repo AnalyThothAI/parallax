@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.narrative_intel.services.narrative_currentness import (
+    narrative_delta_from_currentness,
+    public_currentness,
+)
 
 
 class NarrativeReadModel:
@@ -11,11 +15,12 @@ class NarrativeReadModel:
 
     def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
         targets = _extract_targets(data)
-        digests = self.repository.current_digests_for_targets(
+        digests = self.repository.current_narrative_snapshots_for_targets(
             targets,
             window=window,
             scope=_normalize_scope(scope),
             schema_version=NARRATIVE_SCHEMA_VERSION,
+            now_ms=now_ms,
         )
         hydrated = dict(data)
         for key in ("targets", "attention", "items"):
@@ -25,11 +30,12 @@ class NarrativeReadModel:
 
     def hydrate_token_case(self, dossier: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
         target = dossier.get("target") or {}
-        digests = self.repository.current_digests_for_targets(
+        digests = self.repository.current_narrative_snapshots_for_targets(
             [{"target_type": target.get("target_type"), "target_id": target.get("target_id")}],
             window=window,
             scope=_normalize_scope(scope),
             schema_version=NARRATIVE_SCHEMA_VERSION,
+            now_ms=now_ms,
         )
         hydrated = dict(dossier)
         hydrated["discussion_digest"] = _public_digest(
@@ -38,7 +44,9 @@ class NarrativeReadModel:
                 _missing_digest("digest_not_ready"),
             ),
             now_ms=now_ms,
+            surface="token_case",
         )
+        hydrated["narrative_delta"] = narrative_delta_from_currentness(hydrated["discussion_digest"]["currentness"])
         hydrated.setdefault("narrative_clusters", hydrated["discussion_digest"].get("dominant_narratives", []))
         if isinstance(hydrated.get("posts"), dict):
             hydrated["posts"] = self.hydrate_target_posts(
@@ -84,6 +92,7 @@ class NarrativeReadModel:
             "discussion_digest": _public_digest(
                 digests.get((target_type, target_id), _missing_digest("digest_not_ready")),
                 now_ms=now_ms,
+                surface="token_radar",
             ),
             "pulse_overlay": row.get("pulse_overlay") or {"status": "absent"},
         }
@@ -113,7 +122,12 @@ def _missing_digest(reason: str) -> dict[str, Any]:
     }
 
 
-def _public_digest(digest: dict[str, Any], *, now_ms: int | None = None) -> dict[str, Any]:
+def _public_digest(
+    digest: dict[str, Any],
+    *,
+    now_ms: int | None = None,
+    surface: str = "token_radar",
+) -> dict[str, Any]:
     row = dict(digest)
     narratives = _list(row.get("dominant_narratives_json"))
     dominant = _dict(narratives[0]) if narratives else {}
@@ -122,8 +136,16 @@ def _public_digest(digest: dict[str, Any], *, now_ms: int | None = None) -> dict
     propagation = _dict(row.get("propagation_read_json"))
     data_gaps = [_public_gap(gap) for gap in _list(row.get("data_gaps_json"))]
     semantic_coverage = _float(row.get("semantic_coverage"))
+    currentness = _public_currentness_for_row(row, now_ms=now_ms)
+    if (
+        surface == "token_case"
+        and row.get("status") == "ready"
+        and currentness.get("display_status") == "out_of_frontier"
+    ):
+        currentness = {**currentness, "display_status": "stale"}
     payload = {
         **row,
+        "currentness": currentness,
         "dominant_narratives": narratives,
         "dominant_narrative": _dominant_narrative(row, dominant),
         "coverage": {
@@ -148,6 +170,26 @@ def _public_digest(digest: dict[str, Any], *, now_ms: int | None = None) -> dict
     if processing:
         payload["processing"] = processing
     return payload
+
+
+def _public_currentness_for_row(row: dict[str, Any], *, now_ms: int | None) -> dict[str, Any]:
+    currentness = row.get("currentness")
+    if isinstance(currentness, dict):
+        return dict(currentness)
+    return public_currentness(
+        digest=row,
+        admission=row.get("_current_admission") if isinstance(row.get("_current_admission"), dict) else None,
+        window=str(row.get("window") or ""),
+        now_ms=0 if now_ms is None else int(now_ms),
+        reason=_first_data_gap_reason(row),
+    )
+
+
+def _first_data_gap_reason(row: dict[str, Any]) -> str | None:
+    for gap in _list(row.get("data_gaps_json")):
+        if isinstance(gap, dict) and gap.get("reason"):
+            return str(gap["reason"])
+    return None
 
 
 def _processing(row: dict[str, Any], *, now_ms: int | None) -> dict[str, Any] | None:
