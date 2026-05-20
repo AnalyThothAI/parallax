@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOWS
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gmgn-twitter-intel")
@@ -17,12 +19,12 @@ def build_parser() -> argparse.ArgumentParser:
     pulse = subcommands.add_parser("pulse", help="Signal Pulse diagnostics")
     pulse_subcommands = pulse.add_subparsers(dest="pulse_command", required=True)
     pulse_health = pulse_subcommands.add_parser("health", help="print Signal Pulse evidence-chain health")
-    pulse_health.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    pulse_health.add_argument("--window", choices=SIGNAL_PULSE_WINDOWS, default="1h")
     pulse_health.add_argument("--scope", choices=("all", "matched"), default="all")
     pulse_health.add_argument("--since-hours", type=int, default=4)
     pulse_replay = pulse_subcommands.add_parser("replay-eval", help="run Signal Pulse replay evaluation smoke checks")
     pulse_replay.add_argument("--fixture", default="smoke")
-    pulse_replay.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    pulse_replay.add_argument("--window", choices=SIGNAL_PULSE_WINDOWS, default="1h")
     pulse_replay.add_argument("--scope", choices=("all", "matched"), default="all")
     pulse_replay.add_argument("--since-hours", type=int, default=4)
 

@@ -7,6 +7,7 @@ import pytest
 
 from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.validators import _signal_pulse_window
+from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
 from gmgn_twitter_intel.platform.config.settings import (
     PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS,
     PULSE_CANDIDATE_WINDOWS,
@@ -79,6 +80,18 @@ def test_signal_pulse_api_validator_rejects_removed_5m_window() -> None:
 
     assert exc_info.value.error == "invalid_window"
     assert exc_info.value.field == "window"
+
+
+def test_pulse_cli_rejects_removed_windows() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["pulse", "health", "--window", "5m"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["pulse", "replay-eval", "--window", "24h"])
+
+    assert parser.parse_args(["pulse", "health", "--window", "1h"]).window == "1h"
+    assert parser.parse_args(["pulse", "replay-eval", "--window", "4h"]).window == "4h"
 
 
 def test_generated_pulse_operator_docs_do_not_advertise_removed_agent_flow() -> None:
