@@ -477,6 +477,157 @@ class TokenRadarRepository:
             "has_more": len(records) == limit,
         }
 
+    def protected_batch_counts(self) -> dict[str, int]:
+        row = self.conn.execute(
+            """
+            WITH coverage_batches AS (
+              SELECT projection_version, "window", scope, computed_at_ms
+              FROM token_radar_projection_coverage
+              WHERE computed_at_ms IS NOT NULL
+            ),
+            actual_latest_batches AS (
+              SELECT projection_version, "window", scope, MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_rows
+              GROUP BY projection_version, "window", scope
+            )
+            SELECT
+              (SELECT COUNT(*) FROM coverage_batches) AS protected_coverage_batches,
+              (SELECT COUNT(*) FROM actual_latest_batches) AS protected_actual_latest_batches
+            """
+        ).fetchone()
+        return {
+            "protected_coverage_batches": int(row["protected_coverage_batches"] if row else 0),
+            "protected_actual_latest_batches": int(row["protected_actual_latest_batches"] if row else 0),
+        }
+
+    def plan_prunable_rows(self, *, cutoff_ms: int, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH coverage_batches AS (
+              SELECT projection_version, "window", scope, computed_at_ms
+              FROM token_radar_projection_coverage
+              WHERE computed_at_ms IS NOT NULL
+            ),
+            actual_latest_batches AS (
+              SELECT projection_version, "window", scope, MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_rows
+              GROUP BY projection_version, "window", scope
+            ),
+            protected_batches AS (
+              SELECT * FROM coverage_batches
+              UNION
+              SELECT * FROM actual_latest_batches
+            )
+            SELECT
+              rows.row_id,
+              rows.projection_version,
+              rows."window",
+              rows.scope,
+              rows.computed_at_ms
+            FROM token_radar_rows rows
+            WHERE rows.computed_at_ms < %s
+              AND NOT EXISTS (
+                SELECT 1
+                FROM protected_batches current
+                WHERE current.projection_version = rows.projection_version
+                  AND current."window" = rows."window"
+                  AND current.scope = rows.scope
+                  AND current.computed_at_ms = rows.computed_at_ms
+              )
+            ORDER BY rows.computed_at_ms ASC, rows.row_id ASC
+            LIMIT %s
+            """,
+            (int(cutoff_ms), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_prunable_rows_batch(self, *, cutoff_ms: int, batch_size: int, commit: bool = True) -> int:
+        rows = self.conn.execute(
+            """
+            WITH coverage_batches AS (
+              SELECT projection_version, "window", scope, computed_at_ms
+              FROM token_radar_projection_coverage
+              WHERE computed_at_ms IS NOT NULL
+            ),
+            actual_latest_batches AS (
+              SELECT projection_version, "window", scope, MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_rows
+              GROUP BY projection_version, "window", scope
+            ),
+            protected_batches AS (
+              SELECT * FROM coverage_batches
+              UNION
+              SELECT * FROM actual_latest_batches
+            ),
+            victims AS (
+              SELECT rows.row_id
+              FROM token_radar_rows rows
+              WHERE rows.computed_at_ms < %s
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM protected_batches current
+                  WHERE current.projection_version = rows.projection_version
+                    AND current."window" = rows."window"
+                    AND current.scope = rows.scope
+                    AND current.computed_at_ms = rows.computed_at_ms
+                )
+              ORDER BY rows.computed_at_ms ASC, rows.row_id ASC
+              LIMIT %s
+            )
+            DELETE FROM token_radar_rows rows
+            USING victims
+            WHERE rows.row_id = victims.row_id
+            RETURNING rows.row_id
+            """,
+            (int(cutoff_ms), max(0, int(batch_size))),
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return len(rows)
+
+    def insert_retention_run(self, payload: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO token_radar_retention_runs(
+              run_id, mode, retention_days, cutoff_ms, batch_size, max_batches,
+              rows_planned, rows_deleted, status, error, started_at_ms, finished_at_ms, created_at_ms
+            )
+            VALUES (
+              %(run_id)s, %(mode)s, %(retention_days)s, %(cutoff_ms)s, %(batch_size)s, %(max_batches)s,
+              %(rows_planned)s, %(rows_deleted)s, %(status)s, %(error)s, %(started_at_ms)s, %(finished_at_ms)s,
+              %(created_at_ms)s
+            )
+            RETURNING *
+            """,
+            payload,
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row) if row else dict(payload)
+
+    def finish_retention_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        rows_deleted: int,
+        error: str | None = None,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE token_radar_retention_runs
+            SET status = %s,
+                rows_deleted = %s,
+                error = %s,
+                finished_at_ms = %s
+            WHERE run_id = %s
+            """,
+            (status, max(0, int(rows_deleted)), error, _now_ms(), str(run_id)),
+        )
+        if commit:
+            self.conn.commit()
+
     def mark_coverage(
         self,
         *,
