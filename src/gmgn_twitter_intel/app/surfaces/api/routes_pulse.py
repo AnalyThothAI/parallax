@@ -8,8 +8,14 @@ from fastapi.responses import JSONResponse
 from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime, _worker_running
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
-from gmgn_twitter_intel.app.surfaces.api.validators import _limit, _scope, _signal_pulse_public_status, _window
+from gmgn_twitter_intel.app.surfaces.api.validators import (
+    _limit,
+    _scope,
+    _signal_pulse_public_status,
+    _signal_pulse_window,
+)
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_DEFAULT_WINDOW
 
 router = APIRouter()
 
@@ -20,7 +26,7 @@ router = APIRouter()
 )
 def signal_lab_pulse(
     request: Request,
-    window: Annotated[str, Query()] = "5m",
+    window: Annotated[str, Query()] = SIGNAL_PULSE_DEFAULT_WINDOW,
     scope: Annotated[str, Query()] = "all",
     status: Annotated[str, Query()] = "",
     handle: Annotated[str, Query()] = "",
@@ -29,7 +35,7 @@ def signal_lab_pulse(
     cursor: Annotated[str, Query()] = "",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
-    parsed_window = _window(window)
+    parsed_window = _signal_pulse_window(window)
     parsed_scope = _scope(scope)
     parsed_limit = _limit(limit, maximum=500)
     parsed_status = _signal_pulse_public_status(status)

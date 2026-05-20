@@ -514,20 +514,20 @@ def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> No
 def test_scan_global_pending_cap_bounds_enqueues_across_windows_and_scopes() -> None:
     repos = FakeRepos()
     repos.token_radar.rows_by_window_scope = {
-        ("5m", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-5m-all")],
-        ("5m", "matched"): [
-            _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-5m-matched")
-        ],
         ("1h", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-1h-all")],
         ("1h", "matched"): [
             _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-1h-matched")
+        ],
+        ("4h", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-4h-all")],
+        ("4h", "matched"): [
+            _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-4h-matched")
         ],
     }
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
     worker = _worker(
         repos,
         settings=_settings(
-            windows=("5m", "1h"),
+            windows=("1h", "4h"),
             scopes=("all", "matched"),
             max_enqueues_per_cycle=10,
             max_pending_jobs_global=2,
@@ -571,22 +571,22 @@ def test_scan_window_scope_pending_cap_suppresses_enqueue_without_admission_clai
     assert repos.pulse_jobs.jobs == []
 
 
-def test_stale_short_window_jobs_are_terminalized_before_processing() -> None:
+def test_stale_primary_window_jobs_are_terminalized_before_processing() -> None:
     repos = FakeRepos()
     repos.pulse_jobs.jobs.append(
         {
-            "job_id": "job-stale-5m",
-            "candidate_id": "candidate-stale-5m",
+            "job_id": "job-stale-1h",
+            "candidate_id": "candidate-stale-1h",
             "status": "pending",
-            "window": "5m",
+            "window": "1h",
             "scope": "all",
-            "created_at_ms": NOW_MS - 301_000,
-            "updated_at_ms": NOW_MS - 301_000,
+            "created_at_ms": NOW_MS - 3_601_000,
+            "updated_at_ms": NOW_MS - 3_601_000,
             "attempt_count": 0,
             "max_attempts": 3,
         }
     )
-    worker = _worker(repos, settings=_settings(stale_job_ttl_by_window_seconds={"5m": 300}))
+    worker = _worker(repos, settings=_settings(stale_job_ttl_by_window_seconds={"1h": 3600}))
 
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
 

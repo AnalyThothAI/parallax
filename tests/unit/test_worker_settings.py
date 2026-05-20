@@ -3,7 +3,11 @@ import yaml
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
-from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
+from gmgn_twitter_intel.platform.config.settings import (
+    PulseCandidateWorkerSettings,
+    WorkersSettings,
+    default_workers_yaml,
+)
 
 
 def _legacy_anchor_worker_key() -> str:
@@ -83,7 +87,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
     assert settings.pulse_candidate.max_pending_jobs_global == 100
     assert settings.pulse_candidate.max_pending_jobs_per_window_scope == 25
-    assert settings.pulse_candidate.stale_job_ttl_by_window_seconds == {"5m": 300}
+    assert settings.pulse_candidate.windows == ("1h", "4h")
+    assert settings.pulse_candidate.stale_job_ttl_by_window_seconds == {"1h": 3600, "4h": 14400}
     assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
     assert settings.handle_summary.time_threshold_ms == 1_800_000
@@ -217,6 +222,14 @@ def test_worker_settings_reject_zero_pulse_candidate_budgets():
 
     with pytest.raises(ValidationError):
         WorkersSettings(**payload)
+
+
+def test_pulse_candidate_settings_reject_removed_windows() -> None:
+    with pytest.raises(ValidationError, match=r"pulse_candidate\.windows"):
+        PulseCandidateWorkerSettings(windows=("5m",))
+
+    with pytest.raises(ValidationError, match=r"pulse_candidate\.windows"):
+        PulseCandidateWorkerSettings(windows=("24h",))
 
 
 def test_worker_settings_reject_legacy_live_gateway_fields():

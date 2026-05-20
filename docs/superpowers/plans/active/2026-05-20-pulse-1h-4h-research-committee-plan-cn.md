@@ -521,28 +521,29 @@ Known-failing baseline tests:
 - Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
 - Test: `tests/unit/test_api_signal_pulse_contract.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
+- Test: `tests/unit/test_worker_settings.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - API default is `4h/all`.
   - `/api/signal-lab/pulse?window=5m` returns `invalid_window`.
   - `PulseCandidateWorkerSettings(windows=("5m",))` raises `ValueError`.
   - default pulse worker windows are `("1h", "4h")`.
 
-- [ ] Create `pulse_horizon_policy.py` with constants and validation functions.
+- [x] Create `pulse_horizon_policy.py` with constants and validation functions.
 
-- [ ] Wire settings validator to fail fast.
+- [x] Wire settings validator to fail fast.
   Do not silently strip invalid windows from operator config.
 
-- [ ] Change route default and validator.
+- [x] Change route default and validator.
 
-- [ ] Run:
+- [x] Run:
   ```bash
-  uv run pytest tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py -q
+  uv run pytest tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_worker_settings.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/surfaces/api/validators.py src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py
+  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/surfaces/api/validators.py src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_worker_settings.py
   git commit -m "feat: hard cut pulse horizons to 1h 4h"
   ```
 
@@ -678,7 +679,7 @@ Known-failing baseline tests:
   uv run pytest tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/domains/pulse_lab/providers.py src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py src/gmgn_twitter_intel/domains/pulse_lab/services/prompt_loader.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py src/gmgn_twitter_intel/domains/pulse_lab/prompts/ tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py
   git commit -m "feat: replace pulse agent with research committee"
