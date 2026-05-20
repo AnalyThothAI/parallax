@@ -7,8 +7,10 @@ import {
   useLiveRouteState,
   useLiveSelection,
 } from "@features/live";
+import { NEWS_PAGE_SIZE, useNewsPageWithToken } from "@features/news";
 import { useNotificationsController } from "@features/notifications";
 import { useSignalLabCompactQuery } from "@features/signal-lab";
+import { useStocksRadarQuery } from "@features/stocks";
 import {
   buildWatchlistRows,
   emptyWatchlistHandleRow,
@@ -34,6 +36,7 @@ import { WatchlistRoute } from "./watchlist.route";
 
 const EMPTY_HANDLES: string[] = [];
 const EMPTY_LIVE_ITEMS: LivePayload[] = [];
+const EMPTY_NEWS_ROWS: unknown[] = [];
 
 export function AppRoutes({ session }: { session: AppSession }) {
   const queryClient = useQueryClient();
@@ -44,6 +47,12 @@ export function AppRoutes({ session }: { session: AppSession }) {
     scope: liveRoute.scope,
     token: session.token,
   });
+  const stocksRadarQuery = useStocksRadarQuery({
+    scope: liveRoute.scope,
+    token: session.token ?? "",
+    window: liveRoute.window,
+  });
+  const newsRowsQuery = useNewsPageWithToken(session.token ?? "", { limit: NEWS_PAGE_SIZE });
   const watchlistHandlesOverviewQuery = useWatchlistHandlesOverviewQuery({ token: session.token });
   const liveRadar = useLiveRadarRouteData({
     scope: liveRoute.scope,
@@ -72,6 +81,10 @@ export function AppRoutes({ session }: { session: AppSession }) {
   const assetFlowError = liveRadar.assetFlowError;
   const token = session.token;
   const tokenItems = liveRadar.tokenItems;
+  const stockItemsCount =
+    stocksRadarQuery.data?.health?.returned_count ?? stocksRadarQuery.data?.rows.length ?? 0;
+  const newsRows = newsRowsQuery.data?.items ?? EMPTY_NEWS_ROWS;
+  const newsItemsHasMore = Boolean(newsRowsQuery.data?.next_cursor);
   const windowKey = liveRoute.window;
   const liveItems = useMemo(
     () => mergeLiveItems(recentReplayItems, socketSnapshot.eventItems),
@@ -163,6 +176,9 @@ export function AppRoutes({ session }: { session: AppSession }) {
   };
   const sideRailProps = {
     tokenItemsCount: tokenItems.length,
+    stockItemsCount,
+    newsItemsCount: newsRows.length,
+    newsItemsHasMore,
     scope,
     onScopeChange: liveRoute.updateScope,
     handles,

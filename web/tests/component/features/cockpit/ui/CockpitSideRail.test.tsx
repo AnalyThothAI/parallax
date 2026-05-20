@@ -10,6 +10,9 @@ describe("CockpitSideRail", () => {
       <MemoryRouter initialEntries={["/"]}>
         <CockpitSideRail
           tokenItemsCount={2}
+          stockItemsCount={1}
+          newsItemsCount={3}
+          newsItemsHasMore={true}
           scope="all"
           onScopeChange={vi.fn()}
           handles="toly"
@@ -22,8 +25,8 @@ describe("CockpitSideRail", () => {
     );
 
     expect(screen.getByRole("button", { name: /Radar/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Stocks/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /News/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Stocks/ })).toHaveTextContent("1");
+    expect(screen.getByRole("button", { name: /News/ })).toHaveTextContent("3+");
     expect(screen.queryByRole("button", { name: /Ops/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Watchlist/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Signal Pulse/ })).not.toBeInTheDocument();

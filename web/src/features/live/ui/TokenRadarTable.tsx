@@ -98,13 +98,13 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
           <span>{resultLabel}</span>
         </div>
         <div className="toolbar-controls" aria-label="token radar scan controls">
+          <VenueFilter value={venueFilter} onChange={setVenueFilter} />
           <RadarControls
             scope={scope}
             windowKey={windowKey}
             onScopeChange={onScopeChange}
             onWindowChange={onWindowChange}
           />
-          <VenueFilter value={venueFilter} onChange={setVenueFilter} />
         </div>
       </header>
 

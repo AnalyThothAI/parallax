@@ -31,6 +31,7 @@ export async function installMockApi(page: Page) {
     if (path === "/api/account-quality") return fulfill(route, accountQualityData());
     if (path === "/api/notification-summary") return fulfill(route, notificationSummary());
     if (path === "/api/notifications") return fulfill(route, notificationsData());
+    if (path === "/api/news") return fulfill(route, newsRowsData());
     if (path.endsWith("/read"))
       return fulfill(route, { notification_id: "notification-1", updated: true });
     if (path === "/api/notifications/read-all") return fulfill(route, { updated: true });
@@ -42,6 +43,21 @@ export async function installMockApi(page: Page) {
       body: JSON.stringify({ ok: false, error: `unhandled ${path}` }),
     });
   });
+}
+
+function newsRowsData() {
+  return {
+    items: [
+      {
+        row_id: "news-row-1",
+        news_item_id: "news-row-1",
+        lifecycle_status: "processed",
+        headline: "Macro desk flags liquidity rotation",
+        latest_at_ms: NOW,
+      },
+    ],
+    next_cursor: null,
+  };
 }
 
 async function fulfill(route: Route, data: unknown) {

@@ -41,6 +41,13 @@ describe("signal lab route", () => {
       if (path === "/api/notifications") return ok({ items: [], summary: null });
       if (path === "/api/recent") return ok({ items: [] });
       if (path === "/api/token-radar") return ok({ targets: [], attention: [] });
+      if (path === "/api/stocks-radar") {
+        return ok({
+          rows: [],
+          health: { returned_count: 0, quote_ready_count: 0, quote_unavailable_count: 0 },
+        });
+      }
+      if (path === "/api/news") return ok({ items: [], next_cursor: null });
       if (path.startsWith("/api/signal-lab/pulse/")) return ok(tittyPulseFixture);
       if (path === "/api/social-events/by-ids") return ok({ events: [], not_found: [] });
       throw new Error(`unexpected path ${path}`);

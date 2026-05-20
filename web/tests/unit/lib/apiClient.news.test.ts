@@ -1,8 +1,7 @@
 import { fetchNewsItem, fetchNewsRows } from "@lib/api/client";
+import { server } from "@tests/msw/server";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-
-import { server } from "@tests/msw/server";
 
 describe("news API client normalization", () => {
   it("normalizes flat, nested, and missing news agent briefs", async () => {

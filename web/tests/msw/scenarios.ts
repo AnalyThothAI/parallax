@@ -27,6 +27,8 @@ export function mockLiveRadarRoute(apiMock: ApiMock) {
     }
     if (path === "/api/recent") return ok(recentReplayFixture());
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
+    if (path === "/api/stocks-radar") return ok(stocksRadarFixture());
+    if (path === "/api/news") return ok(newsRowsFixture());
     if (path === "/api/signal-lab/pulse") return ok(signalPulseFixture());
     if (path === "/api/token-case") return ok(tokenCaseFixture());
     if (path === "/api/search/inspect") {
@@ -56,11 +58,26 @@ export function mockNotificationRoute(apiMock: ApiMock) {
     if (path === "/api/notifications") return ok({ items: [notification], summary });
     if (path === "/api/recent") return ok(recentReplayFixture());
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
+    if (path === "/api/stocks-radar") return ok(stocksRadarFixture());
+    if (path === "/api/news") return ok(newsRowsFixture());
     if (path === "/api/signal-lab/pulse") return ok(signalPulseFixture());
     if (path === "/api/token-case") return ok(tokenCaseFixture());
     if (path === "/api/target-social-timeline") return ok(targetSocialTimelineFixture());
     if (path === "/api/target-posts") return ok(tokenCasePostsFixture());
     throw new Error(`unexpected path ${path}`);
+  };
+}
+
+function newsRowsFixture() {
+  return { items: [], next_cursor: null };
+}
+
+function stocksRadarFixture() {
+  return {
+    window: "1h",
+    scope: "all",
+    rows: [],
+    health: { returned_count: 0, quote_ready_count: 0, quote_unavailable_count: 0 },
   };
 }
 

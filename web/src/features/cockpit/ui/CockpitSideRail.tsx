@@ -12,6 +12,9 @@ type DecisionCounts = Record<Decision, number>;
 
 export type CockpitSideRailProps = {
   tokenItemsCount: number;
+  stockItemsCount: number;
+  newsItemsCount: number;
+  newsItemsHasMore: boolean;
   scope: ScopeKey;
   onScopeChange: (scope: ScopeKey) => void;
   handles: string;
@@ -23,6 +26,9 @@ export type CockpitSideRailProps = {
 
 export function CockpitSideRail({
   tokenItemsCount,
+  stockItemsCount,
+  newsItemsCount,
+  newsItemsHasMore,
   scope,
   onScopeChange,
   handles,
@@ -53,12 +59,14 @@ export function CockpitSideRail({
           active={Boolean(stockRouteMatch)}
           index="2"
           label="Stocks"
+          value={stockItemsCount}
           onClick={() => navigate(stocksPath())}
         />
         <RailButton
           active={Boolean(newsRouteMatch)}
           index="3"
           label="News"
+          value={newsItemsHasMore ? `${compactNumber(newsItemsCount)}+` : newsItemsCount}
           onClick={() => navigate(newsPath())}
         />
       </RailSection>
@@ -153,7 +161,7 @@ function RailButton({
 }: {
   active?: boolean;
   label: string;
-  value?: number;
+  value?: number | string;
   index: string;
   onClick: () => void;
 }) {
@@ -161,7 +169,11 @@ function RailButton({
     <button className={clsx("rail-button", active && "active")} type="button" onClick={onClick}>
       <span>{index}</span>
       <b>{label}</b>
-      {value !== undefined ? <em>{compactNumber(value)}</em> : <em />}
+      {value !== undefined ? (
+        <em>{typeof value === "number" ? compactNumber(value) : value}</em>
+      ) : (
+        <em />
+      )}
     </button>
   );
 }

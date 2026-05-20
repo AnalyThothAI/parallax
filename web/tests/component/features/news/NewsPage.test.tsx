@@ -25,7 +25,7 @@ describe("NewsPage", () => {
     cleanup();
   });
 
-  it("renders a persisted agent brief news table and advances by cursor", async () => {
+  it("renders a persisted agent brief news table and loads the next cursor at scroll bottom", async () => {
     fetchNewsRowsMock.mockImplementation(async (params = {}) => ({
       items: params.cursor === "cursor-2" ? [secondPageRow] : [firstPageRow],
       next_cursor: params.cursor === "cursor-2" ? null : "cursor-2",
@@ -42,6 +42,8 @@ describe("NewsPage", () => {
     expect(screen.getByText("Coinbase 上线 NEWX，短线关注流动性确认。")).toBeInTheDocument();
     expect(screen.getByText("bullish")).toBeInTheDocument();
     expect(screen.getByText("driver")).toBeInTheDocument();
+    expect(screen.queryByText(/page\s+1/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Next news page")).not.toBeInTheDocument();
     expect(fetchNewsRowsMock).toHaveBeenCalledWith({
       cursor: null,
       limit: 25,
@@ -49,7 +51,21 @@ describe("NewsPage", () => {
       token: "test-token",
     });
 
-    fireEvent.click(screen.getByLabelText("Next news page"));
+    const scrollContainer = screen.getByLabelText("News intel scroll container");
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 470,
+      writable: true,
+    });
+    fireEvent.scroll(scrollContainer);
 
     expect(await screen.findByText("Second page story")).toBeInTheDocument();
     await waitFor(() =>

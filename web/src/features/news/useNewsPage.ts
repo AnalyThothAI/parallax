@@ -1,6 +1,6 @@
 import { fetchNewsItem, fetchNewsRows } from "@lib/api/client";
 import { queryKeys } from "@shared/query/queryKeys";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 export const NEWS_PAGE_SIZE = 25;
 
@@ -20,6 +20,21 @@ export const useNewsPageWithToken = (
     queryKey: queryKeys.newsRows({ cursor, limit, status }),
     queryFn: () => fetchNewsRows({ cursor, limit, status, token }),
     refetchInterval: 15_000,
+    staleTime: 15_000,
+  });
+
+export const useInfiniteNewsPageWithToken = (
+  token: string,
+  { limit = NEWS_PAGE_SIZE, status = null }: Omit<NewsPageQueryParams, "cursor"> = {},
+) =>
+  useInfiniteQuery({
+    enabled: Boolean(token),
+    initialPageParam: null as string | null,
+    queryKey: queryKeys.newsRowsInfinite({ limit, status }),
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      fetchNewsRows({ cursor: pageParam, limit, status, token }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
+    refetchInterval: (query) => ((query.state.data?.pages.length ?? 0) > 1 ? false : 15_000),
     staleTime: 15_000,
   });
 

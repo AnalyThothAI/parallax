@@ -15,8 +15,6 @@ import { RemoteState } from "@shared/ui/RemoteState";
 import {
   ArrowLeft,
   Bot,
-  ChevronLeft,
-  ChevronRight,
   Clock3,
   ExternalLink,
   ShieldAlert,
@@ -24,7 +22,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode, type UIEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import "./news.css";
@@ -34,7 +32,7 @@ import {
   formatAgentBriefStrength,
   inferNewsInstruments,
 } from "./newsViewModel";
-import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
+import { NEWS_PAGE_SIZE, useInfiniteNewsPageWithToken, useNewsItemWithToken } from "./useNewsPage";
 
 type NewsPageProps = {
   token: string;
@@ -42,6 +40,7 @@ type NewsPageProps = {
 };
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
+const NEWS_SCROLL_LOAD_THRESHOLD_PX = 120;
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
   if (newsItemId) {
@@ -52,58 +51,44 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
-  const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
-  const pageIndex = Math.max(cursorStack.length - 1, 0);
-  const cursor = cursorStack[pageIndex] ?? null;
-  const query = useNewsPageWithToken(token, { cursor, limit: NEWS_PAGE_SIZE });
-  const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
-  const nextCursor = query.data?.next_cursor ?? null;
+  const query = useInfiniteNewsPageWithToken(token, { limit: NEWS_PAGE_SIZE });
+  const rows = useMemo(() => flattenNewsRows(query.data?.pages), [query.data?.pages]);
+  const hasNextPage = Boolean(query.hasNextPage);
+  const isFetchingNextPage = Boolean(query.isFetchingNextPage);
   const showLoading = query.isLoading && rows.length === 0;
   const showEmpty = !query.isLoading && !query.isError && rows.length === 0;
-  const pageStart = rows.length ? pageIndex * NEWS_PAGE_SIZE + 1 : 0;
-  const pageEnd = rows.length ? pageStart + rows.length - 1 : 0;
   const resultLabel = rows.length
-    ? `${pageStart}-${pageEnd}${nextCursor ? " · more available" : " · latest page"}`
+    ? `${rows.length} loaded${hasNextPage ? " · more available" : " · latest"}`
     : query.isLoading
       ? "loading"
       : "no rows";
   const summary = useMemo(() => buildQueueSummary(rows), [rows]);
 
-  const goPrev = () => {
-    setCursorStack((current) => (current.length > 1 ? current.slice(0, -1) : current));
-  };
-  const goNext = () => {
-    if (!nextCursor) return;
-    setCursorStack((current) => [...current, nextCursor]);
-  };
+  const loadNextPage = useCallback(() => {
+    if (!hasNextPage || isFetchingNextPage) {
+      return;
+    }
+    void query.fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, query]);
+
+  const handleScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      const target = event.currentTarget;
+      const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+      if (distanceToBottom <= NEWS_SCROLL_LOAD_THRESHOLD_PX) {
+        loadNextPage();
+      }
+    },
+    [loadNextPage],
+  );
 
   return (
-    <section className="radar-panel news-panel" aria-label="News intel">
-      <header className="radar-toolbar news-toolbar">
-        <div className="news-pagination" aria-label="news pagination">
-          <button
-            aria-label="Previous news page"
-            className="news-page-button"
-            disabled={pageIndex === 0 || query.isFetching}
-            type="button"
-            onClick={goPrev}
-          >
-            <ChevronLeft aria-hidden />
-          </button>
-          <span>Page {pageIndex + 1}</span>
-          <button
-            aria-label="Next news page"
-            className="news-page-button"
-            disabled={!nextCursor || query.isFetching}
-            type="button"
-            onClick={goNext}
-          >
-            <ChevronRight aria-hidden />
-          </button>
-        </div>
-      </header>
-
-      <div className="news-table-wrap">
+    <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
+      <div
+        aria-label="News intel scroll container"
+        className="news-table-wrap"
+        onScroll={handleScroll}
+      >
         {showLoading ? (
           <RemoteState.Loading layout="panel" rows={8} label="loading news table" />
         ) : null}
@@ -115,7 +100,7 @@ function NewsQueueRoute({ token }: { token: string }) {
           />
         ) : null}
         {!showLoading && !query.isError && rows.length ? (
-          <RemoteState.Stale updating={query.isFetching}>
+          <RemoteState.Stale updating={query.isFetching && !isFetchingNextPage}>
             <div className="news-desk">
               <NewsQueueSummary resultLabel={resultLabel} summary={summary} />
               <div className="news-feed-head" aria-hidden="true">
@@ -134,12 +119,35 @@ function NewsQueueRoute({ token }: { token: string }) {
                   />
                 ))}
               </div>
+              <NewsScrollStatus
+                hasNextPage={hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+              />
             </div>
           </RemoteState.Stale>
         ) : null}
       </div>
     </section>
   );
+}
+
+function flattenNewsRows(pages: Array<{ items?: NewsRow[] }> | undefined): NewsRow[] {
+  if (!pages?.length) {
+    return EMPTY_NEWS_ROWS;
+  }
+  const rows: NewsRow[] = [];
+  const seen = new Set<string>();
+  for (const page of pages) {
+    for (const row of page.items ?? []) {
+      const key = `${row.row_id}:${row.news_item_id}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      rows.push(row);
+    }
+  }
+  return rows;
 }
 
 function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: string }) {
@@ -208,7 +216,28 @@ function NewsQueueSummary({
       <SummaryMetric icon={<Bot aria-hidden />} label="Agent ready" value={summary.readyLabel} />
       <SummaryMetric icon={<Target aria-hidden />} label="Drivers" value={summary.driverLabel} />
       <SummaryMetric icon={<ShieldAlert aria-hidden />} label="Gaps" value={summary.gapLabel} />
-      <SummaryMetric icon={<Clock3 aria-hidden />} label="Cursor" value={resultLabel} />
+      <SummaryMetric icon={<Clock3 aria-hidden />} label="Loaded" value={resultLabel} />
+    </div>
+  );
+}
+
+function NewsScrollStatus({
+  hasNextPage,
+  isFetchingNextPage,
+}: {
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+}) {
+  if (isFetchingNextPage) {
+    return (
+      <div className="news-scroll-status" role="status">
+        Loading more
+      </div>
+    );
+  }
+  return (
+    <div className={`news-scroll-status ${hasNextPage ? "" : "is-terminal"}`} aria-live="polite">
+      {hasNextPage ? "More available" : "End of queue"}
     </div>
   );
 }
