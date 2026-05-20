@@ -14,7 +14,19 @@ from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
 from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
     source_fingerprint as build_source_fingerprint,
 )
-from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import text_fingerprint
+from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
+    text_fingerprint,
+)
+
+_SEMANTIC_COVERAGE_KEYS = (
+    "source_event_count",
+    "semantic_row_count",
+    "missing_semantic_count",
+    "pending_semantic_count",
+    "retryable_semantic_count",
+    "labeled_event_count",
+    "terminal_unavailable_count",
+)
 
 
 class NarrativeRepository:
@@ -349,24 +361,192 @@ class NarrativeRepository:
             for row in rows
         ]
 
-    def due_mentions_for_labeling(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    def due_mentions_for_labeling(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        max_per_target: int | None = None,
+    ) -> list[dict[str, Any]]:
+        per_target_filter = ""
+        params: list[Any] = [int(now_ms)]
+        if max_per_target is not None and int(max_per_target) > 0:
+            per_target_filter = "WHERE target_rank <= %s"
+            params.append(int(max_per_target))
+        params.append(int(limit))
         rows = self.conn.execute(
-            """
-            SELECT semantics.*,
+            f"""
+            WITH ranked AS (
+              SELECT semantics.*,
+                     row_number() OVER (
+                       PARTITION BY semantics.target_type, semantics.target_id
+                       ORDER BY semantics.source_received_at_ms DESC, semantics.semantic_id ASC
+                     ) AS target_rank
+              FROM token_mention_semantics AS semantics
+              WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                AND semantics.next_retry_at_ms <= %s
+            )
+            SELECT ranked.*,
                    events.text_clean AS text_clean,
                    events.author_handle,
                    events.tweet_id,
                    events.raw_json AS reference_json
-            FROM token_mention_semantics AS semantics
-            JOIN events ON events.event_id = semantics.event_id
-            WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-              AND semantics.next_retry_at_ms <= %s
-            ORDER BY semantics.source_received_at_ms DESC, semantics.semantic_id ASC
+            FROM ranked
+            JOIN events ON events.event_id = ranked.event_id
+            {per_target_filter}
+            ORDER BY ranked.source_received_at_ms DESC, ranked.semantic_id ASC
             LIMIT %s
             """,
-            (int(now_ms), int(limit)),
+            tuple(params),
         ).fetchall()
         return [_row(row) for row in rows]
+
+    def semantic_coverage_for_admission(self, admission: dict[str, Any]) -> dict[str, int]:
+        source_event_ids = _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
+        if not source_event_ids:
+            return _empty_semantic_coverage()
+        target_type = _required(admission, "target_type")
+        target_id = _required(admission, "target_id")
+        schema_version = str(admission.get("schema_version") or NARRATIVE_SCHEMA_VERSION)
+        return self._semantic_coverage_for_source_ids(
+            source_event_ids=source_event_ids,
+            target_type=target_type,
+            target_id=target_id,
+            schema_version=schema_version,
+        )
+
+    def missing_semantic_count_for_admission(self, admission: dict[str, Any], *, schema_version: str) -> int:
+        source_event_ids = _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
+        if not source_event_ids:
+            return 0
+        target_type = _required(admission, "target_type")
+        target_id = _required(admission, "target_id")
+        row = self.conn.execute(
+            """
+            WITH source_ids AS (
+              SELECT jsonb_array_elements_text(%s::jsonb) AS event_id
+            )
+            SELECT COUNT(*) AS missing_count
+            FROM source_ids
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM token_mention_semantics AS semantics
+              WHERE semantics.event_id = source_ids.event_id
+                AND semantics.target_type = %s
+                AND semantics.target_id = %s
+                AND semantics.schema_version = %s
+            )
+            """,
+            (_json(source_event_ids), target_type, target_id, schema_version),
+        ).fetchone()
+        return int(row["missing_count"] if row else 0)
+
+    def _semantic_coverage_for_source_ids(
+        self,
+        *,
+        source_event_ids: Sequence[str],
+        target_type: str,
+        target_id: str,
+        schema_version: str,
+    ) -> dict[str, int]:
+        row = self.conn.execute(
+            """
+            WITH source_ids AS (
+              SELECT jsonb_array_elements_text(%s::jsonb) AS event_id
+            )
+            SELECT
+              COUNT(*) AS source_event_count,
+              COUNT(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = source_ids.event_id
+                    AND semantics.target_type = %s
+                    AND semantics.target_id = %s
+                    AND semantics.schema_version = %s
+                )
+              ) AS semantic_row_count,
+              COUNT(*) FILTER (
+                WHERE NOT EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = source_ids.event_id
+                    AND semantics.target_type = %s
+                    AND semantics.target_id = %s
+                    AND semantics.schema_version = %s
+                )
+              ) AS missing_semantic_count,
+              COUNT(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = source_ids.event_id
+                    AND semantics.target_type = %s
+                    AND semantics.target_id = %s
+                    AND semantics.schema_version = %s
+                    AND semantics.status IN ('queued', 'stale')
+                )
+              ) AS pending_semantic_count,
+              COUNT(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = source_ids.event_id
+                    AND semantics.target_type = %s
+                    AND semantics.target_id = %s
+                    AND semantics.schema_version = %s
+                    AND semantics.status = 'retryable_error'
+                )
+              ) AS retryable_semantic_count,
+              COUNT(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = source_ids.event_id
+                    AND semantics.target_type = %s
+                    AND semantics.target_id = %s
+                    AND semantics.schema_version = %s
+                    AND semantics.status = 'labeled'
+                )
+              ) AS labeled_event_count,
+              COUNT(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = source_ids.event_id
+                    AND semantics.target_type = %s
+                    AND semantics.target_id = %s
+                    AND semantics.schema_version = %s
+                    AND semantics.status = 'semantic_unavailable'
+                )
+              ) AS terminal_unavailable_count
+            FROM source_ids
+            """,
+            (
+                _json(source_event_ids),
+                target_type,
+                target_id,
+                schema_version,
+                target_type,
+                target_id,
+                schema_version,
+                target_type,
+                target_id,
+                schema_version,
+                target_type,
+                target_id,
+                schema_version,
+                target_type,
+                target_id,
+                schema_version,
+                target_type,
+                target_id,
+                schema_version,
+            ),
+        ).fetchone()
+        if not row:
+            return _empty_semantic_coverage()
+        return {key: int(row[key] or 0) for key in _SEMANTIC_COVERAGE_KEYS}
 
     def pending_mention_semantics_count(
         self,
@@ -609,6 +789,75 @@ class NarrativeRepository:
             "deleted_obsolete_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
             "reset_retryable_semantics": int(getattr(reset_retryable, "rowcount", 0) or 0),
             "stale_digests": int(getattr(stale_digests, "rowcount", 0) or 0),
+        }
+
+    def cleanup_narrative_current_hard_cut(self, *, schema_version: str, now_ms: int) -> dict[str, int]:
+        obsolete = self.conn.execute(
+            """
+            WITH current_sources AS (
+              SELECT
+                admissions.target_type,
+                admissions.target_id,
+                jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
+              FROM narrative_admissions AS admissions
+              WHERE admissions.status = 'admitted'
+                AND admissions.schema_version = %s
+            )
+            DELETE FROM token_mention_semantics AS semantics
+            WHERE semantics.schema_version = %s
+              AND semantics.status IN ('queued', 'retryable_error', 'stale')
+              AND NOT EXISTS (
+                SELECT 1
+                FROM current_sources
+                WHERE current_sources.event_id = semantics.event_id
+                  AND current_sources.target_type = semantics.target_type
+                  AND current_sources.target_id = semantics.target_id
+              )
+            """,
+            (schema_version, schema_version),
+        )
+        stale_suppressed = self.conn.execute(
+            """
+            UPDATE token_discussion_digests AS digest
+            SET status = 'stale',
+                is_current = false,
+                superseded_at_ms = %s
+            FROM narrative_admissions AS admissions
+            WHERE admissions.status = 'suppressed'
+              AND admissions.schema_version = %s
+              AND digest.target_type = admissions.target_type
+              AND digest.target_id = admissions.target_id
+              AND digest."window" = admissions."window"
+              AND digest.scope = admissions.scope
+              AND digest.schema_version = admissions.schema_version
+              AND digest.is_current = true
+            """,
+            (int(now_ms), schema_version),
+        )
+        stale_mismatch = self.conn.execute(
+            """
+            UPDATE token_discussion_digests AS digest
+            SET status = 'stale',
+                is_current = false,
+                superseded_at_ms = %s
+            FROM narrative_admissions AS admissions
+            WHERE admissions.status = 'admitted'
+              AND admissions.schema_version = %s
+              AND digest.target_type = admissions.target_type
+              AND digest.target_id = admissions.target_id
+              AND digest."window" = admissions."window"
+              AND digest.scope = admissions.scope
+              AND digest.schema_version = admissions.schema_version
+              AND digest.is_current = true
+              AND COALESCE(digest.source_fingerprint, '') <> COALESCE(admissions.source_fingerprint, '')
+            """,
+            (int(now_ms), schema_version),
+        )
+        _commit_if_available(self.conn)
+        return {
+            "deleted_obsolete_pending_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
+            "stale_suppressed_digests": int(getattr(stale_suppressed, "rowcount", 0) or 0),
+            "stale_fingerprint_mismatch_digests": int(getattr(stale_mismatch, "rowcount", 0) or 0),
         }
 
     def record_narrative_model_run(self, run: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
@@ -898,7 +1147,6 @@ class NarrativeRepository:
         target_id: str,
         window: str,
         scope: str,
-        since_ms: int,
         max_mentions: int,
     ) -> dict[str, Any]:
         admission_row = self.conn.execute(
@@ -925,28 +1173,52 @@ class NarrativeRepository:
                 "mentions": [],
                 "semantic_rows": [],
                 "source_event_count": 0,
+                "semantic_row_count": 0,
+                "missing_semantic_count": 0,
+                "pending_semantic_count": 0,
+                "retryable_semantic_count": 0,
                 "labeled_event_count": 0,
+                "terminal_unavailable_count": 0,
                 "independent_author_count": 0,
                 "allowed_refs": [],
                 "data_gaps": [{"reason": "not_admitted"}],
             }
         admission = _row(admission_row)
         source_event_ids = _json_list(admission.get("source_event_ids_json"))
+        coverage = self._semantic_coverage_for_source_ids(
+            source_event_ids=source_event_ids,
+            target_type=target_type,
+            target_id=target_id,
+            schema_version=NARRATIVE_SCHEMA_VERSION,
+        )
         if not source_event_ids:
             return {
                 "target_type": target_type,
                 "target_id": target_id,
                 "window": window,
                 "scope": scope,
+                "admission_id": admission.get("admission_id"),
+                "source_fingerprint": admission.get("source_fingerprint"),
+                "source_event_ids": [],
                 "mentions": [],
                 "semantic_rows": [],
                 "source_event_count": int(admission.get("source_event_count") or 0),
+                "semantic_row_count": 0,
+                "missing_semantic_count": 0,
+                "pending_semantic_count": 0,
+                "retryable_semantic_count": 0,
                 "labeled_event_count": 0,
+                "terminal_unavailable_count": 0,
                 "independent_author_count": int(admission.get("independent_author_count") or 0),
+                "prompt_mention_count": 0,
+                "prompt_mention_limit": int(max_mentions),
                 "allowed_refs": [],
             }
         joined_rows = self.conn.execute(
             """
+            WITH source_ids AS (
+              SELECT jsonb_array_elements_text(%s::jsonb) AS event_id
+            )
             SELECT
               events.event_id,
               events.text_clean AS text_clean,
@@ -974,18 +1246,24 @@ class NarrativeRepository:
               semantics.retry_count,
               semantics.next_retry_at_ms,
               semantics.error
-            FROM events
-            LEFT JOIN token_mention_semantics AS semantics
-              ON semantics.event_id = events.event_id
-             AND semantics.target_type = %s
-             AND semantics.target_id = %s
-             AND semantics.schema_version = %s
-            WHERE events.event_id = ANY(%s)
-              AND events.received_at_ms >= %s
+            FROM source_ids
+            JOIN events ON events.event_id = source_ids.event_id
+            LEFT JOIN LATERAL (
+              SELECT semantics.*
+              FROM token_mention_semantics AS semantics
+              WHERE semantics.event_id = events.event_id
+                AND semantics.target_type = %s
+                AND semantics.target_id = %s
+                AND semantics.schema_version = %s
+              ORDER BY semantics.computed_at_ms DESC NULLS LAST,
+                       semantics.queued_at_ms DESC NULLS LAST,
+                       semantics.semantic_id ASC
+              LIMIT 1
+            ) AS semantics ON true
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (target_type, target_id, NARRATIVE_SCHEMA_VERSION, source_event_ids, int(since_ms), int(max_mentions)),
+            (_json(source_event_ids), target_type, target_id, NARRATIVE_SCHEMA_VERSION, int(max_mentions)),
         ).fetchall()
         mentions = [_row(row) for row in joined_rows]
         semantics = [row for row in mentions if row.get("semantic_id")]
@@ -999,9 +1277,16 @@ class NarrativeRepository:
             "source_event_ids": source_event_ids,
             "mentions": mentions,
             "semantic_rows": semantics,
-            "source_event_count": int(admission.get("source_event_count") or len(source_event_ids)),
-            "labeled_event_count": sum(1 for row in semantics if row.get("status") == "labeled"),
+            "source_event_count": coverage["source_event_count"],
+            "semantic_row_count": coverage["semantic_row_count"],
+            "missing_semantic_count": coverage["missing_semantic_count"],
+            "pending_semantic_count": coverage["pending_semantic_count"],
+            "retryable_semantic_count": coverage["retryable_semantic_count"],
+            "labeled_event_count": coverage["labeled_event_count"],
+            "terminal_unavailable_count": coverage["terminal_unavailable_count"],
             "independent_author_count": int(admission.get("independent_author_count") or _author_count(mentions)),
+            "prompt_mention_count": len(mentions),
+            "prompt_mention_limit": int(max_mentions),
             "allowed_refs": _allowed_refs_for_semantics(semantics),
         }
 
@@ -1125,6 +1410,14 @@ class NarrativeRepository:
                        COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
                        backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
                 FROM token_discussion_digests AS digest
+                JOIN narrative_admissions AS admissions
+                  ON admissions.target_type = digest.target_type
+                 AND admissions.target_id = digest.target_id
+                 AND admissions."window" = digest."window"
+                 AND admissions.scope = digest.scope
+                 AND admissions.schema_version = digest.schema_version
+                 AND admissions.status = 'admitted'
+                 AND COALESCE(admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')
                 LEFT JOIN LATERAL (
                   SELECT
                     COUNT(*) FILTER (
@@ -1146,12 +1439,67 @@ class NarrativeRepository:
                   AND digest.scope = %s
                   AND digest.schema_version = %s
                   AND digest.is_current = true
+                ORDER BY digest.computed_at_ms DESC
+                LIMIT 1
                 """,
                 (target["target_type"], target["target_id"], window, scope, schema_version),
             ).fetchone()
             if row:
                 decoded = _row(row)
                 result[(decoded["target_type"], decoded["target_id"])] = decoded
+                continue
+
+            target_type = str(target.get("target_type") or "")
+            target_id = str(target.get("target_id") or "")
+            key = (target_type, target_id)
+            admission = self.conn.execute(
+                """
+                SELECT status
+                FROM narrative_admissions
+                WHERE target_type = %s
+                  AND target_id = %s
+                  AND "window" = %s
+                  AND scope = %s
+                  AND schema_version = %s
+                ORDER BY CASE WHEN status = 'admitted' THEN 0 ELSE 1 END,
+                         last_seen_at_ms DESC
+                LIMIT 1
+                """,
+                (target_type, target_id, window, scope, schema_version),
+            ).fetchone()
+            if admission and str(admission["status"]) == "suppressed":
+                result[key] = _missing_digest_row(
+                    target_type=target_type,
+                    target_id=target_id,
+                    window=window,
+                    scope=scope,
+                    schema_version=schema_version,
+                    reason="not_in_current_frontier",
+                )
+                continue
+
+            digest_exists = self.conn.execute(
+                """
+                SELECT 1
+                FROM token_discussion_digests AS digest
+                WHERE digest.target_type = %s
+                  AND digest.target_id = %s
+                  AND digest."window" = %s
+                  AND digest.scope = %s
+                  AND digest.schema_version = %s
+                LIMIT 1
+                """,
+                (target_type, target_id, window, scope, schema_version),
+            ).fetchone()
+            reason = "digest_stale" if admission and digest_exists else "digest_not_ready"
+            result[key] = _missing_digest_row(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version=schema_version,
+                reason=reason,
+            )
         return result
 
     def semantics_for_posts(
@@ -1184,6 +1532,36 @@ class NarrativeRepository:
                 decoded = _row(row)
                 result[(decoded["event_id"], decoded["target_type"], decoded["target_id"])] = decoded
         return result
+
+
+def _empty_semantic_coverage() -> dict[str, int]:
+    return {key: 0 for key in _SEMANTIC_COVERAGE_KEYS}
+
+
+def _missing_digest_row(
+    *,
+    target_type: str,
+    target_id: str,
+    window: str,
+    scope: str,
+    schema_version: str,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": window,
+        "scope": scope,
+        "schema_version": schema_version,
+        "status": "pending",
+        "is_current": False,
+        "data_gaps_json": [{"reason": reason}],
+        "semantic_coverage": 0.0,
+        "source_event_count": 0,
+        "labeled_event_count": 0,
+        "independent_author_count": 0,
+        "evidence_refs_json": [],
+    }
 
 
 def deterministic_admission_id(

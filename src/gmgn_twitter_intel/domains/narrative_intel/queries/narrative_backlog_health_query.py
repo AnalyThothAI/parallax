@@ -59,39 +59,172 @@ class NarrativeBacklogHealthQuery:
     def _semantic_backlog(self, *, now_ms: int, schema_version: str) -> dict[str, int | None]:
         row = self.conn.execute(
             """
+            WITH current_admissions AS (
+              SELECT
+                admission_id,
+                target_type,
+                target_id,
+                "window",
+                scope,
+                schema_version,
+                source_fingerprint,
+                source_event_ids_json
+              FROM narrative_admissions
+              WHERE schema_version = %s
+                AND status = 'admitted'
+            ),
+            current_sources AS (
+              SELECT
+                admissions.admission_id,
+                admissions.target_type,
+                admissions.target_id,
+                admissions."window",
+                admissions.scope,
+                admissions.schema_version,
+                source_event.event_id
+              FROM current_admissions AS admissions
+              CROSS JOIN LATERAL jsonb_array_elements_text(
+                COALESCE(admissions.source_event_ids_json, '[]'::jsonb)
+              ) AS source_event(event_id)
+            ),
+            source_semantic_coverage AS (
+              SELECT
+                current_sources.admission_id,
+                EXISTS (
+                  SELECT 1
+                  FROM token_mention_semantics AS semantics
+                  WHERE semantics.event_id = current_sources.event_id
+                    AND semantics.target_type = current_sources.target_type
+                    AND semantics.target_id = current_sources.target_id
+                    AND semantics.schema_version = current_sources.schema_version
+                ) AS has_semantics
+              FROM current_sources
+            ),
+            existing_semantics AS (
+              SELECT status, queued_at_ms, source_received_at_ms, next_retry_at_ms
+              FROM token_mention_semantics
+              WHERE schema_version = %s
+            ),
+            current_digests AS (
+              SELECT
+                target_type,
+                target_id,
+                "window",
+                scope,
+                schema_version,
+                source_fingerprint
+              FROM token_discussion_digests
+              WHERE schema_version = %s
+                AND is_current = true
+            )
             SELECT
-              COUNT(*) FILTER (WHERE status = 'queued') AS queued,
-              COUNT(*) FILTER (WHERE status = 'retryable_error') AS retryable,
-              COUNT(*) FILTER (WHERE status = 'stale') AS stale,
-              COUNT(*) FILTER (WHERE status = 'semantic_unavailable') AS unavailable,
-              MIN(
-                CASE
-                  WHEN status = 'queued' AND next_retry_at_ms <= %s THEN
-                    COALESCE(NULLIF(queued_at_ms, 0), source_received_at_ms, next_retry_at_ms)
-                  WHEN status IN ('retryable_error', 'stale') AND next_retry_at_ms <= %s THEN
-                    next_retry_at_ms
-                  ELSE NULL
-                END
-              ) AS oldest_due_at_ms
-            FROM token_mention_semantics
-            WHERE schema_version = %s
+              (SELECT COUNT(*) FROM current_sources) AS current_source_rows,
+              (
+                SELECT COUNT(*)
+                FROM source_semantic_coverage
+                WHERE has_semantics
+              ) AS semantic_rows_for_current_sources,
+              (
+                SELECT COUNT(*)
+                FROM source_semantic_coverage
+                WHERE NOT has_semantics
+              ) AS missing_semantic_rows,
+              (
+                SELECT COUNT(DISTINCT admission_id)
+                FROM source_semantic_coverage
+                WHERE NOT has_semantics
+              ) AS admissions_with_missing_semantics,
+              (
+                SELECT COUNT(*)
+                FROM existing_semantics
+                WHERE status = 'queued'
+              ) AS queued,
+              (
+                SELECT COUNT(*)
+                FROM existing_semantics
+                WHERE status = 'retryable_error'
+              ) AS retryable,
+              (
+                SELECT COUNT(*)
+                FROM existing_semantics
+                WHERE status = 'stale'
+              ) AS stale,
+              (
+                SELECT COUNT(*)
+                FROM existing_semantics
+                WHERE status = 'semantic_unavailable'
+              ) AS unavailable,
+              (
+                SELECT MIN(
+                  CASE
+                    WHEN status = 'queued' AND next_retry_at_ms <= %s THEN
+                      COALESCE(NULLIF(queued_at_ms, 0), source_received_at_ms, next_retry_at_ms)
+                    WHEN status IN ('retryable_error', 'stale') AND next_retry_at_ms <= %s THEN
+                      next_retry_at_ms
+                    ELSE NULL
+                  END
+                )
+                FROM existing_semantics
+              ) AS oldest_due_at_ms,
+              (
+                SELECT COUNT(*)
+                FROM current_digests AS digest
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM narrative_admissions AS admissions
+                  WHERE admissions.target_type = digest.target_type
+                    AND admissions.target_id = digest.target_id
+                    AND admissions."window" = digest."window"
+                    AND admissions.scope = digest.scope
+                    AND admissions.schema_version = digest.schema_version
+                    AND admissions.status = 'suppressed'
+                )
+              ) AS suppressed_current_digest_count,
+              (
+                SELECT COUNT(*)
+                FROM current_digests AS digest
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM narrative_admissions AS admissions
+                  WHERE admissions.target_type = digest.target_type
+                    AND admissions.target_id = digest.target_id
+                    AND admissions."window" = digest."window"
+                    AND admissions.scope = digest.scope
+                    AND admissions.schema_version = digest.schema_version
+                    AND admissions.status = 'admitted'
+                    AND COALESCE(admissions.source_fingerprint, '') <>
+                        COALESCE(digest.source_fingerprint, '')
+                )
+              ) AS stale_fingerprint_current_digest_count
             """,
-            (int(now_ms), int(now_ms), schema_version),
+            (schema_version, schema_version, schema_version, int(now_ms), int(now_ms)),
         ).fetchone()
         data = _row(row)
+        current_source_rows = _int(data.get("current_source_rows"))
+        semantic_rows_for_current_sources = _int(data.get("semantic_rows_for_current_sources"))
+        missing_semantic_rows = _int(data.get("missing_semantic_rows"))
+        admissions_with_missing_semantics = _int(data.get("admissions_with_missing_semantics"))
         queued = _int(data.get("queued"))
         retryable = _int(data.get("retryable"))
         stale = _int(data.get("stale"))
+        pending_existing_rows = queued + retryable + stale
         oldest_due_at_ms = data.get("oldest_due_at_ms")
         oldest_due_age_ms = None
         if oldest_due_at_ms is not None:
             oldest_due_age_ms = max(0, int(now_ms) - int(oldest_due_at_ms))
         return {
-            "total_pending": queued + retryable + stale,
+            "total_pending": missing_semantic_rows + pending_existing_rows,
+            "current_source_rows": current_source_rows,
+            "semantic_rows_for_current_sources": semantic_rows_for_current_sources,
+            "missing_semantic_rows": missing_semantic_rows,
+            "admissions_with_missing_semantics": admissions_with_missing_semantics,
+            "pending_existing_rows": pending_existing_rows,
             "queued": queued,
             "retryable": retryable,
             "stale": stale,
             "unavailable": _int(data.get("unavailable")),
+            "suppressed_current_digest_count": _int(data.get("suppressed_current_digest_count")),
+            "stale_fingerprint_current_digest_count": _int(data.get("stale_fingerprint_current_digest_count")),
             "oldest_due_age_ms": oldest_due_age_ms,
         }
 

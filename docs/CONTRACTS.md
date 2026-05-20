@@ -113,10 +113,16 @@ Runtime health/status contract:
 - `/api/status/narrative-health` is an authenticated ops read for Narrative
   backlog health. It returns domain-owned aggregates for current admissions
   (`current_admissions`, `suppressed_admissions`, source-event and independent
-  author totals), semantic backlog (`queued`, `retryable`, `stale`,
-  `unavailable`, `oldest_due_age_ms`), recent Narrative model-run
-  success/failure/timeout counts, digest status/reason counts, and current
-  pending digest count. API/frontend consumers must use this surface instead of
+  author totals), semantic backlog (`current_source_rows`,
+  `semantic_rows_for_current_sources`, `missing_semantic_rows`,
+  `admissions_with_missing_semantics`, `pending_existing_rows`, `queued`,
+  `retryable`, `stale`, `unavailable`, `suppressed_current_digest_count`,
+  `stale_fingerprint_current_digest_count`, `oldest_due_age_ms`), recent
+  Narrative model-run success/failure/timeout counts, digest status/reason
+  counts, and current pending digest count. `semantic_backlog.total_pending` is
+  `missing_semantic_rows + queued + retryable + stale`; source rows come from
+  admitted `narrative_admissions.source_event_ids_json`, not from existing
+  semantics rows alone. API/frontend consumers must use this surface instead of
   writing raw SQL.
 
 Token Radar market contract:
@@ -130,7 +136,13 @@ Token Radar market contract:
   `semantic_unavailable`, or `stale`; clients must render data gaps instead of
   recreating narrative text from factor snapshots. A digest may include optional
   compact `processing.backlog` metadata for ops visibility, but `status` and
-  `data_gaps` remain the truth for user-facing readiness.
+  `data_gaps` remain the truth for user-facing readiness. Public currentness is
+  source-set based: a current digest is usable only when it matches an admitted
+  current `narrative_admissions` row and the same `source_fingerprint`. Missing
+  public digest state must use one of the public reason contracts
+  `digest_not_ready`, `digest_stale`, or `not_in_current_frontier`; budget
+  backpressure uses `llm_cycle_budget_exhausted` or
+  `llm_failure_budget_exhausted`.
 - `market.event_anchor` and `market.decision_latest` are public response keys
   generated from `enriched_events` and `market_ticks`. They are not internal
   market concepts, DB tables, worker names, or provider runtime semantics.
@@ -329,8 +341,11 @@ existing routed CEX tokens. `ops rebuild-token-profiles` rebuilds canonical
 `token_profile_current` rows from persisted source facts without wiring
 upstream providers. `ops rebuild-narrative-intel` is the formal current
 frontier rebuild/drain path for Narrative Intelligence: it runs admission,
-cleans stale current-backlog rows, labels semantics, and refreshes digests
-without hand-written SQL or API-path side effects.
+cleans stale current-backlog rows, labels semantics, refreshes digests, and
+returns `cleanup` plus `final_health` summaries without hand-written SQL or
+API-path side effects. Its cleanup phase is an ops maintenance writer
+exception that must run while holding the narrative worker advisory locks; it is
+not a runtime compatibility layer and is not callable from HTTP routes.
 
 ## Token Radar Factor Snapshot Discipline
 

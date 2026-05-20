@@ -9,11 +9,18 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
     health = query.health(now_ms=10_000, since_hours=4, schema_version="narrative_intel_v1")
 
     assert health["semantic_backlog"] == {
-        "total_pending": 5,
+        "total_pending": 9,
+        "current_source_rows": 12,
+        "semantic_rows_for_current_sources": 8,
+        "missing_semantic_rows": 4,
+        "admissions_with_missing_semantics": 2,
+        "pending_existing_rows": 5,
         "queued": 3,
         "retryable": 2,
         "stale": 0,
         "unavailable": 1,
+        "suppressed_current_digest_count": 1,
+        "stale_fingerprint_current_digest_count": 3,
         "oldest_due_age_ms": 4_000,
     }
     assert health["recent_runs"]["mention_semantics"] == {"success": 4, "failure": 2, "timeout": 1}
@@ -27,7 +34,10 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
     assert health["digest_status_counts"] == {"pending": 7, "ready": 3}
     assert health["digest_reason_counts"] == {"semantic_labeling_pending": 7}
     assert health["pending_digest_count"] == 7
-    assert any("queued_at_ms" in statement for statement in query.conn.statements)
+    semantic_sql = next(statement for statement in query.conn.statements if "current_sources" in statement)
+    assert "jsonb_array_elements_text" in semantic_sql
+    assert "EXISTS" in semantic_sql
+    assert "text_fingerprint =" not in semantic_sql
 
 
 class FakeConn:
@@ -36,6 +46,24 @@ class FakeConn:
 
     def execute(self, sql, params=()):
         self.statements.append(sql)
+        if "current_sources" in sql:
+            return FakeCursor(
+                [
+                    {
+                        "current_source_rows": 12,
+                        "semantic_rows_for_current_sources": 8,
+                        "missing_semantic_rows": 4,
+                        "admissions_with_missing_semantics": 2,
+                        "queued": 3,
+                        "retryable": 2,
+                        "stale": 0,
+                        "unavailable": 1,
+                        "suppressed_current_digest_count": 1,
+                        "stale_fingerprint_current_digest_count": 3,
+                        "oldest_due_at_ms": 6_000,
+                    }
+                ]
+            )
         if "FROM narrative_admissions" in sql:
             return FakeCursor(
                 [
@@ -44,18 +72,6 @@ class FakeConn:
                         "suppressed_admissions": 2,
                         "current_source_events": 42,
                         "current_independent_authors": 17,
-                    }
-                ]
-            )
-        if "FROM token_mention_semantics" in sql:
-            return FakeCursor(
-                [
-                    {
-                        "queued": 3,
-                        "retryable": 2,
-                        "stale": 0,
-                        "unavailable": 1,
-                        "oldest_due_at_ms": 6_000,
                     }
                 ]
             )

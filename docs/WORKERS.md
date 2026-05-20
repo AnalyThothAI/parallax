@@ -113,6 +113,32 @@ notification_delivery
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
 
+## Narrative Intel Hard-Cut Ownership
+
+`narrative_admissions.source_event_ids_json` is the source-set truth for
+Narrative Intelligence. Health, digest completeness, public currentness, and
+semantics queue depth must expand admitted source sets first; existing
+`token_mention_semantics` rows cannot define source volume by themselves. The
+same event may count once per current admission/window/scope, but duplicate
+semantic fingerprints for one admission-source row still count as one covered
+source row.
+
+Writer ownership remains narrow: `NarrativeAdmissionWorker` writes
+`narrative_admissions`, `MentionSemanticsWorker` writes
+`token_mention_semantics`, and `TokenDiscussionDigestWorker` writes
+`token_discussion_digests`. `ops rebuild-narrative-intel` has the only
+maintenance writer exception: while it holds the narrative worker advisory
+locks, it may run hard-cut cleanup that deletes obsolete queued/retryable/stale
+semantics and marks suppressed or fingerprint-mismatched current digests stale.
+HTTP routes and normal worker loops must not call that cleanup path.
+
+This is a hard cut with no runtime compatibility. Removed settings, source-age
+prune behavior, stale digest fallbacks, and old public digest reasons are not
+kept as aliases. Public digest missing state is reported through
+`digest_not_ready`, `digest_stale`, or `not_in_current_frontier`; LLM cycle
+backpressure is reported as `llm_cycle_budget_exhausted` or
+`llm_failure_budget_exhausted`.
+
 ## IngestService Boundary
 
 `IngestService` writes the first durable facts in a single transaction:

@@ -43,18 +43,15 @@ class DiscussionDigestService:
         self.max_mentions_per_digest = max(1, int(max_mentions_per_digest))
 
     def refresh_decision(self, context: dict[str, Any]) -> DigestRefreshDecision:
-        source_count = int(context.get("source_event_count") or len(context.get("mentions") or []))
+        source_count = int(context.get("source_event_count") or 0)
         authors = int(context.get("independent_author_count") or _author_count(context.get("mentions") or []))
-        semantic_rows = list(context.get("semantic_rows") or context.get("mentions") or [])
-        labeled = int(
-            context.get("labeled_event_count")
-            if context.get("labeled_event_count") is not None
-            else sum(1 for row in semantic_rows if str(row.get("status") or "") == "labeled")
-        )
+        semantic_row_count = int(context.get("semantic_row_count") or 0)
+        missing_semantic_count = int(context.get("missing_semantic_count") or 0)
+        pending_semantic_count = int(context.get("pending_semantic_count") or 0)
+        retryable_semantic_count = int(context.get("retryable_semantic_count") or 0)
+        terminal_unavailable_count = int(context.get("terminal_unavailable_count") or 0)
+        labeled = int(context.get("labeled_event_count") or 0)
         coverage = 0.0 if source_count == 0 else labeled / source_count
-        has_pending_semantics = any(str(row.get("status") or "") in PENDING_SEMANTIC_STATUSES for row in semantic_rows)
-        has_unseen_semantics = len(semantic_rows) < source_count
-        terminal_unavailable = sum(1 for row in semantic_rows if str(row.get("status") or "") == "semantic_unavailable")
         if source_count < self.min_source_mentions:
             return DigestRefreshDecision(
                 should_refresh=False,
@@ -67,14 +64,19 @@ class DiscussionDigestService:
                 reason="low_independent_author_count",
                 status_if_not_refresh="insufficient",
             )
+        if missing_semantic_count + pending_semantic_count + retryable_semantic_count > 0:
+            return DigestRefreshDecision(
+                should_refresh=False,
+                reason="semantic_labeling_pending",
+                status_if_not_refresh="pending",
+            )
         if coverage < self.min_semantic_coverage:
-            if has_pending_semantics or has_unseen_semantics:
-                return DigestRefreshDecision(
-                    should_refresh=False,
-                    reason="semantic_labeling_pending",
-                    status_if_not_refresh="pending",
-                )
-            if terminal_unavailable and terminal_unavailable == len(semantic_rows):
+            if (
+                source_count > 0
+                and semantic_row_count == source_count
+                and terminal_unavailable_count > 0
+                and labeled + terminal_unavailable_count == semantic_row_count
+            ):
                 return DigestRefreshDecision(
                     should_refresh=False,
                     reason="semantic_provider_unavailable",
@@ -145,6 +147,7 @@ class DiscussionDigestService:
             data_gaps=[{"reason": reason}],
             semantic_coverage=0.0 if source_count == 0 else labeled_count / source_count,
             source_event_count=source_count,
+            source_fingerprint=context.get("source_fingerprint"),
             labeled_event_count=labeled_count,
             independent_author_count=int(
                 context.get("independent_author_count") or _author_count(context.get("mentions") or [])
@@ -207,6 +210,7 @@ class DiscussionDigestService:
                 "status": "ready",
                 "semantic_coverage": 0.0 if source_count == 0 else labeled_count / source_count,
                 "source_event_count": source_count,
+                "source_fingerprint": context.get("source_fingerprint"),
                 "labeled_event_count": labeled_count,
                 "independent_author_count": int(
                     context.get("independent_author_count") or _author_count(context.get("mentions") or [])
@@ -227,11 +231,18 @@ def _compact_context(context: dict[str, Any], *, mention_count_sent: int, mentio
     labeled_count = int(context.get("labeled_event_count") or 0)
     return {
         "source_event_count": source_count,
+        "semantic_row_count": int(context.get("semantic_row_count") or 0),
+        "missing_semantic_count": int(context.get("missing_semantic_count") or 0),
+        "pending_semantic_count": int(context.get("pending_semantic_count") or 0),
+        "retryable_semantic_count": int(context.get("retryable_semantic_count") or 0),
+        "terminal_unavailable_count": int(context.get("terminal_unavailable_count") or 0),
         "labeled_event_count": labeled_count,
         "independent_author_count": int(context.get("independent_author_count") or 0),
         "semantic_coverage": 0.0 if source_count == 0 else labeled_count / source_count,
         "mention_count_sent": int(mention_count_sent),
         "mention_limit": int(mention_limit),
+        "prompt_mention_count": int(mention_count_sent),
+        "prompt_mention_limit": int(mention_limit),
     }
 
 
@@ -322,7 +333,11 @@ def _ready_refs(payload: dict[str, Any], *, context: dict[str, Any]) -> list[dic
     refs = _dedupe_ref_payloads(list(payload.get("evidence_refs") or []))
     if refs:
         return refs
-    mentions = [_compact_mention(row) for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"]
+    mentions = [
+        _compact_mention(row)
+        for row in list(context.get("mentions") or [])
+        if str(row.get("status") or "") == "labeled"
+    ]
     allowed_refs = _compact_allowed_refs(list(context.get("allowed_refs") or []), mentions)
     if allowed_refs:
         return allowed_refs

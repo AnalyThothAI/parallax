@@ -766,9 +766,11 @@ class MentionSemanticsWorkerSettings(PerWorkerSettings):
     wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
     admission_limit: int = Field(default=200, ge=1)
     source_limit: int = Field(default=2000, ge=1)
-    max_semantic_rows_enqueued_per_cycle: int = Field(default=40, ge=1)
+    max_semantic_rows_enqueued_per_cycle: int = Field(default=120, ge=1)
+    max_semantic_rows_enqueued_per_admission: int = Field(default=20, ge=1)
+    max_semantics_claimed_per_target_per_cycle: int = Field(default=3, ge=1)
+    partial_enqueue_retry_seconds: int = Field(default=5, ge=1)
     max_pending_semantics_per_target: int = Field(default=80, ge=1)
-    max_pending_source_age_seconds: int = Field(default=43_200, ge=0)
 
     @field_validator("wakes_on", mode="before")
     @classmethod
@@ -791,6 +793,9 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     min_new_authors: int = Field(default=2, ge=1)
     min_semantic_coverage: float = Field(default=0.35, ge=0, le=1)
     max_mentions_per_digest: int = Field(default=24, ge=1)
+    max_llm_calls_per_cycle: int = Field(default=3, ge=0)
+    max_llm_failures_per_cycle: int = Field(default=2, ge=0)
+    provider_failure_backoff_seconds: int = Field(default=600, ge=1)
     stance_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     price_move_refresh_pct: float = Field(default=12.0, ge=0)
@@ -1460,9 +1465,11 @@ mention_semantics:
   wakes_on: ["token_radar_updated", "resolution_updated"]
   admission_limit: 200
   source_limit: 2000
-  max_semantic_rows_enqueued_per_cycle: 40
+  max_semantic_rows_enqueued_per_cycle: 120
+  max_semantic_rows_enqueued_per_admission: 20
+  max_semantics_claimed_per_target_per_cycle: 3
+  partial_enqueue_retry_seconds: 5
   max_pending_semantics_per_target: 80
-  max_pending_source_age_seconds: 43200
 token_discussion_digest:
   enabled: true
   interval_seconds: 120.0
@@ -1479,6 +1486,9 @@ token_discussion_digest:
   min_new_authors: 2
   min_semantic_coverage: 0.35
   max_mentions_per_digest: 24
+  max_llm_calls_per_cycle: 3
+  max_llm_failures_per_cycle: 2
+  provider_failure_backoff_seconds: 600
   stance_mix_change_threshold: 0.20
   attention_mix_change_threshold: 0.20
   price_move_refresh_pct: 12.0

@@ -35,8 +35,9 @@ class TokenDiscussionDigestWorker(WorkerBase):
         db: Any,
         telemetry: Any,
         provider: NarrativeIntelProvider,
+        wake_waiter: Any | None = None,
     ) -> None:
-        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.provider = provider
         self.service = DiscussionDigestService(
             min_source_mentions=int(getattr(settings, "min_source_mentions", 3) or 3),
@@ -61,8 +62,11 @@ class TokenDiscussionDigestWorker(WorkerBase):
 
         counts = {"ready": 0, "insufficient": 0, "pending": 0, "failed": 0}
         refresh_reasons: dict[str, int] = {}
+        llm_calls = 0
+        llm_failures = 0
+        deferred = 0
         for target in targets:
-            context = await asyncio.to_thread(self._digest_context_sync, target=target, now_ms=resolved_now_ms)
+            context = await asyncio.to_thread(self._digest_context_sync, target=target)
             decision = self.service.refresh_decision(context)
             refresh_reasons[decision.reason] = refresh_reasons.get(decision.reason, 0) + 1
             if not decision.should_refresh:
@@ -91,6 +95,33 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 counts[decision.status_if_not_refresh] += 1
                 continue
 
+            if llm_calls >= self._max_llm_calls_per_cycle():
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=resolved_now_ms,
+                    next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
+                )
+                counts["pending"] += 1
+                deferred += 1
+                refresh_reasons["llm_cycle_budget_exhausted"] = (
+                    refresh_reasons.get("llm_cycle_budget_exhausted", 0) + 1
+                )
+                continue
+            if llm_failures >= self._max_llm_failures_per_cycle():
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=resolved_now_ms,
+                    next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
+                )
+                counts["pending"] += 1
+                deferred += 1
+                refresh_reasons["llm_failure_budget_exhausted"] = (
+                    refresh_reasons.get("llm_failure_budget_exhausted", 0) + 1
+                )
+                continue
+
             started_at_ms = _now_ms()
             input_hash = _hash_json(context)
             run_id = deterministic_run_id(stage="discussion_digest", input_hash=input_hash, started_at_ms=started_at_ms)
@@ -111,6 +142,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 request=request,
             )
             try:
+                llm_calls += 1
                 result = await self.provider.summarize_discussion(run_id=run_id, request=request)
             except Exception as exc:
                 if _is_agent_no_start_backpressure(exc):
@@ -124,6 +156,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     refresh_reasons["agent_backpressure"] = refresh_reasons.get("agent_backpressure", 0) + 1
                     continue
                 finished_at_ms = _now_ms()
+                llm_failures += 1
                 await asyncio.to_thread(
                     self._record_failed_run_sync,
                     run={
@@ -157,8 +190,8 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 await asyncio.to_thread(
                     self._mark_digest_scanned_sync,
                     target=target,
-                    now_ms=finished_at_ms,
-                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                    now_ms=resolved_now_ms,
+                    next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=resolved_now_ms),
                 )
                 counts["failed"] += 1
                 continue
@@ -232,15 +265,21 @@ class TokenDiscussionDigestWorker(WorkerBase):
         return WorkerResult(
             processed=counts["ready"] + counts["insufficient"] + counts["pending"],
             failed=counts["failed"],
-            notes={"claimed": len(targets), **counts, "refresh_reasons": refresh_reasons},
+            notes={
+                "claimed": len(targets),
+                **counts,
+                "llm_calls": llm_calls,
+                "llm_failures": llm_failures,
+                "deferred_llm_budget": deferred,
+                "refresh_reasons": refresh_reasons,
+            },
         )
 
     def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
             return list(repos.narratives.due_digest_targets(now_ms=now_ms, limit=limit))
 
-    def _digest_context_sync(self, *, target: dict[str, Any], now_ms: int) -> dict[str, Any]:
-        since_ms = now_ms - _window_ms(str(target.get("window") or "24h"))
+    def _digest_context_sync(self, *, target: dict[str, Any]) -> dict[str, Any]:
         with self._repository_session() as repos:
             return dict(
                 repos.narratives.digest_context(
@@ -248,7 +287,6 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     target_id=str(target["target_id"]),
                     window=str(target["window"]),
                     scope=str(target["scope"]),
-                    since_ms=since_ms,
                     max_mentions=int(
                         getattr(self.settings, "max_mentions_per_digest", DEFAULT_MAX_MENTIONS_PER_DIGEST)
                         or DEFAULT_MAX_MENTIONS_PER_DIGEST
@@ -288,6 +326,19 @@ class TokenDiscussionDigestWorker(WorkerBase):
         interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 120.0) or 120.0) * 1000))
         return int(now_ms) + min(interval_ms, 30_000)
 
+    def _provider_failure_next_due_at_ms(self, *, now_ms: int) -> int:
+        backoff_ms = max(
+            1,
+            int(float(getattr(self.settings, "provider_failure_backoff_seconds", 600.0) or 600.0) * 1000),
+        )
+        return int(now_ms) + backoff_ms
+
+    def _max_llm_calls_per_cycle(self) -> int:
+        return max(0, int(getattr(self.settings, "max_llm_calls_per_cycle", 3) or 0))
+
+    def _max_llm_failures_per_cycle(self) -> int:
+        return max(0, int(getattr(self.settings, "max_llm_failures_per_cycle", 2) or 0))
+
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
@@ -295,10 +346,6 @@ class TokenDiscussionDigestWorker(WorkerBase):
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
             yield repos
-
-
-def _window_ms(window: str) -> int:
-    return {"5m": 300_000, "1h": 3_600_000, "4h": 14_400_000, "24h": 86_400_000}.get(window, 86_400_000)
 
 
 def _now_ms() -> int:

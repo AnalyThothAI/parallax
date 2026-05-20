@@ -55,9 +55,11 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.mention_semantics.timeout_seconds == 0
     assert settings.mention_semantics.batch_size == 50
     assert settings.mention_semantics.provider_batch_size == 10
-    assert settings.mention_semantics.max_semantic_rows_enqueued_per_cycle == 40
-    assert settings.mention_semantics.max_pending_semantics_per_target == 80
-    assert settings.mention_semantics.max_pending_source_age_seconds == 43_200
+    assert settings.mention_semantics.max_semantic_rows_enqueued_per_cycle == 120
+    assert settings.mention_semantics.max_semantic_rows_enqueued_per_admission == 20
+    assert settings.mention_semantics.max_semantics_claimed_per_target_per_cycle == 3
+    assert settings.mention_semantics.partial_enqueue_retry_seconds == 5
+    assert not hasattr(settings.mention_semantics, "max_pending_source_age_seconds")
     assert settings.mention_semantics.advisory_lock_key == 2026051801
     assert settings.mention_semantics.wakes_on == ("token_radar_updated", "resolution_updated")
     assert settings.token_discussion_digest.interval_seconds == 120
@@ -73,6 +75,9 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_discussion_digest.scopes == ("all", "matched")
     assert settings.token_discussion_digest.min_semantic_coverage == 0.35
     assert settings.token_discussion_digest.max_mentions_per_digest == 24
+    assert settings.token_discussion_digest.max_llm_calls_per_cycle == 3
+    assert settings.token_discussion_digest.max_llm_failures_per_cycle == 2
+    assert settings.token_discussion_digest.provider_failure_backoff_seconds == 600
     assert settings.token_discussion_digest.digest_ttl_by_window_seconds["24h"] == 900
     assert settings.pulse_candidate.timeout_seconds == 0
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
@@ -98,6 +103,26 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "investigator_max_tool_calls" not in text
     assert "fallback_agent_brief" not in text
     assert "narrative_fallback" not in text
+
+
+def test_mention_semantics_hard_cuts_source_age_prune_setting() -> None:
+    text = default_workers_yaml()
+    settings = WorkersSettings(**yaml.safe_load(text))
+
+    assert "max_pending_source_age_seconds" not in text
+    assert not hasattr(settings.mention_semantics, "max_pending_source_age_seconds")
+    assert settings.mention_semantics.max_semantic_rows_enqueued_per_cycle == 120
+    assert settings.mention_semantics.max_semantic_rows_enqueued_per_admission == 20
+    assert settings.mention_semantics.max_semantics_claimed_per_target_per_cycle == 3
+    assert settings.mention_semantics.partial_enqueue_retry_seconds == 5
+
+
+def test_token_discussion_digest_has_llm_cycle_caps() -> None:
+    settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+
+    assert settings.token_discussion_digest.max_llm_calls_per_cycle == 3
+    assert settings.token_discussion_digest.max_llm_failures_per_cycle == 2
+    assert settings.token_discussion_digest.provider_failure_backoff_seconds == 600
 
 
 def test_worker_settings_reject_unknown_worker_key():

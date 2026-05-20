@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from types import SimpleNamespace
 from typing import Any
 
@@ -25,6 +26,7 @@ from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync impo
     sync_us_equity_symbols,
 )
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.narrative_intel.queries import NarrativeBacklogHealthQuery
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
@@ -494,6 +496,7 @@ def _run_narrative_intel_rebuild(
             ]
         )
         results = []
+        cleanup_totals: dict[str, int] = {}
         for cycle in range(max(1, int(cycles))):
             cycle_now_ms = int(now_ms) + cycle
             admission_result = asyncio.run(admission.run_once(now_ms=cycle_now_ms))
@@ -503,6 +506,7 @@ def _run_narrative_intel_rebuild(
                 scope=scope,
                 now_ms=cycle_now_ms,
             )
+            _merge_int_counts(cleanup_totals, cleanup)
             semantics_result = asyncio.run(semantics.run_once(now_ms=cycle_now_ms))
             digest_result = asyncio.run(digest.run_once(now_ms=cycle_now_ms))
             item = {
@@ -517,11 +521,14 @@ def _run_narrative_intel_rebuild(
                 break
             if admission_result.skipped and semantics_result.skipped and digest_result.skipped:
                 break
+        final_health = _narrative_backlog_health(db, now_ms=int(now_ms) + len(results), since_hours=4)
         return {
             "window": window,
             "scope": scope,
             "drain": bool(drain),
             "cycles": len(results),
+            "cleanup": cleanup_totals,
+            "final_health": final_health,
             "results": results,
         }
     finally:
@@ -546,14 +553,43 @@ def _worker_result_payload(result: object) -> dict[str, Any]:
 
 def _cleanup_narrative_backlog(db: object, *, window: str, scope: str, now_ms: int) -> dict[str, int]:
     with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
+        cleanup = getattr(repos.narratives, "cleanup_narrative_current_hard_cut", None)
+        if cleanup is None:
+            cleanup = repos.narratives.cleanup_current_backlog
         return dict(
-            repos.narratives.cleanup_current_backlog(
+            _call_with_supported_kwargs(
+                cleanup,
                 schema_version=NARRATIVE_SCHEMA_VERSION,
                 window=window,
                 scope=scope,
                 now_ms=now_ms,
             )
         )
+
+
+def _narrative_backlog_health(db: object, *, now_ms: int, since_hours: int) -> dict[str, Any]:
+    with db.worker_session("rebuild_narrative_intel_final_health") as repos:
+        return dict(NarrativeBacklogHealthQuery(repos.conn).health(now_ms=now_ms, since_hours=since_hours))
+
+
+def _merge_int_counts(total: dict[str, int], item: dict[str, Any]) -> None:
+    for key, value in item.items():
+        try:
+            total[key] = total.get(key, 0) + int(value or 0)
+        except (TypeError, ValueError):
+            continue
+
+
+def _call_with_supported_kwargs(method: object, **kwargs: object) -> object:
+    try:
+        signature = inspect.signature(method)
+    except (TypeError, ValueError):
+        return method(**kwargs)  # type: ignore[misc]
+    parameters = signature.parameters.values()
+    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
+        return method(**kwargs)  # type: ignore[misc]
+    supported = {key: value for key, value in kwargs.items() if key in signature.parameters}
+    return method(**supported)  # type: ignore[misc]
 
 
 def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:

@@ -14,6 +14,8 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
+DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
+NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 
 
@@ -421,6 +423,26 @@ def test_no_old_worker_runtime_settings() -> None:
 
     assert violations == set()
     assert worker_fields == set(EXPECTED_WORKERS)
+
+
+@pytest.mark.architecture
+def test_narrative_hard_cut_contracts_are_documented() -> None:
+    combined = "\n".join(
+        path.read_text(encoding="utf-8") for path in (DOCS_WORKERS, DOCS_CONTRACTS, NARRATIVE_ARCHITECTURE)
+    )
+
+    for phrase in (
+        "source_event_ids_json",
+        "source-set truth",
+        "maintenance writer exception",
+        "no runtime compatibility",
+        "digest_not_ready",
+        "digest_stale",
+        "not_in_current_frontier",
+        "llm_cycle_budget_exhausted",
+        "llm_failure_budget_exhausted",
+    ):
+        assert phrase in combined
 
 
 @pytest.mark.architecture

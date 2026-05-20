@@ -27,21 +27,25 @@ def construct_narrative_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Wo
         return constructed
 
     if workers.mention_semantics.enabled:
+        worker_name = "mention_semantics"
         constructed["mention_semantics"] = MentionSemanticsWorker(
-            name="mention_semantics",
+            name=worker_name,
             settings=workers.mention_semantics,
             db=ctx.db,
             telemetry=ctx.telemetry,
             provider=provider,
             wake_bus=ctx.wake_bus,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.mention_semantics.wakes_on),
         )
     if workers.token_discussion_digest.enabled:
+        worker_name = "token_discussion_digest"
         constructed["token_discussion_digest"] = TokenDiscussionDigestWorker(
-            name="token_discussion_digest",
+            name=worker_name,
             settings=workers.token_discussion_digest,
             db=ctx.db,
             telemetry=ctx.telemetry,
             provider=provider,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.token_discussion_digest.wakes_on),
         )
     return constructed
 

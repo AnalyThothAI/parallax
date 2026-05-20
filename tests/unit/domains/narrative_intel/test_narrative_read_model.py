@@ -98,6 +98,38 @@ def test_hydrate_token_radar_adds_compact_processing_backlog_without_rewriting_s
     }
 
 
+def test_hydrate_token_radar_projects_repository_missing_digest_reason():
+    repo = FakeNarrativeRepository(
+        {
+            ("Asset", "asset:solana:token:So111"): {
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:So111",
+                "status": "pending",
+                "is_current": False,
+                "data_gaps_json": [{"reason": "digest_stale"}],
+                "semantic_coverage": 0,
+                "source_event_count": 0,
+                "labeled_event_count": 0,
+                "independent_author_count": 0,
+                "evidence_refs_json": [],
+            }
+        }
+    )
+
+    result = NarrativeReadModel(repo).hydrate_token_radar(
+        {"targets": [{"target_type": "Asset", "target_id": "asset:solana:token:So111"}]},
+        window="24h",
+        scope="all",
+        now_ms=1_000,
+    )
+
+    digest = result["targets"][0]["discussion_digest"]
+
+    assert digest["status"] == "pending"
+    assert digest["data_gaps"] == [{"reason": "digest_stale"}]
+    assert digest["coverage"]["source_mentions"] == 0
+
+
 class FakeNarrativeRepository:
     def __init__(self, digests):
         self.digests = digests

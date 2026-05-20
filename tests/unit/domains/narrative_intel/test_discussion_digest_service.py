@@ -53,6 +53,11 @@ def test_digest_request_uses_compact_agent_payload():
                 {"ref_id": "event:event-2", "kind": "event", "source_table": "events"},
             ],
             "source_event_count": 2,
+            "semantic_row_count": 2,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
             "labeled_event_count": 1,
             "independent_author_count": 1,
         },
@@ -70,11 +75,18 @@ def test_digest_request_uses_compact_agent_payload():
     assert "allowed_refs" not in request.context
     assert request.context == {
         "source_event_count": 2,
+        "semantic_row_count": 2,
+        "missing_semantic_count": 0,
+        "pending_semantic_count": 0,
+        "retryable_semantic_count": 0,
+        "terminal_unavailable_count": 0,
         "labeled_event_count": 1,
         "independent_author_count": 1,
         "semantic_coverage": 0.5,
         "mention_count_sent": 1,
         "mention_limit": 1,
+        "prompt_mention_count": 1,
+        "prompt_mention_limit": 1,
     }
     assert {ref["ref_id"] for ref in request.allowed_refs} == {"event:event-1", "semantic:semantic-1"}
     assert "not for agent" not in encoded
@@ -116,6 +128,8 @@ def test_digest_request_default_prompt_budget_stays_small_for_realtime_latency()
 
     assert len(request.mentions) == 24
     assert request.context["mention_limit"] == 24
+    assert request.context["prompt_mention_limit"] == 24
+    assert request.context["prompt_mention_count"] == 24
     assert max(len(mention["text_clean"]) for mention in request.mentions) <= 363
     assert len(request.allowed_refs) == 24
 
@@ -126,6 +140,11 @@ def test_refresh_decision_waits_for_pending_semantics_instead_of_insufficient():
     decision = service.refresh_decision(
         {
             "source_event_count": 10,
+            "semantic_row_count": 4,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 1,
+            "retryable_semantic_count": 1,
+            "terminal_unavailable_count": 0,
             "labeled_event_count": 2,
             "independent_author_count": 5,
             "semantic_rows": [
@@ -148,9 +167,59 @@ def test_refresh_decision_uses_source_set_count_when_semantic_rows_are_missing()
     decision = service.refresh_decision(
         {
             "source_event_count": 10,
+            "semantic_row_count": 0,
+            "missing_semantic_count": 10,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
             "labeled_event_count": 0,
             "independent_author_count": 5,
             "semantic_rows": [],
+        }
+    )
+
+    assert decision.should_refresh is False
+    assert decision.reason == "semantic_labeling_pending"
+    assert decision.status_if_not_refresh == "pending"
+
+
+def test_refresh_decision_pending_uses_explicit_missing_count_not_prompt_sample_size() -> None:
+    service = DiscussionDigestService(min_source_mentions=3, min_independent_authors=2, min_semantic_coverage=0.35)
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 82,
+            "independent_author_count": 12,
+            "semantic_row_count": 82,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 25,
+            "labeled_event_count": 57,
+            "mentions": [{"status": "labeled"} for _ in range(24)],
+            "semantic_rows": [{"status": "labeled"} for _ in range(24)],
+        }
+    )
+
+    assert decision.should_refresh is True
+    assert decision.reason == "thresholds_met"
+
+
+def test_refresh_decision_reports_semantic_pending_when_source_rows_are_missing_semantics() -> None:
+    service = DiscussionDigestService(min_source_mentions=3, min_independent_authors=2, min_semantic_coverage=0.35)
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 10,
+            "independent_author_count": 4,
+            "semantic_row_count": 4,
+            "missing_semantic_count": 6,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
+            "labeled_event_count": 4,
+            "mentions": [{"status": "labeled"} for _ in range(4)],
+            "semantic_rows": [{"status": "labeled"} for _ in range(4)],
         }
     )
 
@@ -165,6 +234,11 @@ def test_refresh_decision_reports_low_source_volume_only_from_source_set_count()
     decision = service.refresh_decision(
         {
             "source_event_count": 2,
+            "semantic_row_count": 2,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
             "labeled_event_count": 2,
             "independent_author_count": 2,
             "semantic_rows": [
@@ -185,6 +259,11 @@ def test_refresh_decision_reports_terminal_semantic_unavailable_after_all_source
     decision = service.refresh_decision(
         {
             "source_event_count": 3,
+            "semantic_row_count": 3,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 3,
             "labeled_event_count": 0,
             "independent_author_count": 3,
             "semantic_rows": [
@@ -258,3 +337,62 @@ def test_digest_request_sends_only_labeled_mentions():
         "event:event-labeled",
         "semantic:semantic-labeled",
     }
+
+
+def test_status_digest_carries_source_fingerprint_from_context() -> None:
+    service = DiscussionDigestService()
+
+    digest = service.build_status_digest(
+        target_type="chain_token",
+        target_id="solana:So111",
+        window="24h",
+        scope="all",
+        context={
+            "source_event_count": 3,
+            "labeled_event_count": 0,
+            "independent_author_count": 2,
+            "source_fingerprint": "source-current",
+        },
+        reason="semantic_labeling_pending",
+        now_ms=1000,
+        status="pending",
+    )
+
+    assert digest.source_fingerprint == "source-current"
+
+
+def test_ready_digest_carries_source_fingerprint_from_context() -> None:
+    service = DiscussionDigestService()
+
+    digest = service.publish_ready_digest(
+        {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "window": "24h",
+            "scope": "all",
+            "schema_version": "narrative_intel_v1",
+            "model_version": "gpt-test",
+            "status": "ready",
+            "dominant_narratives": [
+                {
+                    "cluster_key": "main",
+                    "summary_zh": "主线",
+                    "evidence_refs": [{"ref_id": "event:e1"}],
+                }
+            ],
+            "bull_view": {"summary_zh": "多头", "evidence_refs": [{"ref_id": "event:e1"}]},
+            "bear_view": {"summary_zh": "空头", "evidence_refs": [{"ref_id": "event:e2"}]},
+            "evidence_refs": [{"ref_id": "event:e1"}],
+        },
+        context={
+            "source_event_count": 3,
+            "labeled_event_count": 3,
+            "independent_author_count": 2,
+            "source_fingerprint": "source-current",
+            "mentions": [{"event_id": "e1"}, {"event_id": "e2"}, {"event_id": "e3"}],
+            "semantic_rows": [{"status": "labeled"}, {"status": "labeled"}, {"status": "labeled"}],
+        },
+        now_ms=1000,
+    )
+
+    assert digest.source_fingerprint == "source-current"

@@ -51,10 +51,17 @@ class WorkerStatusData(ApiSchema):
 
 class NarrativeSemanticBacklog(ApiSchema):
     total_pending: int = 0
+    current_source_rows: int = 0
+    semantic_rows_for_current_sources: int = 0
+    missing_semantic_rows: int = 0
+    admissions_with_missing_semantics: int = 0
+    pending_existing_rows: int = 0
     queued: int = 0
     retryable: int = 0
     stale: int = 0
     unavailable: int = 0
+    suppressed_current_digest_count: int = 0
+    stale_fingerprint_current_digest_count: int = 0
     oldest_due_age_ms: int | None = None
 
 

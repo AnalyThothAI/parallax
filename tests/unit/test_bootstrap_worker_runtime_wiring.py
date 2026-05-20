@@ -15,6 +15,10 @@ from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker imp
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
+from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
+    TokenDiscussionDigestWorker,
+)
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
@@ -203,6 +207,33 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
 
 
+def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> None:
+    db = FakeDB()
+    providers = FakeProviders()
+
+    workers = construct_workers(
+        settings=_settings(narrative_intel_configured=True),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["mention_semantics"], MentionSemanticsWorker)
+    assert workers["mention_semantics"].wake_waiter.worker_name == "mention_semantics"
+    assert workers["mention_semantics"].wake_waiter.channels == ("token_radar_updated", "resolution_updated")
+    assert isinstance(workers["token_discussion_digest"], TokenDiscussionDigestWorker)
+    assert workers["token_discussion_digest"].wake_waiter.worker_name == "token_discussion_digest"
+    assert workers["token_discussion_digest"].wake_waiter.channels == (
+        "token_radar_updated",
+        "narrative_semantics_updated",
+        "market_tick_written",
+    )
+
+
 def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     def rogue_factory(ctx):
         return {"token_radar_projection": ctx.collector}
@@ -236,9 +267,12 @@ def _settings(
     *,
     collector_enabled: bool = False,
     notifications_enabled: bool = False,
+    narrative_intel_configured: bool = False,
 ) -> Settings:
+    llm = {"api_key": "secret", "model": "gpt-test"} if narrative_intel_configured else {}
     return Settings(
         ws_token="secret",
+        llm=llm,
         notifications={
             "enabled": notifications_enabled,
             "channels": {
@@ -291,6 +325,7 @@ class FakeProviders:
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
         self.marketlane = SimpleNamespace(stock_quote_provider=None)
         self.news_intel = SimpleNamespace(feed_client=object())
+        self.narrative_intel = SimpleNamespace(narrative_provider=object())
 
 
 class FakeDB:

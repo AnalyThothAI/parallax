@@ -14,15 +14,15 @@ from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_work
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
-from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
-    MentionSemanticLabel,
-    MentionSemanticsBatchResult,
-)
 from gmgn_twitter_intel.domains.narrative_intel.types.discussion_digest import (
     DigestArgument,
     DiscussionDigestResult,
     NarrativeCluster,
     TokenDiscussionDigest,
+)
+from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
+    MentionSemanticLabel,
+    MentionSemanticsBatchResult,
 )
 from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
 
@@ -374,15 +374,13 @@ def test_mention_semantics_worker_scopes_event_only_failures_to_matching_rows():
     asyncio.run(scenario())
 
 
-def test_mention_semantics_worker_prunes_old_pending_backlog_before_claiming():
+def test_mention_semantics_worker_hard_cuts_source_age_prune_and_claims_first():
     async def scenario():
-        repo = FakeNarrativeRepository(
-            prune_result={"deleted_old_semantics": 2, "deleted_overflow_semantics": 1}
-        )
+        repo = FakeNarrativeRepository()
         db = FakeDB(repo)
         worker = MentionSemanticsWorker(
             name="mention_semantics",
-            settings=fake_settings(max_pending_source_age_seconds=3600, max_pending_semantics_per_target=5),
+            settings=fake_settings(max_pending_semantics_per_target=5),
             db=db,
             telemetry=SimpleNamespace(),
             provider=BarrierNarrativeProvider(db),
@@ -390,19 +388,81 @@ def test_mention_semantics_worker_prunes_old_pending_backlog_before_claiming():
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert repo.prune_calls == [
-            {
-                "schema_version": "narrative_intel_v1",
-                "now_ms": 10_000,
-                "max_source_age_ms": 3_600_000,
-                "max_pending_per_target": 5,
-            }
-        ]
-        assert result.notes["prune_deleted_old_semantics"] == 2
-        assert result.notes["prune_deleted_overflow_semantics"] == 1
+        assert not hasattr(worker, "_prune_pending_backlog_sync")
+        assert not any(str(key).startswith("prune_") for key in result.notes)
         assert result.processed == 1
 
     asyncio.run(scenario())
+
+
+def test_mention_semantics_partial_enqueue_uses_short_retry_and_exposes_missing_backlog():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            due_mentions=[],
+            due_admissions=[
+                {
+                    "admission_id": "admission-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "24h",
+                    "scope": "matched",
+                    "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
+                }
+            ],
+            source_rows=[
+                {
+                    "event_id": f"event-{index}",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": f"SOL breakout {index}",
+                    "text_fingerprint": f"fp-{index}",
+                    "source_received_at_ms": 9_000 + index,
+                }
+                for index in range(1, 6)
+            ],
+        )
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(
+                interval_seconds=60.0,
+                max_semantic_rows_enqueued_per_cycle=4,
+                max_semantic_rows_enqueued_per_admission=2,
+                max_pending_semantics_per_target=10,
+                partial_enqueue_retry_seconds=5,
+            ),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=BarrierNarrativeProvider(db),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
+        assert result.notes["enqueue_semantic_inserted"] == 2
+        assert result.notes["enqueue_missing_after_enqueue"] == 3
+        assert result.notes["enqueue_semantic_suppressed_budget"] == 3
+        assert repo.semantic_scans == [
+            {"admission_ids": ["admission-1"], "next_due_at_ms": 15_000, "now_ms": 10_000}
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_claim_passes_per_target_cycle_cap():
+    repo = FakeNarrativeRepository()
+    worker = MentionSemanticsWorker(
+        name="mention_semantics",
+        settings=fake_settings(max_semantics_claimed_per_target_per_cycle=3),
+        db=FakeDB(repo),
+        telemetry=SimpleNamespace(),
+        provider=BarrierNarrativeProvider(FakeDB(repo)),
+    )
+
+    rows = worker._claim_due_rows_sync(now_ms=10_000, limit=10)
+
+    assert len(rows) == 1
+    assert repo.due_mentions_calls == [{"now_ms": 10_000, "limit": 10, "max_per_target": 3}]
 
 
 def test_mention_semantics_worker_treats_unknown_provider_labels_as_retryable_failure():
@@ -469,10 +529,109 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
 
         assert result.processed == 0
         assert result.failed == 1
+        assert result.notes["llm_calls"] == 1
+        assert result.notes["llm_failures"] == 1
         assert repo.recorded_runs[0]["stage"] == "discussion_digest"
         assert repo.recorded_runs[0]["status"] == "failed"
         assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.discussion_digest"
         assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 610_000, "now_ms": 10_000}]
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_worker_defers_threshold_targets_after_llm_cycle_budget():
+    async def scenario():
+        targets = [
+            {
+                "admission_id": "admission-1",
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+            },
+            {
+                "admission_id": "admission-2",
+                "target_type": "chain_token",
+                "target_id": "solana:Bonk",
+                "window": "24h",
+                "scope": "matched",
+            },
+        ]
+        repo = FakeDigestRepository(targets=targets)
+        db = FakeDB(repo)
+        provider = CountingDigestProvider()
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(batch_size=2, max_llm_calls_per_cycle=1),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=provider,
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert provider.calls == ["solana:So111"]
+        assert result.notes["ready"] == 1
+        assert result.notes["pending"] == 1
+        assert result.failed == 0
+        assert result.notes["llm_calls"] == 1
+        assert result.notes["deferred_llm_budget"] == 1
+        assert result.notes["refresh_reasons"]["llm_cycle_budget_exhausted"] == 1
+        assert repo.digest_scans[-1] == {
+            "admission_ids": ["admission-2"],
+            "next_due_at_ms": 11_000,
+            "now_ms": 10_000,
+        }
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_worker_defers_after_provider_failure_budget():
+    async def scenario():
+        targets = [
+            {
+                "admission_id": "admission-1",
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+            },
+            {
+                "admission_id": "admission-2",
+                "target_type": "chain_token",
+                "target_id": "solana:Bonk",
+                "window": "24h",
+                "scope": "matched",
+            },
+        ]
+        repo = FakeDigestRepository(targets=targets)
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(
+                batch_size=2,
+                max_llm_calls_per_cycle=10,
+                max_llm_failures_per_cycle=1,
+                provider_failure_backoff_seconds=7,
+            ),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=FailingNarrativeProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["failed"] == 1
+        assert result.notes["pending"] == 1
+        assert result.notes["llm_calls"] == 1
+        assert result.notes["llm_failures"] == 1
+        assert result.notes["deferred_llm_budget"] == 1
+        assert result.notes["refresh_reasons"]["llm_failure_budget_exhausted"] == 1
+        assert repo.digest_scans == [
+            {"admission_ids": ["admission-1"], "next_due_at_ms": 17_000, "now_ms": 10_000},
+            {"admission_ids": ["admission-2"], "next_due_at_ms": 11_000, "now_ms": 10_000},
+        ]
 
     asyncio.run(scenario())
 
@@ -521,6 +680,11 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
                     {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
                 ],
                 "source_event_count": 3,
+                "semantic_row_count": 3,
+                "missing_semantic_count": 0,
+                "pending_semantic_count": 1,
+                "retryable_semantic_count": 1,
+                "terminal_unavailable_count": 0,
                 "labeled_event_count": 1,
                 "independent_author_count": 3,
                 "allowed_refs": [],
@@ -697,6 +861,9 @@ def fake_settings(**overrides):
         admission_limit=10,
         source_limit=100,
         model_version="gpt-test",
+        max_semantic_rows_enqueued_per_admission=20,
+        max_semantics_claimed_per_target_per_cycle=3,
+        partial_enqueue_retry_seconds=5,
     )
     values.update(overrides)
     return SimpleNamespace(
@@ -721,8 +888,8 @@ def fake_admission_settings(**overrides):
     return SimpleNamespace(**values)
 
 
-def fake_digest_settings():
-    return SimpleNamespace(
+def fake_digest_settings(**overrides):
+    values = dict(
         enabled=True,
         interval_seconds=1.0,
         timeout_seconds=0.0,
@@ -732,7 +899,12 @@ def fake_digest_settings():
         min_independent_authors=2,
         min_semantic_coverage=0.35,
         max_mentions_per_digest=10,
+        max_llm_calls_per_cycle=3,
+        max_llm_failures_per_cycle=2,
+        provider_failure_backoff_seconds=600,
     )
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 class FakeDB:
@@ -758,7 +930,6 @@ class FakeNarrativeRepository:
         due_mentions=None,
         due_admissions=None,
         pending_semantics=None,
-        prune_result=None,
         existing_semantic_event_ids=None,
     ):
         self.radar_rows = list(radar_rows or [])
@@ -766,7 +937,6 @@ class FakeNarrativeRepository:
         self.due_mentions = due_mentions
         self.due_admissions = due_admissions
         self.pending_semantics = dict(pending_semantics or {})
-        self.prune_result = dict(prune_result or {"deleted_old_semantics": 0, "deleted_overflow_semantics": 0})
         self.existing_semantic_event_ids = set(existing_semantic_event_ids or set())
         self.recorded_runs = []
         self.recorded_run_commits = []
@@ -775,7 +945,8 @@ class FakeNarrativeRepository:
         self.suppressed_frontiers = []
         self.scanned_admission_ids = []
         self.enqueued_source_event_ids = []
-        self.prune_calls = []
+        self.semantic_scans = []
+        self.due_mentions_calls = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
         return self.radar_rows[:limit]
@@ -834,24 +1005,6 @@ class FakeNarrativeRepository:
     def pending_mention_semantics_count(self, *, target_type, target_id, schema_version, model_version=None):
         return int(self.pending_semantics.get((target_type, target_id), 0))
 
-    def prune_pending_mention_semantics_backlog(
-        self,
-        *,
-        schema_version,
-        now_ms,
-        max_source_age_ms=None,
-        max_pending_per_target=None,
-    ):
-        self.prune_calls.append(
-            {
-                "schema_version": schema_version,
-                "now_ms": now_ms,
-                "max_source_age_ms": max_source_age_ms,
-                "max_pending_per_target": max_pending_per_target,
-            }
-        )
-        return dict(self.prune_result)
-
     def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms):
         self.enqueued_source_event_ids.extend(str(row["event_id"]) for row in source_rows)
         inserted_rows = [
@@ -865,9 +1018,13 @@ class FakeNarrativeRepository:
 
     def mark_admissions_semantics_scanned(self, admission_ids, *, next_due_at_ms, now_ms):
         self.scanned_admission_ids.extend(admission_ids)
+        self.semantic_scans.append(
+            {"admission_ids": list(admission_ids), "next_due_at_ms": next_due_at_ms, "now_ms": now_ms}
+        )
         return {"updated": len(admission_ids)}
 
-    def due_mentions_for_labeling(self, *, now_ms, limit):
+    def due_mentions_for_labeling(self, *, now_ms, limit, max_per_target=None):
+        self.due_mentions_calls.append({"now_ms": now_ms, "limit": limit, "max_per_target": max_per_target})
         if self.due_mentions is not None:
             return self.due_mentions[:limit]
         return [
@@ -897,13 +1054,18 @@ class FakeNarrativeRepository:
 
 
 class FakeDigestRepository:
-    def __init__(self, *, context=None):
+    def __init__(self, *, context=None, contexts=None, targets=None):
         self.recorded_runs = []
         self.context = context
+        self.contexts = dict(contexts or {})
+        self.targets = list(targets) if targets is not None else None
         self.replaced_digests = []
         self.digest_scans = []
+        self.digest_context_calls = []
 
     def due_digest_targets(self, *, now_ms, limit):
+        if self.targets is not None:
+            return self.targets[:limit]
         return [
             {
                 "admission_id": "admission-1",
@@ -914,7 +1076,18 @@ class FakeDigestRepository:
             }
         ][:limit]
 
-    def digest_context(self, *, target_type, target_id, window, scope, since_ms, max_mentions):
+    def digest_context(self, *, target_type, target_id, window, scope, max_mentions):
+        self.digest_context_calls.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "window": window,
+                "scope": scope,
+                "max_mentions": max_mentions,
+            }
+        )
+        if target_id in self.contexts:
+            return self.contexts[target_id]
         if self.context is not None:
             return self.context
         mentions = [
@@ -930,9 +1103,14 @@ class FakeDigestRepository:
             "mentions": mentions,
             "semantic_rows": mentions,
             "source_event_count": 3,
+            "semantic_row_count": 3,
+            "missing_semantic_count": 0,
+            "pending_semantic_count": 0,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
             "labeled_event_count": 3,
             "independent_author_count": 2,
-            "allowed_refs": [],
+            "allowed_refs": [{"ref_id": "event:event-1", "kind": "event", "source_table": "events"}],
         }
 
     def record_narrative_model_run(self, run, *, commit=True):
@@ -1114,6 +1292,15 @@ class StaleButValidDigestProvider:
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
+
+
+class CountingDigestProvider(StaleButValidDigestProvider):
+    def __init__(self):
+        self.calls = []
+
+    async def summarize_discussion(self, *, run_id, request):
+        self.calls.append(request.target_id)
+        return await super().summarize_discussion(run_id=run_id, request=request)
 
 
 class SparseDigestProvider:

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.surfaces.api import routes_radar, routes_search, routes_status
+from gmgn_twitter_intel.app.surfaces.api.schemas import NarrativeBacklogHealthData
 
 NOW_MS = 1_778_562_000_000
 
@@ -134,8 +135,40 @@ def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
     body = _body(response)
     assert body["ok"] is True
     assert body["data"]["semantic_backlog"]["total_pending"] == 5
+    assert body["data"]["semantic_backlog"]["missing_semantic_rows"] == 4
+    assert body["data"]["semantic_backlog"]["current_source_rows"] == 12
     assert body["data"]["pending_digest_count"] == 2
     assert calls == [{"conn": runtime.conn, "now_ms": NOW_MS, "since_hours": 4}]
+
+
+def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
+    data = NarrativeBacklogHealthData.model_validate(
+        {
+            "semantic_backlog": {
+                "total_pending": 9,
+                "current_source_rows": 12,
+                "semantic_rows_for_current_sources": 8,
+                "missing_semantic_rows": 4,
+                "admissions_with_missing_semantics": 2,
+                "pending_existing_rows": 5,
+                "queued": 3,
+                "retryable": 2,
+                "stale": 0,
+                "unavailable": 1,
+                "suppressed_current_digest_count": 1,
+                "stale_fingerprint_current_digest_count": 3,
+            }
+        }
+    )
+
+    assert data.semantic_backlog.total_pending == 9
+    assert data.semantic_backlog.missing_semantic_rows == 4
+    assert data.semantic_backlog.current_source_rows == 12
+    assert data.semantic_backlog.semantic_rows_for_current_sources == 8
+    assert data.semantic_backlog.admissions_with_missing_semantics == 2
+    assert data.semantic_backlog.pending_existing_rows == 5
+    assert data.semantic_backlog.suppressed_current_digest_count == 1
+    assert data.semantic_backlog.stale_fingerprint_current_digest_count == 3
 
 
 class _NarrativeReadModel:
@@ -235,10 +268,17 @@ class _NarrativeBacklogHealthQuery:
             "since_hours": since_hours,
             "semantic_backlog": {
                 "total_pending": 5,
+                "current_source_rows": 12,
+                "semantic_rows_for_current_sources": 8,
+                "missing_semantic_rows": 4,
+                "admissions_with_missing_semantics": 2,
+                "pending_existing_rows": 5,
                 "queued": 3,
                 "retryable": 2,
                 "stale": 0,
                 "unavailable": 1,
+                "suppressed_current_digest_count": 1,
+                "stale_fingerprint_current_digest_count": 3,
                 "oldest_due_age_ms": 4_000,
             },
             "recent_runs": {},

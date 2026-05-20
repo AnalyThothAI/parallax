@@ -32,8 +32,9 @@ class MentionSemanticsWorker(WorkerBase):
         telemetry: Any,
         provider: NarrativeIntelProvider,
         wake_bus: Any | None = None,
+        wake_waiter: Any | None = None,
     ) -> None:
-        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.provider = provider
         self.wake_bus = wake_bus
         self.service = MentionSemanticsService()
@@ -47,15 +48,10 @@ class MentionSemanticsWorker(WorkerBase):
         provider_batch_size = max(1, int(getattr(self.settings, "provider_batch_size", configured_batch_size) or 1))
         batch_size = min(configured_batch_size, provider_batch_size)
         max_attempts = max(1, int(getattr(self.settings, "max_attempts", 3) or 3))
-        prune_stats = await asyncio.to_thread(self._prune_pending_backlog_sync, now_ms=resolved_now_ms)
         rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         enqueue_stats: dict[str, int] = {}
         if not rows:
             enqueue_stats = await asyncio.to_thread(self._enqueue_missing_from_admissions_sync, now_ms=resolved_now_ms)
-            prune_stats = _sum_counts(
-                prune_stats,
-                await asyncio.to_thread(self._prune_pending_backlog_sync, now_ms=resolved_now_ms),
-            )
             rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         if not rows:
             return WorkerResult(
@@ -63,7 +59,6 @@ class MentionSemanticsWorker(WorkerBase):
                 notes={
                     "reason": "no_due_mentions",
                     "claimed": 0,
-                    **_prefixed(prune_stats, "prune_"),
                     **_prefixed(enqueue_stats, "enqueue_"),
                 },
             )
@@ -92,7 +87,6 @@ class MentionSemanticsWorker(WorkerBase):
                     skipped=len(rows),
                     notes={
                         "claimed": len(rows),
-                        **_prefixed(prune_stats, "prune_"),
                         **_prefixed(enqueue_stats, "enqueue_"),
                         "agent_backpressure": reason,
                         f"agent_backpressure_{reason}": 1,
@@ -146,7 +140,6 @@ class MentionSemanticsWorker(WorkerBase):
                 failed=failed,
                 notes={
                     "claimed": len(rows),
-                    **_prefixed(prune_stats, "prune_"),
                     **_prefixed(enqueue_stats, "enqueue_"),
                     "labeled": 0,
                     "semantic_unavailable": semantic_unavailable,
@@ -214,7 +207,6 @@ class MentionSemanticsWorker(WorkerBase):
             failed=int(complete.get("failed") or 0),
             notes={
                 "claimed": len(rows),
-                **_prefixed(prune_stats, "prune_"),
                 **_prefixed(enqueue_stats, "enqueue_"),
                 "labeled": int(complete.get("labeled") or 0),
                 "semantic_unavailable": int(complete.get("semantic_unavailable") or 0),
@@ -223,39 +215,33 @@ class MentionSemanticsWorker(WorkerBase):
             },
         )
 
-    def _prune_pending_backlog_sync(self, *, now_ms: int) -> dict[str, int]:
-        max_source_age_seconds = int(getattr(self.settings, "max_pending_source_age_seconds", 43_200) or 0)
-        max_pending_per_target = int(getattr(self.settings, "max_pending_semantics_per_target", 80) or 0)
-        if max_source_age_seconds <= 0 and max_pending_per_target <= 0:
-            return {"deleted_old_semantics": 0, "deleted_overflow_semantics": 0}
-        with self._repository_session() as repos:
-            return dict(
-                repos.narratives.prune_pending_mention_semantics_backlog(
-                    schema_version=NARRATIVE_SCHEMA_VERSION,
-                    now_ms=now_ms,
-                    max_source_age_ms=max_source_age_seconds * 1000 if max_source_age_seconds > 0 else None,
-                    max_pending_per_target=max_pending_per_target if max_pending_per_target > 0 else None,
-                )
-            )
-
     def _enqueue_missing_from_admissions_sync(self, *, now_ms: int) -> dict[str, int]:
         admission_limit = max(1, int(getattr(self.settings, "admission_limit", 200) or 200))
         source_limit = max(1, int(getattr(self.settings, "source_limit", 2000) or 2000))
         cycle_enqueue_budget = max(
             1,
-            int(getattr(self.settings, "max_semantic_rows_enqueued_per_cycle", 40) or 40),
+            int(getattr(self.settings, "max_semantic_rows_enqueued_per_cycle", 120) or 120),
+        )
+        per_admission_enqueue_budget = max(
+            1,
+            int(getattr(self.settings, "max_semantic_rows_enqueued_per_admission", 20) or 20),
         )
         max_pending_per_target = max(
             1,
             int(getattr(self.settings, "max_pending_semantics_per_target", 80) or 80),
         )
         interval_ms = max(1, int(float(getattr(self.settings, "interval_seconds", 60.0) or 60.0) * 1000))
+        partial_retry_ms = max(
+            1,
+            int(float(getattr(self.settings, "partial_enqueue_retry_seconds", 5.0) or 5.0) * 1000),
+        )
         stats = {
             "due_admissions": 0,
             "source_rows": 0,
             "semantic_inserted": 0,
             "semantic_existing": 0,
             "semantic_suppressed_budget": 0,
+            "missing_after_enqueue": 0,
             "semantic_pending_before": 0,
             "semantic_pending_cap_hits": 0,
             "admissions_scanned": 0,
@@ -264,7 +250,6 @@ class MentionSemanticsWorker(WorkerBase):
         with self._repository_session() as repos:
             due_admissions = repos.narratives.due_admissions_for_semantics(now_ms=now_ms, limit=admission_limit)
             stats["due_admissions"] = len(due_admissions)
-            scanned_ids: list[str] = []
             for admission in due_admissions:
                 source_rows = repos.narratives.source_rows_for_admission(admission, limit=source_limit)
                 missing_source_rows = _missing_source_rows_for_semantics(
@@ -283,13 +268,26 @@ class MentionSemanticsWorker(WorkerBase):
                 target_budget = max(0, max_pending_per_target - pending_count)
                 existing_count = max(0, len(source_rows) - len(missing_source_rows))
                 stats["semantic_existing"] += existing_count
-                allowed_count = min(len(missing_source_rows), target_budget, remaining_cycle_budget)
+                allowed_count = min(
+                    len(missing_source_rows),
+                    target_budget,
+                    remaining_cycle_budget,
+                    per_admission_enqueue_budget,
+                )
+                missing_after_enqueue = max(0, len(missing_source_rows) - allowed_count)
                 if allowed_count <= 0:
                     if missing_source_rows and target_budget <= 0:
                         stats["semantic_pending_cap_hits"] += 1
                     stats["source_rows"] += len(source_rows)
-                    stats["semantic_suppressed_budget"] += len(missing_source_rows)
-                    scanned_ids.append(str(admission["admission_id"]))
+                    stats["semantic_suppressed_budget"] += missing_after_enqueue
+                    stats["missing_after_enqueue"] += missing_after_enqueue
+                    self._mark_admission_semantics_scanned(
+                        repos.narratives,
+                        admission_id=str(admission["admission_id"]),
+                        next_due_at_ms=now_ms + (partial_retry_ms if missing_after_enqueue else interval_ms),
+                        now_ms=now_ms,
+                        stats=stats,
+                    )
                     continue
                 selected_mentions = missing_source_rows[:allowed_count]
                 enqueued = repos.narratives.enqueue_missing_mention_semantics(
@@ -301,20 +299,44 @@ class MentionSemanticsWorker(WorkerBase):
                 stats["source_rows"] += len(source_rows)
                 stats["semantic_inserted"] += int(enqueued.get("inserted") or 0)
                 stats["semantic_existing"] += int(enqueued.get("existing") or 0)
-                stats["semantic_suppressed_budget"] += max(0, len(missing_source_rows) - allowed_count)
+                stats["semantic_suppressed_budget"] += missing_after_enqueue
+                stats["missing_after_enqueue"] += missing_after_enqueue
                 remaining_cycle_budget -= int(enqueued.get("inserted") or 0)
-                scanned_ids.append(str(admission["admission_id"]))
-            marked = repos.narratives.mark_admissions_semantics_scanned(
-                scanned_ids,
-                next_due_at_ms=now_ms + interval_ms,
-                now_ms=now_ms,
-            )
-            stats["admissions_scanned"] = int(marked.get("updated") or 0)
+                self._mark_admission_semantics_scanned(
+                    repos.narratives,
+                    admission_id=str(admission["admission_id"]),
+                    next_due_at_ms=now_ms + (partial_retry_ms if missing_after_enqueue else interval_ms),
+                    now_ms=now_ms,
+                    stats=stats,
+                )
         return stats
 
     def _claim_due_rows_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+        max_per_target = max(1, int(getattr(self.settings, "max_semantics_claimed_per_target_per_cycle", 3) or 3))
         with self._repository_session() as repos:
-            return list(repos.narratives.due_mentions_for_labeling(now_ms=now_ms, limit=limit))
+            return list(
+                repos.narratives.due_mentions_for_labeling(
+                    now_ms=now_ms,
+                    limit=limit,
+                    max_per_target=max_per_target,
+                )
+            )
+
+    def _mark_admission_semantics_scanned(
+        self,
+        narrative_repository: Any,
+        *,
+        admission_id: str,
+        next_due_at_ms: int,
+        now_ms: int,
+        stats: dict[str, int],
+    ) -> None:
+        marked = narrative_repository.mark_admissions_semantics_scanned(
+            [admission_id],
+            next_due_at_ms=next_due_at_ms,
+            now_ms=now_ms,
+        )
+        stats["admissions_scanned"] += int(marked.get("updated") or 0)
 
     def _record_completion_sync(
         self,
@@ -376,11 +398,6 @@ def _agent_backpressure_reason(exc: Exception) -> str:
 
 def _prefixed(values: dict[str, int], prefix: str) -> dict[str, int]:
     return {f"{prefix}{key}": value for key, value in values.items()}
-
-
-def _sum_counts(left: dict[str, int], right: dict[str, int]) -> dict[str, int]:
-    keys = set(left) | set(right)
-    return {key: int(left.get(key, 0) or 0) + int(right.get(key, 0) or 0) for key in keys}
 
 
 def _provider_failure_for_row(
