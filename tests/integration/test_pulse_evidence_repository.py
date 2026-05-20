@@ -130,13 +130,13 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
             INSERT INTO market_ticks(
               tick_id, target_type, target_id, chain, token_address, exchange, instrument,
               pricefeed_id, source_tier, source_provider, observed_at_ms, received_at_ms,
-              price_usd, liquidity_usd, volume_24h_usd, market_cap_usd, holders,
+              price_usd, liquidity_usd, volume_24h_usd, open_interest_usd, market_cap_usd, holders,
               raw_payload_json, created_at_ms
             )
             VALUES (
               'tick-cex-1', 'cex_symbol', 'okx:NVDA-USDT-SWAP', NULL, NULL, 'okx', 'NVDA-USDT-SWAP',
               'pricefeed:cex:okx:swap:NVDA-USDT-SWAP', 'tier2_poll', 'okx_cex_rest',
-              1800000000000, 1800000000001, 228.44, NULL, 46036.11, NULL, NULL,
+              1800000000000, 1800000000001, 228.44, NULL, 46036.11, 3200000, NULL, NULL,
               '{}'::jsonb, 1800000000001
             )
             """,
@@ -165,6 +165,7 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
     assert rows[0]["target_market_type"] == "cex"
     assert rows[0]["instrument_ref"] == "pricefeed:cex:okx:swap:NVDA-USDT-SWAP"
     assert float(rows[0]["price_usd"]) == 228.44
+    assert float(rows[0]["open_interest_usd"]) == 3_200_000
 
 
 def test_pulse_evidence_source_returns_last_ready_digest_with_currentness_when_admission_changed(tmp_path) -> None:

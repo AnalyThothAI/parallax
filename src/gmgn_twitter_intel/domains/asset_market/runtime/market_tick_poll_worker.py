@@ -447,6 +447,7 @@ def _tick_from_cex_ticker(
         market_cap_usd=None,
         holders=None,
         created_at_ms=received_at_ms,
+        open_interest_usd=_ticker_open_interest_usd(ticker),
         raw_payload_json=dict(ticker.raw),
     )
 
@@ -456,6 +457,14 @@ def _ticker_observed_at_ms(ticker: CexTicker) -> int | None:
         observed_at_ms = _int_or_none(ticker.raw.get(key))
         if observed_at_ms is not None:
             return observed_at_ms
+    return None
+
+
+def _ticker_open_interest_usd(ticker: CexTicker) -> Decimal | None:
+    for key in ("open_interest_usd", "openInterestUsd", "openInterestUSD", "oiUsd", "oiUSD"):
+        open_interest_usd = _optional_decimal(ticker.raw.get(key))
+        if open_interest_usd is not None:
+            return open_interest_usd
     return None
 
 

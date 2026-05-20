@@ -222,6 +222,7 @@ def _capture_cex_symbol(
         market_cap_usd=None,
         holders=None,
         created_at_ms=created_at_ms,
+        open_interest_usd=_ticker_open_interest_usd(ticker),
         raw_payload_json=dict(ticker.raw),
     )
     return CaptureResult(
@@ -330,6 +331,7 @@ def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick | None:
         market_cap_usd=_optional_decimal(row.get("market_cap_usd")),
         holders=_int_or_none(row.get("holders")),
         created_at_ms=int(row["created_at_ms"]),
+        open_interest_usd=_optional_decimal(row.get("open_interest_usd")),
         raw_payload_json=dict(row.get("raw_payload_json") or {}),
     )
 
@@ -339,6 +341,14 @@ def _ticker_observed_at_ms(ticker: CexTicker) -> int | None:
         observed_at_ms = _int_or_none(ticker.raw.get(key))
         if observed_at_ms is not None:
             return observed_at_ms
+    return None
+
+
+def _ticker_open_interest_usd(ticker: CexTicker) -> Decimal | None:
+    for key in ("open_interest_usd", "openInterestUsd", "openInterestUSD", "oiUsd", "oiUSD"):
+        open_interest_usd = _optional_decimal(ticker.raw.get(key))
+        if open_interest_usd is not None:
+            return open_interest_usd
     return None
 
 

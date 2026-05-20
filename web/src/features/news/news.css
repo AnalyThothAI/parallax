@@ -66,6 +66,22 @@
   padding: 10px;
 }
 
+.news-pull-refresh {
+  display: grid;
+  min-height: 30px;
+  margin-bottom: 8px;
+  place-items: center;
+  border: 1px solid var(--agent-line);
+  border-radius: 5px;
+  color: var(--agent-ink);
+  background: var(--agent-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .news-desk {
   display: grid;
   gap: 10px;

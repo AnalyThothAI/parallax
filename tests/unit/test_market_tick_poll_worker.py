@@ -60,8 +60,8 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
                 inst_type="SWAP",
                 last_price=50_123.4,
                 volume_24h=999.8,
-                open_interest=333.2,
-                raw={"ts": "1800000000020", "provider": "cex"},
+                open_interest=111.1,
+                raw={"ts": "1800000000020", "provider": "cex", "openInterestUsd": "333.2"},
             )
         },
     )
@@ -127,8 +127,13 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     assert cex_tick.source_provider == "okx_cex_rest"
     assert cex_tick.price_usd == Decimal("50123.4")
     assert cex_tick.volume_24h_usd == Decimal("999.8")
+    assert cex_tick.open_interest_usd == Decimal("333.2")
     assert cex_tick.market_cap_usd is None
-    assert cex_tick.raw_payload_json == {"ts": "1800000000020", "provider": "cex"}
+    assert cex_tick.raw_payload_json == {
+        "ts": "1800000000020",
+        "provider": "cex",
+        "openInterestUsd": "333.2",
+    }
     assert wake.channels == ["market_tick_written", "market_tick_written"]
     assert wake.market_tick_notifications == [
         {"target_type": "chain_token", "target_id": "eip155:1:0xAbC"},

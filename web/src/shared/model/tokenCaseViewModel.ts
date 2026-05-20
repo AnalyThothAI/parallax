@@ -53,6 +53,7 @@ export type TokenCaseMarketView = {
   liquidityLabel: string;
   holdersLabel: string;
   volume24hLabel: string;
+  openInterestLabel: string;
   observedAtLabel: string | null;
   emptyTitle: string | null;
   emptyDetail: string | null;

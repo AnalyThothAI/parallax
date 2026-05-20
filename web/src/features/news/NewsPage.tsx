@@ -22,7 +22,15 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { useCallback, useMemo, type ReactNode, type UIEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type TouchEvent,
+  type UIEvent,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import "./news.css";
@@ -41,6 +49,9 @@ type NewsPageProps = {
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
 const NEWS_SCROLL_LOAD_THRESHOLD_PX = 120;
+const NEWS_PULL_REFRESH_THRESHOLD_PX = 72;
+
+type NewsPullRefreshState = "idle" | "pulling" | "ready" | "refreshing";
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
   if (newsItemId) {
@@ -63,6 +74,9 @@ function NewsQueueRoute({ token }: { token: string }) {
       ? "loading"
       : "no rows";
   const summary = useMemo(() => buildQueueSummary(rows), [rows]);
+  const pullStartYRef = useRef<number | null>(null);
+  const pullDistanceRef = useRef(0);
+  const [pullRefreshState, setPullRefreshState] = useState<NewsPullRefreshState>("idle");
 
   const loadNextPage = useCallback(() => {
     if (!hasNextPage || isFetchingNextPage) {
@@ -82,13 +96,75 @@ function NewsQueueRoute({ token }: { token: string }) {
     [loadNextPage],
   );
 
+  const refreshFromTop = useCallback(async () => {
+    if (isFetchingNextPage) {
+      return;
+    }
+    setPullRefreshState("refreshing");
+    try {
+      await query.refetch();
+    } finally {
+      pullStartYRef.current = null;
+      pullDistanceRef.current = 0;
+      setPullRefreshState("idle");
+    }
+  }, [isFetchingNextPage, query]);
+
+  const handlePullRefreshStart = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      if (pullRefreshState === "refreshing" || event.currentTarget.scrollTop > 0) {
+        return;
+      }
+      pullStartYRef.current = event.touches[0]?.clientY ?? null;
+      pullDistanceRef.current = 0;
+    },
+    [pullRefreshState],
+  );
+
+  const handlePullRefreshMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const startY = pullStartYRef.current;
+    const currentY = event.touches[0]?.clientY;
+    if (startY === null || currentY === undefined || event.currentTarget.scrollTop > 0) {
+      return;
+    }
+    const distance = Math.max(0, currentY - startY);
+    pullDistanceRef.current = distance;
+    if (distance <= 0) {
+      setPullRefreshState("idle");
+      return;
+    }
+    setPullRefreshState(distance >= NEWS_PULL_REFRESH_THRESHOLD_PX ? "ready" : "pulling");
+  }, []);
+
+  const handlePullRefreshEnd = useCallback(() => {
+    const shouldRefresh = pullDistanceRef.current >= NEWS_PULL_REFRESH_THRESHOLD_PX;
+    pullStartYRef.current = null;
+    pullDistanceRef.current = 0;
+    if (shouldRefresh) {
+      void refreshFromTop();
+      return;
+    }
+    setPullRefreshState("idle");
+  }, [refreshFromTop]);
+
+  const handlePullRefreshCancel = useCallback(() => {
+    pullStartYRef.current = null;
+    pullDistanceRef.current = 0;
+    setPullRefreshState("idle");
+  }, []);
+
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
       <div
         aria-label="News intel scroll container"
         className="news-table-wrap"
         onScroll={handleScroll}
+        onTouchCancel={handlePullRefreshCancel}
+        onTouchEnd={handlePullRefreshEnd}
+        onTouchMove={handlePullRefreshMove}
+        onTouchStart={handlePullRefreshStart}
       >
+        <NewsPullRefreshStatus state={pullRefreshState} />
         {showLoading ? (
           <RemoteState.Loading layout="panel" rows={8} label="loading news table" />
         ) : null}
@@ -119,15 +195,25 @@ function NewsQueueRoute({ token }: { token: string }) {
                   />
                 ))}
               </div>
-              <NewsScrollStatus
-                hasNextPage={hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-              />
+              <NewsScrollStatus hasNextPage={hasNextPage} isFetchingNextPage={isFetchingNextPage} />
             </div>
           </RemoteState.Stale>
         ) : null}
       </div>
     </section>
+  );
+}
+
+function NewsPullRefreshStatus({ state }: { state: NewsPullRefreshState }) {
+  if (state === "idle") {
+    return null;
+  }
+  const label =
+    state === "refreshing" ? "Refreshing" : state === "ready" ? "Release to refresh" : "Pulling";
+  return (
+    <div className={`news-pull-refresh is-${state}`} role="status">
+      {label}
+    </div>
   );
 }
 

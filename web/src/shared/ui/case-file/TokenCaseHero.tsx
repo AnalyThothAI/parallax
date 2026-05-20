@@ -123,6 +123,10 @@ export function TokenCaseHero({
               <dd>{market.volume24hLabel}</dd>
             </div>
             <div>
+              <dt>OI</dt>
+              <dd>{market.openInterestLabel}</dd>
+            </div>
+            <div>
               <dt>holders</dt>
               <dd>{market.holdersLabel}</dd>
             </div>
