@@ -544,6 +544,10 @@ class AgentLaneSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str | None = None
+    provider_family: Literal["openai_compatible", "deepseek"] | None = None
+    output_strategy: Literal["json_schema", "json_object"] | None = None
+    schema_enforcement: Literal["provider", "client_validate"] | None = None
+    client_validation_retries: int | None = Field(default=None, ge=0)
     priority: Literal["high", "normal", "bulk", "low"] = "normal"
     max_concurrency: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=180.0, ge=1)
@@ -557,6 +561,19 @@ class AgentLaneSettings(BaseModel):
             return None
         normalized = str(value).strip()
         return normalized or None
+
+    @field_validator("provider_family", "output_strategy", "schema_enforcement", mode="before")
+    @classmethod
+    def parse_optional_capability_label(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def validate_capability_pair(self) -> AgentLaneSettings:
+        _validate_agent_capability_pair(self.output_strategy, self.schema_enforcement)
+        return self
 
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
@@ -578,6 +595,10 @@ class AgentRuntimeDefaultsSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = "qwen3.6"
+    provider_family: Literal["openai_compatible", "deepseek"] = "openai_compatible"
+    output_strategy: Literal["json_schema", "json_object"] = "json_schema"
+    schema_enforcement: Literal["provider", "client_validate"] = "provider"
+    client_validation_retries: int = Field(default=1, ge=0)
     disable_thinking: bool = True
     include_usage: bool = True
 
@@ -588,6 +609,17 @@ class AgentRuntimeDefaultsSettings(BaseModel):
         if not normalized:
             raise ValueError("agent_runtime.defaults.model is required")
         return normalized
+
+    @field_validator("provider_family", "output_strategy", "schema_enforcement", mode="before")
+    @classmethod
+    def parse_capability_label(cls, value: Any) -> str:
+        normalized = str(value or "").strip().lower()
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_capability_pair(self) -> AgentRuntimeDefaultsSettings:
+        _validate_agent_capability_pair(self.output_strategy, self.schema_enforcement)
+        return self
 
 
 class AgentRuntimeSettings(BaseModel):
@@ -621,6 +653,13 @@ class AgentRuntimeSettings(BaseModel):
             else:
                 raise ValueError(f"agent_runtime.lanes.{key} must be a mapping")
         return merged
+
+
+def _validate_agent_capability_pair(output_strategy: str | None, schema_enforcement: str | None) -> None:
+    if output_strategy == "json_schema" and schema_enforcement not in {None, "provider"}:
+        raise ValueError("json_schema output_strategy requires provider schema_enforcement")
+    if output_strategy == "json_object" and schema_enforcement not in {None, "client_validate"}:
+        raise ValueError("json_object output_strategy requires client_validate schema_enforcement")
 
 
 class PerWorkerSettings(BaseModel):
@@ -988,9 +1027,7 @@ class WorkersSettings(BaseModel):
     )
     news_fetch: NewsFetchWorkerSettings = Field(default_factory=NewsFetchWorkerSettings)
     news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
-    news_story_projection: NewsStoryProjectionWorkerSettings = Field(
-        default_factory=NewsStoryProjectionWorkerSettings
-    )
+    news_story_projection: NewsStoryProjectionWorkerSettings = Field(default_factory=NewsStoryProjectionWorkerSettings)
     news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
 
@@ -1469,6 +1506,10 @@ defaults:
 agent_runtime:
   defaults:
     model: "qwen3.6"
+    provider_family: "openai_compatible"
+    output_strategy: "json_schema"
+    schema_enforcement: "provider"
+    client_validation_retries: 1
     disable_thinking: true
     include_usage: true
   global_max_concurrency: 4

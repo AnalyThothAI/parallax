@@ -83,10 +83,53 @@ class FakeLLMGateway:
         return object()
 
 
+class FakeJsonMessage:
+    content = '{"value":"json-object"}'
+
+
+class FakeJsonChoice:
+    message = FakeJsonMessage()
+
+
+class FakeJsonResponse:
+    def __init__(self) -> None:
+        self.choices = [FakeJsonChoice()]
+        self.usage = {"prompt_tokens": 3, "completion_tokens": 2}
+
+
+class FakeJsonCompletions:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def create(self, **kwargs: Any) -> FakeJsonResponse:
+        self.calls.append(kwargs)
+        return FakeJsonResponse()
+
+
+class FakeJsonChat:
+    def __init__(self) -> None:
+        self.completions = FakeJsonCompletions()
+
+
+class FakeJsonClient:
+    def __init__(self) -> None:
+        self.chat = FakeJsonChat()
+
+
+class FakeJsonLLMGateway(FakeLLMGateway):
+    def __init__(self) -> None:
+        super().__init__()
+        self.client = FakeJsonClient()
+
+    def openai_client(self, *, model: str, base_url: str, timeout_s: float) -> object:
+        self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
+        return self.client
+
+
 @pytest.fixture(autouse=True)
 def _patch_sdk_constructors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway.Agent",
+        "gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy.Agent",
         FakeAgent,
     )
     monkeypatch.setattr(
@@ -154,6 +197,24 @@ def _lane_rpm_policy() -> AgentRuntimePolicy:
                 max_concurrency=2,
                 timeout_seconds=10,
                 rpm_limit=1,
+            )
+        },
+    )
+
+
+def _json_object_policy() -> AgentRuntimePolicy:
+    return AgentRuntimePolicy(
+        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
+        global_max_concurrency=1,
+        global_rpm_limit=1000,
+        lanes={
+            "test.lane": AgentLanePolicy(
+                model="deepseek-v4-flash",
+                provider_family="deepseek",
+                output_strategy="json_object",
+                schema_enforcement="client_validate",
+                max_concurrency=1,
+                timeout_seconds=10,
             )
         },
     )
@@ -450,6 +511,36 @@ def test_execute_reuses_model_client_for_same_stage_policy() -> None:
         assert llm_gateway.openai_client_calls == [
             {"model": "qwen3.6", "base_url": "https://example.com/v1", "timeout_s": 10.0}
         ]
+
+    asyncio.run(scenario())
+
+
+def test_execute_uses_json_object_strategy_for_lane_capability() -> None:
+    async def scenario() -> None:
+        llm_gateway = FakeJsonLLMGateway()
+        gateway = AgentExecutionGateway(
+            llm_gateway=llm_gateway,
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_json_object_policy(),
+            runner=FakeRunner(),
+        )
+
+        result = await gateway.execute(_spec())
+
+        assert result.final_output == Payload(value="json-object")
+        assert result.audit.model == "deepseek-v4-flash"
+        assert result.audit.provider_family == "deepseek"
+        assert result.audit.output_strategy == "json_object"
+        assert result.audit.schema_enforcement == "client_validate"
+        assert result.audit.parse_mode == "json_object_client_validate"
+        assert llm_gateway.openai_client_calls == [
+            {"model": "deepseek-v4-flash", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+        ]
+        call = llm_gateway.client.chat.completions.calls[0]
+        assert call["response_format"] == {"type": "json_object"}
+        assert "tool_choice" not in call
 
     asyncio.run(scenario())
 

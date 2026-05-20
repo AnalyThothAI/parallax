@@ -225,11 +225,7 @@ def _mention_targets(request: MentionSemanticsBatchRequest) -> list[dict[str, st
 
 
 def _instructions(filename: str) -> str:
-    return (
-        files("gmgn_twitter_intel.domains.narrative_intel.prompts")
-        .joinpath(filename)
-        .read_text(encoding="utf-8")
-    )
+    return files("gmgn_twitter_intel.domains.narrative_intel.prompts").joinpath(filename).read_text(encoding="utf-8")
 
 
 def _agent_run_audit(audit: dict[str, Any], output_json: dict[str, Any]) -> dict[str, Any]:

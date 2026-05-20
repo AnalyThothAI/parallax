@@ -11,6 +11,7 @@ OPENAI_AGENTS = SRC / "integrations" / "openai_agents"
 GATEWAY_FILES = {
     OPENAI_AGENTS / "agent_execution_gateway.py",
     OPENAI_AGENTS / "instructor_safety_net.py",
+    OPENAI_AGENTS / "structured_output_strategy.py",
 }
 
 pytestmark = pytest.mark.architecture

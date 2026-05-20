@@ -64,7 +64,17 @@ contains the global default model, global concurrency/RPM limits, and
 named lane policies for Pulse, Narrative, Social enrichment, Watchlist
 summaries, future News fact-candidate extraction, and `news.item_brief`.
 Each lane may override `model`; otherwise it inherits
-`agent_runtime.defaults.model`. Lane status and backpressure counters are
+`agent_runtime.defaults.model`.
+
+Agent runtime also declares structured-output capability policy. The
+default `output_strategy=json_schema` means provider-enforced schema via
+the OpenAI Agents SDK. `output_strategy=json_object` means provider JSON
+mode plus application-side Pydantic validation before domain validation.
+When using `json_object`, set `schema_enforcement=client_validate`; when
+using `json_schema`, set `schema_enforcement=provider`. Agent execution
+audit includes `provider_family`, `output_strategy`, and
+`schema_enforcement` so readers can distinguish provider-enforced schema
+from client-validated JSON. Lane status and backpressure counters are
 operational signals only; they are not product readiness and are not
 business facts.
 

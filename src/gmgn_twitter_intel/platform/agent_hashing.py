@@ -40,10 +40,16 @@ def artifact_hash_for(
     schema_version: str,
     runtime_version: str,
     output_schema_hash: str,
+    provider_family: str = "openai_compatible",
+    output_strategy: str = "json_schema",
+    schema_enforcement: str = "provider",
 ) -> str:
     return json_sha256(
         {
             "model": model,
+            "provider_family": provider_family,
+            "output_strategy": output_strategy,
+            "schema_enforcement": schema_enforcement,
             "prompt_version": prompt_version,
             "schema_version": schema_version,
             "runtime_version": runtime_version,

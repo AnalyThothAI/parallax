@@ -8,6 +8,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from gmgn_twitter_intel.platform.agent_capabilities import (
+    AgentCapabilityProfile,
+    AgentOutputStrategy,
+    AgentProviderFamily,
+    AgentSchemaEnforcement,
+    resolve_agent_capability_profile,
+)
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
 RUNTIME_VERSION = "agent-execution-plane-v1"
@@ -46,6 +53,10 @@ class AgentLanePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str | None = None
+    provider_family: AgentProviderFamily | None = None
+    output_strategy: AgentOutputStrategy | None = None
+    schema_enforcement: AgentSchemaEnforcement | None = None
+    client_validation_retries: int | None = Field(default=None, ge=0)
     priority: str = "normal"
     max_concurrency: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=180.0, ge=1)
@@ -65,6 +76,10 @@ class AgentRuntimeDefaultsPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = "qwen3.6"
+    provider_family: AgentProviderFamily | None = None
+    output_strategy: AgentOutputStrategy | None = None
+    schema_enforcement: AgentSchemaEnforcement | None = None
+    client_validation_retries: int | None = Field(default=None, ge=0)
     disable_thinking: bool = True
     include_usage: bool = True
 
@@ -91,6 +106,31 @@ class AgentRuntimePolicy(BaseModel):
     def model_for_lane(self, lane: str) -> str:
         lane_model = self.lane_for(lane).model
         return str(lane_model or self.defaults.model).strip()
+
+    def capability_for_lane(self, lane: str) -> AgentCapabilityProfile:
+        lane_policy = self.lane_for(lane)
+        model = self.model_for_lane(lane)
+        if _lane_has_capability_override(lane_policy):
+            return _capability_profile_from_parts(
+                provider_family=lane_policy.provider_family or self.defaults.provider_family,
+                output_strategy=lane_policy.output_strategy or self.defaults.output_strategy,
+                schema_enforcement=lane_policy.schema_enforcement or self.defaults.schema_enforcement,
+                client_validation_retries=_first_non_none(
+                    lane_policy.client_validation_retries,
+                    self.defaults.client_validation_retries,
+                ),
+            )
+        if _defaults_have_capability_override(self.defaults):
+            return resolve_agent_capability_profile(
+                model=model,
+                override=_capability_profile_from_parts(
+                    provider_family=self.defaults.provider_family,
+                    output_strategy=self.defaults.output_strategy,
+                    schema_enforcement=self.defaults.schema_enforcement,
+                    client_validation_retries=self.defaults.client_validation_retries,
+                ),
+            )
+        return resolve_agent_capability_profile(model=model)
 
 
 class AgentStageSpec(BaseModel):
@@ -120,6 +160,9 @@ class AgentExecutionRequestAudit(BaseModel):
 
     provider: str = "openai"
     backend: str = "openai_agents_sdk"
+    provider_family: str = "openai_compatible"
+    output_strategy: str = "json_schema"
+    schema_enforcement: str = "provider"
     model: str
     lane: str
     stage: str
@@ -151,11 +194,16 @@ class AgentExecutionRequestAudit(BaseModel):
         trace_id: str,
         artifact_version_hash: str,
         model: str,
+        capability_profile: AgentCapabilityProfile | None = None,
     ) -> AgentExecutionRequestAudit:
+        profile = capability_profile or AgentCapabilityProfile()
         trace_metadata = {
             **stage.trace_metadata,
             "backend": "openai_agents_sdk",
             "model": model,
+            "provider_family": profile.provider_family.value,
+            "output_strategy": profile.output_strategy.value,
+            "schema_enforcement": profile.schema_enforcement.value,
             "lane": stage.lane,
             "stage": stage.stage,
             "prompt_version": stage.prompt_version,
@@ -165,6 +213,9 @@ class AgentExecutionRequestAudit(BaseModel):
             "input_hash": stage.input_hash,
         }
         return cls(
+            provider_family=profile.provider_family.value,
+            output_strategy=profile.output_strategy.value,
+            schema_enforcement=profile.schema_enforcement.value,
             model=model,
             lane=stage.lane,
             stage=stage.stage,
@@ -225,6 +276,50 @@ class AgentExecutionCancelled(asyncio.CancelledError):
 ReleaseCallback = Callable[[], None | Awaitable[None]]
 
 
+def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
+    return (
+        lane_policy.provider_family is not None
+        or lane_policy.output_strategy is not None
+        or lane_policy.schema_enforcement is not None
+        or lane_policy.client_validation_retries is not None
+    )
+
+
+def _defaults_have_capability_override(defaults: AgentRuntimeDefaultsPolicy) -> bool:
+    return (
+        defaults.provider_family is not None
+        or defaults.output_strategy is not None
+        or defaults.schema_enforcement is not None
+        or defaults.client_validation_retries is not None
+    )
+
+
+def _capability_profile_from_parts(
+    *,
+    provider_family: AgentProviderFamily | None,
+    output_strategy: AgentOutputStrategy | None,
+    schema_enforcement: AgentSchemaEnforcement | None,
+    client_validation_retries: int | None,
+) -> AgentCapabilityProfile:
+    payload: dict[str, Any] = {}
+    if provider_family is not None:
+        payload["provider_family"] = provider_family
+    if output_strategy is not None:
+        payload["output_strategy"] = output_strategy
+    if schema_enforcement is not None:
+        payload["schema_enforcement"] = schema_enforcement
+    if client_validation_retries is not None:
+        payload["client_validation_retries"] = client_validation_retries
+    return AgentCapabilityProfile(**payload)
+
+
+def _first_non_none(*values: int | None) -> int | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 @dataclass(slots=True)
 class AgentCapacityReservation:
     lane: str
@@ -254,6 +349,7 @@ class AgentCapacityReservation:
 
 __all__ = [
     "RUNTIME_VERSION",
+    "AgentCapabilityProfile",
     "AgentCapacityReservation",
     "AgentCircuitBreakerPolicy",
     "AgentExecutionCancelled",
