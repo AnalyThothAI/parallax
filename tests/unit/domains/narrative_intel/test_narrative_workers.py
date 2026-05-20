@@ -710,6 +710,57 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
     asyncio.run(scenario())
 
 
+def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
+    async def scenario():
+        repo = FakeDigestRepository(
+            context={
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+                "mentions": [
+                    {"event_id": "event-1", "author_handle": "a", "status": "semantic_unavailable"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "semantic_unavailable"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "semantic_unavailable"},
+                ],
+                "semantic_rows": [
+                    {"event_id": "event-1", "author_handle": "a", "status": "semantic_unavailable"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "semantic_unavailable"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "semantic_unavailable"},
+                ],
+                "source_event_count": 3,
+                "semantic_row_count": 3,
+                "missing_semantic_count": 0,
+                "pending_semantic_count": 0,
+                "retryable_semantic_count": 0,
+                "terminal_unavailable_count": 3,
+                "labeled_event_count": 0,
+                "independent_author_count": 3,
+                "allowed_refs": [],
+            }
+        )
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=UnexpectedDigestProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.processed == 1
+        assert result.failed == 0
+        assert result.notes["semantic_unavailable"] == 1
+        assert result.notes["refresh_reasons"]["semantic_provider_unavailable"] == 1
+        assert repo.replaced_digests[0]["status"] == "semantic_unavailable"
+        assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_provider_unavailable"}]
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 11_000, "now_ms": 10_000}]
+
+    asyncio.run(scenario())
+
+
 def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
     async def scenario():
         repo = FakeDigestRepository(

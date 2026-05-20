@@ -60,7 +60,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
         if not targets:
             return WorkerResult(skipped=1, notes={"reason": "no_due_digest_targets", "claimed": 0})
 
-        counts = {"ready": 0, "insufficient": 0, "pending": 0, "failed": 0}
+        counts = {"ready": 0, "insufficient": 0, "pending": 0, "semantic_unavailable": 0, "failed": 0}
         refresh_reasons: dict[str, int] = {}
         llm_calls = 0
         llm_failures = 0
@@ -263,7 +263,12 @@ class TokenDiscussionDigestWorker(WorkerBase):
             )
             counts["ready"] += 1
         return WorkerResult(
-            processed=counts["ready"] + counts["insufficient"] + counts["pending"],
+            processed=(
+                counts["ready"]
+                + counts["insufficient"]
+                + counts["pending"]
+                + counts["semantic_unavailable"]
+            ),
             failed=counts["failed"],
             notes={
                 "claimed": len(targets),
