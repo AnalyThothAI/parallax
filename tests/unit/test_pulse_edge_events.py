@@ -74,8 +74,89 @@ def test_diff_reports_only_material_state_edges() -> None:
         "hard_risk_added",
         "recommended_decision_changed",
         "watched_confirmation_appeared",
+        "trigger_evidence_changed",
+        "timeline_evidence_changed",
     ]
     assert pulse_edge_signature(previous) != pulse_edge_signature(current)
+
+
+def test_diff_reports_material_evidence_signature_changes() -> None:
+    previous = build_pulse_edge_state(
+        candidate_id="pulse-1",
+        candidate_type="token_target",
+        target_type="Asset",
+        target_id="asset:pepe",
+        window="1h",
+        scope="all",
+        trigger_signature="sha256:trigger-a",
+        timeline_signature="sha256:timeline-a",
+        factor_snapshot=_snapshot(rank_score=82, watched_mentions=1),
+        gate=_gate(status="trade_candidate", score_band="high_conviction"),
+        pulse_version="pulse-v1",
+        gate_version="gate-v1",
+    )
+    current = {
+        **previous,
+        "trigger_signature": "sha256:trigger-b",
+        "timeline_signature": "sha256:timeline-b",
+    }
+
+    assert diff_pulse_edge_events(previous, current) == [
+        "trigger_evidence_changed",
+        "timeline_evidence_changed",
+    ]
+
+
+def test_diff_reports_independent_author_bucket_change() -> None:
+    previous = build_pulse_edge_state(
+        candidate_id="pulse-1",
+        candidate_type="token_target",
+        target_type="Asset",
+        target_id="asset:pepe",
+        window="1h",
+        scope="all",
+        trigger_signature="sha256:trigger",
+        timeline_signature="sha256:timeline",
+        factor_snapshot=_snapshot(rank_score=82, watched_mentions=1, independent_authors=2),
+        gate=_gate(status="trade_candidate", score_band="high_conviction"),
+        pulse_version="pulse-v1",
+        gate_version="gate-v1",
+    )
+    current = build_pulse_edge_state(
+        candidate_id="pulse-1",
+        candidate_type="token_target",
+        target_type="Asset",
+        target_id="asset:pepe",
+        window="1h",
+        scope="all",
+        trigger_signature="sha256:trigger",
+        timeline_signature="sha256:timeline",
+        factor_snapshot=_snapshot(rank_score=82, watched_mentions=1, independent_authors=6),
+        gate=_gate(status="trade_candidate", score_band="high_conviction"),
+        pulse_version="pulse-v1",
+        gate_version="gate-v1",
+    )
+
+    assert diff_pulse_edge_events(previous, current) == ["independent_author_bucket_changed"]
+
+
+def test_diff_reports_unchanged_signatures_as_no_events() -> None:
+    previous = build_pulse_edge_state(
+        candidate_id="pulse-1",
+        candidate_type="token_target",
+        target_type="Asset",
+        target_id="asset:pepe",
+        window="1h",
+        scope="all",
+        trigger_signature="sha256:trigger",
+        timeline_signature="sha256:timeline",
+        factor_snapshot=_snapshot(rank_score=82, watched_mentions=1),
+        gate=_gate(status="trade_candidate", score_band="high_conviction"),
+        pulse_version="pulse-v1",
+        gate_version="gate-v1",
+    )
+
+    assert diff_pulse_edge_events(previous, dict(previous)) == []
 
 
 def test_diff_reports_pulse_version_bump_without_other_state_changes() -> None:
@@ -133,6 +214,7 @@ def _snapshot(
     watched_mentions: int,
     recommended_decision: str = "high_alert",
     hard_risks: list[str] | None = None,
+    independent_authors: int = 4,
 ) -> dict:
     return {
         "schema_version": "token_factor_snapshot_v3_social_attention",
@@ -155,7 +237,7 @@ def _snapshot(
                 "score": rank_score,
                 "facts": {"watched_mentions": watched_mentions, "unique_authors": 4},
             },
-            "social_propagation": {"score": 70, "facts": {"independent_authors": 4}},
+            "social_propagation": {"score": 70, "facts": {"independent_authors": independent_authors}},
             "semantic_catalyst": {"score": 70, "facts": {}},
             "timing_risk": {"score": 60, "facts": {}},
         },

@@ -609,24 +609,24 @@ Known-failing baseline tests:
 - Test: `tests/unit/test_pulse_admission_policy.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - timeline signature change emits `timeline_evidence_changed`.
   - trigger signature change emits `trigger_evidence_changed`.
   - unchanged signatures still produce no edge events.
   - candidate worker no longer suppresses changed timeline as generic `unchanged`.
 
-- [ ] Implement new edge events.
+- [x] Implement new edge events.
 
-- [ ] Update admission policy so evidence-change events enqueue unless active job, retryable failed job, budget, or failure circuit blocks them.
+- [x] Update admission policy so evidence-change events enqueue unless active job, retryable failed job, budget, or failure circuit blocks them.
 
-- [ ] Keep score-band-only confirmation behavior intact.
+- [x] Keep score-band-only confirmation behavior intact.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_admission_policy.py tests/unit/test_pulse_candidate_worker.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_admission_policy.py tests/unit/test_pulse_candidate_worker.py
   git commit -m "feat: enqueue pulse on material evidence changes"

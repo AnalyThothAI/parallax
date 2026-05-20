@@ -424,6 +424,9 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
         target_type="Asset",
         target_id="asset-1",
     )
+    worker = _worker(repos)
+    context = worker._asset_context(repos, repos.token_radar.rows[0], window="1h", scope="all", now_ms=NOW_MS)
+    assert context is not None
     repos.pulse_admission.edge_states[candidate_id] = {
         "candidate_id": candidate_id,
         "last_processed_state_json": {
@@ -444,11 +447,10 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
             "watched_confirmation": True,
             "independent_author_count_bucket": "6-10",
             "hard_risks": [],
-            "trigger_signature": "ignored-by-edge",
-            "timeline_signature": "ignored-by-edge",
+            "trigger_signature": context.trigger_signature,
+            "timeline_signature": context.timeline_signature,
         },
     }
-    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -532,11 +534,15 @@ def test_score_band_only_edge_waits_for_confirmation_without_job() -> None:
         "trigger_signature": "ignored-by-edge",
         "timeline_signature": "ignored-by-edge",
     }
+    worker = _worker(repos)
+    context = worker._asset_context(repos, repos.token_radar.rows[0], window="1h", scope="all", now_ms=NOW_MS)
+    assert context is not None
+    previous["trigger_signature"] = context.trigger_signature
+    previous["timeline_signature"] = context.timeline_signature
     repos.pulse_admission.edge_states[candidate_id] = {
         "candidate_id": candidate_id,
         "last_processed_state_json": previous,
     }
-    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
