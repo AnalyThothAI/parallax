@@ -1733,6 +1733,9 @@
             "title": "Digest Status Counts",
             "type": "object"
           },
+          "epoch": {
+            "$ref": "#/components/schemas/NarrativeEpochHealth"
+          },
           "now_ms": {
             "anyOf": [
               {
@@ -1777,6 +1780,254 @@
           }
         },
         "title": "NarrativeBacklogHealthData",
+        "type": "object"
+      },
+      "NarrativeCurrentnessData": {
+        "additionalProperties": true,
+        "properties": {
+          "current_source_event_count": {
+            "default": 0,
+            "title": "Current Source Event Count",
+            "type": "integer"
+          },
+          "current_source_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Source Fingerprint"
+          },
+          "delta_independent_author_count": {
+            "default": 0,
+            "title": "Delta Independent Author Count",
+            "type": "integer"
+          },
+          "delta_since_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Since Ms"
+          },
+          "delta_source_event_count": {
+            "default": 0,
+            "title": "Delta Source Event Count",
+            "type": "integer"
+          },
+          "display_status": {
+            "enum": [
+              "current",
+              "updating",
+              "stale",
+              "not_ready",
+              "out_of_frontier",
+              "unsupported_window"
+            ],
+            "title": "Display Status",
+            "type": "string"
+          },
+          "epoch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epoch Id"
+          },
+          "epoch_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epoch Policy Version"
+          },
+          "last_ready_computed_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ready Computed At Ms"
+          },
+          "next_refresh_due_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Refresh Due At Ms"
+          },
+          "ready_source_event_count": {
+            "default": 0,
+            "title": "Ready Source Event Count",
+            "type": "integer"
+          },
+          "ready_source_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready Source Fingerprint"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_status",
+          "reason"
+        ],
+        "title": "NarrativeCurrentnessData",
+        "type": "object"
+      },
+      "NarrativeDeltaData": {
+        "additionalProperties": true,
+        "properties": {
+          "delta_independent_author_count": {
+            "default": 0,
+            "title": "Delta Independent Author Count",
+            "type": "integer"
+          },
+          "delta_source_event_count": {
+            "default": 0,
+            "title": "Delta Source Event Count",
+            "type": "integer"
+          },
+          "display_status": {
+            "title": "Display Status",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "display_status"
+        ],
+        "title": "NarrativeDeltaData",
+        "type": "object"
+      },
+      "NarrativeEpochHealth": {
+        "additionalProperties": true,
+        "properties": {
+          "delta_independent_authors": {
+            "default": 0,
+            "title": "Delta Independent Authors",
+            "type": "integer"
+          },
+          "delta_source_rows": {
+            "default": 0,
+            "title": "Delta Source Rows",
+            "type": "integer"
+          },
+          "digest_refresh_deferred_by_epoch_policy": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Digest Refresh Deferred By Epoch Policy",
+            "type": "object"
+          },
+          "digest_refresh_due_by_window": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Digest Refresh Due By Window",
+            "type": "object"
+          },
+          "epoch_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epoch Policy Version"
+          },
+          "last_ready_digest_count": {
+            "default": 0,
+            "title": "Last Ready Digest Count",
+            "type": "integer"
+          },
+          "last_ready_p50_age_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ready P50 Age Ms"
+          },
+          "last_ready_p95_age_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ready P95 Age Ms"
+          },
+          "material_delta_due_count": {
+            "default": 0,
+            "title": "Material Delta Due Count",
+            "type": "integer"
+          },
+          "no_material_delta_deferred_count": {
+            "default": 0,
+            "title": "No Material Delta Deferred Count",
+            "type": "integer"
+          },
+          "unsupported_window_admissions": {
+            "default": 0,
+            "title": "Unsupported Window Admissions",
+            "type": "integer"
+          },
+          "updating_snapshot_count": {
+            "default": 0,
+            "title": "Updating Snapshot Count",
+            "type": "integer"
+          }
+        },
+        "title": "NarrativeEpochHealth",
         "type": "object"
       },
       "NarrativeRunHealth": {
@@ -4082,9 +4333,7 @@
         "additionalProperties": true,
         "properties": {
           "discussion_digest": {
-            "additionalProperties": true,
-            "title": "Discussion Digest",
-            "type": "object"
+            "$ref": "#/components/schemas/TokenDiscussionDigestData"
           },
           "market_live": {
             "additionalProperties": true,
@@ -4098,6 +4347,9 @@
             },
             "title": "Narrative Clusters",
             "type": "array"
+          },
+          "narrative_delta": {
+            "$ref": "#/components/schemas/NarrativeDeltaData"
           },
           "posts": {
             "additionalProperties": true,
@@ -4149,13 +4401,47 @@
         "title": "TokenCaseData",
         "type": "object"
       },
+      "TokenDiscussionDigestData": {
+        "additionalProperties": true,
+        "properties": {
+          "coverage": {
+            "additionalProperties": true,
+            "title": "Coverage",
+            "type": "object"
+          },
+          "currentness": {
+            "$ref": "#/components/schemas/NarrativeCurrentnessData"
+          },
+          "data_gaps": {
+            "items": {},
+            "title": "Data Gaps",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "pending",
+              "insufficient",
+              "semantic_unavailable",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "currentness"
+        ],
+        "title": "TokenDiscussionDigestData",
+        "type": "object"
+      },
       "TokenRadarData": {
         "additionalProperties": true,
         "properties": {
           "attention": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/TokenRadarRowData"
             },
             "title": "Attention",
             "type": "array"
@@ -4171,8 +4457,7 @@
           },
           "targets": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/TokenRadarRowData"
             },
             "title": "Targets",
             "type": "array"
@@ -4187,6 +4472,23 @@
           "scope"
         ],
         "title": "TokenRadarData",
+        "type": "object"
+      },
+      "TokenRadarRowData": {
+        "additionalProperties": true,
+        "properties": {
+          "discussion_digest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenDiscussionDigestData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "TokenRadarRowData",
         "type": "object"
       },
       "ValidationError": {
