@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+from typing import Any
+
+from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+    NEWS_ITEM_BRIEF_AGENT_NAME,
+    NEWS_ITEM_BRIEF_LANE,
+    NEWS_ITEM_BRIEF_PROMPT_VERSION,
+    NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+    NEWS_ITEM_BRIEF_WORKFLOW_NAME,
+    NewsItemBriefInputPacket,
+    NewsItemBriefNewsItem,
+    NewsItemBriefPayload,
+)
+from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
+from gmgn_twitter_intel.integrations.openai_agents.news_item_brief_agent_client import (
+    OpenAIAgentsNewsItemBriefClient,
+)
+from gmgn_twitter_intel.platform.agent_execution import RUNTIME_VERSION
+from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
+
+
+def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None:
+    gateway = FakeGateway()
+    client = OpenAIAgentsNewsItemBriefClient(model="gpt-news", agent_gateway=gateway)
+    packet = _packet()
+
+    reservation = client.try_reserve_execution(NEWS_ITEM_BRIEF_LANE)
+    audit = client.request_audit(run_id="run-1", packet=packet)
+
+    assert reservation is gateway.reservation
+    assert gateway.reserved_lanes == [NEWS_ITEM_BRIEF_LANE]
+    assert audit["lane"] == NEWS_ITEM_BRIEF_LANE
+    assert client.artifact_version_hash == audit["artifact_version_hash"]
+    stage = gateway.audit_stages[0]
+    assert stage.lane == NEWS_ITEM_BRIEF_LANE
+    assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
+    assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
+    assert stage.model == "gpt-news"
+    assert stage.tools == []
+    assert stage.max_turns == 1
+    assert stage.output_type is NewsItemBriefPayload
+
+
+def test_news_item_brief_client_executes_strict_payload_with_caller_reservation() -> None:
+    gateway = FakeGateway()
+    client = OpenAIAgentsNewsItemBriefClient(model="gpt-news", agent_gateway=gateway)
+    packet = _packet()
+    reservation = object()
+
+    result = asyncio.run(client.brief_item(run_id="run-1", packet=packet, reservation=reservation))
+
+    assert gateway.executions[0].reservation is reservation
+    stage = gateway.executions[0].stage
+    assert stage.lane == NEWS_ITEM_BRIEF_LANE
+    assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
+    assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
+    assert stage.model == "gpt-news"
+    assert stage.tools == []
+    assert stage.max_turns == 1
+    assert stage.output_type is NewsItemBriefPayload
+    assert result == {
+        "payload": gateway.payload.model_dump(mode="json"),
+        "agent_run_audit": {"status": "done", "lane": NEWS_ITEM_BRIEF_LANE},
+    }
+
+
+class FakeGateway:
+    def __init__(self) -> None:
+        self.reservation = object()
+        self.reserved_lanes: list[str] = []
+        self.audit_stages: list[Any] = []
+        self.executions: list[Any] = []
+        self.payload = NewsItemBriefPayload(
+            status="ready",
+            direction="neutral",
+            decision_class="context",
+            summary_zh="摘要",
+            market_read_zh="市场解读",
+        )
+
+    def try_reserve(self, lane: str) -> object:
+        self.reserved_lanes.append(lane)
+        return self.reservation
+
+    def request_audit(self, stage: Any) -> Any:
+        self.audit_stages.append(stage)
+        output_schema = StrictJsonOutputSchema(stage.output_type)
+        artifact_version_hash = artifact_hash_for(
+            model=stage.model,
+            prompt_version=stage.prompt_version,
+            schema_version=stage.schema_version,
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256(output_schema.json_schema()),
+        )
+        return SimpleNamespace(
+            model_dump=lambda mode="json": {
+                "lane": stage.lane,
+                "mode": mode,
+                "artifact_version_hash": artifact_version_hash,
+            }
+        )
+
+    async def execute(self, stage: Any, *, reservation: object | None = None) -> Any:
+        self.executions.append(SimpleNamespace(stage=stage, reservation=reservation))
+        return SimpleNamespace(
+            final_output=self.payload,
+            audit=SimpleNamespace(
+                model_dump=lambda mode="json": {"status": "done", "lane": stage.lane},
+            ),
+        )
+
+
+def _packet() -> NewsItemBriefInputPacket:
+    return NewsItemBriefInputPacket(
+        packet_id="packet-1",
+        news_item=NewsItemBriefNewsItem(
+            news_item_id="news-1",
+            title="Fed says crypto supervision remains active",
+            summary="A short source summary.",
+        ),
+        prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+        schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        input_hash="input-hash",
+    )

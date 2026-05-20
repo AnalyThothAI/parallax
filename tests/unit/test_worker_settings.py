@@ -167,6 +167,9 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.lanes["narrative.discussion_digest"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
+    assert settings.agent_runtime.lanes["news.item_brief"].priority == "low"
+    assert settings.agent_runtime.lanes["news.item_brief"].max_concurrency == 1
+    assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
 
 
 def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() -> None:
@@ -199,6 +202,28 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
     assert settings.agent_runtime.lanes["pulse.pipeline"].timeout_seconds == 240
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
+    assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
+
+
+def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
+    from gmgn_twitter_intel.platform.config.settings import WorkersSettings
+
+    settings = WorkersSettings(
+        agent_runtime={
+            "lanes": {
+                "news.item_brief": {
+                    "priority": "low",
+                    "max_concurrency": 1,
+                    "timeout_seconds": 210,
+                }
+            }
+        }
+    )
+
+    lane = settings.agent_runtime.lanes["news.item_brief"]
+    assert lane.priority == "low"
+    assert lane.max_concurrency == 1
+    assert lane.timeout_seconds == 210
 
 
 def test_agent_runtime_settings_reject_unknown_lane_key() -> None:
@@ -252,11 +277,18 @@ def test_news_workers_have_defaults():
     assert settings.news_item_process.wakes_on == ("news_item_written",)
     assert settings.news_story_projection.advisory_lock_key == 2026051903
     assert settings.news_story_projection.wakes_on == ("news_item_processed",)
+    assert settings.news_item_brief.interval_seconds == 10
+    assert settings.news_item_brief.timeout_seconds == 180
+    assert settings.news_item_brief.batch_size == 5
+    assert settings.news_item_brief.advisory_lock_key == 2026052001
+    assert settings.news_item_brief.backpressure_cooldown_ms == 60_000
+    assert settings.news_item_brief.wakes_on == ("news_item_processed", "news_story_updated")
     assert settings.news_page_projection.advisory_lock_key == 2026051904
     assert settings.news_page_projection.wakes_on == (
         "news_item_written",
         "news_item_processed",
         "news_story_updated",
+        "news_item_brief_updated",
     )
 
 

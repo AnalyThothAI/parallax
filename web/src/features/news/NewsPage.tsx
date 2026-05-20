@@ -1,5 +1,15 @@
 import { formatRelativeTime } from "@lib/format";
-import type { NewsFactLane, NewsItemDetail, NewsRow, NewsTokenLane } from "@shared/model/newsIntel";
+import type {
+  NewsAgentBrief,
+  NewsAgentBriefView,
+  NewsAgentDataGap,
+  NewsAgentEvidenceRef,
+  NewsFactLane,
+  NewsItemDetail,
+  NewsRow,
+  NewsTokenLane,
+} from "@shared/model/newsIntel";
+import { newsLifecycleLabel } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import { RemoteState } from "@shared/ui/RemoteState";
 import { flexRender, getCoreRowModel, type ColumnDef, useReactTable } from "@tanstack/react-table";
@@ -9,13 +19,10 @@ import { Link, useNavigate } from "react-router-dom";
 
 import "./news.css";
 import {
+  agentBriefLabel,
+  agentBriefMissingText,
+  formatAgentBriefStrength,
   inferNewsInstruments,
-  newsKind,
-  newsMarketQuestion,
-  newsMarketRead,
-  newsNextAction,
-  newsPriceState,
-  newsRouteState,
 } from "./newsViewModel";
 import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
 
@@ -186,28 +193,28 @@ function newsColumns(): ColumnDef<NewsRow>[] {
       cell: ({ row }) => <TimeSourceCell item={row.original} />,
     },
     {
-      id: "event",
-      header: "Event / Question",
+      id: "brief",
+      header: "Brief",
       accessorFn: (item) => item.headline,
-      cell: ({ row }) => <EventQuestionCell item={row.original} />,
+      cell: ({ row }) => <BriefCell item={row.original} />,
     },
     {
-      id: "instrument",
-      header: "Instrument / Price",
-      accessorFn: (item) => inferNewsInstruments(item)[0]?.label ?? "",
-      cell: ({ row }) => <InstrumentCell item={row.original} />,
+      id: "direction",
+      header: "Direction",
+      accessorFn: (item) => item.agent_brief?.direction ?? item.agent_brief?.status ?? "",
+      cell: ({ row }) => <DirectionCell item={row.original} />,
     },
     {
-      id: "route",
-      header: "Route",
-      accessorFn: (item) => newsRouteState(item),
-      cell: ({ row }) => <RouteCell item={row.original} />,
+      id: "decision",
+      header: "Decision",
+      accessorFn: (item) => item.agent_brief?.decision_class ?? item.agent_brief?.status ?? "",
+      cell: ({ row }) => <DecisionCell item={row.original} />,
     },
     {
-      id: "next",
-      header: "Next",
-      accessorFn: (item) => newsNextAction(item),
-      cell: ({ row }) => <NextCell item={row.original} />,
+      id: "evidence",
+      header: "Evidence/Gaps",
+      accessorFn: (item) => item.agent_brief?.data_gap_count ?? 0,
+      cell: ({ row }) => <EvidenceGapCell item={row.original} />,
     },
   ];
 }
@@ -223,49 +230,59 @@ function TimeSourceCell({ item }: { item: NewsRow }) {
   );
 }
 
-function EventQuestionCell({ item }: { item: NewsRow }) {
+function BriefCell({ item }: { item: NewsRow }) {
+  const brief = item.agent_brief;
   return (
     <div className="news-event-cell">
       <div className="news-row-kicker">
-        <span>{newsKind(item)}</span>
+        <span>{newsLifecycleLabel(item.lifecycle_status)}</span>
         {item.story_id ? <span>story linked</span> : <span>single item</span>}
+        <span>{agentBriefLabel(brief?.status)}</span>
       </div>
       <strong>{item.headline}</strong>
-      <p>{newsMarketQuestion(item)}</p>
+      <p>{brief?.summary_zh || agentBriefMissingText(brief)}</p>
     </div>
   );
 }
 
-function InstrumentCell({ item }: { item: NewsRow }) {
-  const instruments = inferNewsInstruments(item);
+function DirectionCell({ item }: { item: NewsRow }) {
+  const brief = item.agent_brief;
   return (
     <div className="news-instrument-cell">
-      <strong>
-        {instruments
-          .slice(0, 2)
-          .map((instrument) => instrument.label)
-          .join(" / ")}
-      </strong>
-      <span>{newsPriceState(item)}</span>
+      <strong>{brief?.direction || agentBriefLabel(brief?.status)}</strong>
+      <span>
+        bull {formatAgentBriefStrength(brief?.bull_strength)} / bear{" "}
+        {formatAgentBriefStrength(brief?.bear_strength)}
+      </span>
     </div>
   );
 }
 
-function RouteCell({ item }: { item: NewsRow }) {
-  const route = newsRouteState(item);
+function DecisionCell({ item }: { item: NewsRow }) {
+  const brief = item.agent_brief;
   return (
     <div className="news-route-cell">
-      <span className={`news-route-pill ${routeTone(route)}`}>{route}</span>
-      <small>{routeDetail(item)}</small>
+      <span className={`news-route-pill ${briefTone(brief)}`}>
+        {brief?.decision_class || agentBriefLabel(brief?.status)}
+      </span>
+      <small>{brief?.market_read_zh || agentBriefMissingText(brief)}</small>
     </div>
   );
 }
 
-function NextCell({ item }: { item: NewsRow }) {
+function EvidenceGapCell({ item }: { item: NewsRow }) {
+  const brief = item.agent_brief;
+  const evidenceCount = brief?.evidence_refs?.length ?? 0;
+  const dataGapCount = brief?.data_gap_count ?? brief?.data_gaps?.length ?? 0;
   return (
     <div className="news-next-cell">
-      <strong>{newsNextAction(item)}</strong>
-      <span>{nextDetail(item)}</span>
+      <strong>
+        {evidenceCount} evidence / {dataGapCount} gaps
+      </strong>
+      <span>
+        {firstAvailable(brief?.data_gaps?.map(dataGapLabel)) ||
+          firstEvidenceLabel(brief?.evidence_refs)}
+      </span>
     </div>
   );
 }
@@ -279,12 +296,12 @@ function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
     <article className="news-detail">
       <header className="news-detail-hero">
         <div className="news-row-kicker">
-          <span>{newsKind(item)}</span>
+          <span>{newsLifecycleLabel(item.lifecycle_status)}</span>
           <span>{item.source_domain || item.source?.source_name || "source unknown"}</span>
           {item.latest_at_ms ? <span>{formatRelativeTime(item.latest_at_ms)} ago</span> : null}
         </div>
         <h2>{item.headline}</h2>
-        <p>{newsMarketRead(item)}</p>
+        <p>{item.agent_brief?.market_read_zh || agentBriefMissingText(item.agent_brief)}</p>
         {item.canonical_url ? (
           <a
             className="news-outline-link"
@@ -299,17 +316,27 @@ function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
       </header>
 
       <div className="news-decision-strip" aria-label="news trading decision context">
-        <DecisionMetric label="Route" value={newsRouteState(item)} hint={routeDetail(item)} />
         <DecisionMetric
-          label="Market read"
-          value={newsPriceState(item)}
-          hint="Quote and reaction coverage"
+          label="Direction"
+          value={item.agent_brief?.direction || agentBriefLabel(item.agent_brief?.status)}
+          hint={`bull ${formatAgentBriefStrength(item.agent_brief?.bull_strength)} / bear ${formatAgentBriefStrength(item.agent_brief?.bear_strength)}`}
         />
-        <DecisionMetric label="Next action" value={newsNextAction(item)} hint={nextDetail(item)} />
+        <DecisionMetric
+          label="Decision"
+          value={item.agent_brief?.decision_class || agentBriefLabel(item.agent_brief?.status)}
+          hint="Persisted shadow triage label"
+        />
+        <DecisionMetric
+          label="Evidence"
+          value={`${item.agent_brief?.evidence_refs?.length ?? 0} refs`}
+          hint={`${item.agent_brief?.data_gap_count ?? item.agent_brief?.data_gaps?.length ?? 0} data gaps`}
+        />
       </div>
 
       <div className="news-detail-grid">
         <div className="news-detail-main">
+          <AgentBriefPanel brief={item.agent_brief} run={item.agent_run} />
+
           <section className="news-detail-section">
             <h3>Market map</h3>
             <div className="news-instrument-grid">
@@ -358,6 +385,136 @@ function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
         </aside>
       </div>
     </article>
+  );
+}
+
+function AgentBriefPanel({
+  brief,
+  run,
+}: {
+  brief?: NewsAgentBrief | null;
+  run?: NewsItemDetail["agent_run"];
+}) {
+  const status = agentBriefLabel(brief?.status);
+  const runError = run?.error_message || run?.error || run?.error_class;
+  return (
+    <section className="news-detail-section news-agent-brief-panel">
+      <div className="news-section-heading">
+        <h3>Agent brief</h3>
+        <span className={`news-route-pill ${briefTone(brief)}`}>{status}</span>
+      </div>
+      <div className="news-agent-summary">
+        <div>
+          <span>Summary</span>
+          <p>{brief?.summary_zh || agentBriefMissingText(brief)}</p>
+        </div>
+        <div>
+          <span>Market read</span>
+          <p>{brief?.market_read_zh || agentBriefMissingText(brief)}</p>
+        </div>
+      </div>
+      <div className="news-agent-view-grid">
+        <AgentViewCard title="多头视角" view={brief?.bull_view} strength={brief?.bull_strength} />
+        <AgentViewCard title="空头视角" view={brief?.bear_view} strength={brief?.bear_strength} />
+      </div>
+      <div className="news-agent-list-grid">
+        <AgentList
+          title="Watch triggers"
+          items={brief?.watch_triggers}
+          empty="No watch trigger persisted."
+        />
+        <AgentList
+          title="Invalidation"
+          items={brief?.invalidation_conditions}
+          empty="No invalidation condition persisted."
+        />
+        <AgentList
+          title="Data gaps"
+          items={brief?.data_gaps?.map(dataGapLabel)}
+          empty="No data gap persisted."
+        />
+        <AgentList
+          title="Evidence refs"
+          items={brief?.evidence_refs?.map(evidenceLabel)}
+          empty="No evidence ref persisted."
+        />
+      </div>
+      <dl className="news-metadata-list news-agent-audit">
+        <div>
+          <dt>Run</dt>
+          <dd>{brief?.agent_run_id || run?.run_id || "missing"}</dd>
+        </div>
+        <div>
+          <dt>Prompt</dt>
+          <dd>{brief?.prompt_version || run?.prompt_version || "missing"}</dd>
+        </div>
+        <div>
+          <dt>Schema</dt>
+          <dd>{brief?.schema_version || run?.schema_version || "missing"}</dd>
+        </div>
+        <div>
+          <dt>Input hash</dt>
+          <dd>{brief?.input_hash || "missing"}</dd>
+        </div>
+        <div>
+          <dt>Artifact</dt>
+          <dd>{brief?.artifact_version_hash || "missing"}</dd>
+        </div>
+        <div>
+          <dt>Computed</dt>
+          <dd>
+            {brief?.computed_at_ms ? `${formatRelativeTime(brief.computed_at_ms)} ago` : "missing"}
+          </dd>
+        </div>
+        {runError ? (
+          <div>
+            <dt>Error</dt>
+            <dd>{runError}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </section>
+  );
+}
+
+function AgentViewCard({
+  strength,
+  title,
+  view,
+}: {
+  strength?: string | null;
+  title: string;
+  view?: NewsAgentBriefView | null;
+}) {
+  return (
+    <div className="news-agent-view-card">
+      <div>
+        <b>{title}</b>
+        <span>{formatAgentBriefStrength(view?.strength ?? strength)}</span>
+      </div>
+      <p>{view?.thesis_zh || "No persisted thesis."}</p>
+      <small>
+        {(view?.evidence_refs ?? []).map(evidenceLabel).join(" / ") || "No cited evidence."}
+      </small>
+    </div>
+  );
+}
+
+function AgentList({ empty, items, title }: { empty: string; items?: string[]; title: string }) {
+  const visibleItems = items?.filter(Boolean) ?? [];
+  return (
+    <div className="news-agent-list">
+      <b>{title}</b>
+      {visibleItems.length ? (
+        <ul>
+          {visibleItems.map((item, index) => (
+            <li key={`${title}-${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{empty}</p>
+      )}
+    </div>
   );
 }
 
@@ -465,35 +622,29 @@ function MetadataList({ item }: { item: NewsItemDetail }) {
   );
 }
 
-function routeTone(route: string): string {
-  if (route.includes("token")) return "is-linked";
-  if (route.includes("identity")) return "is-gap";
+function briefTone(brief?: NewsAgentBrief | null): string {
+  if (brief?.status === "ready") return "is-linked";
+  if (brief?.status === "insufficient" || brief?.status === "stale") return "is-gap";
   return "is-context";
 }
 
-function routeDetail(item: Pick<NewsRow, "fact_lanes" | "token_lanes">): string {
-  const tokenCount = item.token_lanes?.length ?? 0;
-  const factCount = item.fact_lanes?.length ?? 0;
-  if (hasResolvedTokenLane(item)) {
-    return `${tokenCount} token lane${tokenCount === 1 ? "" : "s"}`;
-  }
-  if (tokenCount) return `${tokenCount} observed token mention${tokenCount === 1 ? "" : "s"}`;
-  if (factCount) return `${factCount} semantic event${factCount === 1 ? "" : "s"}`;
-  return "no extraction lane";
+function firstAvailable(items?: string[]): string {
+  return items?.find(Boolean) ?? "";
 }
 
-function nextDetail(item: Pick<NewsRow, "fact_lanes" | "story_id" | "token_lanes">): string {
-  if (hasResolvedTokenLane(item)) return "ready for market context";
-  if ((item.token_lanes?.length ?? 0) > 0) return "needs identity link";
-  if ((item.fact_lanes?.length ?? 0) > 0) return "needs identity link";
-  if (item.story_id) return "track story drift";
-  return "reading/search only";
+function firstEvidenceLabel(items?: NewsAgentEvidenceRef[]): string {
+  return items?.map(evidenceLabel).find(Boolean) ?? "";
 }
 
-function hasResolvedTokenLane(item: Pick<NewsRow, "token_lanes">): boolean {
-  return (item.token_lanes ?? []).some((lane) =>
-    Boolean(lane.target_id || lane.lane === "resolved" || lane.resolution_status === "resolved"),
-  );
+function evidenceLabel(ref: NewsAgentEvidenceRef): string {
+  if (typeof ref === "string") return ref;
+  return ref.label || ref.ref || ref.source || ref.quote || "evidence";
+}
+
+function dataGapLabel(gap: NewsAgentDataGap): string {
+  if (typeof gap === "string") return gap;
+  const description = gap.description_zh || gap.description || gap.reason || gap.kind || "data gap";
+  return gap.severity ? `${gap.severity} · ${description}` : description;
 }
 
 function trimContent(content?: string | null): string | null {

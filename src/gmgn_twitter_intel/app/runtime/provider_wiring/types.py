@@ -13,7 +13,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     ProviderHealth,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
-from gmgn_twitter_intel.domains.news_intel.providers import NewsFeedProvider
+from gmgn_twitter_intel.domains.news_intel.providers import NewsFeedProvider, NewsItemBriefProvider
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 
@@ -66,6 +66,7 @@ class NarrativeIntelProviders:
 @dataclass(frozen=True, slots=True)
 class NewsIntelProviders:
     feed_client: NewsFeedProvider | None = None
+    brief_provider: NewsItemBriefProvider | None = None
 
 
 @dataclass(frozen=True, slots=True)

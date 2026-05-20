@@ -368,10 +368,16 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
         created.append(client)
         return client
 
+    def fake_news_item_brief_client(**kwargs):
+        client = SimpleNamespace(provider="openai", model=kwargs["model"], _agent_gateway=kwargs["agent_gateway"])
+        created.append(client)
+        return client
+
     monkeypatch.setattr(openai_wiring, "OpenAIAgentsSocialEventClient", fake_social_client)
     monkeypatch.setattr(openai_wiring, "OpenAIAgentsNarrativeIntelClient", fake_narrative_client)
     monkeypatch.setattr(openai_wiring, "OpenAIAgentsPulseDecisionClient", fake_pulse_client)
     monkeypatch.setattr(openai_wiring, "OpenAIAgentsWatchlistSummaryClient", fake_watchlist_client)
+    monkeypatch.setattr(openai_wiring, "OpenAIAgentsNewsItemBriefClient", fake_news_item_brief_client)
 
     providers = providers_wiring.wire_providers(
         _settings_with_all_llm_models(),
@@ -391,6 +397,8 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     assert providers.narrative_intel.narrative_provider._client._agent_gateway is gateway
     assert providers.watchlist_intel.summary_provider is not None
     assert providers.watchlist_intel.summary_provider._agent_gateway is gateway
+    assert providers.news_intel.brief_provider is not None
+    assert providers.news_intel.brief_provider._agent_gateway is gateway
     assert all(getattr(client, "_agent_gateway", None) is gateway for client in created)
 
 
@@ -404,6 +412,27 @@ def test_openai_provider_wiring_requires_agent_execution_gateway() -> None:
         providers_wiring.wire_providers(
             _settings_with_all_llm_models(),
             start_collector=True,
+            agent_execution_gateway=None,
+            db_pool=object(),
+        )
+
+
+def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_news_only_config() -> None:
+    settings = Settings(
+        ws_token="secret",
+        llm={
+            "api_key": "sk-test",
+            "news_item_brief_model": "gpt-news",
+        },
+        workers={
+            "news_item_brief": {"enabled": True},
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="AgentExecutionGateway is required"):
+        providers_wiring.wire_providers(
+            settings,
+            start_collector=False,
             agent_execution_gateway=None,
             db_pool=object(),
         )
@@ -755,6 +784,7 @@ def _settings_with_all_llm_models() -> Settings:
             "model": "gpt-enrich",
             "pulse_agent_model": "gpt-pulse",
             "watchlist_handle_summary_model": "gpt-summary",
+            "news_item_brief_model": "gpt-news",
         },
     )
 

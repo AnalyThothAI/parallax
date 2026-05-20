@@ -173,6 +173,8 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
     assert repo.replaced_news_item_ids == ["news-1"]
     assert repo.replaced_rows[0]["news_item_id"] == "news-1"
     assert repo.replaced_rows[0]["lifecycle_status"] == "attention"
+    assert repo.replaced_rows[0]["agent_status"] == "ready"
+    assert repo.replaced_rows[0]["agent_brief_json"]["agent_run_id"] == "run-1"
     assert wake_bus.notifications == []
 
 
@@ -436,6 +438,18 @@ class FakePageProjectionRepository:
                     }
                 ],
                 "fact_candidates": [],
+                "current_brief": {
+                    "agent_run_id": "run-1",
+                    "status": "ready",
+                    "direction": "bullish",
+                    "decision_class": "watch",
+                    "brief_json": {"summary_zh": "测试摘要", "bull_view": {"strength": "moderate"}},
+                    "input_hash": "input-1",
+                    "artifact_version_hash": "artifact-1",
+                    "prompt_version": "prompt-v1",
+                    "schema_version": "schema-v1",
+                    "computed_at_ms": NOW_MS - 1,
+                },
             }
         ]
 

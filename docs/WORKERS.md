@@ -83,7 +83,7 @@ event_anchor_backfill, live_price_gateway, resolution_refresh,
 asset_profile_refresh, token_radar_projection, token_profile_current,
 narrative_admission, mention_semantics, token_discussion_digest,
 news_fetch, news_item_process, news_story_projection,
-news_page_projection,
+news_item_brief, news_page_projection,
 pulse_candidate, enrichment, handle_summary, notification_rule,
 notification_delivery
 -->
@@ -106,7 +106,8 @@ notification_delivery
 | `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources`, due `news_sources`, RSS/Atom feeds | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
 | `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
-| `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated` | none | `interval_seconds` |
+| `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
+| `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope for Pulse `1h`/`4h` horizons, gate fields, route policy, source-quality policy | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, handle signal events | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
@@ -185,8 +186,9 @@ not a read model.
 | `token_radar_updated` | `TokenRadarProjectionWorker` | `MentionSemanticsWorker`, `TokenDiscussionDigestWorker`, `PulseCandidateWorker` | `{window, scope}` |
 | `narrative_semantics_updated` | `MentionSemanticsWorker` | `TokenDiscussionDigestWorker` | `{window, scope, target_count}` |
 | `news_item_written` | `NewsFetchWorker` | `NewsItemProcessWorker`, `NewsPageProjectionWorker` | `{source_id, count}` |
-| `news_item_processed` | `NewsItemProcessWorker` | `NewsStoryProjectionWorker`, `NewsPageProjectionWorker` | `{count}` |
-| `news_story_updated` | `NewsStoryProjectionWorker` | `NewsPageProjectionWorker` | `{count}` |
+| `news_item_processed` | `NewsItemProcessWorker` | `NewsStoryProjectionWorker`, `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
+| `news_story_updated` | `NewsStoryProjectionWorker` | `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
+| `news_item_brief_updated` | `NewsItemBriefWorker` | `NewsPageProjectionWorker` | `{count}` |
 
 Wake payloads are hints only. Consumers re-read DB on wake and catch up
 on their configured cadence. `DBPoolBundle` owns wake emission and
@@ -238,9 +240,9 @@ Current lanes are configured under `workers.agent_runtime` in
 `workers.yaml`: `pulse.pipeline`, `pulse.signal_analyst`,
 `pulse.bear_case`, `pulse.risk_portfolio_judge`,
 `narrative.mention_semantics`, `narrative.discussion_digest`,
-`social.event_enrichment`, `watchlist.handle_summary`, and
-`news.fact_candidate`. Attempt-burning workers reserve capacity before
-claiming DB work:
+`social.event_enrichment`, `watchlist.handle_summary`,
+`news.fact_candidate`, and `news.item_brief`. Attempt-burning workers
+reserve capacity before claiming DB work:
 
 - `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`
   claim. The pipeline reservation owns the parent global slot for the
@@ -251,6 +253,9 @@ claiming DB work:
   enrichment jobs and passes that reservation into the actual stage.
 - `handle_summary` reserves `watchlist.handle_summary` before claiming
   summary jobs and passes that reservation into the actual stage.
+- `news_item_brief` selects a processed news item, writes no-start
+  backpressure as `execution_started=false`, and executes the single-item
+  brief only through `AgentExecutionGateway` lane `news.item_brief`.
 
 If reservation is denied, the worker records
 `agent_backpressure_capacity_denied` in its iteration notes and does not

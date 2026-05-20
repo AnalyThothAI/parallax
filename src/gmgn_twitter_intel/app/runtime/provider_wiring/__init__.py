@@ -54,6 +54,16 @@ def wire_providers(
             feed_client=news.news_feed_client(settings)
             if settings.news_intel.enabled and settings.workers.news_fetch.enabled
             else None,
+            brief_provider=openai.openai_news_item_brief_provider(
+                settings,
+                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
+            )
+            if (
+                settings.news_intel.enabled
+                and settings.workers.news_item_brief.enabled
+                and settings.news_item_brief_configured
+            )
+            else None,
         ),
         pulse_lab=PulseLabProviders(
             decision_provider=openai.openai_pulse_decision_provider(

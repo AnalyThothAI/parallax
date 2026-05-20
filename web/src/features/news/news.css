@@ -80,8 +80,8 @@
 }
 
 .news-data-table {
-  --news-columns: 138px minmax(340px, 1.55fr) minmax(190px, 0.78fr) minmax(150px, 0.58fr)
-    minmax(182px, 0.72fr);
+  --news-columns: 138px minmax(360px, 1.55fr) minmax(170px, 0.6fr) minmax(180px, 0.68fr)
+    minmax(190px, 0.72fr);
 
   display: grid;
   min-width: 1040px;
@@ -310,6 +310,7 @@
 
 .news-decision-metric span,
 .news-detail-section h3,
+.news-agent-summary span,
 .news-metadata-list dt {
   color: var(--dim);
   font-family: var(--mono);
@@ -353,6 +354,106 @@
 
 .news-detail-section h3 {
   margin: 0;
+}
+
+.news-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.news-agent-brief-panel {
+  gap: 14px;
+}
+
+.news-agent-summary,
+.news-agent-view-grid,
+.news-agent-list-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.news-agent-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.news-agent-summary div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.news-agent-view-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.news-agent-list-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.news-agent-view-card,
+.news-agent-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: rgba(18, 23, 19, 0.66);
+  padding: 11px;
+}
+
+.news-agent-view-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.news-agent-view-card b,
+.news-agent-list b {
+  color: var(--bone);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.news-agent-view-card span {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--opportunity-ink);
+  background: rgba(217, 154, 40, 0.08);
+  padding: 2px 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.news-agent-view-card p,
+.news-agent-view-card small,
+.news-agent-list p,
+.news-agent-list li {
+  color: var(--bone-2);
+  font-size: 12px;
+  line-height: 1.42;
+  margin: 0;
+}
+
+.news-agent-view-card small {
+  color: var(--dim);
+}
+
+.news-agent-list ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.news-agent-audit {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .news-instrument-grid {
@@ -465,6 +566,9 @@
 
 @media (max-width: 1100px) {
   .news-detail-grid,
+  .news-agent-summary,
+  .news-agent-view-grid,
+  .news-agent-list-grid,
   .news-decision-strip {
     grid-template-columns: 1fr;
   }

@@ -6,6 +6,7 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
@@ -16,7 +17,9 @@ from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolve
     MentionKeys,
 )
 
-WORKER_KEYS = frozenset({"news_fetch", "news_item_process", "news_story_projection", "news_page_projection"})
+WORKER_KEYS = frozenset(
+    {"news_fetch", "news_item_process", "news_story_projection", "news_item_brief", "news_page_projection"}
+)
 
 
 def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
@@ -62,6 +65,19 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             telemetry=ctx.telemetry,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_story_projection.wakes_on),
+        )
+
+    brief_provider = getattr(news_providers, "brief_provider", None)
+    if workers.news_item_brief.enabled and ctx.settings.news_item_brief_configured and brief_provider is not None:
+        worker_name = "news_item_brief"
+        constructed["news_item_brief"] = NewsItemBriefWorker(
+            name=worker_name,
+            settings=workers.news_item_brief,
+            db=ctx.db,
+            telemetry=ctx.telemetry,
+            provider=brief_provider,
+            wake_bus=ctx.wake_bus,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_brief.wakes_on),
         )
 
     if workers.news_page_projection.enabled:

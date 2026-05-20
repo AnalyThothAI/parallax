@@ -53,6 +53,11 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
                     "fact_lanes_json": [],
                     "story_json": {},
                     "source_json": {"source_id": "example-rss"},
+                    "agent_brief_json": {"status": "pending"},
+                    "agent_brief": {"status": "pending"},
+                    "agent_status": "pending",
+                    "agent_brief_status": "pending",
+                    "agent_brief_computed_at_ms": None,
                     "computed_at_ms": 3_100,
                     "projection_version": "news_page_v1",
                 }
@@ -103,6 +108,11 @@ class FakeNewsRepository:
                 "fact_lanes_json": [],
                 "story_json": {},
                 "source_json": {"source_id": "example-rss"},
+                "agent_brief_json": {"status": "pending"},
+                "agent_brief": {"status": "pending"},
+                "agent_status": "pending",
+                "agent_brief_status": "pending",
+                "agent_brief_computed_at_ms": None,
                 "computed_at_ms": 3_100,
                 "projection_version": "news_page_v1",
             }

@@ -40,6 +40,9 @@ CANONICAL_WORKER_CLASSES = {
     "news_story_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
     ),
+    "news_item_brief": (
+        "gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"
+    ),
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
@@ -71,8 +74,9 @@ WORKER_START_PRIORITY = {
     "news_fetch": 90,
     "news_item_process": 91,
     "news_story_projection": 92,
-    "news_page_projection": 93,
-    "pulse_candidate": 95,
+    "news_item_brief": 94,
+    "news_page_projection": 95,
+    "pulse_candidate": 96,
     "enrichment": 100,
     "handle_summary": 110,
     "notification_rule": 120,

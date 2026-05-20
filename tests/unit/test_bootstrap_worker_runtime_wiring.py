@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_
     TokenDiscussionDigestWorker,
 )
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
@@ -197,12 +198,14 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
     assert workers["news_story_projection"].wake_bus is db.wake
     assert workers["news_story_projection"].wake_waiter.channels == ("news_item_processed",)
     assert workers["news_story_projection"].settings.advisory_lock_key == 2026051903
+    assert not isinstance(workers["news_item_brief"], NewsItemBriefWorker)
     assert isinstance(workers["news_page_projection"], NewsPageProjectionWorker)
     assert workers["news_page_projection"].wake_bus is db.wake
     assert workers["news_page_projection"].wake_waiter.channels == (
         "news_item_written",
         "news_item_processed",
         "news_story_updated",
+        "news_item_brief_updated",
     )
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
 
@@ -232,6 +235,28 @@ def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> Non
         "narrative_semantics_updated",
         "market_tick_written",
     )
+
+
+def test_worker_factory_wires_news_item_brief_when_configured() -> None:
+    db = FakeDB()
+    providers = FakeProviders(brief_provider=object())
+
+    workers = construct_workers(
+        settings=_settings(news_item_brief_configured=True),
+        db=db,
+        telemetry=object(),
+        providers=providers,
+        hub=SimpleNamespace(publish=lambda payload: None),
+        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
+        collector_enabled=False,
+        wake_bus=db.wake,
+    )
+
+    assert isinstance(workers["news_item_brief"], NewsItemBriefWorker)
+    assert workers["news_item_brief"].provider is providers.news_intel.brief_provider
+    assert workers["news_item_brief"].wake_bus is db.wake
+    assert workers["news_item_brief"].wake_waiter.channels == ("news_item_processed", "news_story_updated")
+    assert workers["news_item_brief"].settings.advisory_lock_key == 2026052001
 
 
 def test_worker_factory_rejects_returned_key_outside_owned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -268,8 +293,15 @@ def _settings(
     collector_enabled: bool = False,
     notifications_enabled: bool = False,
     narrative_intel_configured: bool = False,
+    news_item_brief_configured: bool = False,
 ) -> Settings:
     llm = {"api_key": "secret", "model": "gpt-test"} if narrative_intel_configured else {}
+    if news_item_brief_configured:
+        llm = {
+            **llm,
+            "api_key": "secret",
+            "news_item_brief_model": "gpt-5-mini",
+        }
     return Settings(
         ws_token="secret",
         llm=llm,
@@ -311,6 +343,7 @@ class FakeProviders:
         dex_quote_market=_UNSET,
         stream_dex_market=_UNSET,
         upstream_client_factory=None,
+        brief_provider=None,
     ) -> None:
         self.asset_market = SimpleNamespace(
             message_cex_market=object() if message_cex_market is _UNSET else message_cex_market,
@@ -324,7 +357,7 @@ class FakeProviders:
         self.social_enrichment = SimpleNamespace(event_enrichment=None)
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
         self.marketlane = SimpleNamespace(stock_quote_provider=None)
-        self.news_intel = SimpleNamespace(feed_client=object())
+        self.news_intel = SimpleNamespace(feed_client=object(), brief_provider=brief_provider)
         self.narrative_intel = SimpleNamespace(narrative_provider=object())
 
 

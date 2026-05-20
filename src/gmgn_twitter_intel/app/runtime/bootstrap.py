@@ -102,6 +102,7 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             or settings.pulse_agent_configured
             or settings.watchlist_handle_summary_configured
             or settings.narrative_intel_configured
+            or settings.news_item_brief_configured
         ):
             llm_gateway = LLMGateway.create(settings)
             agent_execution_gateway = build_agent_execution_gateway(
