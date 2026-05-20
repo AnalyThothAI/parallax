@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import EvidenceDebateMemo, FinalDecision
+    from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import BearCaseMemo, FinalDecision, SignalAnalystMemo
     from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 
 
@@ -25,7 +25,8 @@ class ClaimEvidenceVerifier:
     def verify(
         self,
         packet: PulseEvidencePacket | Any,
-        debate_memo: EvidenceDebateMemo | Any,
+        signal_memo: SignalAnalystMemo | Any,
+        bear_memo: BearCaseMemo | Any,
         final_decision: FinalDecision | Any,
     ) -> ClaimEvidenceVerificationResult:
         allowed = _allowed_ref_ids(packet)
@@ -33,24 +34,38 @@ class ClaimEvidenceVerifier:
         unsupported: list[str] = []
         missing: list[str] = []
 
-        for group_name in ("bull_claims", "bear_claims", "rebuttal_claims", "data_gap_claims"):
-            for claim in _sequence(getattr(debate_memo, group_name, ())):
-                refs = _string_tuple(getattr(claim, "evidence_refs", ()))
-                if not refs and group_name != "data_gap_claims":
-                    missing.append(f"{group_name}.evidence_refs")
-                for ref_id in refs:
-                    if ref_id in allowed:
-                        continue
-                    if ref_id.startswith("missing:"):
-                        continue
-                    unknown.append(ref_id)
+        for claim in _sequence(getattr(signal_memo, "bull_claims", ())):
+            refs = _string_tuple(getattr(claim, "evidence_refs", ()))
+            if not refs:
+                missing.append("signal_memo.bull_claims.evidence_refs")
+            for ref_id in refs:
+                if ref_id in allowed or ref_id.startswith("missing:"):
+                    continue
+                unknown.append(ref_id)
+
+        for claim in _sequence(getattr(bear_memo, "risk_claims", ())):
+            refs = _string_tuple(getattr(claim, "evidence_refs", ()))
+            if not refs:
+                missing.append("bear_memo.risk_claims.evidence_refs")
+            for ref_id in refs:
+                if ref_id in allowed or ref_id.startswith("missing:"):
+                    continue
+                unknown.append(ref_id)
+
+        for claim in _sequence(getattr(bear_memo, "missing_fact_impacts", ())):
+            for ref_id in _string_tuple(getattr(claim, "evidence_refs", ())):
+                if ref_id in allowed or ref_id.startswith("missing:"):
+                    continue
+                unknown.append(ref_id)
 
         recommendation = str(getattr(final_decision, "recommendation", "") or "")
         supporting_refs = _string_tuple(getattr(final_decision, "supporting_evidence_refs", ()))
         risk_refs = _string_tuple(getattr(final_decision, "risk_evidence_refs", ()))
         data_gap_refs = _string_tuple(getattr(final_decision, "data_gap_refs", ()))
         unknown.extend(ref_id for ref_id in (*supporting_refs, *risk_refs) if ref_id not in allowed)
-        unknown.extend(ref_id for ref_id in data_gap_refs if ref_id not in allowed and not ref_id.startswith("missing:"))
+        unknown.extend(
+            ref_id for ref_id in data_gap_refs if ref_id not in allowed and not ref_id.startswith("missing:")
+        )
 
         evidence_event_ids = _string_tuple(getattr(final_decision, "evidence_event_ids", ()))
         if recommendation != "abstain" and not supporting_refs:
@@ -77,10 +92,11 @@ class ClaimEvidenceVerifier:
 def verify_claim_evidence(
     *,
     packet: PulseEvidencePacket | Any,
-    debate_memo: EvidenceDebateMemo | Any,
+    signal_memo: SignalAnalystMemo | Any,
+    bear_memo: BearCaseMemo | Any,
     final_decision: FinalDecision | Any,
 ) -> ClaimEvidenceVerificationResult:
-    return ClaimEvidenceVerifier().verify(packet, debate_memo, final_decision)
+    return ClaimEvidenceVerifier().verify(packet, signal_memo, bear_memo, final_decision)
 
 
 def _allowed_ref_ids(packet: Any) -> set[str]:

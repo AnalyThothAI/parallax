@@ -60,13 +60,13 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     class FailingClient(FakeClient):
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             failed_audit = StageRunAudit(
-                stage="evidence_debate",
+                stage="signal_analyst",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake evidence debate prompt",
+                prompt_text="fake signal analyst prompt",
                 response_json={"raw_output": "not valid json"},
-                trace_metadata_json={"stage": "evidence_debate"},
+                trace_metadata_json={"stage": "signal_analyst"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -81,7 +81,7 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     with pytest.raises(PulseStageFailure):
         asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
-    failed_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_debate")
+    failed_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "signal_analyst")
     assert failed_step["status"] == "failed"
     failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
     assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "invalid_schema"}
@@ -343,15 +343,15 @@ def _failed_stage_audit(
     error: str,
     error_class: AgentExecutionErrorClass | None = None,
 ) -> StageRunAudit:
-    trace_metadata_json = {"stage": "evidence_debate"}
+    trace_metadata_json = {"stage": "signal_analyst"}
     if error_class is not None:
         trace_metadata_json["error_class"] = str(error_class.value)
     return StageRunAudit(
-        stage="evidence_debate",
+        stage="signal_analyst",
         route=route,  # type: ignore[arg-type]
         attempt_index=0,
         input_json={"context": "test"},
-        prompt_text="fake evidence debate prompt",
+        prompt_text="fake signal analyst prompt",
         response_json=None,
         trace_metadata_json=trace_metadata_json,
         usage_json={"input_tokens": 11},

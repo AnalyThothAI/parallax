@@ -66,7 +66,7 @@ def test_failed_eval_case_records_failure_reason() -> None:
         context={"evidence_packet": _packet()},
         route="meme",
         completeness={"hard_blocked": False},
-        stage_audits=(_stage("evidence_debate", status="failed"),),
+        stage_audits=(_stage("signal_analyst", status="failed"),),
         failure_reason="invalid_schema",
     )
 
@@ -82,8 +82,9 @@ def _case(
     stages: tuple[str, ...] = (
         "evidence_pack",
         "evidence_completeness_gate",
-        "evidence_debate",
-        "decision_maker",
+        "signal_analyst",
+        "bear_case",
+        "risk_portfolio_judge",
     ),
 ) -> dict[str, Any]:
     return build_pulse_deterministic_eval_case(

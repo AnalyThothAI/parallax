@@ -8,10 +8,11 @@ from typing import Any
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     BullBearView,
     EvidenceClaim,
-    EvidenceDebateMemo,
     FinalDecision,
+    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -162,7 +163,7 @@ class FakePulseDecisionProvider:
         ]
         supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1] or tuple(allowed_refs[:1])
         risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1] or supporting_refs
-        debate = EvidenceDebateMemo(
+        signal_memo = SignalAnalystMemo(
             bull_claims=(
                 EvidenceClaim(
                     claim="Fresh attention and market data align.",
@@ -170,14 +171,19 @@ class FakePulseDecisionProvider:
                     stance="bull",
                 ),
             ),
-            bear_claims=(
+            what_changed_zh="Deterministic signal memo uses only packet refs.",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
+        bear_memo = BearCaseMemo(
+            risk_claims=(
                 EvidenceClaim(
                     claim="Single captured event still limits confidence.",
                     evidence_refs=risk_refs,
                     stance="risk",
                 ),
             ),
-            summary_zh="Deterministic evidence debate uses only packet refs.",
+            confidence_ceiling=0.86,
+            missing_fact_impacts=(),
             allowed_evidence_ref_ids=tuple(allowed_refs),
         )
         final = FinalDecision(
@@ -223,27 +229,44 @@ class FakePulseDecisionProvider:
             agent_run_audit={**audit, "output_hash": "output-hot-path"},
             stage_audits=(
                 StageRunAudit(
-                    stage="evidence_debate",
+                    stage="signal_analyst",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
                     input_json={"context": context, "completeness": completeness},
-                    prompt_text="evidence debate prompt",
-                    response_json=debate.model_dump(mode="json"),
+                    prompt_text="signal analyst prompt",
+                    response_json=signal_memo.model_dump(mode="json"),
                     trace_metadata_json={},
                     usage_json={"input_tokens": 80},
                     latency_ms=8,
                     status="ok",
                 ),
                 StageRunAudit(
-                    stage="decision_maker",
+                    stage="bear_case",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
                     input_json={
                         "context": context,
                         "completeness": completeness,
-                        "debate_memo": debate.model_dump(mode="json"),
+                        "signal_memo": signal_memo.model_dump(mode="json"),
                     },
-                    prompt_text="decision maker prompt",
+                    prompt_text="bear case prompt",
+                    response_json=bear_memo.model_dump(mode="json"),
+                    trace_metadata_json={},
+                    usage_json={"input_tokens": 40},
+                    latency_ms=9,
+                    status="ok",
+                ),
+                StageRunAudit(
+                    stage="risk_portfolio_judge",
+                    route=route,  # type: ignore[arg-type]
+                    attempt_index=0,
+                    input_json={
+                        "context": context,
+                        "completeness": completeness,
+                        "signal_memo": signal_memo.model_dump(mode="json"),
+                        "bear_memo": bear_memo.model_dump(mode="json"),
+                    },
+                    prompt_text="risk portfolio judge prompt",
                     response_json=final.model_dump(mode="json"),
                     trace_metadata_json={},
                     usage_json={"output_tokens": 42},

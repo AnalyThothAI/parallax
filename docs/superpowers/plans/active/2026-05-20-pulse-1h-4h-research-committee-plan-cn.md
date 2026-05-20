@@ -408,13 +408,13 @@ Known-failing baseline tests:
 - Create: `scripts/evaluate_pulse_1h_4h_policy.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py`
 
-- [ ] Write failing unit tests for evaluator summary buckets.
+- [x] Write failing unit tests for evaluator summary buckets.
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py -q
   ```
   Expected before implementation: import or assertion failure.
 
-- [ ] Implement pure aggregation helpers over row dictionaries before adding SQL.
+- [x] Implement pure aggregation helpers over row dictionaries before adding SQL.
   Required helper signatures:
   ```python
   def summarize_radar_policy_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -424,19 +424,19 @@ Known-failing baseline tests:
       return summarize_by_window_scope_and_outcome(rows)
   ```
 
-- [ ] Implement `build_pulse_policy_evaluation(conn, now_ms, lookback_hours=24)` using read-only SQL.
+- [x] Implement `build_pulse_policy_evaluation(conn, now_ms, lookback_hours=24)` using read-only SQL.
   It must query `token_radar_rows`, `pulse_candidates`, `pulse_agent_jobs`, and `pulse_agent_runs`.
 
-- [ ] Implement the script writer.
+- [x] Implement the script writer.
   It must write the report to `docs/generated/` and print only the output path plus redacted config path booleans.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py -q
   uv run python scripts/evaluate_pulse_1h_4h_policy.py --lookback-hours 24
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py scripts/evaluate_pulse_1h_4h_policy.py tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py docs/generated/
   git commit -m "test: evaluate pulse 1h 4h policy"
@@ -505,7 +505,7 @@ Known-failing baseline tests:
   ```
   Expected: historical report may still show old failures, but newly corrected classifications are covered by tests and the report remains read-only.
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py docs/generated/
   git commit -m "fix: classify pulse agent output and provider failures"
@@ -653,7 +653,7 @@ Known-failing baseline tests:
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - runtime contract stages equal `("signal_analyst", "bear_case", "risk_portfolio_judge")`.
   - all stage tool lists are empty.
   - runtime manifest has no `evidence_debate` or `decision_maker`.
@@ -661,19 +661,19 @@ Known-failing baseline tests:
   - unknown refs in signal, bear, or final stage produce abstain/hide.
   - prompt loader cannot load old prompt names because old loaders are removed.
 
-- [ ] Add `SignalAnalystMemo` and `BearCaseMemo` schemas.
+- [x] Add `SignalAnalystMemo` and `BearCaseMemo` schemas.
   Both must use `EvidenceClaim`-style cited refs and execution-language rejection.
 
-- [ ] Replace prompt files and loaders.
+- [x] Replace prompt files and loaders.
 
-- [ ] Replace runtime stage specs and ref validators.
+- [x] Replace runtime stage specs and ref validators.
 
-- [ ] Replace OpenAI client pipeline.
+- [x] Replace OpenAI client pipeline.
   The output of `risk_portfolio_judge` is still `FinalDecision`.
 
-- [ ] Update fake gateways and fake clients in tests to emit the three new stage outputs.
+- [x] Update fake gateways and fake clients in tests to emit the three new stage outputs.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py -q
   ```

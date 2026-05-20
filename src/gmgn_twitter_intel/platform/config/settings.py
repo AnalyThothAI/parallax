@@ -558,8 +558,9 @@ class AgentLaneSettings(BaseModel):
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
         "pulse.pipeline": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=240.0),
-        "pulse.evidence_debate": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
-        "pulse.decision_maker": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.signal_analyst": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.bear_case": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.risk_portfolio_judge": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
         "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
         "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
         "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=180.0),

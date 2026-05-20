@@ -7,9 +7,10 @@ from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate im
     EvidenceCompletenessGateResult,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     DecisionRoute,
-    EvidenceDebateMemo,
     FinalDecision,
+    SignalAnalystMemo,
     StageRunAudit,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
@@ -23,9 +24,17 @@ class PulseDecisionStageSpec:
     input_payload: dict[str, Any]
 
 
-_DEFAULT_STAGE_NAMES = ("evidence_debate", "decision_maker")
-_DEFAULT_MAX_TURNS_PER_STAGE = {"evidence_debate": 1, "decision_maker": 1}
-_DEFAULT_TOOL_NAMES_BY_STAGE = {"evidence_debate": (), "decision_maker": ()}
+_DEFAULT_STAGE_NAMES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
+_DEFAULT_MAX_TURNS_PER_STAGE = {
+    "signal_analyst": 1,
+    "bear_case": 1,
+    "risk_portfolio_judge": 1,
+}
+_DEFAULT_TOOL_NAMES_BY_STAGE = {
+    "signal_analyst": (),
+    "bear_case": (),
+    "risk_portfolio_judge": (),
+}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
     "runtime_evidence_ref_subset",
@@ -60,7 +69,7 @@ DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT = PulseAgentRuntimeContract()
 
 
 class PulseDecisionRuntime(Protocol):
-    def evidence_debate_stage_spec(
+    def signal_analyst_stage_spec(
         self,
         *,
         route: DecisionRoute,
@@ -68,19 +77,36 @@ class PulseDecisionRuntime(Protocol):
         evidence_gate: EvidenceCompletenessGateResult,
     ) -> PulseDecisionStageSpec: ...
 
-    def decision_maker_stage_spec(
+    def bear_case_stage_spec(
         self,
         *,
         route: DecisionRoute,
         evidence_packet: PulseEvidencePacket,
         evidence_gate: EvidenceCompletenessGateResult,
-        debate_memo: EvidenceDebateMemo,
+        signal_memo: SignalAnalystMemo,
+    ) -> PulseDecisionStageSpec: ...
+
+    def risk_portfolio_judge_stage_spec(
+        self,
+        *,
+        route: DecisionRoute,
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: EvidenceCompletenessGateResult,
+        signal_memo: SignalAnalystMemo,
+        bear_memo: BearCaseMemo,
         recommendation_constraints: dict[str, Any],
     ) -> PulseDecisionStageSpec: ...
 
-    def validate_debate_refs(
+    def validate_signal_refs(
         self,
-        debate_memo: EvidenceDebateMemo,
+        signal_memo: SignalAnalystMemo,
+        *,
+        evidence_packet: PulseEvidencePacket,
+    ) -> None: ...
+
+    def validate_bear_refs(
+        self,
+        bear_memo: BearCaseMemo,
         *,
         evidence_packet: PulseEvidencePacket,
     ) -> None: ...
@@ -90,7 +116,8 @@ class PulseDecisionRuntime(Protocol):
         final: FinalDecision,
         *,
         evidence_packet: PulseEvidencePacket,
-        debate_memo: EvidenceDebateMemo,
+        signal_memo: SignalAnalystMemo,
+        bear_memo: BearCaseMemo,
     ) -> None: ...
 
     def normalize_stage_output(
@@ -172,12 +199,13 @@ class PulseDecisionProvider(Protocol):
 
 __all__ = [
     "DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT",
+    "BearCaseMemo",
     "EvidenceCompletenessGateResult",
-    "EvidenceDebateMemo",
     "PulseAgentRuntimeContract",
     "PulseDecisionProvider",
     "PulseDecisionResult",
     "PulseDecisionRuntime",
     "PulseDecisionStageSpec",
     "PulseEvidencePacket",
+    "SignalAnalystMemo",
 ]

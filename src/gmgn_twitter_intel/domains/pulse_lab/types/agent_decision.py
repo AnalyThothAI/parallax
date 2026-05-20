@@ -12,9 +12,10 @@ DecisionRecommendation = Literal["high_conviction", "trade_candidate", "watchlis
 StageName = Literal[
     "evidence_pack",
     "evidence_completeness_gate",
-    "evidence_debate",
+    "signal_analyst",
+    "bear_case",
     "claim_verifier",
-    "decision_maker",
+    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
@@ -112,24 +113,40 @@ class EvidenceClaim(BaseModel):
         return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
 
 
-class EvidenceDebateMemo(BaseModel):
+class SignalAnalystMemo(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    bull_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    bear_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    rebuttal_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    data_gap_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    summary_zh: str = Field(max_length=240)
-    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    bull_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=3)
+    what_changed_zh: str = Field(max_length=240)
+    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=20)
 
-    @field_validator("summary_zh", mode="after")
+    @field_validator("what_changed_zh", mode="after")
     @classmethod
-    def _clean_summary(cls, value: str) -> str:
+    def _clean_what_changed(cls, value: str) -> str:
         cleaned = _clean_text(value)
         if not cleaned:
-            raise ValueError("summary_zh is required")
+            raise ValueError("what_changed_zh is required")
         _reject_execution_language(cleaned)
         return cleaned
+
+    @field_validator("allowed_evidence_ref_ids", mode="after")
+    @classmethod
+    def _stable_allowed_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
+
+
+class BearCaseMemo(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    risk_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=4)
+    confidence_ceiling: float = Field(ge=0, le=1)
+    missing_fact_impacts: tuple[EvidenceClaim, ...] = Field(default=(), max_length=3)
+    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=20)
+
+    @field_validator("confidence_ceiling", mode="after")
+    @classmethod
+    def _clamp_confidence_ceiling(cls, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
 
     @field_validator("allowed_evidence_ref_ids", mode="after")
     @classmethod
@@ -270,7 +287,8 @@ class PulseAgentDecisionResult(BaseModel):
 
     evidence_packet: PulseEvidencePacket
     evidence_gate: dict[str, Any]
-    debate_memo: EvidenceDebateMemo
+    signal_memo: SignalAnalystMemo
+    bear_memo: BearCaseMemo
     final_decision: FinalDecision
     claim_verification: dict[str, Any]
     stage_audits: tuple[StageRunAudit, ...]
@@ -314,17 +332,18 @@ def _reject_execution_language(value: Any) -> None:
 
 
 __all__ = [
+    "BearCaseMemo",
     "BullBearStrength",
     "BullBearView",
     "DecisionRecommendation",
     "DecisionRoute",
     "EvidenceClaim",
-    "EvidenceDebateMemo",
     "FinalDecision",
     "MonitoringHorizon",
     "PulseAgentDecisionResult",
     "PulseDecisionPayload",
     "PulseStageFailure",
+    "SignalAnalystMemo",
     "StageName",
     "StageRunAudit",
     "StageStatus",

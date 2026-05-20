@@ -214,7 +214,7 @@ class PulseCandidateWorker(WorkerBase):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             reservation = self.decision_client.try_reserve_execution(
                 "pulse.pipeline",
-                child_lanes=("pulse.evidence_debate", "pulse.decision_maker"),
+                child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
                 scope="parent",
             )
             if not reservation.acquired:

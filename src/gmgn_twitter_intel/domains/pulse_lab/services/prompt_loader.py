@@ -20,7 +20,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRo
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _ROUTE_HEADING_RE = re.compile(r"^##\s+Route:\s+(?P<route>\w+)\s*$", re.MULTILINE)
-_KNOWN_ROLES = ("evidence_debate", "decision_maker")
+_KNOWN_ROLES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
 
 
 @lru_cache(maxsize=8)
@@ -65,18 +65,21 @@ def load_prompt(role: str, route: DecisionRoute) -> str:
     )
 
 
-def load_evidence_debate_prompt(route: DecisionRoute) -> str:
-    """Convenience wrapper for the evidence debate stage prompt."""
-    return load_prompt("evidence_debate", route)
+def load_signal_analyst_prompt(route: DecisionRoute) -> str:
+    return load_prompt("signal_analyst", route)
 
 
-def load_decision_maker_prompt(route: DecisionRoute) -> str:
-    """Convenience wrapper for the DecisionMaker stage prompt."""
-    return load_prompt("decision_maker", route)
+def load_bear_case_prompt(route: DecisionRoute) -> str:
+    return load_prompt("bear_case", route)
+
+
+def load_risk_portfolio_judge_prompt(route: DecisionRoute) -> str:
+    return load_prompt("risk_portfolio_judge", route)
 
 
 __all__ = [
-    "load_decision_maker_prompt",
-    "load_evidence_debate_prompt",
+    "load_bear_case_prompt",
     "load_prompt",
+    "load_risk_portfolio_judge_prompt",
+    "load_signal_analyst_prompt",
 ]

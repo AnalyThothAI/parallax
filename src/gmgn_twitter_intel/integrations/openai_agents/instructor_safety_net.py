@@ -261,12 +261,12 @@ def _repair_instruction(error_text: str, *, output_type: type[BaseModel] | None)
         "Do not use trading execution language; describe observable facts, invalidation "
         "conditions, and residual risks only.",
     ]
-    if output_name == "EvidenceDebateMemo":
+    if output_name in {"SignalAnalystMemo", "BearCaseMemo"}:
         lines.extend(
             [
                 "Every non-gap claim must include at least one copied evidence_refs value.",
                 "allowed_evidence_ref_ids must be a subset of allowed_evidence_refs[].ref_id.",
-                "If a fact is missing from the packet, represent it as a data_gap_claim.",
+                "If a fact is missing from the packet, represent it through missing_fact_impacts or lower confidence.",
             ]
         )
     elif output_name == "FinalDecision":

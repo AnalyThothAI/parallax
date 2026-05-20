@@ -156,8 +156,9 @@ def test_agent_runtime_settings_default_lanes() -> None:
 
     assert settings.agent_runtime.global_max_concurrency == 4
     assert settings.agent_runtime.global_rpm_limit == 60
-    assert settings.agent_runtime.lanes["pulse.decision_maker"].priority == "high"
-    assert settings.agent_runtime.lanes["pulse.evidence_debate"].timeout_seconds == 180
+    assert settings.agent_runtime.lanes["pulse.signal_analyst"].priority == "high"
+    assert settings.agent_runtime.lanes["pulse.bear_case"].timeout_seconds == 180
+    assert settings.agent_runtime.lanes["pulse.risk_portfolio_judge"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.discussion_digest"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
@@ -171,7 +172,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
             "global_max_concurrency": 2,
             "global_rpm_limit": 30,
             "lanes": {
-                "pulse.decision_maker": {
+                "pulse.risk_portfolio_judge": {
                     "priority": "high",
                     "max_concurrency": 1,
                     "timeout_seconds": 90,
@@ -185,7 +186,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
         }
     )
 
-    lane = settings.agent_runtime.lanes["pulse.decision_maker"]
+    lane = settings.agent_runtime.lanes["pulse.risk_portfolio_judge"]
     assert settings.agent_runtime.global_max_concurrency == 2
     assert settings.agent_runtime.global_rpm_limit == 30
     assert lane.timeout_seconds == 90
@@ -200,7 +201,7 @@ def test_agent_runtime_settings_reject_unknown_lane_key() -> None:
         WorkersSettings(
             agent_runtime={
                 "lanes": {
-                    "pulse.decision-maker": {
+                    "pulse.signal-analyst": {
                         "priority": "high",
                         "max_concurrency": 1,
                         "timeout_seconds": 90,

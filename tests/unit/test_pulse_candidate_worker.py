@@ -29,11 +29,12 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service i
     _run_outcome,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     BullBearView,
     EvidenceClaim,
-    EvidenceDebateMemo,
     FinalDecision,
     PulseStageFailure,
+    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -615,13 +616,13 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             self.run_calls += 1
             failed_audit = StageRunAudit(
-                stage="evidence_debate",
+                stage="signal_analyst",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake evidence debate prompt",
+                prompt_text="fake signal analyst prompt",
                 response_json={"raw_output": "**Investigation Report:** prose only"},
-                trace_metadata_json={"stage": "evidence_debate"},
+                trace_metadata_json={"stage": "signal_analyst"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -638,7 +639,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
 
     assert result["processed"] == 0
     assert result["failed"] == 1
-    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_debate")
+    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "signal_analyst")
     assert step["status"] == "failed"
     assert step["error"] == "ModelBehaviorError: invalid JSON"
     assert step["response_json"] == {"raw_output": "**Investigation Report:** prose only"}
@@ -691,7 +692,7 @@ def test_hard_blocked_evidence_gate_does_not_call_agent() -> None:
     assert gate_step["status"] == "ok"
     assert gate_step["response_json"]["hard_blocked"] is True
     assert gate_step["response_json"]["blocked_reason"] == "blocked_market_contract"
-    assert not any(row["stage"] == "decision_maker" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
 
 
 def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
@@ -721,12 +722,13 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     class ContractClient(FakeClient):
         runtime_contract = PulseAgentRuntimeContract(
-            stage_names=("evidence_debate", "decision_maker"),
+            stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
             tool_names_by_stage={
-                "evidence_debate": (),
-                "decision_maker": (),
+                "signal_analyst": (),
+                "bear_case": (),
+                "risk_portfolio_judge": (),
             },
-            max_turns_per_stage={"evidence_debate": 4, "decision_maker": 2},
+            max_turns_per_stage={"signal_analyst": 4, "bear_case": 3, "risk_portfolio_judge": 2},
             safety_net_enabled=False,
             validators_enabled=("runtime_evidence_id_subset",),
             failure_taxonomy_version="pulse-failure-taxonomy-test",
@@ -739,8 +741,16 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {"evidence_debate": [], "decision_maker": []}
-    assert manifest["runtime"]["max_turns_per_stage"] == {"evidence_debate": 4, "decision_maker": 2}
+    assert manifest["runtime"]["tool_names_by_stage"] == {
+        "signal_analyst": [],
+        "bear_case": [],
+        "risk_portfolio_judge": [],
+    }
+    assert manifest["runtime"]["max_turns_per_stage"] == {
+        "signal_analyst": 4,
+        "bear_case": 3,
+        "risk_portfolio_judge": 2,
+    }
     assert manifest["runtime"]["safety_net_enabled"] is False
     assert manifest["contracts"]["validators_enabled"] == ["runtime_evidence_id_subset"]
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
@@ -774,8 +784,12 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["stages"] == ["evidence_debate", "decision_maker"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {"evidence_debate": [], "decision_maker": []}
+    assert manifest["runtime"]["stages"] == ["signal_analyst", "bear_case", "risk_portfolio_judge"]
+    assert manifest["runtime"]["tool_names_by_stage"] == {
+        "signal_analyst": [],
+        "bear_case": [],
+        "risk_portfolio_judge": [],
+    }
     assert manifest["runtime"]["safety_net_enabled"] is True
 
 
@@ -845,7 +859,7 @@ def test_pulse_pipeline_parent_reservation_is_passed_to_stage_execution() -> Non
         call
         == {
             "lane": "pulse.pipeline",
-            "child_lanes": ("pulse.evidence_debate", "pulse.decision_maker"),
+            "child_lanes": ("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
             "scope": "parent",
         }
         for call in client.reserve_calls
@@ -1010,8 +1024,8 @@ class FakeAgentExecutionGateway:
         risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
         evidence_packet = stage.input_payload.get("evidence_packet") or {}
         evidence_ids = evidence_packet.get("source_event_ids") or ["event-1"]
-        if stage.stage == "evidence_debate":
-            final_output = EvidenceDebateMemo(
+        if stage.stage == "signal_analyst":
+            final_output = SignalAnalystMemo(
                 bull_claims=(
                     EvidenceClaim(
                         claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
@@ -1019,16 +1033,20 @@ class FakeAgentExecutionGateway:
                         stance="bull",
                     ),
                 ),
-                bear_claims=(
+                what_changed_zh="基于封闭证据包的信号分析完成。",
+                allowed_evidence_ref_ids=tuple(allowed_refs),
+            )
+        elif stage.stage == "bear_case":
+            final_output = BearCaseMemo(
+                risk_claims=(
                     EvidenceClaim(
                         claim="价格响应和流动性确认仍不足，热度可能快速降温。",
                         evidence_refs=risk_refs or supporting_refs,
                         stance="risk",
                     ),
                 ),
-                rebuttal_claims=(),
-                data_gap_claims=(),
-                summary_zh="基于封闭证据包的多空综合完成。",
+                confidence_ceiling=0.7,
+                missing_fact_impacts=(),
                 allowed_evidence_ref_ids=tuple(allowed_refs),
             )
         else:
@@ -1575,7 +1593,7 @@ class FakeClient:
             supporting_evidence_refs=supporting_refs,
             risk_evidence_refs=risk_refs,
         )
-        debate_memo = EvidenceDebateMemo(
+        signal_memo = SignalAnalystMemo(
             bull_claims=(
                 EvidenceClaim(
                     claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
@@ -1583,28 +1601,48 @@ class FakeClient:
                     stance="bull",
                 ),
             ),
-            bear_claims=(
+            what_changed_zh="基于封闭证据包的信号分析完成。",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
+        bear_memo = BearCaseMemo(
+            risk_claims=(
                 EvidenceClaim(
                     claim="价格响应和流动性确认仍不足，热度可能快速降温。",
                     evidence_refs=risk_refs or supporting_refs,
                     stance="risk",
                 ),
             ),
-            rebuttal_claims=(),
-            data_gap_claims=(),
-            summary_zh="基于封闭证据包的多空综合完成。",
+            confidence_ceiling=0.7,
+            missing_fact_impacts=(),
             allowed_evidence_ref_ids=tuple(allowed_refs),
         )
-        evidence_debate_audit = StageRunAudit(
-            stage="evidence_debate",
+        signal_audit = StageRunAudit(
+            stage="signal_analyst",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
             input_json={
                 "context": context,
                 "completeness": completeness,
             },
-            prompt_text="fake evidence debate prompt",
-            response_json=debate_memo.model_dump(mode="json"),
+            prompt_text="fake signal analyst prompt",
+            response_json=signal_memo.model_dump(mode="json"),
+            trace_metadata_json={},
+            usage_json={},
+            latency_ms=1,
+            status="ok",
+            error=None,
+        )
+        bear_audit = StageRunAudit(
+            stage="bear_case",
+            route=route,  # type: ignore[arg-type]
+            attempt_index=0,
+            input_json={
+                "context": context,
+                "completeness": completeness,
+                "signal_memo": signal_memo.model_dump(mode="json"),
+            },
+            prompt_text="fake bear case prompt",
+            response_json=bear_memo.model_dump(mode="json"),
             trace_metadata_json={},
             usage_json={},
             latency_ms=1,
@@ -1612,11 +1650,16 @@ class FakeClient:
             error=None,
         )
         stage_audit = StageRunAudit(
-            stage="decision_maker",
+            stage="risk_portfolio_judge",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
-            input_json={"context": context, "completeness": completeness},
-            prompt_text="fake prompt",
+            input_json={
+                "context": context,
+                "completeness": completeness,
+                "signal_memo": signal_memo.model_dump(mode="json"),
+                "bear_memo": bear_memo.model_dump(mode="json"),
+            },
+            prompt_text="fake risk portfolio judge prompt",
             response_json=final_decision.model_dump(mode="json"),
             trace_metadata_json={},
             usage_json={},
@@ -1635,7 +1678,7 @@ class FakeClient:
         return PulseDecisionResult(
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
-            stage_audits=(evidence_debate_audit, stage_audit),
+            stage_audits=(signal_audit, bear_audit, stage_audit),
         )
 
 
@@ -1675,7 +1718,7 @@ class NoStartBackpressureClient(FakeClient):
         self.run_calls += 1
         raise AgentExecutionError(
             AgentExecutionErrorClass.CAPACITY_DENIED,
-            "agent lane unavailable: pulse.evidence_debate",
+            "agent lane unavailable: pulse.signal_analyst",
             audit=None,
             execution_started=False,
         )

@@ -5,7 +5,7 @@ from copy import deepcopy
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from gmgn_twitter_intel.domains.pulse_lab.services.claim_evidence_verifier import ClaimEvidenceVerifier
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import PulseDecisionRuntimeService
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import EvidenceDebateMemo, FinalDecision
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import BearCaseMemo, FinalDecision, SignalAnalystMemo
 
 
 def test_exact_allowed_refs_pass_without_repairs() -> None:
@@ -51,7 +51,13 @@ def test_ambiguous_same_type_typo_is_rejected_without_repair() -> None:
     )
 
     decision = FinalDecision.model_validate(result.payload)
-    verification = ClaimEvidenceVerifier().verify(_packet_object(["event:event-1", "event:event-2"]), _memo(), decision)
+    signal_memo, bear_memo = _memos()
+    verification = ClaimEvidenceVerifier().verify(
+        _packet_object(["event:event-1", "event:event-2"]),
+        signal_memo,
+        bear_memo,
+        decision,
+    )
 
     assert decision.supporting_evidence_refs == ("event:event-0",)
     assert verification.valid is False
@@ -74,7 +80,13 @@ def test_cross_type_typo_is_rejected_without_repair() -> None:
     )
 
     decision = FinalDecision.model_validate(result.payload)
-    verification = ClaimEvidenceVerifier().verify(_packet_object(["metric:market:price_usd"]), _memo(), decision)
+    signal_memo, bear_memo = _memos()
+    verification = ClaimEvidenceVerifier().verify(
+        _packet_object(["metric:market:price_usd"]),
+        signal_memo,
+        bear_memo,
+        decision,
+    )
 
     assert decision.supporting_evidence_refs == ("event:market:price_usd",)
     assert verification.valid is False
@@ -91,21 +103,18 @@ def test_cross_type_typo_is_rejected_without_repair() -> None:
 
 def test_outside_packet_ref_is_rejected_without_repair() -> None:
     result = normalize_pulse_stage_output(
-        output_type=EvidenceDebateMemo,
+        output_type=SignalAnalystMemo,
         raw_output={
             "bull_claims": [
                 {"claim": "社交证据支持扩散观察", "evidence_refs": ["event:event-999"], "stance": "bull"}
             ],
-            "bear_claims": [],
-            "rebuttal_claims": [],
-            "data_gap_claims": [],
-            "summary_zh": "证据显示讨论在扩散，但需要继续观察。",
+            "what_changed_zh": "证据显示讨论在扩散，但需要继续观察。",
             "allowed_evidence_ref_ids": ["event:event-1"],
         },
         evidence_packet=_packet(refs=["event:event-1"]),
     )
 
-    memo = EvidenceDebateMemo.model_validate(result.payload)
+    memo = SignalAnalystMemo.model_validate(result.payload)
 
     assert memo.bull_claims[0].evidence_refs == ("event:event-999",)
     assert result.trace_metadata["evidence_ref_canonicalization"]["rejections"] == [
@@ -226,7 +235,7 @@ def test_final_decision_missing_supporting_refs_are_inserted_from_valid_event_id
 
 def test_source_event_id_alias_is_canonicalized_to_allowed_event_ref() -> None:
     result = normalize_pulse_stage_output(
-        output_type=EvidenceDebateMemo,
+        output_type=SignalAnalystMemo,
         raw_output={
             "bull_claims": [
                 {
@@ -235,16 +244,13 @@ def test_source_event_id_alias_is_canonicalized_to_allowed_event_ref() -> None:
                     "stance": "bull",
                 }
             ],
-            "bear_claims": [],
-            "rebuttal_claims": [],
-            "data_gap_claims": [],
-            "summary_zh": "证据显示讨论在扩散，但需要继续观察。",
+            "what_changed_zh": "证据显示讨论在扩散，但需要继续观察。",
             "allowed_evidence_ref_ids": ["gmgn:twitter_monitor_basic:event-1", "social_heat.watched_seed_strength"],
         },
         evidence_packet=_packet(refs=["event:gmgn:twitter_monitor_basic:event-1"]),
     )
 
-    memo = EvidenceDebateMemo.model_validate(result.payload)
+    memo = SignalAnalystMemo.model_validate(result.payload)
 
     assert memo.bull_claims[0].evidence_refs == ("event:gmgn:twitter_monitor_basic:event-1",)
     assert memo.allowed_evidence_ref_ids == ()
@@ -255,76 +261,69 @@ def test_source_event_id_alias_is_canonicalized_to_allowed_event_ref() -> None:
 
 def test_data_gap_pseudo_ref_is_rewritten_to_missing_ref_and_runtime_accepts() -> None:
     result = normalize_pulse_stage_output(
-        output_type=EvidenceDebateMemo,
+        output_type=BearCaseMemo,
         raw_output={
-            "bull_claims": [],
-            "bear_claims": [],
-            "rebuttal_claims": [],
-            "data_gap_claims": [
+            "risk_claims": [],
+            "confidence_ceiling": 0.4,
+            "missing_fact_impacts": [
                 {
                     "claim": "持有人数据缺失，无法确认筹码扩散。",
                     "evidence_refs": ["holder_evidence:gap"],
                     "stance": "gap",
                 }
             ],
-            "summary_zh": "证据包缺少持有人数据，因此只能降低确信度。",
             "allowed_evidence_ref_ids": ["holder_evidence:gap"],
         },
         evidence_packet=_packet(refs=["event:event-1"]),
     )
 
-    memo = EvidenceDebateMemo.model_validate(result.payload)
+    memo = BearCaseMemo.model_validate(result.payload)
 
-    assert memo.data_gap_claims[0].evidence_refs == ("missing:holder_evidence:gap",)
-    PulseDecisionRuntimeService(db_pool=None).validate_debate_refs(memo, evidence_packet=_packet(refs=["event:event-1"]))
+    assert memo.missing_fact_impacts[0].evidence_refs == ("missing:holder_evidence:gap",)
+    PulseDecisionRuntimeService(db_pool=None).validate_bear_refs(memo, evidence_packet=_packet(refs=["event:event-1"]))
 
 
 def test_risk_claim_pseudo_evidence_ref_is_rewritten_to_missing_ref() -> None:
     result = normalize_pulse_stage_output(
-        output_type=EvidenceDebateMemo,
+        output_type=BearCaseMemo,
         raw_output={
-            "bull_claims": [],
-            "bear_claims": [
+            "risk_claims": [
                 {
                     "claim": "缺乏社交簇数据，无法确认扩散质量。",
                     "evidence_refs": ["social_evidence:cluster_refs"],
                     "stance": "risk",
                 }
             ],
-            "rebuttal_claims": [],
-            "data_gap_claims": [],
-            "summary_zh": "社交簇数据缺失，主要作为风险观察处理。",
+            "confidence_ceiling": 0.5,
+            "missing_fact_impacts": [],
             "allowed_evidence_ref_ids": ["social_evidence:cluster_refs"],
         },
         evidence_packet=_packet(refs=["event:event-1"]),
     )
 
-    memo = EvidenceDebateMemo.model_validate(result.payload)
+    memo = BearCaseMemo.model_validate(result.payload)
 
-    assert memo.bear_claims[0].evidence_refs == ("missing:social_evidence:cluster_refs",)
-    PulseDecisionRuntimeService(db_pool=None).validate_debate_refs(memo, evidence_packet=_packet(refs=["event:event-1"]))
+    assert memo.risk_claims[0].evidence_refs == ("missing:social_evidence:cluster_refs",)
+    PulseDecisionRuntimeService(db_pool=None).validate_bear_refs(memo, evidence_packet=_packet(refs=["event:event-1"]))
 
 
-def test_execution_language_in_debate_text_is_neutralized_before_schema_validation() -> None:
+def test_execution_language_in_signal_text_is_neutralized_before_schema_validation() -> None:
     result = normalize_pulse_stage_output(
-        output_type=EvidenceDebateMemo,
+        output_type=SignalAnalystMemo,
         raw_output={
             "bull_claims": [
                 {"claim": "自动监测文本提到大额买入。", "evidence_refs": ["event:event-1"], "stance": "bull"}
             ],
-            "bear_claims": [],
-            "rebuttal_claims": [],
-            "data_gap_claims": [],
-            "summary_zh": "摘要提到买入语义，但这里只做证据观察。",
+            "what_changed_zh": "摘要提到买入语义，但这里只做证据观察。",
             "allowed_evidence_ref_ids": ["event:event-1"],
         },
         evidence_packet=_packet(refs=["event:event-1"]),
     )
 
-    memo = EvidenceDebateMemo.model_validate(result.payload)
+    memo = SignalAnalystMemo.model_validate(result.payload)
 
     assert "买入" not in memo.bull_claims[0].claim
-    assert "买入" not in memo.summary_zh
+    assert "买入" not in memo.what_changed_zh
     assert result.trace_metadata["policy_text_normalization"]["repairs"]
 
 
@@ -349,14 +348,19 @@ def _packet_object(refs: list[str]) -> object:
     return type("Packet", (), {"allowed_evidence_refs": _packet(refs=refs)["allowed_evidence_refs"]})()
 
 
-def _memo() -> EvidenceDebateMemo:
-    return EvidenceDebateMemo(
-        bull_claims=(),
-        bear_claims=(),
-        rebuttal_claims=(),
-        data_gap_claims=(),
-        summary_zh="证据摘要足以进行一致性校验。",
-        allowed_evidence_ref_ids=(),
+def _memos() -> tuple[SignalAnalystMemo, BearCaseMemo]:
+    return (
+        SignalAnalystMemo(
+            bull_claims=(),
+            what_changed_zh="证据摘要足以进行一致性校验。",
+            allowed_evidence_ref_ids=(),
+        ),
+        BearCaseMemo(
+            risk_claims=(),
+            confidence_ceiling=0.5,
+            missing_fact_impacts=(),
+            allowed_evidence_ref_ids=(),
+        ),
     )
 
 

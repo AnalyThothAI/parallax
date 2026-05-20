@@ -5,8 +5,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
-    EvidenceDebateMemo,
+    BearCaseMemo,
     FinalDecision,
+    SignalAnalystMemo,
 )
 from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
     default_agent_model_settings,
@@ -66,7 +67,7 @@ def test_pulse_agent_output_schemas_match_openai_strict_subset() -> None:
         "then",
     }
 
-    for output_type in (EvidenceDebateMemo, FinalDecision):
+    for output_type in (SignalAnalystMemo, BearCaseMemo, FinalDecision):
         schema = StrictJsonOutputSchema(output_type).json_schema()
 
         assert schema["type"] == "object"

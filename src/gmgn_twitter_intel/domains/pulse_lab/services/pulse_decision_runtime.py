@@ -11,17 +11,19 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_DECISION_SCHEMA_VERSION,
 )
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
+    BearCaseMemo,
     EvidenceCompletenessGateResult,
-    EvidenceDebateMemo,
     PulseDecisionStageSpec,
     PulseEvidencePacket,
+    SignalAnalystMemo,
 )
 from gmgn_twitter_intel.domains.pulse_lab.queries.agent_tool_queries import fetch_evidence_event_urls
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_output_normalization import normalize_pulse_stage_output
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import pulse_runtime_hash
 from gmgn_twitter_intel.domains.pulse_lab.services.prompt_loader import (
-    load_decision_maker_prompt,
-    load_evidence_debate_prompt,
+    load_bear_case_prompt,
+    load_risk_portfolio_judge_prompt,
+    load_signal_analyst_prompt,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     DecisionRoute,
@@ -34,7 +36,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 class PulseDecisionRuntimeService:
     db_pool: Any
 
-    def evidence_debate_stage_spec(
+    def signal_analyst_stage_spec(
         self,
         *,
         route: DecisionRoute,
@@ -44,12 +46,13 @@ class PulseDecisionRuntimeService:
         packet_payload = _agent_packet_payload(evidence_packet)
         gate_payload = _model_payload(evidence_gate)
         return PulseDecisionStageSpec(
-            stage="evidence_debate",
-            prompt_text=load_evidence_debate_prompt(route),
+            stage="signal_analyst",
+            prompt_text=load_signal_analyst_prompt(route),
             input_payload={
                 "route": route,
                 "evidence_packet": packet_payload,
                 "evidence_gate": gate_payload,
+                "source_quality_summary": _source_quality_summary(packet_payload),
                 "evidence_packet_hash": _packet_hash(packet_payload),
                 "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
                 "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
@@ -57,26 +60,55 @@ class PulseDecisionRuntimeService:
             },
         )
 
-    def decision_maker_stage_spec(
+    def bear_case_stage_spec(
         self,
         *,
         route: DecisionRoute,
         evidence_packet: PulseEvidencePacket,
         evidence_gate: EvidenceCompletenessGateResult,
-        debate_memo: EvidenceDebateMemo,
-        recommendation_constraints: dict[str, Any],
+        signal_memo: SignalAnalystMemo,
     ) -> PulseDecisionStageSpec:
         packet_payload = _agent_packet_payload(evidence_packet)
         gate_payload = _model_payload(evidence_gate)
-        debate_payload = _model_payload(debate_memo)
+        signal_payload = _model_payload(signal_memo)
         return PulseDecisionStageSpec(
-            stage="decision_maker",
-            prompt_text=load_decision_maker_prompt(route),
+            stage="bear_case",
+            prompt_text=load_bear_case_prompt(route),
             input_payload={
                 "route": route,
                 "evidence_packet": packet_payload,
                 "evidence_gate": gate_payload,
-                "debate_memo": debate_payload,
+                "signal_memo": signal_payload,
+                "evidence_packet_hash": _packet_hash(packet_payload),
+                "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
+                "allowed_evidence_ref_ids": _sorted_ref_ids(_allowed_evidence_ref_ids(packet_payload)),
+                "evidence_ref_policy": _evidence_ref_policy(),
+            },
+        )
+
+    def risk_portfolio_judge_stage_spec(
+        self,
+        *,
+        route: DecisionRoute,
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: EvidenceCompletenessGateResult,
+        signal_memo: SignalAnalystMemo,
+        bear_memo: BearCaseMemo,
+        recommendation_constraints: dict[str, Any],
+    ) -> PulseDecisionStageSpec:
+        packet_payload = _agent_packet_payload(evidence_packet)
+        gate_payload = _model_payload(evidence_gate)
+        signal_payload = _model_payload(signal_memo)
+        bear_payload = _model_payload(bear_memo)
+        return PulseDecisionStageSpec(
+            stage="risk_portfolio_judge",
+            prompt_text=load_risk_portfolio_judge_prompt(route),
+            input_payload={
+                "route": route,
+                "evidence_packet": packet_payload,
+                "evidence_gate": gate_payload,
+                "signal_memo": signal_payload,
+                "bear_memo": bear_payload,
                 "recommendation_constraints": dict(recommendation_constraints or {}),
                 "evidence_packet_hash": _packet_hash(packet_payload),
                 "allowed_evidence_refs": _allowed_evidence_refs(packet_payload),
@@ -85,32 +117,51 @@ class PulseDecisionRuntimeService:
             },
         )
 
-    def validate_debate_refs(
+    def validate_signal_refs(
         self,
-        debate_memo: EvidenceDebateMemo,
+        signal_memo: SignalAnalystMemo,
         *,
         evidence_packet: PulseEvidencePacket,
     ) -> None:
         packet_payload = _model_payload(evidence_packet)
         allowed = _allowed_evidence_ref_ids(packet_payload)
-        memo_payload = _model_payload(debate_memo)
-        unknown = sorted(_debate_ref_ids(memo_payload) - allowed)
+        unknown = sorted(_memo_ref_ids(_model_payload(signal_memo), groups=("bull_claims",)) - allowed)
         if unknown:
             preview = unknown[:5]
             suffix = "..." if len(unknown) > 5 else ""
-            raise ValueError(f"EvidenceDebateMemo cites refs outside allowed_evidence_refs: {preview}{suffix}")
+            raise ValueError(f"SignalAnalystMemo cites refs outside allowed_evidence_refs: {preview}{suffix}")
+
+    def validate_bear_refs(
+        self,
+        bear_memo: BearCaseMemo,
+        *,
+        evidence_packet: PulseEvidencePacket,
+    ) -> None:
+        packet_payload = _model_payload(evidence_packet)
+        allowed = _allowed_evidence_ref_ids(packet_payload)
+        unknown = sorted(
+            _memo_ref_ids(_model_payload(bear_memo), groups=("risk_claims", "missing_fact_impacts")) - allowed
+        )
+        if unknown:
+            preview = unknown[:5]
+            suffix = "..." if len(unknown) > 5 else ""
+            raise ValueError(f"BearCaseMemo cites refs outside allowed_evidence_refs: {preview}{suffix}")
 
     def validate_final_evidence_refs(
         self,
         final: FinalDecision,
         *,
         evidence_packet: PulseEvidencePacket,
-        debate_memo: EvidenceDebateMemo,
+        signal_memo: SignalAnalystMemo,
+        bear_memo: BearCaseMemo,
     ) -> None:
         packet_payload = _model_payload(evidence_packet)
         allowed_refs = _allowed_evidence_ref_ids(packet_payload)
         allowed_events = _packet_event_ids(packet_payload)
-        memo_refs = _debate_ref_ids(_model_payload(debate_memo))
+        memo_refs = _memo_ref_ids(_model_payload(signal_memo), groups=("bull_claims",)) | _memo_ref_ids(
+            _model_payload(bear_memo),
+            groups=("risk_claims", "missing_fact_impacts"),
+        )
         fields = _final_ref_fields(final)
         for field_name, values in fields:
             allowed = allowed_events if field_name.endswith("event_ids") else (allowed_refs | memo_refs)
@@ -303,9 +354,9 @@ def _evidence_ref_policy() -> dict[str, str]:
     }
 
 
-def _debate_ref_ids(memo_payload: dict[str, Any]) -> set[str]:
+def _memo_ref_ids(memo_payload: dict[str, Any], *, groups: tuple[str, ...]) -> set[str]:
     refs: set[str] = set()
-    for key in ("bull_claims", "bear_claims", "rebuttal_claims", "data_gap_claims"):
+    for key in groups:
         claims = memo_payload.get(key)
         if not isinstance(claims, list | tuple):
             continue
@@ -321,6 +372,17 @@ def _debate_ref_ids(memo_payload: dict[str, Any]) -> set[str]:
                         continue
                     refs.add(ref_id)
     return refs
+
+
+def _source_quality_summary(packet_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "window": packet_payload.get("window"),
+        "scope": packet_payload.get("scope"),
+        "social_evidence": _mapping(packet_payload.get("social_evidence")),
+        "quality_metrics": _mapping(packet_payload.get("quality_metrics")),
+        "risk_flags": packet_payload.get("risk_flags") if isinstance(packet_payload.get("risk_flags"), list) else [],
+        "data_gaps": packet_payload.get("data_gaps") if isinstance(packet_payload.get("data_gaps"), list) else [],
+    }
 
 
 def _final_ref_fields(final: FinalDecision) -> tuple[tuple[str, list[str]], ...]:
@@ -362,6 +424,10 @@ def _context_string(context: dict[str, Any], key: str) -> str | None:
 def _string_value(value: Any) -> str:
     text = str(value or "").strip()
     return text
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _trace_id(run_id: str) -> str:

@@ -10,11 +10,12 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
 )
 from gmgn_twitter_intel.domains.pulse_lab.providers import (
     DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT,
-    EvidenceDebateMemo,
+    BearCaseMemo,
     PulseAgentRuntimeContract,
     PulseDecisionRuntime,
     PulseDecisionStageSpec,
     PulseEvidencePacket,
+    SignalAnalystMemo,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
@@ -45,12 +46,12 @@ _DEFAULT_TIMEOUT_SECONDS = 120.0
 @dataclass(frozen=True)
 class PulseDecisionAgentResult:
     final_decision: FinalDecision
-    run_audit: dict[str, Any]
+    agent_run_audit: dict[str, Any]
     stage_audits: tuple[StageRunAudit, ...]
 
 
 class OpenAIAgentsPulseDecisionClient:
-    """Packet-only EvidenceDebate -> DecisionMaker pulse decision client."""
+    """Packet-only SignalAnalyst -> BearCase -> RiskPortfolioJudge client."""
 
     provider = "openai"
 
@@ -61,8 +62,9 @@ class OpenAIAgentsPulseDecisionClient:
         agent_gateway: Any,
         decision_runtime: PulseDecisionRuntime,
         workflow_name: str = WORKFLOW_NAME,
-        decision_maker_max_turns: int = 1,
-        evidence_debate_max_turns: int = 1,
+        signal_analyst_max_turns: int = 1,
+        bear_case_max_turns: int = 1,
+        risk_portfolio_judge_max_turns: int = 1,
     ) -> None:
         self.model = str(model or "").strip()
         if not self.model:
@@ -74,8 +76,9 @@ class OpenAIAgentsPulseDecisionClient:
         self._agent_gateway = agent_gateway
         self._decision_runtime = decision_runtime
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
-        self._decision_maker_max_turns = max(1, int(decision_maker_max_turns))
-        self._evidence_debate_max_turns = max(1, int(evidence_debate_max_turns))
+        self._signal_analyst_max_turns = max(1, int(signal_analyst_max_turns))
+        self._bear_case_max_turns = max(1, int(bear_case_max_turns))
+        self._risk_portfolio_judge_max_turns = max(1, int(risk_portfolio_judge_max_turns))
 
     @property
     def timeout_seconds(self) -> float:
@@ -90,8 +93,9 @@ class OpenAIAgentsPulseDecisionClient:
             runtime_version=RUNTIME_VERSION,
             output_schema_hash=json_sha256(
                 {
-                    "evidence_debate": EvidenceDebateMemo.model_json_schema(),
-                    "decision_maker": FinalDecision.model_json_schema(),
+                    "signal_analyst": SignalAnalystMemo.model_json_schema(),
+                    "bear_case": BearCaseMemo.model_json_schema(),
+                    "risk_portfolio_judge": FinalDecision.model_json_schema(),
                 }
             ),
         )
@@ -99,14 +103,16 @@ class OpenAIAgentsPulseDecisionClient:
     @property
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         return PulseAgentRuntimeContract(
-            stage_names=("evidence_debate", "decision_maker"),
+            stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
             max_turns_per_stage={
-                "evidence_debate": self._evidence_debate_max_turns,
-                "decision_maker": self._decision_maker_max_turns,
+                "signal_analyst": self._signal_analyst_max_turns,
+                "bear_case": self._bear_case_max_turns,
+                "risk_portfolio_judge": self._risk_portfolio_judge_max_turns,
             },
             tool_names_by_stage={
-                "evidence_debate": (),
-                "decision_maker": (),
+                "signal_analyst": (),
+                "bear_case": (),
+                "risk_portfolio_judge": (),
             },
             safety_net_enabled=True,
             evidence_packet_schema_version=DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT.evidence_packet_schema_version,
@@ -166,7 +172,7 @@ class OpenAIAgentsPulseDecisionClient:
         evidence_packet = _evidence_packet_from_context(context)
         evidence_gate = completeness
 
-        debate_step = await self._run_evidence_debate(
+        signal_step = await self._run_signal_analyst(
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
@@ -174,30 +180,34 @@ class OpenAIAgentsPulseDecisionClient:
             audit=audit,
             parent_reservation=parent_reservation,
         )
-        stage_audits: list[StageRunAudit] = [debate_step]
-        if debate_step.status != "ok":
-            if _is_model_contract_stage_failure(debate_step):
+        stage_audits: list[StageRunAudit] = [signal_step]
+        if signal_step.status != "ok":
+            if _is_model_contract_stage_failure(signal_step):
                 final = _stage_failure_abstain_decision(
                     route=route,
-                    reason=debate_step.error or "evidence_debate_contract_failed",
+                    reason=signal_step.error or "signal_analyst_contract_failed",
                     evidence_packet=evidence_packet,
-                    abstain_reason=_abstain_reason_for_stage_failure(debate_step),
+                    abstain_reason=_abstain_reason_for_stage_failure(signal_step),
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
-                return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
+                return PulseDecisionAgentResult(
+                    final_decision=final,
+                    agent_run_audit=audit,
+                    stage_audits=tuple(stage_audits),
+                )
             raise PulseStageFailure(
-                f"evidence_debate stage {debate_step.status}: {debate_step.error}",
+                f"signal_analyst stage {signal_step.status}: {signal_step.error}",
                 audits=tuple(stage_audits),
             )
-        debate_memo = EvidenceDebateMemo.model_validate(debate_step.response_json)
+        signal_memo = SignalAnalystMemo.model_validate(signal_step.response_json)
 
         try:
-            self._decision_runtime.validate_debate_refs(
-                debate_memo,
+            self._decision_runtime.validate_signal_refs(
+                signal_memo,
                 evidence_packet=evidence_packet,
             )
         except ValueError as exc:
-            failed_step = self._decision_runtime.mark_step_failed(debate_step, error=str(exc))
+            failed_step = self._decision_runtime.mark_step_failed(signal_step, error=str(exc))
             stage_audits[-1] = failed_step
             final = _stage_failure_abstain_decision(
                 route=route,
@@ -206,41 +216,101 @@ class OpenAIAgentsPulseDecisionClient:
                 abstain_reason="invalid_unknown_evidence_ref",
             )
             audit = self._decision_runtime.with_output_hash(audit, final=final)
-            return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
+            return PulseDecisionAgentResult(
+                final_decision=final,
+                agent_run_audit=audit,
+                stage_audits=tuple(stage_audits),
+            )
 
-        decision_step = await self._run_decision_maker(
+        bear_step = await self._run_bear_case(
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
-            debate_memo=debate_memo,
+            signal_memo=signal_memo,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
         )
-        stage_audits.append(decision_step)
-        if decision_step.status != "ok":
-            if _is_model_contract_stage_failure(decision_step):
+        stage_audits.append(bear_step)
+        if bear_step.status != "ok":
+            if _is_model_contract_stage_failure(bear_step):
                 final = _stage_failure_abstain_decision(
                     route=route,
-                    reason=decision_step.error or "decision_maker_contract_failed",
+                    reason=bear_step.error or "bear_case_contract_failed",
                     evidence_packet=evidence_packet,
-                    abstain_reason=_abstain_reason_for_stage_failure(decision_step),
+                    abstain_reason=_abstain_reason_for_stage_failure(bear_step),
                 )
                 audit = self._decision_runtime.with_output_hash(audit, final=final)
-                return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
+                return PulseDecisionAgentResult(
+                    final_decision=final,
+                    agent_run_audit=audit,
+                    stage_audits=tuple(stage_audits),
+                )
             raise PulseStageFailure(
-                f"decision_maker stage {decision_step.status}: {decision_step.error}",
+                f"bear_case stage {bear_step.status}: {bear_step.error}",
                 audits=tuple(stage_audits),
             )
-        final = FinalDecision.model_validate(decision_step.response_json)
+        bear_memo = BearCaseMemo.model_validate(bear_step.response_json)
+        try:
+            self._decision_runtime.validate_bear_refs(
+                bear_memo,
+                evidence_packet=evidence_packet,
+            )
+        except ValueError as exc:
+            failed_step = self._decision_runtime.mark_step_failed(bear_step, error=str(exc))
+            stage_audits[-1] = failed_step
+            final = _stage_failure_abstain_decision(
+                route=route,
+                reason=str(exc),
+                evidence_packet=evidence_packet,
+                abstain_reason="invalid_unknown_evidence_ref",
+            )
+            audit = self._decision_runtime.with_output_hash(audit, final=final)
+            return PulseDecisionAgentResult(
+                final_decision=final,
+                agent_run_audit=audit,
+                stage_audits=tuple(stage_audits),
+            )
+
+        judge_step = await self._run_risk_portfolio_judge(
+            route=route,
+            evidence_packet=evidence_packet,
+            evidence_gate=evidence_gate,
+            signal_memo=signal_memo,
+            bear_memo=bear_memo,
+            run_id=run_id,
+            audit=audit,
+            parent_reservation=parent_reservation,
+        )
+        stage_audits.append(judge_step)
+        if judge_step.status != "ok":
+            if _is_model_contract_stage_failure(judge_step):
+                final = _stage_failure_abstain_decision(
+                    route=route,
+                    reason=judge_step.error or "risk_portfolio_judge_contract_failed",
+                    evidence_packet=evidence_packet,
+                    abstain_reason=_abstain_reason_for_stage_failure(judge_step),
+                )
+                audit = self._decision_runtime.with_output_hash(audit, final=final)
+                return PulseDecisionAgentResult(
+                    final_decision=final,
+                    agent_run_audit=audit,
+                    stage_audits=tuple(stage_audits),
+                )
+            raise PulseStageFailure(
+                f"risk_portfolio_judge stage {judge_step.status}: {judge_step.error}",
+                audits=tuple(stage_audits),
+            )
+        final = FinalDecision.model_validate(judge_step.response_json)
         try:
             self._decision_runtime.validate_final_evidence_refs(
                 final,
                 evidence_packet=evidence_packet,
-                debate_memo=debate_memo,
+                signal_memo=signal_memo,
+                bear_memo=bear_memo,
             )
         except ValueError as exc:
-            failed_step = self._decision_runtime.mark_step_failed(decision_step, error=str(exc))
+            failed_step = self._decision_runtime.mark_step_failed(judge_step, error=str(exc))
             stage_audits[-1] = failed_step
             final = _stage_failure_abstain_decision(
                 route=route,
@@ -253,9 +323,13 @@ class OpenAIAgentsPulseDecisionClient:
 
         PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
         audit = self._decision_runtime.with_output_hash(audit, final=final)
-        return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
+        return PulseDecisionAgentResult(
+            final_decision=final,
+            agent_run_audit=audit,
+            stage_audits=tuple(stage_audits),
+        )
 
-    async def _run_evidence_debate(
+    async def _run_signal_analyst(
         self,
         *,
         route: DecisionRoute,
@@ -265,7 +339,7 @@ class OpenAIAgentsPulseDecisionClient:
         audit: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
     ) -> StageRunAudit:
-        spec = self._decision_runtime.evidence_debate_stage_spec(
+        spec = self._decision_runtime.signal_analyst_stage_spec(
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
@@ -273,36 +347,65 @@ class OpenAIAgentsPulseDecisionClient:
         return await self._run_stage(
             spec=spec,
             route=route,
-            output_type=EvidenceDebateMemo,
-            max_turns=self._evidence_debate_max_turns,
+            output_type=SignalAnalystMemo,
+            max_turns=self._signal_analyst_max_turns,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
         )
 
-    async def _run_decision_maker(
+    async def _run_bear_case(
         self,
         *,
         route: DecisionRoute,
         evidence_packet: PulseEvidencePacket,
         evidence_gate: dict[str, Any],
-        debate_memo: EvidenceDebateMemo,
+        signal_memo: SignalAnalystMemo,
         run_id: str,
         audit: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
     ) -> StageRunAudit:
-        spec = self._decision_runtime.decision_maker_stage_spec(
+        spec = self._decision_runtime.bear_case_stage_spec(
             route=route,
             evidence_packet=evidence_packet,
             evidence_gate=evidence_gate,
-            debate_memo=debate_memo,
+            signal_memo=signal_memo,
+        )
+        return await self._run_stage(
+            spec=spec,
+            route=route,
+            output_type=BearCaseMemo,
+            max_turns=self._bear_case_max_turns,
+            run_id=run_id,
+            audit=audit,
+            parent_reservation=parent_reservation,
+        )
+
+    async def _run_risk_portfolio_judge(
+        self,
+        *,
+        route: DecisionRoute,
+        evidence_packet: PulseEvidencePacket,
+        evidence_gate: dict[str, Any],
+        signal_memo: SignalAnalystMemo,
+        bear_memo: BearCaseMemo,
+        run_id: str,
+        audit: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
+    ) -> StageRunAudit:
+        spec = self._decision_runtime.risk_portfolio_judge_stage_spec(
+            route=route,
+            evidence_packet=evidence_packet,
+            evidence_gate=evidence_gate,
+            signal_memo=signal_memo,
+            bear_memo=bear_memo,
             recommendation_constraints=_recommendation_constraints(route=route, completeness=evidence_gate),
         )
         return await self._run_stage(
             spec=spec,
             route=route,
             output_type=FinalDecision,
-            max_turns=self._decision_maker_max_turns,
+            max_turns=self._risk_portfolio_judge_max_turns,
             run_id=run_id,
             audit=audit,
             parent_reservation=parent_reservation,
@@ -416,18 +519,22 @@ class OpenAIAgentsPulseDecisionClient:
 
 
 def _stage_lane(stage: str) -> str:
-    if stage == "evidence_debate":
-        return "pulse.evidence_debate"
-    if stage == "decision_maker":
-        return "pulse.decision_maker"
+    if stage == "signal_analyst":
+        return "pulse.signal_analyst"
+    if stage == "bear_case":
+        return "pulse.bear_case"
+    if stage == "risk_portfolio_judge":
+        return "pulse.risk_portfolio_judge"
     raise ValueError(f"unsupported pulse stage: {stage}")
 
 
 def _stage_agent_name(stage: str, route: DecisionRoute) -> str:
-    if stage == "evidence_debate":
-        return f"PulseEvidenceDebate{_route_label(route)}"
-    if stage == "decision_maker":
-        return f"PulseDecisionMaker{_route_label(route)}"
+    if stage == "signal_analyst":
+        return f"PulseSignalAnalyst{_route_label(route)}"
+    if stage == "bear_case":
+        return f"PulseBearCase{_route_label(route)}"
+    if stage == "risk_portfolio_judge":
+        return f"PulseRiskPortfolioJudge{_route_label(route)}"
     return AGENT_NAME
 
 
@@ -516,12 +623,7 @@ def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
 
 
 def _stage_audit(**kwargs: Any) -> StageRunAudit:
-    try:
-        return StageRunAudit(**kwargs)
-    except ValueError as exc:
-        if kwargs.get("stage") == "evidence_debate" and "literal_error" in str(exc):
-            return StageRunAudit.model_construct(**kwargs)
-        raise
+    return StageRunAudit(**kwargs)
 
 
 def _input_json(input_payload: Any) -> dict[str, Any]:
@@ -628,7 +730,7 @@ def _abstain_reason_for_stage_failure(step: StageRunAudit) -> str:
 
 def _stage_failure_summary(abstain_reason: str) -> str:
     if abstain_reason == "stage_timeout":
-        return "LLM 证据辩论阶段超时，本次不发布候选。"
+        return "LLM 研究委员会阶段超时，本次不发布候选。"
     if abstain_reason == "invalid_model_output":
         return "模型输出不符合结构化合同，本次不发布候选。"
     return "模型输出引用了证据包外的 ref，本次不发布候选。"
