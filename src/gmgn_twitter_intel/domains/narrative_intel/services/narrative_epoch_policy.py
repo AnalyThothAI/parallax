@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -188,10 +189,24 @@ def _string_set(*values: Any) -> set[str]:
     result: set[str] = set()
     for value in values:
         if isinstance(value, str):
-            result.add(value)
+            parsed_value = _parse_json_sequence(value)
+            if parsed_value is None:
+                result.add(value)
+            else:
+                result.update(str(item) for item in parsed_value if item is not None)
         elif isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray, Mapping)):
             result.update(str(item) for item in value if item is not None)
     return result
+
+
+def _parse_json_sequence(value: str) -> list[Any] | tuple[Any, ...] | None:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, (list, tuple)):
+        return parsed
+    return None
 
 
 def _int_value(*values: Any) -> int:

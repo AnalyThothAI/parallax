@@ -197,3 +197,25 @@ def test_price_move_over_threshold_returns_material_delta_due() -> None:
     assert decision.should_refresh is True
     assert decision.should_write_status_digest is False
     assert decision.refresh_reason == "material_delta_due"
+
+
+def test_source_event_id_json_strings_are_parsed_for_delta_detection() -> None:
+    decision = NarrativeEpochPolicy().evaluate(
+        admission={
+            "window": "1h",
+            "source_event_ids_json": '["event-1","event-2","event-3","event-4","event-5","event-6"]',
+            "source_event_count": 6,
+            "independent_author_count": 2,
+        },
+        last_ready_digest={
+            "source_event_ids_json": '["event-1","event-2","event-3"]',
+            "independent_author_count": 2,
+            "display_current_until_ms": NOW_MS + 1,
+        },
+        semantic_coverage=_coverage(source_event_count=6),
+        market_context=None,
+        now_ms=NOW_MS,
+    )
+
+    assert decision.reason == "material_delta_due"
+    assert decision.should_refresh is True
