@@ -7,10 +7,10 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from gmgn_twitter_intel.platform.agent_capabilities import (
-    AgentCapabilityProfile,
     AgentOutputStrategy,
     AgentProviderFamily,
     AgentSchemaEnforcement,
+    resolve_agent_capability_profile,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
@@ -68,6 +68,33 @@ def test_artifact_hash_changes_when_runtime_behavior_changes() -> None:
         schema_version="s1",
         runtime_version="r2",
         output_schema_hash="schema-hash",
+    )
+
+    assert base != changed
+
+
+def test_artifact_hash_changes_when_request_options_change() -> None:
+    base = artifact_hash_for(
+        model="deepseek-v4-flash",
+        prompt_version="p1",
+        schema_version="s1",
+        runtime_version="r1",
+        output_schema_hash="schema-hash",
+        provider_family="deepseek",
+        output_strategy="json_object",
+        schema_enforcement="client_validate",
+        request_options_hash=json_sha256({}),
+    )
+    changed = artifact_hash_for(
+        model="deepseek-v4-flash",
+        prompt_version="p1",
+        schema_version="s1",
+        runtime_version="r1",
+        output_schema_hash="schema-hash",
+        provider_family="deepseek",
+        output_strategy="json_object",
+        schema_enforcement="client_validate",
+        request_options_hash=json_sha256({"extra_body": {"thinking": {"type": "disabled"}}}),
     )
 
     assert base != changed
@@ -140,11 +167,7 @@ def test_request_audit_shape_includes_capability_profile() -> None:
         workflow_name="workflow",
         agent_name="agent",
     )
-    profile = AgentCapabilityProfile(
-        provider_family=AgentProviderFamily.DEEPSEEK,
-        output_strategy=AgentOutputStrategy.JSON_OBJECT,
-        schema_enforcement=AgentSchemaEnforcement.CLIENT_VALIDATE,
-    )
+    profile = resolve_agent_capability_profile(model="deepseek-v4-flash")
 
     audit = AgentExecutionRequestAudit.from_stage(
         spec,
@@ -160,6 +183,9 @@ def test_request_audit_shape_includes_capability_profile() -> None:
     assert audit.trace_metadata["provider_family"] == "deepseek"
     assert audit.trace_metadata["output_strategy"] == "json_object"
     assert audit.trace_metadata["schema_enforcement"] == "client_validate"
+    assert audit.request_options_hash == json_sha256(profile.request_options)
+    assert audit.trace_metadata["request_options_hash"] == json_sha256(profile.request_options)
+    assert audit.trace_metadata["request_option_keys"] == ["extra_body"]
 
 
 def test_runtime_policy_uses_default_lane_when_missing() -> None:
@@ -199,8 +225,10 @@ def test_runtime_policy_resolves_model_capability_profiles() -> None:
 
     assert deepseek.output_strategy == AgentOutputStrategy.JSON_OBJECT
     assert deepseek.schema_enforcement == AgentSchemaEnforcement.CLIENT_VALIDATE
+    assert deepseek.request_options.extra_body == {"thinking": {"type": "disabled"}}
     assert override.provider_family == AgentProviderFamily.DEEPSEEK
     assert override.client_validation_retries == 2
+    assert override.request_options.extra_body == {}
 
 
 def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model() -> None:
@@ -211,6 +239,7 @@ def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model
     assert profile.provider_family == AgentProviderFamily.DEEPSEEK
     assert profile.output_strategy == AgentOutputStrategy.JSON_OBJECT
     assert profile.schema_enforcement == AgentSchemaEnforcement.CLIENT_VALIDATE
+    assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
 def test_policy_models_forbid_extra_fields_and_invalid_non_positive_values() -> None:

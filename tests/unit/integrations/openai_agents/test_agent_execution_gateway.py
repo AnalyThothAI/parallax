@@ -540,6 +540,7 @@ def test_execute_uses_json_object_strategy_for_lane_capability() -> None:
         ]
         call = llm_gateway.client.chat.completions.calls[0]
         assert call["response_format"] == {"type": "json_object"}
+        assert call["extra_body"] == {"thinking": {"type": "disabled"}}
         assert "tool_choice" not in call
 
     asyncio.run(scenario())

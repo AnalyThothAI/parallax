@@ -17,7 +17,7 @@ from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import 
     InstructorSafetyNet,
     extract_sdk_usage,
 )
-from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile
+from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile, AgentRequestOptions
 from gmgn_twitter_intel.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
 
 
@@ -131,11 +131,13 @@ class ChatJsonObjectStrategy:
         attempts = max(1, int(context.capability_profile.client_validation_retries) + 1)
         last_error: Exception | None = None
         raw_response: Any | None = None
+        request_options = _chat_completion_request_options(context.capability_profile.request_options)
         for attempt_index in range(attempts):
             raw_response = await client.chat.completions.create(
                 model=context.model_name,
                 messages=messages,
                 response_format={"type": "json_object"},
+                **request_options,
             )
             text = _first_message_content(raw_response)
             try:
@@ -206,6 +208,15 @@ def _append_validation_reask(
             ),
         },
     ]
+
+
+def _chat_completion_request_options(request_options: AgentRequestOptions) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {}
+    if request_options.extra_body:
+        kwargs["extra_body"] = dict(request_options.extra_body)
+    if request_options.max_tokens is not None:
+        kwargs["max_tokens"] = request_options.max_tokens
+    return kwargs
 
 
 __all__ = [

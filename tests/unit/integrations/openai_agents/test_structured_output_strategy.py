@@ -14,6 +14,7 @@ from gmgn_twitter_intel.platform.agent_capabilities import (
     AgentOutputStrategy,
     AgentProviderFamily,
     AgentSchemaEnforcement,
+    resolve_agent_capability_profile,
 )
 from gmgn_twitter_intel.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
 
@@ -69,6 +70,7 @@ def test_json_object_strategy_uses_official_response_format_and_client_validatio
         call = client.chat.completions.calls[0]
         assert call["model"] == "deepseek-v4-flash"
         assert call["response_format"] == {"type": "json_object"}
+        assert call["extra_body"] == {"thinking": {"type": "disabled"}}
         assert "tools" not in call
         assert "tool_choice" not in call
         assert "json object" in call["messages"][0]["content"].lower()
@@ -107,11 +109,7 @@ def test_json_object_strategy_reasks_within_same_strategy_after_validation_failu
 
 
 def _context(*, capability_profile: AgentCapabilityProfile | None = None) -> StructuredOutputContext:
-    profile = capability_profile or AgentCapabilityProfile(
-        provider_family=AgentProviderFamily.DEEPSEEK,
-        output_strategy=AgentOutputStrategy.JSON_OBJECT,
-        schema_enforcement=AgentSchemaEnforcement.CLIENT_VALIDATE,
-    )
+    profile = capability_profile or resolve_agent_capability_profile(model="deepseek-v4-flash")
     return StructuredOutputContext(
         stage=AgentStageSpec(
             lane="pulse.signal_analyst",
@@ -130,3 +128,19 @@ def _context(*, capability_profile: AgentCapabilityProfile | None = None) -> Str
         capability_profile=profile,
         trace_metadata={},
     )
+
+
+def test_json_object_strategy_uses_registered_model_request_options_by_default() -> None:
+    async def scenario() -> None:
+        client = FakeClient()
+        strategy = ChatJsonObjectStrategy(openai_client_factory=lambda **_: client)
+
+        await strategy.run(
+            _context(capability_profile=resolve_agent_capability_profile(model="deepseek-v4-flash"))
+        )
+
+        call = client.chat.completions.calls[0]
+        assert call["response_format"] == {"type": "json_object"}
+        assert call["extra_body"] == {"thinking": {"type": "disabled"}}
+
+    asyncio.run(scenario())

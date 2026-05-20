@@ -27,6 +27,21 @@ def _normalized(value: Any) -> Any:
     return str(value).strip().lower()
 
 
+class AgentRequestOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    extra_body: dict[str, Any] = Field(default_factory=dict)
+    max_tokens: int | None = Field(default=None, ge=1)
+
+    def option_keys(self) -> list[str]:
+        keys: list[str] = []
+        if self.extra_body:
+            keys.append("extra_body")
+        if self.max_tokens is not None:
+            keys.append("max_tokens")
+        return keys
+
+
 class AgentCapabilityProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -34,6 +49,7 @@ class AgentCapabilityProfile(BaseModel):
     output_strategy: AgentOutputStrategy = AgentOutputStrategy.JSON_SCHEMA
     schema_enforcement: AgentSchemaEnforcement = AgentSchemaEnforcement.PROVIDER
     client_validation_retries: int = Field(default=1, ge=0)
+    request_options: AgentRequestOptions = Field(default_factory=AgentRequestOptions)
 
     @field_validator("provider_family", mode="before")
     @classmethod
@@ -71,6 +87,7 @@ _MODEL_CAPABILITY_DEFAULTS: dict[str, AgentCapabilityProfile] = {
         output_strategy=AgentOutputStrategy.JSON_OBJECT,
         schema_enforcement=AgentSchemaEnforcement.CLIENT_VALIDATE,
         client_validation_retries=1,
+        request_options=AgentRequestOptions(extra_body={"thinking": {"type": "disabled"}}),
     ),
 }
 
@@ -80,19 +97,21 @@ def resolve_agent_capability_profile(
     model: str,
     override: AgentCapabilityProfile | None = None,
 ) -> AgentCapabilityProfile:
-    if override is not None:
-        return override
     key = str(model or "").strip().lower()
-    profile = _MODEL_CAPABILITY_DEFAULTS.get(key)
-    if profile is not None:
+    profile = _MODEL_CAPABILITY_DEFAULTS.get(key) or AgentCapabilityProfile()
+    if override is None:
         return profile
-    return AgentCapabilityProfile()
+    payload = profile.model_dump(mode="python")
+    for field_name in override.model_fields_set:
+        payload[field_name] = getattr(override, field_name)
+    return AgentCapabilityProfile(**payload)
 
 
 __all__ = [
     "AgentCapabilityProfile",
     "AgentOutputStrategy",
     "AgentProviderFamily",
+    "AgentRequestOptions",
     "AgentSchemaEnforcement",
     "resolve_agent_capability_profile",
 ]

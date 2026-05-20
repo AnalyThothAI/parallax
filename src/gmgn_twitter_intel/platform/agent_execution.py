@@ -111,13 +111,16 @@ class AgentRuntimePolicy(BaseModel):
         lane_policy = self.lane_for(lane)
         model = self.model_for_lane(lane)
         if _lane_has_capability_override(lane_policy):
-            return _capability_profile_from_parts(
-                provider_family=lane_policy.provider_family or self.defaults.provider_family,
-                output_strategy=lane_policy.output_strategy or self.defaults.output_strategy,
-                schema_enforcement=lane_policy.schema_enforcement or self.defaults.schema_enforcement,
-                client_validation_retries=_first_non_none(
-                    lane_policy.client_validation_retries,
-                    self.defaults.client_validation_retries,
+            return resolve_agent_capability_profile(
+                model=model,
+                override=_capability_profile_from_parts(
+                    provider_family=lane_policy.provider_family or self.defaults.provider_family,
+                    output_strategy=lane_policy.output_strategy or self.defaults.output_strategy,
+                    schema_enforcement=lane_policy.schema_enforcement or self.defaults.schema_enforcement,
+                    client_validation_retries=_first_non_none(
+                        lane_policy.client_validation_retries,
+                        self.defaults.client_validation_retries,
+                    ),
                 ),
             )
         if _defaults_have_capability_override(self.defaults):
@@ -163,6 +166,7 @@ class AgentExecutionRequestAudit(BaseModel):
     provider_family: str = "openai_compatible"
     output_strategy: str = "json_schema"
     schema_enforcement: str = "provider"
+    request_options_hash: str = Field(default_factory=lambda: json_sha256({}))
     model: str
     lane: str
     stage: str
@@ -197,6 +201,7 @@ class AgentExecutionRequestAudit(BaseModel):
         capability_profile: AgentCapabilityProfile | None = None,
     ) -> AgentExecutionRequestAudit:
         profile = capability_profile or AgentCapabilityProfile()
+        request_options_hash = json_sha256(profile.request_options)
         trace_metadata = {
             **stage.trace_metadata,
             "backend": "openai_agents_sdk",
@@ -204,6 +209,8 @@ class AgentExecutionRequestAudit(BaseModel):
             "provider_family": profile.provider_family.value,
             "output_strategy": profile.output_strategy.value,
             "schema_enforcement": profile.schema_enforcement.value,
+            "request_options_hash": request_options_hash,
+            "request_option_keys": profile.request_options.option_keys(),
             "lane": stage.lane,
             "stage": stage.stage,
             "prompt_version": stage.prompt_version,
@@ -216,6 +223,7 @@ class AgentExecutionRequestAudit(BaseModel):
             provider_family=profile.provider_family.value,
             output_strategy=profile.output_strategy.value,
             schema_enforcement=profile.schema_enforcement.value,
+            request_options_hash=request_options_hash,
             model=model,
             lane=stage.lane,
             stage=stage.stage,

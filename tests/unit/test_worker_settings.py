@@ -3,6 +3,7 @@ import yaml
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+from gmgn_twitter_intel.platform.agent_execution import AgentRuntimePolicy
 from gmgn_twitter_intel.platform.config.settings import (
     PulseCandidateWorkerSettings,
     WorkersSettings,
@@ -343,13 +344,25 @@ def test_default_worker_advisory_lock_keys_are_unique():
     assert len(keys.values()) == len(set(keys.values()))
 
 
-def test_agent_runtime_capability_fields_default_to_provider_json_schema() -> None:
+def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
     settings = WorkersSettings()
 
-    assert settings.agent_runtime.defaults.provider_family == "openai_compatible"
-    assert settings.agent_runtime.defaults.output_strategy == "json_schema"
-    assert settings.agent_runtime.defaults.schema_enforcement == "provider"
-    assert settings.agent_runtime.defaults.client_validation_retries == 1
+    assert settings.agent_runtime.defaults.provider_family is None
+    assert settings.agent_runtime.defaults.output_strategy is None
+    assert settings.agent_runtime.defaults.schema_enforcement is None
+    assert settings.agent_runtime.defaults.client_validation_retries is None
+
+
+def test_agent_runtime_default_model_uses_registered_capability_profile() -> None:
+    settings = WorkersSettings(agent_runtime={"defaults": {"model": "deepseek-v4-flash"}})
+    policy = AgentRuntimePolicy.model_validate(settings.agent_runtime.model_dump(mode="json"))
+
+    profile = policy.capability_for_lane("pulse.signal_analyst")
+
+    assert profile.provider_family == "deepseek"
+    assert profile.output_strategy == "json_object"
+    assert profile.schema_enforcement == "client_validate"
+    assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
 def test_agent_runtime_lane_accepts_capability_overrides() -> None:

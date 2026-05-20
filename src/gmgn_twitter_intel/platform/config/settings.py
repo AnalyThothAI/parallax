@@ -595,10 +595,10 @@ class AgentRuntimeDefaultsSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = "qwen3.6"
-    provider_family: Literal["openai_compatible", "deepseek"] = "openai_compatible"
-    output_strategy: Literal["json_schema", "json_object"] = "json_schema"
-    schema_enforcement: Literal["provider", "client_validate"] = "provider"
-    client_validation_retries: int = Field(default=1, ge=0)
+    provider_family: Literal["openai_compatible", "deepseek"] | None = None
+    output_strategy: Literal["json_schema", "json_object"] | None = None
+    schema_enforcement: Literal["provider", "client_validate"] | None = None
+    client_validation_retries: int | None = Field(default=None, ge=0)
     disable_thinking: bool = True
     include_usage: bool = True
 
@@ -612,9 +612,11 @@ class AgentRuntimeDefaultsSettings(BaseModel):
 
     @field_validator("provider_family", "output_strategy", "schema_enforcement", mode="before")
     @classmethod
-    def parse_capability_label(cls, value: Any) -> str:
+    def parse_capability_label(cls, value: Any) -> str | None:
+        if value is None:
+            return None
         normalized = str(value or "").strip().lower()
-        return normalized
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_capability_pair(self) -> AgentRuntimeDefaultsSettings:
@@ -1506,10 +1508,6 @@ defaults:
 agent_runtime:
   defaults:
     model: "qwen3.6"
-    provider_family: "openai_compatible"
-    output_strategy: "json_schema"
-    schema_enforcement: "provider"
-    client_validation_retries: 1
     disable_thinking: true
     include_usage: true
   global_max_concurrency: 4

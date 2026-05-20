@@ -114,12 +114,14 @@ class AgentExecutionGateway:
     def request_audit(self, stage: AgentStageSpec) -> AgentExecutionRequestAudit:
         model_name = self.model_for_lane(stage.lane)
         capability_profile = self._policy.capability_for_lane(stage.lane)
+        request_options_hash = json_sha256(capability_profile.request_options)
         output_schema = StrictJsonOutputSchema(stage.output_type)
         artifact_version_hash = artifact_hash_for(
             model=model_name,
             provider_family=capability_profile.provider_family.value,
             output_strategy=capability_profile.output_strategy.value,
             schema_enforcement=capability_profile.schema_enforcement.value,
+            request_options_hash=request_options_hash,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
             runtime_version=RUNTIME_VERSION,
@@ -133,6 +135,7 @@ class AgentExecutionGateway:
                 "provider_family": capability_profile.provider_family.value,
                 "output_strategy": capability_profile.output_strategy.value,
                 "schema_enforcement": capability_profile.schema_enforcement.value,
+                "request_options_hash": request_options_hash,
                 "workflow_name": stage.workflow_name,
                 "agent_name": stage.agent_name,
                 "group_id": stage.group_id,

@@ -277,21 +277,22 @@ inherits that default. Current lanes are `pulse.pipeline`, `pulse.signal_analyst
 `news.fact_candidate`, and `news.item_brief`. Attempt-burning workers
 reserve capacity before claiming DB work:
 
-`agent_runtime.defaults.output_strategy` controls the default structured
-output mode. `json_schema` means provider-enforced schema through the
-Agents SDK. `json_object` means provider JSON mode plus application-side
-Pydantic validation. Lane overrides may set `provider_family`,
-`output_strategy`, `schema_enforcement`, and `client_validation_retries`
-together. Example DeepSeek lane override:
+`agent_runtime.defaults.model` and lane `model` select the registered model
+capability profile. The profile owns provider family, structured-output mode,
+schema enforcement, client-validation retry count, and provider request
+options such as DeepSeek thinking-mode disablement. `json_schema` means
+provider-enforced schema through the Agents SDK. `json_object` means provider
+JSON mode plus application-side Pydantic validation. Lane overrides may set
+`provider_family`, `output_strategy`, `schema_enforcement`, and
+`client_validation_retries` for an unregistered or experimental model; they
+merge with the registered profile when the model is known. Example DeepSeek
+lane override:
 
 ```yaml
 agent_runtime:
   lanes:
     pulse.signal_analyst:
       model: deepseek-v4-flash
-      provider_family: deepseek
-      output_strategy: json_object
-      schema_enforcement: client_validate
 ```
 
 - `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`
