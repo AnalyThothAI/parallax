@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -14,6 +15,7 @@ _WINDOW_MS = {
     "4h": 4 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
 }
+_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
 class SocialEventExtractionRepository:
@@ -48,19 +50,25 @@ class SocialEventExtractionRepository:
     ) -> dict[str, Any]:
         normalized_event_id = str(event_id)
         extraction_id = extraction_id or _extraction_id(normalized_event_id)
+        normalized_handle = _normalize_handle(author_handle)
         now_ms = _now_ms()
         self.conn.execute(
             """
             INSERT INTO social_event_extractions(
-              extraction_id, event_id, run_id, author_handle, received_at_ms, schema_version, model_version,
+              extraction_id, event_id, run_id, author_handle, normalized_handle, received_at_ms,
+              schema_version, model_version,
               event_type, source_action, subject, direction_hint, attention_mechanism, impact_hint,
               semantic_novelty_hint, confidence, is_signal_event, anchor_terms_json, token_candidates_json,
               semantic_risks_json, summary_zh, raw_response_json, created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
             ON CONFLICT(event_id) DO UPDATE SET
               run_id = excluded.run_id,
               author_handle = excluded.author_handle,
+              normalized_handle = excluded.normalized_handle,
               received_at_ms = excluded.received_at_ms,
               schema_version = excluded.schema_version,
               model_version = excluded.model_version,
@@ -85,6 +93,7 @@ class SocialEventExtractionRepository:
                 normalized_event_id,
                 run_id,
                 author_handle,
+                normalized_handle,
                 int(received_at_ms),
                 schema_version,
                 model_version,
@@ -149,9 +158,12 @@ class SocialEventExtractionRepository:
         clauses = ["se.received_at_ms >= %s"]
         params: list[Any] = [now - _WINDOW_MS.get(window, _WINDOW_MS["1h"])]
         if handles:
-            normalized = sorted(handle.lower().lstrip("@") for handle in handles)
-            clauses.append(f"lower(se.author_handle) IN ({','.join('%s' for _ in normalized)})")
-            params.extend(normalized)
+            normalized = sorted({handle for value in handles if (handle := _normalize_handle(value))})
+            if normalized:
+                clauses.append("se.normalized_handle = ANY(%s)")
+                params.append(normalized)
+            else:
+                clauses.append("FALSE")
         if event_types:
             normalized_types = sorted(event_types)
             clauses.append(f"se.event_type IN ({','.join('%s' for _ in normalized_types)})")
@@ -203,6 +215,13 @@ def _decode(row: dict[str, Any]) -> dict[str, Any]:
 
 def _event_ids(event_ids: Sequence[str]) -> list[str]:
     return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
+
+
+def _normalize_handle(value: str | None) -> str | None:
+    normalized = str(value or "").strip().lstrip("@").lower()
+    if not _HANDLE_RE.fullmatch(normalized):
+        return None
+    return normalized
 
 
 def _now_ms() -> int:

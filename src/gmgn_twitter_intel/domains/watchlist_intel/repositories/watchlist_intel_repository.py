@@ -388,36 +388,196 @@ class WatchlistIntelRepository:
         ).fetchone()
         return _decode_summary(dict(row)) if row else None
 
-    def count_signal_events_total(self, handle: str) -> int:
+    def record_signal_event_state(
+        self,
+        *,
+        handle: str,
+        event_id: str,
+        received_at_ms: int,
+        is_signal_event: bool,
+        commit: bool = True,
+    ) -> bool:
+        normalized_event_id = str(event_id or "").strip()
+        if not normalized_event_id:
+            return False
+        existing = self.conn.execute(
+            "SELECT handle FROM watchlist_handle_signal_events WHERE event_id = %s",
+            (normalized_event_id,),
+        ).fetchone()
+        existing_handle = str(existing["handle"]) if existing else None
+        changed_handles: set[str] = set()
+
+        if not bool(is_signal_event):
+            if existing_handle:
+                self.conn.execute(
+                    "DELETE FROM watchlist_handle_signal_events WHERE event_id = %s",
+                    (normalized_event_id,),
+                )
+                changed_handles.add(existing_handle)
+            self._recompute_signal_stats(changed_handles)
+            if commit:
+                self.conn.commit()
+            return bool(existing_handle)
+
+        try:
+            normalized_handle = normalize_watchlist_handle(handle)
+        except ValueError:
+            if commit:
+                self.conn.commit()
+            return False
+
+        now_ms = _now_ms()
+        self.conn.execute(
+            """
+            INSERT INTO watchlist_handle_signal_events(event_id, handle, received_at_ms, created_at_ms, updated_at_ms)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT(event_id) DO UPDATE SET
+              handle = excluded.handle,
+              received_at_ms = excluded.received_at_ms,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (normalized_event_id, normalized_handle, int(received_at_ms), now_ms, now_ms),
+        )
+        changed_handles.add(normalized_handle)
+        if existing_handle and existing_handle != normalized_handle:
+            changed_handles.add(existing_handle)
+        self._recompute_signal_stats(changed_handles)
+        if commit:
+            self.conn.commit()
+        return True
+
+    def signal_stats_for_handle(self, handle: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
-            SELECT COUNT(*) AS count
-            FROM social_event_extractions se
-            JOIN events e ON e.event_id = se.event_id
-            WHERE lower(coalesce(se.author_handle, e.author_handle, '')) = %s
-              AND se.is_signal_event = TRUE
+            SELECT *
+            FROM watchlist_handle_signal_stats
+            WHERE handle = %s
             """,
             (normalize_watchlist_handle(handle),),
         ).fetchone()
-        return int(row["count"] if row else 0)
+        return dict(row) if row else None
+
+    def backfill_signal_stats_batch(
+        self,
+        *,
+        after_received_at_ms: int | None,
+        after_event_id: str | None,
+        batch_size: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        parsed_limit = max(0, int(batch_size))
+        if parsed_limit <= 0:
+            return {
+                "processed": 0,
+                "signal_events": 0,
+                "normalized_handles": 0,
+                "last_received_at_ms": after_received_at_ms,
+                "last_event_id": after_event_id,
+                "has_more": False,
+            }
+        clauses: list[str] = []
+        params: list[Any] = []
+        if after_received_at_ms is not None and after_event_id:
+            clauses.append("(se.received_at_ms, se.event_id) > (%s, %s)")
+            params.extend([int(after_received_at_ms), str(after_event_id)])
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              se.event_id,
+              se.author_handle,
+              se.normalized_handle,
+              e.author_handle AS event_author_handle,
+              se.received_at_ms,
+              se.is_signal_event
+            FROM social_event_extractions se
+            LEFT JOIN events e ON e.event_id = se.event_id
+            {"WHERE " + " AND ".join(clauses) if clauses else ""}
+            ORDER BY se.received_at_ms ASC, se.event_id ASC
+            LIMIT %s
+            """,
+            (*params, parsed_limit),
+        ).fetchall()
+        processed = 0
+        signal_events = 0
+        normalized_handles = 0
+        last_received_at_ms = after_received_at_ms
+        last_event_id = after_event_id
+        for raw_row in rows:
+            row = dict(raw_row)
+            processed += 1
+            last_received_at_ms = int(row["received_at_ms"])
+            last_event_id = str(row["event_id"])
+            handle = _safe_normalize_handle(row.get("normalized_handle"))
+            if handle is None:
+                handle = _safe_normalize_handle(row.get("author_handle"))
+            if handle is None:
+                handle = _safe_normalize_handle(row.get("event_author_handle"))
+            if handle and handle != row.get("normalized_handle"):
+                self.conn.execute(
+                    """
+                    UPDATE social_event_extractions
+                    SET normalized_handle = %s,
+                        updated_at_ms = %s
+                    WHERE event_id = %s
+                      AND normalized_handle IS DISTINCT FROM %s
+                    """,
+                    (handle, _now_ms(), str(row["event_id"]), handle),
+                )
+                normalized_handles += 1
+            if handle and bool(row.get("is_signal_event")):
+                signal_events += 1
+            if handle:
+                self.record_signal_event_state(
+                    handle=handle,
+                    event_id=str(row["event_id"]),
+                    received_at_ms=int(row["received_at_ms"]),
+                    is_signal_event=bool(row.get("is_signal_event")),
+                    commit=False,
+                )
+        if commit:
+            self.conn.commit()
+        return {
+            "processed": processed,
+            "signal_events": signal_events,
+            "normalized_handles": normalized_handles,
+            "last_received_at_ms": last_received_at_ms,
+            "last_event_id": last_event_id,
+            "has_more": len(rows) == parsed_limit,
+        }
+
+    def count_signal_events_total(self, handle: str) -> int:
+        row = self.conn.execute(
+            """
+            SELECT total_signal_count
+            FROM watchlist_handle_signal_stats
+            WHERE handle = %s
+            """,
+            (normalize_watchlist_handle(handle),),
+        ).fetchone()
+        return int(row["total_signal_count"] if row else 0)
 
     def signal_events_for_summary(self, *, handle: str, since_ms: int, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
+            WITH selected AS (
+              SELECT *
+              FROM social_event_extractions
+              WHERE normalized_handle = %s
+                AND is_signal_event = TRUE
+                AND btrim(summary_zh) <> ''
+                AND received_at_ms >= %s
+              ORDER BY received_at_ms DESC, event_id DESC
+              LIMIT %s
+            )
             SELECT
               se.*,
               e.text_clean AS event_text,
               e.canonical_url AS canonical_url,
               e.cashtags_json AS event_cashtags_json,
               e.hashtags_json AS event_hashtags_json
-            FROM social_event_extractions se
+            FROM selected se
             JOIN events e ON e.event_id = se.event_id
-            WHERE lower(coalesce(se.author_handle, e.author_handle, '')) = %s
-              AND se.is_signal_event = TRUE
-              AND btrim(se.summary_zh) <> ''
-              AND se.received_at_ms >= %s
             ORDER BY se.received_at_ms DESC, se.event_id DESC
-            LIMIT %s
             """,
             (normalize_watchlist_handle(handle), int(since_ms), max(0, int(limit))),
         ).fetchall()
@@ -632,38 +792,84 @@ class WatchlistIntelRepository:
         normalized = [normalize_watchlist_handle(handle) for handle in handles]
         if not normalized:
             return []
-        placeholders = ",".join("%s" for _ in normalized)
         rows = self.conn.execute(
-            f"""
-            SELECT lower(coalesce(se.author_handle, e.author_handle, '')) AS handle,
-                   COUNT(*) AS signal_count,
-                   MAX(se.received_at_ms) AS latest_signal_at_ms
-            FROM social_event_extractions se
-            JOIN events e ON e.event_id = se.event_id
-            LEFT JOIN watchlist_handle_summaries s
-              ON s.handle = lower(coalesce(se.author_handle, e.author_handle, ''))
-            LEFT JOIN watchlist_handle_summary_jobs j
-              ON j.handle = lower(coalesce(se.author_handle, e.author_handle, ''))
-             AND j.status IN ('pending', 'running', 'failed')
-            WHERE lower(coalesce(se.author_handle, e.author_handle, '')) IN ({placeholders})
-              AND se.is_signal_event = TRUE
-              AND se.received_at_ms >= %s
-              AND j.handle IS NULL
-              AND (s.handle IS NULL OR s.signal_count_at_generation < (
-                SELECT COUNT(*)
-                FROM social_event_extractions latest_se
-                JOIN events latest_e ON latest_e.event_id = latest_se.event_id
-                WHERE lower(coalesce(latest_se.author_handle, latest_e.author_handle, ''))
-                  = lower(coalesce(se.author_handle, e.author_handle, ''))
-                  AND latest_se.is_signal_event = TRUE
-              ))
-            GROUP BY lower(coalesce(se.author_handle, e.author_handle, ''))
-            ORDER BY latest_signal_at_ms DESC
+            """
+            SELECT
+              stats.handle,
+              stats.total_signal_count AS signal_count,
+              stats.latest_signal_at_ms
+            FROM watchlist_handle_signal_stats stats
+            LEFT JOIN watchlist_handle_summaries summary
+              ON summary.handle = stats.handle
+            LEFT JOIN watchlist_handle_summary_jobs job
+              ON job.handle = stats.handle
+             AND job.status IN ('pending', 'running', 'failed')
+            WHERE stats.handle = ANY(%s)
+              AND stats.latest_signal_at_ms >= %s
+              AND job.handle IS NULL
+              AND (
+                summary.handle IS NULL
+                OR summary.signal_count_at_generation < stats.total_signal_count
+              )
+            ORDER BY stats.latest_signal_at_ms DESC
             LIMIT %s
             """,
-            (*normalized, int(since_ms), max(0, int(limit))),
+            (normalized, int(since_ms), max(0, int(limit))),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def _recompute_signal_stats(self, handles: set[str]) -> None:
+        for handle in sorted(handles):
+            aggregate = self.conn.execute(
+                """
+                SELECT
+                  COUNT(*) AS total_signal_count,
+                  MIN(received_at_ms) AS first_signal_at_ms,
+                  MAX(received_at_ms) AS latest_signal_at_ms
+                FROM watchlist_handle_signal_events
+                WHERE handle = %s
+                """,
+                (handle,),
+            ).fetchone()
+            total_signal_count = int(aggregate["total_signal_count"] if aggregate else 0)
+            if total_signal_count <= 0:
+                self.conn.execute("DELETE FROM watchlist_handle_signal_stats WHERE handle = %s", (handle,))
+                continue
+            latest = self.conn.execute(
+                """
+                SELECT event_id, received_at_ms
+                FROM watchlist_handle_signal_events
+                WHERE handle = %s
+                ORDER BY received_at_ms DESC, event_id DESC
+                LIMIT 1
+                """,
+                (handle,),
+            ).fetchone()
+            now_ms = _now_ms()
+            self.conn.execute(
+                """
+                INSERT INTO watchlist_handle_signal_stats(
+                  handle, total_signal_count, latest_signal_at_ms, latest_signal_event_id,
+                  first_signal_at_ms, created_at_ms, updated_at_ms
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(handle) DO UPDATE SET
+                  total_signal_count = excluded.total_signal_count,
+                  latest_signal_at_ms = excluded.latest_signal_at_ms,
+                  latest_signal_event_id = excluded.latest_signal_event_id,
+                  first_signal_at_ms = excluded.first_signal_at_ms,
+                  updated_at_ms = excluded.updated_at_ms
+                """,
+                (
+                    handle,
+                    total_signal_count,
+                    int(latest["received_at_ms"]),
+                    str(latest["event_id"]),
+                    int(aggregate["first_signal_at_ms"]),
+                    now_ms,
+                    now_ms,
+                ),
+            )
 
 
 def _decode_timeline_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -715,6 +921,13 @@ def _decode_social_event(row: dict[str, Any]) -> dict[str, Any]:
     row["hashtags"] = _loads(row.pop("event_hashtags_json", []), [])
     row["is_signal_event"] = bool(row.get("is_signal_event"))
     return row
+
+
+def _safe_normalize_handle(value: Any) -> str | None:
+    try:
+        return normalize_watchlist_handle(str(value or ""))
+    except ValueError:
+        return None
 
 
 def _decode_summary(row: dict[str, Any]) -> dict[str, Any]:

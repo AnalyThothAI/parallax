@@ -161,13 +161,32 @@ def test_enrichment_worker_enqueues_watchlist_summary_job_in_completion_transact
             "SELECT * FROM watchlist_handle_summary_jobs WHERE handle = %s",
             ("toly",),
         ).fetchone()
+        social_event = conn.execute(
+            "SELECT normalized_handle FROM social_event_extractions WHERE event_id = %s",
+            ("event-watchlist-summary",),
+        ).fetchone()
+        signal_event = conn.execute(
+            "SELECT * FROM watchlist_handle_signal_events WHERE event_id = %s",
+            ("event-watchlist-summary",),
+        ).fetchone()
+        signal_stats = conn.execute(
+            "SELECT * FROM watchlist_handle_signal_stats WHERE handle = %s",
+            ("toly",),
+        ).fetchone()
     finally:
         conn.close()
 
     assert processed.processed == 1
     assert job["status"] == "done"
+    assert social_event["normalized_handle"] == "toly"
+    assert signal_event is not None
+    assert signal_event["handle"] == "toly"
+    assert signal_stats is not None
+    assert signal_stats["total_signal_count"] == 1
+    assert signal_stats["latest_signal_event_id"] == "event-watchlist-summary"
     assert summary_job is not None
     assert summary_job["status"] == "pending"
+    assert summary_job["pending_signal_count"] == 1
     assert summary_job["trigger_reason"] == "cold_start"
 
 
@@ -211,6 +230,14 @@ def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_pat
         raw_response={"ok": True},
     )
     conn, ingest, worker, enrichment, social_events = open_runtime(tmp_path, client=FakeClient(result))
+    worker.watchlist_summary_config = HandleSummaryTriggerConfig(
+        signal_threshold=1,
+        time_threshold_ms=60_000,
+        min_interval_ms=60_000,
+        input_limit=20,
+        window_days=7,
+        max_attempts=2,
+    )
     try:
         event = make_event(
             "event-worker-non-signal",
@@ -221,12 +248,28 @@ def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_pat
         processed = asyncio.run(worker.run_once(now_ms=int(time.time() * 1000)))
         stored = social_events.recent(window="24h", limit=10)["items"]
         jobs = enrichment.list_jobs(limit=10)
+        signal_event = conn.execute(
+            "SELECT * FROM watchlist_handle_signal_events WHERE event_id = %s",
+            ("event-worker-non-signal",),
+        ).fetchone()
+        signal_stats = conn.execute(
+            "SELECT * FROM watchlist_handle_signal_stats WHERE handle = %s",
+            ("toly",),
+        ).fetchone()
+        summary_job = conn.execute(
+            "SELECT * FROM watchlist_handle_summary_jobs WHERE handle = %s",
+            ("toly",),
+        ).fetchone()
     finally:
         conn.close()
 
     assert processed.processed == 1
     assert jobs[0]["status"] == "done"
     assert stored[0]["is_signal_event"] is False
+    assert stored[0]["normalized_handle"] == "toly"
+    assert signal_event is None
+    assert signal_stats is None
+    assert summary_job is None
 
 
 def test_enrichment_worker_times_out_hung_llm_job(tmp_path):
