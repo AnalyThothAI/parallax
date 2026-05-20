@@ -59,6 +59,7 @@ markers = [
   "e2e: cross-process; needs testcontainers + uvicorn subprocess (lives in tests/e2e/)",
   "architecture: AST/grep enforcement of repo invariants (lives in tests/architecture/)",
   "contract: front-back schema/contract drift checks (lives in tests/contract/)",
+  "live: opt-in tests that call external provider APIs",
 ]
 
 [tool.ruff]

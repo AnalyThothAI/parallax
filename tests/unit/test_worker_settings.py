@@ -334,3 +334,46 @@ def test_default_worker_advisory_lock_keys_are_unique():
     }
 
     assert len(keys.values()) == len(set(keys.values()))
+
+
+def test_agent_runtime_capability_fields_default_to_provider_json_schema() -> None:
+    settings = WorkersSettings()
+
+    assert settings.agent_runtime.defaults.provider_family == "openai_compatible"
+    assert settings.agent_runtime.defaults.output_strategy == "json_schema"
+    assert settings.agent_runtime.defaults.schema_enforcement == "provider"
+    assert settings.agent_runtime.defaults.client_validation_retries == 1
+
+
+def test_agent_runtime_lane_accepts_capability_overrides() -> None:
+    settings = WorkersSettings(
+        agent_runtime={
+            "lanes": {
+                "news.item_brief": {
+                    "provider_family": "deepseek",
+                    "output_strategy": "json_object",
+                    "schema_enforcement": "client_validate",
+                    "client_validation_retries": 2,
+                }
+            }
+        }
+    )
+
+    lane = settings.agent_runtime.lanes["news.item_brief"]
+    assert lane.provider_family == "deepseek"
+    assert lane.output_strategy == "json_object"
+    assert lane.schema_enforcement == "client_validate"
+    assert lane.client_validation_retries == 2
+
+
+def test_agent_runtime_rejects_unknown_output_strategy() -> None:
+    with pytest.raises(ValidationError, match="output_strategy"):
+        WorkersSettings(
+            agent_runtime={
+                "lanes": {
+                    "news.item_brief": {
+                        "output_strategy": "freeform_yaml",
+                    }
+                }
+            }
+        )

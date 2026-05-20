@@ -225,11 +225,7 @@ def _mention_targets(request: MentionSemanticsBatchRequest) -> list[dict[str, st
 
 
 def _instructions(filename: str) -> str:
-    return (
-        files("gmgn_twitter_intel.domains.narrative_intel.prompts")
-        .joinpath(filename)
-        .read_text(encoding="utf-8")
-    )
+    return files("gmgn_twitter_intel.domains.narrative_intel.prompts").joinpath(filename).read_text(encoding="utf-8")
 
 
 def _agent_run_audit(audit: dict[str, Any], output_json: dict[str, Any]) -> dict[str, Any]:
@@ -250,7 +246,9 @@ def _coerce_digest_payload(value: Any) -> DiscussionDigestAgentPayload:
     if isinstance(value, DiscussionDigestAgentPayload):
         return value
     if isinstance(value, DiscussionDigestResult):
-        digest = value.digest.model_dump(mode="json") if isinstance(value.digest, TokenDiscussionDigest) else value.digest
+        digest = (
+            value.digest.model_dump(mode="json") if isinstance(value.digest, TokenDiscussionDigest) else value.digest
+        )
         return DiscussionDigestAgentPayload(digest=digest)
     if isinstance(value, TokenDiscussionDigest):
         return DiscussionDigestAgentPayload(digest=value.model_dump(mode="json"))

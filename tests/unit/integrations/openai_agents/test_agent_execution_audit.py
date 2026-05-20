@@ -6,6 +6,12 @@ import math
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from gmgn_twitter_intel.platform.agent_capabilities import (
+    AgentCapabilityProfile,
+    AgentOutputStrategy,
+    AgentProviderFamily,
+    AgentSchemaEnforcement,
+)
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
@@ -17,6 +23,7 @@ from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionResultAudit,
     AgentExecutionStatus,
     AgentLanePolicy,
+    AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
@@ -121,6 +128,40 @@ def test_agent_stage_spec_request_audit_shape() -> None:
     assert audit.trace_metadata["artifact_version_hash"] == "sha256:abc"
 
 
+def test_request_audit_shape_includes_capability_profile() -> None:
+    spec = AgentStageSpec(
+        lane="pulse.signal_analyst",
+        stage="signal_analyst",
+        instructions="Return JSON.",
+        input_payload={"event_id": "e1"},
+        output_type=dict,
+        prompt_version="p1",
+        schema_version="s1",
+        workflow_name="workflow",
+        agent_name="agent",
+    )
+    profile = AgentCapabilityProfile(
+        provider_family=AgentProviderFamily.DEEPSEEK,
+        output_strategy=AgentOutputStrategy.JSON_OBJECT,
+        schema_enforcement=AgentSchemaEnforcement.CLIENT_VALIDATE,
+    )
+
+    audit = AgentExecutionRequestAudit.from_stage(
+        spec,
+        trace_id="trace_abc",
+        artifact_version_hash="sha256:abc",
+        model="deepseek-v4-flash",
+        capability_profile=profile,
+    )
+
+    assert audit.provider_family == "deepseek"
+    assert audit.output_strategy == "json_object"
+    assert audit.schema_enforcement == "client_validate"
+    assert audit.trace_metadata["provider_family"] == "deepseek"
+    assert audit.trace_metadata["output_strategy"] == "json_object"
+    assert audit.trace_metadata["schema_enforcement"] == "client_validate"
+
+
 def test_runtime_policy_uses_default_lane_when_missing() -> None:
     policy = AgentRuntimePolicy(
         global_max_concurrency=2,
@@ -136,6 +177,40 @@ def test_runtime_policy_uses_default_lane_when_missing() -> None:
     assert policy.model_for_lane("known") == "qwen3.6"
     assert missing is not policy.lane_for("missing")
     assert AgentExecutionErrorClass.TIMEOUT.value == "timeout"
+
+
+def test_runtime_policy_resolves_model_capability_profiles() -> None:
+    policy = AgentRuntimePolicy(
+        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
+        lanes={
+            "deepseek.lane": AgentLanePolicy(model="deepseek-v4-flash"),
+            "override.lane": AgentLanePolicy(
+                model="local-model",
+                provider_family="deepseek",
+                output_strategy="json_object",
+                schema_enforcement="client_validate",
+                client_validation_retries=2,
+            ),
+        },
+    )
+
+    deepseek = policy.capability_for_lane("deepseek.lane")
+    override = policy.capability_for_lane("override.lane")
+
+    assert deepseek.output_strategy == AgentOutputStrategy.JSON_OBJECT
+    assert deepseek.schema_enforcement == AgentSchemaEnforcement.CLIENT_VALIDATE
+    assert override.provider_family == AgentProviderFamily.DEEPSEEK
+    assert override.client_validation_retries == 2
+
+
+def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model() -> None:
+    policy = AgentRuntimePolicy(defaults=AgentRuntimeDefaultsPolicy(model="deepseek-v4-flash"))
+
+    profile = policy.capability_for_lane("pulse.signal_analyst")
+
+    assert profile.provider_family == AgentProviderFamily.DEEPSEEK
+    assert profile.output_strategy == AgentOutputStrategy.JSON_OBJECT
+    assert profile.schema_enforcement == AgentSchemaEnforcement.CLIENT_VALIDATE
 
 
 def test_policy_models_forbid_extra_fields_and_invalid_non_positive_values() -> None:

@@ -102,9 +102,12 @@ are wrong too.
    confidence or display status to avoid abstaining.
 11. **Agent execution is an operational plane, not product truth.**
    `AgentExecutionGateway` owns OpenAI Agents SDK execution mechanics:
-   runner construction, strict schema wrapping, trace metadata, usage,
-   safety-net fallback, lane bulkheads, rate limits, timeouts, circuit
-   breakers, reservation, and request/result audit envelopes. Domain
+   runner construction, structured-output strategy selection, trace
+   metadata, usage, safety-net fallback, lane bulkheads, rate limits,
+   timeouts, circuit breakers, reservation, and request/result audit
+   envelopes. Model capability adaptation belongs here: domains submit
+   stage specs with Pydantic output types and never branch on provider,
+   model, or response format. Domain
    workers still own admission, claim, retry, finalize, read-model writes,
    and business validation. There is no central durable `agent_tasks`
    queue; PostgreSQL domain facts and read models remain the truth. Pulse
@@ -136,8 +139,10 @@ Cross-cutting primitives that implement these invariants:
   worker keys/classes and own worker start/stop/status semantics.
 - `LLMGateway` and `AgentExecutionGateway` — `LLMGateway` owns low-level
   OpenAI transport/client/trace-export lifecycle; `AgentExecutionGateway`
-  is the single OpenAI Agents SDK execution path used by Social,
-  Watchlist, Narrative, Pulse, and future LLM lanes.
+  is the single agent execution path used by Social, Watchlist,
+  Narrative, Pulse, and future LLM lanes. It resolves the lane capability
+  profile and chooses the structured-output strategy before any provider
+  call.
 - Wake emission/listening is composed via
   `DBPoolBundle.wake_emitter()` and `DBPoolBundle.wake_listener()`.
   Domain workers receive wake dependencies by injection and never call

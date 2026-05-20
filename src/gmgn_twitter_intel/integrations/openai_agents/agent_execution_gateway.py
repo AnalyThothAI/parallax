@@ -1,26 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
+from agents import Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from aiolimiter import AsyncLimiter
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
-)
 from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
     InstructorSafetyNet,
     SafetyNetExhausted,
     extract_sdk_usage,
 )
+from gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy import (
+    AgentsJsonSchemaStrategy,
+    ChatJsonObjectStrategy,
+    StructuredOutputContext,
+    StructuredOutputStrategy,
+)
+from gmgn_twitter_intel.platform.agent_capabilities import AgentOutputStrategy
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
@@ -83,6 +86,15 @@ class AgentExecutionGateway:
         self._safety_net = safety_net
         self._telemetry = telemetry
         self._model_cache: dict[tuple[str, str, float], Any] = {}
+        self._chat_client_cache: dict[tuple[str, str, float], Any] = {}
+        self._json_schema_strategy = AgentsJsonSchemaStrategy(
+            model_factory=lambda model_name, timeout_s: self._model_for(model_name, timeout_s=timeout_s),
+            runner=self._runner,
+            safety_net=self._safety_net,
+        )
+        self._json_object_strategy = ChatJsonObjectStrategy(
+            openai_client_factory=lambda model, timeout_s: self._chat_client_for(model=model, timeout_s=timeout_s),
+        )
         self._reservation_owner_token = object()
         self._global_semaphore = asyncio.BoundedSemaphore(policy.global_max_concurrency)
         self._global_limiter = AsyncLimiter(policy.global_rpm_limit, 60)
@@ -101,9 +113,13 @@ class AgentExecutionGateway:
 
     def request_audit(self, stage: AgentStageSpec) -> AgentExecutionRequestAudit:
         model_name = self.model_for_lane(stage.lane)
+        capability_profile = self._policy.capability_for_lane(stage.lane)
         output_schema = StrictJsonOutputSchema(stage.output_type)
         artifact_version_hash = artifact_hash_for(
             model=model_name,
+            provider_family=capability_profile.provider_family.value,
+            output_strategy=capability_profile.output_strategy.value,
+            schema_enforcement=capability_profile.schema_enforcement.value,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
             runtime_version=RUNTIME_VERSION,
@@ -114,6 +130,9 @@ class AgentExecutionGateway:
                 "lane": stage.lane,
                 "stage": stage.stage,
                 "model": model_name,
+                "provider_family": capability_profile.provider_family.value,
+                "output_strategy": capability_profile.output_strategy.value,
+                "schema_enforcement": capability_profile.schema_enforcement.value,
                 "workflow_name": stage.workflow_name,
                 "agent_name": stage.agent_name,
                 "group_id": stage.group_id,
@@ -128,6 +147,7 @@ class AgentExecutionGateway:
             trace_id=trace_id_for(trace_source),
             artifact_version_hash=artifact_version_hash,
             model=model_name,
+            capability_profile=capability_profile,
         )
 
     def model_for_lane(self, lane: str) -> str:
@@ -432,8 +452,12 @@ class AgentExecutionGateway:
         now = time.monotonic()
         lanes: dict[str, Any] = {}
         for lane, lane_state in self._lanes.items():
+            capability_profile = self._policy.capability_for_lane(lane)
             lanes[lane] = {
                 "model": self.model_for_lane(lane),
+                "provider_family": capability_profile.provider_family.value,
+                "output_strategy": capability_profile.output_strategy.value,
+                "schema_enforcement": capability_profile.schema_enforcement.value,
                 "priority_label": lane_state.policy.priority,
                 "rpm_limit": lane_state.policy.rpm_limit,
                 "max_concurrency": lane_state.policy.max_concurrency,
@@ -470,59 +494,30 @@ class AgentExecutionGateway:
     ) -> tuple[Any, Any | None, dict[str, Any]]:
         lane_policy = self._lane_state(stage.lane).policy
         model_name = self.model_for_lane(stage.lane)
-        output_schema = StrictJsonOutputSchema(stage.output_type)
-        model = self._model_for(model_name, timeout_s=float(lane_policy.timeout_seconds))
-        agent = Agent(
-            name=stage.agent_name,
-            instructions=stage.instructions,
-            output_type=output_schema,
-            tools=stage.tools,
-            model=model,
-            model_settings=default_agent_model_settings(
-                disable_thinking=self._policy.defaults.disable_thinking,
-                include_usage=self._policy.defaults.include_usage,
-            ),
-        )
-        run_config = RunConfig(
-            workflow_name=stage.workflow_name,
-            trace_id=audit.sdk_trace_id,
-            group_id=stage.group_id,
-            trace_include_sensitive_data=self._trace_include_sensitive_data,
-            tracing_disabled=not self._trace_enabled,
-            trace_metadata=audit.trace_metadata,
-        )
-        if self._safety_net is not None:
-            runner_entered["value"] = True
-            runner_input = _runner_input_payload(stage.input_payload)
-            final_output, audit_extra, raw_result = await self._safety_net.run_with_safety_net(
-                agent=agent,
-                input_payload=runner_input,
-                run_config=run_config,
-                pydantic_output_type=getattr(output_schema, "output_type", stage.output_type),
-                context=None,
-                max_turns=stage.max_turns,
-                return_result=True,
-            )
-            return final_output, raw_result, dict(audit_extra)
-
+        capability_profile = self._policy.capability_for_lane(stage.lane)
         runner_entered["value"] = True
-        runner_input = _runner_input_payload(stage.input_payload)
-        raw_result = await self._runner.run(
-            agent,
-            runner_input,
-            max_turns=stage.max_turns,
-            run_config=run_config,
+        outcome = await self._strategy_for(capability_profile).run(
+            StructuredOutputContext(
+                stage=stage,
+                model_name=model_name,
+                timeout_seconds=float(lane_policy.timeout_seconds),
+                defaults=self._policy.defaults,
+                capability_profile=capability_profile,
+                trace_metadata=audit.trace_metadata,
+                trace_id=audit.sdk_trace_id,
+                group_id=stage.group_id,
+                trace_enabled=self._trace_enabled,
+                trace_include_sensitive_data=self._trace_include_sensitive_data,
+            )
         )
-        return (
-            getattr(raw_result, "final_output", None),
-            raw_result,
-            {
-                "safety_net_used": False,
-                "safety_net_retries": 0,
-                "parse_mode": "strict",
-                "usage": extract_sdk_usage(raw_result),
-            },
-        )
+        return outcome.final_output, outcome.raw_result, dict(outcome.audit_extra)
+
+    def _strategy_for(self, profile: Any) -> StructuredOutputStrategy:
+        if profile.output_strategy == AgentOutputStrategy.JSON_SCHEMA:
+            return self._json_schema_strategy
+        if profile.output_strategy == AgentOutputStrategy.JSON_OBJECT:
+            return self._json_object_strategy
+        raise ValueError(f"unsupported agent output strategy: {profile.output_strategy}")
 
     def _lane_state(self, lane: str) -> _LaneState:
         lane_key = str(lane)
@@ -599,9 +594,7 @@ class AgentExecutionGateway:
         reservation: AgentCapacityReservation,
     ) -> None:
         if reservation.lane != stage.lane:
-            raise ValueError(
-                f"reservation lane {reservation.lane!r} does not match stage lane {stage.lane!r}"
-            )
+            raise ValueError(f"reservation lane {reservation.lane!r} does not match stage lane {stage.lane!r}")
         if not reservation.acquired:
             raise ValueError("execute requires an active acquired reservation")
         if reservation._owner_token is not self._reservation_owner_token:
@@ -623,9 +616,7 @@ class AgentExecutionGateway:
         if reservation.scope != "parent":
             raise ValueError("parent reservation scope must be 'parent'")
         if stage.lane not in reservation.child_lanes:
-            raise ValueError(
-                f"parent reservation for {reservation.lane!r} does not allow child lane {stage.lane!r}"
-            )
+            raise ValueError(f"parent reservation for {reservation.lane!r} does not allow child lane {stage.lane!r}")
 
     def _model_for(self, model_name: str, *, timeout_s: float) -> Any:
         key = (str(model_name), self._base_url, float(timeout_s))
@@ -642,6 +633,19 @@ class AgentExecutionGateway:
         )
         self._model_cache[key] = model
         return model
+
+    def _chat_client_for(self, *, model: str, timeout_s: float) -> Any:
+        key = (str(model), self._base_url, float(timeout_s))
+        cached = self._chat_client_cache.get(key)
+        if cached is not None:
+            return cached
+        client = self._llm_gateway.openai_client(
+            model=model,
+            base_url=self._base_url,
+            timeout_s=float(timeout_s),
+        )
+        self._chat_client_cache[key] = client
+        return client
 
     def _record_provider_running(self, stage: AgentStageSpec, *, delta: int) -> None:
         lane_state = self._lane_state(stage.lane)
@@ -752,17 +756,8 @@ def _audit_trace_extra(audit_extra: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in audit_extra.items()
-        if key in {"safety_net_used", "safety_net_retries", "parse_mode"}
+        if key in {"safety_net_used", "safety_net_retries", "parse_mode", "schema_enforcement"}
     }
-
-
-def _runner_input_payload(input_payload: Any) -> Any:
-    if isinstance(input_payload, str | list):
-        return input_payload
-    try:
-        return json.dumps(input_payload, ensure_ascii=False, sort_keys=True, allow_nan=False)
-    except (TypeError, ValueError):
-        return str(input_payload)
 
 
 def _classify_provider_error(exc: Exception) -> AgentExecutionErrorClass:
