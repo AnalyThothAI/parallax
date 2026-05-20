@@ -59,9 +59,10 @@ class MentionSemanticsService:
             row = row_by_key.get(key)
             if row is None:
                 continue
+            next_label = label
             if label.event_id != str(row.get("event_id")):
-                label = label.model_copy(update={"event_id": str(row.get("event_id") or "")})
-            valid_labels.append(label)
+                next_label = label.model_copy(update={"event_id": str(row.get("event_id") or "")})
+            valid_labels.append(next_label)
         if len(valid_labels) == len(result.labels):
             return result.model_copy(update={"labels": valid_labels})
         unknown = sorted(
