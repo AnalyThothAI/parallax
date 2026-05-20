@@ -1173,7 +1173,9 @@ class NarrativeRepository:
             """
             INSERT INTO token_discussion_digests (
               digest_id, target_type, target_id, "window", scope, schema_version, model_version,
-              status, is_current, source_fingerprint, label_fingerprint, headline_zh,
+              status, is_current, epoch_id, epoch_policy_version, source_event_ids_json,
+              source_window_start_ms, source_window_end_ms, epoch_closed_at_ms,
+              display_current_until_ms, refresh_reason, source_fingerprint, label_fingerprint, headline_zh,
               dominant_narratives_json, bull_view_json, bear_view_json, stance_mix_json,
               attention_valence_mix_json, propagation_read_json, reflexivity_read_json,
               watch_triggers_json, invalidation_conditions_json, data_gaps_json,
@@ -1182,7 +1184,10 @@ class NarrativeRepository:
             )
             VALUES (
               %(digest_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
-              %(model_version)s, %(status)s, true, %(source_fingerprint)s, %(label_fingerprint)s,
+              %(model_version)s, %(status)s, true, %(epoch_id)s, %(epoch_policy_version)s,
+              %(source_event_ids_json)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
+              %(epoch_closed_at_ms)s, %(display_current_until_ms)s, %(refresh_reason)s,
+              %(source_fingerprint)s, %(label_fingerprint)s,
               %(headline_zh)s, %(dominant_narratives_json)s, %(bull_view_json)s, %(bear_view_json)s,
               %(stance_mix_json)s, %(attention_valence_mix_json)s, %(propagation_read_json)s,
               %(reflexivity_read_json)s, %(watch_triggers_json)s, %(invalidation_conditions_json)s,
@@ -1195,6 +1200,14 @@ class NarrativeRepository:
               model_version = EXCLUDED.model_version,
               status = EXCLUDED.status,
               is_current = true,
+              epoch_id = EXCLUDED.epoch_id,
+              epoch_policy_version = EXCLUDED.epoch_policy_version,
+              source_event_ids_json = EXCLUDED.source_event_ids_json,
+              source_window_start_ms = EXCLUDED.source_window_start_ms,
+              source_window_end_ms = EXCLUDED.source_window_end_ms,
+              epoch_closed_at_ms = EXCLUDED.epoch_closed_at_ms,
+              display_current_until_ms = EXCLUDED.display_current_until_ms,
+              refresh_reason = EXCLUDED.refresh_reason,
               headline_zh = EXCLUDED.headline_zh,
               dominant_narratives_json = EXCLUDED.dominant_narratives_json,
               bull_view_json = EXCLUDED.bull_view_json,
@@ -1477,10 +1490,11 @@ def _stable_ids(values: Sequence[str]) -> list[str]:
 
 
 def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
+    source_event_ids = _json_list(digest.get("source_event_ids") or digest.get("source_event_ids_json"))
     source_fingerprint = digest.get("source_fingerprint")
     if not source_fingerprint:
         source_fingerprint = build_source_fingerprint(
-            digest.get("source_event_ids") or [],
+            source_event_ids,
             digest.get("source_max_received_at_ms"),
         )
     label_fingerprint = digest.get("label_fingerprint")
@@ -1504,6 +1518,14 @@ def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         "schema_version": str(digest.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
         "model_version": str(digest.get("model_version") or "unknown"),
         "status": str(digest.get("status") or "pending"),
+        "epoch_id": digest.get("epoch_id"),
+        "epoch_policy_version": digest.get("epoch_policy_version"),
+        "source_event_ids_json": _json(source_event_ids),
+        "source_window_start_ms": _int(digest.get("source_window_start_ms")),
+        "source_window_end_ms": _int(digest.get("source_window_end_ms")),
+        "epoch_closed_at_ms": _int(digest.get("epoch_closed_at_ms")),
+        "display_current_until_ms": _int(digest.get("display_current_until_ms")),
+        "refresh_reason": digest.get("refresh_reason"),
         "source_fingerprint": source_fingerprint,
         "label_fingerprint": label_fingerprint,
         "headline_zh": digest.get("headline_zh"),
@@ -1568,7 +1590,10 @@ def _json_list(value: Any) -> list[str]:
 
 
 def _row(row: Any) -> dict[str, Any]:
-    return dict(row)
+    decoded = dict(row)
+    if "source_event_ids_json" in decoded and "source_event_ids" not in decoded:
+        decoded["source_event_ids"] = _json_list(decoded.get("source_event_ids_json"))
+    return decoded
 
 
 def _required(row: dict[str, Any], key: str) -> str:

@@ -73,6 +73,9 @@ TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260520_0069_token_radar_retention_watchlist_stats.py"
 )
+TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -287,6 +290,26 @@ def test_token_radar_retention_watchlist_stats_migration_adds_bounded_read_model
         "identity_id TEXT NOT NULL",
         'PRIMARY KEY (projection_version, "window", scope, target_type_key, identity_id)',
         "event_id TEXT PRIMARY KEY",
+    ):
+        assert statement in text
+
+
+def test_token_narrative_epochs_migration_adds_digest_epoch_metadata() -> None:
+    text = TOKEN_NARRATIVE_EPOCHS_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260520_0070"',
+        'down_revision = "20260520_0069"',
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_id TEXT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_policy_version TEXT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_event_ids_json JSONB",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_window_start_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_window_end_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_closed_at_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS display_current_until_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS refresh_reason TEXT",
+        "idx_token_discussion_digests_epoch_currentness",
+        "hard-cut migration is not safely reversible",
     ):
         assert statement in text
 
