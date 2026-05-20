@@ -60,6 +60,7 @@ export type OpsDiagnostics = {
   providers: OpsProvider[];
   workers: OpsWorker[];
   queues: OpsQueueSummary[];
+  agent_execution?: OpsJson & { status?: OpsSectionStatus; lanes?: OpsJson };
   domains: Record<string, OpsJson & { status?: OpsSectionStatus; reason?: string | null }>;
   suggested_checks?: OpsJson[];
 };

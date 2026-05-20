@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 describe("OpsDiagnosticsPage", () => {
-  it("renders the main diagnostic regions and queue selection", () => {
+  it("renders the command-center summary, chain lanes, and queue selection", () => {
     const onSelectQueue = vi.fn();
 
     render(
@@ -17,17 +17,39 @@ describe("OpsDiagnosticsPage", () => {
       />,
     );
 
-    expect(screen.getByText("Ops Diagnostics")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Pipeline" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Providers" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Workers" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Queues" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Config Source" })).toBeInTheDocument();
+    expect(screen.getByText("运维诊断")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "故障看板" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "运行链路" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Worker 状态" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "队列排查" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "运行配置" })).toBeInTheDocument();
+    expect(screen.getByText("pulse_agent_jobs 有 1 个死信任务")).toBeInTheDocument();
+    expect(screen.getByText("建议检查 2 项")).toBeInTheDocument();
+    expect(screen.getByText("Ingest")).toBeInTheDocument();
+    expect(screen.getByText("Facts & Identity")).toBeInTheDocument();
+    expect(screen.getByText("Pulse / Agent")).toBeInTheDocument();
     expect(screen.getByText("pulse_agent_jobs")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /open queue pulse_agent_jobs/i }));
+    fireEvent.click(screen.getByRole("button", { name: /打开队列 pulse_agent_jobs/i }));
 
     expect(onSelectQueue).toHaveBeenCalledWith("pulse_agent_jobs");
+  });
+
+  it("renders selected queue rows as operator-ready work items", () => {
+    render(
+      <OpsDiagnosticsPage
+        diagnostics={fakeDiagnostics}
+        loading={false}
+        queue={fakePulseQueue}
+        selectedQueueName="pulse_agent_jobs"
+        onSelectQueue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("pulse-1")).toBeInTheDocument();
+    expect(screen.getByText("尝试 2/3")).toBeInTheDocument();
+    expect(screen.getByText("candidate_id: candidate-1")).toBeInTheDocument();
+    expect(screen.getByText("RuntimeError")).toBeInTheDocument();
   });
 });
 
@@ -78,18 +100,45 @@ const fakeDiagnostics: OpsDiagnostics = {
       queue_name: "pulse_agent_jobs",
       table: "pulse_agent_jobs",
       worker_name: "pulse_candidate",
-      counts_by_status: { failed: 1 },
-      due_count: 0,
+      counts_by_status: { dead: 1, pending: 2, running: 1 },
+      due_count: 2,
       running_count: 0,
-      dead_count: 0,
-      failed_count: 1,
-      status: "degraded",
-      reason: "retryable_failures_present",
+      dead_count: 1,
+      failed_count: 0,
+      oldest_due_age_ms: 90_000,
+      status: "blocked",
+      reason: "dead_jobs_present",
     },
   ],
   domains: {
-    pulse: { status: "degraded", failed_jobs_4h: 1 },
+    pulse: { status: "blocked", dead_jobs: 1 },
     news: { status: "ok", source_count: 3 },
   },
-  suggested_checks: [],
+  suggested_checks: [
+    { id: "inspect_worker_status", label: "inspect worker queues" },
+    { id: "inspect_news_sources", label: "inspect news sources" },
+  ],
+};
+
+const fakePulseQueue = {
+  schema_version: "ops.queue.v1",
+  queue_name: "pulse_agent_jobs",
+  counts_by_status: { dead: 1, pending: 2, running: 1 },
+  summary: fakeDiagnostics.queues[0],
+  items: [
+    {
+      id: "pulse-1",
+      status: "dead",
+      attempt_count: 2,
+      max_attempts: 3,
+      updated_at_ms: 1_700_000_000_000,
+      next_run_at_ms: 1_700_000_030_000,
+      last_error_type: "RuntimeError",
+      source: {
+        candidate_id: "candidate-1",
+        window: "1h",
+        scope: "all",
+      },
+    },
+  ],
 };
