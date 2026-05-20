@@ -144,6 +144,14 @@ class DiscussionDigestService:
             schema_version=schema_version,
             model_version=model_version,
             status=status,
+            epoch_id=context.get("epoch_id"),
+            epoch_policy_version=context.get("epoch_policy_version"),
+            source_event_ids=_json_list(context.get("source_event_ids") or context.get("source_event_ids_json")),
+            source_window_start_ms=_int_or_none(context.get("source_window_start_ms")),
+            source_window_end_ms=_int_or_none(context.get("source_window_end_ms")),
+            epoch_closed_at_ms=_int_or_none(context.get("epoch_closed_at_ms")),
+            display_current_until_ms=_int_or_none(context.get("display_current_until_ms")),
+            refresh_reason=context.get("refresh_reason") or reason,
             data_gaps=[{"reason": reason}],
             semantic_coverage=0.0 if source_count == 0 else labeled_count / source_count,
             source_event_count=source_count,
@@ -208,6 +216,26 @@ class DiscussionDigestService:
         payload.update(
             {
                 "status": "ready",
+                "epoch_id": context.get("epoch_id") or payload.get("epoch_id"),
+                "epoch_policy_version": context.get("epoch_policy_version") or payload.get("epoch_policy_version"),
+                "source_event_ids": _json_list(
+                    context.get("source_event_ids")
+                    or context.get("source_event_ids_json")
+                    or payload.get("source_event_ids")
+                ),
+                "source_window_start_ms": _int_or_none(
+                    context.get("source_window_start_ms") or payload.get("source_window_start_ms")
+                ),
+                "source_window_end_ms": _int_or_none(
+                    context.get("source_window_end_ms") or payload.get("source_window_end_ms")
+                ),
+                "epoch_closed_at_ms": _int_or_none(
+                    context.get("epoch_closed_at_ms") or payload.get("epoch_closed_at_ms")
+                ),
+                "display_current_until_ms": _int_or_none(
+                    context.get("display_current_until_ms") or payload.get("display_current_until_ms")
+                ),
+                "refresh_reason": context.get("refresh_reason") or payload.get("refresh_reason"),
                 "semantic_coverage": 0.0 if source_count == 0 else labeled_count / source_count,
                 "source_event_count": source_count,
                 "source_fingerprint": context.get("source_fingerprint"),

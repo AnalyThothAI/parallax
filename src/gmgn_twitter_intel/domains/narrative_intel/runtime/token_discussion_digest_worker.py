@@ -21,6 +21,12 @@ from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_servi
     DiscussionDigestService,
 )
 from gmgn_twitter_intel.domains.narrative_intel.services.evidence_ref_validator import EvidenceRefValidator
+from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
+    DEFAULT_THRESHOLDS,
+    EPOCH_POLICY_VERSION,
+    NarrativeEpochPolicy,
+    NarrativeEpochThreshold,
+)
 from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
 from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
 
@@ -50,6 +56,12 @@ class TokenDiscussionDigestWorker(WorkerBase):
             ),
         )
         self.validator = EvidenceRefValidator()
+        self.epoch_policy = NarrativeEpochPolicy(
+            thresholds=_thresholds_from_settings(settings),
+            stance_mix_change_threshold=float(getattr(settings, "stance_mix_change_threshold", 0.20) or 0.20),
+            attention_mix_change_threshold=float(getattr(settings, "attention_mix_change_threshold", 0.20) or 0.20),
+            price_move_refresh_pct=float(getattr(settings, "price_move_refresh_pct", 12.0) or 12.0),
+        )
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         return await self.run_once_async(now_ms=now_ms)
@@ -66,35 +78,88 @@ class TokenDiscussionDigestWorker(WorkerBase):
         llm_calls = 0
         llm_failures = 0
         deferred = 0
+        deferred_epoch_policy = 0
         for target in targets:
             context = await asyncio.to_thread(self._digest_context_sync, target=target)
-            decision = self.service.refresh_decision(context)
-            refresh_reasons[decision.reason] = refresh_reasons.get(decision.reason, 0) + 1
-            if not decision.should_refresh:
-                digest = self.service.build_status_digest(
-                    target_type=str(target["target_type"]),
-                    target_id=str(target["target_id"]),
-                    window=str(target["window"]),
-                    scope=str(target["scope"]),
-                    context=context,
-                    reason=decision.reason,
-                    now_ms=resolved_now_ms,
-                    status=decision.status_if_not_refresh,
-                    model_version=f"deterministic:{decision.status_if_not_refresh}",
-                )
-                await asyncio.to_thread(
-                    self._replace_digest_sync,
-                    digest=digest.model_dump(mode="json"),
-                    now_ms=resolved_now_ms,
-                )
+            last_ready = await asyncio.to_thread(self._latest_ready_digest_sync, target=target)
+            market_context = await asyncio.to_thread(
+                self._market_context_sync,
+                admission={**target, **context},
+                last_ready_digest=last_ready,
+            )
+            epoch_decision = self.epoch_policy.evaluate(
+                admission=_admission_for_policy(target=target, context=context),
+                last_ready_digest=last_ready,
+                semantic_coverage=context,
+                market_context=market_context,
+                now_ms=resolved_now_ms,
+            )
+            refresh_reasons[epoch_decision.reason] = refresh_reasons.get(epoch_decision.reason, 0) + 1
+            sealed_context = _sealed_epoch_context(
+                target=target,
+                context=context,
+                decision=epoch_decision,
+                now_ms=resolved_now_ms,
+            )
+            if not epoch_decision.should_refresh:
+                if epoch_decision.should_write_status_digest and last_ready is None:
+                    status_decision = self.service.refresh_decision(context)
+                    refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
+                    digest = self.service.build_status_digest(
+                        target_type=str(target["target_type"]),
+                        target_id=str(target["target_id"]),
+                        window=str(target["window"]),
+                        scope=str(target["scope"]),
+                        context=sealed_context,
+                        reason=status_decision.reason,
+                        now_ms=resolved_now_ms,
+                        status=status_decision.status_if_not_refresh,
+                        model_version=f"deterministic:{status_decision.status_if_not_refresh}",
+                    )
+                    await asyncio.to_thread(
+                        self._replace_digest_sync,
+                        digest=digest.model_dump(mode="json"),
+                        now_ms=resolved_now_ms,
+                    )
+                    counts[status_decision.status_if_not_refresh] += 1
+                else:
+                    deferred_epoch_policy += 1
                 await asyncio.to_thread(
                     self._mark_digest_scanned_sync,
                     target=target,
                     now_ms=resolved_now_ms,
-                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=resolved_now_ms),
+                    next_due_at_ms=epoch_decision.next_due_at_ms,
                 )
-                counts[decision.status_if_not_refresh] += 1
                 continue
+
+            if epoch_decision.reason == "no_ready_digest":
+                status_decision = self.service.refresh_decision(context)
+                if not status_decision.should_refresh:
+                    refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
+                    digest = self.service.build_status_digest(
+                        target_type=str(target["target_type"]),
+                        target_id=str(target["target_id"]),
+                        window=str(target["window"]),
+                        scope=str(target["scope"]),
+                        context=sealed_context,
+                        reason=status_decision.reason,
+                        now_ms=resolved_now_ms,
+                        status=status_decision.status_if_not_refresh,
+                        model_version=f"deterministic:{status_decision.status_if_not_refresh}",
+                    )
+                    await asyncio.to_thread(
+                        self._replace_digest_sync,
+                        digest=digest.model_dump(mode="json"),
+                        now_ms=resolved_now_ms,
+                    )
+                    await asyncio.to_thread(
+                        self._mark_digest_scanned_sync,
+                        target=target,
+                        now_ms=resolved_now_ms,
+                        next_due_at_ms=epoch_decision.next_due_at_ms,
+                    )
+                    counts[status_decision.status_if_not_refresh] += 1
+                    continue
 
             if llm_calls >= self._max_llm_calls_per_cycle():
                 await asyncio.to_thread(
@@ -124,7 +189,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 continue
 
             started_at_ms = _now_ms()
-            input_hash = _hash_json(context)
+            input_hash = _hash_json(sealed_context)
             run_id = deterministic_run_id(stage="discussion_digest", input_hash=input_hash, started_at_ms=started_at_ms)
             request = self.service.build_digest_request(
                 run_id=run_id,
@@ -132,7 +197,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 target_id=str(target["target_id"]),
                 window=str(target["window"]),
                 scope=str(target["scope"]),
-                context=context,
+                context=sealed_context,
                 schema_version=NARRATIVE_SCHEMA_VERSION,
                 prompt_version=DISCUSSION_DIGEST_PROMPT_VERSION,
             )
@@ -241,7 +306,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
             try:
                 ready_digest = self.service.publish_ready_digest(
                     result.digest,
-                    context=context,
+                    context=sealed_context,
                     now_ms=finished_at_ms,
                 )
             except Exception:
@@ -249,7 +314,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     self._mark_digest_scanned_sync,
                     target=target,
                     now_ms=finished_at_ms,
-                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                    next_due_at_ms=epoch_decision.next_due_at_ms,
                 )
                 counts["failed"] += 1
                 continue
@@ -260,7 +325,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     self._mark_digest_scanned_sync,
                     target=target,
                     now_ms=finished_at_ms,
-                    next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                    next_due_at_ms=epoch_decision.next_due_at_ms,
                 )
                 counts["failed"] += 1
                 continue
@@ -301,7 +366,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 self._mark_digest_scanned_sync,
                 target=target,
                 now_ms=finished_at_ms,
-                next_due_at_ms=self._next_due_at_ms(target=target, now_ms=finished_at_ms),
+                next_due_at_ms=epoch_decision.next_due_at_ms,
             )
             counts["ready"] += 1
         return WorkerResult(
@@ -310,6 +375,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 + counts["insufficient"]
                 + counts["pending"]
                 + counts["semantic_unavailable"]
+                + deferred_epoch_policy
             ),
             failed=counts["failed"],
             notes={
@@ -318,6 +384,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 "llm_calls": llm_calls,
                 "llm_failures": llm_failures,
                 "deferred_llm_budget": deferred,
+                "deferred_epoch_policy": deferred_epoch_policy,
                 "refresh_reasons": refresh_reasons,
             },
         )
@@ -340,6 +407,32 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     ),
                 )
             )
+
+    def _latest_ready_digest_sync(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
+        with self._repository_session() as repos:
+            method = getattr(repos.narratives, "latest_ready_digest_for_target", None)
+            if method is None:
+                return None
+            digest = method(
+                target_type=str(target["target_type"]),
+                target_id=str(target["target_id"]),
+                window=str(target["window"]),
+                scope=str(target["scope"]),
+                schema_version=NARRATIVE_SCHEMA_VERSION,
+            )
+            return dict(digest) if digest else None
+
+    def _market_context_sync(
+        self,
+        *,
+        admission: dict[str, Any],
+        last_ready_digest: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        with self._repository_session() as repos:
+            method = getattr(repos.narratives, "market_context_for_admission", None)
+            if method is None:
+                return {}
+            return dict(method(admission, last_ready_digest=last_ready_digest) or {})
 
     def _replace_digest_sync(self, *, digest: dict[str, Any], now_ms: int) -> None:
         with self._repository_session() as repos:
@@ -393,6 +486,109 @@ class TokenDiscussionDigestWorker(WorkerBase):
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
             yield repos
+
+
+def _thresholds_from_settings(settings: Any) -> dict[str, NarrativeEpochThreshold]:
+    ttl_by_window = getattr(settings, "digest_ttl_by_window_seconds", None) or {}
+    thresholds: dict[str, NarrativeEpochThreshold] = {}
+    for window, default in DEFAULT_THRESHOLDS.items():
+        ttl_seconds = _int_or_none(ttl_by_window.get(window)) if isinstance(ttl_by_window, dict) else None
+        max_epoch_age_ms = (
+            ttl_seconds * 1000
+            if ttl_seconds is not None and ttl_seconds > 0
+            else default.max_epoch_age_ms
+        )
+        thresholds[window] = NarrativeEpochThreshold(
+            min_new_sources=default.min_new_sources,
+            min_new_authors=default.min_new_authors,
+            max_epoch_age_ms=max_epoch_age_ms,
+        )
+    return thresholds
+
+
+def _admission_for_policy(*, target: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **target,
+        "source_event_ids": _source_event_ids(target=target, context=context),
+        "source_event_ids_json": context.get("source_event_ids_json") or target.get("source_event_ids_json"),
+        "source_event_count": context.get("source_event_count") or target.get("source_event_count") or 0,
+        "source_fingerprint": context.get("source_fingerprint") or target.get("source_fingerprint"),
+        "independent_author_count": (
+            context.get("independent_author_count") or target.get("independent_author_count") or 0
+        ),
+        "source_window_start_ms": context.get("source_window_start_ms") or target.get("source_window_start_ms"),
+        "source_window_end_ms": context.get("source_window_end_ms") or target.get("source_window_end_ms"),
+    }
+
+
+def _sealed_epoch_context(
+    *,
+    target: dict[str, Any],
+    context: dict[str, Any],
+    decision: Any,
+    now_ms: int,
+) -> dict[str, Any]:
+    source_event_ids = _source_event_ids(target=target, context=context)
+    source_fingerprint = context.get("source_fingerprint") or target.get("source_fingerprint")
+    return {
+        **context,
+        "epoch_id": _deterministic_epoch_id(
+            target_type=str(target.get("target_type") or ""),
+            target_id=str(target.get("target_id") or ""),
+            window=str(target.get("window") or ""),
+            scope=str(target.get("scope") or ""),
+            schema_version=NARRATIVE_SCHEMA_VERSION,
+            source_fingerprint=str(source_fingerprint or ""),
+            epoch_closed_at_ms=int(now_ms),
+        ),
+        "epoch_policy_version": decision.epoch_policy_version or EPOCH_POLICY_VERSION,
+        "source_event_ids": source_event_ids,
+        "source_window_start_ms": context.get("source_window_start_ms") or target.get("source_window_start_ms"),
+        "source_window_end_ms": context.get("source_window_end_ms") or target.get("source_window_end_ms"),
+        "epoch_closed_at_ms": int(now_ms),
+        "display_current_until_ms": int(decision.next_due_at_ms),
+        "refresh_reason": decision.refresh_reason or decision.reason,
+    }
+
+
+def _source_event_ids(*, target: dict[str, Any], context: dict[str, Any]) -> list[str]:
+    value = (
+        context.get("source_event_ids")
+        or context.get("source_event_ids_json")
+        or target.get("source_event_ids_json")
+    )
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return [value] if value else []
+        value = decoded
+    if isinstance(value, (list, tuple)):
+        return [str(item) for item in value if item is not None]
+    return []
+
+
+def _deterministic_epoch_id(
+    *,
+    target_type: str,
+    target_id: str,
+    window: str,
+    scope: str,
+    schema_version: str,
+    source_fingerprint: str,
+    epoch_closed_at_ms: int,
+) -> str:
+    parts = (target_type, target_id, window, scope, schema_version, source_fingerprint, str(epoch_closed_at_ms))
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _now_ms() -> int:
