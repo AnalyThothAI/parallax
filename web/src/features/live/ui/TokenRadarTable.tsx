@@ -1,5 +1,11 @@
 import { tokenKey } from "@lib/format";
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
+import {
+  TOKEN_RADAR_VENUE_FILTERS,
+  tokenRadarVenueMatches,
+  tokenVenueDisplayLabel,
+  type TokenRadarVenueFilter,
+} from "@lib/venue";
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
 import { RadarControls } from "@shared/ui/RadarControls";
 import { RemoteState } from "@shared/ui/RemoteState";
@@ -50,12 +56,21 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     onScopeChange,
     onWindowChange,
   } = props;
+  const [venueFilter, setVenueFilter] = useState<TokenRadarVenueFilter>("all");
+  const filteredItems = useMemo(
+    () => items.filter((item) => tokenRadarVenueMatches(item, venueFilter)),
+    [items, venueFilter],
+  );
   const showLoading = !error && isLoading && items.length === 0;
-  const showEmpty = !error && !showLoading && items.length === 0;
+  const showEmpty = !error && !showLoading && filteredItems.length === 0;
+  const visibleCountLabel =
+    venueFilter === "all" || filteredItems.length === items.length
+      ? `${filteredItems.length}`
+      : `${filteredItems.length} of ${items.length}`;
   const resultLabel = showLoading
     ? "loading"
-    : items.length
-      ? `${items.length} live ${items.length === 1 ? "case" : "cases"}${
+    : filteredItems.length
+      ? `${visibleCountLabel} live ${filteredItems.length === 1 ? "case" : "cases"}${
           isRefreshing ? " · updating" : ""
         }`
       : "no live cases";
@@ -65,7 +80,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
   );
   const [sorting, setSorting] = useState<SortingState>([{ id: "score", desc: true }]);
   const table = useReactTable({
-    data: items,
+    data: filteredItems,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (item, index) =>
@@ -89,6 +104,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
             onScopeChange={onScopeChange}
             onWindowChange={onWindowChange}
           />
+          <VenueFilter value={venueFilter} onChange={setVenueFilter} />
         </div>
       </header>
 
@@ -98,7 +114,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
         ) : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
         {showEmpty ? <RemoteState.Empty title="当前窗口暂无可交易 token 热度" /> : null}
-        {!showLoading && !error && items.length ? (
+        {!showLoading && !error && filteredItems.length ? (
           <RemoteState.Stale updating={isRefreshing}>
             <div className="radar-data-table">
               <div>
@@ -163,6 +179,30 @@ type TokenRadarColumnDeps = {
   onSelect: (item: TokenFlowItem) => void;
   selectedKey: string | null;
 };
+
+function VenueFilter({
+  onChange,
+  value,
+}: {
+  onChange: (value: TokenRadarVenueFilter) => void;
+  value: TokenRadarVenueFilter;
+}) {
+  return (
+    <div className="segmented venue-filter" aria-label="token radar venue filter">
+      {TOKEN_RADAR_VENUE_FILTERS.map((item) => (
+        <button
+          aria-pressed={item.key === value}
+          className={item.key === value ? "active" : ""}
+          key={item.key}
+          type="button"
+          onClick={() => onChange(item.key)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function tokenRadarColumns({
   onSelect,
@@ -243,6 +283,7 @@ function TokenCaseCell({
   onSelect: (item: TokenFlowItem) => void;
 }) {
   const tokenCase = buildTokenRadarCompactCase(item);
+  const venueLabel = tokenVenueDisplayLabel(item);
   return (
     <div className="radar-case-cell" data-case-section="identity">
       {tokenCase.logoUrl ? (
@@ -263,6 +304,11 @@ function TokenCaseCell({
           >
             <strong>{tokenCase.label}</strong>
           </button>
+          {venueLabel ? (
+            <span className="radar-venue-badge" title={tokenCase.subtitle}>
+              {venueLabel}
+            </span>
+          ) : null}
           {tokenCase.externalLinks.length ? (
             <nav className="radar-case-links" aria-label={`External links for ${tokenCase.label}`}>
               {tokenCase.externalLinks.map((link) => (

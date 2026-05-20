@@ -44,10 +44,10 @@ describe("TokenRadarTable rows", () => {
       "https://cdn.example.test/troll.png",
     );
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
-    expect(within(row).getByText("eth · 0x111111...111111")).toBeInTheDocument();
+    expect(within(row).getByText("ETH · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
     expect(within(row).getByText("关注源 0 · 较前窗 +1")).toBeInTheDocument();
-    expect(within(row).getByText("叙事不可用")).toBeInTheDocument();
+    expect(within(row).getByText("叙事分析暂不可用")).toBeInTheDocument();
     expect(within(row).getByText("discussion digest missing")).toBeInTheDocument();
     expect(within(row).queryByText("种子中 · 1 条有效讨论")).not.toBeInTheDocument();
     expect(within(row).queryByText("profile")).not.toBeInTheDocument();
@@ -71,6 +71,73 @@ describe("TokenRadarTable rows", () => {
     expect(market).not.toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("$0.104");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("marks rows with normalized chain and CEX venue labels", () => {
+    const base = tokenWithVenue({
+      symbol: "BASER",
+      chain: "eip155:8453",
+      targetId: "asset:eip155:8453:erc20:0x1111111111111111111111111111111111111111",
+    });
+
+    renderTokenRadarTable([base]);
+
+    const row = screen.getByRole("article", { name: "Token Radar item $BASER" });
+    expect(within(row).getByText("BASE")).toHaveClass("radar-venue-badge");
+    expect(within(row).getByText("BASE · 0x111111...111111")).toBeInTheDocument();
+    expect(row).not.toHaveTextContent("eip155:8453");
+  });
+
+  it("filters rows by one selected chain or CEX venue while defaulting to all", () => {
+    const eth = tokenWithVenue({
+      symbol: "ETHY",
+      chain: "eip155:1",
+      targetId: "asset:eip155:1:erc20:0x1111111111111111111111111111111111111111",
+    });
+    const base = tokenWithVenue({
+      symbol: "BASER",
+      chain: "eip155:8453",
+      targetId: "asset:eip155:8453:erc20:0x2222222222222222222222222222222222222222",
+    });
+    const sol = tokenWithVenue({
+      address: "33eum82LaAhtv5YkUq1BdwEviSErH5CnFxqVNLT5pump",
+      symbol: "SOLLY",
+      chain: "solana",
+      targetId: "asset:solana:token:33eum82LaAhtv5YkUq1BdwEviSErH5CnFxqVNLT5pump",
+    });
+    renderTokenRadarTable([eth, base, sol, cexToken()]);
+
+    expect(screen.getByRole("button", { name: "All" })).toHaveClass("active");
+    expect(screen.getByRole("article", { name: "Token Radar item $ETHY" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Token Radar item $BASER" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Token Radar item $SOLLY" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Token Radar item $OPN" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "BASE" }));
+
+    expect(screen.getByRole("button", { name: "BASE" })).toHaveClass("active");
+    expect(screen.getByRole("article", { name: "Token Radar item $BASER" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("article", { name: "Token Radar item $ETHY" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("article", { name: "Token Radar item $SOLLY" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("article", { name: "Token Radar item $OPN" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "CEX" }));
+
+    expect(screen.getByRole("button", { name: "CEX" })).toHaveClass("active");
+    expect(screen.getByRole("article", { name: "Token Radar item $OPN" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("article", { name: "Token Radar item $BASER" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+    expect(screen.getAllByRole("article")).toHaveLength(4);
   });
 
   it("renders hydrated narrative digest in the why-now cell", () => {
@@ -431,6 +498,32 @@ function withRadarMeta(
       ...radar,
     },
   } as TokenFlowItem;
+}
+
+function tokenWithVenue({
+  address = "0x1111111111111111111111111111111111111111",
+  chain,
+  symbol,
+  targetId,
+}: {
+  address?: string;
+  chain: string;
+  symbol: string;
+  targetId: string;
+}): TokenFlowItem {
+  const item = mixedFreshnessToken();
+  return {
+    ...item,
+    identity: {
+      ...item.identity,
+      address,
+      asset_id: targetId,
+      chain,
+      identity_key: targetId,
+      symbol,
+      target_id: targetId,
+    },
+  };
 }
 
 function mixedFreshnessToken(): TokenFlowItem {

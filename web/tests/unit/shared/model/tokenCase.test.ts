@@ -9,7 +9,7 @@ describe("buildTokenCaseView", () => {
     expect(view.key).toBe("asset:dex:eth:0x1111111111111111111111111111111111111111");
     expect(view.identity.label).toBe("Identity");
     expect(view.identity.value).toBe("$ALPHA");
-    expect(view.identity.detail).toBe("eth · 0x111111...111111");
+    expect(view.identity.detail).toBe("ETH · 0x111111...111111");
     expect(view.official.value).toBe("Alpha Protocol");
     expect(view.official.detail).toContain("alpha.io");
     expect(view.official.source).toBe("official");

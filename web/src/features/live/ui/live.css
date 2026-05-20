@@ -38,6 +38,8 @@
 .toolbar-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -49,6 +51,10 @@
 
 .scope-toggle {
   grid-template-columns: repeat(2, 58px);
+}
+
+.venue-filter {
+  grid-template-columns: repeat(6, minmax(42px, max-content));
 }
 
 .segmented button {
@@ -657,6 +663,10 @@
 
   .toolbar-controls .sort-toggle {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .toolbar-controls .venue-filter {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .token-radar-table {
@@ -1374,6 +1384,23 @@
   border-color: var(--opportunity-line-strong);
   color: var(--opportunity-ink);
   background: var(--opportunity-soft);
+}
+
+.radar-venue-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: #ffd184;
+  background: rgba(242, 165, 31, 0.1);
+  padding: 0 5px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .radar-case-meta {

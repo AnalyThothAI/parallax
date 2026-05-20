@@ -8,6 +8,20 @@ export type VenueAction = {
   url: string;
 };
 
+export type TokenRadarVenueFilter = "all" | "sol" | "eth" | "base" | "bsc" | "cex";
+
+export const TOKEN_RADAR_VENUE_FILTERS: Array<{
+  key: TokenRadarVenueFilter;
+  label: string;
+}> = [
+  { key: "all", label: "All" },
+  { key: "sol", label: "SOL" },
+  { key: "eth", label: "ETH" },
+  { key: "base", label: "BASE" },
+  { key: "bsc", label: "BSC" },
+  { key: "cex", label: "CEX" },
+];
+
 export function tokenVenueAction(item: TokenFlowItem): VenueAction | null {
   const venueType = item.identity.venue_type?.trim().toLowerCase();
   if (venueType === "cex") {
@@ -20,6 +34,43 @@ export function tokenVenueAction(item: TokenFlowItem): VenueAction | null {
   return null;
 }
 
+export function tokenRadarVenueMatches(
+  item: TokenFlowItem,
+  filter: TokenRadarVenueFilter,
+): boolean {
+  if (filter === "all") {
+    return true;
+  }
+  return tokenRadarVenueKey(item) === filter;
+}
+
+export function tokenRadarVenueKey(
+  item: TokenFlowItem,
+): Exclude<TokenRadarVenueFilter, "all"> | null {
+  const venueType = item.identity.venue_type?.trim().toLowerCase();
+  if (venueType === "cex" || item.identity.target_type === "CexToken") {
+    return "cex";
+  }
+  return chainVenueKey(item.identity.chain);
+}
+
+export function tokenVenueDisplayLabel(item: TokenFlowItem): string | null {
+  const venueType = item.identity.venue_type?.trim().toLowerCase();
+  if (venueType === "cex" || item.identity.target_type === "CexToken") {
+    return "CEX";
+  }
+  return chainDisplayLabel(item.identity.chain);
+}
+
+export function chainDisplayLabel(chain?: string | null): string | null {
+  const key = chainVenueKey(chain);
+  if (key) {
+    return TOKEN_RADAR_VENUE_FILTERS.find((item) => item.key === key)?.label ?? key.toUpperCase();
+  }
+  const text = chain?.trim();
+  return text ? text.toUpperCase() : null;
+}
+
 export function signalPulseVenueActions(item: SignalPulseItem): VenueAction[] {
   const dexAction = signalPulseDexVenueAction(item);
   if (dexAction) {
@@ -27,6 +78,33 @@ export function signalPulseVenueActions(item: SignalPulseItem): VenueAction[] {
   }
   const cexAction = signalPulseCexVenueAction(item);
   return cexAction ? [cexAction] : [];
+}
+
+function chainVenueKey(
+  chain?: string | null,
+): Exclude<TokenRadarVenueFilter, "all" | "cex"> | null {
+  const normalized = chain?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "sol" || normalized === "solana") {
+    return "sol";
+  }
+  if (normalized === "eth" || normalized === "ethereum" || normalized === "eip155:1") {
+    return "eth";
+  }
+  if (normalized === "base" || normalized === "eip155:8453") {
+    return "base";
+  }
+  if (
+    normalized === "bsc" ||
+    normalized === "bnb" ||
+    normalized === "bnb_chain" ||
+    normalized === "eip155:56"
+  ) {
+    return "bsc";
+  }
+  return null;
 }
 
 function signalPulseDexVenueAction(item: SignalPulseItem): VenueAction | null {

@@ -12,7 +12,7 @@ import {
   tokenLabel,
 } from "@lib/format";
 import type { Decision, TokenFlowItem, TokenProfileBlock } from "@lib/types";
-import { tokenVenueAction } from "@lib/venue";
+import { chainDisplayLabel, tokenVenueAction, tokenVenueDisplayLabel } from "@lib/venue";
 import type {
   ObsidianSource,
   ObsidianStringField,
@@ -121,15 +121,20 @@ export function buildTokenCaseView(item: TokenFlowItem): TokenCaseView {
 export function identitySubtitle(item: TokenFlowItem): string {
   if (item.identity.venue_type === "cex") {
     return (
-      [item.identity.exchange?.toUpperCase(), item.identity.inst_id].filter(Boolean).join(" · ") ||
-      "CEX"
+      [tokenVenueDisplayLabel(item), item.identity.exchange?.toUpperCase(), item.identity.inst_id]
+        .filter(Boolean)
+        .join(" · ") || "CEX"
     );
   }
   if (item.identity.address) {
-    return `${item.identity.chain ?? "unknown"} · ${shortAddress(item.identity.address)}`;
+    return `${chainDisplayLabel(item.identity.chain) ?? "unknown"} · ${shortAddress(
+      item.identity.address,
+    )}`;
   }
   if (item.identity.target_type && item.identity.target_id) {
-    return item.identity.chain ? `${item.identity.chain} · resolved target` : "resolved target";
+    return item.identity.chain
+      ? `${chainDisplayLabel(item.identity.chain) ?? item.identity.chain} · resolved target`
+      : "resolved target";
   }
   const reason = item.identity.resolution_reasons?.[0] ?? item.identity.identity_status;
   const candidateText = item.identity.candidate_count
