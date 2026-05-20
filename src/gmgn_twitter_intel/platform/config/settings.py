@@ -889,8 +889,6 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     scopes: tuple[str, ...] = ("all", "matched")
     min_source_mentions: int = Field(default=3, ge=1)
     min_independent_authors: int = Field(default=2, ge=1)
-    min_new_labeled_mentions: int = Field(default=3, ge=1)
-    min_new_authors: int = Field(default=2, ge=1)
     min_semantic_coverage: float = Field(default=0.35, ge=0, le=1)
     max_mentions_per_digest: int = Field(default=24, ge=1)
     max_llm_calls_per_cycle: int = Field(default=3, ge=0)
@@ -900,7 +898,7 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     price_move_refresh_pct: float = Field(default=12.0, ge=0)
     digest_ttl_by_window_seconds: dict[str, int] = Field(
-        default_factory=lambda: {"5m": 120, "1h": 300, "4h": 600, "24h": 900}
+        default_factory=lambda: {"1h": 900, "4h": 1800, "24h": 7200}
     )
 
     @field_validator("wakes_on", "windows", "scopes", mode="before")
@@ -1662,8 +1660,6 @@ token_discussion_digest:
   scopes: ["all", "matched"]
   min_source_mentions: 3
   min_independent_authors: 2
-  min_new_labeled_mentions: 3
-  min_new_authors: 2
   min_semantic_coverage: 0.35
   max_mentions_per_digest: 24
   max_llm_calls_per_cycle: 3
@@ -1673,10 +1669,9 @@ token_discussion_digest:
   attention_mix_change_threshold: 0.20
   price_move_refresh_pct: 12.0
   digest_ttl_by_window_seconds:
-    5m: 120
-    1h: 300
-    4h: 600
-    24h: 900
+    1h: 900
+    4h: 1800
+    24h: 7200
 news_fetch:
   enabled: true
   interval_seconds: 60.0
