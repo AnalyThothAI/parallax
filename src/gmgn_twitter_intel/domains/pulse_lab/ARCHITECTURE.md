@@ -6,10 +6,13 @@
 > contracts live in `../../../../docs/CONTRACTS.md`.
 
 Signal Pulse is an evidence-first read-model producer. It turns Token Radar
-projection rows into replayable Pulse decisions, but PostgreSQL material facts
-remain the only business truth. The LLM never acquires critical facts itself:
-the worker first builds a sealed `PulseEvidencePacket`, then the LLM can only
-synthesize, challenge, and cite refs inside that packet.
+projection rows into replayable Pulse decisions on the `1h` and `4h` horizons,
+but PostgreSQL material facts remain the only business truth. The LLM never
+acquires critical facts itself: the worker first builds a sealed
+`PulseEvidencePacket`, then the research committee can only synthesize,
+challenge, judge, and cite refs inside that packet. Token Radar may still
+compute `5m` rows for other surfaces; Pulse Agent admission must not scan or
+enqueue `5m`.
 
 ## Data Flow
 
@@ -19,8 +22,9 @@ token_radar_rows + events + enriched_events + market facts + identity facts
   -> PulseEvidenceBuilder
   -> pulse_evidence_packets
   -> EvidenceCompletenessGate
-  -> evidence_debate LLM
-  -> decision_maker LLM
+  -> signal_analyst LLM
+  -> bear_case LLM
+  -> risk_portfolio_judge LLM
   -> ClaimEvidenceVerifier
   -> RecommendationClipper
   -> deterministic eval
@@ -35,12 +39,12 @@ eval, and write-gate audit rows so operators can see why nothing was published.
 
 | Component | Code owner | Writes | Invariant |
 |---|---|---|---|
-| Candidate gate | `services/pulse_candidate_gate.py` | none | Deterministic admission from `factor_snapshot_json`; fails closed on low score, hard risks, or insufficient projection quality. |
+| Candidate gate | `services/pulse_candidate_gate.py` | none | Deterministic admission from `factor_snapshot_json`; fails closed on low score, hard risks, insufficient projection quality, or insufficient independent-source quality. |
 | Evidence source repository | `repositories/pulse_evidence_source_repository.py` | none | Reads events, enriched events, market ticks/price observations, and identity/profile facts. Provider raw frames are not facts. |
 | Evidence packet builder | `services/evidence_packet_builder.py` | `pulse_evidence_packets` through repository | Constructs a sealed packet with stable `allowed_evidence_refs`, source fingerprints, quality metrics, and data gaps before any LLM call. |
 | Evidence completeness gate | `services/evidence_completeness_gate.py` | run-step audit only | Decides whether packet evidence is complete, partial, stale, or insufficient; sets max decision status and public display ceiling. |
-| Decision runtime | `services/pulse_decision_runtime.py` | none | Builds packet-only stage payloads, loads prompts, validates debate/final refs, and enriches event URLs. No OpenAI SDK import. |
-| OpenAI adapter | `integrations/openai_agents/pulse_decision_agent_client.py` | none directly | Runs exactly two tool-free stages: `evidence_debate` and `decision_maker`. Tools are not registered for Pulse. |
+| Decision runtime | `services/pulse_decision_runtime.py` | none | Builds packet-only committee payloads, loads prompts, validates committee refs, and enriches event URLs. No OpenAI SDK import. |
+| OpenAI adapter | `integrations/openai_agents/pulse_decision_agent_client.py` | none directly | Runs exactly three tool-free stages: `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. Tools are not registered for Pulse. |
 | Job service | `services/pulse_candidate_job_service.py` | runs, steps, packets, candidates, eval, playbooks | Owns per-job orchestration and persistence; writes hidden audit rows for invalid/abstain/hold-publish outputs. |
 | Public read model | `read_models/signal_pulse_service.py` and `repositories/pulse_read_repository.py` | none | Lists only public `display_*` rows with `evidence_packet_hash`; hidden states remain operator/audit data. |
 
@@ -50,17 +54,18 @@ eval, and write-gate audit rows so operators can see why nothing was published.
 
 - `evidence_pack`
 - `evidence_completeness_gate`
-- `evidence_debate`
+- `signal_analyst`
+- `bear_case`
 - `claim_verifier`
-- `decision_maker`
+- `risk_portfolio_judge`
 - `recommendation_clipper`
 - `deterministic_eval`
 - `write_gate`
 
-There is no public `analyst`, `critic`, `judge`, `investigator`, or
-`research_only_gate` runtime. `research_only` can still be a route value, but
-hard blocking is represented by `evidence_completeness_gate` plus hidden display
-state, not by a separate compatibility stage.
+There is no public legacy stage alias runtime. Older exploratory role names are
+not stage names. `research_only` can still be a route value, but hard blocking
+is represented by `evidence_completeness_gate` plus hidden display state, not
+by a separate compatibility stage.
 
 ## Public Decision Contract
 
@@ -100,7 +105,9 @@ Non-abstain decisions must cite `supporting_evidence_refs`. Legacy
 
 Signal Pulse listings only expose `display_trade_candidate`,
 `display_token_watch`, and `display_risk_rejected_high_info` rows with a packet
-hash. Hidden rows are retained for debugging, eval, and replay.
+hash. `hidden_source_quality` rows are retained for debugging, eval, and replay
+when matched or watched context exists but independent public-source quality is
+not good enough for default discovery.
 
 ## Provider Boundary
 

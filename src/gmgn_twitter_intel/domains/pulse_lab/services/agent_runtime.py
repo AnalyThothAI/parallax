@@ -10,7 +10,7 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_GATE_VERSION,
 )
 
-PULSE_AGENT_RUNTIME_VERSION = "pulse-decision-runtime-v1"
+PULSE_AGENT_RUNTIME_VERSION = "pulse-research-committee-runtime-v1"
 PULSE_AGENT_STRATEGY = "signal_pulse_decision"
 PULSE_DETERMINISTIC_GRADER_VERSION = "pulse-deterministic-eval-v3"
 PULSE_FAILURE_TAXONOMY_VERSION = "pulse-failure-taxonomy-v1"
@@ -25,9 +25,17 @@ PULSE_FAILURE_TAXONOMY_CODES = (
     "unexpected_exception",
 )
 
-_DEFAULT_STAGE_NAMES = ("evidence_debate", "decision_maker")
-_DEFAULT_MAX_TURNS_PER_STAGE = {"evidence_debate": 1, "decision_maker": 1}
-_DEFAULT_TOOL_NAMES_BY_STAGE = {"evidence_debate": (), "decision_maker": ()}
+_DEFAULT_STAGE_NAMES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
+_DEFAULT_MAX_TURNS_PER_STAGE = {
+    "signal_analyst": 1,
+    "bear_case": 1,
+    "risk_portfolio_judge": 1,
+}
+_DEFAULT_TOOL_NAMES_BY_STAGE = {
+    "signal_analyst": (),
+    "bear_case": (),
+    "risk_portfolio_judge": (),
+}
 _DEFAULT_VALIDATORS_ENABLED = (
     "pydantic_final_decision_schema",
     "runtime_evidence_ref_subset",

@@ -1,4 +1,3 @@
-import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type { ScopeKey, SignalPulseStatusFilter, WindowKey } from "@lib/types";
 
 export type SignalLabRouteState = {
@@ -10,12 +9,14 @@ export type SignalLabRouteState = {
 };
 
 export const SIGNAL_LAB_ROUTE_DEFAULTS: SignalLabRouteState = {
-  window: "5m",
+  window: "4h",
   scope: "all",
   status: "all",
   handle: "",
   q: "",
 };
+
+const SIGNAL_PULSE_WINDOWS: WindowKey[] = ["1h", "4h"];
 
 const SIGNAL_LAB_STATUSES: SignalPulseStatusFilter[] = [
   "all",
@@ -69,7 +70,7 @@ export function signalLabRouteStateWith(
 }
 
 function parseWindow(value: string | null): WindowKey {
-  return OBSERVATION_WINDOWS.includes(value as WindowKey)
+  return SIGNAL_PULSE_WINDOWS.includes(value as WindowKey)
     ? (value as WindowKey)
     : SIGNAL_LAB_ROUTE_DEFAULTS.window;
 }

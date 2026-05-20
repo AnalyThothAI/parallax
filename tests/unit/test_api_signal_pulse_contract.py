@@ -69,11 +69,27 @@ def test_signal_pulse_api_defaults_to_produced_agent_window_and_scope():
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["query"]["window"] == "5m"
+    assert data["query"]["window"] == "4h"
     assert data["query"]["scope"] == "all"
-    assert pulse.list_calls[0]["window"] == "5m"
+    assert pulse.list_calls[0]["window"] == "4h"
     assert pulse.list_calls[0]["scope"] == "all"
-    assert pulse.summary_calls[0] == {"window": "5m", "scope": "all", "q": None, "handle": None}
+    assert pulse.summary_calls[0] == {"window": "4h", "scope": "all", "q": None, "handle": None}
+
+
+def test_signal_pulse_api_rejects_removed_5m_window():
+    pulse = FakeSignalPulseReadRepository()
+    app = _app(pulse)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/signal-lab/pulse",
+            params={"window": "5m"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
+    assert pulse.list_calls == []
 
 
 class FakeSignalPulseReadRepository:

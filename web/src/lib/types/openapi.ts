@@ -1221,8 +1221,28 @@ export interface components {
         };
         /** NarrativeSemanticBacklog */
         NarrativeSemanticBacklog: {
+            /**
+             * Admissions With Missing Semantics
+             * @default 0
+             */
+            admissions_with_missing_semantics: number;
+            /**
+             * Current Source Rows
+             * @default 0
+             */
+            current_source_rows: number;
+            /**
+             * Missing Semantic Rows
+             * @default 0
+             */
+            missing_semantic_rows: number;
             /** Oldest Due Age Ms */
             oldest_due_age_ms?: number | null;
+            /**
+             * Pending Existing Rows
+             * @default 0
+             */
+            pending_existing_rows: number;
             /**
              * Queued
              * @default 0
@@ -1234,10 +1254,25 @@ export interface components {
              */
             retryable: number;
             /**
+             * Semantic Rows For Current Sources
+             * @default 0
+             */
+            semantic_rows_for_current_sources: number;
+            /**
              * Stale
              * @default 0
              */
             stale: number;
+            /**
+             * Stale Fingerprint Current Digest Count
+             * @default 0
+             */
+            stale_fingerprint_current_digest_count: number;
+            /**
+             * Suppressed Current Digest Count
+             * @default 0
+             */
+            suppressed_current_digest_count: number;
             /**
              * Total Pending
              * @default 0
@@ -1343,6 +1378,10 @@ export interface components {
         };
         /** OpsDiagnosticsData */
         OpsDiagnosticsData: {
+            /** Agent Execution */
+            agent_execution?: {
+                [key: string]: unknown;
+            };
             /** Collector */
             collector?: {
                 [key: string]: unknown;
@@ -1745,13 +1784,14 @@ export interface components {
         };
         /** SignalPulseStages */
         SignalPulseStages: {
+            bear_case?: components["schemas"]["SignalPulseStagePayload"] | null;
             claim_verifier?: components["schemas"]["SignalPulseStagePayload"] | null;
-            decision_maker?: components["schemas"]["SignalPulseStagePayload"] | null;
             deterministic_eval?: components["schemas"]["SignalPulseStagePayload"] | null;
             evidence_completeness_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
-            evidence_debate?: components["schemas"]["SignalPulseStagePayload"] | null;
             evidence_pack?: components["schemas"]["SignalPulseStagePayload"] | null;
             recommendation_clipper?: components["schemas"]["SignalPulseStagePayload"] | null;
+            risk_portfolio_judge?: components["schemas"]["SignalPulseStagePayload"] | null;
+            signal_analyst?: components["schemas"]["SignalPulseStagePayload"] | null;
             write_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
         };
         /** SocialEventDetail */

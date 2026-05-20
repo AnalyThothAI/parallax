@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOW_SET
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
+SIGNAL_PULSE_WINDOWS = set(SIGNAL_PULSE_WINDOW_SET)
 SCOPES = {"all", "matched"}
 ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
@@ -36,6 +38,12 @@ def _watchlist_timeline_scope(value: str) -> str:
 
 def _window(value: str) -> str:
     if value in WINDOWS:
+        return value
+    raise ApiBadRequest("invalid_window", field="window")
+
+
+def _signal_pulse_window(value: str) -> str:
+    if value in SIGNAL_PULSE_WINDOWS:
         return value
     raise ApiBadRequest("invalid_window", field="window")
 

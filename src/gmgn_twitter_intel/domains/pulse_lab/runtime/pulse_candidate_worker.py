@@ -38,6 +38,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_edge_events import (
     build_pulse_edge_state,
     diff_pulse_edge_events,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOWS
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
@@ -47,7 +48,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 )
 
 SOURCE_TIMELINE_LOOKBACK_MS = 24 * 60 * 60 * 1000
-DEFAULT_WINDOWS = ("1h",)
+DEFAULT_WINDOWS = SIGNAL_PULSE_WINDOWS
 DEFAULT_SCOPES = ("all",)
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
 PULSE_EDGE_BUDGET_PER_HOUR = 3
@@ -214,7 +215,7 @@ class PulseCandidateWorker(WorkerBase):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             reservation = self.decision_client.try_reserve_execution(
                 "pulse.pipeline",
-                child_lanes=("pulse.evidence_debate", "pulse.decision_maker"),
+                child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
                 scope="parent",
             )
             if not reservation.acquired:
@@ -433,8 +434,7 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     resolved_thresholds = thresholds or PulseTriggerThresholds()
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
-    watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_heat", "facts", "watched_mentions"))
-    return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score or watched_mentions > 0
+    return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score
 
 
 def _trigger_thresholds_from_settings(settings: Any) -> PulseTriggerThresholds:

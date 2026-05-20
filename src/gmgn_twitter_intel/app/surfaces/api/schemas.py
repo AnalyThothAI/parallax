@@ -239,9 +239,10 @@ class SignalPulseStages(ApiSchema):
 
     evidence_pack: SignalPulseStagePayload | None = None
     evidence_completeness_gate: SignalPulseStagePayload | None = None
-    evidence_debate: SignalPulseStagePayload | None = None
+    signal_analyst: SignalPulseStagePayload | None = None
+    bear_case: SignalPulseStagePayload | None = None
     claim_verifier: SignalPulseStagePayload | None = None
-    decision_maker: SignalPulseStagePayload | None = None
+    risk_portfolio_judge: SignalPulseStagePayload | None = None
     recommendation_clipper: SignalPulseStagePayload | None = None
     deterministic_eval: SignalPulseStagePayload | None = None
     write_gate: SignalPulseStagePayload | None = None

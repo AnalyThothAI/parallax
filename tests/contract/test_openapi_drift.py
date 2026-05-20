@@ -146,7 +146,7 @@ def test_signal_pulse_item_schema_matches_runtime_payload_keys() -> None:
 
 @pytest.mark.contract
 def test_signal_pulse_stages_schema_exposes_only_evidence_first_stage_fields() -> None:
-    """Signal Pulse public stages expose only evidence-first stage fields."""
+    """Signal Pulse public stages expose only research-committee stage fields."""
     from gmgn_twitter_intel.app.runtime.app import create_app
     from gmgn_twitter_intel.platform.config.settings import Settings
 
@@ -158,9 +158,10 @@ def test_signal_pulse_stages_schema_exposes_only_evidence_first_stage_fields() -
     assert set(props) == {
         "evidence_pack",
         "evidence_completeness_gate",
-        "evidence_debate",
+        "signal_analyst",
+        "bear_case",
         "claim_verifier",
-        "decision_maker",
+        "risk_portfolio_judge",
         "recommendation_clipper",
         "deterministic_eval",
         "write_gate",

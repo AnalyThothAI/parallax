@@ -1811,8 +1811,9 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
         _seed_displayable_candidate(client.app, candidate_id="cand-stages", agent_run_id="run-stages")
         with client.app.state.service.repositories() as repos:
             for stage, response_json, started_at_ms, finished_at_ms in [
-                ("evidence_debate", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
-                ("decision_maker", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
+                ("signal_analyst", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
+                ("bear_case", {"risk_level": "medium"}, 210, 300),
+                ("risk_portfolio_judge", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
             ]:
                 repos.pulse_runs.insert_agent_run_step(
                     step_id=f"run-stages:{stage}:0",
@@ -1841,16 +1842,18 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
     assert set(stages.keys()) == {
         "evidence_pack",
         "evidence_completeness_gate",
-        "evidence_debate",
+        "signal_analyst",
+        "bear_case",
         "claim_verifier",
-        "decision_maker",
+        "risk_portfolio_judge",
         "recommendation_clipper",
         "deterministic_eval",
         "write_gate",
     }
-    assert stages["evidence_debate"]["status"] == "ok"
-    assert stages["evidence_debate"]["response"]["confidence"] == 0.82
-    assert stages["decision_maker"]["response"]["confidence"] == 0.35
+    assert stages["signal_analyst"]["status"] == "ok"
+    assert stages["signal_analyst"]["response"]["confidence"] == 0.82
+    assert stages["bear_case"]["response"]["risk_level"] == "medium"
+    assert stages["risk_portfolio_judge"]["response"]["confidence"] == 0.35
 
 
 def test_social_events_by_ids_returns_full_records(tmp_path):

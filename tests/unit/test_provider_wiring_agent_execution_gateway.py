@@ -25,7 +25,7 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
                 "global_max_concurrency": 2,
                 "global_rpm_limit": 30,
                 "lanes": {
-                    "pulse.decision_maker": {
+                    "pulse.risk_portfolio_judge": {
                         "priority": "high",
                         "max_concurrency": 1,
                         "timeout_seconds": 90,
@@ -39,7 +39,7 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
 
     snapshot = gateway.status_snapshot()
     assert snapshot["global_max_concurrency"] == 2
-    assert snapshot["lanes"]["pulse.decision_maker"]["timeout_seconds"] == 90
+    assert snapshot["lanes"]["pulse.risk_portfolio_judge"]["timeout_seconds"] == 90
 
 
 def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(monkeypatch) -> None:

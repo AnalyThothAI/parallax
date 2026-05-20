@@ -134,8 +134,9 @@ def _pulse_policy() -> AgentRuntimePolicy:
         global_rpm_limit=1000,
         lanes={
             "pulse.pipeline": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
-            "pulse.evidence_debate": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
-            "pulse.decision_maker": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "pulse.signal_analyst": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "pulse.bear_case": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
+            "pulse.risk_portfolio_judge": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
         },
     )
 
@@ -258,14 +259,14 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
         )
         parent = gateway.try_reserve(
             "pulse.pipeline",
-            child_lanes=("pulse.evidence_debate", "pulse.decision_maker"),
+            child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
             scope="parent",
         )
 
         try:
             assert parent.acquired is True
             result = await gateway.execute(
-                _spec("pulse.evidence_debate"),
+                _spec("pulse.signal_analyst"),
                 parent_reservation=parent,
             )
             assert result.audit.status == AgentExecutionStatus.DONE
@@ -276,7 +277,7 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
         snapshot = gateway.status_snapshot()
         assert snapshot["global_in_flight"] == 0
         assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
-        assert snapshot["lanes"]["pulse.evidence_debate"]["in_flight"] == 0
+        assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
         assert runner.calls == 1
 
     asyncio.run(scenario())

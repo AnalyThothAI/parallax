@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import EvidenceDebateMemo, FinalDecision
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import BearCaseMemo, FinalDecision, SignalAnalystMemo
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +135,7 @@ def _canonicalize_evidence_refs(
                 "candidate_ref_ids": resolution.candidate_ref_ids,
             }
         )
-    if output_type is EvidenceDebateMemo:
+    if output_type in {SignalAnalystMemo, BearCaseMemo}:
         corrections.extend(_remove_unknown_declared_allowed_refs(payload, allowed))
 
     result: dict[str, Any] = {}
@@ -252,9 +252,9 @@ def _should_convert_to_missing_ref(
 ) -> bool:
     if output_type is FinalDecision:
         return path == "data_gap_refs"
-    if output_type is not EvidenceDebateMemo:
+    if output_type not in {SignalAnalystMemo, BearCaseMemo}:
         return False
-    if path.startswith("data_gap_claims["):
+    if output_type is BearCaseMemo and path.startswith("missing_fact_impacts["):
         return True
     ref_type = _ref_type(value)
     if ref_type.endswith("_evidence"):
@@ -265,7 +265,7 @@ def _should_convert_to_missing_ref(
 
 
 def _claim_for_ref_path(payload: dict[str, Any], path: str) -> dict[str, Any] | None:
-    match = re.match(r"^(bull_claims|bear_claims|rebuttal_claims|data_gap_claims)\[(\d+)\]\.evidence_refs$", path)
+    match = re.match(r"^(bull_claims|risk_claims|missing_fact_impacts)\[(\d+)\]\.evidence_refs$", path)
     if not match:
         return None
     claims = payload.get(match.group(1))
@@ -285,18 +285,23 @@ def _iter_ref_lists(payload: dict[str, Any], *, output_type: type[Any]) -> list[
                 refs.extend((field_name, values, index) for index in range(len(values)))
         return refs
 
-    if output_type is EvidenceDebateMemo:
-        for group_name in ("bull_claims", "bear_claims", "rebuttal_claims", "data_gap_claims"):
-            claims = payload.get(group_name)
-            if not isinstance(claims, list):
+    if output_type is SignalAnalystMemo:
+        group_names = ("bull_claims",)
+    elif output_type is BearCaseMemo:
+        group_names = ("risk_claims", "missing_fact_impacts")
+    else:
+        group_names = ()
+    for group_name in group_names:
+        claims = payload.get(group_name)
+        if not isinstance(claims, list):
+            continue
+        for claim_index, claim in enumerate(claims):
+            if not isinstance(claim, dict):
                 continue
-            for claim_index, claim in enumerate(claims):
-                if not isinstance(claim, dict):
-                    continue
-                evidence_refs = claim.get("evidence_refs")
-                if isinstance(evidence_refs, list):
-                    path = f"{group_name}[{claim_index}].evidence_refs"
-                    refs.extend((path, evidence_refs, index) for index in range(len(evidence_refs)))
+            evidence_refs = claim.get("evidence_refs")
+            if isinstance(evidence_refs, list):
+                path = f"{group_name}[{claim_index}].evidence_refs"
+                refs.extend((path, evidence_refs, index) for index in range(len(evidence_refs)))
     return refs
 
 
@@ -335,7 +340,7 @@ _REFISH_KEYS = {
 
 
 def _normalize_policy_text(payload: dict[str, Any], *, output_type: type[Any]) -> list[dict[str, Any]]:
-    if output_type not in {EvidenceDebateMemo, FinalDecision}:
+    if output_type not in {SignalAnalystMemo, BearCaseMemo, FinalDecision}:
         return []
     repairs: list[dict[str, Any]] = []
 

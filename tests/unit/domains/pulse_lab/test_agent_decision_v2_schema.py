@@ -1,6 +1,6 @@
 """Schema tests for the v2 Pulse agent decision pydantic types.
 
-Covers the BullBearView / TradePlaybook / EvidenceDebateMemo types and
+Covers the BullBearView / TradePlaybook / research committee memo types and
 the v2-extended FinalDecision hard constraints (Task 3, plan
 2026-05-16-pulse-agent-desk-redesign-plan-cn.md §Task 3).
 
@@ -15,10 +15,11 @@ import pytest
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     BullBearView,
     EvidenceClaim,
-    EvidenceDebateMemo,
     FinalDecision,
+    SignalAnalystMemo,
     TradePlaybook,
     contains_trading_execution_instruction,
 )
@@ -129,7 +130,7 @@ def test_trade_playbook_rejects_execution_language() -> None:
 
 
 # ---------------------------------------------------------------------------
-# EvidenceDebateMemo
+# Research committee memos
 # ---------------------------------------------------------------------------
 
 
@@ -137,23 +138,72 @@ def _absent() -> BullBearView:
     return BullBearView(strength="absent")
 
 
-def test_evidence_debate_memo_with_allowed_refs_ok() -> None:
-    memo = EvidenceDebateMemo(
+def test_signal_analyst_memo_with_allowed_refs_ok() -> None:
+    memo = SignalAnalystMemo(
         bull_claims=(
             EvidenceClaim(claim="社交事件显示讨论正在扩散", evidence_refs=("event:event-1",), stance="bull"),
         ),
-        bear_claims=(
+        what_changed_zh="证据包内社交扩散较强，但仍需要等待更多确认。",
+        allowed_evidence_ref_ids=("event:event-1",),
+    )
+    assert memo.allowed_evidence_ref_ids == ("event:event-1",)
+
+
+def test_bear_case_memo_with_allowed_refs_ok() -> None:
+    memo = BearCaseMemo(
+        risk_claims=(
             EvidenceClaim(claim="市场流动性仍然偏薄", evidence_refs=("market:pf-1",), stance="risk"),
         ),
-        summary_zh="证据包内社交扩散较强，但市场流动性仍偏薄，需要等待更多确认。",
-        allowed_evidence_ref_ids=("event:event-1", "market:pf-1"),
+        confidence_ceiling=0.7,
+        missing_fact_impacts=(
+            EvidenceClaim(claim="缺少更长窗口资金确认", evidence_refs=("missing:funding_context",), stance="gap"),
+        ),
+        allowed_evidence_ref_ids=("market:pf-1",),
     )
-    assert memo.allowed_evidence_ref_ids == ("event:event-1", "market:pf-1")
+    assert memo.confidence_ceiling == 0.7
 
 
-def test_evidence_debate_claim_requires_evidence_refs() -> None:
+def test_evidence_claim_stabilizes_empty_evidence_refs() -> None:
     claim = EvidenceClaim(claim="社交事件显示讨论正在扩散", evidence_refs=(), stance="bull")
     assert claim.evidence_refs == ()
+
+
+def test_evidence_claim_allows_factual_buy_language() -> None:
+    claim = EvidenceClaim(claim="链上记录显示地址买入并推高热度。", evidence_refs=("event:1",), stance="bull")
+
+    assert claim.claim == "链上记录显示地址买入并推高热度。"
+
+
+@pytest.mark.parametrize(
+    "claim_text",
+    [
+        "链上可以看到鲸鱼买入。",
+        "可以看到地址买入并推高热度。",
+        "社群记录显示卖压出现但资金仍然流入。",
+    ],
+)
+def test_evidence_claim_allows_factual_market_flow_language(claim_text: str) -> None:
+    claim = EvidenceClaim(claim=claim_text, evidence_refs=("event:1",), stance="bull")
+
+    assert claim.claim == claim_text
+
+
+@pytest.mark.parametrize(
+    "claim_text",
+    [
+        "建议买入并设置止损。",
+        "推荐买入。",
+        "应当买入。",
+        "必须买入。",
+        "不要买入。",
+        "建议建仓。",
+        "应该加仓。",
+        "适合减仓。",
+    ],
+)
+def test_evidence_claim_rejects_prescriptive_execution_advice(claim_text: str) -> None:
+    with pytest.raises(ValidationError, match="trading execution"):
+        EvidenceClaim(claim=claim_text, evidence_refs=("event:1",), stance="bull")
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +357,13 @@ def test_final_decision_rejects_execution_language_in_summary() -> None:
         FinalDecision(**kwargs)
 
 
+def test_final_decision_rejects_prescriptive_execution_advice_in_summary() -> None:
+    kwargs = _hc_kwargs()
+    kwargs["summary_zh"] = "建议买入。"
+    with pytest.raises(ValidationError, match="trading execution"):
+        FinalDecision(**kwargs)
+
+
 def test_final_decision_non_abstain_without_packet_refs_rejected() -> None:
     with pytest.raises(ValidationError, match="supporting_evidence_refs"):
         FinalDecision(
@@ -353,8 +410,9 @@ def test_final_decision_non_abstain_without_packet_refs_rejected() -> None:
         "bull_view",
         "bear_view",
         "evidence_event_urls",
-        "evidence_debate",
-        "decision_maker",
+        "signal_analyst",
+        "bear_case",
+        "risk_portfolio_judge",
     ],
 )
 def test_oq4_reject_execution_language_no_false_positives(case: str) -> None:

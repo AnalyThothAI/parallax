@@ -12,9 +12,10 @@ DecisionRecommendation = Literal["high_conviction", "trade_candidate", "watchlis
 StageName = Literal[
     "evidence_pack",
     "evidence_completeness_gate",
-    "evidence_debate",
+    "signal_analyst",
+    "bear_case",
     "claim_verifier",
-    "decision_maker",
+    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
@@ -24,11 +25,16 @@ StageStatus = Literal["ok", "failed", "timeout", "skipped"]
 BullBearStrength = Literal["absent", "weak", "moderate", "strong"]
 MonitoringHorizon = Literal["1h", "4h", "24h"]
 
-_FORBIDDEN_EXECUTION_RE = re.compile(
-    r"买入|卖出|开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|"
-    r"\b(?:buy|sell|leverage|position\s+sizing?|stop[-\s]+loss|take[-\s]+profit|target\s+price)\b|"
+_PRESCRIPTIVE_EXECUTION_RE = re.compile(
+    r"(建议|推荐|应当|应该|必须|不要|立刻|马上|适合).{0,12}"
+    r"(买入|卖出|开仓|建仓|做多|做空|止损|止盈|加仓|减仓)|"
+    r"(买入|卖出|开仓|建仓|做多|做空).{0,8}(止损|止盈|目标价|杠杆|仓位)|"
+    r"(止损|止盈|目标价|杠杆|仓位).{0,8}(买入|卖出|开仓|做多|做空)|"
+    r"\b(?:should|must|recommend(?:ed)?|advise(?:d)?)\s+"
+    r"(?:buy|sell|open|enter|go\s+long|go\s+short|set\s+a\s+stop)\b|"
+    r"\bbuy\s+signal\b|"
     r"\b(?:go|enter|open)\s+(?:long|short)\b|"
-    r"\b(?:long|short)\s+position\b",
+    r"\b(?:leverage|position\s+sizing?|stop[-\s]+loss|take[-\s]+profit|target\s+price)\b",
     re.IGNORECASE,
 )
 
@@ -55,9 +61,8 @@ class BullBearView(BaseModel):
                 raise ValueError("strength=absent requires empty thesis_zh")
             if self.supporting_event_ids:
                 raise ValueError("strength=absent requires empty supporting_event_ids")
-        else:
-            if not _clean_text(self.thesis_zh):
-                raise ValueError("strength != absent requires non-empty thesis_zh")
+        elif not _clean_text(self.thesis_zh):
+            raise ValueError("strength != absent requires non-empty thesis_zh")
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
@@ -108,24 +113,40 @@ class EvidenceClaim(BaseModel):
         return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
 
 
-class EvidenceDebateMemo(BaseModel):
+class SignalAnalystMemo(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    bull_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    bear_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    rebuttal_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    data_gap_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=2)
-    summary_zh: str = Field(max_length=240)
-    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    bull_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=3)
+    what_changed_zh: str = Field(max_length=240)
+    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=20)
 
-    @field_validator("summary_zh", mode="after")
+    @field_validator("what_changed_zh", mode="after")
     @classmethod
-    def _clean_summary(cls, value: str) -> str:
+    def _clean_what_changed(cls, value: str) -> str:
         cleaned = _clean_text(value)
         if not cleaned:
-            raise ValueError("summary_zh is required")
+            raise ValueError("what_changed_zh is required")
         _reject_execution_language(cleaned)
         return cleaned
+
+    @field_validator("allowed_evidence_ref_ids", mode="after")
+    @classmethod
+    def _stable_allowed_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
+
+
+class BearCaseMemo(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    risk_claims: tuple[EvidenceClaim, ...] = Field(default=(), max_length=4)
+    confidence_ceiling: float = Field(ge=0, le=1)
+    missing_fact_impacts: tuple[EvidenceClaim, ...] = Field(default=(), max_length=3)
+    allowed_evidence_ref_ids: tuple[str, ...] = Field(default=(), max_length=20)
+
+    @field_validator("confidence_ceiling", mode="after")
+    @classmethod
+    def _clamp_confidence_ceiling(cls, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
 
     @field_validator("allowed_evidence_ref_ids", mode="after")
     @classmethod
@@ -266,7 +287,8 @@ class PulseAgentDecisionResult(BaseModel):
 
     evidence_packet: PulseEvidencePacket
     evidence_gate: dict[str, Any]
-    debate_memo: EvidenceDebateMemo
+    signal_memo: SignalAnalystMemo
+    bear_memo: BearCaseMemo
     final_decision: FinalDecision
     claim_verification: dict[str, Any]
     stage_audits: tuple[StageRunAudit, ...]
@@ -285,7 +307,7 @@ class PulseStageFailure(Exception):
 
 
 def contains_trading_execution_instruction(text: str) -> bool:
-    return bool(_FORBIDDEN_EXECUTION_RE.search(text))
+    return bool(_PRESCRIPTIVE_EXECUTION_RE.search(text))
 
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -310,17 +332,18 @@ def _reject_execution_language(value: Any) -> None:
 
 
 __all__ = [
+    "BearCaseMemo",
     "BullBearStrength",
     "BullBearView",
     "DecisionRecommendation",
     "DecisionRoute",
     "EvidenceClaim",
-    "EvidenceDebateMemo",
     "FinalDecision",
     "MonitoringHorizon",
     "PulseAgentDecisionResult",
     "PulseDecisionPayload",
     "PulseStageFailure",
+    "SignalAnalystMemo",
     "StageName",
     "StageRunAudit",
     "StageStatus",

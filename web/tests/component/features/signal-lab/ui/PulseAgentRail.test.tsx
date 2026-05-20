@@ -42,15 +42,16 @@ describe("PulseAgentRail", () => {
     },
   });
 
-  it("renders evidence_debate + decision_maker stage cards", () => {
+  it("renders research committee stage cards", () => {
     const view = buildPulseDetailView({
       item: tittyPulseFixture,
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
     render(<PulseAgentRail agent={view.agent} />);
-    expect(screen.getByText(/阶段 1 · 证据辩论/)).toBeInTheDocument();
-    expect(screen.getByText(/阶段 2 · 决策/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 1 · 信号分析/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 2 · 反方风险/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 3 · 风险裁决/)).toBeInTheDocument();
   });
 
   it("renders v2 decision surface before stage cards", () => {
@@ -93,7 +94,7 @@ describe("PulseAgentRail", () => {
     expect(screen.queryByText("看空")).not.toBeInTheDocument();
   });
 
-  it("renders evidence-first stage cards from the public payload", () => {
+  it("renders research committee stage cards from the public payload", () => {
     const view = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
@@ -104,8 +105,9 @@ describe("PulseAgentRail", () => {
     });
     render(<PulseAgentRail agent={view.agent} />);
 
-    expect(screen.getByText(/阶段 1 · 证据辩论/)).toBeInTheDocument();
-    expect(screen.getByText(/阶段 2 · 决策/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 1 · 信号分析/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 2 · 反方风险/)).toBeInTheDocument();
+    expect(screen.getByText(/阶段 3 · 风险裁决/)).toBeInTheDocument();
   });
 
   it("uses mismatch copy that points to decision and evidence links", () => {
@@ -118,7 +120,7 @@ describe("PulseAgentRail", () => {
 
     expect(
       screen.getByText(
-        "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对证据辩论、决策和证据链接。",
+        "策略门将该资产推到 top 区间，但 Agent 最终置信度偏低。请核对信号分析、反方风险、风险裁决和证据链接。",
       ),
     ).toBeInTheDocument();
   });

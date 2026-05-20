@@ -47,14 +47,16 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateThresholds,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_source_quality import PulseSourceQuality
 from gmgn_twitter_intel.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
 from gmgn_twitter_intel.domains.pulse_lab.services.write_gate import PulseWriteGate
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     BullBearView,
     DecisionRoute,
-    EvidenceDebateMemo,
     FinalDecision,
     PulseStageFailure,
+    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -274,8 +276,8 @@ class PulseCandidateJobService:
                 stage_audits = (*pre_stage_audits, *result.stage_audits)
                 result_audit = result.agent_run_audit or audit
             final_decision = clip_recommendation(final_decision, gate=gate, evidence_gate=evidence_gate)
-            debate_memo = _debate_memo_from_stage_audits(stage_audits)
-            claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, debate_memo, final_decision)
+            signal_memo, bear_memo = _committee_memos_from_stage_audits(stage_audits)
+            claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, signal_memo, bear_memo, final_decision)
             finished_at_ms = _now_ms()
             claim_stage = _deterministic_stage_audit(
                 stage="claim_verifier",
@@ -355,6 +357,11 @@ class PulseCandidateJobService:
                     now_ms=finished_at_ms,
                     since_hours=4,
                 )
+                source_quality = PulseSourceQuality().evaluate(
+                    factor_snapshot=context.factor_snapshot,
+                    window=context.window,
+                    scope=context.scope,
+                )
                 write_gate_decision = PulseWriteGate().evaluate(
                     final_decision=final_decision,
                     eval_result=eval_result,
@@ -362,6 +369,7 @@ class PulseCandidateJobService:
                     evidence_gate=evidence_gate,
                     claim_verification=claim_verification,
                     health_status=health_status,
+                    source_quality=source_quality,
                 )
                 eval_result = _eval_result_with_write_gate(eval_result, write_gate_decision.to_json())
                 repos.pulse_agent_eval.upsert_agent_eval_result(
@@ -450,7 +458,11 @@ class PulseCandidateJobService:
                         trigger_signature=context.trigger_signature,
                         timeline_signature=context.timeline_signature,
                         factor_snapshot_json=context.factor_snapshot,
-                        gate_json={**gate.to_json(), "write_gate": write_gate_decision.to_json()},
+                        gate_json={
+                            **gate.to_json(),
+                            "source_quality": source_quality.to_json(),
+                            "write_gate": write_gate_decision.to_json(),
+                        },
                         **decision_fields,
                         gate_reasons_json=gate.gate_reasons,
                         risk_reasons_json=gate.risk_reasons,
@@ -606,7 +618,7 @@ def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
         contract = contract()
     if not isinstance(contract, PulseAgentRuntimeContract):
         contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
-    if tuple(contract.stage_names) != ("evidence_debate", "decision_maker"):
+    if tuple(contract.stage_names) != ("signal_analyst", "bear_case", "risk_portfolio_judge"):
         contract = DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT
     kwargs = contract.manifest_kwargs()
     if not kwargs.get("failure_taxonomy_version"):
@@ -647,18 +659,26 @@ def _deterministic_stage_audit(
     )
 
 
-def _debate_memo_from_stage_audits(stage_audits: tuple[StageRunAudit, ...]) -> EvidenceDebateMemo:
-    for stage_audit in stage_audits:
-        if stage_audit.stage == "evidence_debate" and stage_audit.response_json:
-            return EvidenceDebateMemo.model_validate(stage_audit.response_json)
-    return EvidenceDebateMemo(
+def _committee_memos_from_stage_audits(
+    stage_audits: tuple[StageRunAudit, ...],
+) -> tuple[SignalAnalystMemo, BearCaseMemo]:
+    signal_memo = SignalAnalystMemo(
         bull_claims=(),
-        bear_claims=(),
-        rebuttal_claims=(),
-        data_gap_claims=(),
-        summary_zh="证据门未允许进入 LLM 综合，本次只保留确定性证据缺口。",
+        what_changed_zh="证据门未允许进入 LLM 信号分析，本次只保留确定性证据缺口。",
         allowed_evidence_ref_ids=(),
     )
+    bear_memo = BearCaseMemo(
+        risk_claims=(),
+        confidence_ceiling=0.0,
+        missing_fact_impacts=(),
+        allowed_evidence_ref_ids=(),
+    )
+    for stage_audit in stage_audits:
+        if stage_audit.stage == "signal_analyst" and stage_audit.response_json:
+            signal_memo = SignalAnalystMemo.model_validate(stage_audit.response_json)
+        elif stage_audit.stage == "bear_case" and stage_audit.response_json:
+            bear_memo = BearCaseMemo.model_validate(stage_audit.response_json)
+    return signal_memo, bear_memo
 
 
 def _packet_gate_refs(packet: PulseEvidencePacket) -> list[str]:
@@ -702,6 +722,15 @@ def _compact_error(exc: Exception, *, limit: int = 500) -> str:
 
 
 def _normalized_failure_reason(exc: Exception) -> str:
+    stage_error_class = _stage_failure_error_class(exc)
+    if stage_error_class == "timeout":
+        return "timeout"
+    if stage_error_class == "rate_limited":
+        return "provider_rate_limited"
+    if stage_error_class in {"transport_error", "provider_error"}:
+        return "provider_unavailable"
+    if stage_error_class in {"schema_invalid", "domain_validation_failed"}:
+        return "invalid_schema"
     text = str(exc).lower()
     if "unknown evidence" in text or "unknown final evidence" in text or "unknown event ids" in text:
         return "invalid_unknown_evidence_ref"
@@ -714,6 +743,19 @@ def _normalized_failure_reason(exc: Exception) -> str:
     if "provider unavailable" in text or "503" in text:
         return "provider_unavailable"
     return "unexpected_exception"
+
+
+def _stage_failure_error_class(exc: Exception) -> str | None:
+    if not isinstance(exc, PulseStageFailure):
+        return None
+    for audit in reversed(exc.audits):
+        trace = audit.trace_metadata_json
+        raw = trace.get("error_class") if isinstance(trace, dict) else None
+        if raw:
+            return str(raw).strip().lower()
+        if audit.status == "timeout":
+            return "timeout"
+    return None
 
 
 def _agent_no_start_backpressure_reason(exc: Exception) -> str | None:

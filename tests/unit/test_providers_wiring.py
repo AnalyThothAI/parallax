@@ -354,8 +354,8 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
             timeout_seconds=120.0,
             artifact_version_hash="artifact:pulse",
             runtime_contract=SimpleNamespace(
-                stage_names=("evidence_debate", "decision_maker"),
-                tool_names_by_stage={"evidence_debate": (), "decision_maker": ()},
+                stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
+                tool_names_by_stage={"signal_analyst": (), "bear_case": (), "risk_portfolio_judge": ()},
                 safety_net_enabled=True,
             ),
             _agent_gateway=kwargs["agent_gateway"],
@@ -384,8 +384,8 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     assert providers.social_enrichment.event_enrichment._agent_gateway is gateway
     assert providers.pulse_lab.decision_provider is not None
     contract = providers.pulse_lab.decision_provider.runtime_contract
-    assert contract.stage_names == ("evidence_debate", "decision_maker")
-    assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
+    assert contract.stage_names == ("signal_analyst", "bear_case", "risk_portfolio_judge")
+    assert contract.tool_names_by_stage == {"signal_analyst": (), "bear_case": (), "risk_portfolio_judge": ()}
     assert contract.safety_net_enabled is True
     assert providers.narrative_intel.narrative_provider is not None
     assert providers.narrative_intel.narrative_provider._client._agent_gateway is gateway

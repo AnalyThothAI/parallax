@@ -12,7 +12,7 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.pulse_lab.providers import EvidenceDebateMemo
+from gmgn_twitter_intel.domains.pulse_lab.providers import BearCaseMemo, SignalAnalystMemo
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
@@ -108,6 +108,29 @@ class _FailingAgentGateway(_FakeAgentGateway):
         )
 
 
+class _TransportFailingAgentGateway(_FakeAgentGateway):
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
+        request_audit = self.request_audit(stage)
+        failed = AgentExecutionResultAudit(
+            **_request_audit_base(request_audit),
+            status=AgentExecutionStatus.FAILED,
+            execution_started=True,
+            latency_ms=31.0,
+            usage={"input_tokens": 3},
+            parse_mode="strict",
+            safety_net={"safety_net_used": False, "safety_net_retries": 0},
+            error_class=AgentExecutionErrorClass.TRANSPORT_ERROR,
+            error_message="connection reset by provider",
+        )
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.TRANSPORT_ERROR,
+            "connection reset by provider",
+            audit=failed,
+            execution_started=True,
+        )
+
+
 class _NoStartBackpressureGateway(_FakeAgentGateway):
     async def execute(self, stage, **kwargs):
         self.execute_calls.append({"stage": stage, "kwargs": kwargs})
@@ -150,7 +173,7 @@ def _request_audit_base(audit: AgentExecutionRequestAudit) -> dict:
 
 
 def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
-    schema = StrictJsonOutputSchema(EvidenceDebateMemo)
+    schema = StrictJsonOutputSchema(SignalAnalystMemo)
     assert schema.is_strict_json_schema() is True
     assert schema.is_plain_text() is False
     flat = schema.json_schema()
@@ -161,7 +184,14 @@ def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
     assert "$ref" not in serialized
     assert "$defs" not in serialized
     # Expose underlying Pydantic class for InstructorSafetyNet fallback path.
-    assert schema.output_type is EvidenceDebateMemo
+    assert schema.output_type is SignalAnalystMemo
+
+
+def test_json_output_schema_bear_case_also_flattens_refs() -> None:
+    schema = StrictJsonOutputSchema(BearCaseMemo)
+    serialized = json.dumps(schema.json_schema())
+    assert "$ref" not in serialized
+    assert "$defs" not in serialized
 
 
 def test_json_output_schema_final_decision_also_flattens_refs() -> None:
@@ -191,13 +221,22 @@ def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
 
     contract = client.runtime_contract
 
-    assert contract.stage_names == ("evidence_debate", "decision_maker")
-    assert contract.max_turns_per_stage == {"evidence_debate": 1, "decision_maker": 1}
-    assert contract.tool_names_by_stage == {"evidence_debate": (), "decision_maker": ()}
+    assert contract.stage_names == ("signal_analyst", "bear_case", "risk_portfolio_judge")
+    assert contract.max_turns_per_stage == {
+        "signal_analyst": 1,
+        "bear_case": 1,
+        "risk_portfolio_judge": 1,
+    }
+    assert contract.tool_names_by_stage == {
+        "signal_analyst": (),
+        "bear_case": (),
+        "risk_portfolio_judge": (),
+    }
     assert contract.safety_net_enabled is True
     assert contract.manifest_kwargs()["tool_names_by_stage"] == {
-        "evidence_debate": (),
-        "decision_maker": (),
+        "signal_analyst": (),
+        "bear_case": (),
+        "risk_portfolio_judge": (),
     }
     assert "route_tool_budgets" not in contract.manifest_kwargs()
 
@@ -210,16 +249,19 @@ def test_pulse_runtime_manifest_declares_packet_schema_and_no_tools() -> None:
         timeout_seconds=20.0,
     )
 
-    assert manifest["runtime"]["stages"] == ["evidence_debate", "decision_maker"]
+    assert manifest["runtime"]["stages"] == ["signal_analyst", "bear_case", "risk_portfolio_judge"]
     assert manifest["runtime"]["tool_names_by_stage"] == {
-        "evidence_debate": [],
-        "decision_maker": [],
+        "signal_analyst": [],
+        "bear_case": [],
+        "risk_portfolio_judge": [],
     }
+    assert "evidence_debate" not in json.dumps(manifest)
+    assert "decision_maker" not in json.dumps(manifest)
     assert "route_tool_budgets" not in manifest["runtime"]
     assert manifest["contracts"]["evidence_packet_schema_version"]
 
 
-def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> None:
+def test_signal_analyst_stage_input_contains_packet_hash_and_allowed_refs() -> None:
     runtime = PulseDecisionRuntimeService(db_pool=object())
     packet = {
         "evidence_packet_id": "pkt-1",
@@ -235,13 +277,13 @@ def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> 
         ],
     }
 
-    spec = runtime.evidence_debate_stage_spec(
+    spec = runtime.signal_analyst_stage_spec(
         route="meme",
         evidence_packet=packet,
         evidence_gate={"status": "complete"},
     )
 
-    assert spec.stage == "evidence_debate"
+    assert spec.stage == "signal_analyst"
     assert spec.input_payload["evidence_packet_hash"] == "sha256:packet"
     assert spec.input_payload["allowed_evidence_ref_ids"] == [
         "event:evt-1",
@@ -254,8 +296,9 @@ def test_evidence_debate_stage_input_contains_packet_hash_and_allowed_refs() -> 
 def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fields() -> None:
     gateway = _FakeAgentGateway(
         {
-            "evidence_debate": _evidence_debate_raw(["event:event-1"]),
-            "decision_maker": _final_decision_raw(
+            "signal_analyst": _signal_analyst_raw(["event:event-1"]),
+            "bear_case": _bear_case_raw(["event:event-1"]),
+            "risk_portfolio_judge": _final_decision_raw(
                 supporting_refs=["event:event-1"],
                 playbook={
                     "has_playbook": True,
@@ -270,8 +313,9 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
         model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
-        evidence_debate_max_turns=2,
-        decision_maker_max_turns=4,
+        signal_analyst_max_turns=2,
+        bear_case_max_turns=3,
+        risk_portfolio_judge_max_turns=4,
     )
 
     result = asyncio.run(
@@ -286,28 +330,36 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
     )
 
     assert [call["stage"].lane for call in gateway.execute_calls] == [
-        "pulse.evidence_debate",
-        "pulse.decision_maker",
+        "pulse.signal_analyst",
+        "pulse.bear_case",
+        "pulse.risk_portfolio_judge",
     ]
-    assert [call["stage"].stage for call in gateway.execute_calls] == ["evidence_debate", "decision_maker"]
-    assert gateway.execute_calls[0]["stage"].output_type is EvidenceDebateMemo
-    assert gateway.execute_calls[1]["stage"].output_type is FinalDecision
-    assert [call["stage"].max_turns for call in gateway.execute_calls] == [2, 4]
+    assert [call["stage"].stage for call in gateway.execute_calls] == [
+        "signal_analyst",
+        "bear_case",
+        "risk_portfolio_judge",
+    ]
+    assert gateway.execute_calls[0]["stage"].output_type is SignalAnalystMemo
+    assert gateway.execute_calls[1]["stage"].output_type is BearCaseMemo
+    assert gateway.execute_calls[2]["stage"].output_type is FinalDecision
+    assert [call["stage"].max_turns for call in gateway.execute_calls] == [2, 3, 4]
     assert isinstance(gateway.execute_calls[0]["stage"].input_payload, dict)
     assert result.stage_audits[0].usage_json == {"input_tokens": 11, "output_tokens": 5}
     assert result.stage_audits[0].parse_mode == "safety_net_repaired"
     assert result.stage_audits[0].safety_net_used is True
     assert result.stage_audits[0].safety_net_retries == 1
     assert result.stage_audits[0].input_hash == gateway.execute_calls[0]["stage"].input_hash
-    assert result.stage_audits[0].output_hash == "sha256:output-evidence_debate"
-    assert result.stage_audits[1].output_hash == "sha256:output-decision_maker"
+    assert result.stage_audits[0].output_hash == "sha256:output-signal_analyst"
+    assert result.stage_audits[1].output_hash == "sha256:output-bear_case"
+    assert result.stage_audits[2].output_hash == "sha256:output-risk_portfolio_judge"
 
 
 def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
     gateway = _FakeAgentGateway(
         {
-            "evidence_debate": _evidence_debate_raw(["event:event-1"]),
-            "decision_maker": _final_decision_raw(
+            "signal_analyst": _signal_analyst_raw(["event:event-1"]),
+            "bear_case": _bear_case_raw(["event:event-1"]),
+            "risk_portfolio_judge": _final_decision_raw(
                 supporting_refs=["event:event-1"],
                 playbook={
                     "has_playbook": False,
@@ -340,14 +392,16 @@ def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
     assert [call["kwargs"] for call in gateway.execute_calls] == [
         {"parent_reservation": parent},
         {"parent_reservation": parent},
+        {"parent_reservation": parent},
     ]
 
 
 def test_pulse_client_omits_parent_reservation_keyword_for_legacy_gateway() -> None:
     gateway = _FakeAgentGateway(
         {
-            "evidence_debate": _evidence_debate_raw(["event:event-1"]),
-            "decision_maker": _final_decision_raw(
+            "signal_analyst": _signal_analyst_raw(["event:event-1"]),
+            "bear_case": _bear_case_raw(["event:event-1"]),
+            "risk_portfolio_judge": _final_decision_raw(
                 supporting_refs=["event:event-1"],
                 playbook={
                     "has_playbook": False,
@@ -375,14 +429,15 @@ def test_pulse_client_omits_parent_reservation_keyword_for_legacy_gateway() -> N
         )
     )
 
-    assert [call["kwargs"] for call in gateway.execute_calls] == [{}, {}]
+    assert [call["kwargs"] for call in gateway.execute_calls] == [{}, {}, {}]
 
 
 def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -> None:
     gateway = _FakeAgentGateway(
         {
-            "evidence_debate": _evidence_debate_raw(["event:event-l"]),
-            "decision_maker": _final_decision_raw(
+            "signal_analyst": _signal_analyst_raw(["event:event-l"]),
+            "bear_case": _bear_case_raw(["event:event-l"]),
+            "risk_portfolio_judge": _final_decision_raw(
                 supporting_refs=["event:event-l"],
                 playbook={
                     "has_playbook": False,
@@ -412,10 +467,11 @@ def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -
 
     assert result.stage_audits[0].status == "ok"
     assert result.stage_audits[0].response_json["allowed_evidence_ref_ids"] == ["event:event-1"]
-    assert result.stage_audits[1].response_json["supporting_evidence_refs"] == ["event:event-1"]
-    assert result.stage_audits[1].response_json["playbook"]["watch_signals"] == []
-    assert result.stage_audits[1].response_json["playbook"]["exit_triggers"] == []
-    assert result.stage_audits[1].trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
+    assert result.stage_audits[1].response_json["allowed_evidence_ref_ids"] == ["event:event-1"]
+    assert result.stage_audits[2].response_json["supporting_evidence_refs"] == ["event:event-1"]
+    assert result.stage_audits[2].response_json["playbook"]["watch_signals"] == []
+    assert result.stage_audits[2].response_json["playbook"]["exit_triggers"] == []
+    assert result.stage_audits[2].trace_metadata_json["evidence_ref_canonicalization"]["corrections"] == [
         {
             "path": "supporting_evidence_refs[0]",
             "from": "event:event-l",
@@ -424,14 +480,14 @@ def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -
             "reason": "unique_same_type_edit_distance_1",
         }
     ]
-    assert result.stage_audits[1].trace_metadata_json["schema_normalization"]["repairs"] == [
+    assert result.stage_audits[2].trace_metadata_json["schema_normalization"]["repairs"] == [
         {"path": "playbook.watch_signals", "action": "cleared", "reason": "playbook_has_playbook_false"},
         {"path": "playbook.exit_triggers", "action": "cleared", "reason": "playbook_has_playbook_false"},
     ]
 
 
 def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures() -> None:
-    gateway = _FakeAgentGateway({"evidence_debate": _evidence_debate_raw(["event:outside"])})
+    gateway = _FakeAgentGateway({"signal_analyst": _signal_analyst_raw(["event:outside"])})
     client = OpenAIAgentsPulseDecisionClient(
         model="gpt-test",
         agent_gateway=gateway,
@@ -451,8 +507,75 @@ def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures
 
     assert len(gateway.execute_calls) == 1
     assert result.final_decision.recommendation == "abstain"
+    assert result.final_decision.abstain_reason == "invalid_unknown_evidence_ref"
     assert result.stage_audits[0].status == "failed"
     assert "outside allowed_evidence_refs" in (result.stage_audits[0].error or "")
+
+
+def test_schema_invalid_signal_analyst_returns_invalid_model_output_abstain() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "signal_analyst": {
+                "bull_claims": [
+                    {
+                        "claim": "建议买入并设置止损。",
+                        "evidence_refs": ["event:event-1"],
+                        "stance": "bull",
+                    }
+                ],
+                "allowed_evidence_ref_ids": ["event:event-1"],
+            }
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+        )
+    )
+
+    assert result.final_decision.recommendation == "abstain"
+    assert result.final_decision.abstain_reason == "invalid_model_output"
+    assert result.stage_audits[0].status == "failed"
+    assert "ValidationError" in (result.stage_audits[0].error or "")
+
+
+def test_provider_transport_failure_preserves_error_class_without_unknown_ref_label() -> None:
+    gateway = _TransportFailingAgentGateway()
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    import pytest
+
+    with pytest.raises(PulseStageFailure) as exc:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness={"status": "complete"},
+                runtime_manifest={"runtime_version": "test"},
+            )
+        )
+
+    failed = exc.value.audits[0]
+    assert failed.status == "failed"
+    assert failed.trace_metadata_json["error_class"] == "transport_error"
+    assert "invalid_unknown_evidence_ref" not in str(exc.value)
 
 
 def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() -> None:
@@ -476,7 +599,7 @@ def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() ->
 
     assert result.final_decision.recommendation == "abstain"
     assert result.final_decision.abstain_reason == "stage_timeout"
-    assert result.stage_audits[0].stage == "evidence_debate"
+    assert result.stage_audits[0].stage == "signal_analyst"
     assert result.stage_audits[0].status == "timeout"
     assert result.stage_audits[0].error == "agent lane timed out"
     assert result.stage_audits[0].usage_json == {"input_tokens": 2}
@@ -528,13 +651,19 @@ def _pipeline_context() -> dict:
     }
 
 
-def _evidence_debate_raw(refs: list[str]) -> dict:
+def _signal_analyst_raw(refs: list[str]) -> dict:
     return {
         "bull_claims": [{"claim": "社交证据形成早期扩散。", "evidence_refs": refs, "stance": "bull"}],
-        "bear_claims": [],
-        "rebuttal_claims": [],
-        "data_gap_claims": [],
-        "summary_zh": "证据显示社交扩散开始出现，但仍需要观察市场确认。",
+        "what_changed_zh": "证据显示社交扩散开始出现，但仍需要观察市场确认。",
+        "allowed_evidence_ref_ids": refs,
+    }
+
+
+def _bear_case_raw(refs: list[str]) -> dict:
+    return {
+        "risk_claims": [{"claim": "流动性仍然偏薄。", "evidence_refs": refs, "stance": "risk"}],
+        "confidence_ceiling": 0.72,
+        "missing_fact_impacts": [],
         "allowed_evidence_ref_ids": refs,
     }
 

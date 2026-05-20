@@ -4,13 +4,13 @@
 
 **Goal:** Hard-cut Signal Lab Pulse away from unstable 5m/watched-only flow and rebuild Pulse Agent around 1h/4h discovery plus a packet-only research committee.
 
-**Architecture:** Keep `PulseCandidateWorker` as the only Pulse read-model writer. Add explicit horizon/source-quality policy before admission, make material evidence changes visible to the edge state machine, replace the two-stage agent with `signal_analyst -> bear_case -> risk_portfolio_judge`, and update API/frontend defaults to 4h/all with 1h as the early-confirmation lane.
+**Architecture:** Keep `PulseCandidateWorker` as the only Pulse read-model writer. Because the Task 1 live-data evaluator returned `stop` due to agent run failures, fix evidence-reference handling and agent backpressure before hard-cutting runtime horizons. Then add explicit horizon/source-quality policy before admission, make material evidence changes visible to the edge state machine, replace the two-stage agent with `signal_analyst -> bear_case -> risk_portfolio_judge`, and update API/frontend defaults to 4h/all with 1h as the early-confirmation lane.
 
 **Tech Stack:** Python 3.13, FastAPI, psycopg, Pydantic v2, OpenAI Agents gateway, pytest, React 19, TanStack Query, Vite/Vitest.
 
 ---
 
-**Status**: Draft
+**Status**: Implemented through Task 8
 **Date**: 2026-05-20
 **Owning spec**: `docs/superpowers/specs/active/2026-05-20-pulse-1h-4h-research-committee-cn.md`
 **Worktree**: `.worktrees/pulse-1h-4h-research-committee/`
@@ -33,6 +33,35 @@ Forbidden:
 - Keeping `evidence_debate` or `decision_maker` as new-run stage names.
 - Publishing watched-only or matched-only single-author rows in default discovery.
 - Adding `legacy_`, `compat_`, `old_`, or `v1` runtime branches to support removed behavior.
+
+## Live-Data Pivot After Task 1
+
+Task 1 was executed against the operator-owned runtime config and live database on 2026-05-20. The generated report recommends `stop` for immediate 1h/4h runtime hard cut:
+
+- Proposed primary sample: `1h/all + 4h/all`.
+- Radar latest-snapshot sample size: `273`.
+- Candidate quality improved, but not enough to green-light runtime cut by itself: `ge3_author_ratio=0.47`, `single_author_ratio=0.41`.
+- Agent execution is the blocker: run failure rate `0.55`, invalid-ref rate `0.14`, job backpressure rate `0.12`.
+
+Revised decision:
+
+- Do not stop the project.
+- Do not hard-cut horizons while agent execution is failing at this rate.
+- Continue with a remediation-first path: fix evidence refs, invalid-output handling, and backpressure accounting before changing worker defaults or operator config.
+- Keep the no-compatibility rule. The remediation replaces broken behavior; it must not add aliases for removed stages or fallback acceptance for old horizons.
+
+## Revised Execution Order
+
+1. Complete Task 1 evaluator and report. Status: complete.
+2. Execute Task 2A: agent execution health remediation for evidence refs, invalid outputs, timeout/backpressure classification, and job no-run accounting. Status: complete.
+3. Execute Task 5: replace the old two-stage agent with the packet-only research committee. Status: complete.
+4. Execute original Task 2: hard-cut Pulse horizons to 1h/4h. Status: complete.
+5. Execute original Task 3: source-quality/default-display gating. Status: complete.
+6. Execute original Task 4: material evidence-change admission. Status: complete.
+7. Execute original Tasks 6 and 7: API/read model/frontend surfaces. Status: complete.
+8. Execute original Task 8: docs, generated contracts, and architecture guardrails. Status: complete.
+
+Task numbering below is preserved to minimize churn in references. Task 2A is the inserted remediation task and must be completed before original Task 2.
 
 ## Pre-flight
 
@@ -379,13 +408,13 @@ Known-failing baseline tests:
 - Create: `scripts/evaluate_pulse_1h_4h_policy.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py`
 
-- [ ] Write failing unit tests for evaluator summary buckets.
+- [x] Write failing unit tests for evaluator summary buckets.
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py -q
   ```
   Expected before implementation: import or assertion failure.
 
-- [ ] Implement pure aggregation helpers over row dictionaries before adding SQL.
+- [x] Implement pure aggregation helpers over row dictionaries before adding SQL.
   Required helper signatures:
   ```python
   def summarize_radar_policy_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -395,22 +424,91 @@ Known-failing baseline tests:
       return summarize_by_window_scope_and_outcome(rows)
   ```
 
-- [ ] Implement `build_pulse_policy_evaluation(conn, now_ms, lookback_hours=24)` using read-only SQL.
+- [x] Implement `build_pulse_policy_evaluation(conn, now_ms, lookback_hours=24)` using read-only SQL.
   It must query `token_radar_rows`, `pulse_candidates`, `pulse_agent_jobs`, and `pulse_agent_runs`.
 
-- [ ] Implement the script writer.
+- [x] Implement the script writer.
   It must write the report to `docs/generated/` and print only the output path plus redacted config path booleans.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py -q
   uv run python scripts/evaluate_pulse_1h_4h_policy.py --lookback-hours 24
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_policy_evaluator.py scripts/evaluate_pulse_1h_4h_policy.py tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py docs/generated/
   git commit -m "test: evaluate pulse 1h 4h policy"
+  ```
+
+### Task 2A: Remediate agent execution health before horizon hard cut
+
+**Files:**
+
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Test: `tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py`
+- Test: `tests/unit/test_pulse_decision_agent_client.py`
+- Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
+
+- [x] Write failing schema tests:
+  - `EvidenceClaim(claim="链上记录显示地址买入并推高热度。", evidence_refs=("event:1",), stance="bull")` is accepted as factual evidence language.
+  - `EvidenceClaim(claim="建议买入并设置止损。", evidence_refs=("event:1",), stance="bull")` is rejected as prescriptive execution language.
+  - `FinalDecision(summary_zh="建议买入。", ...)` is rejected when the final answer gives execution advice.
+
+- [x] Write failing client tests:
+  - A schema-invalid `evidence_debate` stage returns an abstain final decision with `abstain_reason="invalid_model_output"`, not `invalid_unknown_evidence_ref`.
+  - A real unknown evidence ref still returns `abstain_reason="invalid_unknown_evidence_ref"`.
+  - A provider transport/connection failure preserves stage trace `error_class="transport_error"` and is not mislabeled as an unknown evidence-ref failure.
+
+- [x] Write failing job-service tests:
+  - A stage failure with `invalid_model_output` finishes the run as `done` with outcome `abstain_insufficient_evidence`.
+  - A provider transport failure maps failure reason to `provider_unavailable` instead of `unexpected_exception`.
+  - A timeout stage failure maps to `timeout` and keeps retry/backpressure accounting separate from schema invalidity.
+
+- [x] Replace the blanket execution-language regex with intent-aware rejection:
+  ```python
+  _PRESCRIPTIVE_EXECUTION_RE = re.compile(
+      r"建议.{0,12}(买入|卖出|开仓|做多|做空|止损|止盈|加仓|减仓)|"
+      r"(应该|可以|立刻|马上|适合).{0,12}(买入|卖出|开仓|做多|做空)|"
+      r"\b(?:should|must|recommend(?:ed)?|advise(?:d)?)\\s+"
+      r"(?:buy|sell|open|enter|go\\s+long|go\\s+short|set\\s+a\\s+stop)\\b",
+      re.IGNORECASE,
+  )
+  ```
+  Factual evidence phrases such as “某地址买入”, “卖压出现”, and “资金流入” are allowed inside evidence claims and debate summaries.
+
+- [x] Split model-contract failures from true unknown refs in the client:
+  - `_abstain_reason_for_stage_failure(step)` returns:
+    - `"stage_timeout"` for timeout;
+    - `"invalid_unknown_evidence_ref"` only when the failed stage error explicitly says refs are outside `allowed_evidence_refs`;
+    - `"invalid_model_output"` for schema, validation, safety-net, or execution-language failures.
+  - `_stage_failure_summary` and `_stage_failure_thesis` include an `invalid_model_output` branch.
+
+- [x] Preserve provider error class for job-service classification:
+  - Keep `StageRunAudit.trace_metadata_json["error_class"]`.
+  - `_normalized_failure_reason(exc)` inspects `PulseStageFailure.audits[*].trace_metadata_json.error_class`.
+  - Map `transport_error` and `provider_error` to `provider_unavailable`.
+  - Map `rate_limited` to `provider_rate_limited`.
+  - Map `timeout` to `timeout`.
+
+- [x] Run:
+  ```bash
+  uv run pytest tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py -q
+  ```
+
+- [x] Rerun the live evaluator:
+  ```bash
+  uv run python scripts/evaluate_pulse_1h_4h_policy.py --lookback-hours 24
+  ```
+  Expected: historical report may still show old failures, but newly corrected classifications are covered by tests and the report remains read-only.
+
+- [x] Commit:
+  ```bash
+  git add docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py docs/generated/
+  git commit -m "fix: classify pulse agent output and provider failures"
   ```
 
 ### Task 2: Hard-cut Pulse horizons in config and API validators
@@ -423,28 +521,29 @@ Known-failing baseline tests:
 - Modify: `src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py`
 - Test: `tests/unit/test_api_signal_pulse_contract.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
+- Test: `tests/unit/test_worker_settings.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - API default is `4h/all`.
   - `/api/signal-lab/pulse?window=5m` returns `invalid_window`.
   - `PulseCandidateWorkerSettings(windows=("5m",))` raises `ValueError`.
   - default pulse worker windows are `("1h", "4h")`.
 
-- [ ] Create `pulse_horizon_policy.py` with constants and validation functions.
+- [x] Create `pulse_horizon_policy.py` with constants and validation functions.
 
-- [ ] Wire settings validator to fail fast.
+- [x] Wire settings validator to fail fast.
   Do not silently strip invalid windows from operator config.
 
-- [ ] Change route default and validator.
+- [x] Change route default and validator.
 
-- [ ] Run:
+- [x] Run:
   ```bash
-  uv run pytest tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py -q
+  uv run pytest tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_worker_settings.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/surfaces/api/validators.py src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py
+  git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_horizon_policy.py src/gmgn_twitter_intel/platform/config/settings.py src/gmgn_twitter_intel/app/surfaces/api/validators.py src/gmgn_twitter_intel/app/surfaces/api/routes_pulse.py tests/unit/test_api_signal_pulse_contract.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_worker_settings.py
   git commit -m "feat: hard cut pulse horizons to 1h 4h"
   ```
 
@@ -462,13 +561,13 @@ Known-failing baseline tests:
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 - Test: `tests/unit/test_pulse_display_status.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - watched-only row with `rank_score=44` is not enqueued.
   - watched-only row with rank-score boost does not become public trade/watch.
   - matched-only single-author risk reject maps to hidden source quality.
   - multi-author `1h/all` row remains eligible.
 
-- [ ] Implement `PulseSourceQuality`.
+- [x] Implement `PulseSourceQuality`.
   It must read from factor snapshot families:
   - `families.social_heat.facts.unique_authors`
   - `families.social_heat.facts.watched_mentions`
@@ -478,23 +577,23 @@ Known-failing baseline tests:
   - `families.social_propagation.facts.top_author_share`
   - `families.social_propagation.facts.duplicate_text_share`
 
-- [ ] Remove watched shortcut from `_is_asset_trigger`.
+- [x] Remove watched shortcut from `_is_asset_trigger`.
   New return rule:
   ```python
   return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score
   ```
 
-- [ ] Add Pulse-specific source-quality decision before enqueue.
-  This does not modify Token Radar factor scoring.
+- [x] Add Pulse-specific source-quality decision before public write.
+  This does not modify Token Radar factor scoring and still persists hidden rows for auditability.
 
-- [ ] Add hidden display mapping for source-quality blocked rows.
+- [x] Add hidden display mapping for source-quality blocked rows.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_source_quality.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_display_status.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_source_quality.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py tests/unit/domains/pulse_lab/test_pulse_source_quality.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_display_status.py
   git commit -m "feat: require pulse source quality for public display"
@@ -510,24 +609,24 @@ Known-failing baseline tests:
 - Test: `tests/unit/test_pulse_admission_policy.py`
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - timeline signature change emits `timeline_evidence_changed`.
   - trigger signature change emits `trigger_evidence_changed`.
   - unchanged signatures still produce no edge events.
   - candidate worker no longer suppresses changed timeline as generic `unchanged`.
 
-- [ ] Implement new edge events.
+- [x] Implement new edge events.
 
-- [ ] Update admission policy so evidence-change events enqueue unless active job, retryable failed job, budget, or failure circuit blocks them.
+- [x] Update admission policy so evidence-change events enqueue unless active job, retryable failed job, budget, or failure circuit blocks them.
 
-- [ ] Keep score-band-only confirmation behavior intact.
+- [x] Keep score-band-only confirmation behavior intact.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_admission_policy.py tests/unit/test_pulse_candidate_worker.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_edge_events.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_admission_policy.py tests/unit/test_pulse_edge_events.py tests/unit/test_pulse_admission_policy.py tests/unit/test_pulse_candidate_worker.py
   git commit -m "feat: enqueue pulse on material evidence changes"
@@ -555,7 +654,7 @@ Known-failing baseline tests:
 - Test: `tests/unit/test_pulse_candidate_worker.py`
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - runtime contract stages equal `("signal_analyst", "bear_case", "risk_portfolio_judge")`.
   - all stage tool lists are empty.
   - runtime manifest has no `evidence_debate` or `decision_maker`.
@@ -563,24 +662,24 @@ Known-failing baseline tests:
   - unknown refs in signal, bear, or final stage produce abstain/hide.
   - prompt loader cannot load old prompt names because old loaders are removed.
 
-- [ ] Add `SignalAnalystMemo` and `BearCaseMemo` schemas.
+- [x] Add `SignalAnalystMemo` and `BearCaseMemo` schemas.
   Both must use `EvidenceClaim`-style cited refs and execution-language rejection.
 
-- [ ] Replace prompt files and loaders.
+- [x] Replace prompt files and loaders.
 
-- [ ] Replace runtime stage specs and ref validators.
+- [x] Replace runtime stage specs and ref validators.
 
-- [ ] Replace OpenAI client pipeline.
+- [x] Replace OpenAI client pipeline.
   The output of `risk_portfolio_judge` is still `FinalDecision`.
 
-- [ ] Update fake gateways and fake clients in tests to emit the three new stage outputs.
+- [x] Update fake gateways and fake clients in tests to emit the three new stage outputs.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/domains/pulse_lab/providers.py src/gmgn_twitter_intel/domains/pulse_lab/services/agent_runtime.py src/gmgn_twitter_intel/domains/pulse_lab/services/prompt_loader.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_decision_runtime.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py src/gmgn_twitter_intel/domains/pulse_lab/prompts/ tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/domains/pulse_lab/test_prompt_loader.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py
   git commit -m "feat: replace pulse agent with research committee"
@@ -591,33 +690,39 @@ Known-failing baseline tests:
 **Files:**
 
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py`
 - Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py`
 - Test: `tests/unit/test_signal_pulse_service.py`
-- Test: `tests/integration/test_signal_pulse_service_decision_v2.py`
 - Test: `tests/unit/test_api_signal_pulse_contract.py`
+- Test: `tests/contract/test_openapi_drift.py`
+- Test: `tests/integration/test_api_http.py`
+- Test: `tests/integration/test_pulse_agent_desk_migration.py`
+- Test: `tests/integration/test_pulse_desk_e2e.py`
 
-- [ ] Write failing tests:
-  - service query includes `lane="discovery"` for all scope.
-  - service query includes `lane="watchlist_alert"` for matched scope.
-  - default result excludes source-quality-hidden risk rejects.
-  - item payload exposes source quality fields.
+- [x] Write failing tests:
+  - public detail stages expose `signal_analyst`, `bear_case`, and `risk_portfolio_judge`;
+  - public detail stages do not expose `evidence_debate` or `decision_maker`;
+  - OpenAPI `SignalPulseStages` has no index signature and no legacy stage fields;
+  - Postgres CHECK constraints accept research-committee stages and reject old stage names;
+  - `hidden_source_quality` is an allowed hidden display status for non-public rows.
 
-- [ ] Update repository public SQL and summary SQL.
+- [x] Update read-model stage whitelist and API schema fields.
 
-- [ ] Update service payload transformation and health passthrough.
+- [x] Add hard-cut migration for stage/display-status CHECK constraints.
 
-- [ ] Update API schemas for new fields.
+- [x] Regenerate backend OpenAPI and frontend generated OpenAPI types.
 
-- [ ] Run:
+- [x] Run:
   ```bash
-  uv run pytest tests/unit/test_signal_pulse_service.py tests/integration/test_signal_pulse_service_decision_v2.py tests/unit/test_api_signal_pulse_contract.py -q
+  uv run ruff check src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_desk_e2e.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py
+  uv run pytest tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py tests/integration/test_api_http.py::test_api_signal_pulse_by_id_returns_stages tests/integration/test_pulse_repositories.py::test_agent_run_steps_round_trip tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py -q
+  git diff --check
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/unit/test_signal_pulse_service.py tests/integration/test_signal_pulse_service_decision_v2.py tests/unit/test_api_signal_pulse_contract.py
-  git commit -m "feat: expose pulse discovery and alert lanes"
+  git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py docs/generated/openapi.json web/src/lib/types/openapi.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
+  git commit -m "feat: expose pulse research committee stages"
   ```
 
 ### Task 7: Update frontend defaults and source-quality badges
@@ -627,38 +732,47 @@ Known-failing baseline tests:
 - Modify: `web/src/features/signal-lab/api/useSignalLabCompactQuery.ts`
 - Modify: `web/src/features/signal-lab/state/signalLabRouteState.ts`
 - Modify: `web/src/features/signal-lab/model/signalPulseQueue.ts`
-- Modify: `web/src/features/signal-lab/ui/SignalLabPulse.tsx`
-- Modify: `web/src/features/signal-lab/ui/SignalPulseQueue.tsx`
+- Modify: `web/src/features/signal-lab/model/pulseDetail.ts`
+- Modify: `web/src/features/signal-lab/ui/PulseDetail/PulseAgentRail.tsx`
+- Modify: `web/src/features/signal-lab/ui/SignalPulseQueue.module.css`
+- Modify: `web/src/features/signal-lab/test/fixtures/titty-pulse.ts`
 - Modify: `web/src/lib/types/frontend-contracts.ts`
-- Modify: `web/src/lib/types/openapi.ts`
-- Create: `web/src/features/signal-lab/tests/signalLabRouteState.test.ts`
-- Create: `web/src/features/signal-lab/tests/signalPulseQueue.test.ts`
+- Modify: `web/tests/unit/features/signal-lab/state/signalLabRouteState.test.ts`
+- Modify: `web/tests/unit/features/signal-lab/model/signalPulseQueue.test.ts`
+- Modify: `web/tests/unit/features/signal-lab/pulseDetail.test.ts`
+- Modify: `web/tests/component/features/signal-lab/api/useSignalPulseQueries.test.tsx`
+- Modify: `web/tests/component/features/signal-lab/ui/PulseAgentRail.test.tsx`
+- Modify: `web/tests/component/features/signal-lab/ui/SignalLabPage.routing.test.tsx`
+- Modify: `web/tests/component/features/signal-lab/ui/SignalPulseQueue.test.tsx`
+- Modify: `web/tests/e2e/support/mockApi.ts`
 
-- [ ] Write failing frontend tests:
+- [x] Write failing frontend tests:
   - default route state window is `4h`.
   - parsing `window=5m` normalizes to `4h`.
   - queue item model adds independent-author and concentration chips.
   - matched lane item is modeled as alert/context, not discovery.
+  - Pulse detail rail renders `signal_analyst`, `bear_case`, `risk_portfolio_judge`.
 
-- [ ] Update compact query default to `4h/all`.
+- [x] Update compact query default to `4h/all`.
 
-- [ ] Update route parser to accept only `1h` and `4h` for Signal Lab Pulse.
+- [x] Update route parser to accept only `1h` and `4h` for Signal Lab Pulse.
 
-- [ ] Update queue model and rendering.
+- [x] Update queue model and rendering.
 
-- [ ] Regenerate OpenAPI-derived types after backend schema changes.
+- [x] Update frontend hand-maintained contract types and fixtures to research-committee stages.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   cd web
-  npm run test -- signalLabRouteState signalPulseQueue
+  npm run test -- signalLabRouteState signalPulseQueue pulseDetail PulseAgentRail useSignalPulseQueries SignalLabPage.routing --run
   npm run build
+  npm run lint
   ```
 
 - [ ] Commit:
   ```bash
-  git add web/src/features/signal-lab/api/useSignalLabCompactQuery.ts web/src/features/signal-lab/state/signalLabRouteState.ts web/src/features/signal-lab/model/signalPulseQueue.ts web/src/features/signal-lab/ui/SignalLabPulse.tsx web/src/features/signal-lab/ui/SignalPulseQueue.tsx web/src/lib/types/frontend-contracts.ts web/src/lib/types/openapi.ts web/src/features/signal-lab/tests/
-  git commit -m "feat: default signal lab pulse to 4h discovery"
+  git add web/src/features/signal-lab/api/useSignalLabCompactQuery.ts web/src/features/signal-lab/state/signalLabRouteState.ts web/src/features/signal-lab/model/signalPulseQueue.ts web/src/features/signal-lab/model/pulseDetail.ts web/src/features/signal-lab/ui/PulseDetail/PulseAgentRail.tsx web/src/features/signal-lab/ui/SignalPulseQueue.module.css web/src/features/signal-lab/test/fixtures/titty-pulse.ts web/src/lib/types/frontend-contracts.ts web/tests/component/features/signal-lab/api/useSignalPulseQueries.test.tsx web/tests/component/features/signal-lab/ui/PulseAgentRail.test.tsx web/tests/component/features/signal-lab/ui/SignalLabPage.routing.test.tsx web/tests/component/features/signal-lab/ui/SignalPulseQueue.test.tsx web/tests/e2e/support/mockApi.ts web/tests/unit/features/signal-lab/model/signalPulseQueue.test.ts web/tests/unit/features/signal-lab/pulseDetail.test.ts web/tests/unit/features/signal-lab/state/signalLabRouteState.test.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
+  git commit -m "feat: default signal lab pulse to 4h"
   ```
 
 ### Task 8: Update docs, generated contracts, and architecture assertions
@@ -668,60 +782,73 @@ Known-failing baseline tests:
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify: `scripts/regen_pulse_agent_desk_decisions.py`
+- Modify: `docs/generated/pulse-agent-desk-decisions.md`
 - Modify: `docs/generated/openapi.json`
+- Modify: `web/src/lib/types/openapi.ts`
+- Modify: `tests/architecture/test_src_domain_architecture.py`
 - Create or modify: `tests/architecture/test_pulse_no_compat.py`
 
-- [ ] Add architecture tests that assert:
+- [x] Add architecture tests that assert:
   - no runtime source references `evidence_debate` or `decision_maker` as stage names;
   - `pulse_candidate.windows` default text does not include `5m`;
   - prompt markdown files for old stages do not exist;
-  - Signal Pulse API validator rejects `5m`.
+  - Signal Pulse API validator rejects `5m`;
+  - no generated operator docs advertise the removed two-stage agent or tool fallback flow.
 
-- [ ] Update docs to describe 1h/4h primary horizons and matched alert semantics.
+- [x] Update docs to describe 1h/4h primary horizons and matched alert semantics.
 
-- [ ] Regenerate OpenAPI:
+- [x] Regenerate Pulse generated docs:
+  ```bash
+  uv run python scripts/regen_pulse_agent_desk_decisions.py
+  ```
+
+- [x] Regenerate OpenAPI:
   ```bash
   uv run python scripts/regen_openapi.py
   cd web && npm run generate:types
   ```
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/architecture/test_pulse_no_compat.py tests/contract/test_openapi_drift.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
-  git add docs/CONTRACTS.md docs/WORKERS.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md docs/generated/openapi.json web/src/lib/types/openapi.ts tests/architecture/test_pulse_no_compat.py
+  git add docs/CONTRACTS.md docs/WORKERS.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md scripts/regen_pulse_agent_desk_decisions.py docs/generated/pulse-agent-desk-decisions.md docs/generated/openapi.json web/src/lib/types/openapi.ts tests/architecture/test_src_domain_architecture.py tests/architecture/test_pulse_no_compat.py docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
   git commit -m "docs: document pulse 1h 4h hard cut"
   ```
 
 ## PR Breakdown
 
 1. **PR 1 — Evaluation and policy measurement**: Task 1 only. Mergeable on its own because it is read-only and writes a generated report.
-2. **PR 2 — Horizon and source-quality hard cut**: Tasks 2, 3, and 4. This changes admission behavior without changing the LLM committee yet.
-3. **PR 3 — Research committee runtime**: Task 5. This is the agent runtime break and should not mix with frontend work.
-4. **PR 4 — API/frontend surface**: Tasks 6 and 7. This makes the product default match the backend policy.
-5. **PR 5 — Docs, contracts, architecture guardrails**: Task 8 plus final generated contract checks.
+2. **PR 2 — Agent health remediation**: Task 2A. This fixes false unknown-ref classification, over-strict evidence language rejection, and provider failure taxonomy before runtime policy changes.
+3. **PR 3 — Research committee runtime**: Task 5. This is the agent runtime break and should not mix with horizon/default changes.
+4. **PR 4 — Horizon and source-quality hard cut**: Tasks 2, 3, and 4. This changes admission behavior after the agent execution layer is healthier.
+5. **PR 5 — API/frontend surface**: Tasks 6 and 7. This makes the product default match the backend policy.
+6. **PR 6 — Docs, contracts, architecture guardrails**: Task 8 plus final generated contract checks.
 
 ## Rollout Order
 
-1. Run Task 1 evaluator on live DB and review report. Stop if the report says “stop”.
-2. Update operator-owned `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml` to set:
+1. Run Task 1 evaluator on live DB and review report.
+2. If the report says `stop` because agent execution is unhealthy, execute Task 2A and Task 5 before any runtime horizon cut.
+3. Rerun evaluator and compare new runs after the remediation deployment timestamp.
+4. Update operator-owned `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml` to set:
    ```yaml
    pulse_candidate:
      windows: ["1h", "4h"]
      scopes: ["all", "matched"]
      stale_job_ttl_by_window_seconds: {}
    ```
-3. Deploy backend hard-cut policy.
-4. Verify config with:
+5. Deploy backend hard-cut policy.
+6. Verify config with:
    ```bash
    uv run gmgn-twitter-intel config
    ```
-5. Start workers and verify no new 5m Pulse jobs are created after deployment timestamp.
-6. Deploy frontend default change.
-7. Run live API smoke checks for `4h/all`, `1h/all`, and `5m` rejection.
+7. Start workers and verify no new 5m Pulse jobs are created after deployment timestamp.
+8. Deploy frontend default change.
+9. Run live API smoke checks for `4h/all`, `1h/all`, and `5m` rejection.
 
 ## Rollback
 

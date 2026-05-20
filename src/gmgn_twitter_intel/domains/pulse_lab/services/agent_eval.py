@@ -30,7 +30,7 @@ _RULES = (
     _RULE_PLAYBOOK_CONSISTENT,
 )
 
-_NON_BLOCKED_REQUIRED_STAGES = ("evidence_debate", "decision_maker")
+_NON_BLOCKED_REQUIRED_STAGES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
 _EVIDENCE_REQUIRED_STAGES = ("evidence_pack", "evidence_completeness_gate")
 _RECOMMENDATION_RANK = {
     "abstain": 0,

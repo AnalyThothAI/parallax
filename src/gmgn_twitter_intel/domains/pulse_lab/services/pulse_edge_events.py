@@ -13,6 +13,9 @@ PULSE_EDGE_EVENTS = (
     "hard_risk_added",
     "recommended_decision_changed",
     "watched_confirmation_appeared",
+    "independent_author_bucket_changed",
+    "trigger_evidence_changed",
+    "timeline_evidence_changed",
 )
 
 
@@ -81,6 +84,12 @@ def diff_pulse_edge_events(previous: dict[str, Any] | None, current: dict[str, A
         events.append("recommended_decision_changed")
     if not bool(before.get("watched_confirmation")) and bool(after.get("watched_confirmation")):
         events.append("watched_confirmation_appeared")
+    if before.get("independent_author_count_bucket") != after.get("independent_author_count_bucket"):
+        events.append("independent_author_bucket_changed")
+    if before.get("trigger_signature") != after.get("trigger_signature"):
+        events.append("trigger_evidence_changed")
+    if before.get("timeline_signature") != after.get("timeline_signature"):
+        events.append("timeline_evidence_changed")
     return events
 
 

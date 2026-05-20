@@ -152,16 +152,23 @@ function ListBlock({ items, title }: { items: string[]; title: string }) {
 }
 
 function RailEntry({ item }: { item: StageRailItem }) {
-  if (item.kind === "evidence_debate") {
+  if (item.kind === "signal_analyst") {
     return (
-      <StageCard title="阶段 1 · 证据辩论" tone="info" status={item.status}>
+      <StageCard title="阶段 1 · 信号分析" tone="info" status={item.status}>
         <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
       </StageCard>
     );
   }
-  if (item.kind === "decision_maker") {
+  if (item.kind === "bear_case") {
     return (
-      <StageCard title="阶段 2 · 决策" tone="agent" status={item.status}>
+      <StageCard title="阶段 2 · 反方风险" tone="warn" status={item.status}>
+        <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
+      </StageCard>
+    );
+  }
+  if (item.kind === "risk_portfolio_judge") {
+    return (
+      <StageCard title="阶段 3 · 风险裁决" tone="agent" status={item.status}>
         <SimpleBody summary={item.summary} latencyMs={item.latencyMs} />
       </StageCard>
     );

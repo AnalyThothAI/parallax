@@ -13,6 +13,7 @@ DisplayStatus = Literal[
     "hidden_blocked_low_information",
     "hidden_invalid_output",
     "hidden_hold_publish",
+    "hidden_source_quality",
 ]
 AgentRunOutcome = Literal[
     "running",

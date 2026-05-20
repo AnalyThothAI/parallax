@@ -238,6 +238,12 @@
   color: var(--health-ink);
 }
 
+.chip[data-tone="alert"] {
+  border-color: var(--info-line);
+  background: var(--info-soft);
+  color: var(--info-ink);
+}
+
 .chip[data-tone="warn"] {
   border-color: var(--opportunity-line);
   background: var(--opportunity-soft);

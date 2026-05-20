@@ -333,7 +333,12 @@ export type SearchAgentBrief = {
   };
 };
 
-export type NarrativeStatus = "ready" | "pending" | "insufficient" | "semantic_unavailable" | string;
+export type NarrativeStatus =
+  | "ready"
+  | "pending"
+  | "insufficient"
+  | "semantic_unavailable"
+  | string;
 
 export type EvidenceRef = {
   ref_id?: string | null;
@@ -1491,9 +1496,10 @@ export type PulseDecision = {
 export type SignalPulseStageName =
   | "evidence_pack"
   | "evidence_completeness_gate"
-  | "evidence_debate"
+  | "signal_analyst"
+  | "bear_case"
   | "claim_verifier"
-  | "decision_maker"
+  | "risk_portfolio_judge"
   | "recommendation_clipper"
   | "deterministic_eval"
   | "write_gate";
@@ -1514,9 +1520,10 @@ export type SignalPulseStagePayload = {
 export type SignalPulseStages = {
   evidence_pack?: SignalPulseStagePayload | null;
   evidence_completeness_gate?: SignalPulseStagePayload | null;
-  evidence_debate?: SignalPulseStagePayload | null;
+  signal_analyst?: SignalPulseStagePayload | null;
+  bear_case?: SignalPulseStagePayload | null;
   claim_verifier?: SignalPulseStagePayload | null;
-  decision_maker?: SignalPulseStagePayload | null;
+  risk_portfolio_judge?: SignalPulseStagePayload | null;
   recommendation_clipper?: SignalPulseStagePayload | null;
   deterministic_eval?: SignalPulseStagePayload | null;
   write_gate?: SignalPulseStagePayload | null;

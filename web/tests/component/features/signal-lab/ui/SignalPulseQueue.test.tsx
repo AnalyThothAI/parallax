@@ -24,9 +24,9 @@ describe("SignalPulseQueue", () => {
 
     expect(screen.getByText("$TITTY")).toBeInTheDocument();
     expect(screen.getByText("热度很高，但流动性极浅且作者集中")).toBeInTheDocument();
-    expect(screen.getByText("作者 3 · 头部60%")).toBeInTheDocument();
+    expect(screen.getByText("独立作者 3")).toBeInTheDocument();
+    expect(screen.getByText("头部60%")).toBeInTheDocument();
     expect(screen.getByText("提及 5 / 1h")).toBeInTheDocument();
-    expect(screen.getByText("市场过期")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     expect(screen.getByText("热度分")).toBeInTheDocument();
     expect(screen.getByText("Agent：候选")).toBeInTheDocument();

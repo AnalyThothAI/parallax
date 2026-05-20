@@ -102,6 +102,35 @@ def test_policy_admits_hard_risk_added_with_specific_reason() -> None:
     assert decision.reason == "hard_risk_added"
 
 
+def test_policy_admits_material_evidence_changes_with_specific_reason() -> None:
+    decision = PulseAdmissionPolicy().classify(
+        previous_state={"timeline_signature": "sha256:old"},
+        current_state={"timeline_signature": "sha256:new"},
+        existing_job=None,
+        edge_events=["timeline_evidence_changed"],
+        pending_score_band=None,
+        pending_score_band_count=0,
+    )
+
+    assert decision.action == "enqueue_agent"
+    assert decision.reason == "material_evidence_changed"
+
+
+def test_policy_failure_circuit_suppresses_material_evidence_changes() -> None:
+    decision = PulseAdmissionPolicy().classify(
+        previous_state={"timeline_signature": "sha256:old"},
+        current_state={"timeline_signature": "sha256:new"},
+        existing_job=None,
+        edge_events=["timeline_evidence_changed"],
+        pending_score_band=None,
+        pending_score_band_count=0,
+        recent_failure_count=3,
+    )
+
+    assert decision.action == "suppress"
+    assert decision.reason == "failure_circuit_open"
+
+
 def test_policy_suppresses_first_score_band_observation() -> None:
     decision = PulseAdmissionPolicy().classify(
         previous_state={"score_band": "60-69", "pulse_status": "token_watch"},

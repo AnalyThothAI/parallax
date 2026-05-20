@@ -176,13 +176,14 @@ describe("buildPulseDetailView", () => {
     expect(view.evidence.concentration.topAuthorShare).toBeCloseTo(0.6);
   });
 
-  it("builds evidence-first stage rail with evidence_debate + decision_maker entries", () => {
+  it("builds research committee stage rail entries", () => {
     expect(view.agent.kind).toBe("stages");
     expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
-      "evidence_debate",
-      "decision_maker",
+      "signal_analyst",
+      "bear_case",
+      "risk_portfolio_judge",
     ]);
-    const decision = view.agent.railItems.find((entry) => entry.kind === "decision_maker");
+    const decision = view.agent.railItems.find((entry) => entry.kind === "risk_portfolio_judge");
     expect(decision?.status).toBe("ok");
     expect(decision?.summary).toMatch(/TITTY/);
     expect(view.agent.mismatch?.agentLabel).toMatch(/0\.35/);
@@ -265,7 +266,7 @@ describe("buildPulseDetailView", () => {
     expect(decisionView.agent.decisionSurface?.bear).toBeNull();
   });
 
-  it("renders evidence-first stages in the public agent rail", () => {
+  it("renders research committee stages in the public agent rail", () => {
     const view = buildPulseDetailView({
       item: {
         ...tittyPulseFixture,
@@ -276,8 +277,9 @@ describe("buildPulseDetailView", () => {
     });
 
     expect(view.agent.railItems.map((entry) => entry.kind)).toEqual([
-      "evidence_debate",
-      "decision_maker",
+      "signal_analyst",
+      "bear_case",
+      "risk_portfolio_judge",
     ]);
   });
 
@@ -310,9 +312,10 @@ describe("buildPulseDetailView", () => {
         },
         stages: {
           evidence_pack: null,
-          evidence_debate: null,
+          signal_analyst: null,
+          bear_case: null,
           claim_verifier: null,
-          decision_maker: null,
+          risk_portfolio_judge: null,
           recommendation_clipper: null,
           deterministic_eval: null,
           write_gate: null,
@@ -342,20 +345,18 @@ describe("buildPulseDetailView", () => {
         ...tittyPulseFixture,
         stages: {
           ...tittyPulseFixture.stages!,
-          evidence_debate: {
-            ...tittyPulseFixture.stages!.evidence_debate!,
+          signal_analyst: {
+            ...tittyPulseFixture.stages!.signal_analyst!,
             status: "failed",
             response: null,
-            error: "evidence debate timed out",
+            error: "signal analyst timed out",
           },
         },
       },
       sourceEvents: tittySourceEventsFixture,
       now: TITTY_NOW_MS,
     });
-    const failedDebate = failed.agent.railItems.find(
-      (entry) => entry.kind === "evidence_debate",
-    );
+    const failedDebate = failed.agent.railItems.find((entry) => entry.kind === "signal_analyst");
     expect(failedDebate?.status).toBe("failed");
     expect(failedDebate?.summary).toMatch(/timed out/);
   });

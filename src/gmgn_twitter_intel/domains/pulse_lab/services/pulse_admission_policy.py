@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 ESCALATION_EDGE_EVENTS = frozenset({"pulse_status_changed", "recommended_decision_changed"})
+MATERIAL_EVIDENCE_EDGE_EVENTS = frozenset(
+    {"independent_author_bucket_changed", "trigger_evidence_changed", "timeline_evidence_changed"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +48,8 @@ class PulseAdmissionPolicy:
             return PulseAdmissionDecision("enqueue_agent", "escalation", events)
         if "hard_risk_added" in events:
             return PulseAdmissionDecision("enqueue_agent", "hard_risk_added", events)
+        if _has_material_evidence_change(events):
+            return PulseAdmissionDecision("enqueue_agent", "material_evidence_changed", events)
         return PulseAdmissionDecision("enqueue_agent", "material_edge", events)
 
 
@@ -66,6 +71,10 @@ def _is_escalation(edge_events: tuple[str, ...]) -> bool:
     return bool(set(edge_events) & ESCALATION_EDGE_EVENTS)
 
 
+def _has_material_evidence_change(edge_events: tuple[str, ...]) -> bool:
+    return bool(set(edge_events) & MATERIAL_EVIDENCE_EDGE_EVENTS)
+
+
 def _clean(value: Any) -> str | None:
     if value is None:
         return None
@@ -84,4 +93,9 @@ def _int(value: Any) -> int:
         return 0
 
 
-__all__ = ["ESCALATION_EDGE_EVENTS", "PulseAdmissionDecision", "PulseAdmissionPolicy"]
+__all__ = [
+    "ESCALATION_EDGE_EVENTS",
+    "MATERIAL_EVIDENCE_EDGE_EVENTS",
+    "PulseAdmissionDecision",
+    "PulseAdmissionPolicy",
+]

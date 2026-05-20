@@ -4,7 +4,7 @@ import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-const SIGNAL_LAB_COMPACT_WINDOW = "5m";
+const SIGNAL_LAB_COMPACT_WINDOW = "4h";
 const SIGNAL_LAB_COMPACT_SCOPE = "all";
 
 export function useSignalLabCompactQuery({ token }: { token: string }) {

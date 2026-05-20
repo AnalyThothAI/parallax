@@ -21,6 +21,9 @@ NOTIFICATION_RULE_IDS = (
     "quality_token_5m",
     "signal_pulse_candidate",
 )
+PULSE_CANDIDATE_WINDOWS = ("1h", "4h")
+PULSE_CANDIDATE_WINDOW_SET = frozenset(PULSE_CANDIDATE_WINDOWS)
+PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS = {"1h": 3600, "4h": 14400}
 DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
     {
         "source_id": "coindesk",
@@ -558,8 +561,9 @@ class AgentLaneSettings(BaseModel):
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
         "pulse.pipeline": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=240.0),
-        "pulse.evidence_debate": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
-        "pulse.decision_maker": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.signal_analyst": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.bear_case": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.risk_portfolio_judge": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
         "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
         "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
         "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=180.0),
@@ -724,10 +728,12 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
     max_enqueues_per_cycle: int = Field(default=25, ge=1)
     max_pending_jobs_global: int = Field(default=100, ge=1)
     max_pending_jobs_per_window_scope: int = Field(default=25, ge=1)
-    stale_job_ttl_by_window_seconds: dict[str, int] = Field(default_factory=lambda: {"5m": 300})
+    stale_job_ttl_by_window_seconds: dict[str, int] = Field(
+        default_factory=lambda: dict(PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS)
+    )
     advisory_lock_key: int = 2026051502
     wakes_on: tuple[str, ...] = ("token_radar_updated",)
-    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
+    windows: tuple[str, ...] = PULSE_CANDIDATE_WINDOWS
     scopes: tuple[str, ...] = ("all", "matched")
     trigger_thresholds: PulseCandidateTriggerThresholds = Field(default_factory=PulseCandidateTriggerThresholds)
     gate_thresholds: PulseCandidateGateThresholds = Field(default_factory=PulseCandidateGateThresholds)
@@ -736,6 +742,30 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
+
+    @field_validator("windows", mode="after")
+    @classmethod
+    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("pulse_candidate.windows must include 1h or 4h")
+        invalid = tuple(window for window in value if window not in PULSE_CANDIDATE_WINDOW_SET)
+        if invalid:
+            allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
+            rejected = ", ".join(invalid)
+            raise ValueError(f"pulse_candidate.windows must contain only {allowed}; got: {rejected}")
+        return value
+
+    @field_validator("stale_job_ttl_by_window_seconds", mode="after")
+    @classmethod
+    def validate_stale_ttl_windows(cls, value: dict[str, int]) -> dict[str, int]:
+        invalid = tuple(window for window in value if window not in PULSE_CANDIDATE_WINDOW_SET)
+        if invalid:
+            allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
+            rejected = ", ".join(invalid)
+            raise ValueError(
+                f"pulse_candidate.stale_job_ttl_by_window_seconds keys must contain only {allowed}; got: {rejected}"
+            )
+        return value
 
 
 class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
@@ -1525,10 +1555,11 @@ pulse_candidate:
   max_pending_jobs_global: 100
   max_pending_jobs_per_window_scope: 25
   stale_job_ttl_by_window_seconds:
-    5m: 300
+    1h: 3600
+    4h: 14400
   advisory_lock_key: 2026051502
   wakes_on: ["token_radar_updated"]
-  windows: ["5m", "1h", "4h", "24h"]
+  windows: ["1h", "4h"]
   scopes: ["all", "matched"]
   trigger_thresholds:
     min_rank_score: 45

@@ -1043,14 +1043,14 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             started_at_ms=1_100,
         )
         step = repo.runs.insert_agent_run_step(
-            step_id="run-step:evidence_debate:0",
+            step_id="run-step:signal_analyst:0",
             run_id="run-step",
-            stage="evidence_debate",
+            stage="signal_analyst",
             route="meme",
             attempt_index=0,
             provider="openai",
             model="gpt-5-mini",
-            prompt_version="meme-evidence-debate-v1",
+            prompt_version="meme-signal-analyst-v1",
             schema_version="pulse_decision_v1",
             input_json={"factor_snapshot": {"schema_version": "token_factor_snapshot_v3_social_attention"}},
             prompt_text="Investigate meme token facts only.",
@@ -1068,7 +1068,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
     finally:
         conn.close()
 
-    assert step["step_id"] == "run-step:evidence_debate:0"
+    assert step["step_id"] == "run-step:signal_analyst:0"
     assert steps == [step]
     assert steps[0]["prompt_text"] == "Investigate meme token facts only."
     assert steps[0]["input_json"]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"

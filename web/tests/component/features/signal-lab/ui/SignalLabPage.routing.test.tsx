@@ -57,7 +57,7 @@ describe("SignalLabPage routing", () => {
     await waitFor(() => expect(apiMock.readApi).toHaveBeenCalled());
     const lastCall = apiMock.readApi.mock.calls.at(-1)!;
     const params = (lastCall[1] as any).params;
-    expect(params.window).toBe("5m");
+    expect(params.window).toBe("4h");
     expect(params.scope).toBe("all");
     expect(params.status).toBeUndefined();
     expect(params.handle).toBeUndefined();

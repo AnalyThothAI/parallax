@@ -29,11 +29,12 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service i
     _run_outcome,
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     BullBearView,
     EvidenceClaim,
-    EvidenceDebateMemo,
     FinalDecision,
     PulseStageFailure,
+    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -107,6 +108,32 @@ def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcu
                 rank_score=44,
                 recommended_decision="low_info",
                 watched_mentions=0,
+            )
+        )
+    ]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse_jobs.jobs == []
+
+
+def test_watched_only_rank_44_is_not_enqueued() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [
+        _radar_row(
+            factor_snapshot_json=_factor_snapshot(
+                rank_score=44,
+                recommended_decision="low_info",
+                watched_mentions=1,
+                unique_authors=1,
+                independent_authors=1,
+                effective_authors=1.0,
+                top_author_share=1.0,
             )
         )
     ]
@@ -294,6 +321,80 @@ def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     assert "thesis_json" not in upsert
 
 
+def test_watched_only_high_score_is_hidden_by_source_quality() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        watched_mentions=1,
+        unique_authors=1,
+        independent_authors=1,
+        effective_authors=1.0,
+        top_author_share=1.0,
+    )
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["display_status"] == "hidden_source_quality"
+    assert upsert["gate_json"]["source_quality"]["public_allowed"] is False
+    assert "watched_only_source" in upsert["gate_json"]["source_quality"]["reasons"]
+    assert repos.pulse_playbooks.playbook_upserts == []
+
+
+def test_matched_single_author_risk_reject_is_hidden_by_source_quality() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        blocked_reasons=["timing_chase_risk"],
+        watched_mentions=0,
+        unique_authors=1,
+        independent_authors=1,
+        effective_authors=1.0,
+        top_author_share=1.0,
+    )
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos, settings=_settings(scopes=("matched",)))
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["scope"] == "matched"
+    assert upsert["decision_status"] == "risk_rejected_high_info"
+    assert upsert["display_status"] == "hidden_source_quality"
+    assert "single_author_source" in upsert["gate_json"]["source_quality"]["reasons"]
+
+
+def test_multi_author_all_scope_remains_public() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        watched_mentions=0,
+        unique_authors=4,
+        independent_authors=4,
+        effective_authors=4.0,
+        top_author_share=0.4,
+    )
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["display_status"] == "display_token_watch"
+    assert upsert["gate_json"]["source_quality"]["public_allowed"] is True
+
+
 def test_worker_trigger_metrics_use_v3_families_and_gates() -> None:
     snapshot = _factor_snapshot(rank_score=82, blocked_reasons=["duplicate_text_share_high"])
     row = _radar_row(factor_snapshot_json=snapshot)
@@ -323,6 +424,9 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
         target_type="Asset",
         target_id="asset-1",
     )
+    worker = _worker(repos)
+    context = worker._asset_context(repos, repos.token_radar.rows[0], window="1h", scope="all", now_ms=NOW_MS)
+    assert context is not None
     repos.pulse_admission.edge_states[candidate_id] = {
         "candidate_id": candidate_id,
         "last_processed_state_json": {
@@ -343,11 +447,10 @@ def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility()
             "watched_confirmation": True,
             "independent_author_count_bucket": "6-10",
             "hard_risks": [],
-            "trigger_signature": "ignored-by-edge",
-            "timeline_signature": "ignored-by-edge",
+            "trigger_signature": context.trigger_signature,
+            "timeline_signature": context.timeline_signature,
         },
     }
-    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -431,11 +534,15 @@ def test_score_band_only_edge_waits_for_confirmation_without_job() -> None:
         "trigger_signature": "ignored-by-edge",
         "timeline_signature": "ignored-by-edge",
     }
+    worker = _worker(repos)
+    context = worker._asset_context(repos, repos.token_radar.rows[0], window="1h", scope="all", now_ms=NOW_MS)
+    assert context is not None
+    previous["trigger_signature"] = context.trigger_signature
+    previous["timeline_signature"] = context.timeline_signature
     repos.pulse_admission.edge_states[candidate_id] = {
         "candidate_id": candidate_id,
         "last_processed_state_json": previous,
     }
-    worker = _worker(repos)
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -513,20 +620,20 @@ def test_recent_schema_failure_circuit_does_not_suppress_escalation_edge() -> No
 def test_scan_global_pending_cap_bounds_enqueues_across_windows_and_scopes() -> None:
     repos = FakeRepos()
     repos.token_radar.rows_by_window_scope = {
-        ("5m", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-5m-all")],
-        ("5m", "matched"): [
-            _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-5m-matched")
-        ],
         ("1h", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-1h-all")],
         ("1h", "matched"): [
             _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-1h-matched")
+        ],
+        ("4h", "all"): [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-4h-all")],
+        ("4h", "matched"): [
+            _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82), target_id="asset-4h-matched")
         ],
     }
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
     worker = _worker(
         repos,
         settings=_settings(
-            windows=("5m", "1h"),
+            windows=("1h", "4h"),
             scopes=("all", "matched"),
             max_enqueues_per_cycle=10,
             max_pending_jobs_global=2,
@@ -570,22 +677,22 @@ def test_scan_window_scope_pending_cap_suppresses_enqueue_without_admission_clai
     assert repos.pulse_jobs.jobs == []
 
 
-def test_stale_short_window_jobs_are_terminalized_before_processing() -> None:
+def test_stale_primary_window_jobs_are_terminalized_before_processing() -> None:
     repos = FakeRepos()
     repos.pulse_jobs.jobs.append(
         {
-            "job_id": "job-stale-5m",
-            "candidate_id": "candidate-stale-5m",
+            "job_id": "job-stale-1h",
+            "candidate_id": "candidate-stale-1h",
             "status": "pending",
-            "window": "5m",
+            "window": "1h",
             "scope": "all",
-            "created_at_ms": NOW_MS - 301_000,
-            "updated_at_ms": NOW_MS - 301_000,
+            "created_at_ms": NOW_MS - 3_601_000,
+            "updated_at_ms": NOW_MS - 3_601_000,
             "attempt_count": 0,
             "max_attempts": 3,
         }
     )
-    worker = _worker(repos, settings=_settings(stale_job_ttl_by_window_seconds={"5m": 300}))
+    worker = _worker(repos, settings=_settings(stale_job_ttl_by_window_seconds={"1h": 3600}))
 
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
 
@@ -615,13 +722,13 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
         async def run_decision_pipeline(self, **kwargs: Any) -> Any:
             self.run_calls += 1
             failed_audit = StageRunAudit(
-                stage="evidence_debate",
+                stage="signal_analyst",
                 route=kwargs["route"],
                 attempt_index=0,
                 input_json={"context": kwargs["context"]},
-                prompt_text="fake evidence debate prompt",
+                prompt_text="fake signal analyst prompt",
                 response_json={"raw_output": "**Investigation Report:** prose only"},
-                trace_metadata_json={"stage": "evidence_debate"},
+                trace_metadata_json={"stage": "signal_analyst"},
                 usage_json={"input_tokens": 11},
                 latency_ms=42,
                 started_at_ms=NOW_MS - 42,
@@ -638,7 +745,7 @@ def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure(
 
     assert result["processed"] == 0
     assert result["failed"] == 1
-    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_debate")
+    step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "signal_analyst")
     assert step["status"] == "failed"
     assert step["error"] == "ModelBehaviorError: invalid JSON"
     assert step["response_json"] == {"raw_output": "**Investigation Report:** prose only"}
@@ -691,7 +798,7 @@ def test_hard_blocked_evidence_gate_does_not_call_agent() -> None:
     assert gate_step["status"] == "ok"
     assert gate_step["response_json"]["hard_blocked"] is True
     assert gate_step["response_json"]["blocked_reason"] == "blocked_market_contract"
-    assert not any(row["stage"] == "decision_maker" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
 
 
 def test_hard_blocked_run_marks_edge_state_processed(monkeypatch) -> None:
@@ -721,12 +828,13 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     class ContractClient(FakeClient):
         runtime_contract = PulseAgentRuntimeContract(
-            stage_names=("evidence_debate", "decision_maker"),
+            stage_names=("signal_analyst", "bear_case", "risk_portfolio_judge"),
             tool_names_by_stage={
-                "evidence_debate": (),
-                "decision_maker": (),
+                "signal_analyst": (),
+                "bear_case": (),
+                "risk_portfolio_judge": (),
             },
-            max_turns_per_stage={"evidence_debate": 4, "decision_maker": 2},
+            max_turns_per_stage={"signal_analyst": 4, "bear_case": 3, "risk_portfolio_judge": 2},
             safety_net_enabled=False,
             validators_enabled=("runtime_evidence_id_subset",),
             failure_taxonomy_version="pulse-failure-taxonomy-test",
@@ -739,8 +847,16 @@ def test_worker_runtime_manifest_uses_decision_client_runtime_contract() -> None
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {"evidence_debate": [], "decision_maker": []}
-    assert manifest["runtime"]["max_turns_per_stage"] == {"evidence_debate": 4, "decision_maker": 2}
+    assert manifest["runtime"]["tool_names_by_stage"] == {
+        "signal_analyst": [],
+        "bear_case": [],
+        "risk_portfolio_judge": [],
+    }
+    assert manifest["runtime"]["max_turns_per_stage"] == {
+        "signal_analyst": 4,
+        "bear_case": 3,
+        "risk_portfolio_judge": 2,
+    }
     assert manifest["runtime"]["safety_net_enabled"] is False
     assert manifest["contracts"]["validators_enabled"] == ["runtime_evidence_id_subset"]
     assert manifest["failure_taxonomy"]["version"] == "pulse-failure-taxonomy-test"
@@ -774,8 +890,12 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
 
     assert result["processed"] == 1
     manifest = repos.pulse_agent_eval.runtime_versions[0]["manifest_json"]
-    assert manifest["runtime"]["stages"] == ["evidence_debate", "decision_maker"]
-    assert manifest["runtime"]["tool_names_by_stage"] == {"evidence_debate": [], "decision_maker": []}
+    assert manifest["runtime"]["stages"] == ["signal_analyst", "bear_case", "risk_portfolio_judge"]
+    assert manifest["runtime"]["tool_names_by_stage"] == {
+        "signal_analyst": [],
+        "bear_case": [],
+        "risk_portfolio_judge": [],
+    }
     assert manifest["runtime"]["safety_net_enabled"] is True
 
 
@@ -845,7 +965,7 @@ def test_pulse_pipeline_parent_reservation_is_passed_to_stage_execution() -> Non
         call
         == {
             "lane": "pulse.pipeline",
-            "child_lanes": ("pulse.evidence_debate", "pulse.decision_maker"),
+            "child_lanes": ("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
             "scope": "parent",
         }
         for call in client.reserve_calls
@@ -1010,8 +1130,8 @@ class FakeAgentExecutionGateway:
         risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
         evidence_packet = stage.input_payload.get("evidence_packet") or {}
         evidence_ids = evidence_packet.get("source_event_ids") or ["event-1"]
-        if stage.stage == "evidence_debate":
-            final_output = EvidenceDebateMemo(
+        if stage.stage == "signal_analyst":
+            final_output = SignalAnalystMemo(
                 bull_claims=(
                     EvidenceClaim(
                         claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
@@ -1019,16 +1139,20 @@ class FakeAgentExecutionGateway:
                         stance="bull",
                     ),
                 ),
-                bear_claims=(
+                what_changed_zh="基于封闭证据包的信号分析完成。",
+                allowed_evidence_ref_ids=tuple(allowed_refs),
+            )
+        elif stage.stage == "bear_case":
+            final_output = BearCaseMemo(
+                risk_claims=(
                     EvidenceClaim(
                         claim="价格响应和流动性确认仍不足，热度可能快速降温。",
                         evidence_refs=risk_refs or supporting_refs,
                         stance="risk",
                     ),
                 ),
-                rebuttal_claims=(),
-                data_gap_claims=(),
-                summary_zh="基于封闭证据包的多空综合完成。",
+                confidence_ceiling=0.7,
+                missing_fact_impacts=(),
                 allowed_evidence_ref_ids=tuple(allowed_refs),
             )
         else:
@@ -1575,7 +1699,7 @@ class FakeClient:
             supporting_evidence_refs=supporting_refs,
             risk_evidence_refs=risk_refs,
         )
-        debate_memo = EvidenceDebateMemo(
+        signal_memo = SignalAnalystMemo(
             bull_claims=(
                 EvidenceClaim(
                     claim="独立作者扩散和关注账号确认提供了继续观察的积极证据。",
@@ -1583,28 +1707,48 @@ class FakeClient:
                     stance="bull",
                 ),
             ),
-            bear_claims=(
+            what_changed_zh="基于封闭证据包的信号分析完成。",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
+        bear_memo = BearCaseMemo(
+            risk_claims=(
                 EvidenceClaim(
                     claim="价格响应和流动性确认仍不足，热度可能快速降温。",
                     evidence_refs=risk_refs or supporting_refs,
                     stance="risk",
                 ),
             ),
-            rebuttal_claims=(),
-            data_gap_claims=(),
-            summary_zh="基于封闭证据包的多空综合完成。",
+            confidence_ceiling=0.7,
+            missing_fact_impacts=(),
             allowed_evidence_ref_ids=tuple(allowed_refs),
         )
-        evidence_debate_audit = StageRunAudit(
-            stage="evidence_debate",
+        signal_audit = StageRunAudit(
+            stage="signal_analyst",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
             input_json={
                 "context": context,
                 "completeness": completeness,
             },
-            prompt_text="fake evidence debate prompt",
-            response_json=debate_memo.model_dump(mode="json"),
+            prompt_text="fake signal analyst prompt",
+            response_json=signal_memo.model_dump(mode="json"),
+            trace_metadata_json={},
+            usage_json={},
+            latency_ms=1,
+            status="ok",
+            error=None,
+        )
+        bear_audit = StageRunAudit(
+            stage="bear_case",
+            route=route,  # type: ignore[arg-type]
+            attempt_index=0,
+            input_json={
+                "context": context,
+                "completeness": completeness,
+                "signal_memo": signal_memo.model_dump(mode="json"),
+            },
+            prompt_text="fake bear case prompt",
+            response_json=bear_memo.model_dump(mode="json"),
             trace_metadata_json={},
             usage_json={},
             latency_ms=1,
@@ -1612,11 +1756,16 @@ class FakeClient:
             error=None,
         )
         stage_audit = StageRunAudit(
-            stage="decision_maker",
+            stage="risk_portfolio_judge",
             route=route,  # type: ignore[arg-type]
             attempt_index=0,
-            input_json={"context": context, "completeness": completeness},
-            prompt_text="fake prompt",
+            input_json={
+                "context": context,
+                "completeness": completeness,
+                "signal_memo": signal_memo.model_dump(mode="json"),
+                "bear_memo": bear_memo.model_dump(mode="json"),
+            },
+            prompt_text="fake risk portfolio judge prompt",
             response_json=final_decision.model_dump(mode="json"),
             trace_metadata_json={},
             usage_json={},
@@ -1635,7 +1784,7 @@ class FakeClient:
         return PulseDecisionResult(
             final_decision=final_decision,
             agent_run_audit={**audit, "output_hash": "output-hash"},
-            stage_audits=(evidence_debate_audit, stage_audit),
+            stage_audits=(signal_audit, bear_audit, stage_audit),
         )
 
 
@@ -1675,7 +1824,7 @@ class NoStartBackpressureClient(FakeClient):
         self.run_calls += 1
         raise AgentExecutionError(
             AgentExecutionErrorClass.CAPACITY_DENIED,
-            "agent lane unavailable: pulse.evidence_debate",
+            "agent lane unavailable: pulse.signal_analyst",
             audit=None,
             execution_started=False,
         )
@@ -1739,6 +1888,12 @@ def _factor_snapshot(
     blocked_reasons: list[str] | None = None,
     recommended_decision: str | None = None,
     watched_mentions: int = 1,
+    unique_authors: int = 7,
+    independent_authors: int = 7,
+    effective_authors: float | None = None,
+    source_weighted_effective_authors: float | None = None,
+    top_author_share: float = 0.2,
+    duplicate_text_share: float = 0.0,
 ) -> dict[str, Any]:
     decision = recommended_decision or ("high_alert" if rank_score >= 72 else "watch")
     return {
@@ -1791,7 +1946,11 @@ def _factor_snapshot(
                 "score": rank_score,
                 "weight": 0.35,
                 "data_health": "ready",
-                "facts": {"mentions_1h": 8, "unique_authors": 7, "watched_mentions": watched_mentions},
+                "facts": {
+                    "mentions_1h": 8,
+                    "unique_authors": unique_authors,
+                    "watched_mentions": watched_mentions,
+                },
                 "factors": {
                     "watched_mentions": {
                         "family": "social_heat",
@@ -1805,7 +1964,17 @@ def _factor_snapshot(
                 "score": rank_score,
                 "weight": 0.3,
                 "data_health": "ready",
-                "facts": {"independent_authors": 7},
+                "facts": {
+                    "independent_authors": independent_authors,
+                    "effective_authors": effective_authors if effective_authors is not None else independent_authors,
+                    "source_weighted_effective_authors": (
+                        source_weighted_effective_authors
+                        if source_weighted_effective_authors is not None
+                        else independent_authors
+                    ),
+                    "top_author_share": top_author_share,
+                    "duplicate_text_share": duplicate_text_share,
+                },
                 "factors": {
                     "independent_authors": {
                         "family": "social_propagation",
