@@ -46,6 +46,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_retention import TokenRadarRetentionService
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
@@ -174,6 +175,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 batch_size=args.batch_size,
                 max_batches=args.max_batches,
                 dry_run=bool(args.dry_run),
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "prune-token-radar":
+            data = TokenRadarRetentionService(token_radar=repos.token_radar).prune(
+                now_ms=_now_ms(),
+                retention_days=args.retention_days,
+                settlement_grace_days=args.settlement_grace_days,
+                batch_size=args.batch_size,
+                max_batches=args.max_batches,
+                dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
             )
             return 0, {"ok": True, "data": data}
 

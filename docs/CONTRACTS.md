@@ -172,10 +172,10 @@ Token Radar market contract:
   market concepts, DB tables, worker names, or provider runtime semantics.
 - `/api/token-radar` rows may expose a `radar` block with projection-row
   metadata for UI sorting and audit display: `lane`, `rank`, `listed_at_ms`,
-  `computed_at_ms`, and `source_max_received_at_ms`. `listed_at_ms` is derived
-  from retained `token_radar_rows` history for the same projection window,
-  scope, target type, and target id; it is presentation metadata, not an alpha
-  factor.
+  `computed_at_ms`, and `source_max_received_at_ms`. `listed_at_ms` is served
+  from the compact `token_radar_target_first_seen` read model keyed by the same
+  projection window, scope, target type, and target identity semantics as
+  runtime rows; it is presentation metadata, not an alpha factor.
 - `market.event_anchor` is the event-time response object for the social signal.
   It may be `null` when inline capture could not establish an event-adjacent
   tick.
@@ -488,9 +488,10 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
   `recommended_decision`.
 - `provenance`: source event ids and compute time.
 
-Historical `token_radar_rows` are retained for forward-return settlement.
-Latest reads select the newest projection row, while diagnostics and settlement
-commands can evaluate older runs by `computed_at_ms` and score version.
+Historical `token_radar_rows` are retained only for the configured hot
+settlement window. Latest reads select the newest projection row, compact
+first-seen metadata preserves `listed_at_ms`, and diagnostics/settlement
+commands evaluate older hot-window runs by `computed_at_ms` and score version.
 
 Operational commands:
 
@@ -500,6 +501,9 @@ Operational commands:
   return evaluations when sufficient later market observations exist.
 - `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
+- `gmgn-twitter-intel ops prune-token-radar` is an explicit operator
+  maintenance command for bounded `token_radar_rows` retention; HTTP handlers
+  and normal API reads never prune rows as a side effect.
 
 ## Privacy boundary
 
