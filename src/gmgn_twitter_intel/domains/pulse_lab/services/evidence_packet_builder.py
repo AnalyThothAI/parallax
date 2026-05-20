@@ -477,11 +477,13 @@ def _compact_discussion_digest(row: dict[str, Any] | None) -> dict[str, Any] | N
     payload = _mapping(row)
     if not payload:
         return None
+    currentness = _mapping(payload.get("currentness"))
     return {
         "digest_id": _optional_str(payload.get("digest_id")),
         "schema_version": _optional_str(payload.get("schema_version")),
         "computed_at_ms": _int(payload.get("computed_at_ms")),
         "semantic_coverage": payload.get("semantic_coverage"),
+        "currentness": currentness,
         "headline_zh": _optional_str(payload.get("headline_zh")),
         "dominant_narratives": payload.get("dominant_narratives_json") or (),
         "bull_view": payload.get("bull_view_json") or {},
@@ -489,7 +491,25 @@ def _compact_discussion_digest(row: dict[str, Any] | None) -> dict[str, Any] | N
         "propagation_read": payload.get("propagation_read_json") or {},
         "reflexivity_read": payload.get("reflexivity_read_json") or {},
         "evidence_refs": payload.get("evidence_refs_json") or (),
+        "data_gaps": _discussion_digest_data_gaps(payload, currentness=currentness),
     }
+
+
+def _discussion_digest_data_gaps(payload: dict[str, Any], *, currentness: dict[str, Any]) -> list[dict[str, Any]]:
+    gaps = [_mapping(gap) for gap in _sequence(payload.get("data_gaps_json") or payload.get("data_gaps") or ())]
+    gaps = [gap for gap in gaps if gap]
+    display_status = str(currentness.get("display_status") or "")
+    if display_status not in {"updating", "stale"}:
+        return gaps
+    reason = str(currentness.get("reason") or ("digest_updating" if display_status == "updating" else "digest_stale"))
+    if any(str(gap.get("reason") or "") == reason for gap in gaps):
+        return gaps
+    gap: dict[str, Any] = {"reason": reason}
+    delta_source_event_count = currentness.get("delta_source_event_count")
+    if delta_source_event_count is not None:
+        gap["delta_source_event_count"] = delta_source_event_count
+    gaps.append(gap)
+    return gaps
 
 
 def _completeness_score(*, social: dict[str, Any], market: dict[str, Any], identity: dict[str, Any]) -> float:

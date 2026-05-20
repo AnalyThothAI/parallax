@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import EvidenceCompletenessGate
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
 
 NOW_MS = 1_800_000_000_000
@@ -15,11 +16,13 @@ class FakeEvidenceSourceRepository:
         enriched_events: list[dict[str, object]] | None = None,
         market_facts: list[dict[str, object]] | None = None,
         identity_facts: list[dict[str, object]] | None = None,
+        discussion_digest: dict[str, object] | None = None,
     ) -> None:
         self.events = events or []
         self.enriched_events = enriched_events or []
         self.market_facts = market_facts or []
         self.identity_facts = identity_facts or []
+        self.discussion_digest = discussion_digest
 
     def list_source_events(self, event_ids: list[str]) -> list[dict[str, object]]:
         return [row for row in self.events if row["event_id"] in set(event_ids)]
@@ -32,6 +35,17 @@ class FakeEvidenceSourceRepository:
 
     def list_identity_facts(self, context: object) -> list[dict[str, object]]:
         return list(self.identity_facts)
+
+    def get_current_discussion_digest(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, object] | None:
+        return self.discussion_digest
 
 
 def test_builds_complete_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
@@ -160,6 +174,80 @@ def test_packet_hash_is_stable_across_input_dict_key_order() -> None:
     assert packet_a.evidence_packet_hash == packet_b.evidence_packet_hash
 
 
+def test_includes_updating_digest_as_context_with_currentness_and_data_gap_only() -> None:
+    context = _context(target_type="chain_token", target_id="solana:abc", source_event_ids=[])
+    repo = FakeEvidenceSourceRepository(
+        discussion_digest=_digest(
+            currentness={
+                "display_status": "updating",
+                "reason": "digest_updating",
+                "delta_source_event_count": 1,
+            },
+            data_gaps_json=[{"reason": "digest_updating", "delta_source_event_count": 1}],
+            evidence_refs_json=[{"ref_id": "event:stale-digest-only"}],
+        )
+    )
+
+    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-digest", now_ms=NOW_MS)
+
+    compact = packet.admission_context["discussion_digest"]
+    assert compact["currentness"]["display_status"] == "updating"
+    assert compact["data_gaps"] == [{"reason": "digest_updating", "delta_source_event_count": 1}]
+    assert "event:stale-digest-only" not in _ref_ids(packet)
+    assert packet.social_evidence.status == "insufficient"
+
+
+def test_stale_digest_prose_without_current_sources_blocks_non_abstain_packet() -> None:
+    context = _context(target_type="chain_token", target_id="solana:abc", source_event_ids=[])
+    repo = FakeEvidenceSourceRepository(
+        discussion_digest=_digest(
+            headline_zh="上一版叙事很强，但已经不是当前来源边界。",
+            currentness={"display_status": "stale", "reason": "digest_stale"},
+            data_gaps_json=[{"reason": "digest_stale"}],
+            evidence_refs_json=[{"ref_id": "event:old-digest"}],
+        )
+    )
+
+    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-stale", now_ms=NOW_MS)
+    gate = EvidenceCompletenessGate().evaluate(packet)
+
+    assert gate.max_decision_status == "abstain"
+    assert gate.blocked_reason == "blocked_social_contract"
+    assert "event:old-digest" not in _ref_ids(packet)
+    assert {ref.ref_type for ref in packet.allowed_evidence_refs} == {"gate"}
+
+
+def test_current_source_refs_remain_primary_when_digest_is_stale_context() -> None:
+    context = _context(target_type="cex_token", target_id="okx:BTC-USDT", source_event_ids=["event-current"])
+    repo = FakeEvidenceSourceRepository(
+        events=[_event("event-current")],
+        market_facts=[
+            {
+                "route": "cex",
+                "target_market_type": "perpetual",
+                "price_usd": 67_000,
+                "pricefeed_id": "pricefeed:cex:okx:swap:BTC-USDT-SWAP",
+                "source_provider": "okx_cex_rest",
+                "observed_at_ms": NOW_MS - 30_000,
+            }
+        ],
+        identity_facts=[{"source_id": "identity:btc", "symbol": "BTC", "observed_at_ms": NOW_MS - 60_000}],
+        discussion_digest=_digest(
+            headline_zh="上一版叙事只能作为背景。",
+            currentness={"display_status": "stale", "reason": "digest_stale"},
+            data_gaps_json=[{"reason": "digest_stale"}],
+            evidence_refs_json=[{"ref_id": "event:old-digest"}],
+        ),
+    )
+
+    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-current", now_ms=NOW_MS)
+    gate = EvidenceCompletenessGate().evaluate(packet)
+
+    assert gate.max_decision_status == "trade_candidate"
+    assert {"event:event-current", "metric:market:price_usd", "identity:btc"}.issubset(_ref_ids(packet))
+    assert "event:old-digest" not in _ref_ids(packet)
+
+
 def _context(
     *,
     target_type: str,
@@ -188,6 +276,30 @@ def _event(event_id: str) -> dict[str, object]:
         "observed_at_ms": NOW_MS - 45_000,
         "summary_zh": f"{event_id} 社交事件",
         "url": f"https://example.test/{event_id}",
+    }
+
+
+def _digest(
+    *,
+    headline_zh: str = "上一版叙事摘要",
+    currentness: dict[str, object],
+    data_gaps_json: list[dict[str, object]],
+    evidence_refs_json: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "digest_id": "digest-last-ready",
+        "schema_version": "narrative_intel_v1",
+        "computed_at_ms": NOW_MS - 600_000,
+        "semantic_coverage": 0.75,
+        "headline_zh": headline_zh,
+        "dominant_narratives_json": [{"cluster_key": "k", "summary_zh": headline_zh}],
+        "bull_view_json": {"summary_zh": "多头背景", "evidence_refs": evidence_refs_json},
+        "bear_view_json": {"summary_zh": "风险背景", "evidence_refs": evidence_refs_json},
+        "propagation_read_json": {},
+        "reflexivity_read_json": {},
+        "evidence_refs_json": evidence_refs_json,
+        "currentness": currentness,
+        "data_gaps_json": data_gaps_json,
     }
 
 
