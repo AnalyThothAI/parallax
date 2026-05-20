@@ -125,6 +125,58 @@ def test_handles_missing_summary_jobs_reads_signal_stats_without_social_rows(tmp
     assert current == []
 
 
+def test_backfill_signal_stats_dry_run_does_not_write_read_models(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        social_events = SocialEventExtractionRepository(conn)
+        repo = WatchlistIntelRepository(conn)
+        _extract_signal(social_events, event_id="event-1", author_handle="@Toly", received_at_ms=1_000)
+        conn.execute(
+            "UPDATE social_event_extractions SET normalized_handle = NULL WHERE event_id = %s",
+            ("event-1",),
+        )
+        conn.commit()
+
+        dry_run = repo.backfill_signal_stats_batch(
+            after_received_at_ms=None,
+            after_event_id=None,
+            batch_size=10,
+            dry_run=True,
+        )
+        dry_run_extraction = conn.execute(
+            "SELECT normalized_handle FROM social_event_extractions WHERE event_id = %s",
+            ("event-1",),
+        ).fetchone()
+        dry_run_signal_event = conn.execute(
+            "SELECT * FROM watchlist_handle_signal_events WHERE event_id = %s",
+            ("event-1",),
+        ).fetchone()
+
+        applied = repo.backfill_signal_stats_batch(
+            after_received_at_ms=None,
+            after_event_id=None,
+            batch_size=10,
+        )
+        applied_extraction = conn.execute(
+            "SELECT normalized_handle FROM social_event_extractions WHERE event_id = %s",
+            ("event-1",),
+        ).fetchone()
+        applied_stats = repo.signal_stats_for_handle("toly")
+    finally:
+        conn.close()
+
+    assert dry_run["processed"] == 1
+    assert dry_run["signal_events"] == 1
+    assert dry_run["normalized_handles"] == 1
+    assert dry_run_extraction["normalized_handle"] is None
+    assert dry_run_signal_event is None
+    assert applied["processed"] == 1
+    assert applied_extraction["normalized_handle"] == "toly"
+    assert applied_stats is not None
+    assert applied_stats["total_signal_count"] == 1
+
+
 def _extract_signal(
     repo: SocialEventExtractionRepository,
     *,

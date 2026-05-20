@@ -463,6 +463,7 @@ class WatchlistIntelRepository:
         after_received_at_ms: int | None,
         after_event_id: str | None,
         batch_size: int,
+        dry_run: bool = False,
         commit: bool = True,
     ) -> dict[str, Any]:
         parsed_limit = max(0, int(batch_size))
@@ -490,7 +491,9 @@ class WatchlistIntelRepository:
               se.received_at_ms,
               se.is_signal_event
             FROM social_event_extractions se
-            LEFT JOIN events e ON e.event_id = se.event_id
+            LEFT JOIN events e
+              ON e.event_id = se.event_id
+             AND se.normalized_handle IS NULL
             {"WHERE " + " AND ".join(clauses) if clauses else ""}
             ORDER BY se.received_at_ms ASC, se.event_id ASC
             LIMIT %s
@@ -513,20 +516,21 @@ class WatchlistIntelRepository:
             if handle is None:
                 handle = _safe_normalize_handle(row.get("event_author_handle"))
             if handle and handle != row.get("normalized_handle"):
-                self.conn.execute(
-                    """
-                    UPDATE social_event_extractions
-                    SET normalized_handle = %s,
-                        updated_at_ms = %s
-                    WHERE event_id = %s
-                      AND normalized_handle IS DISTINCT FROM %s
-                    """,
-                    (handle, _now_ms(), str(row["event_id"]), handle),
-                )
+                if not dry_run:
+                    self.conn.execute(
+                        """
+                        UPDATE social_event_extractions
+                        SET normalized_handle = %s,
+                            updated_at_ms = %s
+                        WHERE event_id = %s
+                          AND normalized_handle IS DISTINCT FROM %s
+                        """,
+                        (handle, _now_ms(), str(row["event_id"]), handle),
+                    )
                 normalized_handles += 1
             if handle and bool(row.get("is_signal_event")):
                 signal_events += 1
-            if handle:
+            if handle and not dry_run:
                 self.record_signal_event_state(
                     handle=handle,
                     event_id=str(row["event_id"]),
@@ -534,7 +538,7 @@ class WatchlistIntelRepository:
                     is_signal_event=bool(row.get("is_signal_event")),
                     commit=False,
                 )
-        if commit:
+        if commit and not dry_run:
             self.conn.commit()
         return {
             "processed": processed,

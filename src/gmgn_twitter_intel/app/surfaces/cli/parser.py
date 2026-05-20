@@ -101,6 +101,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="enqueue social-event-v2 extraction jobs for existing watched events",
     )
     backfill_enrichment_jobs.add_argument("--limit", type=int, default=1000)
+    backfill_token_radar_first_seen = ops_subcommands.add_parser(
+        "backfill-token-radar-first-seen",
+        help="backfill compact Token Radar first-seen metadata from historical rows",
+    )
+    backfill_token_radar_first_seen.add_argument("--batch-size", type=int, default=5000)
+    backfill_token_radar_first_seen.add_argument("--max-batches", type=int, default=1)
+    backfill_watchlist_signal_stats = ops_subcommands.add_parser(
+        "backfill-watchlist-signal-stats",
+        help="backfill watchlist signal event ledger and stats read model",
+    )
+    backfill_watchlist_signal_stats.add_argument("--batch-size", type=int, default=5000)
+    backfill_watchlist_signal_stats.add_argument("--max-batches", type=int, default=1)
+    backfill_watchlist_signal_stats.add_argument("--dry-run", action="store_true")
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
     validate_projections = ops_subcommands.add_parser(
