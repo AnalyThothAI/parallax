@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
@@ -628,7 +628,8 @@ class PerWorkerSettings(BaseModel):
 
     enabled: bool = True
     interval_seconds: float = Field(default=5.0, ge=0)
-    timeout_seconds: float = Field(default=120.0, ge=0)
+    soft_timeout_seconds: float = Field(default=120.0, ge=0)
+    hard_timeout_seconds: float = Field(default=180.0, ge=0)
     concurrency: int = Field(default=1, ge=1)
     batch_size: int = Field(default=100, ge=1)
     max_attempts: int = Field(default=3, ge=1)
@@ -645,7 +646,8 @@ class WorkerDefaults(PerWorkerSettings):
 class CollectorWorkerSettings(PerWorkerSettings):
     mode: Literal["continuous"] = "continuous"
     interval_seconds: float = Field(default=3.0, ge=0)
-    timeout_seconds: float = Field(default=0.0, ge=0)
+    soft_timeout_seconds: float = Field(default=0.0, ge=0)
+    hard_timeout_seconds: float = Field(default=0.0, ge=0)
     snapshot_timeout_seconds: float = Field(default=0.5, ge=0)
     watchdog_interval_seconds: float = Field(default=30.0, ge=0)
     stale_timeout_seconds: float = Field(default=180.0, ge=0)
@@ -741,8 +743,10 @@ class PulseCandidateGateThresholds(BaseModel):
 
 class PulseCandidateWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
-    timeout_seconds: float = Field(default=0.0, ge=0)
+    soft_timeout_seconds: float = Field(default=540.0, ge=0)
+    hard_timeout_seconds: float = Field(default=660.0, ge=0)
     batch_size: int = Field(default=10, ge=1)
+    max_agent_jobs_per_cycle: int = Field(default=2, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     max_enqueues_per_cycle: int = Field(default=25, ge=1)
     max_pending_jobs_global: int = Field(default=100, ge=1)
@@ -789,7 +793,8 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
 
 class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
-    timeout_seconds: float = Field(default=0.0, ge=0)
+    soft_timeout_seconds: float = Field(default=180.0, ge=0)
+    hard_timeout_seconds: float = Field(default=300.0, ge=0)
     advisory_lock_key: int = 2026051901
     wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
@@ -807,7 +812,8 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
 
 class MentionSemanticsWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
-    timeout_seconds: float = Field(default=0.0, ge=0)
+    soft_timeout_seconds: float = Field(default=240.0, ge=0)
+    hard_timeout_seconds: float = Field(default=300.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
     provider_batch_size: int = Field(default=10, ge=1)
     max_attempts: int = Field(default=3, ge=1)
@@ -829,7 +835,8 @@ class MentionSemanticsWorkerSettings(PerWorkerSettings):
 
 class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=120.0, ge=0)
-    timeout_seconds: float = Field(default=0.0, ge=0)
+    soft_timeout_seconds: float = Field(default=570.0, ge=0)
+    hard_timeout_seconds: float = Field(default=660.0, ge=0)
     batch_size: int = Field(default=25, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026051802
@@ -892,7 +899,6 @@ class NotificationDeliveryWorkerSettings(PerWorkerSettings):
 
 class NewsFetchWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
-    timeout_seconds: float = Field(default=120.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
     advisory_lock_key: int = 2026051905
 
@@ -919,7 +925,8 @@ class NewsStoryProjectionWorkerSettings(PerWorkerSettings):
 
 class NewsItemBriefWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
-    timeout_seconds: float = Field(default=180.0, ge=0)
+    soft_timeout_seconds: float = Field(default=180.0, ge=0)
+    hard_timeout_seconds: float = Field(default=240.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
     advisory_lock_key: int = 2026052001
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
@@ -982,6 +989,16 @@ class WorkersSettings(BaseModel):
     )
     news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
+
+    @model_validator(mode="after")
+    def reject_zero_hard_timeout_for_non_continuous_workers(self) -> WorkersSettings:
+        for worker_key in type(self).model_fields:
+            if worker_key in {"defaults", "agent_runtime", "collector"}:
+                continue
+            worker_settings = getattr(self, worker_key)
+            if worker_settings.hard_timeout_seconds <= 0:
+                raise ValueError(f"{worker_key}.hard_timeout_seconds must be > 0")
+        return self
 
 
 class Settings(BaseModel):
@@ -1433,7 +1450,8 @@ def default_workers_yaml() -> str:
 defaults:
   enabled: true
   interval_seconds: 5.0
-  timeout_seconds: 120.0
+  soft_timeout_seconds: 120.0
+  hard_timeout_seconds: 180.0
   concurrency: 1
   batch_size: 100
   max_attempts: 3
@@ -1496,7 +1514,8 @@ collector:
   enabled: true
   mode: "continuous"
   interval_seconds: 3.0
-  timeout_seconds: 0.0
+  soft_timeout_seconds: 0.0
+  hard_timeout_seconds: 0.0
   snapshot_timeout_seconds: 0.5
   watchdog_interval_seconds: 30.0
   stale_timeout_seconds: 180.0
@@ -1557,7 +1576,8 @@ token_profile_current:
 narrative_admission:
   enabled: true
   interval_seconds: 60.0
-  timeout_seconds: 0.0
+  soft_timeout_seconds: 180.0
+  hard_timeout_seconds: 300.0
   advisory_lock_key: 2026051901
   wakes_on: ["token_radar_updated", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]
@@ -1569,7 +1589,8 @@ narrative_admission:
 mention_semantics:
   enabled: true
   interval_seconds: 60.0
-  timeout_seconds: 0.0
+  soft_timeout_seconds: 240.0
+  hard_timeout_seconds: 300.0
   batch_size: 50
   provider_batch_size: 10
   max_attempts: 3
@@ -1585,7 +1606,8 @@ mention_semantics:
 token_discussion_digest:
   enabled: true
   interval_seconds: 120.0
-  timeout_seconds: 0.0
+  soft_timeout_seconds: 570.0
+  hard_timeout_seconds: 660.0
   batch_size: 25
   max_attempts: 3
   advisory_lock_key: 2026051802
@@ -1612,7 +1634,6 @@ token_discussion_digest:
 news_fetch:
   enabled: true
   interval_seconds: 60.0
-  timeout_seconds: 120.0
   batch_size: 5
   advisory_lock_key: 2026051905
 news_item_process:
@@ -1626,7 +1647,8 @@ news_story_projection:
 news_item_brief:
   enabled: true
   interval_seconds: 10.0
-  timeout_seconds: 180.0
+  soft_timeout_seconds: 180.0
+  hard_timeout_seconds: 240.0
   batch_size: 5
   advisory_lock_key: 2026052001
   backpressure_cooldown_ms: 60000
@@ -1638,8 +1660,10 @@ news_page_projection:
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0
-  timeout_seconds: 0.0
+  soft_timeout_seconds: 540.0
+  hard_timeout_seconds: 660.0
   batch_size: 10
+  max_agent_jobs_per_cycle: 2
   max_attempts: 3
   max_enqueues_per_cycle: 25
   max_pending_jobs_global: 100

@@ -219,7 +219,8 @@ def _settings(settings: Any | None, *, interval_seconds: float | None, batch_siz
         return SimpleNamespace(
             enabled=True,
             interval_seconds=interval_seconds if interval_seconds is not None else 5.0,
-            timeout_seconds=120.0,
+            soft_timeout_seconds=120.0,
+            hard_timeout_seconds=180.0,
             batch_size=batch_size,
         )
     if interval_seconds is None:

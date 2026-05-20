@@ -23,6 +23,11 @@ def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypa
         "iteration_duration_p99_ms": None,
         "queue_depth": None,
         "pool_wait_ms_p99": None,
+        "active_run_once_started_at_ms": None,
+        "active_run_once_age_ms": None,
+        "active_run_once_soft_timed_out_at_ms": None,
+        "active_run_once_hard_timed_out_at_ms": None,
+        "active_run_once_count": 0,
     }
 
     class FakeRows:
@@ -114,6 +119,8 @@ def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypa
     workers = payload["data"]["workers"]
     assert set(CANONICAL_WORKER_NAMES).issubset(workers)
     assert all("queue_depth" in workers[name] for name in CANONICAL_WORKER_NAMES)
+    assert all("active_run_once_age_ms" in workers[name] for name in CANONICAL_WORKER_NAMES)
+    assert all("active_run_once_count" in workers[name] for name in CANONICAL_WORKER_NAMES)
     assert workers["enrichment"]["queue_depth"] == 6
     assert workers["handle_summary"]["queue_depth"] == 3
     assert workers["notification_delivery"]["queue_depth"] == 4

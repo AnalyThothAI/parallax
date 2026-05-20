@@ -465,7 +465,8 @@ def _settings(
         return SimpleNamespace(
             enabled=True,
             interval_seconds=interval_seconds if interval_seconds is not None else DEFAULT_INTERVAL_SECONDS,
-            timeout_seconds=120.0,
+            soft_timeout_seconds=120.0,
+            hard_timeout_seconds=180.0,
             batch_size=batch_size,
             concurrency=concurrency,
             min_age_ms=min_age_ms,

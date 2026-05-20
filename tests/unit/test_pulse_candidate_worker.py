@@ -955,6 +955,39 @@ def test_process_due_jobs_does_not_claim_when_agent_capacity_denied() -> None:
     assert repos.pulse_jobs.jobs[0]["attempt_count"] == 0
 
 
+def test_process_due_jobs_uses_agent_execution_budget_separate_from_scan_batch() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    for index in range(3):
+        repos.pulse_jobs.jobs.append(
+            {
+                "job_id": f"job-{index}",
+                "candidate_id": f"candidate-{index}",
+                "candidate_type": context.candidate_type,
+                "subject_key": context.subject_key,
+                "target_type": context.target_type,
+                "target_id": context.target_id,
+                "window": context.window,
+                "scope": context.scope,
+                "trigger_signature": f"trigger-{index}",
+                "timeline_signature": f"timeline-{index}",
+                "priority": context.priority,
+                "status": "pending",
+                "attempt_count": 0,
+                "max_attempts": 3,
+                "context_json": context.agent_context(),
+            }
+        )
+    worker = _worker(repos, settings=_settings(batch_size=10, max_agent_jobs_per_cycle=2))
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["claimed"] == 2
+    assert result["processed"] == 2
+    assert repos.pulse_jobs.claim_due_job_calls == 2
+    assert sum(1 for job in repos.pulse_jobs.jobs if job["status"] == "pending") == 1
+
+
 def test_pulse_pipeline_parent_reservation_is_passed_to_stage_execution() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
@@ -1027,8 +1060,10 @@ def _settings(**overrides: Any) -> SimpleNamespace:
     values = {
         "enabled": True,
         "interval_seconds": 60.0,
-        "timeout_seconds": 120.0,
+        "soft_timeout_seconds": 120.0,
+        "hard_timeout_seconds": 180.0,
         "batch_size": 10,
+        "max_agent_jobs_per_cycle": 2,
         "max_attempts": 3,
         "statement_timeout_seconds": 30.0,
         "advisory_lock_key": 2026051502,
@@ -1325,6 +1360,7 @@ class FakePulseStore:
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
         self.backpressure_releases: list[dict[str, Any]] = []
+        self.timeout_cancellations: list[dict[str, Any]] = []
         self.claim_due_job_calls = 0
         self.admission_claims: list[dict[str, Any]] = []
         self.pending_job_counts_by_window_scope: dict[tuple[str, str], int] = {}
@@ -1587,6 +1623,39 @@ class FakePulseStore:
     def mark_job_failed(self, job: dict[str, Any], error: str, **kwargs: Any) -> dict[str, Any]:
         self.failures.append({"job": job, "error": error, "failure_reason": kwargs.get("failure_reason")})
         return {"job_id": job["job_id"], "status": "failed"}
+
+    def mark_job_cancelled_by_worker_timeout(
+        self,
+        job: dict[str, Any],
+        *,
+        now_ms: int,
+        execution_started: bool,
+        **_: Any,
+    ) -> dict[str, Any] | None:
+        self.timeout_cancellations.append(
+            {"job_id": job["job_id"], "execution_started": execution_started, "now_ms": now_ms}
+        )
+        for stored in self.jobs:
+            if stored["job_id"] != job["job_id"] or stored.get("status") != "running":
+                continue
+            if int(stored.get("attempt_count") or 0) != int(job.get("attempt_count") or 0):
+                continue
+            if int(stored.get("updated_at_ms") or 0) != int(job.get("updated_at_ms") or 0):
+                continue
+            if execution_started:
+                attempts = int(stored.get("attempt_count") or 0)
+                max_attempts = int(stored.get("max_attempts") or 3)
+                stored["status"] = "dead" if attempts >= max_attempts else "failed"
+                stored["next_run_at_ms"] = now_ms if stored["status"] == "dead" else now_ms + 5_000 * max(1, attempts)
+                stored["last_error"] = "worker_timeout_after_execution"
+            else:
+                stored["status"] = "pending"
+                stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
+                stored["next_run_at_ms"] = now_ms + 5_000
+                stored["last_error"] = "worker_timeout_before_execution"
+            stored["updated_at_ms"] = now_ms
+            return dict(stored)
+        return None
 
     def release_running_job_for_backpressure(
         self,

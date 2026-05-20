@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     TradePlaybook,
 )
 from gmgn_twitter_intel.platform.agent_execution import AgentExecutionErrorClass
+from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 from tests.unit.test_pulse_candidate_worker import (
     NOW_MS,
     FakeClient,
@@ -184,6 +185,108 @@ def test_provider_transport_stage_failure_records_provider_unavailable() -> None
     failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
     assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "provider_unavailable"}
     assert repos.pulse_jobs.failures[0]["failure_reason"] == "provider_unavailable"
+
+
+def test_worker_timeout_before_execution_releases_job_and_finishes_run() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+
+    class BeforeExecutionTimeout(asyncio.CancelledError):
+        execution_started = False
+
+    class CancellingClient(FakeClient):
+        async def run_decision_pipeline(self, **_: Any) -> Any:
+            self.run_calls += 1
+            raise BeforeExecutionTimeout(WORKER_HARD_TIMEOUT_CANCEL_REASON)
+
+    service = _service(repos, client=CancellingClient())
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
+    assert finished_run["outcome"] == "worker_timeout"
+    assert finished_run["trace_metadata_json_patch"] == {"failure_reason": "worker_timeout_cancelled"}
+    cancellation = repos.pulse_jobs.timeout_cancellations[0]
+    assert cancellation["job_id"] == job["job_id"]
+    assert cancellation["execution_started"] is False
+    assert cancellation["now_ms"] >= NOW_MS
+    stored_job = repos.pulse_jobs.jobs[0]
+    assert stored_job["status"] == "pending"
+    assert stored_job["attempt_count"] == 0
+    assert stored_job["last_error"] == "worker_timeout_before_execution"
+    assert stored_job["next_run_at_ms"] == cancellation["now_ms"] + 5_000
+
+
+def test_worker_timeout_after_execution_marks_job_failed_or_dead_and_finishes_run() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    _enqueue_context_job(repos, context)
+    repos.pulse_jobs.jobs[0]["max_attempts"] = 1
+    job = dict(repos.pulse_jobs.jobs[0])
+
+    class AfterExecutionTimeout(asyncio.CancelledError):
+        execution_started = True
+
+    class CancellingClient(FakeClient):
+        async def run_decision_pipeline(self, **_: Any) -> Any:
+            self.run_calls += 1
+            raise AfterExecutionTimeout(WORKER_HARD_TIMEOUT_CANCEL_REASON)
+
+    service = _service(repos, client=CancellingClient())
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
+    assert finished_run["outcome"] == "worker_timeout"
+    assert finished_run["trace_metadata_json_patch"] == {"failure_reason": "worker_timeout_cancelled"}
+    cancellation = repos.pulse_jobs.timeout_cancellations[0]
+    assert cancellation["job_id"] == job["job_id"]
+    assert cancellation["execution_started"] is True
+    assert cancellation["now_ms"] >= NOW_MS
+    stored_job = repos.pulse_jobs.jobs[0]
+    assert stored_job["status"] == "dead"
+    assert stored_job["last_error"] == "worker_timeout_after_execution"
+
+
+def test_plain_cancellation_does_not_persist_worker_timeout_cleanup() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+
+    class CancellingClient(FakeClient):
+        async def run_decision_pipeline(self, **_: Any) -> Any:
+            self.run_calls += 1
+            raise asyncio.CancelledError()
+
+    service = _service(repos, client=CancellingClient())
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    assert repos.pulse_jobs.timeout_cancellations == []
+    assert repos.pulse_runs.finished_runs == []
+    assert repos.pulse_jobs.jobs[0]["status"] == "running"
+
+
+def test_worker_timeout_cleanup_does_not_mutate_newer_claim_attempt() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+    repos.pulse_jobs.jobs[0]["attempt_count"] = int(job["attempt_count"]) + 1
+    repos.pulse_jobs.jobs[0]["updated_at_ms"] = int(job["updated_at_ms"]) + 1
+
+    result = repos.pulse_jobs.mark_job_cancelled_by_worker_timeout(
+        job,
+        now_ms=NOW_MS + 10_000,
+        execution_started=True,
+    )
+
+    assert result is None
+    assert repos.pulse_jobs.jobs[0]["status"] == "running"
+    assert repos.pulse_jobs.jobs[0].get("last_error") is None
 
 
 def test_hard_blocked_success_records_evidence_gate_without_provider_run() -> None:

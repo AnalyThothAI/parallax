@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -13,6 +14,7 @@ RUNTIME_VERSION = "agent-execution-plane-v1"
 
 
 class AgentExecutionErrorClass(StrEnum):
+    CANCELLED = "cancelled"
     CAPACITY_DENIED = "capacity_denied"
     CIRCUIT_OPEN = "circuit_open"
     TIMEOUT = "timeout"
@@ -205,6 +207,21 @@ class AgentExecutionError(Exception):
         self.execution_started = bool(execution_started)
 
 
+class AgentExecutionCancelled(asyncio.CancelledError):
+    def __init__(
+        self,
+        message: str = "agent execution cancelled",
+        *,
+        audit: AgentExecutionResultAudit | None = None,
+        execution_started: bool = False,
+        cancellation_reason: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.audit = audit
+        self.execution_started = bool(execution_started)
+        self.cancellation_reason = cancellation_reason
+
+
 ReleaseCallback = Callable[[], None | Awaitable[None]]
 
 
@@ -239,6 +256,7 @@ __all__ = [
     "RUNTIME_VERSION",
     "AgentCapacityReservation",
     "AgentCircuitBreakerPolicy",
+    "AgentExecutionCancelled",
     "AgentExecutionError",
     "AgentExecutionErrorClass",
     "AgentExecutionRequestAudit",

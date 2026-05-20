@@ -85,6 +85,7 @@ class PulseCandidateWorker(WorkerBase):
         self.windows = tuple(getattr(settings, "windows", DEFAULT_WINDOWS) or DEFAULT_WINDOWS)
         self.scopes = tuple(getattr(settings, "scopes", DEFAULT_SCOPES) or DEFAULT_SCOPES)
         self.batch_size = max(1, int(getattr(settings, "batch_size", 10) or 10))
+        self.max_agent_jobs_per_cycle = max(1, int(getattr(settings, "max_agent_jobs_per_cycle", 2) or 2))
         self.max_attempts = max(1, int(getattr(settings, "max_attempts", 3) or 3))
         self.max_enqueues_per_cycle = max(1, int(getattr(settings, "max_enqueues_per_cycle", 25) or 25))
         self.max_pending_jobs_global = max(1, int(getattr(settings, "max_pending_jobs_global", 100) or 100))
@@ -211,7 +212,7 @@ class PulseCandidateWorker(WorkerBase):
                 now_ms=resolved_now_ms,
                 ttl_by_window_seconds=self.stale_job_ttl_by_window_seconds,
             )
-        for _ in range(self.batch_size):
+        for _ in range(min(self.batch_size, self.max_agent_jobs_per_cycle)):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             reservation = self.decision_client.try_reserve_execution(
                 "pulse.pipeline",

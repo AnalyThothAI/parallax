@@ -3,7 +3,10 @@ import inspect
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+import pytest
+
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import (
     MentionSemanticsWorker,
@@ -25,6 +28,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticsBatchResult,
 )
 from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
+from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 
 def test_workers_are_workerbase_subclasses():
@@ -238,6 +242,38 @@ def test_mention_semantics_worker_records_provider_failure_without_poisoning_wor
         assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.mention_semantics"
         assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
         assert repo.completed_batches[0]["failures"][0]["event_id"] == "event-1"
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_worker_persists_cleanup_when_provider_call_is_cancelled():
+    async def scenario():
+        repo = FakeNarrativeRepository()
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(provider_failure_backoff_seconds=7),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=CancelledNarrativeProvider(),
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_once(now_ms=10_000)
+
+        assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["error"] == "worker_timeout_cancelled"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "CancelledError"
+        assert repo.completed_batches[0]["failures"][0] == {
+            "semantic_id": "semantic-1",
+            "event_id": "event-1",
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "schema_version": NARRATIVE_SCHEMA_VERSION,
+            "text_fingerprint": "fp-1",
+            "error": "worker_timeout_cancelled",
+            "next_retry_at_ms": repo.recorded_runs[0]["finished_at_ms"] + 7_000,
+        }
 
     asyncio.run(scenario())
 
@@ -536,6 +572,36 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
         assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.discussion_digest"
         assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
         assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 610_000, "now_ms": 10_000}]
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_worker_persists_cleanup_when_provider_call_is_cancelled():
+    async def scenario():
+        repo = FakeDigestRepository()
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(provider_failure_backoff_seconds=7),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=CancelledNarrativeProvider(),
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_once(now_ms=10_000)
+
+        assert repo.recorded_runs[0]["stage"] == "discussion_digest"
+        assert repo.recorded_runs[0]["status"] == "failed"
+        assert repo.recorded_runs[0]["error"] == "worker_timeout_cancelled"
+        assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "CancelledError"
+        assert repo.digest_scans == [
+            {
+                "admission_ids": ["admission-1"],
+                "next_due_at_ms": repo.recorded_runs[0]["finished_at_ms"] + 7_000,
+                "now_ms": repo.recorded_runs[0]["finished_at_ms"],
+            }
+        ]
 
     asyncio.run(scenario())
 
@@ -1252,6 +1318,14 @@ class FailingNarrativeProvider:
 
     async def aclose(self):  # pragma: no cover - runtime-owned provider
         return None
+
+
+class CancelledNarrativeProvider(FailingNarrativeProvider):
+    async def label_mentions(self, *, run_id, request):
+        raise asyncio.CancelledError(WORKER_HARD_TIMEOUT_CANCEL_REASON)
+
+    async def summarize_discussion(self, *, run_id, request):
+        raise asyncio.CancelledError(WORKER_HARD_TIMEOUT_CANCEL_REASON)
 
 
 class NoStartNarrativeProvider(FailingNarrativeProvider):

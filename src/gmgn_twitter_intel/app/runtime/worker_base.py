@@ -10,9 +10,9 @@ from typing import Any
 from loguru import logger as default_logger
 
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
 _DEFAULT_INTERVAL_SECONDS = 5.0
-_DEFAULT_TIMEOUT_SECONDS = 120.0
 _DEFAULT_BACKOFF_BASE_MS = 1000
 _DEFAULT_BACKOFF_MAX_MS = 60_000
 _MIN_WAIT_SECONDS = 0.001
@@ -30,9 +30,24 @@ class WorkerStatus:
     iteration_duration_p99_ms: float | None
     queue_depth: int | None
     pool_wait_ms_p99: float | None
+    active_run_once_started_at_ms: int | None
+    active_run_once_age_ms: int | None
+    active_run_once_soft_timed_out_at_ms: int | None
+    active_run_once_hard_timed_out_at_ms: int | None
+    active_run_once_count: int
 
     def payload(self) -> dict[str, Any]:
         return asdict(self)
+
+
+class WorkerRunSoftTimeout(TimeoutError):
+    def __init__(self, message: str, *, first_report: bool) -> None:
+        super().__init__(message)
+        self.first_report = bool(first_report)
+
+
+class WorkerRunHardTimeout(TimeoutError):
+    pass
 
 
 class WorkerBase(ABC):
@@ -64,6 +79,9 @@ class WorkerBase(ABC):
         self.last_result: WorkerResult | None = None
         self.last_error: str | None = None
         self.running = False
+        self.active_run_once_started_at_ms: int | None = None
+        self.active_run_once_soft_timed_out_at_ms: int | None = None
+        self.active_run_once_hard_timed_out_at_ms: int | None = None
 
         self._stop_event = asyncio.Event()
         self._advisory_lock_connection: Any | None = None
@@ -72,6 +90,8 @@ class WorkerBase(ABC):
         self._consecutive_failures = 0
         self._closed = False
         self._run_once_tasks: set[asyncio.Task[WorkerResult | None]] = set()
+        self._run_once_started_at_ms_by_id: dict[int, int] = {}
+        self._soft_timeout_reported_for_task: set[int] = set()
         self._active_run_loops = 0
 
     async def on_start(self) -> None:
@@ -100,7 +120,6 @@ class WorkerBase(ABC):
                     await self._wait_for_next_iteration(self.interval_seconds)
                     continue
                 started = time.perf_counter()
-                self.last_started_at_ms = _now_ms()
                 if run_once_task is None:
                     run_once_task = self._create_run_once_task()
                 try:
@@ -109,6 +128,14 @@ class WorkerBase(ABC):
                     await self._cancel_run_once_task(run_once_task)
                     run_once_task = None
                     raise
+                except WorkerRunSoftTimeout as exc:
+                    self.last_error = _error_text(exc)
+                    self.last_result = None
+                    if exc.first_report:
+                        self._consecutive_failures += 1
+                        self._record_failed_iteration(started)
+                    await self._wait_for_next_iteration(self._backoff_seconds())
+                    continue
                 except Exception as exc:
                     if run_once_task is not None and run_once_task.done():
                         self._discard_run_once_task(run_once_task)
@@ -160,6 +187,11 @@ class WorkerBase(ABC):
             iteration_duration_p99_ms=_p99(self._iteration_duration_ms),
             queue_depth=self._queue_depth(),
             pool_wait_ms_p99=self._pool_wait_ms_p99(),
+            active_run_once_started_at_ms=self.active_run_once_started_at_ms,
+            active_run_once_age_ms=self._active_run_once_age_ms(),
+            active_run_once_soft_timed_out_at_ms=self.active_run_once_soft_timed_out_at_ms,
+            active_run_once_hard_timed_out_at_ms=self.active_run_once_hard_timed_out_at_ms,
+            active_run_once_count=len(self._run_once_tasks),
         ).payload()
 
     @property
@@ -171,8 +203,12 @@ class WorkerBase(ABC):
         return max(0.0, float(getattr(self.settings, "interval_seconds", _DEFAULT_INTERVAL_SECONDS)))
 
     @property
-    def timeout_seconds(self) -> float:
-        return max(0.0, float(getattr(self.settings, "timeout_seconds", _DEFAULT_TIMEOUT_SECONDS)))
+    def soft_timeout_seconds(self) -> float:
+        return max(0.0, float(self.settings.soft_timeout_seconds))
+
+    @property
+    def hard_timeout_seconds(self) -> float:
+        return max(0.0, float(self.settings.hard_timeout_seconds))
 
     async def _run_once_with_timeout(
         self,
@@ -180,8 +216,9 @@ class WorkerBase(ABC):
     ) -> tuple[WorkerResult, asyncio.Task[WorkerResult | None] | None]:
         if task is None:
             task = self._create_run_once_task()
-        timeout = self.timeout_seconds
-        if timeout <= 0:
+        await self._cancel_if_hard_timed_out(task)
+        timeout = self._next_run_once_wait_seconds(task)
+        if timeout is None:
             try:
                 result = await task
             except BaseException:
@@ -190,8 +227,9 @@ class WorkerBase(ABC):
         else:
             try:
                 result = await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-            except TimeoutError:
-                raise
+            except TimeoutError as exc:
+                await self._cancel_if_hard_timed_out(task)
+                raise self._soft_timeout_for_task(task) from exc
             except asyncio.CancelledError:
                 raise
             except BaseException:
@@ -205,16 +243,27 @@ class WorkerBase(ABC):
         return result, None
 
     def _create_run_once_task(self) -> asyncio.Task[WorkerResult | None]:
+        started_at_ms = _now_ms()
+        self.last_started_at_ms = started_at_ms
+        self.active_run_once_started_at_ms = started_at_ms
+        self.active_run_once_soft_timed_out_at_ms = None
+        self.active_run_once_hard_timed_out_at_ms = None
         task = asyncio.create_task(self.run_once(), name=f"worker:{self.name}:run_once")
         self._run_once_tasks.add(task)
+        self._run_once_started_at_ms_by_id[id(task)] = started_at_ms
         self._set_in_flight(len(self._run_once_tasks))
         return task
 
-    async def _cancel_run_once_task(self, task: asyncio.Task[WorkerResult | None] | None) -> None:
+    async def _cancel_run_once_task(
+        self,
+        task: asyncio.Task[WorkerResult | None] | None,
+        *,
+        cancel_reason: str | None = None,
+    ) -> None:
         if task is None:
             return
         if not task.done():
-            task.cancel()
+            task.cancel(cancel_reason)
         await asyncio.gather(task, return_exceptions=True)
         self._discard_run_once_task(task)
 
@@ -231,7 +280,57 @@ class WorkerBase(ABC):
 
     def _discard_run_once_task(self, task: asyncio.Task[WorkerResult | None]) -> None:
         self._run_once_tasks.discard(task)
+        task_id = id(task)
+        self._run_once_started_at_ms_by_id.pop(task_id, None)
+        self._soft_timeout_reported_for_task.discard(task_id)
+        if not self._run_once_tasks:
+            self.active_run_once_started_at_ms = None
+            self.active_run_once_soft_timed_out_at_ms = None
+            self.active_run_once_hard_timed_out_at_ms = None
+        elif self._run_once_started_at_ms_by_id:
+            self.active_run_once_started_at_ms = min(self._run_once_started_at_ms_by_id.values())
         self._set_in_flight(len(self._run_once_tasks))
+
+    async def _cancel_if_hard_timed_out(self, task: asyncio.Task[WorkerResult | None]) -> None:
+        hard_timeout = self.hard_timeout_seconds
+        if hard_timeout <= 0:
+            return
+        started_at_ms = self._run_once_started_at_ms_by_id.get(id(task), self.active_run_once_started_at_ms)
+        if started_at_ms is None:
+            return
+        age_seconds = max(0.0, (_now_ms() - started_at_ms) / 1000)
+        if age_seconds < hard_timeout:
+            return
+        self.active_run_once_hard_timed_out_at_ms = _now_ms()
+        await self._cancel_run_once_task(task, cancel_reason=WORKER_HARD_TIMEOUT_CANCEL_REASON)
+        raise WorkerRunHardTimeout(f"worker:{self.name}:run_once hard timeout after {hard_timeout:g}s")
+
+    def _next_run_once_wait_seconds(self, task: asyncio.Task[WorkerResult | None]) -> float | None:
+        started_at_ms = self._run_once_started_at_ms_by_id.get(id(task), self.active_run_once_started_at_ms)
+        if started_at_ms is None:
+            return self.soft_timeout_seconds or None
+        age_seconds = max(0.0, (_now_ms() - started_at_ms) / 1000)
+        waits: list[float] = []
+        hard_timeout = self.hard_timeout_seconds
+        if hard_timeout > 0:
+            waits.append(max(_MIN_WAIT_SECONDS, hard_timeout - age_seconds))
+        soft_timeout = self.soft_timeout_seconds
+        if soft_timeout > 0 and id(task) not in self._soft_timeout_reported_for_task:
+            waits.append(max(_MIN_WAIT_SECONDS, soft_timeout - age_seconds))
+        if not waits:
+            return None
+        return max(_MIN_WAIT_SECONDS, min(waits))
+
+    def _soft_timeout_for_task(self, task: asyncio.Task[WorkerResult | None]) -> WorkerRunSoftTimeout:
+        task_id = id(task)
+        first_report = task_id not in self._soft_timeout_reported_for_task
+        if first_report:
+            self._soft_timeout_reported_for_task.add(task_id)
+            self.active_run_once_soft_timed_out_at_ms = _now_ms()
+        return WorkerRunSoftTimeout(
+            f"worker:{self.name}:run_once soft timeout after {self.soft_timeout_seconds:g}s",
+            first_report=first_report,
+        )
 
     async def _ensure_advisory_lock(self) -> bool:
         key = self._advisory_lock_key()
@@ -336,6 +435,11 @@ class WorkerBase(ABC):
         if pool_wait_p99_ms is not None:
             return pool_wait_p99_ms("worker")
         return _p99(self._pool_wait_ms)
+
+    def _active_run_once_age_ms(self) -> int | None:
+        if self.active_run_once_started_at_ms is None:
+            return None
+        return max(0, _now_ms() - self.active_run_once_started_at_ms)
 
     def _release_advisory_lock(self) -> None:
         if self._advisory_lock_connection is None:

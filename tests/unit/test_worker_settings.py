@@ -22,10 +22,14 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert _legacy_anchor_worker_key() not in payload
     assert settings.defaults.enabled is True
     assert settings.defaults.interval_seconds == 5
+    assert settings.defaults.soft_timeout_seconds == 120
+    assert settings.defaults.hard_timeout_seconds == 180
     assert settings.defaults.backoff.kind == "exponential"
     assert settings.agent_runtime.defaults.model == "qwen3.6"
     assert settings.agent_runtime.lanes["pulse.signal_analyst"].model is None
     assert settings.collector.mode == "continuous"
+    assert settings.collector.soft_timeout_seconds == 0
+    assert settings.collector.hard_timeout_seconds == 0
     assert settings.collector.snapshot_timeout_seconds == 0.5
     assert settings.market_tick_stream.interval_seconds == 5
     assert settings.market_tick_stream.subscription_limit == 100
@@ -51,6 +55,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
     assert settings.token_radar_projection.wakes_on == ("market_tick_written", "resolution_updated")
     assert settings.narrative_admission.interval_seconds == 60
+    assert settings.narrative_admission.soft_timeout_seconds == 180
+    assert settings.narrative_admission.hard_timeout_seconds == 300
     assert settings.narrative_admission.advisory_lock_key == 2026051901
     assert settings.narrative_admission.wakes_on == ("token_radar_updated", "resolution_updated")
     assert settings.narrative_admission.windows == ("5m", "1h", "4h", "24h")
@@ -58,7 +64,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.narrative_admission.hot_rank_limit == 50
     assert settings.narrative_admission.min_rank_score == 30
     assert settings.mention_semantics.interval_seconds == 60
-    assert settings.mention_semantics.timeout_seconds == 0
+    assert settings.mention_semantics.soft_timeout_seconds == 240
+    assert settings.mention_semantics.hard_timeout_seconds == 300
     assert settings.mention_semantics.batch_size == 50
     assert settings.mention_semantics.provider_batch_size == 10
     assert settings.mention_semantics.max_semantic_rows_enqueued_per_cycle == 120
@@ -69,7 +76,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.mention_semantics.advisory_lock_key == 2026051801
     assert settings.mention_semantics.wakes_on == ("token_radar_updated", "resolution_updated")
     assert settings.token_discussion_digest.interval_seconds == 120
-    assert settings.token_discussion_digest.timeout_seconds == 0
+    assert settings.token_discussion_digest.soft_timeout_seconds == 570
+    assert settings.token_discussion_digest.hard_timeout_seconds == 660
     assert settings.token_discussion_digest.batch_size == 25
     assert settings.token_discussion_digest.advisory_lock_key == 2026051802
     assert settings.token_discussion_digest.wakes_on == (
@@ -85,7 +93,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_discussion_digest.max_llm_failures_per_cycle == 2
     assert settings.token_discussion_digest.provider_failure_backoff_seconds == 600
     assert settings.token_discussion_digest.digest_ttl_by_window_seconds["24h"] == 900
-    assert settings.pulse_candidate.timeout_seconds == 0
+    assert settings.pulse_candidate.soft_timeout_seconds == 540
+    assert settings.pulse_candidate.hard_timeout_seconds == 660
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
     assert settings.pulse_candidate.max_pending_jobs_global == 100
     assert settings.pulse_candidate.max_pending_jobs_per_window_scope == 25
@@ -110,6 +119,10 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "investigator_max_tool_calls" not in text
     assert "fallback_agent_brief" not in text
     assert "narrative_fallback" not in text
+    payload = yaml.safe_load(text)
+    worker_payload = {key: value for key, value in payload.items() if key not in {"defaults", "agent_runtime"}}
+    assert "timeout_seconds" not in payload["defaults"]
+    assert all("timeout_seconds" not in value for value in worker_payload.values())
 
 
 def test_mention_semantics_hard_cuts_source_age_prune_setting() -> None:
@@ -259,6 +272,14 @@ def test_worker_settings_reject_zero_pulse_candidate_budgets():
         WorkersSettings(**payload)
 
 
+def test_worker_settings_reject_zero_hard_timeout_for_non_continuous_workers() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["pulse_candidate"]["hard_timeout_seconds"] = 0
+
+    with pytest.raises(ValidationError, match="hard_timeout_seconds"):
+        WorkersSettings(**payload)
+
+
 def test_pulse_candidate_settings_reject_removed_windows() -> None:
     with pytest.raises(ValidationError, match=r"pulse_candidate\.windows"):
         PulseCandidateWorkerSettings(windows=("5m",))
@@ -280,7 +301,8 @@ def test_news_workers_have_defaults():
     settings = WorkersSettings(**payload)
 
     assert settings.news_fetch.interval_seconds == 60
-    assert settings.news_fetch.timeout_seconds == 120
+    assert settings.news_fetch.soft_timeout_seconds == 120
+    assert settings.news_fetch.hard_timeout_seconds == 180
     assert settings.news_fetch.batch_size == 5
     assert settings.news_fetch.advisory_lock_key == 2026051905
     assert settings.news_item_process.advisory_lock_key == 2026051902
@@ -288,7 +310,8 @@ def test_news_workers_have_defaults():
     assert settings.news_story_projection.advisory_lock_key == 2026051903
     assert settings.news_story_projection.wakes_on == ("news_item_processed",)
     assert settings.news_item_brief.interval_seconds == 10
-    assert settings.news_item_brief.timeout_seconds == 180
+    assert settings.news_item_brief.soft_timeout_seconds == 180
+    assert settings.news_item_brief.hard_timeout_seconds == 240
     assert settings.news_item_brief.batch_size == 5
     assert settings.news_item_brief.advisory_lock_key == 2026052001
     assert settings.news_item_brief.backpressure_cooldown_ms == 60_000

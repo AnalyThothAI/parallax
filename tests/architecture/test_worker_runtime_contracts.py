@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 
@@ -17,6 +18,8 @@ DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
 NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
+
+ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
 
 def _legacy_anchor_worker_key() -> str:
@@ -284,6 +287,22 @@ def test_worker_registry_matches_workers_yaml_schema() -> None:
     assert set(_START_PRIORITY) == expected_keys
     assert settings_keys == expected_keys
     assert docs_keys == expected_keys
+
+
+@pytest.mark.architecture
+def test_non_continuous_worker_defaults_have_finite_hard_timeout() -> None:
+    from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+    from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
+
+    settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+
+    for worker_key in CANONICAL_WORKER_NAMES:
+        worker_settings = getattr(settings, worker_key)
+        hard_timeout = worker_settings.hard_timeout_seconds
+        if worker_key in ZERO_HARD_TIMEOUT_ALLOWLIST:
+            assert hard_timeout == 0
+            continue
+        assert hard_timeout > 0, f"{worker_key} must have a finite hard timeout"
 
 
 @pytest.mark.architecture

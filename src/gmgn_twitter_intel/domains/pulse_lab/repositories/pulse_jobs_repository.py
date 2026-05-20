@@ -262,6 +262,62 @@ class PulseJobsRepository:
             self.conn.commit()
         return _optional_row(row)
 
+    def mark_job_cancelled_by_worker_timeout(
+        self,
+        job: dict[str, Any],
+        *,
+        now_ms: int,
+        execution_started: bool,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        if job is None:
+            return None
+        now = int(now_ms)
+        claim_attempt_count = int(job.get("attempt_count") or 0)
+        claim_updated_at_ms = int(job.get("updated_at_ms") or 0)
+        if not execution_started:
+            row = self.conn.execute(
+                """
+                UPDATE pulse_agent_jobs
+                SET status = 'pending',
+                    attempt_count = GREATEST(0, attempt_count - 1),
+                    next_run_at_ms = %s,
+                    last_error = 'worker_timeout_before_execution',
+                    updated_at_ms = %s
+                WHERE job_id = %s
+                  AND status = 'running'
+                  AND attempt_count = %s
+                  AND updated_at_ms = %s
+                RETURNING *
+                """,
+                (now + 5_000, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """
+                UPDATE pulse_agent_jobs
+                SET status = CASE
+                      WHEN attempt_count >= max_attempts THEN 'dead'
+                      ELSE 'failed'
+                    END,
+                    next_run_at_ms = CASE
+                      WHEN attempt_count >= max_attempts THEN %s
+                      ELSE %s + LEAST(300000, 5000 * GREATEST(1, attempt_count))
+                    END,
+                    last_error = 'worker_timeout_after_execution',
+                    updated_at_ms = %s
+                WHERE job_id = %s
+                  AND status = 'running'
+                  AND attempt_count = %s
+                  AND updated_at_ms = %s
+                RETURNING *
+                """,
+                (now, now, now, str(job["job_id"]), claim_attempt_count, claim_updated_at_ms),
+            ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _optional_row(row)
+
     def release_running_job_for_backpressure(
         self,
         job: dict[str, Any],

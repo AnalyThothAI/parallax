@@ -88,7 +88,8 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
             settings=SimpleNamespace(
                 enabled=True,
                 interval_seconds=0,
-                timeout_seconds=1,
+                soft_timeout_seconds=1,
+                hard_timeout_seconds=2,
                 windows=("1h",),
                 scopes=("all",),
                 batch_size=10,
@@ -146,7 +147,8 @@ def _radar_settings() -> SimpleNamespace:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=0,
-        timeout_seconds=1,
+        soft_timeout_seconds=1,
+        hard_timeout_seconds=2,
         windows=("1h",),
         scopes=("all",),
         hot_windows=(),
