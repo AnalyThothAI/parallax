@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime import provider_wiring
@@ -10,6 +12,29 @@ from gmgn_twitter_intel.platform.config.settings import Settings
 
 class FakeLLMGateway:
     trace_export_enabled = False
+
+
+class FakePulseClient:
+    provider = "openai"
+    model = "gpt-pulse"
+    artifact_version_hash = "artifact-hash"
+    runtime_contract = object()
+
+    def try_reserve_execution(self, lane, *, child_lanes=(), scope="execution"):
+        raise AssertionError("not used")
+
+    def request_audit(self, **kwargs):
+        return {"input_hash": "hash-input"}
+
+    async def run_decision_pipeline(self, **kwargs):
+        return SimpleNamespace(
+            final_decision={"recommendation": "watchlist"},
+            agent_run_audit={"output_hash": "hash-1"},
+            stage_audits=("signal_analyst",),
+        )
+
+    async def aclose(self):
+        return None
 
 
 def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> None:
@@ -152,3 +177,22 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
     )
 
     assert provider.timeout_seconds == 305
+
+
+def test_pulse_provider_maps_agent_run_audit_from_openai_client() -> None:
+    provider = openai.OpenAIPulseDecisionProvider(FakePulseClient(), pipeline_timeout_seconds=305)
+
+    result = asyncio.run(
+        provider.run_decision_pipeline(
+            context={},
+            run_id="run-1",
+            job={},
+            route="meme",
+            completeness={},
+            runtime_manifest={},
+        )
+    )
+
+    assert result.agent_run_audit == {"output_hash": "hash-1"}
+    assert result.final_decision == {"recommendation": "watchlist"}
+    assert result.stage_audits == ("signal_analyst",)

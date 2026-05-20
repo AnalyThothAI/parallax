@@ -123,7 +123,7 @@ class OpenAIPulseDecisionProvider:
         )
         return PulseDecisionResult(
             final_decision=result.final_decision,
-            agent_run_audit=result.run_audit,
+            agent_run_audit=result.agent_run_audit,
             stage_audits=result.stage_audits,
         )
 
