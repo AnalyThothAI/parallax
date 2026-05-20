@@ -296,13 +296,13 @@ def test_token_radar_retention_watchlist_stats_migration_adds_bounded_read_model
 
 def test_token_narrative_epochs_migration_adds_digest_epoch_metadata() -> None:
     text = TOKEN_NARRATIVE_EPOCHS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
 
     for statement in (
         'revision = "20260520_0070"',
         'down_revision = "20260520_0069"',
         "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_id TEXT",
         "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_policy_version TEXT",
-        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_event_ids_json JSONB",
         "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_window_start_ms BIGINT",
         "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_window_end_ms BIGINT",
         "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_closed_at_ms BIGINT",
@@ -312,6 +312,15 @@ def test_token_narrative_epochs_migration_adds_digest_epoch_metadata() -> None:
         "hard-cut migration is not safely reversible",
     ):
         assert statement in text
+    assert (
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_event_ids_json JSONB "
+        "NOT NULL DEFAULT '[]'::jsonb"
+    ) in normalized_text
+    assert (
+        'ON token_discussion_digests( target_type, target_id, "window", scope, schema_version, status, '
+        "computed_at_ms DESC )"
+    ) in normalized_text
+    assert "restoring a pre-migration backup" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:
