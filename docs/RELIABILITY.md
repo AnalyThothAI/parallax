@@ -186,7 +186,10 @@ uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 
 
 `ops prune-token-radar` must report protected current batches and delete at
 most the requested batch budget. It is an operator action, not an API side
-effect. `handle_summary` should stay disabled in operator-owned
+effect. Current-batch protection uses `token_radar_projection_coverage`; the
+extra actual-latest protection is evaluated for projection/window/scope keys
+known to that coverage table, avoiding a full historical scan of
+`token_radar_rows`. `handle_summary` should stay disabled in operator-owned
 `~/.gmgn-twitter-intel/workers.yaml` until
 `backfill-watchlist-signal-stats` reports `has_more=false` and the stats row
 counts are plausible for the configured handles.
