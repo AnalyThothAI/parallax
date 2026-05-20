@@ -284,9 +284,14 @@ source. Signal Pulse public payloads expose `decision`, `factor_snapshot`,
 Narrative Intelligence sits upstream of Pulse decisioning and downstream of
 Token Radar discovery. API surfaces may compose Token Radar / Token Case rows
 with `NarrativeReadModel`, but they do not run providers, score rows, or write
-narrative read models. Pulse may include a ready discussion digest in its sealed
-evidence packet; Pulse hidden/internal candidate state never triggers narrative
-workers and never writes `token_mention_semantics` or `token_discussion_digests`.
+narrative read models. Narrative digest rows are sealed epochs: public reads
+compose the last ready epoch with the current `narrative_admissions` source
+frontier and expose the delta through `discussion_digest.currentness`.
+Fingerprint mismatch alone is not a reason to blank the narrative. Pulse may
+include a ready discussion digest in its sealed evidence packet as context, but
+stale/updating digest prose is not primary evidence; Pulse hidden/internal
+candidate state never triggers narrative workers and never writes
+`token_mention_semantics` or `token_discussion_digests`.
 
 ## Asset Profile Facts
 

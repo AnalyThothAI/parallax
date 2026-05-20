@@ -124,21 +124,29 @@ same event may count once per current admission/window/scope, but duplicate
 semantic fingerprints for one admission-source row still count as one covered
 source row.
 
+Token Radar remains the scanner. `5m` admissions may exist so Radar and health
+can explain the live frontier, but `TokenDiscussionDigestWorker` does not write
+`token_discussion_digests` for `5m`. The digest lane supports `1h`, `4h`, and
+`24h` only.
+
 Writer ownership remains narrow: `NarrativeAdmissionWorker` writes
 `narrative_admissions`, `MentionSemanticsWorker` writes
 `token_mention_semantics`, and `TokenDiscussionDigestWorker` writes
 `token_discussion_digests`. `ops rebuild-narrative-intel` has the only
 maintenance writer exception: while it holds the narrative worker advisory
 locks, it may run hard-cut cleanup that deletes obsolete queued/retryable/stale
-semantics and marks suppressed or fingerprint-mismatched current digests stale.
-HTTP routes and normal worker loops must not call that cleanup path.
+semantics and marks suppressed current digests stale. Fingerprint mismatch does
+not demote a ready digest by itself; public reads expose the last ready epoch as
+`updating` or `stale` with explicit delta metadata. HTTP routes and normal
+worker loops must not call that cleanup path.
 
 This is a hard cut with no runtime compatibility. Removed settings, source-age
 prune behavior, stale digest fallbacks, and old public digest reasons are not
 kept as aliases. Public digest missing state is reported through
-`digest_not_ready`, `digest_stale`, or `not_in_current_frontier`; LLM cycle
-backpressure is reported as `llm_cycle_budget_exhausted` or
-`llm_failure_budget_exhausted`.
+`discussion_digest.currentness.display_status`: `current`, `updating`, `stale`,
+`not_ready`, `out_of_frontier`, or `unsupported_window`. LLM cycle backpressure
+is reported as `llm_cycle_budget_exhausted` or `llm_failure_budget_exhausted`;
+epoch-policy deferral is separate from provider capacity.
 
 ## Token Radar And Watchlist Maintenance Ownership
 

@@ -17,6 +17,10 @@ SRC = ROOT / "src" / "gmgn_twitter_intel"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 DOCS_CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
 NARRATIVE_ARCHITECTURE = SRC / "domains" / "narrative_intel" / "ARCHITECTURE.md"
+NARRATIVE_REPOSITORY = SRC / "domains" / "narrative_intel" / "repositories" / "narrative_repository.py"
+NARRATIVE_DIGEST_WORKER = SRC / "domains" / "narrative_intel" / "runtime" / "token_discussion_digest_worker.py"
+NARRATIVE_EPOCH_POLICY = SRC / "domains" / "narrative_intel" / "services" / "narrative_epoch_policy.py"
+API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
@@ -469,9 +473,9 @@ def test_narrative_hard_cut_contracts_are_documented() -> None:
         "source-set truth",
         "maintenance writer exception",
         "no runtime compatibility",
-        "digest_not_ready",
-        "digest_stale",
-        "not_in_current_frontier",
+        "discussion_digest.currentness",
+        "unsupported_window",
+        "no_material_delta",
         "llm_cycle_budget_exhausted",
         "llm_failure_budget_exhausted",
     ):
@@ -523,6 +527,73 @@ def test_legacy_asset_tables_have_no_runtime_writers(table_name: str) -> None:
         for path in SRC.rglob("*.py")
         if "alembic/versions" not in path.as_posix() and write_pattern.search(path.read_text())
     ]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_token_discussion_digest_worker_uses_epoch_policy_for_refresh_decisions() -> None:
+    text = NARRATIVE_DIGEST_WORKER.read_text()
+    policy_text = NARRATIVE_EPOCH_POLICY.read_text()
+
+    assert "NarrativeEpochPolicy" in text
+    assert "self.epoch_policy.evaluate" in text
+    assert 'reason="unsupported_window"' in policy_text
+    assert "should_write_status_digest=False" in policy_text
+
+
+@pytest.mark.architecture
+def test_no_exact_fingerprint_only_public_narrative_hydration() -> None:
+    text = NARRATIVE_REPOSITORY.read_text()
+    method = text.split("def current_narrative_snapshots_for_targets", 1)[1].split(
+        "def current_digests_for_targets",
+        1,
+    )[0]
+
+    assert "COALESCE(admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')" not in method
+    assert "latest_ready_digest_for_target" in method
+    assert "public_currentness" in method
+
+
+@pytest.mark.architecture
+def test_narrative_cleanup_preserves_fingerprint_mismatch_ready_digests() -> None:
+    text = NARRATIVE_REPOSITORY.read_text()
+    method = text.split("def cleanup_narrative_current_hard_cut", 1)[1].split(
+        "def record_narrative_model_run",
+        1,
+    )[0]
+
+    assert "fingerprint_mismatch_digests_preserved" in method
+    assert "stale_fingerprint_mismatch_digests" not in method
+    mismatch_clause_index = method.find("COALESCE(digest.source_fingerprint, '') <>")
+    assert mismatch_clause_index >= 0
+    mismatch_block = method[mismatch_clause_index - 300 : mismatch_clause_index + 300]
+    assert "UPDATE token_discussion_digests" not in mismatch_block
+    assert "SET status = 'stale'" not in mismatch_block
+
+
+@pytest.mark.architecture
+def test_token_discussion_digest_worker_does_not_write_unsupported_5m_digests() -> None:
+    text = NARRATIVE_EPOCH_POLICY.read_text()
+    unsupported_index = text.find('reason="unsupported_window"')
+    next_decision_index = text.find("if last_ready_digest is None", unsupported_index)
+
+    assert unsupported_index >= 0
+    assert "should_refresh=False" in text[unsupported_index:next_decision_index]
+    assert "should_write_status_digest=False" in text[unsupported_index:next_decision_index]
+
+
+@pytest.mark.architecture
+def test_api_routes_do_not_import_narrative_providers_or_write_narrative_tables() -> None:
+    violations: list[str] = []
+    write_tokens = ("replace_current_digest", "record_narrative_model_run", "complete_mention_semantics_batch")
+    for path in sorted(API_ROUTES.glob("routes_*.py")):
+        text = path.read_text()
+        if "narrative_intel.providers" in text:
+            violations.append(f"{_rel(path)} imports narrative providers")
+        violations.extend(
+            f"{_rel(path)} calls narrative write method {token}" for token in write_tokens if token in text
+        )
 
     assert violations == []
 

@@ -74,7 +74,9 @@ The hot path from one public-stream frame to product output is:
 5. Narrative Intelligence read models
    - narrative_admission reads the latest ready Radar frontier and material facts, then writes current source-set admissions
    - mention_semantics claims due semantic rows and labels only source events from current admissions
-   - token_discussion_digest left-joins admission source sets with semantics and writes honest digest status
+   - token_discussion_digest evaluates the current admission against the last ready epoch with `NarrativeEpochPolicy`
+   - 5m admissions are scanner-only and are scanned/deferred without discussion-digest writes
+   - 1h/4h/24h material delta, TTL expiry, or first ready work seals a new digest epoch; non-material delta leaves the last ready snapshot readable
    - emits narrative_semantics_updated only as a wake hint for digest refresh
 
 6. Consumers
@@ -194,6 +196,24 @@ Examples:
 
 These rows schedule work. They are not product facts by themselves.
 Product surfaces should not infer token quality from a queue status.
+
+### Narrative Currentness State
+
+Narrative digest state answers: "What readable narrative epoch do we have, and
+how far is it from the current source frontier?"
+
+The current source frontier is `narrative_admissions`. A ready digest is a
+sealed epoch in `token_discussion_digests`. Public reads compose:
+
+```text
+last-ready digest + current admission delta -> discussion_digest.currentness
+```
+
+`currentness.display_status` is one of `current`, `updating`, `stale`,
+`not_ready`, `out_of_frontier`, or `unsupported_window`. New source events do
+not blank the narrative. They first become delta; only material delta, epoch
+TTL, or first-ready work runs the digest LLM. The API route never calls the LLM
+or writes narrative tables.
 
 ### Projection Freshness State
 
