@@ -166,6 +166,64 @@ def test_backfill_first_seen_pages_identities_before_aggregating_history() -> No
     assert conn.upsert_records[0]["identity_id"] == "intent-attention"
 
 
+def test_backfill_first_seen_rows_batch_pages_by_computed_row_cursor() -> None:
+    conn = BackfillFirstSeenConn(
+        rows=[
+            {
+                "projection_version": "token-radar-v13-social-attention",
+                "window": "1h",
+                "scope": "all",
+                "target_type_key": "",
+                "identity_id": "intent-attention",
+                "computed_at_ms": 100,
+                "first_seen_ms": 50,
+                "row_id": "row-old",
+            },
+            {
+                "projection_version": "token-radar-v13-social-attention",
+                "window": "1h",
+                "scope": "all",
+                "target_type_key": "",
+                "identity_id": "intent-attention",
+                "computed_at_ms": 200,
+                "first_seen_ms": 200,
+                "row_id": "row-new",
+            },
+        ]
+    )
+
+    result = TokenRadarRepository(conn).backfill_first_seen_rows_batch(
+        batch_size=2,
+        after_computed_at_ms=90,
+        after_row_id="row-before",
+        commit=False,
+    )
+
+    assert result == {
+        "rows_scanned": 2,
+        "rows_upserted": 1,
+        "last_computed_at_ms": 200,
+        "last_row_id": "row-new",
+        "has_more": True,
+    }
+    assert "ORDER BY computed_at_ms ASC, row_id ASC" in conn.select_sql
+    assert "%s::bigint IS NULL" in conn.select_sql
+    assert conn.select_params == (90, 90, "row-before", 2)
+    assert conn.upsert_records == [
+        {
+            "projection_version": "token-radar-v13-social-attention",
+            "window": "1h",
+            "scope": "all",
+            "target_type_key": "",
+            "identity_id": "intent-attention",
+            "first_seen_ms": 50,
+            "last_seen_ms": 200,
+            "first_row_id": "row-old",
+            "latest_row_id": "row-new",
+        }
+    ]
+
+
 class FirstSeenLookupConn:
     def __init__(
         self,
@@ -275,7 +333,7 @@ class BackfillFirstSeenConn:
 
     def execute(self, sql: str, params: Any = None) -> BackfillFirstSeenConn:
         text = str(sql)
-        if "WITH identity_page AS" in text:
+        if "WITH identity_page AS" in text or "ORDER BY computed_at_ms ASC, row_id ASC" in text:
             self.select_sql = text
             self.select_params = tuple(params or ())
             self._last_rows = self.rows

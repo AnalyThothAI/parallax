@@ -291,35 +291,48 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 def _backfill_token_radar_first_seen(repository: object, *, batch_size: int, max_batches: int) -> dict[str, Any]:
     parsed_batch_size = max(1, int(batch_size))
     parsed_max_batches = max(1, int(max_batches))
-    after_key: tuple[str, str, str, str, str] | None = None
+    after_computed_at_ms: int | None = None
+    after_row_id: str | None = None
     batches = 0
+    rows_scanned = 0
     rows_upserted = 0
     has_more = False
     for _ in range(parsed_max_batches):
         result = dict(
             _call_with_supported_kwargs(
-                repository.backfill_first_seen_from_history,  # type: ignore[attr-defined]
+                repository.backfill_first_seen_rows_batch,  # type: ignore[attr-defined]
                 batch_size=parsed_batch_size,
-                after_key=after_key,
+                after_computed_at_ms=after_computed_at_ms,
+                after_row_id=after_row_id,
                 commit=True,
             )
         )
         batches += 1
+        rows_scanned += int(result.get("rows_scanned") or result.get("rows_upserted") or 0)
         rows_upserted += int(result.get("rows_upserted") or 0)
         has_more = bool(result.get("has_more"))
-        next_after_key = _token_radar_cursor(result.get("next_after_key"))
-        if not has_more or next_after_key is None or next_after_key == after_key:
-            after_key = next_after_key
+        next_computed_at_ms = _optional_int(result.get("last_computed_at_ms"))
+        next_row_id = str(result.get("last_row_id") or "") or None
+        if next_computed_at_ms is not None and next_row_id is not None:
+            if next_computed_at_ms == after_computed_at_ms and next_row_id == after_row_id:
+                break
+            after_computed_at_ms = next_computed_at_ms
+            after_row_id = next_row_id
+        if not has_more or next_computed_at_ms is None or next_row_id is None:
             break
-        after_key = next_after_key
+    last_cursor = (
+        {"computed_at_ms": after_computed_at_ms, "row_id": after_row_id}
+        if after_computed_at_ms is not None and after_row_id is not None
+        else None
+    )
     return {
-        "processed": rows_upserted,
+        "processed": rows_scanned,
         "upserted": rows_upserted,
         "has_more": has_more,
-        "last_cursor": list(after_key) if after_key is not None else None,
+        "last_cursor": last_cursor,
         "batches": batches,
+        "rows_scanned": rows_scanned,
         "rows_upserted": rows_upserted,
-        "next_after_key": list(after_key) if after_key is not None else None,
     }
 
 
@@ -379,15 +392,6 @@ def _backfill_watchlist_signal_stats(
         "last_event_id": after_event_id,
         "dry_run": bool(dry_run),
     }
-
-
-def _token_radar_cursor(value: object) -> tuple[str, str, str, str, str] | None:
-    if value is None:
-        return None
-    items = tuple(str(item) for item in value) if isinstance(value, list | tuple) else ()
-    if len(items) != 5:
-        return None
-    return items  # type: ignore[return-value]
 
 
 def _optional_int(value: object) -> int | None:

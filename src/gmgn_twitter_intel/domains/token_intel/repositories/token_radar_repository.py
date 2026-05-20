@@ -483,6 +483,132 @@ class TokenRadarRepository:
             "has_more": len(records) == limit,
         }
 
+    def backfill_first_seen_rows_batch(
+        self,
+        *,
+        batch_size: int,
+        after_computed_at_ms: int | None = None,
+        after_row_id: str | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        limit = max(1, int(batch_size))
+        rows = self.conn.execute(
+            """
+            SELECT
+              row_id,
+              projection_version,
+              "window",
+              scope,
+              computed_at_ms,
+              COALESCE(listed_at_ms, computed_at_ms) AS first_seen_ms,
+              COALESCE(target_type, '') AS target_type_key,
+              COALESCE(target_id, intent_id) AS identity_id
+            FROM token_radar_rows
+            WHERE COALESCE(target_id, intent_id, '') <> ''
+              AND (
+                %s::bigint IS NULL
+                OR (computed_at_ms, row_id) > (%s, %s)
+              )
+            ORDER BY computed_at_ms ASC, row_id ASC
+            LIMIT %s
+            """,
+            (
+                after_computed_at_ms,
+                after_computed_at_ms,
+                after_row_id,
+                limit,
+            ),
+        ).fetchall()
+        raw_records = [dict(row) for row in rows]
+        compacted: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
+        for row in raw_records:
+            key = (
+                str(row["projection_version"]),
+                str(row["window"]),
+                str(row["scope"]),
+                str(row["target_type_key"]),
+                str(row["identity_id"]),
+            )
+            first_seen_ms = int(row["first_seen_ms"])
+            last_seen_ms = int(row["computed_at_ms"])
+            current = compacted.get(key)
+            if current is None:
+                compacted[key] = {
+                    "projection_version": key[0],
+                    "window": key[1],
+                    "scope": key[2],
+                    "target_type_key": key[3],
+                    "identity_id": key[4],
+                    "first_seen_ms": first_seen_ms,
+                    "last_seen_ms": last_seen_ms,
+                    "first_row_id": row["row_id"],
+                    "latest_row_id": row["row_id"],
+                }
+                continue
+            if first_seen_ms <= int(current["first_seen_ms"]):
+                current["first_seen_ms"] = first_seen_ms
+                current["first_row_id"] = row["row_id"]
+            if last_seen_ms >= int(current["last_seen_ms"]):
+                current["last_seen_ms"] = last_seen_ms
+                current["latest_row_id"] = row["row_id"]
+
+        records = list(compacted.values())
+        if records:
+            now_ms = _now_ms()
+            values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(records))
+            params: list[Any] = []
+            for row in records:
+                params.extend(
+                    [
+                        row["projection_version"],
+                        row["window"],
+                        row["scope"],
+                        row["target_type_key"],
+                        row["identity_id"],
+                        int(row["first_seen_ms"]),
+                        int(row["last_seen_ms"]),
+                        row["first_row_id"],
+                        row["latest_row_id"],
+                        now_ms,
+                        now_ms,
+                    ]
+                )
+            self.conn.execute(
+                f"""
+                INSERT INTO token_radar_target_first_seen(
+                  projection_version, "window", scope, target_type_key, identity_id,
+                  first_seen_ms, last_seen_ms, first_row_id, latest_row_id, created_at_ms, updated_at_ms
+                )
+                VALUES {values_sql}
+                ON CONFLICT(projection_version, "window", scope, target_type_key, identity_id)
+                DO UPDATE SET
+                  first_seen_ms = LEAST(token_radar_target_first_seen.first_seen_ms, excluded.first_seen_ms),
+                  last_seen_ms = GREATEST(token_radar_target_first_seen.last_seen_ms, excluded.last_seen_ms),
+                  first_row_id = CASE
+                    WHEN excluded.first_seen_ms <= token_radar_target_first_seen.first_seen_ms
+                      THEN excluded.first_row_id
+                    ELSE token_radar_target_first_seen.first_row_id
+                  END,
+                  latest_row_id = CASE
+                    WHEN excluded.last_seen_ms >= token_radar_target_first_seen.last_seen_ms
+                      THEN excluded.latest_row_id
+                    ELSE token_radar_target_first_seen.latest_row_id
+                  END,
+                  updated_at_ms = excluded.updated_at_ms
+                """,
+                params,
+            )
+        if commit:
+            self.conn.commit()
+        last = raw_records[-1] if raw_records else None
+        return {
+            "rows_scanned": len(raw_records),
+            "rows_upserted": len(records),
+            "last_computed_at_ms": int(last["computed_at_ms"]) if last else after_computed_at_ms,
+            "last_row_id": str(last["row_id"]) if last else after_row_id,
+            "has_more": len(raw_records) == limit,
+        }
+
     def protected_batch_counts(self) -> dict[str, int]:
         row = self.conn.execute(
             """

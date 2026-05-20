@@ -28,17 +28,17 @@ def test_backfill_token_radar_first_seen_dispatches_to_repository(monkeypatch) -
     )
 
     assert code == 0
-    assert token_radar.calls == [{"batch_size": 5000, "after_key": None}]
+    assert token_radar.calls == [{"batch_size": 5000, "after_computed_at_ms": None, "after_row_id": None}]
     assert json.loads(stdout.getvalue()) == {
         "ok": True,
         "data": {
-            "processed": 2,
+            "processed": 3,
             "upserted": 2,
             "has_more": True,
-            "last_cursor": ["v1", "1h", "all", "token", "solana:abc"],
+            "last_cursor": {"computed_at_ms": 1700000000123, "row_id": "row-3"},
             "batches": 1,
+            "rows_scanned": 3,
             "rows_upserted": 2,
-            "next_after_key": ["v1", "1h", "all", "token", "solana:abc"],
         },
     }
 
@@ -193,16 +193,25 @@ class _FakeTokenRadar:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
 
-    def backfill_first_seen_from_history(
+    def backfill_first_seen_rows_batch(
         self,
         *,
         batch_size: int,
-        after_key: tuple[str, str, str, str, str] | None = None,
+        after_computed_at_ms: int | None = None,
+        after_row_id: str | None = None,
     ) -> dict[str, Any]:
-        self.calls.append({"batch_size": batch_size, "after_key": after_key})
+        self.calls.append(
+            {
+                "batch_size": batch_size,
+                "after_computed_at_ms": after_computed_at_ms,
+                "after_row_id": after_row_id,
+            }
+        )
         return {
+            "rows_scanned": 3,
             "rows_upserted": 2,
-            "next_after_key": ("v1", "1h", "all", "token", "solana:abc"),
+            "last_computed_at_ms": 1_700_000_000_123,
+            "last_row_id": "row-3",
             "has_more": True,
         }
 
