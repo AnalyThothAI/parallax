@@ -163,3 +163,22 @@ def test_agent_execution_types_have_single_live_source() -> None:
 def test_agent_hashing_has_single_live_source() -> None:
     stale = OPENAI_AGENTS / "agent_hashing.py"
     assert not stale.exists()
+
+
+def test_agent_model_selection_is_worker_runtime_owned() -> None:
+    settings_text = (SRC / "platform" / "config" / "settings.py").read_text(encoding="utf-8")
+    agent_execution_text = (SRC / "platform" / "agent_execution.py").read_text(encoding="utf-8")
+    config_example = (ROOT / "config.example.yaml").read_text(encoding="utf-8")
+
+    for forbidden in (
+        "pulse_agent_model",
+        "watchlist_handle_summary_model",
+        "narrative_intel_model",
+        "news_item_brief_model",
+    ):
+        assert forbidden not in settings_text
+        assert forbidden not in config_example
+
+    assert "model: str" not in agent_execution_text.partition("class AgentStageSpec")[2].partition("class AgentExecutionRequestAudit")[0]
+    assert "agent_runtime:" in settings_text
+    assert "defaults:" in settings_text

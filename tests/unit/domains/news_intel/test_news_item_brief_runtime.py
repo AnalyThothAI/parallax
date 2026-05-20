@@ -39,7 +39,7 @@ def test_stage_spec_is_single_turn_toolless_and_traceable() -> None:
         ),
     )
 
-    stage = build_news_item_brief_stage(model="gpt-5-mini", packet=packet, run_id="run-1")
+    stage = build_news_item_brief_stage(packet=packet, run_id="run-1")
 
     assert stage.lane == NEWS_ITEM_BRIEF_LANE
     assert stage.stage == "news_item_brief"

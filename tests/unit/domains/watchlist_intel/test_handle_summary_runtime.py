@@ -12,7 +12,6 @@ from gmgn_twitter_intel.domains.watchlist_intel.types.handle_summary_agent impor
 
 def test_build_handle_summary_stage_is_domain_owned() -> None:
     stage = build_handle_summary_stage(
-        model="qwen3.6",
         handle="alice",
         events=[
             {
