@@ -69,6 +69,10 @@ US_EQUITY_SYMBOL_UNIVERSE_MIGRATION = Path(
 EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 )
+TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260520_0069_token_radar_retention_watchlist_stats.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -263,6 +267,28 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
     assert "raise RuntimeError(" in text
     assert "hard-cut migration is not safely reversible" in text
     assert "restoring a pre-migration backup" in text
+
+
+def test_token_radar_retention_watchlist_stats_migration_adds_bounded_read_models() -> None:
+    text = TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260520_0069"',
+        'down_revision = "20260520_0068"',
+        "CREATE TABLE IF NOT EXISTS token_radar_target_first_seen",
+        "CREATE TABLE IF NOT EXISTS token_radar_retention_runs",
+        "CREATE TABLE IF NOT EXISTS watchlist_handle_signal_stats",
+        "CREATE TABLE IF NOT EXISTS watchlist_handle_signal_events",
+        "ALTER TABLE social_event_extractions ADD COLUMN IF NOT EXISTS normalized_handle TEXT",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_radar_rows_prune",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_social_event_extractions_signal_normalized_handle_received",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_watchlist_handle_signal_events_handle_received",
+        "target_type_key TEXT NOT NULL",
+        "identity_id TEXT NOT NULL",
+        'PRIMARY KEY (projection_version, "window", scope, target_type_key, identity_id)',
+        "event_id TEXT PRIMARY KEY",
+    ):
+        assert statement in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

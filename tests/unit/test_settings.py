@@ -77,7 +77,10 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.workers.handle_summary.time_threshold_ms == 1_800_000
     assert settings.workers.handle_summary.min_interval_ms == 300_000
     assert settings.workers.handle_summary.input_limit == 80
-    assert settings.workers.handle_summary.window_days == 7
+    assert settings.workers.handle_summary.interval_seconds == 30
+    assert settings.workers.handle_summary.statement_timeout_seconds == 10
+    assert settings.workers.handle_summary.reconcile_limit == 20
+    assert settings.workers.handle_summary.window_days == 3
     assert settings.workers.handle_summary.lease_ms == 120_000
     assert settings.workers.handle_summary.max_attempts == 3
     assert settings.gmgn_configured is False
@@ -694,6 +697,10 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     assert workers.enrichment.concurrency == 4
     assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert workers.handle_summary.time_threshold_ms == 1_800_000
+    assert workers.handle_summary.window_days == 3
+    assert workers.token_radar_projection.retention_days == 7
+    assert workers.token_radar_projection.retention_batch_size == 10_000
+    assert workers.token_radar_projection.retention_settlement_grace_days == 2
     Settings(**{**payload, "workers": workers})
 
 

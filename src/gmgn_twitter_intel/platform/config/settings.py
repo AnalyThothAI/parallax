@@ -713,6 +713,9 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
+    retention_days: int = Field(default=7, ge=2)
+    retention_batch_size: int = Field(default=10_000, ge=1)
+    retention_settlement_grace_days: int = Field(default=2, ge=0)
     advisory_lock_key: int = 2026051501
     wakes_on: tuple[str, ...] = ("market_tick_written", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
@@ -873,17 +876,18 @@ class EnrichmentWorkerSettings(PerWorkerSettings):
 
 
 class HandleSummaryWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=2.0, ge=0)
+    interval_seconds: float = Field(default=30.0, ge=0)
     concurrency: int = Field(default=1, ge=1)
     batch_size: int = Field(default=1, ge=1)
+    statement_timeout_seconds: float = Field(default=10.0, ge=0)
     lease_ms: int = Field(default=120_000, ge=1)
     max_attempts: int = Field(default=3, ge=1)
-    reconcile_limit: int = Field(default=100, ge=1)
+    reconcile_limit: int = Field(default=20, ge=1)
     signal_threshold: int = Field(default=10, ge=1)
     time_threshold_ms: int = Field(default=1_800_000, ge=1)
     min_interval_ms: int = Field(default=300_000, ge=1)
     input_limit: int = Field(default=80, ge=1)
-    window_days: int = Field(default=7, ge=1)
+    window_days: int = Field(default=3, ge=1)
 
 
 class NotificationRuleWorkerSettings(PerWorkerSettings):
@@ -1563,6 +1567,9 @@ token_radar_projection:
   interval_seconds: 10.0
   batch_size: 100
   statement_timeout_seconds: 120.0
+  retention_days: 7
+  retention_batch_size: 10000
+  retention_settlement_grace_days: 2
   advisory_lock_key: 2026051501
   wakes_on: ["market_tick_written", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]
@@ -1690,17 +1697,18 @@ enrichment:
   max_attempts: 3
 handle_summary:
   enabled: true
-  interval_seconds: 2.0
+  interval_seconds: 30.0
   concurrency: 1
   batch_size: 1
+  statement_timeout_seconds: 10.0
   lease_ms: 120000
   max_attempts: 3
-  reconcile_limit: 100
+  reconcile_limit: 20
   signal_threshold: 10
   time_threshold_ms: 1800000
   min_interval_ms: 300000
   input_limit: 80
-  window_days: 7
+  window_days: 3
 notification_rule:
   enabled: true
   interval_seconds: 5.0

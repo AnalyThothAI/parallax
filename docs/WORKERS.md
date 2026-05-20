@@ -48,7 +48,7 @@ Review workers by separating four categories:
 | Category | Meaning | Examples | Rule |
 |----------|---------|----------|------|
 | Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
-| Read models | Rebuildable projections for reads and product workflows | `token_radar_rows`, `token_profile_current`, `pulse_candidates`, watchlist summaries | Exactly one runtime writer. |
+| Read models | Rebuildable projections for reads and product workflows | `token_radar_rows`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
 | Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 
@@ -98,7 +98,7 @@ notification_delivery
 | `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | latest `market_ticks` per target | in-process latest cache and WebSocket fan-out only | poll | none | `interval_seconds` |
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
-| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_rows`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
+| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_rows`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | latest ready `token_radar_rows` frontier, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | due `narrative_admissions` source sets, `events`, queued semantics | `token_mention_semantics`, `narrative_model_runs` | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
@@ -109,8 +109,8 @@ notification_delivery
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
 | `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope for Pulse `1h`/`4h` horizons, gate fields, route policy, source-quality policy | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
-| `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
-| `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, handle signal events | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
+| `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, `social_event_extractions.normalized_handle`, `watchlist_handle_signal_events`, `watchlist_handle_signal_stats`, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
+| `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | `watchlist_handle_signal_stats`, due `watchlist_handle_summary_jobs`, recent signal extractions for summary input | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
 
@@ -139,6 +139,26 @@ kept as aliases. Public digest missing state is reported through
 `digest_not_ready`, `digest_stale`, or `not_in_current_frontier`; LLM cycle
 backpressure is reported as `llm_cycle_budget_exhausted` or
 `llm_failure_budget_exhausted`.
+
+## Token Radar And Watchlist Maintenance Ownership
+
+`TokenRadarProjectionWorker` is the only runtime writer for
+`token_radar_rows` and `token_radar_target_first_seen`. The compact
+first-seen read model preserves `listed_at_ms` after old
+`token_radar_rows` leave the configured hot retention window.
+`ops prune-token-radar` is an explicit operator maintenance writer for
+bounded read-model retention; it is never called by HTTP handlers,
+WebSocket paths, or normal worker catch-up.
+
+`EnrichmentWorker` is the runtime writer for
+`watchlist_handle_signal_events` and `watchlist_handle_signal_stats`.
+It updates the event-idempotent ledger in the same unit of work as the
+social-event extraction. `HandleSummaryWorker` reads
+`watchlist_handle_signal_stats` for reconcile and trigger decisions and
+hydrates bounded recent inputs from `social_event_extractions`; it must
+not scan historical `events` to count handle signals. The
+`ops backfill-watchlist-signal-stats` command is the bounded cutover
+writer for existing rows.
 
 ## IngestService Boundary
 

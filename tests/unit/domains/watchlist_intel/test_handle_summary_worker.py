@@ -109,6 +109,39 @@ def test_handle_summary_worker_reports_reconcile_failure_as_iteration_result():
     asyncio.run(scenario())
 
 
+def test_handle_summary_worker_reconcile_enqueues_stats_backed_missing_job():
+    async def scenario():
+        repo = ReconcileRowsWatchlistRepository([])
+        db = FakeDB(repo)
+        worker = HandleSummaryWorker(
+            name="handle_summary",
+            settings=fake_settings(concurrency=1),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=FailingSummaryProvider(),
+            handles=("toly",),
+        )
+
+        result = await worker.run_once(now_ms=1_000)
+
+        assert result.processed == 1
+        assert result.notes["reconcile_seen"] == 1
+        assert result.notes["reconcile_enqueued"] == 1
+        assert result.notes["claimed"] == 0
+        assert repo.enqueued_summary_jobs == [
+            {
+                "handle": "toly",
+                "next_run_at_ms": 1_000,
+                "pending_signal_count": 1,
+                "trigger_reason": "cold_start",
+                "max_attempts": 3,
+                "commit": True,
+            }
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_handle_summary_worker_does_not_claim_when_agent_capacity_denied():
     async def scenario():
         repo = FakeWatchlistRepository(
@@ -223,10 +256,38 @@ class FakeWatchlistRepository:
         self.failed_jobs = []
         self.failed_runs = []
         self.released_for_backpressure = []
+        self.enqueued_summary_jobs = []
         self.claim_calls = 0
 
     def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
         return []
+
+    def get_handle_summary(self, handle):
+        return None
+
+    def pending_summary_job(self, handle):
+        return None
+
+    def enqueue_handle_summary_job(
+        self,
+        *,
+        handle,
+        next_run_at_ms,
+        pending_signal_count,
+        trigger_reason,
+        max_attempts=3,
+        commit=True,
+    ):
+        row = {
+            "handle": handle,
+            "next_run_at_ms": next_run_at_ms,
+            "pending_signal_count": pending_signal_count,
+            "trigger_reason": trigger_reason,
+            "max_attempts": max_attempts,
+            "commit": commit,
+        }
+        self.enqueued_summary_jobs.append(row)
+        return row
 
     def claim_next_summary_job(self, *, now_ms, lease_ms):
         self.claim_calls += 1
@@ -275,6 +336,11 @@ class FakeWatchlistRepository:
 class ReconcileFailingWatchlistRepository(FakeWatchlistRepository):
     def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
         raise TimeoutError("summary reconcile timed out")
+
+
+class ReconcileRowsWatchlistRepository(FakeWatchlistRepository):
+    def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
+        return [{"handle": "toly", "signal_count": 1, "latest_signal_at_ms": 900}]
 
 
 class BarrierSummaryProvider:

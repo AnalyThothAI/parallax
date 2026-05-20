@@ -465,6 +465,96 @@ def test_event_anchor_backfill_jobs_control_plane_table_present(tmp_path):
     assert "idx_event_anchor_backfill_jobs_due" in indexes
 
 
+def test_runtime_schema_contains_token_radar_retention_and_watchlist_signal_stats(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        tables = {
+            row["table_name"]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+        social_extraction_columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'social_event_extractions'
+                """
+            ).fetchall()
+        }
+        first_seen_columns = {
+            row["column_name"]: row
+            for row in conn.execute(
+                """
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'token_radar_target_first_seen'
+                """
+            ).fetchall()
+        }
+        signal_events_primary_key_columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                 AND tc.table_name = kcu.table_name
+                WHERE tc.table_schema = 'public'
+                  AND tc.table_name = 'watchlist_handle_signal_events'
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                ORDER BY kcu.ordinal_position
+                """
+            ).fetchall()
+        }
+        indexes = {
+            row["indexname"]
+            for row in conn.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename IN (
+                    'token_radar_rows',
+                    'token_radar_target_first_seen',
+                    'social_event_extractions',
+                    'watchlist_handle_signal_stats',
+                    'watchlist_handle_signal_events'
+                  )
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert {
+        "token_radar_target_first_seen",
+        "token_radar_retention_runs",
+        "watchlist_handle_signal_stats",
+        "watchlist_handle_signal_events",
+    }.issubset(tables)
+    assert "normalized_handle" in social_extraction_columns
+    assert first_seen_columns["target_type_key"]["data_type"] == "text"
+    assert first_seen_columns["target_type_key"]["is_nullable"] == "NO"
+    assert first_seen_columns["identity_id"]["data_type"] == "text"
+    assert first_seen_columns["identity_id"]["is_nullable"] == "NO"
+    assert signal_events_primary_key_columns == {"event_id"}
+    assert {
+        "idx_token_radar_rows_prune",
+        "idx_token_radar_first_seen_updated",
+        "idx_social_event_extractions_signal_normalized_handle_received",
+        "idx_watchlist_handle_signal_stats_latest",
+        "idx_watchlist_handle_signal_events_handle_received",
+    }.issubset(indexes)
+
+
 def _seed_pending_backfill_row(conn) -> None:
     """Insert the minimum graph of events + intents + resolutions + ticks
     + enriched_events needed to exercise the trigger transitions."""

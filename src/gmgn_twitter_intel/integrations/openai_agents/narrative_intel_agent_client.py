@@ -250,7 +250,11 @@ def _coerce_digest_payload(value: Any) -> DiscussionDigestAgentPayload:
     if isinstance(value, DiscussionDigestAgentPayload):
         return value
     if isinstance(value, DiscussionDigestResult):
-        digest = value.digest.model_dump(mode="json") if isinstance(value.digest, TokenDiscussionDigest) else value.digest
+        digest = (
+            value.digest.model_dump(mode="json")
+            if isinstance(value.digest, TokenDiscussionDigest)
+            else value.digest
+        )
         return DiscussionDigestAgentPayload(digest=digest)
     if isinstance(value, TokenDiscussionDigest):
         return DiscussionDigestAgentPayload(digest=value.model_dump(mode="json"))

@@ -239,10 +239,11 @@ class EnrichmentWorker(WorkerBase):
                 finished_at_ms=finished_at_ms,
                 commit=False,
             )
+            event_author_handle = _author_handle(event)
             social_event_row = repos.social_event_extractions.upsert_extraction(
                 event_id=str(event["event_id"]),
                 run_id=str(run["run_id"]),
-                author_handle=_author_handle(event),
+                author_handle=event_author_handle,
                 received_at_ms=int(event.get("received_at_ms") or finished_at_ms),
                 schema_version=SCHEMA_VERSION,
                 model_version=self.client.model,
@@ -263,15 +264,22 @@ class EnrichmentWorker(WorkerBase):
                 commit=False,
             )
             watchlist_summary_enqueued = False
-            if self.watchlist_summary_config is not None and bool(getattr(result, "is_signal_event", False)):
-                handle = str(getattr(result, "author_handle", "") or event.get("author_handle") or "")
-                if handle:
-                    summary_job = WatchlistHandleSummaryService(
-                        repository=repos.watchlist_intel,
-                        provider=None,
-                        config=self.watchlist_summary_config,
-                    ).enqueue_handle_summary_if_due(handle=handle, now_ms=finished_at_ms, commit=False)
-                    watchlist_summary_enqueued = summary_job is not None
+            handle = str(getattr(result, "author_handle", "") or event_author_handle or "")
+            if handle:
+                repos.watchlist_intel.record_signal_event_state(
+                    handle=handle,
+                    event_id=str(event["event_id"]),
+                    received_at_ms=int(event.get("received_at_ms") or finished_at_ms),
+                    is_signal_event=bool(getattr(result, "is_signal_event", False)),
+                    commit=False,
+                )
+            if handle and self.watchlist_summary_config is not None and bool(getattr(result, "is_signal_event", False)):
+                summary_job = WatchlistHandleSummaryService(
+                    repository=repos.watchlist_intel,
+                    provider=None,
+                    config=self.watchlist_summary_config,
+                ).enqueue_handle_summary_if_due(handle=handle, now_ms=finished_at_ms, commit=False)
+                watchlist_summary_enqueued = summary_job is not None
             return {
                 "social_event": social_event_row,
                 "watchlist_summary_enqueued": watchlist_summary_enqueued,

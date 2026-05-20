@@ -56,6 +56,31 @@ def test_token_resolutions_for_events_projects_symbol_and_event_price() -> None:
     }
 
 
+def test_handles_missing_summary_jobs_uses_signal_stats_read_model() -> None:
+    conn = _FakeConn([])
+
+    rows = WatchlistIntelRepository(conn).handles_missing_summary_jobs(handles=("Toly",), since_ms=0, limit=10)
+
+    assert rows == []
+    assert "watchlist_handle_signal_stats" in conn.sql
+    assert "social_event_extractions" not in conn.sql
+    assert "lower(coalesce" not in conn.sql
+    assert "SELECT COUNT(*)" not in conn.sql
+
+
+def test_signal_events_for_summary_limits_before_event_join() -> None:
+    conn = _FakeConn([])
+
+    rows = WatchlistIntelRepository(conn).signal_events_for_summary(handle="Toly", since_ms=0, limit=10)
+
+    assert rows == []
+    assert "WITH selected AS" in conn.sql
+    assert "normalized_handle = %s" in conn.sql
+    assert "LIMIT %s" in conn.sql.split("FROM selected se", maxsplit=1)[0]
+    assert "JOIN events e ON e.event_id = se.event_id" in conn.sql
+    assert "lower(coalesce" not in conn.sql
+
+
 class _FakeConn:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self.rows = rows

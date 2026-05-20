@@ -322,6 +322,13 @@ def test_watchlist_summary_read_model_and_signal_counts(tmp_path):
             is_watched=True,
         )
         _extract_signal(social_events, event_id="event-1", received_at_ms=1_000, summary_zh="SOL 讨论升温。")
+        repo.record_signal_event_state(
+            handle="toly",
+            event_id="event-1",
+            received_at_ms=1_000,
+            is_signal_event=True,
+            commit=True,
+        )
 
         assert repo.count_signal_events_total("TOLY") == 1
         inputs = repo.signal_events_for_summary(handle="toly", since_ms=0, limit=10)

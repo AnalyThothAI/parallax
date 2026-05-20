@@ -46,6 +46,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_retention import TokenRadarRetentionService
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
@@ -160,6 +161,35 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             )
             return 0, {"ok": True, "data": data}
 
+        if args.ops_command == "backfill-token-radar-first-seen":
+            data = _backfill_token_radar_first_seen(
+                repos.token_radar,
+                batch_size=args.batch_size,
+                max_batches=args.max_batches,
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "backfill-watchlist-signal-stats":
+            data = _backfill_watchlist_signal_stats(
+                repos.watchlist_intel,
+                batch_size=args.batch_size,
+                max_batches=args.max_batches,
+                dry_run=bool(args.dry_run),
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "prune-token-radar":
+            data = TokenRadarRetentionService(token_radar=repos.token_radar).prune(
+                now_ms=_now_ms(),
+                retention_days=args.retention_days,
+                settlement_grace_days=args.settlement_grace_days,
+                batch_size=args.batch_size,
+                max_batches=args.max_batches,
+                dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
+            )
+            return 0, {"ok": True, "data": data}
+
         signals = repos.signals
         enrichment = repos.enrichment
 
@@ -256,6 +286,117 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
 
     return 2, {"ok": False, "error": f"unknown ops command: {args.ops_command}"}
+
+
+def _backfill_token_radar_first_seen(repository: object, *, batch_size: int, max_batches: int) -> dict[str, Any]:
+    parsed_batch_size = max(1, int(batch_size))
+    parsed_max_batches = max(1, int(max_batches))
+    after_key: tuple[str, str, str, str, str] | None = None
+    batches = 0
+    rows_upserted = 0
+    has_more = False
+    for _ in range(parsed_max_batches):
+        result = dict(
+            _call_with_supported_kwargs(
+                repository.backfill_first_seen_from_history,  # type: ignore[attr-defined]
+                batch_size=parsed_batch_size,
+                after_key=after_key,
+                commit=True,
+            )
+        )
+        batches += 1
+        rows_upserted += int(result.get("rows_upserted") or 0)
+        has_more = bool(result.get("has_more"))
+        next_after_key = _token_radar_cursor(result.get("next_after_key"))
+        if not has_more or next_after_key is None or next_after_key == after_key:
+            after_key = next_after_key
+            break
+        after_key = next_after_key
+    return {
+        "processed": rows_upserted,
+        "upserted": rows_upserted,
+        "has_more": has_more,
+        "last_cursor": list(after_key) if after_key is not None else None,
+        "batches": batches,
+        "rows_upserted": rows_upserted,
+        "next_after_key": list(after_key) if after_key is not None else None,
+    }
+
+
+def _backfill_watchlist_signal_stats(
+    repository: object,
+    *,
+    batch_size: int,
+    max_batches: int,
+    dry_run: bool,
+) -> dict[str, Any]:
+    parsed_batch_size = max(1, int(batch_size))
+    parsed_max_batches = max(1, int(max_batches))
+    after_received_at_ms: int | None = None
+    after_event_id: str | None = None
+    batches = 0
+    processed = 0
+    signal_events = 0
+    normalized_handles = 0
+    has_more = False
+    for _ in range(parsed_max_batches):
+        result = dict(
+            _call_with_supported_kwargs(
+                repository.backfill_signal_stats_batch,  # type: ignore[attr-defined]
+                after_received_at_ms=after_received_at_ms,
+                after_event_id=after_event_id,
+                batch_size=parsed_batch_size,
+                dry_run=dry_run,
+                commit=not dry_run,
+            )
+        )
+        batches += 1
+        processed += int(result.get("processed") or 0)
+        signal_events += int(result.get("signal_events") or 0)
+        normalized_handles += int(result.get("normalized_handles") or 0)
+        has_more = bool(result.get("has_more"))
+        next_received_at_ms = _optional_int(result.get("last_received_at_ms"))
+        next_event_id = str(result.get("last_event_id") or "") or None
+        if next_received_at_ms is not None and next_event_id is not None:
+            after_received_at_ms = next_received_at_ms
+            after_event_id = next_event_id
+        if not has_more or next_received_at_ms is None or next_event_id is None:
+            break
+    last_cursor = (
+        {"received_at_ms": after_received_at_ms, "event_id": after_event_id}
+        if after_received_at_ms is not None and after_event_id is not None
+        else None
+    )
+    return {
+        "processed": processed,
+        "upserted": signal_events,
+        "has_more": has_more,
+        "last_cursor": last_cursor,
+        "batches": batches,
+        "signal_events": signal_events,
+        "normalized_handles": normalized_handles,
+        "last_received_at_ms": after_received_at_ms,
+        "last_event_id": after_event_id,
+        "dry_run": bool(dry_run),
+    }
+
+
+def _token_radar_cursor(value: object) -> tuple[str, str, str, str, str] | None:
+    if value is None:
+        return None
+    items = tuple(str(item) for item in value) if isinstance(value, list | tuple) else ()
+    if len(items) != 5:
+        return None
+    return items  # type: ignore[return-value]
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _run_sync_gmgn_directory(

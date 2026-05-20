@@ -165,6 +165,32 @@ so runtime ownership stays explicit. Ops paths and CLI rebuilds are
 explicit exceptions and must call the same projection service the worker
 uses; they do not run their own SQL.
 
+## Bounded Token Radar And Watchlist Summary Maintenance
+
+Before pruning Token Radar history or re-enabling Watchlist handle summaries
+against existing data, backfill compact read models in bounded batches:
+
+```bash
+uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
+uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
+```
+
+Prune `token_radar_rows` through the explicit maintenance command only. Always
+dry-run first, then execute small batches while checking `/readyz` and public
+read surfaces between runs:
+
+```bash
+uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
+uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
+```
+
+`ops prune-token-radar` must report protected current batches and delete at
+most the requested batch budget. It is an operator action, not an API side
+effect. `handle_summary` should stay disabled in operator-owned
+`~/.gmgn-twitter-intel/workers.yaml` until
+`backfill-watchlist-signal-stats` reports `has_more=false` and the stats row
+counts are plausible for the configured handles.
+
 ## Provider connection state
 
 Streaming providers (OKX DEX WS, GMGN direct WS, and any future streaming
