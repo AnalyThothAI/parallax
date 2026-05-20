@@ -732,38 +732,47 @@ Known-failing baseline tests:
 - Modify: `web/src/features/signal-lab/api/useSignalLabCompactQuery.ts`
 - Modify: `web/src/features/signal-lab/state/signalLabRouteState.ts`
 - Modify: `web/src/features/signal-lab/model/signalPulseQueue.ts`
-- Modify: `web/src/features/signal-lab/ui/SignalLabPulse.tsx`
-- Modify: `web/src/features/signal-lab/ui/SignalPulseQueue.tsx`
+- Modify: `web/src/features/signal-lab/model/pulseDetail.ts`
+- Modify: `web/src/features/signal-lab/ui/PulseDetail/PulseAgentRail.tsx`
+- Modify: `web/src/features/signal-lab/ui/SignalPulseQueue.module.css`
+- Modify: `web/src/features/signal-lab/test/fixtures/titty-pulse.ts`
 - Modify: `web/src/lib/types/frontend-contracts.ts`
-- Modify: `web/src/lib/types/openapi.ts`
-- Create: `web/src/features/signal-lab/tests/signalLabRouteState.test.ts`
-- Create: `web/src/features/signal-lab/tests/signalPulseQueue.test.ts`
+- Modify: `web/tests/unit/features/signal-lab/state/signalLabRouteState.test.ts`
+- Modify: `web/tests/unit/features/signal-lab/model/signalPulseQueue.test.ts`
+- Modify: `web/tests/unit/features/signal-lab/pulseDetail.test.ts`
+- Modify: `web/tests/component/features/signal-lab/api/useSignalPulseQueries.test.tsx`
+- Modify: `web/tests/component/features/signal-lab/ui/PulseAgentRail.test.tsx`
+- Modify: `web/tests/component/features/signal-lab/ui/SignalLabPage.routing.test.tsx`
+- Modify: `web/tests/component/features/signal-lab/ui/SignalPulseQueue.test.tsx`
+- Modify: `web/tests/e2e/support/mockApi.ts`
 
-- [ ] Write failing frontend tests:
+- [x] Write failing frontend tests:
   - default route state window is `4h`.
   - parsing `window=5m` normalizes to `4h`.
   - queue item model adds independent-author and concentration chips.
   - matched lane item is modeled as alert/context, not discovery.
+  - Pulse detail rail renders `signal_analyst`, `bear_case`, `risk_portfolio_judge`.
 
-- [ ] Update compact query default to `4h/all`.
+- [x] Update compact query default to `4h/all`.
 
-- [ ] Update route parser to accept only `1h` and `4h` for Signal Lab Pulse.
+- [x] Update route parser to accept only `1h` and `4h` for Signal Lab Pulse.
 
-- [ ] Update queue model and rendering.
+- [x] Update queue model and rendering.
 
-- [ ] Regenerate OpenAPI-derived types after backend schema changes.
+- [x] Update frontend hand-maintained contract types and fixtures to research-committee stages.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   cd web
-  npm run test -- signalLabRouteState signalPulseQueue
+  npm run test -- signalLabRouteState signalPulseQueue pulseDetail PulseAgentRail useSignalPulseQueries SignalLabPage.routing --run
   npm run build
+  npm run lint
   ```
 
 - [ ] Commit:
   ```bash
-  git add web/src/features/signal-lab/api/useSignalLabCompactQuery.ts web/src/features/signal-lab/state/signalLabRouteState.ts web/src/features/signal-lab/model/signalPulseQueue.ts web/src/features/signal-lab/ui/SignalLabPulse.tsx web/src/features/signal-lab/ui/SignalPulseQueue.tsx web/src/lib/types/frontend-contracts.ts web/src/lib/types/openapi.ts web/src/features/signal-lab/tests/
-  git commit -m "feat: default signal lab pulse to 4h discovery"
+  git add web/src/features/signal-lab/api/useSignalLabCompactQuery.ts web/src/features/signal-lab/state/signalLabRouteState.ts web/src/features/signal-lab/model/signalPulseQueue.ts web/src/features/signal-lab/model/pulseDetail.ts web/src/features/signal-lab/ui/PulseDetail/PulseAgentRail.tsx web/src/features/signal-lab/ui/SignalPulseQueue.module.css web/src/features/signal-lab/test/fixtures/titty-pulse.ts web/src/lib/types/frontend-contracts.ts web/tests/component/features/signal-lab/api/useSignalPulseQueries.test.tsx web/tests/component/features/signal-lab/ui/PulseAgentRail.test.tsx web/tests/component/features/signal-lab/ui/SignalLabPage.routing.test.tsx web/tests/component/features/signal-lab/ui/SignalPulseQueue.test.tsx web/tests/e2e/support/mockApi.ts web/tests/unit/features/signal-lab/model/signalPulseQueue.test.ts web/tests/unit/features/signal-lab/pulseDetail.test.ts web/tests/unit/features/signal-lab/state/signalLabRouteState.test.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
+  git commit -m "feat: default signal lab pulse to 4h"
   ```
 
 ### Task 8: Update docs, generated contracts, and architecture assertions

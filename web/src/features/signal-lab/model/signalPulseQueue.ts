@@ -1,7 +1,7 @@
 import { formatRelativeTime, shortAddress } from "@lib/format";
 import type { SignalPulseItem } from "@lib/types";
 
-export type SignalPulseQueueTone = "health" | "neutral" | "risk" | "warn";
+export type SignalPulseQueueTone = "alert" | "health" | "neutral" | "risk" | "warn";
 
 export type SignalPulseQueueChip = {
   label: string;
@@ -34,6 +34,7 @@ export function buildSignalPulseQueueItem(item: SignalPulseItem): SignalPulseQue
   const symbol = formatSymbol(subject.symbol ?? item.symbol ?? item.subject_key);
   const mentions = intFact(item, "mentions_1h");
   const authors = intFact(item, "unique_authors");
+  const watchedMentions = intFact(item, "watched_mentions");
   const topAuthorShare = numberFact(
     item.factor_snapshot.families.social_propagation.facts.top_author_share,
   );
@@ -43,7 +44,14 @@ export function buildSignalPulseQueueItem(item: SignalPulseItem): SignalPulseQue
   const latestStatus = item.factor_snapshot.market.readiness.latest_status ?? "";
   const marketIsStale = latestStatus === "stale";
   const title = buildTitle({ item, liquidity, marketIsStale, topAuthorShare });
-  const chips = buildChips({ authors, item, marketIsStale, mentions, topAuthorShare });
+  const chips = buildChips({
+    authors,
+    item,
+    marketIsStale,
+    mentions,
+    topAuthorShare,
+    watchedMentions,
+  });
   return {
     candidateId: item.candidate_id,
     key: item.candidate_id || item.target_id || item.subject_key,
@@ -115,27 +123,34 @@ function buildChips({
   marketIsStale,
   mentions,
   topAuthorShare,
+  watchedMentions,
 }: {
   authors: number | null;
   item: SignalPulseItem;
   marketIsStale: boolean;
   mentions: number | null;
   topAuthorShare: number | null;
+  watchedMentions: number | null;
 }): SignalPulseQueueChip[] {
   const chips: SignalPulseQueueChip[] = [];
+  const watchedOnly =
+    mentions != null && mentions > 0 && watchedMentions != null && watchedMentions >= mentions;
+  if (item.scope === "matched") {
+    chips.push({ label: "关注匹配", tone: "alert" });
+  }
+  if (watchedOnly) {
+    chips.push({ label: "仅关注源", tone: "alert" });
+  }
   if (authors != null) {
-    const shareLabel =
-      topAuthorShare != null && topAuthorShare >= 0.3
-        ? ` · 头部${Math.round(topAuthorShare * 100)}%`
-        : "";
     chips.push({
-      label: `作者 ${authors}${shareLabel}`,
-      tone:
-        topAuthorShare != null && topAuthorShare >= 0.5
-          ? "risk"
-          : topAuthorShare != null && topAuthorShare >= 0.3
-            ? "warn"
-            : "health",
+      label: `独立作者 ${authors}`,
+      tone: authors <= 1 ? "warn" : "health",
+    });
+  }
+  if (topAuthorShare != null && topAuthorShare >= 0.3) {
+    chips.push({
+      label: `头部${Math.round(topAuthorShare * 100)}%`,
+      tone: topAuthorShare >= 0.5 ? "risk" : "warn",
     });
   }
   if (mentions != null) {
@@ -146,13 +161,7 @@ function buildChips({
   } else if (!item.factor_snapshot.market.event_anchor) {
     chips.push({ label: "锚点缺失", tone: "risk" });
   }
-  if (authors == null && topAuthorShare != null && topAuthorShare >= 0.3) {
-    chips.push({
-      label: `头部${Math.round(topAuthorShare * 100)}%`,
-      tone: topAuthorShare >= 0.5 ? "risk" : "warn",
-    });
-  }
-  return chips.slice(0, 3);
+  return chips.slice(0, 4);
 }
 
 function buildMeta(item: SignalPulseItem): string {
@@ -193,7 +202,10 @@ function scoreValue(item: SignalPulseItem): number {
   return Number.isFinite(score) ? Number(score) : 0;
 }
 
-function intFact(item: SignalPulseItem, key: "mentions_1h" | "unique_authors"): number | null {
+function intFact(
+  item: SignalPulseItem,
+  key: "mentions_1h" | "unique_authors" | "watched_mentions",
+): number | null {
   const fromCard = numberFact(item.fact_card[key]);
   if (fromCard != null) {
     return Math.round(fromCard);

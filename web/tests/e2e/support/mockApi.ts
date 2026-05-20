@@ -601,8 +601,8 @@ function pulseItem() {
         },
         error: null,
       },
-      evidence_debate: {
-        stage: "evidence_debate",
+      signal_analyst: {
+        stage: "signal_analyst",
         route: "meme",
         status: "ok",
         model: "gpt-5.2",
@@ -611,17 +611,19 @@ function pulseItem() {
         attempt_index: 0,
         latency_ms: 690,
         response: {
-          summary_zh:
+          what_changed_zh:
             "Sealed evidence packet supports watched-account seed plus independent amplification; risk evidence remains thin liquidity.",
           supporting_claims: [
             {
-              claim_zh: "Watched-account seed and public amplification align within the same pulse window.",
+              claim_zh:
+                "Watched-account seed and public amplification align within the same pulse window.",
               evidence_refs: ["event:event-upeg-1"],
             },
           ],
           risk_claims: [
             {
-              claim_zh: "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
+              claim_zh:
+                "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
               evidence_refs: ["event:event-upeg-2", "market:bnb-latest"],
             },
           ],
@@ -629,15 +631,37 @@ function pulseItem() {
         },
         error: null,
       },
-      decision_maker: {
-        stage: "decision_maker",
+      bear_case: {
+        stage: "bear_case",
         route: "meme",
         status: "ok",
         model: "gpt-5.2",
         started_at_ms: NOW - 350,
+        finished_at_ms: NOW - 180,
+        attempt_index: 0,
+        latency_ms: 170,
+        response: {
+          risk_claims: [
+            {
+              claim:
+                "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
+              evidence_refs: ["event:event-upeg-2", "market:bnb-latest"],
+              stance: "risk",
+            },
+          ],
+          confidence_ceiling: 0.78,
+        },
+        error: null,
+      },
+      risk_portfolio_judge: {
+        stage: "risk_portfolio_judge",
+        route: "meme",
+        status: "ok",
+        model: "gpt-5.2",
+        started_at_ms: NOW - 170,
         finished_at_ms: NOW,
         attempt_index: 0,
-        latency_ms: 360,
+        latency_ms: 170,
         response: {
           route: "meme",
           recommendation: "trade_candidate",

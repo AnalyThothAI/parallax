@@ -27,9 +27,9 @@ describe("buildSignalPulseQueueItem", () => {
     expect(view.tone).toBe("risk");
     expect(view.chips).toEqual(
       expect.arrayContaining([
-        { label: "作者 3 · 头部60%", tone: "risk" },
+        { label: "独立作者 3", tone: "health" },
+        { label: "头部60%", tone: "risk" },
         { label: "提及 5 / 1h", tone: "warn" },
-        { label: "市场过期", tone: "risk" },
       ]),
     );
   });
@@ -86,7 +86,60 @@ describe("buildSignalPulseQueueItem", () => {
     expect(view.title).toBe("Agent 建议先观察，不是直接交易结论");
     expect(view.verdict.label).toBe("观察");
     expect(view.verdict.confidenceLabel).toBe("conf 0.60");
-    expect(view.chips).toContainEqual({ label: "作者 3 · 头部33%", tone: "warn" });
+    expect(view.chips).toContainEqual({ label: "独立作者 3", tone: "health" });
+    expect(view.chips).toContainEqual({ label: "头部33%", tone: "warn" });
     expect(view.chips).not.toContainEqual({ label: "市场过期", tone: "risk" });
+  });
+
+  it("models matched lane rows as alert context instead of discovery", () => {
+    const view = buildSignalPulseQueueItem({
+      ...tittyPulseFixture,
+      scope: "matched",
+      fact_card: {
+        ...tittyPulseFixture.fact_card,
+        watched_mentions: 1,
+      },
+    });
+
+    expect(view.chips).toContainEqual({ label: "关注匹配", tone: "alert" });
+    expect(view.chips).not.toContainEqual({ label: "发现", tone: "neutral" });
+  });
+
+  it("surfaces watched-only source quality without treating it as discovery breadth", () => {
+    const view = buildSignalPulseQueueItem({
+      ...tittyPulseFixture,
+      fact_card: {
+        ...tittyPulseFixture.fact_card,
+        mentions_1h: 2,
+        unique_authors: 1,
+        watched_mentions: 2,
+      },
+      factor_snapshot: {
+        ...tittyPulseFixture.factor_snapshot,
+        families: {
+          ...tittyPulseFixture.factor_snapshot.families,
+          social_heat: {
+            ...tittyPulseFixture.factor_snapshot.families.social_heat,
+            facts: {
+              ...tittyPulseFixture.factor_snapshot.families.social_heat.facts,
+              mentions_1h: 2,
+              watched_mentions: 2,
+            },
+          },
+          social_propagation: {
+            ...tittyPulseFixture.factor_snapshot.families.social_propagation,
+            facts: {
+              ...tittyPulseFixture.factor_snapshot.families.social_propagation.facts,
+              independent_authors: 1,
+              top_author_share: 1,
+            },
+          },
+        },
+      },
+    });
+
+    expect(view.chips).toContainEqual({ label: "仅关注源", tone: "alert" });
+    expect(view.chips).toContainEqual({ label: "独立作者 1", tone: "warn" });
+    expect(view.chips).toContainEqual({ label: "头部100%", tone: "risk" });
   });
 });

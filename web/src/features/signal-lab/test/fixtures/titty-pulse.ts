@@ -22,8 +22,8 @@ const stages: SignalPulseStages = {
     response: { evidence_status: "complete", hard_blocked: false },
     error: null,
   },
-  evidence_debate: {
-    stage: "evidence_debate",
+  signal_analyst: {
+    stage: "signal_analyst",
     route: "meme",
     status: "ok",
     model: "qwen3.6",
@@ -32,19 +32,39 @@ const stages: SignalPulseStages = {
     latency_ms: 8580,
     attempt_index: 0,
     response: {
-      summary_zh:
-        "TITTY 在 1h 内呈现高社交热度爆发，cache100x 主导传播，市值约 $114K，流动性偏薄。",
+      what_changed_zh: "TITTY 在 1h 内呈现高社交热度爆发，cache100x 主导传播，市值约 $114K。",
     },
     error: null,
   },
-  decision_maker: {
-    stage: "decision_maker",
+  bear_case: {
+    stage: "bear_case",
     route: "meme",
     status: "ok",
     model: "qwen3.6",
     started_at_ms: 1778726642689 - 6122,
+    finished_at_ms: 1778726642689 - 3000,
+    latency_ms: 3122,
+    attempt_index: 0,
+    response: {
+      risk_claims: [
+        {
+          claim: "流动性偏薄且传播集中，容易快速降温。",
+          evidence_refs: ["market:pf-titty"],
+          stance: "risk",
+        },
+      ],
+      confidence_ceiling: 0.45,
+    },
+    error: null,
+  },
+  risk_portfolio_judge: {
+    stage: "risk_portfolio_judge",
+    route: "meme",
+    status: "ok",
+    model: "qwen3.6",
+    started_at_ms: 1778726642689 - 3000,
     finished_at_ms: 1778726642689,
-    latency_ms: 6122,
+    latency_ms: 3000,
     attempt_index: 0,
     response: {
       route: "meme",

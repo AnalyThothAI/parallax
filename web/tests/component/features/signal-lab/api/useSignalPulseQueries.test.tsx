@@ -51,10 +51,10 @@ describe("useSignalPulseCandidate", () => {
 });
 
 describe("useSignalLabCompactQuery", () => {
-  it("loads the hot Signal Pulse window for the compact deck", async () => {
+  it("loads the 4h Signal Pulse window for the compact deck", async () => {
     apiMock.getApiImpl = async () =>
       ok({
-        query: { window: "5m", scope: "all" },
+        query: { window: "4h", scope: "all" },
         health: {},
         summary: {},
         items: [],
@@ -72,7 +72,7 @@ describe("useSignalLabCompactQuery", () => {
       "/api/signal-lab/pulse",
       expect.objectContaining({
         token: "tok",
-        params: expect.objectContaining({ window: "5m", scope: "all" }),
+        params: expect.objectContaining({ window: "4h", scope: "all" }),
       }),
     );
   });
