@@ -57,13 +57,19 @@ describe("buildSearchCaseView", () => {
     const data = searchInspectFixture();
     data.token_result!.discussion_digest = {
       status: "pending",
-      data_gaps: [{ reason: "digest_not_ready" }],
+      currentness: {
+        display_status: "not_ready",
+        reason: "no_ready_digest",
+        delta_source_event_count: 0,
+        delta_independent_author_count: 0,
+      },
+      data_gaps: [{ reason: "no_ready_digest" }],
     };
 
     const view = buildSearchCaseView(data);
 
     expect(view.narrative.value).toBe("Narrative pending");
-    expect(view.narrative.detail).toBe("digest not ready");
+    expect(view.narrative.detail).toBe("叙事待生成");
   });
 
   it("reads token market facts from market_live instead of market candle metadata", () => {
@@ -129,6 +135,13 @@ function searchInspectFixture(): SearchInspectData {
     token_result: {
       discussion_digest: {
         status: "ready",
+        currentness: {
+          display_status: "current",
+          reason: "fingerprint_match",
+          delta_source_event_count: 0,
+          delta_independent_author_count: 0,
+          last_ready_computed_at_ms: 1_700_000_000_000,
+        },
         dominant_narrative: {
           title: "RKC rotation",
           summary_zh: "Runtime narrative",

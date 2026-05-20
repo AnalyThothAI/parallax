@@ -140,6 +140,13 @@ describe("token radar factor snapshot mapper", () => {
     const row = productionFactorSnapshotRow();
     row.discussion_digest = {
       status: "ready",
+      currentness: {
+        display_status: "current",
+        reason: "fingerprint_match",
+        delta_source_event_count: 0,
+        delta_independent_author_count: 0,
+        last_ready_computed_at_ms: 1_777_746_000_000,
+      },
       dominant_narrative: {
         title: "privacy rotation",
         summary_zh: "隐私币重新获得注意力",

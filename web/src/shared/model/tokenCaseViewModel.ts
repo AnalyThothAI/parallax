@@ -67,6 +67,18 @@ export type TokenCaseThesisView = {
   tone: TokenCaseTone;
 };
 
+export type TokenCaseNarrativeCurrentnessView = {
+  displayStatus: string;
+  reason: string | null;
+  label: string;
+  tone: TokenCaseTone;
+  lastReadyComputedAtMs: number | null;
+  lastReadyComputedLabel: string | null;
+  deltaSourceEventCount: number;
+  deltaIndependentAuthorCount: number;
+  deltaLabel: string | null;
+};
+
 export type TokenCaseViewModel = {
   target: {
     targetType: "Asset" | "CexToken" | string;
@@ -93,6 +105,7 @@ export type TokenCaseViewModel = {
   metrics: TokenCaseMetric[];
   propagation: {
     summaryZh: string;
+    currentness: TokenCaseNarrativeCurrentnessView;
     statusPills: Array<{ label: string; tone: TokenCaseTone }>;
     stages: Array<{
       id: string;

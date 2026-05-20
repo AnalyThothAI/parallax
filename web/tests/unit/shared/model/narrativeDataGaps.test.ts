@@ -7,10 +7,19 @@ describe("narrativeDataGaps", () => {
     expect(narrativeGapLabel({ reason: "low_source_volume" })).toBe("叙事样本不足");
   });
 
-  it("labels hard-cut digest and budget reasons", () => {
-    expect(narrativeGapLabel({ reason: "digest_stale" })).toBe("叙事已过期");
+  it("labels hard-cut currentness reasons", () => {
+    expect(narrativeGapLabel({ reason: "no_ready_digest" })).toBe("叙事待生成");
+    expect(narrativeGapLabel({ reason: "digest_updating" })).toBe("叙事更新中");
+    expect(narrativeGapLabel({ reason: "material_delta_due" })).toBe("叙事刷新排队中");
+    expect(narrativeGapLabel({ reason: "unsupported_window" })).toBe("5m 实时信号");
+    expect(narrativeGapLabel({ reason: "narrative_not_supported_for_window" })).toBe(
+      "5m 实时信号",
+    );
+    expect(narrativeGapLabel({ reason: "out_of_frontier" })).toBe("不在当前雷达前沿");
     expect(narrativeGapLabel({ reason: "not_in_current_frontier" })).toBe("不在当前雷达前沿");
-    expect(narrativeGapLabel({ reason: "llm_cycle_budget_exhausted" })).toBe("叙事刷新排队中");
-    expect(narrativeGapLabel({ reason: "llm_failure_budget_exhausted" })).toBe("叙事服务退避中");
+  });
+
+  it("does not keep digest_stale as a primary hard-cut label", () => {
+    expect(narrativeGapLabel({ reason: "digest_stale" })).toBe("digest stale");
   });
 });

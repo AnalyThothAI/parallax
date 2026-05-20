@@ -94,6 +94,16 @@ export function tokenCaseFixture(): TokenCaseDossier {
       schema_version: "token_discussion_digest_v1",
       status: "ready",
       generated_at_ms: BASE_MS - 30_000,
+      currentness: {
+        display_status: "current",
+        reason: "fingerprint_match",
+        ready_source_event_count: 18,
+        current_source_event_count: 18,
+        delta_source_event_count: 0,
+        delta_independent_author_count: 0,
+        last_ready_computed_at_ms: BASE_MS - 30_000,
+        epoch_policy_version: "token-narrative-epoch-v1",
+      },
       dominant_narrative: {
         title: "Contract-confirmed Solana rotation",
         summary_zh: "HANSA 的核心叙事是 CA 证据帖被 scanner 与观察账号同步复述。",

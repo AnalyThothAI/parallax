@@ -31,6 +31,16 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.bullBear.bull.title).toBe("Bull · 多头");
     expect(vm.bullBear.bull.thesis).toContain("多个独立账号围绕 CA 证据");
     expect(vm.bullBear.bear.title).toBe("Bear · 空头");
+    expect(vm.propagation.currentness).toMatchObject({
+      displayStatus: "current",
+      deltaSourceEventCount: 0,
+      deltaIndependentAuthorCount: 0,
+      label: "叙事已更新",
+    });
+    expect(vm.propagation.statusPills.map((pill) => pill.label)).toContain("叙事已更新");
+    expect(vm.propagation.statusPills.some((pill) => pill.label.startsWith("last ready "))).toBe(
+      true,
+    );
     expect(vm.dataGaps).toEqual(["live market snapshot missing", "official liquidity route not confirmed"]);
   });
 
@@ -60,14 +70,58 @@ describe("buildTokenCaseViewModel", () => {
         discussion_digest: {
           ...dossier.discussion_digest,
           status: "pending",
-          data_gaps: [{ reason: "digest_not_ready" }],
+          currentness: {
+            display_status: "not_ready",
+            reason: "no_ready_digest",
+            delta_source_event_count: 0,
+            delta_independent_author_count: 0,
+          },
+          data_gaps: [{ reason: "no_ready_digest" }],
         },
       },
       route: { window: "1h", scope: "all", postSort: "recent" },
       posts: dossier.posts,
     });
 
-    expect(vm.dataGaps).toEqual(["digest not ready"]);
+    expect(vm.dataGaps).toEqual(["叙事待生成"]);
+    expect(vm.propagation.currentness.label).toBe("叙事待生成");
+  });
+
+  it("keeps ready narrative visible while currentness is updating", () => {
+    const dossier = tokenCaseFixture();
+
+    const vm = buildTokenCaseViewModel({
+      dossier: {
+        ...dossier,
+        discussion_digest: {
+          ...dossier.discussion_digest,
+          currentness: {
+            ...dossier.discussion_digest.currentness,
+            display_status: "updating",
+            reason: "digest_updating",
+            delta_source_event_count: 6,
+            delta_independent_author_count: 2,
+            last_ready_computed_at_ms: 1_777_746_000_000,
+          },
+          data_gaps: [{ reason: "digest_updating", delta_source_event_count: 6 }],
+        },
+      },
+      route: { window: "1h", scope: "all", postSort: "recent" },
+      posts: dossier.posts,
+    });
+
+    expect(vm.hero.subtitle).toBe("Contract-confirmed Solana rotation");
+    expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
+    expect(vm.propagation.currentness).toMatchObject({
+      displayStatus: "updating",
+      deltaSourceEventCount: 6,
+      deltaIndependentAuthorCount: 2,
+      deltaLabel: "+6 posts · +2 authors",
+      label: "叙事更新中 +6",
+    });
+    expect(vm.propagation.statusPills.map((pill) => pill.label)).toEqual(
+      expect.arrayContaining(["叙事更新中 +6", "+6 posts · +2 authors"]),
+    );
   });
 
   it("surfaces event-level token prices in timeline pills", () => {

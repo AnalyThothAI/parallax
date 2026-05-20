@@ -13,35 +13,83 @@ describe("buildTokenRadarCompactCase", () => {
   });
 
   it.each([
-    ["pending", "叙事分析中", "waiting for mention semantics"],
-    ["insufficient", "叙事样本不足", "need 3 independent authors"],
-    ["semantic_unavailable", "叙事分析暂不可用", "semantic worker disabled"],
-  ] as const)("surfaces %s digest state without falling back to factor text", (status, title, gap) => {
+    ["pending", "semantic_labeling_pending", "叙事分析中"],
+    ["insufficient", "low_source_volume", "叙事样本不足"],
+    ["semantic_unavailable", "low_semantic_coverage", "语义覆盖不足"],
+  ] as const)("surfaces %s not-ready currentness without falling back to factor text", (status, reason, title) => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
       discussion_digest: {
         status,
-        data_gaps: [gap],
+        currentness: {
+          display_status: "not_ready",
+          reason: "no_ready_digest",
+        },
+        data_gaps: [{ reason }],
       },
     });
 
     expect(view.narrative.value).toBe(title);
-    expect(view.narrative.detail).toBe(gap);
+    expect(view.narrative.detail).toBe(title);
     expect(view.narrative.detail).not.toContain("关注源");
     expect(view.narrative.detail).not.toContain("催化");
   });
 
-  it("renders structured data gaps without crashing JSX", () => {
+  it("keeps last-ready digest visible while currentness is updating", () => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
       discussion_digest: {
-        status: "pending",
-        data_gaps: [{ reason: "digest_not_ready" }],
+        ...tokenFlowFixture().discussion_digest!,
+        currentness: {
+          display_status: "updating",
+          reason: "digest_updating",
+          delta_source_event_count: 6,
+          delta_independent_author_count: 2,
+          last_ready_computed_at_ms: 1_777_746_000_000,
+        },
+        data_gaps: [{ reason: "digest_updating", delta_source_event_count: 6 }],
       },
     });
 
-    expect(view.narrative.value).toBe("叙事分析中");
-    expect(view.narrative.detail).toBe("叙事待刷新");
+    expect(view.narrative.value).toBe("Expansion chase · 更新中 +6");
+    expect(view.narrative.detail).toContain("retail is rotating into contract-confirmed posts");
+  });
+
+  it("marks stale ready digest as the previous version", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      discussion_digest: {
+        ...tokenFlowFixture().discussion_digest!,
+        currentness: {
+          display_status: "stale",
+          reason: "out_of_frontier",
+          delta_source_event_count: 0,
+          last_ready_computed_at_ms: 1_777_746_000_000,
+        },
+        data_gaps: [{ reason: "out_of_frontier" }],
+      },
+    });
+
+    expect(view.narrative.value).toBe("Expansion chase · 上一版");
+    expect(view.narrative.detail).toContain("coverage 82%");
+  });
+
+  it("renders unsupported 5m windows as realtime signal only", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      flow: { ...tokenFlowFixture().flow, window: "5m" },
+      discussion_digest: {
+        status: "pending",
+        currentness: {
+          display_status: "unsupported_window",
+          reason: "unsupported_window",
+        },
+        data_gaps: [{ reason: "narrative_not_supported_for_window" }],
+      },
+    });
+
+    expect(view.narrative.value).toBe("5m 实时信号");
+    expect(view.narrative.detail).toBe("5m 实时信号");
   });
 });
 
@@ -187,6 +235,13 @@ function tokenFlowFixture(): TokenFlowItem {
     },
     discussion_digest: {
       status: "ready",
+      currentness: {
+        display_status: "current",
+        reason: "fingerprint_match",
+        delta_source_event_count: 0,
+        delta_independent_author_count: 0,
+        last_ready_computed_at_ms: 1_777_746_000_000,
+      },
       dominant_narrative: {
         title: "Expansion chase",
         summary_zh: "retail is rotating into contract-confirmed posts",

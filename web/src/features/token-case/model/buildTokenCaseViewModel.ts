@@ -60,6 +60,7 @@ export function buildTokenCaseViewModel({
   const digest = dossier.discussion_digest;
   const dataGaps = narrativeGapLabels(digest.data_gaps);
   const propagationState = digestPropagationState(digest) ?? dossier.timeline.summary.phase;
+  const currentness = digestCurrentnessView(digest, dataGaps[0] ?? null);
 
   return {
     target: {
@@ -120,7 +121,8 @@ export function buildTokenCaseViewModel({
     ],
     propagation: {
       summaryZh: propagationSummary(digest),
-      statusPills: digestStatusPills(digest),
+      currentness,
+      statusPills: digestStatusPills(digest, currentness),
       stages: digestStages(dossier.narrative_clusters, digest),
     },
     timeline: {
@@ -349,10 +351,18 @@ function propagationSummary(digest: TokenDiscussionDigest): string {
 
 function digestStatusPills(
   digest: TokenDiscussionDigest,
+  currentness: TokenCaseViewModel["propagation"]["currentness"],
 ): Array<{ label: string; tone: TokenCaseTone }> {
   const pills: Array<{ label: string; tone: TokenCaseTone }> = [
     { label: digestStatusLabel(digest.status), tone: digestStatusTone(digest.status) },
+    { label: currentness.label, tone: currentness.tone },
   ];
+  if (currentness.deltaLabel) {
+    pills.push({ label: currentness.deltaLabel, tone: "info" });
+  }
+  if (currentness.lastReadyComputedLabel) {
+    pills.push({ label: `last ready ${currentness.lastReadyComputedLabel}`, tone: "neutral" });
+  }
   const state = digestPropagationState(digest);
   if (state) {
     pills.push({ label: phaseLabel(state), tone: phaseTone(state) });
@@ -366,6 +376,75 @@ function digestStatusPills(
     pills.push({ label: `${Math.round(coverage * 100)}% coverage`, tone: "neutral" });
   }
   return pills;
+}
+
+function digestCurrentnessView(
+  digest: TokenDiscussionDigest,
+  firstDataGapLabel: string | null,
+): TokenCaseViewModel["propagation"]["currentness"] {
+  const currentness = digest.currentness;
+  const displayStatus = currentness.display_status;
+  const deltaSourceEventCount = nonNegativeNumber(currentness.delta_source_event_count);
+  const deltaIndependentAuthorCount = nonNegativeNumber(
+    currentness.delta_independent_author_count,
+  );
+  const lastReadyComputedAtMs = numberValue(currentness.last_ready_computed_at_ms);
+  const deltaLabel = currentnessDeltaLabel(deltaSourceEventCount, deltaIndependentAuthorCount);
+  return {
+    displayStatus,
+    reason: cleanText(currentness.reason),
+    label: currentnessLabel(displayStatus, deltaSourceEventCount, firstDataGapLabel),
+    tone: currentnessTone(displayStatus),
+    lastReadyComputedAtMs,
+    lastReadyComputedLabel: lastReadyComputedAtMs ? timeAgoLabel(lastReadyComputedAtMs) : null,
+    deltaSourceEventCount,
+    deltaIndependentAuthorCount,
+    deltaLabel,
+  };
+}
+
+function currentnessLabel(
+  displayStatus: string,
+  deltaSourceEventCount: number,
+  firstDataGapLabel: string | null,
+): string {
+  if (displayStatus === "updating") {
+    return `叙事更新中 +${compactNumber(deltaSourceEventCount)}`;
+  }
+  const labels: Record<string, string> = {
+    current: "叙事已更新",
+    not_ready: firstDataGapLabel ?? "叙事待生成",
+    out_of_frontier: "不在当前雷达前沿",
+    stale: "上一版",
+    unsupported_window: "5m 实时信号",
+  };
+  return labels[displayStatus] ?? displayStatus.replaceAll("_", " ");
+}
+
+function currentnessTone(displayStatus: string): TokenCaseTone {
+  if (displayStatus === "current") {
+    return "health";
+  }
+  if (displayStatus === "updating" || displayStatus === "unsupported_window") {
+    return "info";
+  }
+  if (displayStatus === "stale" || displayStatus === "out_of_frontier") {
+    return "warn";
+  }
+  return "neutral";
+}
+
+function currentnessDeltaLabel(sourceCount: number, authorCount: number): string | null {
+  const parts = [
+    sourceCount > 0 ? `+${compactNumber(sourceCount)} posts` : null,
+    authorCount > 0 ? `+${compactNumber(authorCount)} authors` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function nonNegativeNumber(value: unknown): number {
+  const parsed = numberValue(value);
+  return parsed === null ? 0 : Math.max(0, parsed);
 }
 
 function digestStages(
