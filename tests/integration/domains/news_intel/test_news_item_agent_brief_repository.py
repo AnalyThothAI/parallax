@@ -41,6 +41,84 @@ def test_list_items_for_brief_selects_processed_missing_brief_only(tmp_path) -> 
     assert raw_id not in selected_ids
 
 
+def test_list_items_for_brief_prioritizes_newest_missing_briefs_for_front_page(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        oldest_id = _insert_source_provider_and_item(
+            repo,
+            suffix="oldest",
+            processed=True,
+            published_at_ms=NOW_MS - 120_000,
+            now_ms=NOW_MS - 120_000,
+        )
+        middle_id = _insert_source_provider_and_item(
+            repo,
+            suffix="middle",
+            processed=True,
+            published_at_ms=NOW_MS - 60_000,
+            now_ms=NOW_MS - 60_000,
+        )
+        newest_id = _insert_source_provider_and_item(
+            repo,
+            suffix="newest",
+            processed=True,
+            published_at_ms=NOW_MS,
+            now_ms=NOW_MS,
+        )
+
+        rows = _list_items_for_brief(repo, limit=2, now_ms=NOW_MS + 1_000)
+    finally:
+        conn.close()
+
+    assert [row["item"]["news_item_id"] for row in rows] == [newest_id, middle_id]
+    assert oldest_id not in [row["item"]["news_item_id"] for row in rows]
+
+
+def test_list_items_for_brief_deprioritizes_cooled_backpressure_retry_for_same_publish_time(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        cooled_backpressure_id = _insert_source_provider_and_item(
+            repo,
+            suffix="cooled-backpressure",
+            processed=True,
+            published_at_ms=NOW_MS,
+            now_ms=NOW_MS - 100,
+        )
+        fresh_id = _insert_source_provider_and_item(
+            repo,
+            suffix="fresh-never-attempted",
+            processed=True,
+            published_at_ms=NOW_MS,
+            now_ms=NOW_MS,
+        )
+        _insert_run(
+            repo,
+            news_item_id=cooled_backpressure_id,
+            run_id="run-cooled-backpressure",
+            output_hash=None,
+            execution_started=False,
+            status="backpressure",
+            outcome="backpressure_capacity_denied",
+            started_at_ms=NOW_MS - 90,
+            finished_at_ms=NOW_MS - 80,
+        )
+
+        rows = _list_items_for_brief(
+            repo,
+            limit=2,
+            now_ms=NOW_MS + 1_000,
+            backpressure_cooldown_ms=100,
+        )
+    finally:
+        conn.close()
+
+    assert [row["item"]["news_item_id"] for row in rows] == [fresh_id, cooled_backpressure_id]
+
+
 def test_list_items_for_brief_skips_fresh_current_and_selects_fact_changed_current(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -518,6 +596,8 @@ def _insert_source_provider_and_item(
     source_name: str = "Example",
     source_role: str = "observed_source",
     trust_tier: str = "standard",
+    published_at_ms: int = NOW_MS,
+    now_ms: int = NOW_MS,
 ) -> str:
     source_id = f"source-{suffix}"
     source_item_key = f"guid-{suffix}"
@@ -530,9 +610,9 @@ def _insert_source_provider_and_item(
         source_role=source_role,
         trust_tier=trust_tier,
         refresh_interval_seconds=300,
-        now_ms=NOW_MS,
+        now_ms=now_ms,
     )
-    fetch_run_id = repo.start_fetch_run(source_id=source_id, started_at_ms=NOW_MS)
+    fetch_run_id = repo.start_fetch_run(source_id=source_id, started_at_ms=now_ms)
     provider = repo.upsert_provider_item(
         source_id=source_id,
         fetch_run_id=fetch_run_id,
@@ -540,7 +620,7 @@ def _insert_source_provider_and_item(
         canonical_url=f"https://example.com/{source_item_key}",
         payload_hash=f"payload-hash-{suffix}",
         raw_payload_json={"title": "SOL ETF filing"},
-        fetched_at_ms=NOW_MS,
+        fetched_at_ms=now_ms,
     )
     news = repo.upsert_news_item(
         provider_item_id=provider["provider_item_id"],
@@ -551,12 +631,12 @@ def _insert_source_provider_and_item(
         summary="Issuer files for a SOL ETF.",
         body_text="Issuer files for a SOL ETF.",
         language="en",
-        published_at_ms=NOW_MS,
-        fetched_at_ms=NOW_MS,
+        published_at_ms=published_at_ms,
+        fetched_at_ms=now_ms,
         content_hash=f"content-hash-{suffix}",
         title_fingerprint="sol etf filing",
-        now_ms=NOW_MS,
+        now_ms=now_ms,
     )
     if processed:
-        repo.mark_item_processed(news_item_id=str(news["news_item_id"]), processed_at_ms=NOW_MS)
+        repo.mark_item_processed(news_item_id=str(news["news_item_id"]), processed_at_ms=now_ms)
     return str(news["news_item_id"])

@@ -1120,7 +1120,9 @@ class NewsRepository:
                 current_brief.computed_at_ms AS current_computed_at_ms,
                 current_brief.input_hash AS current_input_hash,
                 current_brief.artifact_version_hash AS current_artifact_version_hash,
-                COALESCE(started_attempts.attempt_count, 0) AS started_attempt_count
+                COALESCE(started_attempts.attempt_count, 0) AS started_attempt_count,
+                (current_brief.news_item_id IS NULL) AS missing_current_brief,
+                COALESCE(latest_attempt.backpressure_retry_priority, 0) AS backpressure_retry_priority
               FROM news_items AS items
               LEFT JOIN LATERAL (
                 SELECT story_id
@@ -1154,6 +1156,18 @@ class NewsRepository:
                    AND runs.artifact_version_hash = %s
                    AND runs.execution_started = true
               ) AS started_attempts ON true
+              LEFT JOIN LATERAL (
+                SELECT CASE
+                         WHEN runs.execution_started = false
+                          AND runs.status = 'backpressure'
+                         THEN 1
+                         ELSE 0
+                       END AS backpressure_retry_priority
+                  FROM news_item_agent_runs AS runs
+                 WHERE runs.news_item_id = items.news_item_id
+                 ORDER BY runs.finished_at_ms DESC, runs.run_id DESC
+                 LIMIT 1
+              ) AS latest_attempt ON true
               WHERE items.lifecycle_status = 'processed'
                 AND NOT EXISTS (
                   SELECT 1
@@ -1179,8 +1193,9 @@ class NewsRepository:
                   )
                 )
               ORDER BY (current_brief.news_item_id IS NULL) DESC,
-                       source_updated_at_ms ASC,
                        items.published_at_ms DESC,
+                       COALESCE(latest_attempt.backpressure_retry_priority, 0) ASC,
+                       source_updated_at_ms DESC,
                        items.news_item_id DESC
               LIMIT %s
             )
@@ -1232,8 +1247,10 @@ class NewsRepository:
                 JOIN news_items AS member_items ON member_items.news_item_id = members.news_item_id
                WHERE members.story_id = candidates.story_id
             ) AS story_member_rows ON true
-            ORDER BY candidates.source_updated_at_ms ASC,
-                     items.published_at_ms DESC,
+            ORDER BY candidates.missing_current_brief DESC,
+                     candidates.published_at_ms DESC,
+                     candidates.backpressure_retry_priority ASC,
+                     candidates.source_updated_at_ms DESC,
                      items.news_item_id DESC
             """,
             (

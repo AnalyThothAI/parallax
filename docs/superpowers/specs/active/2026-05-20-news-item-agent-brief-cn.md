@@ -1,17 +1,19 @@
 # Spec — News Item Agent Brief for `/news`
 
-**Status**: Draft, approved for spec by Qinghuan  
+**Status**: Draft, approved for spec by Qinghuan; refreshed against current code on 2026-05-20
 **Date**: 2026-05-20  
 **Owner**: Codex with Qinghuan  
 **Related**: `docs/superpowers/specs/active/2026-05-19-news-intel-kappa-cqrs-cn.md`, `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`, `/Users/qinghuan/Documents/code/news-intel/docs/specs/2026-05-05-news-trading-frontend-v1.md`
 
 ## Background
 
-`gmgn-twitter-intel` already treats News Intel as a first-class domain in the main service flow: configured news ingestion, news facts, story and page read models sit under `domains/news_intel` before API/CLI surfaces (`docs/ARCHITECTURE.md:7-19`). The global architecture marks `news_provider_items`, `news_items`, `news_item_entities`, `news_token_mentions`, and `news_fact_candidates` as business facts, and marks read models as rebuildable from facts (`docs/ARCHITECTURE.md:33-41`). It also requires exactly one runtime writer for each derived read model; today `news_story_groups`, `news_story_members`, and `news_page_rows` are written only by their projection workers (`docs/ARCHITECTURE.md:59-76`).
+`gmgn-twitter-intel` already treats News Intel as a first-class domain in the main service flow: configured news ingestion, news facts, story and page read models sit under `domains/news_intel` before API/CLI surfaces (`docs/ARCHITECTURE.md:7-19`). The global architecture marks `news_provider_items`, `news_items`, `news_item_entities`, `news_token_mentions`, and `news_fact_candidates` as business facts, and marks read models as rebuildable from facts (`docs/ARCHITECTURE.md:33-41`). It also requires exactly one runtime writer for each derived read model; today `news_story_groups`, `news_story_members`, `news_item_agent_runs`, `news_item_agent_briefs`, and `news_page_rows` each have named runtime ownership (`docs/ARCHITECTURE.md:59-76`, `src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md:14-25`).
 
-Agent execution is already centralized as an operational plane: `AgentExecutionGateway` owns OpenAI Agents SDK mechanics, strict schema wrapping, trace metadata, usage, bulkheads, rate limits, timeouts, circuit breakers, reservations, and audit envelopes; domain workers still own admission, retry, validation, and read-model writes (`docs/ARCHITECTURE.md:101-113`). The configured default lane set already includes agent lanes for Pulse, Narrative, Social, Watchlist, and a low-priority `news.fact_candidate` lane (`src/gmgn_twitter_intel/platform/config/settings.py:560-568`), with unknown lane keys rejected at settings validation (`src/gmgn_twitter_intel/platform/config/settings.py:578-600`).
+Agent execution is already centralized as an operational plane: `AgentExecutionGateway` owns OpenAI Agents SDK mechanics, strict schema wrapping, trace metadata, usage, bulkheads, rate limits, timeouts, circuit breakers, reservations, and audit envelopes; domain workers still own admission, retry, validation, and read-model writes (`docs/ARCHITECTURE.md:101-113`). The configured default lane set includes Pulse, Narrative, Social, Watchlist, and News lanes, including low-priority `news.item_brief` with lane-level timeout/concurrency policy (`src/gmgn_twitter_intel/platform/config/settings.py:563-575`), with unknown lane keys rejected at settings validation (`src/gmgn_twitter_intel/platform/config/settings.py:585-607`).
 
-News Intel currently has four runtime workers: fetch, deterministic item processing, deterministic story projection, and page projection (`src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py:8-19`). The worker factory wires those workers when `news_intel.enabled` is true (`src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py:22-77`). Item processing extracts entities, token mentions, and fact candidates deterministically, then marks the item processed and emits `news_item_processed` (`src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py:49-83`). Page projection builds rows from item, story, token mentions, and fact candidates (`src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py:13-42`) and the repository reprojects rows when item, story, mention, or fact timestamps change (`src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:922-996`).
+News Intel now has five runtime workers: fetch, deterministic item processing, deterministic story projection, item brief, and page projection (`src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py:20-22`). The worker factory wires `NewsItemBriefWorker` only when News Intel is enabled, `news_item_brief` is enabled, LLM config is present, and the News provider exposes a brief provider (`src/gmgn_twitter_intel/app/runtime/worker_factories/news_intel.py:70-81`). Item processing extracts entities, token mentions, and fact candidates deterministically, then marks the item processed and emits `news_item_processed` (`src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py:49-83`). Page projection now builds rows from item, story, token mentions, fact candidates, and the current item brief (`src/gmgn_twitter_intel/domains/news_intel/runtime/news_page_projection_worker.py:34-50`, `src/gmgn_twitter_intel/domains/news_intel/services/news_page_projection.py:13-50`).
+
+Current code already implements the shared agent path for News. `OpenAIAgentsNewsItemBriefClient` builds a typed `AgentStageSpec`, reserves via `AgentExecutionGateway`, and returns the gateway audit payload without constructing domain-local SDK runners (`src/gmgn_twitter_intel/integrations/openai_agents/news_item_brief_agent_client.py:22-68`). `build_news_item_brief_stage()` sets `max_turns=1` and `tools=[]` (`src/gmgn_twitter_intel/domains/news_intel/services/news_item_brief_runtime.py:21-44`). `NewsItemBriefWorker` selects due items, builds bounded packets, checks freshness, reserves `news.item_brief`, releases reservations, validates output, writes run rows, upserts current rows, and emits `news_item_brief_updated` when current state changes (`src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py:47-99`, `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py:130-183`, `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py:185-240`, `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_brief_worker.py:316-394`). The repository candidate query now explicitly prioritizes missing current briefs, newer published items, and never-attempted/fresh items ahead of cooled no-start backpressure retries (`src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:1095-1275`).
 
 The current `/api/news` read path serves `news_page_rows` plus a raw item fallback for items whose page projection has not landed yet (`src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:461-563`). Item detail already returns source, provider item, fetch run, entities, token mentions, fact candidates, and story membership (`src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py:998-1015`). The frontend `/news` page renders a paged table and item detail (`web/src/features/news/NewsPage.tsx:27-40`, `web/src/features/news/NewsPage.tsx:180-212`, `web/src/features/news/NewsPage.tsx:273-340`), but its market question, market read, route state, next action, and instrument inference are currently browser-side heuristics over headline, summary, token lanes, and fact lanes (`web/src/features/news/newsViewModel.ts:11-223`).
 
@@ -35,6 +37,7 @@ The separate `/Users/qinghuan/Documents/code/news-intel` project offers a useful
 - G3. `/api/news` and `/api/news/items/{news_item_id}` expose the latest current brief state without executing agents in request handlers.
 - G4. `/news` list and detail render the persisted brief and visible missing/degraded states; they do not generate Chinese summary, long/short analysis, or trading route labels from headline heuristics.
 - G5. Agent no-start backpressure, schema failures, provider failures, and deterministic validation failures are observable in domain run rows and worker status without burning provider attempts for capacity-denied no-start cases.
+- G6. Brief-worker admission protects the front page: missing briefs are selected before stale/retry work, newer published items are selected before older missing items, and cooled no-start backpressure retries do not immediately outrank never-attempted fresh items.
 
 ## Non-Goals
 
@@ -48,6 +51,8 @@ The separate `/Users/qinghuan/Documents/code/news-intel` project offers a useful
 ## Target Architecture
 
 Add a fifth News Intel worker, `NewsItemBriefWorker`, after item processing and story projection. It selects processed news items whose source packet changed or whose current brief is missing/stale, builds a bounded `NewsItemBriefInputPacket`, reserves the `news.item_brief` agent lane, executes a single typed OpenAI Agents SDK stage through `AgentExecutionGateway`, validates the result against the packet, writes a run ledger row, and upserts the current item brief read model.
+
+Candidate selection is product-facing and therefore deterministic. It must select rows in this order: missing current brief first, newest published item next, non-backpressure/latest clean attempts before cooled no-start backpressure retry, then newest source update. Recent no-start backpressure remains excluded during `backpressure_cooldown_ms`; cooled retry rows can re-enter the queue but must not starve newly published missing briefs.
 
 The worker is a domain runtime worker, not a central task queue consumer. It uses existing PostgreSQL facts and read models as input and owns all domain-specific admission, retry, finalization, and validation. The OpenAI integration provides a `NewsItemBriefProvider` protocol implementation, just as Watchlist and Narrative keep provider execution behind domain protocols.
 
@@ -166,7 +171,7 @@ Domain audit ledger for brief attempts.
 
 When `execution_started=true`, the run row records latency, usage, `sdk_trace_id`, trace metadata, parse mode, and safety-net metadata from `AgentExecutionGateway`. When `execution_started=false`, `error_class` distinguishes `capacity_denied`, `circuit_open`, or `rate_limited`.
 
-No-start backpressure writes `execution_started=false`, `status=skipped`, and `outcome=backpressure` for the selected item, but it does not increment the provider-attempt counter for that item. To prevent ledger churn, selection must skip an item with a recent no-start backpressure row until a configured `backpressure_cooldown_ms` has elapsed.
+No-start backpressure writes `execution_started=false`, `status=backpressure`, and an outcome such as `backpressure_capacity_denied` for the selected item, but it does not increment the provider-attempt counter for that item. To prevent ledger churn, selection must skip an item with a recent no-start backpressure row until a configured `backpressure_cooldown_ms` has elapsed. After the cooldown, the item may retry, but fresh never-attempted missing briefs with the same publish time take priority.
 
 ## Interface Contracts
 
@@ -268,6 +273,8 @@ The first production cut includes a small frozen-packet regression harness:
 - AC13. WHEN an agent run is executed THEN trace metadata SHALL include `agent_run_id`, `news_item_id`, `workflow_name`, `agent_name`, `input_hash`, `prompt_version`, `schema_version`, and `artifact_version_hash`, and the run ledger SHALL persist the SDK trace id.
 - AC14. WHEN a stage has non-empty tools/handoffs or a run audit indicates unexpected tool/handoff activity THEN validation SHALL fail and no `ready` brief SHALL be published.
 - AC15. WHEN implementation completes THEN the frozen-packet regression harness and validator unit tests SHALL pass before frontend acceptance is considered complete.
+- AC16. WHEN multiple processed items are missing current briefs THEN `list_items_for_brief` SHALL select newer published items first, so the `/news` front page gets fresh agent briefs before older backlog.
+- AC17. WHEN a cooled no-start backpressure retry and a never-attempted item have the same publish time THEN `list_items_for_brief` SHALL prefer the never-attempted item and keep the retry eligible but lower priority.
 
 ## Risks
 
@@ -282,6 +289,7 @@ The first production cut includes a small frozen-packet regression harness:
 | Too much schema on first cut delays value. | Medium | Keep one single-stage item brief, no story-level digest, no closed-loop learning, no market settlement. |
 | Page rows do not refresh after a brief changes. | High | Emit `news_item_brief_updated`, include it in page projection wakes, include brief `updated_at_ms` in stale-row selection, and bump page projection version. |
 | Run ledger grows from repeated capacity-denied selections. | Medium | Add `backpressure_cooldown_ms` and exclude recently skipped no-start rows from selection. |
+| Old backlog consumes the brief lane before front-page news. | High | Sort missing current briefs by `published_at_ms DESC`, then lower-priority cooled backpressure retries, then source freshness. |
 
 ## Evolution Path
 

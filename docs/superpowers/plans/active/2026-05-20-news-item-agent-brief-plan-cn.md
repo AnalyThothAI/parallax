@@ -12,6 +12,8 @@
 
 **Architecture:** `NewsItemBriefWorker` is the only domain writer for `news_item_agent_runs` and `news_item_agent_briefs`. It reads existing News Intel facts, builds a bounded `NewsItemBriefInputPacket`, reserves lane `news.item_brief`, and executes only through the shared `AgentExecutionGateway` via a News-domain provider contract. `/api/news`, `/api/news/items/:id`, and `/news` consume the persisted read model.
 
+**Current code refresh:** The latest repository selection logic now treats agent admission as a front-page freshness problem, not a pure oldest-stale backlog drain. Missing current briefs are selected first; among missing briefs, newer published items win; cooled no-start backpressure retries remain eligible but sort behind never-attempted fresh items with the same publish time.
+
 **Tech Stack:** Python 3.13, PostgreSQL/Alembic, psycopg3 repository sessions, OpenAI Agents SDK behind `AgentExecutionGateway`, FastAPI, React, TypeScript, TanStack Query, pytest, Vitest.
 
 ---
@@ -103,11 +105,14 @@
 - [x] Add compact brief columns to `news_page_rows` with default `{"status":"pending"}`.
 - [x] Implement repository methods for run insert, current upsert/get, stale candidate selection, page projection joins, and detail hydration.
 - [x] Ensure no-start backpressure rows use `execution_started=false` and do not count against provider attempts.
+- [x] Update `list_items_for_brief` ordering so missing briefs feed the front page first: `missing_current_brief DESC`, `published_at_ms DESC`, cooled backpressure retries after clean/fresh candidates, then `source_updated_at_ms DESC`.
+- [x] Add repository regression coverage for newest-missing-brief priority and cooled-backpressure retry deprioritization.
 - [x] Run:
   ```bash
   uv run pytest tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py tests/integration/domains/news_intel/test_news_repository.py -q
   ```
   Expected: repository integration tests pass against local PostgreSQL.
+  Current refresh note: rerun is still required after the latest candidate-ordering change in the main checkout.
 
 ## Task 3: Typed Packet, Prompt, And Validator
 
@@ -187,6 +192,14 @@
   uv run pytest tests/integration/domains/news_intel/test_news_repository.py tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py -q
   ```
   Expected: all selected pytest suites pass.
+- [ ] Specifically verify latest admission-ordering ACs:
+  ```bash
+  uv run pytest \
+    tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py::test_list_items_for_brief_prioritizes_newest_missing_briefs_for_front_page \
+    tests/integration/domains/news_intel/test_news_item_agent_brief_repository.py::test_list_items_for_brief_deprioritizes_cooled_backpressure_retry_for_same_publish_time \
+    -q
+  ```
+  Expected: newest missing briefs outrank old missing briefs; never-attempted fresh items outrank cooled no-start backpressure retries at the same publish time.
 - [ ] Run frontend targeted suites:
   ```bash
   cd web
