@@ -344,7 +344,13 @@ class TokenRadarRepository:
         rows = self.conn.execute(
             """
             WITH identity_page AS (
-              SELECT
+              SELECT DISTINCT ON (
+                projection_version,
+                "window",
+                scope,
+                COALESCE(target_type, ''),
+                COALESCE(target_id, intent_id)
+              )
                 projection_version,
                 "window",
                 scope,
@@ -357,13 +363,13 @@ class TokenRadarRepository:
                   OR (projection_version, "window", scope, COALESCE(target_type, ''), COALESCE(target_id, intent_id))
                      > (%s, %s, %s, %s, %s)
                 )
-              GROUP BY
+              ORDER BY
                 projection_version,
                 "window",
                 scope,
                 COALESCE(target_type, ''),
-                COALESCE(target_id, intent_id)
-              ORDER BY projection_version, "window", scope, target_type_key, identity_id
+                COALESCE(target_id, intent_id),
+                computed_at_ms ASC
               LIMIT %s
             ),
             grouped AS (
