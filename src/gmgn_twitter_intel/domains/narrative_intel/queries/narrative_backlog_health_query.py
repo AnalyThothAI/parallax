@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import EPOCH_POLICY_VERSION
 
 _HOUR_MS = 60 * 60 * 1000
 
@@ -31,6 +32,7 @@ class NarrativeBacklogHealthQuery:
             "digest_status_counts": self._digest_status_counts(schema_version=schema_version),
             "digest_reason_counts": self._digest_reason_counts(schema_version=schema_version),
             "pending_digest_count": self._pending_digest_count(schema_version=schema_version),
+            "epoch": self._epoch_health(now_ms=int(now_ms), schema_version=schema_version),
         }
 
     def _admission_health(self, *, schema_version: str) -> dict[str, int]:
@@ -308,6 +310,160 @@ class NarrativeBacklogHealthQuery:
         ).fetchall()
         return {str(row["reason"]): _int(row.get("count")) for row in rows if row.get("reason")}
 
+    def _epoch_health(self, *, now_ms: int, schema_version: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            WITH admitted AS (
+              SELECT *
+              FROM narrative_admissions
+              WHERE schema_version = %s
+                AND status = 'admitted'
+            ),
+            latest_ready AS (
+              SELECT DISTINCT ON (
+                target_type, target_id, "window", scope, schema_version
+              )
+                target_type,
+                target_id,
+                "window",
+                scope,
+                schema_version,
+                source_fingerprint,
+                source_event_count,
+                independent_author_count,
+                computed_at_ms,
+                display_current_until_ms,
+                refresh_reason
+              FROM token_discussion_digests
+              WHERE schema_version = %s
+                AND status = 'ready'
+              ORDER BY target_type, target_id, "window", scope, schema_version, computed_at_ms DESC
+            ),
+            joined AS (
+              SELECT
+                admitted.target_type,
+                admitted.target_id,
+                admitted."window",
+                admitted.scope,
+                admitted.source_fingerprint AS admission_source_fingerprint,
+                admitted.source_event_count AS admission_source_event_count,
+                admitted.independent_author_count AS admission_independent_author_count,
+                admitted.next_digest_due_at_ms,
+                ready.source_fingerprint AS ready_source_fingerprint,
+                ready.source_event_count AS ready_source_event_count,
+                ready.independent_author_count AS ready_independent_author_count,
+                ready.computed_at_ms AS ready_computed_at_ms,
+                ready.display_current_until_ms AS ready_display_current_until_ms,
+                ready.refresh_reason AS ready_refresh_reason
+              FROM admitted
+              LEFT JOIN latest_ready AS ready
+                ON ready.target_type = admitted.target_type
+               AND ready.target_id = admitted.target_id
+               AND ready."window" = admitted."window"
+               AND ready.scope = admitted.scope
+               AND ready.schema_version = admitted.schema_version
+            )
+            SELECT
+              %s AS epoch_policy_version,
+              COUNT(*) FILTER (WHERE "window" = '5m') AS unsupported_window_admissions,
+              (SELECT COUNT(*) FROM latest_ready) AS last_ready_digest_count,
+              COUNT(*) FILTER (
+                WHERE ready_computed_at_ms IS NOT NULL
+                  AND COALESCE(admission_source_fingerprint, '') <> COALESCE(ready_source_fingerprint, '')
+              ) AS updating_snapshot_count,
+              COUNT(*) FILTER (
+                WHERE "window" IN ('1h', '4h', '24h')
+                  AND next_digest_due_at_ms <= %s
+                  AND ready_computed_at_ms IS NOT NULL
+              ) AS material_delta_due_count,
+              COUNT(*) FILTER (
+                WHERE "window" IN ('1h', '4h', '24h')
+                  AND next_digest_due_at_ms > %s
+                  AND ready_computed_at_ms IS NOT NULL
+              ) AS no_material_delta_deferred_count,
+              percentile_cont(0.50) WITHIN GROUP (
+                ORDER BY GREATEST(0, %s - ready_computed_at_ms)
+              ) FILTER (WHERE ready_computed_at_ms IS NOT NULL) AS last_ready_p50_age_ms,
+              percentile_cont(0.95) WITHIN GROUP (
+                ORDER BY GREATEST(0, %s - ready_computed_at_ms)
+              ) FILTER (WHERE ready_computed_at_ms IS NOT NULL) AS last_ready_p95_age_ms,
+              COALESCE(
+                SUM(
+                  GREATEST(
+                    COALESCE(admission_source_event_count, 0) - COALESCE(ready_source_event_count, 0),
+                    0
+                  )
+                ),
+                0
+              ) AS delta_source_rows,
+              COALESCE(
+                SUM(
+                  GREATEST(
+                    COALESCE(admission_independent_author_count, 0)
+                      - COALESCE(ready_independent_author_count, 0),
+                    0
+                  )
+                ),
+                0
+              ) AS delta_independent_authors,
+              COALESCE(
+                (
+                  SELECT jsonb_object_agg(due_by_window."window", due_by_window.count)
+                  FROM (
+                    SELECT "window", COUNT(*) AS count
+                    FROM joined
+                    WHERE "window" IN ('1h', '4h', '24h')
+                      AND next_digest_due_at_ms <= %s
+                    GROUP BY "window"
+                  ) AS due_by_window
+                ),
+                '{}'::jsonb
+              ) AS digest_refresh_due_by_window,
+              COALESCE(
+                (
+                  SELECT jsonb_object_agg(reason_counts.refresh_reason, reason_counts.count)
+                  FROM (
+                    SELECT COALESCE(ready_refresh_reason, 'unknown') AS refresh_reason, COUNT(*) AS count
+                    FROM joined
+                    WHERE ready_computed_at_ms IS NOT NULL
+                      AND next_digest_due_at_ms > %s
+                    GROUP BY COALESCE(ready_refresh_reason, 'unknown')
+                  ) AS reason_counts
+                ),
+                '{}'::jsonb
+              ) AS digest_refresh_deferred_by_epoch_policy
+            FROM joined
+            """,
+            (
+                schema_version,
+                schema_version,
+                EPOCH_POLICY_VERSION,
+                int(now_ms),
+                int(now_ms),
+                int(now_ms),
+                int(now_ms),
+                int(now_ms),
+                int(now_ms),
+            ),
+        ).fetchone()
+        data = _row(row)
+        return {
+            "epoch_policy_version": str(data.get("epoch_policy_version") or EPOCH_POLICY_VERSION),
+            "unsupported_window_admissions": _int(data.get("unsupported_window_admissions")),
+            "last_ready_digest_count": _int(data.get("last_ready_digest_count")),
+            "updating_snapshot_count": _int(data.get("updating_snapshot_count")),
+            "material_delta_due_count": _int(data.get("material_delta_due_count")),
+            "no_material_delta_deferred_count": _int(data.get("no_material_delta_deferred_count")),
+            "last_ready_p50_age_ms": _int_or_none(data.get("last_ready_p50_age_ms")),
+            "last_ready_p95_age_ms": _int_or_none(data.get("last_ready_p95_age_ms")),
+            "delta_source_rows": _int(data.get("delta_source_rows")),
+            "delta_independent_authors": _int(data.get("delta_independent_authors")),
+            "digest_refresh_due_by_window": _dict_of_ints(data.get("digest_refresh_due_by_window")),
+            "digest_refresh_deferred_by_epoch_policy": _dict_of_ints(
+                data.get("digest_refresh_deferred_by_epoch_policy")
+            ),
+        }
+
 
 def _row(row: Any) -> dict[str, Any]:
     return dict(row or {})
@@ -318,6 +474,21 @@ def _int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _dict_of_ints(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): _int(item) for key, item in value.items()}
 
 
 __all__ = ["NarrativeBacklogHealthQuery"]

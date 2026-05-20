@@ -157,7 +157,21 @@ def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
                 "unavailable": 1,
                 "suppressed_current_digest_count": 1,
                 "stale_fingerprint_current_digest_count": 3,
-            }
+            },
+            "epoch": {
+                "epoch_policy_version": "token-narrative-epoch-v1",
+                "unsupported_window_admissions": 2,
+                "last_ready_digest_count": 5,
+                "updating_snapshot_count": 3,
+                "material_delta_due_count": 4,
+                "no_material_delta_deferred_count": 6,
+                "last_ready_p50_age_ms": 120_000,
+                "last_ready_p95_age_ms": 600_000,
+                "delta_source_rows": 9,
+                "delta_independent_authors": 3,
+                "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
+                "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
+            },
         }
     )
 
@@ -169,6 +183,18 @@ def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
     assert data.semantic_backlog.pending_existing_rows == 5
     assert data.semantic_backlog.suppressed_current_digest_count == 1
     assert data.semantic_backlog.stale_fingerprint_current_digest_count == 3
+    assert data.epoch.epoch_policy_version == "token-narrative-epoch-v1"
+    assert data.epoch.unsupported_window_admissions == 2
+    assert data.epoch.last_ready_digest_count == 5
+    assert data.epoch.updating_snapshot_count == 3
+    assert data.epoch.material_delta_due_count == 4
+    assert data.epoch.no_material_delta_deferred_count == 6
+    assert data.epoch.last_ready_p50_age_ms == 120_000
+    assert data.epoch.last_ready_p95_age_ms == 600_000
+    assert data.epoch.delta_source_rows == 9
+    assert data.epoch.delta_independent_authors == 3
+    assert data.epoch.digest_refresh_due_by_window == {"1h": 2, "24h": 2}
+    assert data.epoch.digest_refresh_deferred_by_epoch_policy == {"no_material_delta": 6}
 
 
 class _NarrativeReadModel:

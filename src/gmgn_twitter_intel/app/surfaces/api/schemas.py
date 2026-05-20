@@ -83,12 +83,28 @@ class NarrativeAdmissionHealth(ApiSchema):
     current_independent_authors: int = 0
 
 
+class NarrativeEpochHealth(ApiSchema):
+    epoch_policy_version: str | None = None
+    unsupported_window_admissions: int = 0
+    last_ready_digest_count: int = 0
+    updating_snapshot_count: int = 0
+    material_delta_due_count: int = 0
+    no_material_delta_deferred_count: int = 0
+    last_ready_p50_age_ms: int | None = None
+    last_ready_p95_age_ms: int | None = None
+    delta_source_rows: int = 0
+    delta_independent_authors: int = 0
+    digest_refresh_due_by_window: dict[str, int] = Field(default_factory=dict)
+    digest_refresh_deferred_by_epoch_policy: dict[str, int] = Field(default_factory=dict)
+
+
 class NarrativeBacklogHealthData(ApiSchema):
     schema_version: str | None = None
     now_ms: int | None = None
     since_hours: int = 4
     admissions: NarrativeAdmissionHealth = Field(default_factory=NarrativeAdmissionHealth)
     semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
+    epoch: NarrativeEpochHealth = Field(default_factory=NarrativeEpochHealth)
     recent_runs: dict[str, NarrativeRunHealth] = Field(default_factory=dict)
     digest_status_counts: dict[str, int] = Field(default_factory=dict)
     digest_reason_counts: dict[str, int] = Field(default_factory=dict)
