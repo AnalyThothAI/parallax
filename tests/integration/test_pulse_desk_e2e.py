@@ -21,10 +21,11 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository imp
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BearCaseMemo,
     BullBearView,
     EvidenceClaim,
-    EvidenceDebateMemo,
     FinalDecision,
+    SignalAnalystMemo,
     StageRunAudit,
     TradePlaybook,
 )
@@ -49,7 +50,7 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    client = _EvidenceFirstClient()
+    client = _ResearchCommitteeClient()
     worker = PulseCandidateWorker(
         name="pulse_candidate",
         settings=_settings(),
@@ -69,9 +70,9 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     assert {"narrative_archetype", "narrative_thesis_zh", "bull_view", "bear_view", "playbook"} <= set(decision)
     assert decision["evidence_event_urls"] == {"event-1": "https://x.com/toly/status/1"}
     steps_by_stage = {step["stage"]: step for step in repos.pulse_runs.agent_run_steps}
-    assert set(steps_by_stage) == _EVIDENCE_FIRST_STAGES
+    assert set(steps_by_stage) == _RESEARCH_COMMITTEE_STAGES
     assert steps_by_stage["evidence_pack"]["response_json"]["evidence_packet_hash"] == candidate["evidence_packet_hash"]
-    assert "tool_calls" not in steps_by_stage["evidence_debate"]["input_json"]
+    assert "tool_calls" not in steps_by_stage["signal_analyst"]["input_json"]
 
     pulse_read = _PulseReadAdapter(repos)
     detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_read).candidate(
@@ -80,8 +81,8 @@ def test_pulse_agent_desk_synthetic_worker_surface_smoke() -> None:
     assert detail is not None
     assert detail["decision"]["playbook"]["has_playbook"] is True
     assert detail["decision"]["bull_view"]["strength"] == "moderate"
-    assert detail["stages"]["evidence_debate"]["response"]["summary_zh"] == "基于封闭证据包的多空综合完成。"
-    assert detail["stages"]["decision_maker"]["response"]["recommendation"] == "trade_candidate"
+    assert detail["stages"]["signal_analyst"]["response"]["what_changed_zh"] == "基于封闭证据包的正向信号完成。"
+    assert detail["stages"]["risk_portfolio_judge"]["response"]["recommendation"] == "trade_candidate"
 
     notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
     pulse_notifications = [item for item in notifications if item.rule_id == "signal_pulse_candidate"]
@@ -108,7 +109,7 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
                 token_target_rows=[_timeline_row("event-1", NOW_MS - 1_000)],
             ),
             telemetry=object(),
-            decision_client=_EvidenceFirstClient(),
+            decision_client=_ResearchCommitteeClient(),
         )
         _insert_event(
             conn,
@@ -135,10 +136,10 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
 
         steps = pulse_runs.list_agent_run_steps(ids["run_id"])
         steps_by_stage = {step["stage"]: step for step in steps}
-        assert set(steps_by_stage) == _EVIDENCE_FIRST_STAGES
+        assert set(steps_by_stage) == _RESEARCH_COMMITTEE_STAGES
         packet_step = steps_by_stage["evidence_pack"]
         assert packet_step["response_json"]["evidence_packet_hash"] == stored["evidence_packet_hash"]
-        assert "tool_calls" not in steps_by_stage["evidence_debate"]["input_json"]
+        assert "tool_calls" not in steps_by_stage["signal_analyst"]["input_json"]
 
         detail = SignalPulseService(pulse_read=pulse_read, pulse_runs=pulse_runs).candidate(
             candidate_id=ids["candidate_id"]
@@ -146,8 +147,8 @@ def test_pulse_agent_desk_real_postgres_read_model_and_notification_dataflow(tmp
         assert detail is not None
         assert detail["decision"]["playbook"]["has_playbook"] is True
         assert detail["decision"]["bull_view"]["strength"] == "moderate"
-        assert detail["stages"]["evidence_debate"]["response"]["summary_zh"] == "基于封闭证据包的多空综合完成。"
-        assert detail["stages"]["decision_maker"]["response"]["recommendation"] == "trade_candidate"
+        assert detail["stages"]["signal_analyst"]["response"]["what_changed_zh"] == "基于封闭证据包的正向信号完成。"
+        assert detail["stages"]["risk_portfolio_judge"]["response"]["recommendation"] == "trade_candidate"
 
         notifications = _notification_engine(pulse_read).evaluate(now_ms=NOW_MS)
         pulse_notifications = [item for item in notifications if item.rule_id == "signal_pulse_candidate"]
@@ -197,25 +198,32 @@ def test_pulse_agent_tool_queries_read_seeded_events_through_read_only_connectio
         read_conn.close()
 
 
-_EVIDENCE_FIRST_STAGES = {
+_RESEARCH_COMMITTEE_STAGES = {
     "evidence_pack",
     "evidence_completeness_gate",
-    "evidence_debate",
+    "signal_analyst",
+    "bear_case",
     "claim_verifier",
-    "decision_maker",
+    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
 }
 
 
-class _EvidenceFirstClient:
+class _ResearchCommitteeClient:
     provider = "fake"
     model = "fake-pulse"
     timeout_seconds = 1.0
-    artifact_version_hash = "artifact:fake-evidence-first"
+    artifact_version_hash = "artifact:fake-research-committee"
 
-    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+    def try_reserve_execution(
+        self,
+        lane: str,
+        *,
+        child_lanes: tuple[str, ...] = (),
+        scope: str | None = None,
+    ) -> AgentCapacityReservation:
         return AgentCapacityReservation(lane=lane, acquired=True)
 
     def request_audit(
@@ -252,6 +260,7 @@ class _EvidenceFirstClient:
         route: str,
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
+        parent_reservation: AgentCapacityReservation | None = None,
     ) -> PulseDecisionResult:
         allowed_refs = [
             str(ref.get("ref_id"))
@@ -260,7 +269,7 @@ class _EvidenceFirstClient:
         ]
         supporting_refs = tuple(ref for ref in allowed_refs if ref.startswith("event:"))[:1]
         risk_refs = tuple(ref for ref in allowed_refs if ref.startswith("market:"))[:1]
-        debate_memo = EvidenceDebateMemo(
+        signal_memo = SignalAnalystMemo(
             bull_claims=(
                 EvidenceClaim(
                     claim="独立作者扩散和关注账号确认共同支撑继续观察。",
@@ -268,16 +277,19 @@ class _EvidenceFirstClient:
                     stance="bull",
                 ),
             ),
-            bear_claims=(
+            what_changed_zh="基于封闭证据包的正向信号完成。",
+            allowed_evidence_ref_ids=tuple(allowed_refs),
+        )
+        bear_memo = BearCaseMemo(
+            risk_claims=(
                 EvidenceClaim(
                     claim="讨论窗口仍短，热度可能快速回落。",
                     evidence_refs=risk_refs or supporting_refs,
                     stance="risk",
                 ),
             ),
-            rebuttal_claims=(),
-            data_gap_claims=(),
-            summary_zh="基于封闭证据包的多空综合完成。",
+            confidence_ceiling=0.78,
+            missing_fact_impacts=(),
             allowed_evidence_ref_ids=tuple(allowed_refs),
         )
         final = FinalDecision(
@@ -323,30 +335,47 @@ class _EvidenceFirstClient:
             agent_run_audit={**audit, "output_hash": "output-e2e"},
             stage_audits=(
                 StageRunAudit(
-                    stage="evidence_debate",
+                    stage="signal_analyst",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
                     input_json={
                         "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
                         "completeness": completeness,
                     },
-                    prompt_text="evidence debate prompt",
-                    response_json=debate_memo.model_dump(mode="json"),
+                    prompt_text="signal analyst prompt",
+                    response_json=signal_memo.model_dump(mode="json"),
                     trace_metadata_json={},
                     usage_json={"input_tokens": 60},
                     latency_ms=10,
                     status="ok",
                 ),
                 StageRunAudit(
-                    stage="decision_maker",
+                    stage="bear_case",
                     route=route,  # type: ignore[arg-type]
                     attempt_index=0,
                     input_json={
                         "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
                         "completeness": completeness,
-                        "evidence_debate": debate_memo.model_dump(mode="json"),
+                        "signal_memo": signal_memo.model_dump(mode="json"),
                     },
-                    prompt_text="decision maker prompt",
+                    prompt_text="bear case prompt",
+                    response_json=bear_memo.model_dump(mode="json"),
+                    trace_metadata_json={},
+                    usage_json={"output_tokens": 20},
+                    latency_ms=11,
+                    status="ok",
+                ),
+                StageRunAudit(
+                    stage="risk_portfolio_judge",
+                    route=route,  # type: ignore[arg-type]
+                    attempt_index=0,
+                    input_json={
+                        "evidence_packet_hash": context["evidence_packet"]["evidence_packet_hash"],
+                        "completeness": completeness,
+                        "signal_memo": signal_memo.model_dump(mode="json"),
+                        "bear_memo": bear_memo.model_dump(mode="json"),
+                    },
+                    prompt_text="risk portfolio judge prompt",
                     response_json=final.model_dump(mode="json"),
                     trace_metadata_json={},
                     usage_json={"output_tokens": 40},

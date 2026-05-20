@@ -32,12 +32,12 @@ def test_telemetry_records_pool_wait_samples_and_returns_p99_by_pool() -> None:
 def test_telemetry_exposes_agent_execution_metrics() -> None:
     telemetry = TelemetryRegistry()
 
-    telemetry.increment_agent_execution_in_flight(lane="pulse.decision_maker", stage="decision_maker")
-    telemetry.decrement_agent_execution_in_flight(lane="pulse.decision_maker", stage="decision_maker")
+    telemetry.increment_agent_execution_in_flight(lane="pulse.risk_portfolio_judge", stage="risk_portfolio_judge")
+    telemetry.decrement_agent_execution_in_flight(lane="pulse.risk_portfolio_judge", stage="risk_portfolio_judge")
     telemetry.record_agent_execution_backpressure(lane="pulse.pipeline", reason="capacity_denied")
     telemetry.record_agent_execution_call(
-        lane="pulse.decision_maker",
-        stage="decision_maker",
+        lane="pulse.risk_portfolio_judge",
+        stage="risk_portfolio_judge",
         model="gpt-test",
         status="done",
         seconds=0.25,
@@ -48,5 +48,5 @@ def test_telemetry_exposes_agent_execution_metrics() -> None:
     assert "gmgn_agent_execution_seconds" in text
     assert "gmgn_agent_execution_in_flight" in text
     assert "gmgn_agent_execution_backpressure_total" in text
-    assert 'lane="pulse.decision_maker"' in text
+    assert 'lane="pulse.risk_portfolio_judge"' in text
     assert 'reason="capacity_denied"' in text

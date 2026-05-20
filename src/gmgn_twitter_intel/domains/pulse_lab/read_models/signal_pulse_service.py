@@ -101,9 +101,10 @@ class SignalPulseService:
         empty: dict[str, dict[str, Any] | None] = {
             "evidence_pack": None,
             "evidence_completeness_gate": None,
-            "evidence_debate": None,
+            "signal_analyst": None,
+            "bear_case": None,
             "claim_verifier": None,
-            "decision_maker": None,
+            "risk_portfolio_judge": None,
             "recommendation_clipper": None,
             "deterministic_eval": None,
             "write_gate": None,

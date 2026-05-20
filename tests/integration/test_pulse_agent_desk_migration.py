@@ -13,12 +13,13 @@ from tests.postgres_test_utils import connect_postgres_test, reset_postgres_sche
 
 pytestmark = pytest.mark.integration
 
-_EVIDENCE_FIRST_STAGES = (
+_RESEARCH_COMMITTEE_STAGES = (
     "evidence_pack",
     "evidence_completeness_gate",
-    "evidence_debate",
+    "signal_analyst",
+    "bear_case",
     "claim_verifier",
-    "decision_maker",
+    "risk_portfolio_judge",
     "recommendation_clipper",
     "deterministic_eval",
     "write_gate",
@@ -70,14 +71,14 @@ def _seed_run_and_job(repo: SimpleNamespace, *, run_id: str) -> None:
     )
 
 
-def test_stage_check_admits_evidence_first_stages_and_rejects_legacy(tmp_path) -> None:
+def test_stage_check_admits_research_committee_stages_and_rejects_legacy(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         reset_postgres_schema(conn)
         repo = _pulse_repos(conn)
         _seed_run_and_job(repo, run_id="run-stage-check")
 
-        for accepted_stage in _EVIDENCE_FIRST_STAGES:
+        for accepted_stage in _RESEARCH_COMMITTEE_STAGES:
             step = repo.runs.insert_agent_run_step(
                 step_id=f"run-stage-check:{accepted_stage}:0",
                 run_id="run-stage-check",
@@ -97,7 +98,15 @@ def test_stage_check_admits_evidence_first_stages_and_rejects_legacy(tmp_path) -
             )
             assert step["stage"] == accepted_stage
 
-        for legacy_stage in ("analyst", "critic", "judge", "investigator", "research_only_gate"):
+        for legacy_stage in (
+            "analyst",
+            "critic",
+            "judge",
+            "investigator",
+            "research_only_gate",
+            "evidence_debate",
+            "decision_maker",
+        ):
             with pytest.raises(psycopg_errors.CheckViolation):
                 repo.runs.insert_agent_run_step(
                     step_id=f"run-stage-check:{legacy_stage}:0",
@@ -163,6 +172,28 @@ def test_public_candidate_rows_require_evidence_packet_hash(tmp_path) -> None:
 
         assert hidden["display_status"] == "hidden_insufficient_evidence"
         assert public["evidence_packet_hash"] == "sha256:packet"
+    finally:
+        conn.close()
+
+
+def test_hidden_source_quality_status_is_allowed_for_non_public_rows(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        reset_postgres_schema(conn)
+        repo = _pulse_repos(conn)
+
+        row = repo.candidates.upsert_candidate(
+            **_candidate_payload(
+                candidate_id="candidate-source-quality",
+                evidence_packet_hash="sha256:packet-source-quality",
+                display_status="hidden_source_quality",
+                evidence_status="complete",
+                decision_status="token_watch",
+            ),
+            commit=False,
+        )
+
+        assert row["display_status"] == "hidden_source_quality"
     finally:
         conn.close()
 

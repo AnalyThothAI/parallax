@@ -1804,6 +1804,21 @@
       "NarrativeSemanticBacklog": {
         "additionalProperties": true,
         "properties": {
+          "admissions_with_missing_semantics": {
+            "default": 0,
+            "title": "Admissions With Missing Semantics",
+            "type": "integer"
+          },
+          "current_source_rows": {
+            "default": 0,
+            "title": "Current Source Rows",
+            "type": "integer"
+          },
+          "missing_semantic_rows": {
+            "default": 0,
+            "title": "Missing Semantic Rows",
+            "type": "integer"
+          },
           "oldest_due_age_ms": {
             "anyOf": [
               {
@@ -1815,6 +1830,11 @@
             ],
             "title": "Oldest Due Age Ms"
           },
+          "pending_existing_rows": {
+            "default": 0,
+            "title": "Pending Existing Rows",
+            "type": "integer"
+          },
           "queued": {
             "default": 0,
             "title": "Queued",
@@ -1825,9 +1845,24 @@
             "title": "Retryable",
             "type": "integer"
           },
+          "semantic_rows_for_current_sources": {
+            "default": 0,
+            "title": "Semantic Rows For Current Sources",
+            "type": "integer"
+          },
           "stale": {
             "default": 0,
             "title": "Stale",
+            "type": "integer"
+          },
+          "stale_fingerprint_current_digest_count": {
+            "default": 0,
+            "title": "Stale Fingerprint Current Digest Count",
+            "type": "integer"
+          },
+          "suppressed_current_digest_count": {
+            "default": 0,
+            "title": "Suppressed Current Digest Count",
             "type": "integer"
           },
           "total_pending": {
@@ -2021,6 +2056,11 @@
       "OpsDiagnosticsData": {
         "additionalProperties": true,
         "properties": {
+          "agent_execution": {
+            "additionalProperties": true,
+            "title": "Agent Execution",
+            "type": "object"
+          },
           "collector": {
             "additionalProperties": true,
             "title": "Collector",
@@ -3486,7 +3526,7 @@
       "SignalPulseStages": {
         "additionalProperties": false,
         "properties": {
-          "claim_verifier": {
+          "bear_case": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SignalPulseStagePayload"
@@ -3496,7 +3536,7 @@
               }
             ]
           },
-          "decision_maker": {
+          "claim_verifier": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SignalPulseStagePayload"
@@ -3526,16 +3566,6 @@
               }
             ]
           },
-          "evidence_debate": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseStagePayload"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "evidence_pack": {
             "anyOf": [
               {
@@ -3547,6 +3577,26 @@
             ]
           },
           "recommendation_clipper": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "risk_portfolio_judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signal_analyst": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SignalPulseStagePayload"
@@ -5819,7 +5869,7 @@
             "name": "window",
             "required": false,
             "schema": {
-              "default": "5m",
+              "default": "4h",
               "title": "Window",
               "type": "string"
             }

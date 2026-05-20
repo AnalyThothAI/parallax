@@ -690,33 +690,39 @@ Known-failing baseline tests:
 **Files:**
 
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py`
 - Modify: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py`
 - Test: `tests/unit/test_signal_pulse_service.py`
-- Test: `tests/integration/test_signal_pulse_service_decision_v2.py`
 - Test: `tests/unit/test_api_signal_pulse_contract.py`
+- Test: `tests/contract/test_openapi_drift.py`
+- Test: `tests/integration/test_api_http.py`
+- Test: `tests/integration/test_pulse_agent_desk_migration.py`
+- Test: `tests/integration/test_pulse_desk_e2e.py`
 
-- [ ] Write failing tests:
-  - service query includes `lane="discovery"` for all scope.
-  - service query includes `lane="watchlist_alert"` for matched scope.
-  - default result excludes source-quality-hidden risk rejects.
-  - item payload exposes source quality fields.
+- [x] Write failing tests:
+  - public detail stages expose `signal_analyst`, `bear_case`, and `risk_portfolio_judge`;
+  - public detail stages do not expose `evidence_debate` or `decision_maker`;
+  - OpenAPI `SignalPulseStages` has no index signature and no legacy stage fields;
+  - Postgres CHECK constraints accept research-committee stages and reject old stage names;
+  - `hidden_source_quality` is an allowed hidden display status for non-public rows.
 
-- [ ] Update repository public SQL and summary SQL.
+- [x] Update read-model stage whitelist and API schema fields.
 
-- [ ] Update service payload transformation and health passthrough.
+- [x] Add hard-cut migration for stage/display-status CHECK constraints.
 
-- [ ] Update API schemas for new fields.
+- [x] Regenerate backend OpenAPI and frontend generated OpenAPI types.
 
-- [ ] Run:
+- [x] Run:
   ```bash
-  uv run pytest tests/unit/test_signal_pulse_service.py tests/integration/test_signal_pulse_service_decision_v2.py tests/unit/test_api_signal_pulse_contract.py -q
+  uv run ruff check src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_desk_e2e.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py
+  uv run pytest tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py tests/integration/test_api_http.py::test_api_signal_pulse_by_id_returns_stages tests/integration/test_pulse_repositories.py::test_agent_run_steps_round_trip tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py -q
+  git diff --check
   ```
 
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_read_repository.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py tests/unit/test_signal_pulse_service.py tests/integration/test_signal_pulse_service_decision_v2.py tests/unit/test_api_signal_pulse_contract.py
-  git commit -m "feat: expose pulse discovery and alert lanes"
+  git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py docs/generated/openapi.json web/src/lib/types/openapi.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
+  git commit -m "feat: expose pulse research committee stages"
   ```
 
 ### Task 7: Update frontend defaults and source-quality badges

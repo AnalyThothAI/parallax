@@ -511,7 +511,7 @@ def test_candidate_includes_stages_from_run_steps() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "evidence_debate",
+            "stage": "signal_analyst",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -522,7 +522,18 @@ def test_candidate_includes_stages_from_run_steps() -> None:
             "response_json": {"confidence": 0.82, "recommendation": "trade_candidate"},
         },
         {
-            "stage": "decision_maker",
+            "stage": "bear_case",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 210,
+            "finished_at_ms": 300,
+            "latency_ms": 90,
+            "attempt_index": 0,
+            "response_json": {"risk_level": "medium"},
+        },
+        {
+            "stage": "risk_portfolio_judge",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -538,9 +549,10 @@ def test_candidate_includes_stages_from_run_steps() -> None:
 
     assert item is not None
     stages = item["stages"]
-    assert stages["evidence_debate"]["response"]["confidence"] == 0.82
-    assert stages["evidence_debate"]["latency_ms"] == 100
-    assert stages["decision_maker"]["response"]["confidence"] == 0.35
+    assert stages["signal_analyst"]["response"]["confidence"] == 0.82
+    assert stages["signal_analyst"]["latency_ms"] == 100
+    assert stages["bear_case"]["response"]["risk_level"] == "medium"
+    assert stages["risk_portfolio_judge"]["response"]["confidence"] == 0.35
     assert stages.get("evidence_completeness_gate") is None
 
 
@@ -554,7 +566,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
     )
     pulse.agent_run_steps["run-1"] = [
         {
-            "stage": "evidence_debate",
+            "stage": "signal_analyst",
             "route": "meme",
             "status": "failed",
             "model": "qwen3.6",
@@ -565,7 +577,7 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
             "response_json": None,
         },
         {
-            "stage": "evidence_debate",
+            "stage": "signal_analyst",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -580,8 +592,8 @@ def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
     item = _service(pulse).candidate(candidate_id="pulse-2")
 
     assert item is not None
-    assert item["stages"]["evidence_debate"]["status"] == "ok"
-    assert item["stages"]["evidence_debate"]["response"]["confidence"] == 0.7
+    assert item["stages"]["signal_analyst"]["status"] == "ok"
+    assert item["stages"]["signal_analyst"]["response"]["confidence"] == 0.7
 
 
 def test_candidate_stages_absent_when_no_run() -> None:
@@ -600,9 +612,10 @@ def test_candidate_stages_absent_when_no_run() -> None:
     assert item["stages"] == {
         "evidence_pack": None,
         "evidence_completeness_gate": None,
-        "evidence_debate": None,
+        "signal_analyst": None,
+        "bear_case": None,
         "claim_verifier": None,
-        "decision_maker": None,
+        "risk_portfolio_judge": None,
         "recommendation_clipper": None,
         "deterministic_eval": None,
         "write_gate": None,
@@ -630,7 +643,7 @@ def test_candidate_stages_only_expose_evidence_first_public_contract() -> None:
             "response_json": {"summary_zh": "legacy"},
         },
         {
-            "stage": "evidence_debate",
+            "stage": "signal_analyst",
             "route": "meme",
             "status": "ok",
             "model": "qwen3.6",
@@ -648,14 +661,15 @@ def test_candidate_stages_only_expose_evidence_first_public_contract() -> None:
     assert set(item["stages"]) == {
         "evidence_pack",
         "evidence_completeness_gate",
-        "evidence_debate",
+        "signal_analyst",
+        "bear_case",
         "claim_verifier",
-        "decision_maker",
+        "risk_portfolio_judge",
         "recommendation_clipper",
         "deterministic_eval",
         "write_gate",
     }
-    assert item["stages"]["evidence_debate"]["response"]["summary_zh"] == "v2"
+    assert item["stages"]["signal_analyst"]["response"]["summary_zh"] == "v2"
 
 
 def test_default_listing_hides_abstain_decisions() -> None:
