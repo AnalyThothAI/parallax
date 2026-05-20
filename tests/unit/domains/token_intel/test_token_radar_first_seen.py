@@ -157,6 +157,7 @@ def test_backfill_first_seen_pages_identities_before_aggregating_history() -> No
         "has_more": True,
     }
     assert "WITH identity_page AS" in conn.select_sql
+    assert "%s::text IS NULL" in conn.select_sql
     assert "LIMIT %s" in conn.select_sql
     assert "JOIN token_radar_rows rows" in conn.select_sql
     assert conn.select_params[-1] == 1

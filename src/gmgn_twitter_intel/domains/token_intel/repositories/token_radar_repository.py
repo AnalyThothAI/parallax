@@ -353,7 +353,7 @@ class TokenRadarRepository:
               FROM token_radar_rows
               WHERE COALESCE(target_id, intent_id, '') <> ''
                 AND (
-                  %s IS NULL
+                  %s::text IS NULL
                   OR (projection_version, "window", scope, COALESCE(target_type, ''), COALESCE(target_id, intent_id))
                      > (%s, %s, %s, %s, %s)
                 )
