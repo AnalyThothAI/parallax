@@ -56,19 +56,20 @@ class RegistryRepository:
         normalized_address = _address(address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = f"asset:{normalized_chain}:{standard}:{normalized_address}"
-        self.conn.execute(
+        row = self.conn.execute(
             """
             INSERT INTO registry_assets(
               asset_id, project_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(asset_id) DO UPDATE SET
+            ON CONFLICT(chain_id, lower(address)) DO UPDATE SET
               project_id = COALESCE(excluded.project_id, registry_assets.project_id),
               status = CASE
                 WHEN registry_assets.status = 'demoted_search' THEN 'candidate'
                 ELSE registry_assets.status
               END,
               updated_at_ms = excluded.updated_at_ms
+            RETURNING *
             """,
             (
                 asset_id,
@@ -80,10 +81,10 @@ class RegistryRepository:
                 int(observed_at_ms),
                 int(observed_at_ms),
             ),
-        )
+        ).fetchone()
         if commit:
             self.conn.commit()
-        return self._row_by_id("registry_assets", "asset_id", asset_id) or {}
+        return dict(row) if row else {}
 
     def upsert_pricefeed(
         self,

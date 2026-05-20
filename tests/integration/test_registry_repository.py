@@ -106,6 +106,44 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
     assert preferred_feed["pricefeed_id"] == "pricefeed:cex:okx:spot:PEPE-USDT"
 
 
+def test_chain_asset_upserts_by_identity_index_when_address_case_differs(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        identity = IdentityEvidenceRepository(conn)
+
+        first = registry.upsert_chain_asset(
+            chain_id="solana",
+            address="DbSkJeuJwZTEzhpbwMbeNlfefwqzx87FvNuQRterpump",
+            observed_at_ms=1_778_145_000_000,
+        )
+        second = registry.upsert_chain_asset(
+            chain_id="solana",
+            address="dbskjeujwztezhpbwmbenlfefwqzx87fvnuqrterpump",
+            observed_at_ms=1_778_145_001_000,
+        )
+        third = identity.ensure_asset(
+            chain_id="solana",
+            address="DBSKJEUJWZTEZHPBWMBENLFEFWQZX87FVNUQRTERPUMP",
+            observed_at_ms=1_778_145_002_000,
+        )
+        count = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM registry_assets
+            WHERE chain_id = 'solana'
+              AND lower(address) = 'dbskjeujwztezhpbwmbenlfefwqzx87fvnuqrterpump'
+            """
+        ).fetchone()["count"]
+    finally:
+        conn.close()
+
+    assert second["asset_id"] == first["asset_id"]
+    assert third["asset_id"] == first["asset_id"]
+    assert count == 1
+
+
 def test_registry_repository_writes_and_deactivates_us_equity_symbols(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
