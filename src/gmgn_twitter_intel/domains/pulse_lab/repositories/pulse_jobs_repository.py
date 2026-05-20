@@ -150,6 +150,19 @@ class PulseJobsRepository:
             """,
             (now, stale_before),
         )
+        self.conn.execute(
+            """
+            UPDATE pulse_agent_jobs
+            SET status = 'failed',
+                next_run_at_ms = %s,
+                last_error = 'stale_running_timeout',
+                updated_at_ms = %s
+            WHERE status = 'running'
+              AND updated_at_ms < %s
+              AND attempt_count < max_attempts
+            """,
+            (now, now, stale_before),
+        )
         row = self.conn.execute(
             """
             WITH picked AS (
