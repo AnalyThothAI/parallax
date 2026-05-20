@@ -25,7 +25,8 @@ settings. It must not contain worker runtime knobs.
 - `storage.postgres` — DSN, password file, pool, timeout.
 - `llm` — optional LLM provider config: credentials, provider/base URL,
   default model, Pulse model override, Watchlist handle-summary model
-  override, timeout, and tracing/export settings.
+  override, News item-brief model override, timeout, and tracing/export
+  settings.
 - Optional market-related groups (OKX, GMGN OpenAPI, Binance, Marketlane) for
   identity discovery, route sync, profile source refresh, market tick capture,
   cache-only live price fan-out, and request-time US equity quote snapshots.
@@ -51,9 +52,10 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 `collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
 `live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
 `token_radar_projection`, `token_profile_current`, `narrative_admission`,
-`mention_semantics`, `token_discussion_digest`, `pulse_candidate`,
-`enrichment`, `handle_summary`, `notification_rule`, and
-`notification_delivery`.
+`mention_semantics`, `token_discussion_digest`, `news_fetch`,
+`news_item_process`, `news_story_projection`, `news_item_brief`,
+`news_page_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
+`notification_rule`, and `notification_delivery`.
 
 The schema is `WorkersSettings`; the canonical key list is guarded
 against `worker_registry.py` and `docs/WORKERS.md`.
@@ -61,7 +63,7 @@ against `worker_registry.py` and `docs/WORKERS.md`.
 `workers.agent_runtime` configures the shared agent execution plane. It
 contains global concurrency/RPM limits plus named lane policies for
 Pulse, Narrative, Social enrichment, Watchlist summaries, and future
-News fact-candidate extraction. Lane status and backpressure counters
+News fact-candidate extraction plus `news.item_brief`. Lane status and backpressure counters
 are operational signals only; they are not product readiness and are not
 business facts.
 
@@ -118,6 +120,27 @@ Runtime health/status contract:
   success/failure/timeout counts, digest status/reason counts, and current
   pending digest count. API/frontend consumers must use this surface instead of
   writing raw SQL.
+
+News Intel contract:
+
+- `/api/news` is read-only and paginated. Rows come from `news_page_rows` or
+  the raw visible item fallback; handlers do not fetch feeds, run extraction,
+  execute agents, or rebuild projections.
+- News rows expose deterministic fields (`headline`, `summary`,
+  `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata) plus
+  compact `agent_brief`, `agent_brief_status`, and
+  `agent_brief_computed_at_ms`. A ready compact brief includes `summary_zh`,
+  `market_read_zh`, `direction`, `decision_class`, bull/bear strengths,
+  evidence count/data-gap metadata, run id, prompt/schema versions, and hashes
+  when available.
+- `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
+  the full current item brief and a sanitized latest run summary. It excludes
+  raw provider request/response payloads from the public item-detail contract.
+- Missing or unavailable brief state is represented as
+  `agent_brief.status = pending | disabled | failed | stale | insufficient`;
+  it is not a 5xx by itself. Frontend clients must render this state directly
+  and must not synthesize Chinese summary, bull/bear thesis, decision class, or
+  next-action text from the headline.
 
 Token Radar market contract:
 

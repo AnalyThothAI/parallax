@@ -16,6 +16,81 @@ export type NewsFactLane = {
   rejection_reasons?: string[];
 };
 
+export type NewsAgentBriefStatus =
+  | "ready"
+  | "insufficient"
+  | "pending"
+  | "failed"
+  | "stale"
+  | "disabled"
+  | string;
+
+export type NewsAgentBriefView = {
+  strength?: string | null;
+  thesis_zh?: string | null;
+  evidence_refs?: NewsAgentEvidenceRef[];
+};
+
+export type NewsAgentEvidenceRef =
+  | string
+  | {
+      ref?: string | null;
+      label?: string | null;
+      quote?: string | null;
+      source?: string | null;
+    };
+
+export type NewsAgentDataGap =
+  | string
+  | {
+      description_zh?: string | null;
+      description?: string | null;
+      kind?: string | null;
+      reason?: string | null;
+      severity?: string | null;
+    };
+
+export type NewsAgentBrief = {
+  status: NewsAgentBriefStatus;
+  direction?: "bullish" | "bearish" | "mixed" | "neutral" | string | null;
+  decision_class?: "driver" | "watch" | "context" | "discard" | string | null;
+  summary_zh?: string | null;
+  market_read_zh?: string | null;
+  bull_strength?: string | null;
+  bear_strength?: string | null;
+  data_gap_count?: number | null;
+  computed_at_ms?: number | null;
+  agent_run_id?: string | null;
+  schema_version?: string | null;
+  prompt_version?: string | null;
+  artifact_version_hash?: string | null;
+  input_hash?: string | null;
+  output_hash?: string | null;
+  model?: string | null;
+  brief_json?: Record<string, unknown> | null;
+  bull_view?: NewsAgentBriefView | null;
+  bear_view?: NewsAgentBriefView | null;
+  data_gaps?: NewsAgentDataGap[];
+  watch_triggers?: string[];
+  invalidation_conditions?: string[];
+  evidence_refs?: NewsAgentEvidenceRef[];
+};
+
+export type NewsAgentRunSummary = {
+  run_id?: string | null;
+  status?: string | null;
+  outcome?: string | null;
+  model?: string | null;
+  prompt_version?: string | null;
+  schema_version?: string | null;
+  started_at_ms?: number | null;
+  finished_at_ms?: number | null;
+  execution_started?: boolean | null;
+  error_class?: string | null;
+  error?: string | null;
+  error_message?: string | null;
+};
+
 export type NewsRow = {
   row_id: string;
   news_item_id: string;
@@ -31,6 +106,11 @@ export type NewsRow = {
   fact_lanes?: NewsFactLane[];
   token_lanes_json?: NewsTokenLane[];
   fact_lanes_json?: NewsFactLane[];
+  agent_brief?: NewsAgentBrief;
+  agent_brief_json?: NewsAgentBrief | Record<string, unknown> | null;
+  agent_status?: NewsAgentBriefStatus | null;
+  agent_brief_status?: NewsAgentBriefStatus | null;
+  agent_brief_computed_at_ms?: number | null;
 };
 
 export type NewsItemDetail = NewsRow & {
@@ -51,6 +131,7 @@ export type NewsItemDetail = NewsRow & {
   entities?: unknown[];
   token_mentions?: unknown[];
   fact_candidates?: NewsFactLane[];
+  agent_run?: NewsAgentRunSummary | null;
 };
 
 export type NewsRowsData = {

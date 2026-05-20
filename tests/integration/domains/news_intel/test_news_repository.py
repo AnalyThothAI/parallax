@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+from alembic import command
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.news_intel._constants import (
+    NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
+    NEWS_ITEM_BRIEF_PROMPT_VERSION,
+    NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+    NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+    NEWS_PAGE_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
+from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
+    NEWS_ITEM_BRIEF_AGENT_NAME,
+    NEWS_ITEM_BRIEF_LANE,
+    NEWS_ITEM_BRIEF_WORKFLOW_NAME,
+)
+from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
 
 NOW_MS = 1_779_000_000_000
 
@@ -448,6 +462,126 @@ def test_list_news_page_rows_keeps_raw_items_until_projection_catches_up(tmp_pat
     assert row_ids == {"row-projected", raw_item_id}
     raw = next(row for row in rows if row["row_id"] == raw_item_id)
     assert raw["headline"] == "Raw"
+    assert raw["agent_status"] == "pending"
+    assert raw["agent_brief_status"] == "pending"
+    assert raw["agent_brief_json"] == {"status": "pending"}
+
+
+def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260519_0066")
+
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        conn.execute(
+            """
+            INSERT INTO news_page_rows (
+              row_id, news_item_id, story_id, latest_at_ms, lifecycle_status,
+              headline, summary, source_domain, canonical_url, token_lanes_json,
+              fact_lanes_json, story_json, source_json, computed_at_ms, projection_version
+            )
+            VALUES (
+              %s, %s, NULL, %s, 'raw',
+              'old projected row', 'summary', 'example.com', 'https://example.com/old',
+              '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, %s, %s
+            )
+            """,
+            ("row-old-default", news_item_id, NOW_MS, NOW_MS, NEWS_PAGE_PROJECTION_VERSION),
+        )
+        conn.commit()
+        command.upgrade(config, "head")
+
+        rows = repo.list_news_page_rows(limit=10)
+    finally:
+        conn.close()
+
+    assert rows[0]["agent_status"] == "pending"
+    assert rows[0]["agent_brief_json"]["status"] == "pending"
+    assert rows[0]["agent_brief"]["status"] == "pending"
+
+
+def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updates(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                _page_row(
+                    "row-1",
+                    news_item_id,
+                    source_id="source-1",
+                    projection_version=NEWS_PAGE_PROJECTION_VERSION,
+                    computed_at_ms=NOW_MS + 10,
+                )
+            ],
+        )
+        run = _insert_agent_run(repo, news_item_id=news_item_id, run_id="run-brief-1")
+        repo.upsert_news_item_agent_brief(
+            news_item_id=news_item_id,
+            agent_run_id=run["run_id"],
+            status="ready",
+            direction="bullish",
+            decision_class="driver",
+            brief_json={
+                "summary_zh": "SOL ETF 申请提升关注。",
+                "market_read_zh": "叙事催化增强。",
+                "bull_view": {"strength": "strong"},
+                "bear_view": {"strength": "weak"},
+                "data_gaps": [{"kind": "identity"}],
+            },
+            input_hash="input-brief-1",
+            artifact_version_hash="artifact-brief-1",
+            prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS + 100,
+            created_at_ms=NOW_MS + 100,
+            updated_at_ms=NOW_MS + 100,
+        )
+
+        candidates = repo.list_items_for_page_projection(limit=10)
+        row = candidates[0]
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                {
+                    **_page_row(
+                        "row-1",
+                        news_item_id,
+                        source_id="source-1",
+                        projection_version=NEWS_PAGE_PROJECTION_VERSION,
+                        computed_at_ms=NOW_MS + 200,
+                    ),
+                    "agent_brief_json": {
+                        "status": "ready",
+                        "summary_zh": "SOL ETF 申请提升关注。",
+                        "agent_run_id": "run-brief-1",
+                    },
+                    "agent_status": "ready",
+                    "agent_brief_computed_at_ms": NOW_MS + 100,
+                }
+            ],
+        )
+        rows = repo.list_news_page_rows(limit=10)
+    finally:
+        conn.close()
+
+    assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
+    assert row["current_brief"]["agent_run_id"] == "run-brief-1"
+    assert rows[0]["agent_status"] == "ready"
+    assert rows[0]["agent_brief_status"] == "ready"
+    assert rows[0]["agent_brief_json"]["summary_zh"] == "SOL ETF 申请提升关注。"
+    assert rows[0]["agent_brief"]["agent_run_id"] == "run-brief-1"
 
 
 def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
@@ -645,6 +779,64 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
     assert status == "raw"
 
 
+def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+        run = _insert_agent_run(repo, news_item_id=news_item_id, run_id="run-detail-1")
+        repo.upsert_news_item_agent_brief(
+            news_item_id=news_item_id,
+            agent_run_id=run["run_id"],
+            status="ready",
+            direction="mixed",
+            decision_class="watch",
+            brief_json={
+                "summary_zh": "事件仍需观察。",
+                "market_read_zh": "短线影响取决于确认信号。",
+                "bull_view": {"strength": "moderate"},
+                "bear_view": {"strength": "weak"},
+            },
+            input_hash="input-brief-1",
+            artifact_version_hash="artifact-brief-1",
+            prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+            schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+            validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+            computed_at_ms=NOW_MS + 100,
+            created_at_ms=NOW_MS + 100,
+            updated_at_ms=NOW_MS + 100,
+        )
+
+        detail = repo.get_news_item_detail(news_item_id=news_item_id)
+    finally:
+        conn.close()
+
+    assert detail is not None
+    assert detail["agent_brief"]["status"] == "ready"
+    assert detail["agent_brief"]["direction"] == "mixed"
+    assert detail["agent_brief"]["brief_json"]["summary_zh"] == "事件仍需观察。"
+    assert detail["agent_brief"]["input_hash"] == "input-brief-1"
+    assert detail["agent_run"] == {
+        "run_id": "run-detail-1",
+        "status": "completed",
+        "outcome": "ready",
+        "execution_started": True,
+        "model": "gpt-5-mini",
+        "provider": "openai",
+        "lane": NEWS_ITEM_BRIEF_LANE,
+        "sdk_trace_id": "trace-run-detail-1",
+        "error_class": None,
+        "error": None,
+        "usage_json": {"input_tokens": 10, "output_tokens": 5},
+        "trace_metadata_json": {"attempt": 1},
+        "started_at_ms": NOW_MS + 90,
+        "finished_at_ms": NOW_MS + 100,
+    }
+    assert "request_json" not in detail["agent_run"]
+    assert "response_json" not in detail["agent_run"]
+
+
 def test_repository_session_exposes_news_repository(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -726,3 +918,35 @@ def _page_row(
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,
     }
+
+
+def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -> dict[str, object]:
+    return repo.insert_news_item_agent_run(
+        run_id=run_id,
+        news_item_id=news_item_id,
+        provider="openai",
+        model="gpt-5-mini",
+        sdk_trace_id=f"trace-{run_id}",
+        workflow_name=NEWS_ITEM_BRIEF_WORKFLOW_NAME,
+        agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
+        lane=NEWS_ITEM_BRIEF_LANE,
+        artifact_version_hash="artifact-brief-1",
+        prompt_version=NEWS_ITEM_BRIEF_PROMPT_VERSION,
+        schema_version=NEWS_ITEM_BRIEF_SCHEMA_VERSION,
+        validator_version=NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
+        guardrail_version=NEWS_ITEM_BRIEF_GUARDRAIL_VERSION,
+        input_hash="input-brief-1",
+        output_hash="output-brief-1",
+        execution_started=True,
+        status="completed",
+        outcome="ready",
+        request_json={"redacted": True},
+        response_json={"summary_zh": "raw provider response should not be in detail"},
+        validation_errors_json=[],
+        trace_metadata_json={"attempt": 1},
+        usage_json={"input_tokens": 10, "output_tokens": 5},
+        latency_ms=10,
+        started_at_ms=NOW_MS + 90,
+        finished_at_ms=NOW_MS + 100,
+        created_at_ms=NOW_MS + 90,
+    )

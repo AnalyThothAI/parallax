@@ -10,6 +10,9 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRo
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import OpenAIAgentsNarrativeIntelClient
+from gmgn_twitter_intel.integrations.openai_agents.news_item_brief_agent_client import (
+    OpenAIAgentsNewsItemBriefClient,
+)
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
@@ -188,6 +191,18 @@ def openai_watchlist_summary_provider(
     )
 
 
+def openai_news_item_brief_provider(
+    settings: Settings,
+    *,
+    agent_gateway: AgentExecutionGateway,
+) -> OpenAIAgentsNewsItemBriefClient:
+    model = settings.news_item_brief_model or ""
+    return OpenAIAgentsNewsItemBriefClient(
+        model=model,
+        agent_gateway=agent_gateway,
+    )
+
+
 def build_agent_execution_gateway(
     settings: Settings,
     *,
@@ -226,6 +241,7 @@ def _safety_net_model(settings: Settings) -> str:
         or settings.pulse_agent_model
         or settings.narrative_intel_model
         or settings.watchlist_handle_summary_model
+        or settings.news_item_brief_model
         or ""
     )
 
@@ -249,6 +265,7 @@ __all__ = [
     "OpenAIPulseDecisionProvider",
     "build_agent_execution_gateway",
     "openai_narrative_intel_provider",
+    "openai_news_item_brief_provider",
     "openai_pulse_decision_provider",
     "openai_social_event_provider",
     "openai_watchlist_summary_provider",

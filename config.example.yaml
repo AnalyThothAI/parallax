@@ -40,6 +40,8 @@ llm:
   trace_include_sensitive_data: false
   pulse_agent_model:
   watchlist_handle_summary_model:
+  narrative_intel_model:
+  news_item_brief_model:
 
 gmgn:
   api_key:

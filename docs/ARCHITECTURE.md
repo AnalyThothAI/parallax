@@ -72,8 +72,10 @@ are wrong too.
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`. `news_story_groups` and `news_story_members`
-   are written only by `NewsStoryProjectionWorker`; `news_page_rows` is written
-   only by `NewsPageProjectionWorker`.
+   are written only by `NewsStoryProjectionWorker`;
+   `news_item_agent_runs` and `news_item_agent_briefs` are written only by
+   `NewsItemBriefWorker`; `news_page_rows` is written only by
+   `NewsPageProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
@@ -185,7 +187,7 @@ direction is still enforced by the package rules below.
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
-| `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, deterministic story grouping, fact candidates, and the News page read model. |
+| `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, deterministic story grouping, fact candidates, item-scoped agent brief read model, and the News page read model. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
 
 ## Module Architecture Documents

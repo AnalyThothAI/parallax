@@ -63,6 +63,9 @@ EXPECTED_WORKERS = {
     "news_story_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
     ),
+    "news_item_brief": (
+        "gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"
+    ),
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
@@ -92,6 +95,7 @@ OLD_READYZ_WORKER_KEYS = {
     "news_fetch",
     "news_item_process",
     "news_story_projection",
+    "news_item_brief",
     "news_page_projection",
     "pulse_candidate",
     "enrichment",
@@ -198,6 +202,16 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_page_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260519_0064_news_intel_kappa_cqrs.py",
+    },
+    "news_item_agent_runs": {
+        SRC / "domains/news_intel/repositories/news_repository.py",
+        SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
+        SRC / "platform/db/alembic/versions/20260520_0067_news_item_agent_brief.py",
+    },
+    "news_item_agent_briefs": {
+        SRC / "domains/news_intel/repositories/news_repository.py",
+        SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
+        SRC / "platform/db/alembic/versions/20260520_0067_news_item_agent_brief.py",
     },
 }
 

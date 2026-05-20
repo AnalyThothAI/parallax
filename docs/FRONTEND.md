@@ -53,6 +53,13 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   `timeline_scope=signal|all` for its own timeline state and does not consume
   `/api/recent` or WebSocket replay to reconstruct selected-handle counts,
   resolved targets, candidate mentions, or narrative clusters.
+- **News route.** `/news` renders deterministic News Intel facts plus the
+  persisted `agent_brief` contract from `/api/news` and
+  `/api/news/items/{news_item_id}`. Chinese summary, market read, direction,
+  decision class, bull/bear theses, watch triggers, invalidations, evidence
+  refs, and data gaps come from the backend brief or from an explicit
+  missing/degraded brief state. Feature view-model code must not recreate
+  trading narrative from headline, summary, or fact-lane keyword heuristics.
 - **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.

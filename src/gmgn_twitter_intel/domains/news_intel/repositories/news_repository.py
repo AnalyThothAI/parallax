@@ -455,6 +455,82 @@ class NewsRepository:
             self.conn.commit()
         return {**dict(row), "status": status}
 
+    def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
+        commit = bool(payload.pop("commit", True))
+        row = self.conn.execute(
+            """
+            INSERT INTO news_item_agent_runs (
+              run_id, news_item_id, provider, model, backend, sdk_trace_id, workflow_name,
+              agent_name, lane, artifact_version_hash, prompt_version, schema_version,
+              validator_version, guardrail_version, input_hash, output_hash, execution_started,
+              status, outcome, error_class, error, request_json, response_json,
+              validation_errors_json, trace_metadata_json, usage_json, latency_ms,
+              started_at_ms, finished_at_ms, created_at_ms
+            )
+            VALUES (
+              %(run_id)s, %(news_item_id)s, %(provider)s, %(model)s, %(backend)s, %(sdk_trace_id)s,
+              %(workflow_name)s, %(agent_name)s, %(lane)s, %(artifact_version_hash)s,
+              %(prompt_version)s, %(schema_version)s, %(validator_version)s, %(guardrail_version)s,
+              %(input_hash)s, %(output_hash)s, %(execution_started)s, %(status)s, %(outcome)s,
+              %(error_class)s, %(error)s, %(request_json)s, %(response_json)s,
+              %(validation_errors_json)s, %(trace_metadata_json)s, %(usage_json)s,
+              %(latency_ms)s, %(started_at_ms)s, %(finished_at_ms)s, %(created_at_ms)s
+            )
+            RETURNING *
+            """,
+            _agent_run_payload(payload),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
+    def upsert_news_item_agent_brief(self, **payload: Any) -> dict[str, Any]:
+        commit = bool(payload.pop("commit", True))
+        row = self.conn.execute(
+            """
+            INSERT INTO news_item_agent_briefs (
+              news_item_id, agent_run_id, status, direction, decision_class, brief_json,
+              input_hash, artifact_version_hash, prompt_version, schema_version,
+              validator_version, computed_at_ms, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %(news_item_id)s, %(agent_run_id)s, %(status)s, %(direction)s,
+              %(decision_class)s, %(brief_json)s, %(input_hash)s, %(artifact_version_hash)s,
+              %(prompt_version)s, %(schema_version)s, %(validator_version)s,
+              %(computed_at_ms)s, %(created_at_ms)s, %(updated_at_ms)s
+            )
+            ON CONFLICT (news_item_id) DO UPDATE SET
+              agent_run_id = EXCLUDED.agent_run_id,
+              status = EXCLUDED.status,
+              direction = EXCLUDED.direction,
+              decision_class = EXCLUDED.decision_class,
+              brief_json = EXCLUDED.brief_json,
+              input_hash = EXCLUDED.input_hash,
+              artifact_version_hash = EXCLUDED.artifact_version_hash,
+              prompt_version = EXCLUDED.prompt_version,
+              schema_version = EXCLUDED.schema_version,
+              validator_version = EXCLUDED.validator_version,
+              computed_at_ms = EXCLUDED.computed_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING *
+            """,
+            _agent_brief_payload(payload),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
+    def get_news_item_agent_brief(self, news_item_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+              FROM news_item_agent_briefs
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
     def list_page_source_items(self, *, limit: int, cursor: str | None = None) -> list[dict[str, Any]]:
         return self.list_news_page_rows(limit=limit, cursor=cursor)
 
@@ -507,6 +583,11 @@ class NewsRepository:
                 fact_lanes_json,
                 story_json,
                 source_json,
+                agent_brief_json,
+                agent_status,
+                agent_status AS agent_brief_status,
+                agent_brief_json AS agent_brief,
+                agent_brief_computed_at_ms,
                 computed_at_ms,
                 projection_version
               FROM news_page_rows
@@ -531,6 +612,11 @@ class NewsRepository:
                   'source_role', sources.source_role,
                   'trust_tier', sources.trust_tier
                 ) AS source_json,
+                '{{"status":"pending"}}'::jsonb AS agent_brief_json,
+                'pending'::text AS agent_status,
+                'pending'::text AS agent_brief_status,
+                '{{"status":"pending"}}'::jsonb AS agent_brief,
+                NULL::bigint AS agent_brief_computed_at_ms,
                 items.updated_at_ms AS computed_at_ms,
                 %s AS projection_version
               FROM news_items AS items
@@ -929,7 +1015,9 @@ class NewsRepository:
                        items.updated_at_ms,
                        COALESCE(stories.updated_at_ms, 0),
                        COALESCE(MAX(mentions.created_at_ms), 0),
-                       COALESCE(MAX(facts.updated_at_ms), 0)
+                       COALESCE(MAX(facts.updated_at_ms), 0),
+                       COALESCE(current_brief.updated_at_ms, 0),
+                       COALESCE(current_brief.computed_at_ms, 0)
                      ) AS source_updated_at_ms,
                      page.row_id AS projected_row_id,
                      page.computed_at_ms AS projected_at_ms,
@@ -939,15 +1027,18 @@ class NewsRepository:
                 LEFT JOIN news_story_groups AS stories ON stories.story_id = members.story_id
                 LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
                 LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
+                LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
                 LEFT JOIN news_page_rows AS page ON page.news_item_id = items.news_item_id
-               GROUP BY items.news_item_id, stories.story_id, page.row_id
+               GROUP BY items.news_item_id, stories.story_id, current_brief.news_item_id, page.row_id
               HAVING page.row_id IS NULL
                   OR page.projection_version <> %s
                   OR page.computed_at_ms < GREATEST(
                        items.updated_at_ms,
                        COALESCE(stories.updated_at_ms, 0),
                        COALESCE(MAX(mentions.created_at_ms), 0),
-                       COALESCE(MAX(facts.updated_at_ms), 0)
+                       COALESCE(MAX(facts.updated_at_ms), 0),
+                       COALESCE(current_brief.updated_at_ms, 0),
+                       COALESCE(current_brief.computed_at_ms, 0)
                      )
                ORDER BY (page.row_id IS NULL) DESC,
                         source_updated_at_ms ASC,
@@ -963,6 +1054,10 @@ class NewsRepository:
                   'trust_tier', sources.trust_tier
                 ) AS item,
               CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
+              CASE
+                WHEN current_brief.news_item_id IS NULL THEN NULL
+                ELSE to_jsonb(current_brief.*)
+              END AS current_brief,
               COALESCE(
                 jsonb_agg(DISTINCT to_jsonb(mentions.*)) FILTER (WHERE mentions.mention_id IS NOT NULL),
                 '[]'::jsonb
@@ -976,9 +1071,10 @@ class NewsRepository:
             JOIN news_sources AS sources ON sources.source_id = items.source_id
             LEFT JOIN news_story_members AS members ON members.news_item_id = items.news_item_id
             LEFT JOIN news_story_groups AS stories ON stories.story_id = members.story_id
+            LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
             LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
             LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
-            GROUP BY items.news_item_id, sources.source_id, stories.story_id
+            GROUP BY items.news_item_id, sources.source_id, stories.story_id, current_brief.news_item_id
             ORDER BY MAX(candidates.source_updated_at_ms) ASC,
                      items.published_at_ms DESC,
                      items.news_item_id DESC
@@ -989,8 +1085,175 @@ class NewsRepository:
             {
                 "item": _json_dict(row["item"]),
                 "story": _json_dict(row["story"]) if row["story"] is not None else None,
+                "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
                 "token_mentions": _json_list(row["token_mentions"]),
                 "fact_candidates": _json_list(row["fact_candidates"]),
+            }
+            for row in rows
+        ]
+
+    def list_items_for_brief(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        backpressure_cooldown_ms: int,
+        artifact_version_hash: str,
+        max_attempts: int,
+    ) -> list[dict[str, Any]]:
+        recent_backpressure_after_ms = int(now_ms) - max(1, int(backpressure_cooldown_ms))
+        rows = self.conn.execute(
+            """
+            WITH candidates AS (
+              SELECT
+                items.news_item_id,
+                member.story_id,
+                items.published_at_ms,
+                GREATEST(
+                  items.updated_at_ms,
+                  COALESCE(stories.updated_at_ms, 0),
+                  COALESCE(mention_updates.updated_at_ms, 0),
+                  COALESCE(fact_updates.updated_at_ms, 0),
+                  COALESCE(story_member_updates.updated_at_ms, 0)
+                ) AS source_updated_at_ms,
+                current_brief.status AS current_status,
+                current_brief.computed_at_ms AS current_computed_at_ms,
+                current_brief.input_hash AS current_input_hash,
+                current_brief.artifact_version_hash AS current_artifact_version_hash,
+                COALESCE(started_attempts.attempt_count, 0) AS started_attempt_count
+              FROM news_items AS items
+              LEFT JOIN LATERAL (
+                SELECT story_id
+                  FROM news_story_members
+                 WHERE news_item_id = items.news_item_id
+                 ORDER BY created_at_ms DESC, story_id DESC
+                 LIMIT 1
+              ) AS member ON true
+              LEFT JOIN news_story_groups AS stories ON stories.story_id = member.story_id
+              LEFT JOIN news_item_agent_briefs AS current_brief
+                ON current_brief.news_item_id = items.news_item_id
+              LEFT JOIN LATERAL (
+                SELECT MAX(created_at_ms) AS updated_at_ms
+                  FROM news_token_mentions
+                 WHERE news_item_id = items.news_item_id
+              ) AS mention_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(updated_at_ms) AS updated_at_ms
+                  FROM news_fact_candidates
+                 WHERE news_item_id = items.news_item_id
+              ) AS fact_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(created_at_ms) AS updated_at_ms
+                  FROM news_story_members
+                 WHERE story_id = member.story_id
+              ) AS story_member_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT COUNT(*)::int AS attempt_count
+                  FROM news_item_agent_runs AS runs
+                 WHERE runs.news_item_id = items.news_item_id
+                   AND runs.artifact_version_hash = %s
+                   AND runs.execution_started = true
+              ) AS started_attempts ON true
+              WHERE items.lifecycle_status = 'processed'
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM news_item_agent_runs AS recent_runs
+                   WHERE recent_runs.news_item_id = items.news_item_id
+                     AND recent_runs.execution_started = false
+                     AND recent_runs.status = 'backpressure'
+                     AND recent_runs.finished_at_ms >= %s
+                )
+                AND (
+                  current_brief.news_item_id IS NULL
+                  OR current_brief.artifact_version_hash <> %s
+                  OR current_brief.computed_at_ms < GREATEST(
+                       items.updated_at_ms,
+                       COALESCE(stories.updated_at_ms, 0),
+                       COALESCE(mention_updates.updated_at_ms, 0),
+                       COALESCE(fact_updates.updated_at_ms, 0),
+                       COALESCE(story_member_updates.updated_at_ms, 0)
+                     )
+                  OR (
+                    current_brief.status = 'failed'
+                    AND COALESCE(started_attempts.attempt_count, 0) < %s
+                  )
+                )
+              ORDER BY (current_brief.news_item_id IS NULL) DESC,
+                       source_updated_at_ms ASC,
+                       items.published_at_ms DESC,
+                       items.news_item_id DESC
+              LIMIT %s
+            )
+            SELECT
+              to_jsonb(items.*)
+                || jsonb_build_object(
+                  'source_name', sources.source_name,
+                  'source_role', sources.source_role,
+                  'trust_tier', sources.trust_tier
+                ) AS item,
+              CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
+              CASE
+                WHEN current_brief.news_item_id IS NULL THEN NULL
+                ELSE to_jsonb(current_brief.*)
+              END AS current_brief,
+              CASE WHEN latest_run.run_id IS NULL THEN NULL ELSE to_jsonb(latest_run.*) END AS latest_run,
+              candidates.source_updated_at_ms,
+              COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
+              COALESCE(fact_rows.rows, '[]'::jsonb) AS fact_candidates,
+              COALESCE(story_member_rows.rows, '[]'::jsonb) AS story_members
+            FROM candidates
+            JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
+            JOIN news_sources AS sources ON sources.source_id = items.source_id
+            LEFT JOIN news_story_groups AS stories ON stories.story_id = candidates.story_id
+            LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+            LEFT JOIN LATERAL (
+              SELECT *
+                FROM news_item_agent_runs AS runs
+               WHERE runs.news_item_id = items.news_item_id
+               ORDER BY runs.finished_at_ms DESC, runs.run_id DESC
+               LIMIT 1
+            ) AS latest_run ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id ASC) AS rows
+                FROM news_token_mentions AS mentions
+               WHERE mentions.news_item_id = items.news_item_id
+            ) AS token_rows ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id ASC) AS rows
+                FROM news_fact_candidates AS facts
+               WHERE facts.news_item_id = items.news_item_id
+            ) AS fact_rows ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(
+                       to_jsonb(member_items.*)
+                       ORDER BY member_items.published_at_ms DESC, member_items.news_item_id ASC
+                     ) AS rows
+                FROM news_story_members AS members
+                JOIN news_items AS member_items ON member_items.news_item_id = members.news_item_id
+               WHERE members.story_id = candidates.story_id
+            ) AS story_member_rows ON true
+            ORDER BY candidates.source_updated_at_ms ASC,
+                     items.published_at_ms DESC,
+                     items.news_item_id DESC
+            """,
+            (
+                str(artifact_version_hash),
+                recent_backpressure_after_ms,
+                str(artifact_version_hash),
+                max(1, int(max_attempts)),
+                max(0, int(limit)),
+            ),
+        ).fetchall()
+        return [
+            {
+                "item": _json_dict(row["item"]),
+                "story": _json_dict(row["story"]) if row["story"] is not None else None,
+                "token_mentions": _json_list(row["token_mentions"]),
+                "fact_candidates": _json_list(row["fact_candidates"]),
+                "story_members": _json_list(row["story_members"]),
+                "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
+                "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
+                "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
             }
             for row in rows
         ]
@@ -1005,6 +1268,14 @@ class NewsRepository:
                      WHEN fetch_runs.fetch_run_id IS NULL THEN NULL
                      ELSE to_jsonb(fetch_runs.*)
                    END AS fetch_run,
+                   CASE
+                     WHEN current_brief.news_item_id IS NULL THEN NULL
+                     ELSE to_jsonb(current_brief.*)
+                   END AS agent_brief,
+                   CASE
+                     WHEN latest_run.agent_run IS NULL THEN NULL
+                     ELSE latest_run.agent_run
+                   END AS agent_run,
                    COALESCE(
                      jsonb_agg(DISTINCT to_jsonb(entities.*))
                        FILTER (WHERE entities.entity_id IS NOT NULL),
@@ -1024,11 +1295,35 @@ class NewsRepository:
               JOIN news_sources AS sources ON sources.source_id = items.source_id
               JOIN news_provider_items AS provider_items ON provider_items.provider_item_id = items.provider_item_id
               LEFT JOIN news_fetch_runs AS fetch_runs ON fetch_runs.fetch_run_id = provider_items.fetch_run_id
+              LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
+              LEFT JOIN LATERAL (
+                SELECT jsonb_build_object(
+                         'run_id', runs.run_id,
+                         'status', runs.status,
+                         'outcome', runs.outcome,
+                         'execution_started', runs.execution_started,
+                         'model', runs.model,
+                         'provider', runs.provider,
+                         'lane', runs.lane,
+                         'sdk_trace_id', runs.sdk_trace_id,
+                         'error_class', runs.error_class,
+                         'error', runs.error,
+                         'usage_json', runs.usage_json,
+                         'trace_metadata_json', runs.trace_metadata_json,
+                         'started_at_ms', runs.started_at_ms,
+                         'finished_at_ms', runs.finished_at_ms
+                       ) AS agent_run
+                  FROM news_item_agent_runs AS runs
+                 WHERE runs.news_item_id = items.news_item_id
+                 ORDER BY runs.finished_at_ms DESC, runs.run_id DESC
+                 LIMIT 1
+              ) AS latest_run ON true
               LEFT JOIN news_item_entities AS entities ON entities.news_item_id = items.news_item_id
               LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
               LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
              WHERE items.news_item_id = %s
-             GROUP BY items.news_item_id, sources.source_id, provider_items.provider_item_id, fetch_runs.fetch_run_id
+             GROUP BY items.news_item_id, sources.source_id, provider_items.provider_item_id, fetch_runs.fetch_run_id,
+                      current_brief.news_item_id, latest_run.agent_run
             """,
             (news_item_id,),
         ).fetchone()
@@ -1053,6 +1348,8 @@ class NewsRepository:
             "source": _json_dict(row["source"]),
             "provider_item": _json_dict(row["provider_item"]),
             "fetch_run": _json_dict(row["fetch_run"]) if row["fetch_run"] is not None else None,
+            "agent_brief": _detail_agent_brief(row["agent_brief"]),
+            "agent_run": _json_dict(row["agent_run"]) if row["agent_run"] is not None else None,
             "story_members": [_json_dict(story_row["story_member"]) for story_row in story_rows],
             "entities": _json_list(row["entities"]),
             "token_mentions": _json_list(row["token_mentions"]),
@@ -1154,12 +1451,14 @@ class NewsRepository:
                 INSERT INTO news_page_rows (
                   row_id, news_item_id, story_id, latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, token_lanes_json,
-                  fact_lanes_json, story_json, source_json, computed_at_ms, projection_version
+                  fact_lanes_json, story_json, source_json, agent_brief_json, agent_status,
+                  agent_brief_computed_at_ms, computed_at_ms, projection_version
                 )
                 VALUES (
                   %(row_id)s, %(news_item_id)s, %(story_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
                   %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(token_lanes_json)s,
-                  %(fact_lanes_json)s, %(story_json)s, %(source_json)s, %(computed_at_ms)s, %(projection_version)s
+                  %(fact_lanes_json)s, %(story_json)s, %(source_json)s, %(agent_brief_json)s, %(agent_status)s,
+                  %(agent_brief_computed_at_ms)s, %(computed_at_ms)s, %(projection_version)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
@@ -1174,6 +1473,9 @@ class NewsRepository:
                   fact_lanes_json = EXCLUDED.fact_lanes_json,
                   story_json = EXCLUDED.story_json,
                   source_json = EXCLUDED.source_json,
+                  agent_brief_json = EXCLUDED.agent_brief_json,
+                  agent_status = EXCLUDED.agent_status,
+                  agent_brief_computed_at_ms = EXCLUDED.agent_brief_computed_at_ms,
                   computed_at_ms = EXCLUDED.computed_at_ms,
                   projection_version = EXCLUDED.projection_version
                 """,
@@ -1254,6 +1556,21 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json", payload.get("fact_lanes")) or [])
     payload["story_json"] = _json(payload.get("story_json", payload.get("story")) or {})
     payload["source_json"] = _json(payload.get("source_json", payload.get("source")) or {})
+    agent_brief = payload.get("agent_brief_json", payload.get("agent_brief")) or {"status": "pending"}
+    agent_status = str(payload.get("agent_status") or payload.get("agent_brief_status") or "pending")
+    payload["agent_brief_json"] = _json(agent_brief)
+    payload["agent_status"] = agent_status
+    payload["agent_brief_computed_at_ms"] = (
+        int(payload["agent_brief_computed_at_ms"]) if payload.get("agent_brief_computed_at_ms") is not None else None
+    )
+    return payload
+
+
+def _detail_agent_brief(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {"status": "pending", "brief_json": {}}
+    payload = _json_dict(value)
+    payload["brief_json"] = _json_dict(payload.get("brief_json"))
     return payload
 
 
@@ -1315,6 +1632,60 @@ def _fact_payload(candidate: Any) -> dict[str, Any]:
         "rejection_reasons_json": _json(_json_list(payload.get("rejection_reasons"))),
         "extraction_method": str(payload["extraction_method"]),
         "policy_version": str(payload["policy_version"]),
+        "created_at_ms": int(payload["created_at_ms"]),
+        "updated_at_ms": int(payload["updated_at_ms"]),
+    }
+
+
+def _agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "run_id": str(payload["run_id"]),
+        "news_item_id": str(payload["news_item_id"]),
+        "provider": str(payload["provider"]),
+        "model": str(payload["model"]),
+        "backend": str(payload.get("backend") or "openai_agents_sdk"),
+        "sdk_trace_id": payload.get("sdk_trace_id"),
+        "workflow_name": str(payload["workflow_name"]),
+        "agent_name": str(payload["agent_name"]),
+        "lane": str(payload["lane"]),
+        "artifact_version_hash": str(payload["artifact_version_hash"]),
+        "prompt_version": str(payload["prompt_version"]),
+        "schema_version": str(payload["schema_version"]),
+        "validator_version": str(payload["validator_version"]),
+        "guardrail_version": str(payload["guardrail_version"]),
+        "input_hash": str(payload["input_hash"]),
+        "output_hash": payload.get("output_hash"),
+        "execution_started": bool(payload.get("execution_started", False)),
+        "status": str(payload["status"]),
+        "outcome": str(payload["outcome"]),
+        "error_class": payload.get("error_class"),
+        "error": _compact_error(payload.get("error")),
+        "request_json": _json(payload.get("request_json") or {}),
+        "response_json": _json(payload["response_json"]) if payload.get("response_json") is not None else None,
+        "validation_errors_json": _json(payload.get("validation_errors_json") or []),
+        "trace_metadata_json": _json(payload.get("trace_metadata_json") or {}),
+        "usage_json": _json(payload.get("usage_json") or {}),
+        "latency_ms": int(payload.get("latency_ms") or 0),
+        "started_at_ms": int(payload["started_at_ms"]),
+        "finished_at_ms": int(payload["finished_at_ms"]),
+        "created_at_ms": int(payload["created_at_ms"]),
+    }
+
+
+def _agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "news_item_id": str(payload["news_item_id"]),
+        "agent_run_id": str(payload["agent_run_id"]),
+        "status": str(payload["status"]),
+        "direction": str(payload["direction"]),
+        "decision_class": str(payload["decision_class"]),
+        "brief_json": _json(payload.get("brief_json") or {}),
+        "input_hash": str(payload["input_hash"]),
+        "artifact_version_hash": str(payload["artifact_version_hash"]),
+        "prompt_version": str(payload["prompt_version"]),
+        "schema_version": str(payload["schema_version"]),
+        "validator_version": str(payload["validator_version"]),
+        "computed_at_ms": int(payload["computed_at_ms"]),
         "created_at_ms": int(payload["created_at_ms"]),
         "updated_at_ms": int(payload["updated_at_ms"]),
     }

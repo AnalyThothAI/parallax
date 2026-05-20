@@ -320,6 +320,73 @@ def test_watchlist_summary_model_can_override_llm_model(tmp_path, monkeypatch):
     assert settings.watchlist_handle_summary_configured is True
 
 
+def test_news_item_brief_model_can_override_llm_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "model": "gpt-base",
+                "news_item_brief_model": "gpt-news",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm_model == "gpt-base"
+    assert settings.news_item_brief_model == "gpt-news"
+    assert settings.news_item_brief_configured is True
+
+
+def test_news_item_brief_model_falls_back_to_llm_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "model": "gpt-base",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.news_item_brief_model == "gpt-base"
+    assert settings.news_item_brief_configured is True
+
+
+def test_news_item_brief_model_empty_string_normalizes_to_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "model": "gpt-base",
+                "news_item_brief_model": " ",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm.news_item_brief_model is None
+    assert settings.news_item_brief_model == "gpt-base"
+    assert settings.news_item_brief_configured is True
+
+
 def test_pulse_agent_can_be_configured_without_enrichment_model(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
@@ -341,6 +408,29 @@ def test_pulse_agent_can_be_configured_without_enrichment_model(tmp_path, monkey
     assert settings.llm_configured is False
     assert settings.pulse_agent_model == "gpt-pulse"
     assert settings.pulse_agent_configured is True
+
+
+def test_news_item_brief_can_be_configured_without_default_llm_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "news_item_brief_model": "gpt-news",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm_model is None
+    assert settings.llm_configured is False
+    assert settings.news_item_brief_model == "gpt-news"
+    assert settings.news_item_brief_configured is True
 
 
 def test_openai_root_base_url_with_api_key_counts_as_trace_export_configured(tmp_path, monkeypatch):
@@ -688,6 +778,20 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     }
 
     assert forbidden_llm_keys.isdisjoint(llm)
+    assert list(llm) == [
+        "provider",
+        "api_key",
+        "model",
+        "base_url",
+        "timeout_seconds",
+        "trace_enabled",
+        "trace_api_key",
+        "trace_include_sensitive_data",
+        "pulse_agent_model",
+        "watchlist_handle_summary_model",
+        "narrative_intel_model",
+        "news_item_brief_model",
+    ]
     assert "workers" not in payload
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
     assert workers.enrichment.concurrency == 4
