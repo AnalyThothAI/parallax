@@ -553,12 +553,9 @@ def _worker_result_payload(result: object) -> dict[str, Any]:
 
 def _cleanup_narrative_backlog(db: object, *, window: str, scope: str, now_ms: int) -> dict[str, int]:
     with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
-        cleanup = getattr(repos.narratives, "cleanup_narrative_current_hard_cut", None)
-        if cleanup is None:
-            cleanup = repos.narratives.cleanup_current_backlog
         return dict(
             _call_with_supported_kwargs(
-                cleanup,
+                repos.narratives.cleanup_narrative_current_hard_cut,
                 schema_version=NARRATIVE_SCHEMA_VERSION,
                 window=window,
                 scope=scope,
