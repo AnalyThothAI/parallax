@@ -10,6 +10,7 @@ token_radar_rows
   -> narrative_admissions
   -> token_mention_semantics
   -> token_discussion_digests
+  -> last-ready epoch + current admission delta
   -> API / WebSocket / CLI reads
 ```
 
@@ -37,25 +38,36 @@ but normal runtime writes are reached only through the owning worker.
 
 `ops rebuild-narrative-intel` is the maintenance exception. While it holds all
 narrative worker advisory locks, it may run hard-cut cleanup to delete obsolete
-queued/retryable/stale semantics and mark suppressed or fingerprint-mismatched
-current digests stale. That path is not callable from HTTP routes and is not a
-second runtime writer.
+queued/retryable/stale semantics and mark suppressed current digests stale. A
+source fingerprint mismatch is preserved as public delta instead of demoting a
+ready digest. That path is not callable from HTTP routes and is not a second
+runtime writer.
 
 ## Public Digest Contract
 
-A public current digest must match an admitted current source set and the same
-`source_fingerprint`. If no usable digest exists, public reads return a
-non-persisted missing-state reason:
+`TokenDiscussionDigestWorker` writes sealed narrative epochs for `1h`, `4h`,
+and `24h`. It does not write discussion digests for `5m`; that window is a
+scanner frontier only.
 
-- `digest_not_ready`: admitted source set exists, but no current digest is ready.
-- `digest_stale`: a current digest exists but no longer matches the admitted
-  source fingerprint.
-- `not_in_current_frontier`: the target/window/scope is no longer admitted.
+Public reads do not use exact source-fingerprint equality as a display gate.
+They call `current_narrative_snapshots_for_targets`, which composes the newest
+ready digest with the current admitted source set and returns a required
+`discussion_digest.currentness` object. Display states are:
+
+- `current`: ready epoch matches the current source frontier.
+- `updating`: ready epoch remains readable while current admissions have delta.
+- `stale`: ready epoch is historical context because its display horizon passed.
+- `not_ready`: an admitted frontier exists but no ready epoch exists yet.
+- `out_of_frontier`: no admitted frontier exists for the target/window/scope.
+- `unsupported_window`: the window intentionally has no digest, especially `5m`.
 
 Digest and semantics budget pressure is explicit. `llm_cycle_budget_exhausted`
 means the digest worker deferred an otherwise due LLM call for cycle capacity.
 `llm_failure_budget_exhausted` means provider failures consumed the cycle's
-failure budget and remaining LLM work backed off.
+failure budget and remaining LLM work backed off. `NarrativeEpochPolicy`
+separately records epoch decisions such as `no_material_delta`,
+`material_delta_due`, `ttl_refresh_due`, `semantic_pending`, and
+`unsupported_window`.
 
 ## Hard Cut
 

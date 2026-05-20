@@ -107,6 +107,84 @@ def test_ready_digest_requires_public_claim_refs():
     assert digest.status == "ready"
 
 
+def test_token_discussion_digest_accepts_epoch_metadata_and_source_event_ids():
+    digest = TokenDiscussionDigest(
+        target_type="chain_token",
+        target_id="solana:So111",
+        window="24h",
+        scope="matched",
+        schema_version="narrative_intel_v1",
+        model_version="gpt-test",
+        status="ready",
+        epoch_id="epoch-solana-so111-1000",
+        epoch_policy_version="token_narrative_epoch_v1",
+        source_event_ids=["event-1", "event-2"],
+        source_window_start_ms=1_000,
+        source_window_end_ms=2_000,
+        epoch_closed_at_ms=2_100,
+        display_current_until_ms=2_400,
+        refresh_reason="source_changed",
+        headline_zh="SOL discussion turns to breakout",
+        dominant_narratives=[
+            NarrativeCluster(
+                cluster_key="breakout",
+                label_zh="breakout narrative",
+                summary_zh="discussion concentrates on breakout and chase.",
+                evidence_refs=[event_ref("event-1")],
+            )
+        ],
+        bull_view=DigestArgument(summary_zh="bulls see breakout", evidence_refs=[event_ref("event-1")]),
+        bear_view=DigestArgument(summary_zh="bears worry about chase", evidence_refs=[]),
+        semantic_coverage=0.6,
+        source_event_count=2,
+        labeled_event_count=2,
+        independent_author_count=2,
+        evidence_refs=[event_ref("event-1")],
+        computed_at_ms=2_100,
+    )
+
+    assert digest.epoch_id == "epoch-solana-so111-1000"
+    assert digest.epoch_policy_version == "token_narrative_epoch_v1"
+    assert digest.source_event_ids == ["event-1", "event-2"]
+    assert digest.source_window_start_ms == 1_000
+    assert digest.source_window_end_ms == 2_000
+    assert digest.epoch_closed_at_ms == 2_100
+    assert digest.display_current_until_ms == 2_400
+    assert digest.refresh_reason == "source_changed"
+
+
+def test_ready_digest_with_epoch_metadata_still_requires_semantic_coverage():
+    with pytest.raises(ValidationError):
+        TokenDiscussionDigest(
+            target_type="chain_token",
+            target_id="solana:So111",
+            window="24h",
+            scope="matched",
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            status="ready",
+            epoch_id="epoch-solana-so111-1000",
+            epoch_policy_version="token_narrative_epoch_v1",
+            source_event_ids=["event-1"],
+            dominant_narratives=[
+                NarrativeCluster(
+                    cluster_key="breakout",
+                    label_zh="breakout narrative",
+                    summary_zh="discussion concentrates on breakout and chase.",
+                    evidence_refs=[event_ref("event-1")],
+                )
+            ],
+            bull_view=DigestArgument(summary_zh="bulls see breakout", evidence_refs=[event_ref("event-1")]),
+            bear_view=DigestArgument(summary_zh="bears worry about chase", evidence_refs=[]),
+            semantic_coverage=0.0,
+            source_event_count=1,
+            labeled_event_count=1,
+            independent_author_count=1,
+            evidence_refs=[event_ref("event-1")],
+            computed_at_ms=1_000,
+        )
+
+
 def test_insufficient_digest_requires_data_gaps():
     with pytest.raises(ValidationError):
         TokenDiscussionDigest(

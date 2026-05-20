@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.surfaces.api import routes_radar, routes_search, routes_status
-from gmgn_twitter_intel.app.surfaces.api.schemas import NarrativeBacklogHealthData
+from gmgn_twitter_intel.app.surfaces.api.schemas import NarrativeBacklogHealthData, TokenCaseData, TokenRadarData
 
 NOW_MS = 1_778_562_000_000
 
@@ -38,6 +38,8 @@ def test_token_case_route_hydrates_discussion_digest_and_removes_agent_brief(mon
     data = body["data"]
     assert "agent_brief" not in data
     assert data["discussion_digest"]["status"] == "ready"
+    assert data["discussion_digest"]["currentness"]["display_status"] == "updating"
+    assert data["narrative_delta"]["delta_source_event_count"] == 3
     assert data["narrative_clusters"] == [{"cluster_key": "main"}]
     assert data["pulse_overlay"]["status"] == "absent"
     assert calls == [{"method": "case", "window": "24h", "scope": "all", "now_ms": NOW_MS}]
@@ -114,8 +116,40 @@ def test_token_radar_route_hydrates_targets_and_attention(monkeypatch) -> None:
 
     data = _body(response)["data"]
     assert data["targets"][0]["discussion_digest"]["status"] == "ready"
+    assert data["targets"][0]["discussion_digest"]["currentness"]["display_status"] == "updating"
     assert data["attention"][0]["discussion_digest"]["status"] == "ready"
     assert calls == [{"method": "radar", "window": "1h", "scope": "all", "now_ms": NOW_MS}]
+
+
+def test_public_narrative_contract_requires_currentness_and_delta() -> None:
+    case = TokenCaseData.model_validate(
+        {
+            "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},
+            "timeline": {},
+            "posts": {},
+            "market_live": {},
+            "discussion_digest": _digest(),
+            "narrative_delta": _narrative_delta(),
+        }
+    )
+    radar = TokenRadarData.model_validate(
+        {
+            "window": "5m",
+            "scope": "all",
+            "targets": [
+                {
+                    "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},
+                    "discussion_digest": _unsupported_digest(),
+                }
+            ],
+            "attention": [],
+        }
+    )
+
+    assert case.discussion_digest.currentness.display_status == "updating"
+    assert case.narrative_delta.delta_source_event_count == 3
+    assert radar.targets[0].discussion_digest is not None
+    assert radar.targets[0].discussion_digest.currentness.display_status == "unsupported_window"
 
 
 def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
@@ -157,7 +191,21 @@ def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
                 "unavailable": 1,
                 "suppressed_current_digest_count": 1,
                 "stale_fingerprint_current_digest_count": 3,
-            }
+            },
+            "epoch": {
+                "epoch_policy_version": "token-narrative-epoch-v1",
+                "unsupported_window_admissions": 2,
+                "last_ready_digest_count": 5,
+                "updating_snapshot_count": 3,
+                "material_delta_due_count": 4,
+                "no_material_delta_deferred_count": 6,
+                "last_ready_p50_age_ms": 120_000,
+                "last_ready_p95_age_ms": 600_000,
+                "delta_source_rows": 9,
+                "delta_independent_authors": 3,
+                "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
+                "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
+            },
         }
     )
 
@@ -169,6 +217,18 @@ def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
     assert data.semantic_backlog.pending_existing_rows == 5
     assert data.semantic_backlog.suppressed_current_digest_count == 1
     assert data.semantic_backlog.stale_fingerprint_current_digest_count == 3
+    assert data.epoch.epoch_policy_version == "token-narrative-epoch-v1"
+    assert data.epoch.unsupported_window_admissions == 2
+    assert data.epoch.last_ready_digest_count == 5
+    assert data.epoch.updating_snapshot_count == 3
+    assert data.epoch.material_delta_due_count == 4
+    assert data.epoch.no_material_delta_deferred_count == 6
+    assert data.epoch.last_ready_p50_age_ms == 120_000
+    assert data.epoch.last_ready_p95_age_ms == 600_000
+    assert data.epoch.delta_source_rows == 9
+    assert data.epoch.delta_independent_authors == 3
+    assert data.epoch.digest_refresh_due_by_window == {"1h": 2, "24h": 2}
+    assert data.epoch.digest_refresh_deferred_by_epoch_policy == {"no_material_delta": 6}
 
 
 class _NarrativeReadModel:
@@ -181,6 +241,7 @@ class _NarrativeReadModel:
         return {
             **data,
             "discussion_digest": _digest(),
+            "narrative_delta": _narrative_delta(),
             "narrative_clusters": [{"cluster_key": "main"}],
             "pulse_overlay": {"status": "absent"},
         }
@@ -308,7 +369,52 @@ def _posts_payload() -> dict[str, Any]:
 
 
 def _digest() -> dict[str, Any]:
-    return {"status": "ready", "semantic_coverage": 0.8, "evidence_refs": [{"ref_id": "event:event-1"}]}
+    return {
+        "status": "ready",
+        "currentness": {
+            "display_status": "updating",
+            "epoch_id": "epoch-1",
+            "epoch_policy_version": "token-narrative-epoch-v1",
+            "ready_source_fingerprint": "ready-fp",
+            "current_source_fingerprint": "current-fp",
+            "ready_source_event_count": 10,
+            "current_source_event_count": 13,
+            "delta_source_event_count": 3,
+            "delta_independent_author_count": 1,
+            "last_ready_computed_at_ms": NOW_MS - 120_000,
+            "next_refresh_due_at_ms": NOW_MS + 60_000,
+            "reason": "digest_updating",
+        },
+        "coverage": {"semantic_coverage": 0.8, "source_mentions": 10},
+        "data_gaps": [],
+        "semantic_coverage": 0.8,
+        "evidence_refs": [{"ref_id": "event:event-1"}],
+    }
+
+
+def _unsupported_digest() -> dict[str, Any]:
+    return {
+        "status": "pending",
+        "currentness": {
+            "display_status": "unsupported_window",
+            "ready_source_event_count": 0,
+            "current_source_event_count": 0,
+            "delta_source_event_count": 0,
+            "delta_independent_author_count": 0,
+            "reason": "unsupported_window",
+        },
+        "data_gaps": [{"reason": "unsupported_window"}],
+        "coverage": {},
+    }
+
+
+def _narrative_delta() -> dict[str, Any]:
+    return {
+        "display_status": "updating",
+        "delta_source_event_count": 3,
+        "delta_independent_author_count": 1,
+        "label": "叙事更新中 · +3 posts",
+    }
 
 
 def _semantic() -> dict[str, Any]:

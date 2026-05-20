@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -17,6 +18,11 @@ from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
 from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
     text_fingerprint,
 )
+from gmgn_twitter_intel.domains.narrative_intel.services.narrative_currentness import (
+    public_currentness,
+    unsupported_digest_sentinel,
+)
+from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import DIGEST_WINDOWS
 
 _SEMANTIC_COVERAGE_KEYS = (
     "source_event_count",
@@ -690,30 +696,29 @@ class NarrativeRepository:
             """,
             (int(now_ms), schema_version),
         )
-        stale_mismatch = self.conn.execute(
+        mismatch_preserved = self.conn.execute(
             """
-            UPDATE token_discussion_digests AS digest
-            SET status = 'stale',
-                is_current = false,
-                superseded_at_ms = %s
-            FROM narrative_admissions AS admissions
-            WHERE admissions.status = 'admitted'
-              AND admissions.schema_version = %s
-              AND digest.target_type = admissions.target_type
-              AND digest.target_id = admissions.target_id
-              AND digest."window" = admissions."window"
-              AND digest.scope = admissions.scope
-              AND digest.schema_version = admissions.schema_version
-              AND digest.is_current = true
+            SELECT COUNT(*) AS count
+            FROM token_discussion_digests AS digest
+            JOIN narrative_admissions AS admissions
+              ON admissions.target_type = digest.target_type
+             AND admissions.target_id = digest.target_id
+             AND admissions."window" = digest."window"
+             AND admissions.scope = digest.scope
+             AND admissions.schema_version = digest.schema_version
+             AND admissions.status = 'admitted'
+             AND admissions.schema_version = %s
+            WHERE digest.is_current = true
+              AND digest.status = 'ready'
               AND COALESCE(digest.source_fingerprint, '') <> COALESCE(admissions.source_fingerprint, '')
             """,
-            (int(now_ms), schema_version),
-        )
+            (schema_version,),
+        ).fetchone()
         _commit_if_available(self.conn)
         return {
             "deleted_obsolete_pending_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
             "stale_suppressed_digests": int(getattr(stale_suppressed, "rowcount", 0) or 0),
-            "stale_fingerprint_mismatch_digests": int(getattr(stale_mismatch, "rowcount", 0) or 0),
+            "fingerprint_mismatch_digests_preserved": int(mismatch_preserved["count"] if mismatch_preserved else 0),
         }
 
     def record_narrative_model_run(self, run: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
@@ -1173,7 +1178,9 @@ class NarrativeRepository:
             """
             INSERT INTO token_discussion_digests (
               digest_id, target_type, target_id, "window", scope, schema_version, model_version,
-              status, is_current, source_fingerprint, label_fingerprint, headline_zh,
+              status, is_current, epoch_id, epoch_policy_version, source_event_ids_json,
+              source_window_start_ms, source_window_end_ms, epoch_closed_at_ms,
+              display_current_until_ms, refresh_reason, source_fingerprint, label_fingerprint, headline_zh,
               dominant_narratives_json, bull_view_json, bear_view_json, stance_mix_json,
               attention_valence_mix_json, propagation_read_json, reflexivity_read_json,
               watch_triggers_json, invalidation_conditions_json, data_gaps_json,
@@ -1182,7 +1189,10 @@ class NarrativeRepository:
             )
             VALUES (
               %(digest_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
-              %(model_version)s, %(status)s, true, %(source_fingerprint)s, %(label_fingerprint)s,
+              %(model_version)s, %(status)s, true, %(epoch_id)s, %(epoch_policy_version)s,
+              %(source_event_ids_json)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
+              %(epoch_closed_at_ms)s, %(display_current_until_ms)s, %(refresh_reason)s,
+              %(source_fingerprint)s, %(label_fingerprint)s,
               %(headline_zh)s, %(dominant_narratives_json)s, %(bull_view_json)s, %(bear_view_json)s,
               %(stance_mix_json)s, %(attention_valence_mix_json)s, %(propagation_read_json)s,
               %(reflexivity_read_json)s, %(watch_triggers_json)s, %(invalidation_conditions_json)s,
@@ -1195,6 +1205,14 @@ class NarrativeRepository:
               model_version = EXCLUDED.model_version,
               status = EXCLUDED.status,
               is_current = true,
+              epoch_id = EXCLUDED.epoch_id,
+              epoch_policy_version = EXCLUDED.epoch_policy_version,
+              source_event_ids_json = EXCLUDED.source_event_ids_json,
+              source_window_start_ms = EXCLUDED.source_window_start_ms,
+              source_window_end_ms = EXCLUDED.source_window_end_ms,
+              epoch_closed_at_ms = EXCLUDED.epoch_closed_at_ms,
+              display_current_until_ms = EXCLUDED.display_current_until_ms,
+              refresh_reason = EXCLUDED.refresh_reason,
               headline_zh = EXCLUDED.headline_zh,
               dominant_narratives_json = EXCLUDED.dominant_narratives_json,
               bull_view_json = EXCLUDED.bull_view_json,
@@ -1248,6 +1266,233 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"updated": int(getattr(cursor, "rowcount", 0) or 0)}
 
+    def latest_ready_digest_for_target(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT digest.*,
+                   COALESCE(backlog.pending, 0) AS semantic_backlog_pending,
+                   COALESCE(backlog.retryable, 0) AS semantic_backlog_retryable,
+                   COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
+                   backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
+            FROM token_discussion_digests AS digest
+            LEFT JOIN LATERAL (
+              SELECT
+                COUNT(*) FILTER (
+                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                ) AS pending,
+                COUNT(*) FILTER (WHERE semantics.status = 'retryable_error') AS retryable,
+                COUNT(*) FILTER (WHERE semantics.status = 'semantic_unavailable') AS unavailable,
+                MIN(semantics.next_retry_at_ms) FILTER (
+                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                ) AS oldest_due_at_ms
+              FROM token_mention_semantics AS semantics
+              WHERE semantics.target_type = digest.target_type
+                AND semantics.target_id = digest.target_id
+                AND semantics.schema_version = digest.schema_version
+            ) AS backlog ON true
+            WHERE digest.target_type = %s
+              AND digest.target_id = %s
+              AND digest."window" = %s
+              AND digest.scope = %s
+              AND digest.schema_version = %s
+              AND digest.status = 'ready'
+            ORDER BY digest.computed_at_ms DESC, digest.digest_id DESC
+            LIMIT 1
+            """,
+            (target_type, target_id, window, scope, schema_version),
+        ).fetchone()
+        return _row(row) if row else None
+
+    def current_admission_for_target(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM narrative_admissions
+            WHERE target_type = %s
+              AND target_id = %s
+              AND "window" = %s
+              AND scope = %s
+              AND schema_version = %s
+            ORDER BY CASE
+                       WHEN status = 'admitted' THEN 0
+                       WHEN status = 'suppressed' THEN 1
+                       ELSE 2
+                     END,
+                     last_seen_at_ms DESC
+            LIMIT 1
+            """,
+            (target_type, target_id, window, scope, schema_version),
+        ).fetchone()
+        return _row(row) if row else None
+
+    def market_context_for_admission(
+        self,
+        admission: dict[str, Any],
+        *,
+        last_ready_digest: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if last_ready_digest is None:
+            return {}
+        target_type = str(admission.get("target_type") or "")
+        target_id = str(admission.get("target_id") or "")
+        if target_type not in {"chain_token", "cex_symbol"} or not target_id:
+            return {}
+        ready_at_ms = _int(
+            last_ready_digest.get("epoch_closed_at_ms")
+            or last_ready_digest.get("source_window_end_ms")
+            or last_ready_digest.get("computed_at_ms")
+        )
+        current_at_ms = _int(
+            admission.get("source_max_received_at_ms")
+            or admission.get("source_window_end_ms")
+            or admission.get("last_seen_at_ms")
+        )
+        if ready_at_ms is None or current_at_ms is None:
+            return {}
+        ready_tick = self._latest_market_tick_at_or_before(
+            target_type=target_type,
+            target_id=target_id,
+            observed_at_ms=ready_at_ms,
+        )
+        current_tick = self._latest_market_tick_at_or_before(
+            target_type=target_type,
+            target_id=target_id,
+            observed_at_ms=current_at_ms,
+        )
+        ready_price = _float((ready_tick or {}).get("price_usd"))
+        current_price = _float((current_tick or {}).get("price_usd"))
+        if ready_price is None or ready_price <= 0 or current_price is None:
+            return {}
+        price_move_pct = ((current_price - ready_price) / ready_price) * 100.0
+        return {
+            "price_move_pct": price_move_pct,
+            "price_move_pct_since_ready": price_move_pct,
+            "ready_price_usd": ready_price,
+            "current_price_usd": current_price,
+            "ready_tick_observed_at_ms": (ready_tick or {}).get("observed_at_ms"),
+            "current_tick_observed_at_ms": (current_tick or {}).get("observed_at_ms"),
+        }
+
+    def _latest_market_tick_at_or_before(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        observed_at_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM market_ticks
+            WHERE target_type = %s
+              AND target_id = %s
+              AND observed_at_ms <= %s
+            ORDER BY observed_at_ms DESC, tick_id DESC
+            LIMIT 1
+            """,
+            (target_type, target_id, int(observed_at_ms)),
+        ).fetchone()
+        return _row(row) if row else None
+
+    def current_narrative_snapshots_for_targets(
+        self,
+        targets: Sequence[dict[str, str]],
+        *,
+        window: str,
+        scope: str,
+        schema_version: str,
+        now_ms: int,
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        result: dict[tuple[str, str], dict[str, Any]] = {}
+        for target in targets:
+            target_type = str(target.get("target_type") or "")
+            target_id = str(target.get("target_id") or "")
+            key = (target_type, target_id)
+            if window not in DIGEST_WINDOWS:
+                result[key] = unsupported_digest_sentinel(
+                    target_type=target_type,
+                    target_id=target_id,
+                    window=window,
+                    scope=scope,
+                    schema_version=schema_version,
+                )
+                continue
+
+            admission = self.current_admission_for_target(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version=schema_version,
+            )
+            last_ready = self.latest_ready_digest_for_target(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version=schema_version,
+            )
+            current_admission = admission if _is_admitted(admission) else None
+            if last_ready is not None:
+                currentness = public_currentness(
+                    digest=last_ready,
+                    admission=current_admission,
+                    window=window,
+                    now_ms=now_ms,
+                    reason="not_in_current_frontier" if admission and not current_admission else None,
+                )
+                result[key] = {**last_ready, "_current_admission": current_admission, "currentness": currentness}
+                continue
+
+            reason = self._not_ready_reason_for_admission(admission)
+            missing = _missing_digest_row(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version=schema_version,
+                reason=reason,
+            )
+            if current_admission is not None:
+                coverage = self.semantic_coverage_for_admission(current_admission)
+                missing.update(
+                    {
+                        "source_event_count": coverage["source_event_count"],
+                        "labeled_event_count": coverage["labeled_event_count"],
+                        "independent_author_count": int(current_admission.get("independent_author_count") or 0),
+                        "semantic_backlog_pending": (
+                            coverage["missing_semantic_count"] + coverage["pending_semantic_count"]
+                        ),
+                        "semantic_backlog_retryable": coverage["retryable_semantic_count"],
+                        "semantic_backlog_unavailable": coverage["terminal_unavailable_count"],
+                    }
+                )
+            missing["currentness"] = public_currentness(
+                digest=None,
+                admission=current_admission,
+                window=window,
+                now_ms=now_ms,
+                reason=reason,
+            )
+            result[key] = missing
+        return result
+
     def current_digests_for_targets(
         self,
         targets: Sequence[dict[str, str]],
@@ -1256,107 +1501,34 @@ class NarrativeRepository:
         scope: str,
         schema_version: str,
     ) -> dict[tuple[str, str], dict[str, Any]]:
-        result: dict[tuple[str, str], dict[str, Any]] = {}
-        for target in targets:
-            row = self.conn.execute(
-                """
-                SELECT digest.*,
-                       COALESCE(backlog.pending, 0) AS semantic_backlog_pending,
-                       COALESCE(backlog.retryable, 0) AS semantic_backlog_retryable,
-                       COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
-                       backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
-                FROM token_discussion_digests AS digest
-                JOIN narrative_admissions AS admissions
-                  ON admissions.target_type = digest.target_type
-                 AND admissions.target_id = digest.target_id
-                 AND admissions."window" = digest."window"
-                 AND admissions.scope = digest.scope
-                 AND admissions.schema_version = digest.schema_version
-                 AND admissions.status = 'admitted'
-                 AND COALESCE(admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')
-                LEFT JOIN LATERAL (
-                  SELECT
-                    COUNT(*) FILTER (
-                      WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-                    ) AS pending,
-                    COUNT(*) FILTER (WHERE semantics.status = 'retryable_error') AS retryable,
-                    COUNT(*) FILTER (WHERE semantics.status = 'semantic_unavailable') AS unavailable,
-                    MIN(semantics.next_retry_at_ms) FILTER (
-                      WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
-                    ) AS oldest_due_at_ms
-                  FROM token_mention_semantics AS semantics
-                  WHERE semantics.target_type = digest.target_type
-                    AND semantics.target_id = digest.target_id
-                    AND semantics.schema_version = digest.schema_version
-                ) AS backlog ON true
-                WHERE digest.target_type = %s
-                  AND digest.target_id = %s
-                  AND digest."window" = %s
-                  AND digest.scope = %s
-                  AND digest.schema_version = %s
-                  AND digest.is_current = true
-                ORDER BY digest.computed_at_ms DESC
-                LIMIT 1
-                """,
-                (target["target_type"], target["target_id"], window, scope, schema_version),
-            ).fetchone()
-            if row:
-                decoded = _row(row)
-                result[(decoded["target_type"], decoded["target_id"])] = decoded
-                continue
+        return self.current_narrative_snapshots_for_targets(
+            targets,
+            window=window,
+            scope=scope,
+            schema_version=schema_version,
+            now_ms=_now_ms(),
+        )
 
-            target_type = str(target.get("target_type") or "")
-            target_id = str(target.get("target_id") or "")
-            key = (target_type, target_id)
-            admission = self.conn.execute(
-                """
-                SELECT status
-                FROM narrative_admissions
-                WHERE target_type = %s
-                  AND target_id = %s
-                  AND "window" = %s
-                  AND scope = %s
-                  AND schema_version = %s
-                ORDER BY CASE WHEN status = 'admitted' THEN 0 ELSE 1 END,
-                         last_seen_at_ms DESC
-                LIMIT 1
-                """,
-                (target_type, target_id, window, scope, schema_version),
-            ).fetchone()
-            if admission and str(admission["status"]) == "suppressed":
-                result[key] = _missing_digest_row(
-                    target_type=target_type,
-                    target_id=target_id,
-                    window=window,
-                    scope=scope,
-                    schema_version=schema_version,
-                    reason="not_in_current_frontier",
-                )
-                continue
-
-            digest_exists = self.conn.execute(
-                """
-                SELECT 1
-                FROM token_discussion_digests AS digest
-                WHERE digest.target_type = %s
-                  AND digest.target_id = %s
-                  AND digest."window" = %s
-                  AND digest.scope = %s
-                  AND digest.schema_version = %s
-                LIMIT 1
-                """,
-                (target_type, target_id, window, scope, schema_version),
-            ).fetchone()
-            reason = "digest_stale" if admission and digest_exists else "digest_not_ready"
-            result[key] = _missing_digest_row(
-                target_type=target_type,
-                target_id=target_id,
-                window=window,
-                scope=scope,
-                schema_version=schema_version,
-                reason=reason,
-            )
-        return result
+    def _not_ready_reason_for_admission(self, admission: dict[str, Any] | None) -> str:
+        if admission is None:
+            return "no_ready_digest"
+        if not _is_admitted(admission):
+            return "not_in_current_frontier"
+        if (_int(admission.get("source_event_count")) or 0) == 0:
+            return "low_source_volume"
+        if (_int(admission.get("independent_author_count")) or 0) == 0:
+            return "low_independent_author_count"
+        coverage = self.semantic_coverage_for_admission(admission)
+        pending = (
+            coverage["missing_semantic_count"]
+            + coverage["pending_semantic_count"]
+            + coverage["retryable_semantic_count"]
+        )
+        if pending > 0:
+            return "semantic_labeling_pending"
+        if coverage["source_event_count"] > 0 and coverage["labeled_event_count"] == 0:
+            return "low_semantic_coverage"
+        return "no_ready_digest"
 
     def semantics_for_posts(
         self,
@@ -1477,10 +1649,11 @@ def _stable_ids(values: Sequence[str]) -> list[str]:
 
 
 def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
+    source_event_ids = _json_list(digest.get("source_event_ids") or digest.get("source_event_ids_json"))
     source_fingerprint = digest.get("source_fingerprint")
     if not source_fingerprint:
         source_fingerprint = build_source_fingerprint(
-            digest.get("source_event_ids") or [],
+            source_event_ids,
             digest.get("source_max_received_at_ms"),
         )
     label_fingerprint = digest.get("label_fingerprint")
@@ -1504,6 +1677,14 @@ def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         "schema_version": str(digest.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
         "model_version": str(digest.get("model_version") or "unknown"),
         "status": str(digest.get("status") or "pending"),
+        "epoch_id": digest.get("epoch_id"),
+        "epoch_policy_version": digest.get("epoch_policy_version"),
+        "source_event_ids_json": _json(source_event_ids),
+        "source_window_start_ms": _int(digest.get("source_window_start_ms")),
+        "source_window_end_ms": _int(digest.get("source_window_end_ms")),
+        "epoch_closed_at_ms": _int(digest.get("epoch_closed_at_ms")),
+        "display_current_until_ms": _int(digest.get("display_current_until_ms")),
+        "refresh_reason": digest.get("refresh_reason"),
         "source_fingerprint": source_fingerprint,
         "label_fingerprint": label_fingerprint,
         "headline_zh": digest.get("headline_zh"),
@@ -1568,7 +1749,14 @@ def _json_list(value: Any) -> list[str]:
 
 
 def _row(row: Any) -> dict[str, Any]:
-    return dict(row)
+    decoded = dict(row)
+    if "source_event_ids_json" in decoded and "source_event_ids" not in decoded:
+        decoded["source_event_ids"] = _json_list(decoded.get("source_event_ids_json"))
+    return decoded
+
+
+def _is_admitted(row: dict[str, Any] | None) -> bool:
+    return row is not None and str(row.get("status") or "") == "admitted"
 
 
 def _required(row: dict[str, Any], key: str) -> str:
@@ -1595,6 +1783,10 @@ def _float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _commit_if_available(conn: Any) -> None:

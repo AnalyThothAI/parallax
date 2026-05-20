@@ -53,16 +53,24 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
     backfill-enrichment-jobs
                         enqueue social-event-v2 extraction jobs for existing
                         watched events
+    backfill-token-radar-first-seen
+                        backfill compact Token Radar first-seen metadata from
+                        historical rows
+    backfill-watchlist-signal-stats
+                        backfill watchlist signal event ledger and stats read
+                        model
+    prune-token-radar   prune old Token Radar read-model rows while preserving
+                        current protected batches
     projection-status   print projection offsets and latest runs
     worker-status       print canonical worker runtime status
     validate-projections

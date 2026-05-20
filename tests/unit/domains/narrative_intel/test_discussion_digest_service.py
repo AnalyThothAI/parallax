@@ -352,6 +352,14 @@ def test_status_digest_carries_source_fingerprint_from_context() -> None:
             "labeled_event_count": 0,
             "independent_author_count": 2,
             "source_fingerprint": "source-current",
+            "epoch_id": "epoch-1",
+            "epoch_policy_version": "token-narrative-epoch-v1",
+            "source_event_ids": ["event-1", "event-2", "event-3"],
+            "source_window_start_ms": 100,
+            "source_window_end_ms": 900,
+            "epoch_closed_at_ms": 1000,
+            "display_current_until_ms": 2000,
+            "refresh_reason": "semantic_pending",
         },
         reason="semantic_labeling_pending",
         now_ms=1000,
@@ -359,6 +367,14 @@ def test_status_digest_carries_source_fingerprint_from_context() -> None:
     )
 
     assert digest.source_fingerprint == "source-current"
+    assert digest.epoch_id == "epoch-1"
+    assert digest.epoch_policy_version == "token-narrative-epoch-v1"
+    assert digest.source_event_ids == ["event-1", "event-2", "event-3"]
+    assert digest.source_window_start_ms == 100
+    assert digest.source_window_end_ms == 900
+    assert digest.epoch_closed_at_ms == 1000
+    assert digest.display_current_until_ms == 2000
+    assert digest.refresh_reason == "semantic_pending"
 
 
 def test_ready_digest_carries_source_fingerprint_from_context() -> None:
@@ -389,6 +405,14 @@ def test_ready_digest_carries_source_fingerprint_from_context() -> None:
             "labeled_event_count": 3,
             "independent_author_count": 2,
             "source_fingerprint": "source-current",
+            "epoch_id": "epoch-1",
+            "epoch_policy_version": "token-narrative-epoch-v1",
+            "source_event_ids": ["e1", "e2", "e3"],
+            "source_window_start_ms": 100,
+            "source_window_end_ms": 900,
+            "epoch_closed_at_ms": 1000,
+            "display_current_until_ms": 2000,
+            "refresh_reason": "initial_ready",
             "mentions": [{"event_id": "e1"}, {"event_id": "e2"}, {"event_id": "e3"}],
             "semantic_rows": [{"status": "labeled"}, {"status": "labeled"}, {"status": "labeled"}],
         },
@@ -396,3 +420,11 @@ def test_ready_digest_carries_source_fingerprint_from_context() -> None:
     )
 
     assert digest.source_fingerprint == "source-current"
+    assert digest.epoch_id == "epoch-1"
+    assert digest.epoch_policy_version == "token-narrative-epoch-v1"
+    assert digest.source_event_ids == ["e1", "e2", "e3"]
+    assert digest.source_window_start_ms == 100
+    assert digest.source_window_end_ms == 900
+    assert digest.epoch_closed_at_ms == 1000
+    assert digest.display_current_until_ms == 2000
+    assert digest.refresh_reason == "initial_ready"

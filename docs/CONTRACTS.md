@@ -170,13 +170,16 @@ Token Radar market contract:
   `semantic_unavailable`, or `stale`; clients must render data gaps instead of
   recreating narrative text from factor snapshots. A digest may include optional
   compact `processing.backlog` metadata for ops visibility, but `status` and
-  `data_gaps` remain the truth for user-facing readiness. Public currentness is
-  source-set based: a current digest is usable only when it matches an admitted
-  current `narrative_admissions` row and the same `source_fingerprint`. Missing
-  public digest state must use one of the public reason contracts
-  `digest_not_ready`, `digest_stale`, or `not_in_current_frontier`; budget
-  backpressure uses `llm_cycle_budget_exhausted` or
-  `llm_failure_budget_exhausted`.
+  `data_gaps` remain the truth for user-facing readiness.
+- `discussion_digest.currentness` is required on Token Radar rows. It composes
+  the last ready narrative epoch with the current admitted source frontier and
+  exposes `display_status` (`current`, `updating`, `stale`, `not_ready`,
+  `out_of_frontier`, or `unsupported_window`), ready/current source
+  fingerprints, ready/current/delta source counts, delta independent authors,
+  last-ready time, next-refresh time, and a public reason. Source fingerprint
+  mismatch no longer hides a ready digest by itself; it displays as
+  `updating` or `stale` with explicit delta metadata. `5m` is scanner-only and
+  returns `unsupported_window`, not a pending digest backlog.
 - `market.event_anchor` and `market.decision_latest` are public response keys
   generated from `enriched_events` and `market_ticks`. They are not internal
   market concepts, DB tables, worker names, or provider runtime semantics.
@@ -345,8 +348,11 @@ Search V2 contract:
   - `data.posts`: the initial recent post page for the same target/window/scope.
     Additional pages use `/api/target-posts` with the returned `next_cursor`.
   - `data.discussion_digest`: persisted narrative digest with explicit status,
-    semantic coverage, evidence refs, data gaps, and optional compact
-    `processing.backlog`.
+    required `currentness`, semantic coverage, evidence refs, data gaps, and
+    optional compact `processing.backlog`.
+  - `data.narrative_delta`: compact UI metadata derived from
+    `discussion_digest.currentness`, including display status and source/author
+    delta counts.
   - `data.narrative_clusters`: digest cluster summaries when available.
   - `data.pulse_overlay`: optional public Signal Pulse overlay; it is
     display-gated and never changes Radar rank or Token Case narrative.

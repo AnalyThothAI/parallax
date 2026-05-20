@@ -54,6 +54,14 @@ class TokenDiscussionDigest(BaseModel):
     model_version: str
     status: DigestStatus
     is_current: bool = True
+    epoch_id: str | None = None
+    epoch_policy_version: str | None = None
+    source_event_ids: list[str] = Field(default_factory=list)
+    source_window_start_ms: int | None = None
+    source_window_end_ms: int | None = None
+    epoch_closed_at_ms: int | None = None
+    display_current_until_ms: int | None = None
+    refresh_reason: str | None = None
     source_fingerprint: str | None = None
     label_fingerprint: str | None = None
     headline_zh: str | None = None

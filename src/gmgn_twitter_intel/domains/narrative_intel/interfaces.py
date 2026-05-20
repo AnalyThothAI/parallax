@@ -4,6 +4,16 @@ from typing import Any, Protocol
 
 
 class NarrativeDigestReader(Protocol):
+    def current_narrative_snapshots_for_targets(
+        self,
+        targets: list[dict[str, str]],
+        *,
+        window: str,
+        scope: str,
+        schema_version: str,
+        now_ms: int,
+    ) -> dict[tuple[str, str], dict[str, Any]]: ...
+
     def current_digests_for_targets(
         self,
         targets: list[dict[str, str]],
@@ -12,4 +22,3 @@ class NarrativeDigestReader(Protocol):
         scope: str,
         schema_version: str,
     ) -> dict[tuple[str, str], dict[str, Any]]: ...
-

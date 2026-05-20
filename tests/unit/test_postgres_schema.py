@@ -73,6 +73,9 @@ TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260520_0069_token_radar_retention_watchlist_stats.py"
 )
+TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -289,6 +292,35 @@ def test_token_radar_retention_watchlist_stats_migration_adds_bounded_read_model
         "event_id TEXT PRIMARY KEY",
     ):
         assert statement in text
+
+
+def test_token_narrative_epochs_migration_adds_digest_epoch_metadata() -> None:
+    text = TOKEN_NARRATIVE_EPOCHS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260520_0070"',
+        'down_revision = "20260520_0069"',
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_id TEXT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_policy_version TEXT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_window_start_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_window_end_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS epoch_closed_at_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS display_current_until_ms BIGINT",
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS refresh_reason TEXT",
+        "idx_token_discussion_digests_epoch_currentness",
+        "hard-cut migration is not safely reversible",
+    ):
+        assert statement in text
+    assert (
+        "ALTER TABLE token_discussion_digests ADD COLUMN IF NOT EXISTS source_event_ids_json JSONB "
+        "NOT NULL DEFAULT '[]'::jsonb"
+    ) in normalized_text
+    assert (
+        'ON token_discussion_digests( target_type, target_id, "window", scope, schema_version, status, '
+        "computed_at_ms DESC )"
+    ) in normalized_text
+    assert "restoring a pre-migration backup" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

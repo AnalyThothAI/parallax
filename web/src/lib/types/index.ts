@@ -43,6 +43,8 @@ export type {
   MarketObservationSnapshot,
   NarrativeArgument,
   NarrativeCluster,
+  NarrativeCurrentness,
+  NarrativeCurrentnessDisplayStatus,
   NarrativeStatus,
   NotificationItem,
   NotificationLivePayload,

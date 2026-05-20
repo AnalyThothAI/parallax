@@ -693,7 +693,11 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
         conn.close()
 
     assert first["digest_id"] != second["digest_id"]
-    assert current[("chain_token", "solana:So111")]["digest_id"] == second["digest_id"]
+    assert current[("chain_token", "solana:So111")]["status"] == "pending"
+    assert current[("chain_token", "solana:So111")]["currentness"]["display_status"] == "not_ready"
+    assert current[("chain_token", "solana:So111")]["data_gaps_json"] == [
+        {"reason": "low_independent_author_count"}
+    ]
     assert rows[0]["is_current"] is False
     assert rows[0]["superseded_at_ms"] == 2_000
     assert rows[1]["is_current"] is True
@@ -789,9 +793,273 @@ def test_current_digests_returns_matching_fingerprint_digest(tmp_path):
     assert admission == {"upserted": 1, "seen": 1}
     assert current[("chain_token", "solana:So111")]["digest_id"] == digest["digest_id"]
     assert current[("chain_token", "solana:So111")]["status"] == "ready"
+    assert current[("chain_token", "solana:So111")]["currentness"]["display_status"] == "current"
 
 
-def test_current_digests_excludes_suppressed_admission_digest(tmp_path):
+def test_current_narrative_snapshots_keep_last_ready_on_source_delta(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "24h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-a", "event-b"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 2,
+                    "independent_author_count": 1,
+                }
+            ],
+            now_ms=2_000,
+        )
+        ready_fingerprint = conn.execute(
+            "SELECT source_fingerprint FROM narrative_admissions WHERE target_id = 'solana:So111'"
+        ).fetchone()["source_fingerprint"]
+        digest = repo.replace_current_digest(
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+                "schema_version": "narrative_intel_v1",
+                "model_version": "deterministic",
+                "status": "ready",
+                "epoch_id": "epoch-ready",
+                "epoch_policy_version": "token-narrative-epoch-v1",
+                "source_event_ids": ["event-a", "event-b"],
+                "source_fingerprint": ready_fingerprint,
+                "label_fingerprint": "labels-ready",
+                "source_window_end_ms": 2_000,
+                "display_current_until_ms": 9_000,
+                "semantic_coverage": 1.0,
+                "source_event_count": 2,
+                "labeled_event_count": 2,
+                "independent_author_count": 1,
+            },
+            now_ms=2_100,
+        )
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "24h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-a", "event-b", "event-c"],
+                    "source_max_received_at_ms": 4_000,
+                    "source_event_count": 3,
+                    "independent_author_count": 2,
+                }
+            ],
+            now_ms=4_000,
+        )
+
+        current = repo.current_narrative_snapshots_for_targets(
+            [{"target_type": "chain_token", "target_id": "solana:So111"}],
+            window="24h",
+            scope="matched",
+            schema_version="narrative_intel_v1",
+            now_ms=5_000,
+        )
+    finally:
+        conn.close()
+
+    row = current[("chain_token", "solana:So111")]
+    assert row["digest_id"] == digest["digest_id"]
+    assert row["status"] == "ready"
+    assert row["currentness"]["display_status"] == "updating"
+    assert row["currentness"]["delta_source_event_count"] == 1
+    assert row["currentness"]["ready_source_event_count"] == 2
+    assert row["currentness"]["current_source_event_count"] == 3
+
+
+def test_current_narrative_snapshots_returns_unsupported_5m_without_insert(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "5m",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-5m"],
+                    "source_max_received_at_ms": 3_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                }
+            ],
+            now_ms=3_000,
+        )
+        before_count = conn.execute("SELECT COUNT(*) AS count FROM token_discussion_digests").fetchone()["count"]
+
+        current = repo.current_narrative_snapshots_for_targets(
+            [{"target_type": "chain_token", "target_id": "solana:So111"}],
+            window="5m",
+            scope="matched",
+            schema_version="narrative_intel_v1",
+            now_ms=3_100,
+        )
+        after_count = conn.execute("SELECT COUNT(*) AS count FROM token_discussion_digests").fetchone()["count"]
+    finally:
+        conn.close()
+
+    row = current[("chain_token", "solana:So111")]
+    assert row["status"] == "pending"
+    assert row["currentness"]["display_status"] == "unsupported_window"
+    assert row["data_gaps_json"] == [{"reason": "narrative_not_supported_for_window"}]
+    assert after_count == before_count
+
+
+def test_latest_ready_digest_ignores_newer_status_digest(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        repo.replace_current_digest(
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+                "schema_version": "narrative_intel_v1",
+                "model_version": "deterministic",
+                "status": "ready",
+                "source_fingerprint": "ready-source",
+                "label_fingerprint": "labels-ready",
+                "semantic_coverage": 1.0,
+                "source_event_count": 2,
+                "labeled_event_count": 2,
+                "independent_author_count": 1,
+            },
+            now_ms=2_000,
+        )
+        repo.replace_current_digest(
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+                "schema_version": "narrative_intel_v1",
+                "model_version": "deterministic",
+                "status": "insufficient",
+                "source_fingerprint": "status-source",
+                "label_fingerprint": "labels-status",
+                "data_gaps": [{"reason": "low_semantic_coverage"}],
+                "semantic_coverage": 0.2,
+                "source_event_count": 3,
+                "labeled_event_count": 1,
+                "independent_author_count": 1,
+            },
+            now_ms=3_000,
+        )
+
+        ready = repo.latest_ready_digest_for_target(
+            target_type="chain_token",
+            target_id="solana:So111",
+            window="24h",
+            scope="matched",
+            schema_version="narrative_intel_v1",
+        )
+    finally:
+        conn.close()
+
+    assert ready is not None
+    assert ready["status"] == "ready"
+    assert ready["source_fingerprint"] == "ready-source"
+
+
+def test_replace_current_digest_persists_epoch_metadata(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        digest = repo.replace_current_digest(
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "24h",
+                "scope": "matched",
+                "schema_version": "narrative_intel_v1",
+                "model_version": "deterministic",
+                "status": "ready",
+                "epoch_id": "epoch-1",
+                "epoch_policy_version": "token-narrative-epoch-v1",
+                "source_event_ids": ["event-a", "event-b"],
+                "source_window_start_ms": 1_000,
+                "source_window_end_ms": 2_000,
+                "epoch_closed_at_ms": 2_100,
+                "display_current_until_ms": 9_000,
+                "refresh_reason": "material_delta_due",
+                "source_fingerprint": "source-ready",
+                "label_fingerprint": "labels-ready",
+                "semantic_coverage": 1.0,
+                "source_event_count": 2,
+                "labeled_event_count": 2,
+                "independent_author_count": 1,
+            },
+            now_ms=2_100,
+        )
+        row = conn.execute(
+            """
+            SELECT epoch_id, epoch_policy_version, source_event_ids_json, source_window_start_ms,
+                   source_window_end_ms, epoch_closed_at_ms, display_current_until_ms, refresh_reason
+            FROM token_discussion_digests
+            WHERE digest_id = %s
+            """,
+            (digest["digest_id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["epoch_id"] == "epoch-1"
+    assert row["epoch_policy_version"] == "token-narrative-epoch-v1"
+    assert row["source_event_ids_json"] == ["event-a", "event-b"]
+    assert row["source_window_start_ms"] == 1_000
+    assert row["source_window_end_ms"] == 2_000
+    assert row["epoch_closed_at_ms"] == 2_100
+    assert row["display_current_until_ms"] == 9_000
+    assert row["refresh_reason"] == "material_delta_due"
+
+
+def test_market_context_for_admission_reports_price_move_since_last_ready(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        _insert_market_tick(
+            conn,
+            tick_id="tick-ready",
+            target_id="solana:So111",
+            observed_at_ms=1_000,
+            price_usd=1.00,
+        )
+        _insert_market_tick(
+            conn,
+            tick_id="tick-current",
+            target_id="solana:So111",
+            observed_at_ms=4_000,
+            price_usd=1.25,
+        )
+        conn.commit()
+
+        context = repo.market_context_for_admission(
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "source_max_received_at_ms": 4_000,
+            },
+            last_ready_digest={"computed_at_ms": 1_000},
+        )
+    finally:
+        conn.close()
+
+    assert round(context["price_move_pct"], 2) == 25.0
+    assert context["price_move_pct_since_ready"] == context["price_move_pct"]
+    assert context["ready_tick_observed_at_ms"] == 1_000
+    assert context["current_tick_observed_at_ms"] == 4_000
+
+
+def test_current_digests_marks_suppressed_ready_digest_out_of_frontier(tmp_path):
     conn, _, repo = open_repo(tmp_path)
     try:
         repo.upsert_admissions(
@@ -840,13 +1108,14 @@ def test_current_digests_excludes_suppressed_admission_digest(tmp_path):
         conn.close()
 
     row = current[("chain_token", "solana:So111")]
-    assert row["status"] == "pending"
-    assert row["is_current"] is False
-    assert row["data_gaps_json"] == [{"reason": "not_in_current_frontier"}]
+    assert row["status"] == "ready"
+    assert row["is_current"] is True
+    assert row["currentness"]["display_status"] == "out_of_frontier"
+    assert row["currentness"]["reason"] == "not_in_current_frontier"
     assert persisted == 1
 
 
-def test_current_digests_excludes_fingerprint_mismatch(tmp_path):
+def test_current_digests_returns_last_ready_when_fingerprint_mismatches(tmp_path):
     conn, _, repo = open_repo(tmp_path)
     try:
         repo.upsert_admissions(
@@ -893,9 +1162,12 @@ def test_current_digests_excludes_fingerprint_mismatch(tmp_path):
         conn.close()
 
     row = current[("chain_token", "solana:So111")]
-    assert row["status"] == "pending"
-    assert row["is_current"] is False
-    assert row["data_gaps_json"] == [{"reason": "digest_stale"}]
+    assert row["status"] == "ready"
+    assert row["is_current"] is True
+    assert row["source_fingerprint"] == "old-source"
+    assert row["currentness"]["display_status"] == "updating"
+    assert row["currentness"]["reason"] == "digest_updating"
+    assert row["currentness"]["current_source_fingerprint"] != row["currentness"]["ready_source_fingerprint"]
 
 
 def test_current_digests_returns_not_ready_without_admission_or_digest(tmp_path):
@@ -913,7 +1185,8 @@ def test_current_digests_returns_not_ready_without_admission_or_digest(tmp_path)
     row = current[("chain_token", "solana:So111")]
     assert row["status"] == "pending"
     assert row["is_current"] is False
-    assert row["data_gaps_json"] == [{"reason": "digest_not_ready"}]
+    assert row["data_gaps_json"] == [{"reason": "no_ready_digest"}]
+    assert row["currentness"]["display_status"] == "not_ready"
 
 
 def test_due_mentions_for_labeling_limits_rows_per_target(tmp_path):
@@ -1080,14 +1353,14 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
     assert result == {
         "deleted_obsolete_pending_semantics": 1,
         "stale_suppressed_digests": 1,
-        "stale_fingerprint_mismatch_digests": 1,
+        "fingerprint_mismatch_digests_preserved": 1,
     }
     assert semantics == {"event-current": "queued", "event-labeled": "labeled"}
     assert digest_rows["solana:Suppressed"]["status"] == "stale"
     assert digest_rows["solana:Suppressed"]["is_current"] is False
     assert digest_rows["solana:Suppressed"]["superseded_at_ms"] == 4_000
-    assert digest_rows["solana:Current"]["status"] == "stale"
-    assert digest_rows["solana:Current"]["is_current"] is False
+    assert digest_rows["solana:Current"]["status"] == "ready"
+    assert digest_rows["solana:Current"]["is_current"] is True
 
 
 def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:
@@ -1171,4 +1444,27 @@ def _insert_radar_row(
             Jsonb({}),
             Jsonb({"composite": {"rank_score": max(0, 100 - rank)}}),
         ),
+    )
+
+
+def _insert_market_tick(
+    conn,
+    *,
+    tick_id: str,
+    target_id: str,
+    observed_at_ms: int,
+    price_usd: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO market_ticks(
+          tick_id, target_type, target_id, chain, token_address, source_tier, source_provider,
+          observed_at_ms, received_at_ms, price_usd, created_at_ms
+        )
+        VALUES (
+          %s, 'chain_token', %s, 'solana', 'So111', 'tier2_poll', 'okx_dex_rest',
+          %s, %s, %s, %s
+        )
+        """,
+        (tick_id, target_id, observed_at_ms, observed_at_ms, price_usd, observed_at_ms),
     )

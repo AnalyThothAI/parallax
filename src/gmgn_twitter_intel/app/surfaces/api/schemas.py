@@ -83,12 +83,28 @@ class NarrativeAdmissionHealth(ApiSchema):
     current_independent_authors: int = 0
 
 
+class NarrativeEpochHealth(ApiSchema):
+    epoch_policy_version: str | None = None
+    unsupported_window_admissions: int = 0
+    last_ready_digest_count: int = 0
+    updating_snapshot_count: int = 0
+    material_delta_due_count: int = 0
+    no_material_delta_deferred_count: int = 0
+    last_ready_p50_age_ms: int | None = None
+    last_ready_p95_age_ms: int | None = None
+    delta_source_rows: int = 0
+    delta_independent_authors: int = 0
+    digest_refresh_due_by_window: dict[str, int] = Field(default_factory=dict)
+    digest_refresh_deferred_by_epoch_policy: dict[str, int] = Field(default_factory=dict)
+
+
 class NarrativeBacklogHealthData(ApiSchema):
     schema_version: str | None = None
     now_ms: int | None = None
     since_hours: int = 4
     admissions: NarrativeAdmissionHealth = Field(default_factory=NarrativeAdmissionHealth)
     semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
+    epoch: NarrativeEpochHealth = Field(default_factory=NarrativeEpochHealth)
     recent_runs: dict[str, NarrativeRunHealth] = Field(default_factory=dict)
     digest_status_counts: dict[str, int] = Field(default_factory=dict)
     digest_reason_counts: dict[str, int] = Field(default_factory=dict)
@@ -117,22 +133,57 @@ class SearchInspectData(ApiSchema):
     error: str | None = None
 
 
+class NarrativeCurrentnessData(ApiSchema):
+    display_status: Literal["current", "updating", "stale", "not_ready", "out_of_frontier", "unsupported_window"]
+    epoch_id: str | None = None
+    epoch_policy_version: str | None = None
+    ready_source_fingerprint: str | None = None
+    current_source_fingerprint: str | None = None
+    ready_source_event_count: int = 0
+    current_source_event_count: int = 0
+    delta_source_event_count: int = 0
+    delta_independent_author_count: int = 0
+    delta_since_ms: int | None = None
+    last_ready_computed_at_ms: int | None = None
+    next_refresh_due_at_ms: int | None = None
+    reason: str
+
+
+class TokenDiscussionDigestData(ApiSchema):
+    status: Literal["ready", "pending", "insufficient", "semantic_unavailable", "stale"]
+    currentness: NarrativeCurrentnessData
+    data_gaps: list[Any] = Field(default_factory=list)
+    coverage: JsonObject = Field(default_factory=dict)
+
+
+class NarrativeDeltaData(ApiSchema):
+    display_status: str
+    delta_source_event_count: int = 0
+    delta_independent_author_count: int = 0
+    label: str | None = None
+
+
 class TokenCaseData(ApiSchema):
     target: JsonObject
     profile: JsonObject | None = None
     timeline: JsonObject
     posts: JsonObject
-    discussion_digest: JsonObject
+    discussion_digest: TokenDiscussionDigestData
+    narrative_delta: NarrativeDeltaData = Field(default_factory=lambda: NarrativeDeltaData(display_status="not_ready"))
     narrative_clusters: list[JsonObject] = Field(default_factory=list)
     pulse_overlay: JsonObject | None = None
     market_live: JsonObject
 
 
+class TokenRadarRowData(ApiSchema):
+    discussion_digest: TokenDiscussionDigestData | None = None
+
+
 class TokenRadarData(ApiSchema):
     window: str
     scope: str
-    targets: list[JsonObject] = Field(default_factory=list)
-    attention: list[JsonObject] = Field(default_factory=list)
+    targets: list[TokenRadarRowData] = Field(default_factory=list)
+    attention: list[TokenRadarRowData] = Field(default_factory=list)
     projection: JsonObject = Field(default_factory=dict)
 
 

@@ -176,10 +176,24 @@ function compactWhyNowTitle(item: TokenFlowItem): string {
   if (!digest) {
     return narrativeStatusTitle("semantic_unavailable");
   }
+  const currentness = digest.currentness;
+  const displayStatus = currentness.display_status;
+  if (displayStatus === "unsupported_window") {
+    return "5m 实时信号";
+  }
+  if (displayStatus === "not_ready" || displayStatus === "out_of_frontier") {
+    return firstGapLabel(digest) ?? currentnessTitle(displayStatus);
+  }
   if (digest.status !== "ready") {
-    return narrativeStatusTitle(digest.status);
+    return firstGapLabel(digest) ?? narrativeStatusTitle(digest.status);
   }
   const title = cleanText(digest.dominant_narrative?.title) ?? "叙事已读取";
+  if (displayStatus === "updating") {
+    return `${title} · 更新中 +${compactNumber(currentness.delta_source_event_count ?? 0)}`;
+  }
+  if (displayStatus === "stale") {
+    return `${title} · 上一版`;
+  }
   const stance = topMixLabel(digest.stance_mix);
   return stance ? `${title} · ${stance}` : title;
 }
@@ -189,7 +203,14 @@ function compactWhyNowDetail(item: TokenFlowItem): string {
   if (!digest) {
     return "discussion digest missing";
   }
-  const gap = narrativeGapLabel(digest.data_gaps.find(Boolean));
+  const displayStatus = digest.currentness.display_status;
+  const gap = firstGapLabel(digest);
+  if (displayStatus === "unsupported_window") {
+    return "5m 实时信号";
+  }
+  if (displayStatus === "not_ready" || displayStatus === "out_of_frontier") {
+    return gap ?? currentnessTitle(displayStatus);
+  }
   if (digest.status !== "ready") {
     return gap ?? narrativeStatusTitle(digest.status);
   }
@@ -203,6 +224,16 @@ function compactWhyNowTone(
   risk: string | null,
   fallbackTone: string,
 ): string {
+  const displayStatus = digest?.currentness.display_status;
+  if (displayStatus === "updating") {
+    return "info";
+  }
+  if (displayStatus === "stale" || displayStatus === "out_of_frontier") {
+    return "warn";
+  }
+  if (displayStatus === "not_ready" || displayStatus === "unsupported_window") {
+    return risk ? "risk" : "info";
+  }
   if (digest?.status === "ready") {
     return fallbackTone;
   }
@@ -220,6 +251,22 @@ function narrativeStatusTitle(status: NarrativeStatus): string {
     stale: "叙事待刷新",
   };
   return labels[status] ?? status.replaceAll("_", " ");
+}
+
+function currentnessTitle(status: string): string {
+  const labels: Record<string, string> = {
+    current: "叙事已更新",
+    not_ready: "叙事待生成",
+    out_of_frontier: "不在当前雷达前沿",
+    stale: "上一版",
+    unsupported_window: "5m 实时信号",
+    updating: "叙事更新中",
+  };
+  return labels[status] ?? status.replaceAll("_", " ");
+}
+
+function firstGapLabel(digest: TokenDiscussionDigest): string | null {
+  return narrativeGapLabel(digest.data_gaps.find(Boolean));
 }
 
 function topMixLabel(mix: TokenDiscussionDigest["stance_mix"]): string | null {

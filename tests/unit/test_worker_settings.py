@@ -96,7 +96,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_discussion_digest.max_llm_calls_per_cycle == 3
     assert settings.token_discussion_digest.max_llm_failures_per_cycle == 2
     assert settings.token_discussion_digest.provider_failure_backoff_seconds == 600
-    assert settings.token_discussion_digest.digest_ttl_by_window_seconds["24h"] == 900
+    assert settings.token_discussion_digest.digest_ttl_by_window_seconds == {"1h": 900, "4h": 1800, "24h": 7200}
     assert settings.pulse_candidate.soft_timeout_seconds == 540
     assert settings.pulse_candidate.hard_timeout_seconds == 660
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
@@ -151,6 +151,32 @@ def test_token_discussion_digest_has_llm_cycle_caps() -> None:
     assert settings.token_discussion_digest.max_llm_calls_per_cycle == 3
     assert settings.token_discussion_digest.max_llm_failures_per_cycle == 2
     assert settings.token_discussion_digest.provider_failure_backoff_seconds == 600
+
+
+def test_token_discussion_digest_hard_cuts_old_epoch_chasing_settings() -> None:
+    text = default_workers_yaml()
+    payload = yaml.safe_load(text)
+    digest_payload = payload["token_discussion_digest"]
+
+    assert "min_new_labeled_mentions" not in digest_payload
+    assert "min_new_authors" not in digest_payload
+    assert "5m" not in digest_payload["digest_ttl_by_window_seconds"]
+    assert digest_payload["digest_ttl_by_window_seconds"] == {"1h": 900, "4h": 1800, "24h": 7200}
+
+    invalid_payload = yaml.safe_load(text)
+    invalid_payload["token_discussion_digest"]["min_new_labeled_mentions"] = 3
+    invalid_payload["token_discussion_digest"]["min_new_authors"] = 2
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**invalid_payload)
+
+
+def test_token_discussion_digest_rejects_obsolete_digest_ttl_window() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["token_discussion_digest"]["digest_ttl_by_window_seconds"]["5m"] = 120
+
+    with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
 
 
 def test_worker_settings_reject_unknown_worker_key():

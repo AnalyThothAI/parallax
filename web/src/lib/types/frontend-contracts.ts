@@ -340,6 +340,32 @@ export type NarrativeStatus =
   | "semantic_unavailable"
   | string;
 
+export type NarrativeCurrentnessDisplayStatus =
+  | "current"
+  | "updating"
+  | "stale"
+  | "not_ready"
+  | "out_of_frontier"
+  | "unsupported_window"
+  | string;
+
+export type NarrativeCurrentness = {
+  display_status: NarrativeCurrentnessDisplayStatus;
+  epoch_id?: string | null;
+  epoch_policy_version?: string | null;
+  ready_source_fingerprint?: string | null;
+  current_source_fingerprint?: string | null;
+  ready_source_event_count?: number | null;
+  current_source_event_count?: number | null;
+  delta_source_event_count?: number | null;
+  delta_independent_author_count?: number | null;
+  delta_since_ms?: number | null;
+  last_ready_computed_at_ms?: number | null;
+  next_refresh_due_at_ms?: number | null;
+  reason?: string | null;
+  [key: string]: unknown;
+};
+
 export type EvidenceRef = {
   ref_id?: string | null;
   ref_type:
@@ -423,6 +449,7 @@ export type NarrativeCluster = {
 export type TokenDiscussionDigest = {
   schema_version?: string | null;
   status: NarrativeStatus;
+  currentness: NarrativeCurrentness;
   generated_at_ms?: number | null;
   computed_at_ms?: number | null;
   stale?: boolean | null;

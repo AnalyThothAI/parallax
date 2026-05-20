@@ -1177,6 +1177,7 @@ export interface components {
             digest_status_counts?: {
                 [key: string]: number;
             };
+            epoch?: components["schemas"]["NarrativeEpochHealth"];
             /** Now Ms */
             now_ms?: number | null;
             /**
@@ -1196,6 +1197,125 @@ export interface components {
              * @default 4
              */
             since_hours: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NarrativeCurrentnessData */
+        NarrativeCurrentnessData: {
+            /**
+             * Current Source Event Count
+             * @default 0
+             */
+            current_source_event_count: number;
+            /** Current Source Fingerprint */
+            current_source_fingerprint?: string | null;
+            /**
+             * Delta Independent Author Count
+             * @default 0
+             */
+            delta_independent_author_count: number;
+            /** Delta Since Ms */
+            delta_since_ms?: number | null;
+            /**
+             * Delta Source Event Count
+             * @default 0
+             */
+            delta_source_event_count: number;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "current" | "updating" | "stale" | "not_ready" | "out_of_frontier" | "unsupported_window";
+            /** Epoch Id */
+            epoch_id?: string | null;
+            /** Epoch Policy Version */
+            epoch_policy_version?: string | null;
+            /** Last Ready Computed At Ms */
+            last_ready_computed_at_ms?: number | null;
+            /** Next Refresh Due At Ms */
+            next_refresh_due_at_ms?: number | null;
+            /**
+             * Ready Source Event Count
+             * @default 0
+             */
+            ready_source_event_count: number;
+            /** Ready Source Fingerprint */
+            ready_source_fingerprint?: string | null;
+            /** Reason */
+            reason: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NarrativeDeltaData */
+        NarrativeDeltaData: {
+            /**
+             * Delta Independent Author Count
+             * @default 0
+             */
+            delta_independent_author_count: number;
+            /**
+             * Delta Source Event Count
+             * @default 0
+             */
+            delta_source_event_count: number;
+            /** Display Status */
+            display_status: string;
+            /** Label */
+            label?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** NarrativeEpochHealth */
+        NarrativeEpochHealth: {
+            /**
+             * Delta Independent Authors
+             * @default 0
+             */
+            delta_independent_authors: number;
+            /**
+             * Delta Source Rows
+             * @default 0
+             */
+            delta_source_rows: number;
+            /** Digest Refresh Deferred By Epoch Policy */
+            digest_refresh_deferred_by_epoch_policy?: {
+                [key: string]: number;
+            };
+            /** Digest Refresh Due By Window */
+            digest_refresh_due_by_window?: {
+                [key: string]: number;
+            };
+            /** Epoch Policy Version */
+            epoch_policy_version?: string | null;
+            /**
+             * Last Ready Digest Count
+             * @default 0
+             */
+            last_ready_digest_count: number;
+            /** Last Ready P50 Age Ms */
+            last_ready_p50_age_ms?: number | null;
+            /** Last Ready P95 Age Ms */
+            last_ready_p95_age_ms?: number | null;
+            /**
+             * Material Delta Due Count
+             * @default 0
+             */
+            material_delta_due_count: number;
+            /**
+             * No Material Delta Deferred Count
+             * @default 0
+             */
+            no_material_delta_deferred_count: number;
+            /**
+             * Unsupported Window Admissions
+             * @default 0
+             */
+            unsupported_window_admissions: number;
+            /**
+             * Updating Snapshot Count
+             * @default 0
+             */
+            updating_snapshot_count: number;
         } & {
             [key: string]: unknown;
         };
@@ -1959,10 +2079,7 @@ export interface components {
         };
         /** TokenCaseData */
         TokenCaseData: {
-            /** Discussion Digest */
-            discussion_digest: {
-                [key: string]: unknown;
-            };
+            discussion_digest: components["schemas"]["TokenDiscussionDigestData"];
             /** Market Live */
             market_live: {
                 [key: string]: unknown;
@@ -1971,6 +2088,7 @@ export interface components {
             narrative_clusters?: {
                 [key: string]: unknown;
             }[];
+            narrative_delta?: components["schemas"]["NarrativeDeltaData"];
             /** Posts */
             posts: {
                 [key: string]: unknown;
@@ -1994,12 +2112,27 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** TokenDiscussionDigestData */
+        TokenDiscussionDigestData: {
+            /** Coverage */
+            coverage?: {
+                [key: string]: unknown;
+            };
+            currentness: components["schemas"]["NarrativeCurrentnessData"];
+            /** Data Gaps */
+            data_gaps?: unknown[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "pending" | "insufficient" | "semantic_unavailable" | "stale";
+        } & {
+            [key: string]: unknown;
+        };
         /** TokenRadarData */
         TokenRadarData: {
             /** Attention */
-            attention?: {
-                [key: string]: unknown;
-            }[];
+            attention?: components["schemas"]["TokenRadarRowData"][];
             /** Projection */
             projection?: {
                 [key: string]: unknown;
@@ -2007,11 +2140,15 @@ export interface components {
             /** Scope */
             scope: string;
             /** Targets */
-            targets?: {
-                [key: string]: unknown;
-            }[];
+            targets?: components["schemas"]["TokenRadarRowData"][];
             /** Window */
             window: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TokenRadarRowData */
+        TokenRadarRowData: {
+            discussion_digest?: components["schemas"]["TokenDiscussionDigestData"] | null;
         } & {
             [key: string]: unknown;
         };
