@@ -356,6 +356,17 @@ or ranking-contract change. Current runtime explanations come from
 Downstream evaluation services filter by version, otherwise A/B comparisons
 silently mix populations. No black-box scores.
 
+Signal Pulse list/detail endpoints are Pulse-specific, not a generic Token
+Radar window mirror:
+
+- `/api/signal-lab/pulse` accepts `window=1h|4h`; missing `window` defaults to
+  `4h`. Explicit `5m` and `24h` are rejected with `invalid_window`.
+- `scope=all` is the default discovery lane. `scope=matched` is watchlist
+  alert/context: it can explain why a watched source matters, but matched or
+  watched evidence alone does not bypass independent-source display quality.
+- The frontend default query is `4h/all`; `1h` is the early-confirmation lane.
+  Token Radar may still expose `5m` outside Signal Pulse.
+
 Signal Pulse `decision` blocks are the runtime contract for agent output:
 
 ```json
@@ -364,7 +375,7 @@ Signal Pulse `decision` blocks are the runtime contract for agent output:
   "recommendation": "watchlist",
   "confidence": 0.72,
   "abstain_reason": null,
-  "stage_count": 2,
+  "stage_count": 3,
   "summary_zh": "社交热度有效，但 DEX floor 仍需继续确认。",
   "narrative_archetype": "kol-ignition",
   "narrative_thesis_zh": "独立作者扩散到第三方 KOL，价格未跟上但叙事处于点火期。",
@@ -391,18 +402,19 @@ Signal Pulse `decision` blocks are the runtime contract for agent output:
 }
 ```
 
-Decision block field semantics (v2, set in plan 2026-05-16):
+Decision block field semantics (research committee hard cut, set in plan
+2026-05-20):
 
-- `stage_count` is now `2` for the standard `investigator → decision_maker`
-  path and `1` for hard-blocked research-only short-circuits. Older runs
-  prior to the v2 hard cut may still report `3` (`analyst / critic /
-  judge`); readers must treat the value as opaque and never assume an
-  exact stage count.
+- `stage_count` is opaque audit metadata. A standard non-blocked research
+  committee run has three LLM committee stages:
+  `signal_analyst`, `bear_case`, and `risk_portfolio_judge`. Hard-blocked
+  packets may have fewer LLM stages. Readers must never infer UI ordering or
+  run completeness from this number alone.
 - `narrative_archetype` is a short (≤ 20 chars) free-text tag the
-  DecisionMaker assigns to the run; empty string when no archetype
+  final `risk_portfolio_judge` assigns to the run; empty string when no archetype
   applies. Phase 2 may tighten to a Literal enum.
 - `narrative_thesis_zh` is a 30–300 char one-paragraph thesis written by
-  the DecisionMaker. Required for non-abstain decisions.
+  the final `risk_portfolio_judge`. Required for non-abstain decisions.
 - `bull_view` / `bear_view` are symmetric two-sided opinions
   (`{strength, thesis_zh, supporting_event_ids}`). `strength` is one of
   `absent | weak | moderate | strong`; `absent` requires empty
@@ -422,9 +434,11 @@ Decision block field semantics (v2, set in plan 2026-05-16):
   `len(evidence_event_ids) >= 3` and both `bull_view.strength` and
   `bear_view.strength` to be `moderate` or `strong`.
 
-Default Signal Pulse listings hide rows where
-`decision.recommendation = "abstain"`. Abstain is decision semantics, not a
-public display bucket.
+Default Signal Pulse listings hide rows where `decision.recommendation =
+"abstain"` or `display_status = "hidden_source_quality"`. Abstain is decision
+semantics, not a public display bucket; hidden source-quality rows are audit
+state for matched/watchlist context that lacks enough independent public
+confirmation.
 
 Current factor snapshots use `schema_version =
 "token_factor_snapshot_v3_social_attention"` only. Runtime readers reject old

@@ -10,7 +10,7 @@
 
 ---
 
-**Status**: Draft
+**Status**: Implemented through Task 8
 **Date**: 2026-05-20
 **Owning spec**: `docs/superpowers/specs/active/2026-05-20-pulse-1h-4h-research-committee-cn.md`
 **Worktree**: `.worktrees/pulse-1h-4h-research-committee/`
@@ -53,13 +53,13 @@ Revised decision:
 ## Revised Execution Order
 
 1. Complete Task 1 evaluator and report. Status: complete.
-2. Execute Task 2A: agent execution health remediation for evidence refs, invalid outputs, timeout/backpressure classification, and job no-run accounting.
-3. Execute Task 5: replace the old two-stage agent with the packet-only research committee.
-4. Execute original Task 2: hard-cut Pulse horizons to 1h/4h.
-5. Execute original Task 3: source-quality/default-display gating.
-6. Execute original Task 4: material evidence-change admission.
-7. Execute original Tasks 6 and 7: API/read model/frontend surfaces.
-8. Execute original Task 8: docs, generated contracts, and architecture guardrails.
+2. Execute Task 2A: agent execution health remediation for evidence refs, invalid outputs, timeout/backpressure classification, and job no-run accounting. Status: complete.
+3. Execute Task 5: replace the old two-stage agent with the packet-only research committee. Status: complete.
+4. Execute original Task 2: hard-cut Pulse horizons to 1h/4h. Status: complete.
+5. Execute original Task 3: source-quality/default-display gating. Status: complete.
+6. Execute original Task 4: material evidence-change admission. Status: complete.
+7. Execute original Tasks 6 and 7: API/read model/frontend surfaces. Status: complete.
+8. Execute original Task 8: docs, generated contracts, and architecture guardrails. Status: complete.
 
 Task numbering below is preserved to minimize churn in references. Task 2A is the inserted remediation task and must be completed before original Task 2.
 
@@ -719,7 +719,7 @@ Known-failing baseline tests:
   git diff --check
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0067_pulse_research_committee_checks.py tests/unit/test_signal_pulse_service.py tests/unit/test_api_signal_pulse_contract.py tests/contract/test_openapi_drift.py tests/integration/test_api_http.py tests/integration/test_pulse_repositories.py tests/integration/test_pulse_agent_desk_migration.py tests/integration/test_pulse_desk_e2e.py tests/unit/test_provider_wiring_agent_execution_gateway.py tests/unit/test_telemetry.py tests/unit/integrations/openai_agents/test_agent_execution_gateway.py docs/generated/openapi.json web/src/lib/types/openapi.ts docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
   git commit -m "feat: expose pulse research committee stages"
@@ -782,31 +782,41 @@ Known-failing baseline tests:
 - Modify: `docs/CONTRACTS.md`
 - Modify: `docs/WORKERS.md`
 - Modify: `src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`
+- Modify: `scripts/regen_pulse_agent_desk_decisions.py`
+- Modify: `docs/generated/pulse-agent-desk-decisions.md`
 - Modify: `docs/generated/openapi.json`
+- Modify: `web/src/lib/types/openapi.ts`
+- Modify: `tests/architecture/test_src_domain_architecture.py`
 - Create or modify: `tests/architecture/test_pulse_no_compat.py`
 
-- [ ] Add architecture tests that assert:
+- [x] Add architecture tests that assert:
   - no runtime source references `evidence_debate` or `decision_maker` as stage names;
   - `pulse_candidate.windows` default text does not include `5m`;
   - prompt markdown files for old stages do not exist;
-  - Signal Pulse API validator rejects `5m`.
+  - Signal Pulse API validator rejects `5m`;
+  - no generated operator docs advertise the removed two-stage agent or tool fallback flow.
 
-- [ ] Update docs to describe 1h/4h primary horizons and matched alert semantics.
+- [x] Update docs to describe 1h/4h primary horizons and matched alert semantics.
 
-- [ ] Regenerate OpenAPI:
+- [x] Regenerate Pulse generated docs:
+  ```bash
+  uv run python scripts/regen_pulse_agent_desk_decisions.py
+  ```
+
+- [x] Regenerate OpenAPI:
   ```bash
   uv run python scripts/regen_openapi.py
   cd web && npm run generate:types
   ```
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/architecture/test_pulse_no_compat.py tests/contract/test_openapi_drift.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
-  git add docs/CONTRACTS.md docs/WORKERS.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md docs/generated/openapi.json web/src/lib/types/openapi.ts tests/architecture/test_pulse_no_compat.py
+  git add docs/CONTRACTS.md docs/WORKERS.md src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md scripts/regen_pulse_agent_desk_decisions.py docs/generated/pulse-agent-desk-decisions.md docs/generated/openapi.json web/src/lib/types/openapi.ts tests/architecture/test_src_domain_architecture.py tests/architecture/test_pulse_no_compat.py docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md
   git commit -m "docs: document pulse 1h 4h hard cut"
   ```
 

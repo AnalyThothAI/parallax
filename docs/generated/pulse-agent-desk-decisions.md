@@ -4,99 +4,70 @@
 
 Source of truth: deterministic generator script; no runtime database reads.
 
-Original plan: `docs/superpowers/plans/active/2026-05-16-pulse-agent-desk-redesign-plan-cn.md`
-Original spec: `docs/superpowers/specs/active/2026-05-16-pulse-agent-desk-redesign-cn.md`
-Hardening plan: `docs/superpowers/plans/active/2026-05-17-pulse-agent-desk-redesign-hardening-plan-cn.md`
+Plan: `docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md`
+Spec: `docs/superpowers/specs/active/2026-05-20-pulse-1h-4h-research-committee-cn.md`
 
 ## Decision Inventory
 
 | ID | Decision |
 |----|----------|
-| `OQ-1` | Investigator tool call 上限 |
-| `OQ-2` | DecisionMaker fallback tool |
-| `OQ-3` | GMGN description backfill |
-| `OQ-4` | `_FORBIDDEN_EXECUTION_RE` 反测 |
-| `OQ-5` | `pulse_agent_runs.outcome` `abstain_critic_veto` enum 值处置 |
-| `OQ-6` | prompt 文件命名 |
-| `HD-1` | fallback budget observe-only |
-| `HD-2` | detail UI includes v2 decision |
-| `HD-3` | generated script owns this file |
-| `HD-4` | live canary remains release gate |
+| `RC-1` | 1h/4h primary horizons |
+| `RC-2` | packet-only committee |
+| `RC-3` | no tool execution |
+| `RC-4` | source-quality public gate |
+| `RC-5` | generated contracts |
+| `RC-6` | release evidence |
 
-# Original Open Questions
+# Research Committee Decisions
 
-## OQ-1 Investigator tool call 上限
+## RC-1 1h/4h primary horizons
 
-锁定 `cex=3, meme=5`，配置写入 `workers.yaml` 的 `pulse_candidate.investigator_max_tool_calls.{cex,meme}`。
+Signal Pulse admission is hard-cut to `1h` and `4h`.
 
-理由: 与 spec §4.4 默认值一致；cex 信号高质量低频，不需要太多 tool round-trip；meme 信号低质量高频且叙事更模糊，保留更宽预算。Phase 1 上线 7 天后看实际 `tool_calls_count` 分布再调整。
+The default public lane is `4h/all`; `1h` is the early-confirmation lane.
 
-实施位置: Task 4 工具内 counter + Task 6 client 读 workers.yaml + `gmgn-twitter-intel init` 默认模板。
+Short-window Token Radar rows can remain upstream observation for non-Pulse surfaces, but they are not Pulse Agent admission windows.
 
-## OQ-2 DecisionMaker fallback tool
+## RC-2 packet-only committee
 
-锁定启用 `get_target_recent_tweets`，`max_turns=3`。
+The Pulse Agent runs a three-stage packet-only research committee: `signal_analyst`, `bear_case`, and `risk_portfolio_judge`.
 
-理由: DecisionMaker 在 Investigator observation 不足时可补查关键证据，避免错误锚定。`max_turns=3` 覆盖 1 次 tool call、1 次结构化输出、1 次 fallback retry。Phase 1 上线后若 DecisionMaker tool call 命中率 <5%，下个迭代禁用。
+Each stage reasons only over the sealed evidence packet and prior committee memo refs.
 
-2026-05-17 hardening clarification: fallback budget remains observe-only; it is measured and audited, but not used as an automatic runtime budget escalation.
+The final judge writes the public recommendation, thesis, playbook, residual risks, and cited evidence refs.
 
-## OQ-3 GMGN description backfill
+## RC-3 no tool execution
 
-实施时验证发现 GMGN OpenAPI 不返回 description 字段，mapper 链路已正确传递字段，DB 中 description=NULL 不是 mapper bug。
+Pulse committee stages do not register tools and do not fetch missing facts.
 
-锁定路线: 跳过 mapper 修改；官方叙事降级为 GMGN 实际提供字段 `symbol / name / website / twitter_username / telegram / banner_url / logo_url`。
+Missing, stale, or contradictory packet data is represented as data gaps, risk evidence, abstain, or hidden audit state.
 
-`get_official_token_profile` 暴露这些字段并显式注明 `description: null, description_source_available: false`；prompt 在 description 为 null 时结合 name/symbol/twitter_username/website 推断官方定位；不做 backfill。
+Runtime capacity is controlled by `pulse.pipeline` plus per-stage committee lanes.
 
-## OQ-4 `_FORBIDDEN_EXECUTION_RE` 反测
+## RC-4 source-quality public gate
 
-锁定 31 个候选字段名/值全部通过反测，0 误伤。
+Public Signal Pulse rows require independent-source quality.
 
-覆盖字段包含 `has_playbook`、`watch_signals`、`exit_triggers`、`monitoring_horizon`、`investigator`、`decision_maker`、叙事枚举值和中文 watch/exit 文案。
+Matched or watched-source evidence is useful alert context, but it cannot by itself publish a default discovery row.
 
-结论: 无字段名/值需改名。Pydantic `_reject_execution_language` 验证器继续对 playbook、watch_signals、exit_triggers 承担运行时校验。
+`hidden_source_quality` preserves audit visibility without making noisy rows public.
 
-## OQ-5 `pulse_agent_runs.outcome` `abstain_critic_veto` enum 值处置
+## RC-5 generated contracts
 
-锁定保留作历史只读，不动 CHECK。
+OpenAPI and TypeScript types are regenerated after API stage/status changes.
 
-理由: 老 outcome 行仍需可读，DROP CHECK 重建会引入 immediate-validate 风险；新写路径已不再产生该值；enum 残留仅表示 CHECK 允许的历史合法值。
+Architecture tests assert that removed stage prompt files do not reappear and removed windows are not advertised for Pulse admission.
 
-实施位置: 不做 alembic 改动；Task 10 grep 防御允许该值出现在历史读路径中。
+Generated docs are owned by this script and must not be hand-edited.
 
-## OQ-6 prompt 文件命名
+## RC-6 release evidence
 
-锁定 `prompts/{investigator,decision_maker}.md` 单文件，路由段落内联。
+Local tests and contract drift checks are required before commit.
 
-理由: KISS；复用现有 anti-injection prefix 与角色定位段；prompt diff 更容易 review；loader 实现简单。
+Live rollout verification must prove that new Pulse jobs are created only for the `1h` and `4h` horizons after the deployment timestamp.
 
-实施位置: `prompt_loader.py` + 2 个 markdown 文件。
-
-# 2026-05-17 Hardening Decisions
-
-## HD-1 fallback budget observe-only
-
-Fallback budget is an observed/audited fact, not a runtime authority to spend extra tool turns.
-
-The hardening pass preserves the original OQ-2 fallback capability while keeping budget semantics bounded and reviewable.
-
-## HD-2 detail UI includes v2 decision
-
-Pulse Agent Desk detail UI must expose the v2 decision surface so operators can inspect the DecisionMaker result without relying only on list-row summaries.
-
-## HD-3 generated script owns this file
-
-`docs/generated/pulse-agent-desk-decisions.md` is owned by `scripts/regen_pulse_agent_desk_decisions.py`.
-
-Edits to decisions should update the generator source and rerun `make docs-generated`; the generated Markdown is not hand-maintained.
-
-## HD-4 live canary remains release gate
-
-Live canary verification remains a release gate for Pulse Agent Desk hardening.
-
-Generated documentation does not replace production-facing canary evidence.
+If operator config still contains removed Pulse windows, fix the config file; do not add code that accepts it.
 
 ## 决策完成确认
 
-The six original OQ decisions and the 2026-05-17 hardening decisions are recorded here and regenerated by script.
+The Pulse 1h/4h research committee decisions are recorded here and regenerated by script.
