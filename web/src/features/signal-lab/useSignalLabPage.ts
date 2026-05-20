@@ -27,12 +27,14 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
 
   const routeState = useMemo(() => parseSignalLabRouteState(searchParams), [searchParams]);
   const activeSignalLabHandle = routeState.handle;
+  const effectiveStatus = routeState.visibility === "hidden" ? "all" : routeState.status;
 
   const signalPulseQuery = useSignalPulseList({
     token,
     window: routeState.window,
     scope: routeState.scope,
-    status: routeState.status,
+    status: effectiveStatus,
+    visibility: routeState.visibility,
     handle: routeState.handle,
     q: routeState.q,
   });
@@ -69,7 +71,7 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
   };
 
   const clearFilters = () => {
-    updateRouteState({ status: "all", handle: "", q: "" }, false);
+    updateRouteState({ status: "all", visibility: "public", handle: "", q: "" }, false);
   };
 
   const selectAccountEvent = (item: LivePayload) => {
@@ -93,6 +95,14 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
     setHandleFilter: (handle: string) => updateRouteState({ handle }),
     updateSearchFilter: (q: string) => updateRouteState({ q }),
     setStatusFilter: (status: SignalLabRouteState["status"]) => updateRouteState({ status }, false),
+    setVisibilityFilter: (visibility: SignalLabRouteState["visibility"]) =>
+      updateRouteState(
+        {
+          visibility,
+          status: visibility === "hidden" ? "all" : routeState.status,
+        },
+        false,
+      ),
   };
 }
 

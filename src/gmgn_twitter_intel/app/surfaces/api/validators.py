@@ -11,6 +11,7 @@ JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
 PUBLIC_SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+SIGNAL_PULSE_VISIBILITIES = {"public", "hidden"}
 WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
 
 
@@ -72,6 +73,14 @@ def _signal_pulse_public_status(value: str) -> str | None:
     if value in PUBLIC_SIGNAL_PULSE_STATUSES:
         return value
     raise ApiBadRequest("invalid_status", field="status")
+
+
+def _signal_pulse_visibility(value: str) -> str:
+    if not value:
+        return "public"
+    if value in SIGNAL_PULSE_VISIBILITIES:
+        return value
+    raise ApiBadRequest("invalid_visibility", field="visibility")
 
 
 def _job_status(value: str | None) -> str | None:

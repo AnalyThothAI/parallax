@@ -59,6 +59,7 @@ export function SignalLabPage({
           selectedAccountEventId={selectedAccountEventId}
           selectedItemId={signalLab.selectedPulseItemId}
           statusFilter={signalLab.routeState.status}
+          visibilityFilter={signalLab.routeState.visibility}
           windowLabel={signalLab.routeState.window}
           onClearFilters={signalLab.clearFilters}
           onHandleChange={signalLab.setHandleFilter}
@@ -67,6 +68,7 @@ export function SignalLabPage({
           onSelectAccountEvent={signalLab.selectAccountEvent}
           onSelect={signalLab.selectPulse}
           onStatusChange={signalLab.setStatusFilter}
+          onVisibilityChange={signalLab.setVisibilityFilter}
         />
       </div>
       <aside className="signal-lab-inspector-pane">

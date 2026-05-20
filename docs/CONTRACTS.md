@@ -395,6 +395,12 @@ Radar window mirror:
 
 - `/api/signal-lab/pulse` accepts `window=1h|4h`; missing `window` defaults to
   `4h`. Explicit `5m` and `24h` are rejected with `invalid_window`.
+- `visibility=public|hidden` controls the publication lane. Missing
+  `visibility` defaults to `public`, which returns only candidates that passed
+  public display gates. `visibility=hidden` returns authenticated diagnostic
+  rows whose `display_status` starts with `hidden_`; public status filters are
+  ignored in this lane. `/api/signal-lab/pulse/{candidate_id}` uses the same
+  visibility rule, so hidden detail reads require `visibility=hidden`.
 - `scope=all` is the default discovery lane. `scope=matched` is watchlist
   alert/context: it can explain why a watched source matters, but matched or
   watched evidence alone does not bypass independent-source display quality.

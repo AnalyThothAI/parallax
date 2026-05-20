@@ -42,19 +42,21 @@ class FakePulseReadRepository:
         q: str | None = None,
         handle: str | None = None,
         displayable_only: bool = False,
+        hidden_only: bool = False,
     ) -> dict[str, Any]:
-        self.calls.append(
-            {
-                "window": window,
-                "scope": scope,
-                "status": status,
-                "limit": limit,
-                "cursor": cursor,
-                "q": q,
-                "handle": handle,
-                "displayable_only": displayable_only,
-            }
-        )
+        call = {
+            "window": window,
+            "scope": scope,
+            "status": status,
+            "limit": limit,
+            "cursor": cursor,
+            "q": q,
+            "handle": handle,
+            "displayable_only": displayable_only,
+        }
+        if hidden_only:
+            call["hidden_only"] = True
+        self.calls.append(call)
         return self.pages.get(status, {"items": [], "next_cursor": None})
 
     def pulse_summary(self, window: str, scope: str, q: str | None = None, handle: str | None = None) -> dict[str, Any]:
@@ -95,6 +97,7 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         "status": None,
         "handle": None,
         "q": None,
+        "visibility": "public",
     }
     assert result["health"] == {
         "pulse_ready": False,
@@ -102,6 +105,7 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         "agent_worker_running": False,
         "candidate_count": 0,
         "public_candidate_count": 0,
+        "hidden_candidate_count": 0,
         "blocked_low_information_count": 0,
         "dead_job_count": 0,
         "market_ready_rate": 0.0,
@@ -211,6 +215,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         "agent_worker_running": True,
         "candidate_count": 3,
         "public_candidate_count": 2,
+        "hidden_candidate_count": 1,
         "blocked_low_information_count": 1,
         "dead_job_count": 2,
         "market_ready_rate": 0.5,
@@ -708,6 +713,84 @@ def test_default_listing_hides_abstain_decisions() -> None:
 
     assert result["items"] == []
     assert result["returned_count"] == 0
+
+
+def test_hidden_visibility_lists_hidden_candidates_without_public_display_gate() -> None:
+    row = _candidate_row(
+        "cand-hidden-invalid",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["decision_status"] = "invalid"
+    row["display_status"] = "hidden_invalid_output"
+    pulse = FakePulseReadRepository(
+        pages={None: {"items": [row], "next_cursor": None}},
+        health={
+            "candidate_count": 1,
+            "public_candidate_count": 0,
+            "hidden_candidate_count": 1,
+            "blocked_low_information_count": 0,
+            "dead_job_count": 0,
+            "market_ready_rate": 0.0,
+            "summary": {
+                "trade_candidate": 0,
+                "token_watch": 0,
+                "risk_rejected_high_info": 0,
+            },
+        },
+    )
+
+    result = _service(pulse).pulse(
+        window="1h",
+        scope="matched",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+        visibility="hidden",
+    )
+
+    assert pulse.calls == [
+        {
+            "window": "1h",
+            "scope": "matched",
+            "status": None,
+            "limit": 20,
+            "cursor": None,
+            "q": None,
+            "handle": None,
+            "displayable_only": False,
+            "hidden_only": True,
+        }
+    ]
+    assert result["query"]["visibility"] == "hidden"
+    assert result["returned_count"] == 1
+    assert result["items"][0]["candidate_id"] == "cand-hidden-invalid"
+    assert result["items"][0]["display_status"] == "hidden_invalid_output"
+
+
+def test_hidden_visibility_allows_hidden_candidate_detail() -> None:
+    row = _candidate_row(
+        "cand-hidden-detail",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["decision_status"] = "invalid"
+    row["display_status"] = "hidden_invalid_output"
+    pulse = FakePulseReadRepository()
+    pulse.candidate_rows["cand-hidden-detail"] = row
+
+    hidden = _service(pulse).candidate(candidate_id="cand-hidden-detail", visibility="hidden")
+    public = _service(pulse).candidate(candidate_id="cand-hidden-detail")
+
+    assert hidden is not None
+    assert hidden["candidate_id"] == "cand-hidden-detail"
+    assert hidden["display_status"] == "hidden_invalid_output"
+    assert public is None
 
 
 def test_summary_counts_decision_routes_and_abstain_reasons() -> None:

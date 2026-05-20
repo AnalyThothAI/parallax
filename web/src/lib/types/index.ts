@@ -69,6 +69,7 @@ export type {
   SignalPulseStages,
   SignalPulseStatus,
   SignalPulseStatusFilter,
+  SignalPulseVisibilityFilter,
   SocialEventDetail,
   SocialEventsByIdsData,
   StatusData,

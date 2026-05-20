@@ -60,8 +60,24 @@ describe("SignalLabPage routing", () => {
     expect(params.window).toBe("4h");
     expect(params.scope).toBe("all");
     expect(params.status).toBeUndefined();
+    expect(params.visibility).toBeUndefined();
     expect(params.handle).toBeUndefined();
     expect(params.q).toBeUndefined();
+  });
+
+  it("calls list endpoint with hidden visibility and clears public status", async () => {
+    renderAt("/signal-lab?visibility=hidden&status=token_watch");
+    await waitFor(() => {
+      expect(apiMock.readApi).toHaveBeenCalledWith(
+        "/api/signal-lab/pulse",
+        expect.objectContaining({
+          params: expect.objectContaining({ visibility: "hidden" }),
+        }),
+      );
+    });
+    const lastCall = apiMock.readApi.mock.calls.at(-1)!;
+    const params = (lastCall[1] as any).params;
+    expect(params.status).toBeUndefined();
   });
 
   it("uses window and scope from URL params", async () => {

@@ -11,6 +11,7 @@ describe("signalLabRouteState", () => {
       window: "4h",
       scope: "all",
       status: "all",
+      visibility: "public",
       handle: "",
       q: "",
     });
@@ -19,12 +20,15 @@ describe("signalLabRouteState", () => {
   it("normalizes supported params and strips @ from handles", () => {
     expect(
       parseSignalLabRouteState(
-        new URLSearchParams("window=1h&scope=matched&status=token_watch&handle=@Toly&q=SOL"),
+        new URLSearchParams(
+          "window=1h&scope=matched&status=token_watch&visibility=hidden&handle=@Toly&q=SOL",
+        ),
       ),
     ).toEqual({
       window: "1h",
       scope: "matched",
       status: "token_watch",
+      visibility: "hidden",
       handle: "toly",
       q: "SOL",
     });
@@ -39,6 +43,7 @@ describe("signalLabRouteState", () => {
       window: "4h",
       scope: "all",
       status: "all",
+      visibility: "public",
       handle: "traderpow",
       q: "",
     });
@@ -50,6 +55,7 @@ describe("signalLabRouteState", () => {
         window: "4h",
         scope: "all",
         status: "all",
+        visibility: "public",
         handle: "",
         q: "",
       }).toString(),
@@ -62,10 +68,11 @@ describe("signalLabRouteState", () => {
         window: "1h",
         scope: "matched",
         status: "trade_candidate",
+        visibility: "hidden",
         handle: "toly",
         q: "SOL",
       }),
-    ).toBe("?window=1h&scope=matched&status=trade_candidate&handle=toly&q=SOL");
+    ).toBe("?window=1h&scope=matched&status=trade_candidate&visibility=hidden&handle=toly&q=SOL");
   });
 
   it("normalizes removed pulse windows to the 4h default", () => {
@@ -75,6 +82,7 @@ describe("signalLabRouteState", () => {
         window: "5m",
         scope: "all",
         status: "all",
+        visibility: "public",
         handle: "",
         q: "",
       }).toString(),

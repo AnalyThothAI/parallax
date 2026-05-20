@@ -1,13 +1,13 @@
 import { PulseDetailRoutePage } from "@features/signal-lab";
 import { ApiError, setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { marketContextFixture } from "@tests/fixtures/marketFixtures";
 import { createApiMock, ok, resetApiMock } from "@tests/msw/fixtures";
 import { apiHandlers } from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const apiMock = createApiMock();
 
@@ -16,6 +16,8 @@ beforeEach(() => {
   resetApiMock(apiMock);
   server.use(...apiHandlers(apiMock));
 });
+
+afterEach(() => cleanup());
 
 function renderAt(url: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -45,6 +47,24 @@ describe("PulseDetailRoutePage", () => {
       expect(screen.getAllByText(/\$PEPE|cand-1/).length).toBeGreaterThan(0);
     });
     expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute("href", "/signal-lab");
+  });
+
+  it("passes hidden visibility through to the candidate endpoint", async () => {
+    apiMock.readApiImpl = async () =>
+      ok({ ...minimalPulseItem(), display_status: "hidden_invalid_output" });
+    renderAt("/signal-lab/pulse/cand-1?visibility=hidden");
+    await waitFor(() => {
+      expect(apiMock.readApi).toHaveBeenCalledWith(
+        "/api/signal-lab/pulse/cand-1",
+        expect.objectContaining({
+          params: expect.objectContaining({ visibility: "hidden" }),
+        }),
+      );
+    });
+    expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute(
+      "href",
+      "/signal-lab?visibility=hidden",
+    );
   });
 
   it("renders in-page 404 when candidate is missing", async () => {

@@ -5,7 +5,9 @@ import type {
   SignalPulseItem,
   SignalPulseStatus,
   SignalPulseStatusFilter,
+  SignalPulseVisibilityFilter,
 } from "@lib/types";
+import * as Tabs from "@radix-ui/react-tabs";
 import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { useId } from "react";
@@ -43,6 +45,7 @@ type SignalLabWorkbenchProps = {
   selectedAccountEventId?: string | null;
   selectedItemId?: string | null;
   statusFilter: SignalPulseStatusFilter;
+  visibilityFilter: SignalPulseVisibilityFilter;
   windowLabel: string;
   onClearFilters: () => void;
   onHandleChange: (handle: string) => void;
@@ -51,6 +54,7 @@ type SignalLabWorkbenchProps = {
   onSelectAccountEvent: (item: LivePayload) => void;
   onSelect: (item: SignalPulseItem) => void;
   onStatusChange: (status: SignalPulseStatusFilter) => void;
+  onVisibilityChange: (visibility: SignalPulseVisibilityFilter) => void;
 };
 
 export function SignalLabWorkbench({
@@ -66,6 +70,7 @@ export function SignalLabWorkbench({
   selectedAccountEventId,
   selectedItemId,
   statusFilter,
+  visibilityFilter,
   windowLabel,
   onClearFilters,
   onHandleChange,
@@ -74,20 +79,35 @@ export function SignalLabWorkbench({
   onSelectAccountEvent,
   onSelect,
   onStatusChange,
+  onVisibilityChange,
 }: SignalLabWorkbenchProps) {
   const items = data?.items ?? [];
   const summary = overviewData?.summary ?? data?.summary;
   const health = overviewData?.health ?? data?.health;
+  const totalPulse = totalByStatus(summary);
+  const publicCount = Number(health?.public_candidate_count ?? totalPulse);
+  const hiddenCount = Number(
+    health?.hidden_candidate_count ??
+      Math.max(0, Number(health?.candidate_count ?? 0) - publicCount),
+  );
   const hasActiveFilters =
-    statusFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
+    visibilityFilter !== "public" ||
+    (visibilityFilter === "public" && statusFilter !== "all") ||
+    Boolean(handleFilter.trim()) ||
+    Boolean(searchFilter.trim());
   const hasAccountLens = Boolean(handleFilter.trim()) && !searchFilter.trim();
   const showAccountEvents =
     !isLoading &&
     !items.length &&
     hasAccountLens &&
+    visibilityFilter === "public" &&
     (Boolean(isAccountEventsLoading) || accountEvents.length > 0);
-  const statusLabel = statusFilter === "all" ? "all statuses" : labelForStatus(statusFilter);
-  const totalPulse = totalByStatus(summary);
+  const statusLabel =
+    visibilityFilter === "hidden"
+      ? "隐藏候选"
+      : statusFilter === "all"
+        ? "all statuses"
+        : labelForStatus(statusFilter);
   const healthNotice = buildPulseHealthNotice(health);
   return (
     <section className="signal-lab-workbench">
@@ -108,28 +128,39 @@ export function SignalLabWorkbench({
         </div>
       </header>
 
-      <div className="signal-stage-grid" aria-label="Signal Pulse candidate stages">
-        {PULSE_STATUSES.map((item) => (
-          <button
-            className={statusFilter === item.status ? "active" : ""}
-            key={item.status}
-            type="button"
-            onClick={() => onStatusChange(statusFilter === item.status ? "all" : item.status)}
-          >
-            <span>{item.label}</span>
-            <b>{summary?.[item.status] ?? 0}</b>
-            <em>{item.description}</em>
-          </button>
-        ))}
-      </div>
+      <VisibilityTabs
+        hiddenCount={hiddenCount}
+        publicCount={publicCount}
+        value={visibilityFilter}
+        onChange={onVisibilityChange}
+      />
+
+      {visibilityFilter === "public" ? (
+        <div className="signal-stage-grid" aria-label="Signal Pulse candidate stages">
+          {PULSE_STATUSES.map((item) => (
+            <button
+              className={statusFilter === item.status ? "active" : ""}
+              key={item.status}
+              type="button"
+              onClick={() => onStatusChange(statusFilter === item.status ? "all" : item.status)}
+            >
+              <span>{item.label}</span>
+              <b>{summary?.[item.status] ?? 0}</b>
+              <em>{item.description}</em>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="signal-filter-bar" aria-label="Signal Pulse candidate filters">
         <div className="filter-cell signal-stage-filter">
           <span>状态</span>
           <b>
-            {statusFilter === "all"
-              ? "全部候选"
-              : PULSE_STATUSES.find((item) => item.status === statusFilter)?.label}
+            {visibilityFilter === "hidden"
+              ? "隐藏候选"
+              : statusFilter === "all"
+                ? "全部候选"
+                : PULSE_STATUSES.find((item) => item.status === statusFilter)?.label}
           </b>
         </div>
         <FilterField
@@ -295,6 +326,38 @@ function SignalLabEmptyState({
         ) : null
       }
     />
+  );
+}
+
+function VisibilityTabs({
+  hiddenCount,
+  publicCount,
+  value,
+  onChange,
+}: {
+  hiddenCount: number;
+  publicCount: number;
+  value: SignalPulseVisibilityFilter;
+  onChange: (visibility: SignalPulseVisibilityFilter) => void;
+}) {
+  return (
+    <Tabs.Root
+      className="signal-visibility-tabs"
+      value={value}
+      activationMode="manual"
+      onValueChange={(next) => onChange(next as SignalPulseVisibilityFilter)}
+    >
+      <Tabs.List aria-label="Signal Pulse visibility" className="signal-visibility-tab-list">
+        <Tabs.Trigger value="public">
+          <span>公开</span>
+          <b>{publicCount}</b>
+        </Tabs.Trigger>
+        <Tabs.Trigger value="hidden">
+          <span>隐藏</span>
+          <b>{hiddenCount}</b>
+        </Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
   );
 }
 

@@ -1708,7 +1708,15 @@ def test_api_rejects_removed_narrative_product_surfaces(tmp_path):
     assert frontier.status_code == 404
 
 
-def _seed_displayable_candidate(app, *, candidate_id: str, agent_run_id: str | None = None) -> None:
+def _seed_displayable_candidate(
+    app,
+    *,
+    candidate_id: str,
+    agent_run_id: str | None = None,
+    display_status: str = "display_token_watch",
+    decision_status: str = "token_watch",
+    evidence_status: str = "complete",
+) -> None:
     """Seed one displayable pulse_candidates row for HTTP-layer tests."""
     with app.state.service.repositories() as repos:
         repos.pulse_candidates.upsert_candidate(
@@ -1745,9 +1753,9 @@ def _seed_displayable_candidate(app, *, candidate_id: str, agent_run_id: str | N
             source_event_ids_json=["event-1"],
             agent_run_id=agent_run_id,
             evidence_packet_hash="sha256:test-packet",
-            evidence_status="complete",
-            decision_status="token_watch",
-            display_status="display_token_watch",
+            evidence_status=evidence_status,
+            decision_status=decision_status,
+            display_status=display_status,
             claim_verification_json={"valid": True},
             evidence_gate_json={"evidence_status": "complete", "hard_blocked": False},
         )
@@ -1768,6 +1776,42 @@ def test_api_signal_pulse_by_id_returns_item(tmp_path):
     assert payload["data"]["candidate_id"] == "cand-real"
     assert "pulse_status" not in payload["data"]
     assert payload["data"]["display_status"] == "display_token_watch"
+
+
+def test_api_signal_pulse_hidden_visibility_returns_hidden_items_and_detail(tmp_path):
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, start_collector=False)
+    with TestClient(app) as client:
+        _seed_displayable_candidate(
+            client.app,
+            candidate_id="cand-hidden",
+            display_status="hidden_invalid_output",
+            decision_status="invalid",
+        )
+        list_response = client.get(
+            "/api/signal-lab/pulse",
+            params={"window": "1h", "scope": "all", "visibility": "hidden"},
+            headers={"Authorization": "Bearer secret"},
+        )
+        hidden_detail = client.get(
+            "/api/signal-lab/pulse/cand-hidden",
+            params={"visibility": "hidden"},
+            headers={"Authorization": "Bearer secret"},
+        )
+        public_detail = client.get(
+            "/api/signal-lab/pulse/cand-hidden",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert list_response.status_code == 200
+    list_data = list_response.json()["data"]
+    assert list_data["query"]["visibility"] == "hidden"
+    assert list_data["returned_count"] == 1
+    assert list_data["items"][0]["candidate_id"] == "cand-hidden"
+    assert list_data["items"][0]["display_status"] == "hidden_invalid_output"
+    assert hidden_detail.status_code == 200
+    assert hidden_detail.json()["data"]["display_status"] == "hidden_invalid_output"
+    assert public_detail.status_code == 404
 
 
 def test_api_signal_pulse_by_id_returns_stages(tmp_path):

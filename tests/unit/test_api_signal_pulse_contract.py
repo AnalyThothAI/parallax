@@ -60,6 +60,35 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert invalid.json() == {"ok": False, "error": "invalid_status", "field": "status"}
 
 
+def test_signal_pulse_api_can_read_hidden_visibility_without_public_gate():
+    pulse = FakeSignalPulseReadRepository()
+    app = _app(pulse)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/signal-lab/pulse",
+            params={"visibility": "hidden", "window": "1h", "scope": "matched", "limit": 5},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["query"]["visibility"] == "hidden"
+    assert pulse.list_calls == [
+        {
+            "window": "1h",
+            "scope": "matched",
+            "status": None,
+            "limit": 5,
+            "cursor": None,
+            "q": None,
+            "handle": None,
+            "displayable_only": False,
+            "hidden_only": True,
+        }
+    ]
+
+
 def test_signal_pulse_api_defaults_to_produced_agent_window_and_scope():
     pulse = FakeSignalPulseReadRepository()
     app = _app(pulse)
@@ -107,19 +136,21 @@ class FakeSignalPulseReadRepository:
         q=None,
         handle=None,
         displayable_only=False,
+        hidden_only=False,
     ):
-        self.list_calls.append(
-            {
-                "window": window,
-                "scope": scope,
-                "status": status,
-                "limit": limit,
-                "cursor": cursor,
-                "q": q,
-                "handle": handle,
-                "displayable_only": displayable_only,
-            }
-        )
+        call = {
+            "window": window,
+            "scope": scope,
+            "status": status,
+            "limit": limit,
+            "cursor": cursor,
+            "q": q,
+            "handle": handle,
+            "displayable_only": displayable_only,
+        }
+        if hidden_only:
+            call["hidden_only"] = True
+        self.list_calls.append(call)
         return {
             "items": [
                 {

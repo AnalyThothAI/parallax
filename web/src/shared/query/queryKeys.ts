@@ -1,6 +1,7 @@
 import type {
   ScopeKey,
   SignalPulseStatusFilter,
+  SignalPulseVisibilityFilter,
   TokenPostRange,
   TokenPostServerSort,
   WatchlistTimelineScope,
@@ -30,12 +31,13 @@ export const queryKeys = {
     window: WindowKey,
     scope: ScopeKey,
     status: SignalPulseStatusFilter,
+    visibility: SignalPulseVisibilityFilter,
     handle: string,
     q: string,
     limit: number,
-  ) => ["signal-lab-pulse", window, scope, status, handle, q, limit] as const,
-  signalPulseCandidate: (candidateId: string | null) =>
-    ["signal-lab-pulse-candidate", candidateId] as const,
+  ) => ["signal-lab-pulse", window, scope, status, visibility, handle, q, limit] as const,
+  signalPulseCandidate: (candidateId: string | null, visibility: SignalPulseVisibilityFilter) =>
+    ["signal-lab-pulse-candidate", candidateId, visibility] as const,
   sourceEventsByIds: (ids: string[]) => ["social-events", "by-ids", [...ids].sort()] as const,
   signalLabAccountEvents: (token: string, scope: ScopeKey, handle: string) =>
     ["signal-lab-account-events", token, scope, handle] as const,

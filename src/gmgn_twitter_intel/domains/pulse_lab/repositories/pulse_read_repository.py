@@ -33,6 +33,7 @@ class PulseReadRepository:
         q: str | None = None,
         handle: str | None = None,
         displayable_only: bool = False,
+        hidden_only: bool = False,
     ) -> dict[str, Any]:
         bounded_limit = max(0, min(int(limit), 200))
         clauses = ['candidate."window" = %s', "candidate.scope = %s"]
@@ -46,6 +47,8 @@ class PulseReadRepository:
         if displayable_only:
             clauses.append(f"candidate.display_status IN {PUBLIC_DISPLAY_STATUS_SQL}")
             clauses.append("candidate.evidence_packet_hash IS NOT NULL")
+        if hidden_only:
+            clauses.append("left(candidate.display_status, 7) = 'hidden_'")
         if handle:
             handle_clause, handle_params = _candidate_handle_filter_clause("candidate", handle)
             if handle_clause:
@@ -144,6 +147,7 @@ class PulseReadRepository:
                    OR gate_reasons_json @> '["low_information"]'::jsonb
               ) AS blocked_low_information_count,
               COUNT(*) FILTER (WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}) AS displayable_count,
+              COUNT(*) FILTER (WHERE left(display_status, 7) = 'hidden_') AS hidden_candidate_count,
               COUNT(*) FILTER (
                 WHERE display_status IN {PUBLIC_DISPLAY_STATUS_SQL}
                   AND evidence_packet_hash IS NOT NULL
@@ -226,6 +230,7 @@ class PulseReadRepository:
             "candidate_count": int(row.get("candidate_count") or 0),
             "public_candidate_count": displayable_count,
             "displayable_count": displayable_count,
+            "hidden_candidate_count": int(row.get("hidden_candidate_count") or 0),
             "blocked_low_information_count": int(row.get("blocked_low_information_count") or 0),
             "dead_job_count": int(job_row["dead_job_count"] if job_row else 0),
             "market_ready_rate": 0.0 if displayable_count == 0 else market_fresh_count / displayable_count,

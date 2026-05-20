@@ -4,6 +4,7 @@ import type {
   SignalPulseData,
   SignalPulseItem,
   SignalPulseStatusFilter,
+  SignalPulseVisibilityFilter,
   SocialEventDetail,
   SocialEventsByIdsData,
   WindowKey,
@@ -16,6 +17,7 @@ type ListArgs = {
   window: WindowKey;
   scope: ScopeKey;
   status: SignalPulseStatusFilter;
+  visibility: SignalPulseVisibilityFilter;
   handle: string;
   q: string;
   limit?: number;
@@ -26,19 +28,21 @@ export function useSignalPulseList({
   window,
   scope,
   status,
+  visibility,
   handle,
   q,
   limit = 80,
 }: ListArgs) {
   return useInfiniteQuery({
-    queryKey: queryKeys.signalPulseList(window, scope, status, handle, q, limit),
+    queryKey: queryKeys.signalPulseList(window, scope, status, visibility, handle, q, limit),
     queryFn: async ({ pageParam }) => {
       const response = await getApi<SignalPulseData>("/api/signal-lab/pulse", {
         token,
         params: {
           window,
           scope,
-          status: status === "all" ? undefined : status,
+          status: visibility === "public" && status !== "all" ? status : undefined,
+          visibility: visibility === "hidden" ? visibility : undefined,
           handle: handle || undefined,
           q: q || undefined,
           limit,
@@ -57,14 +61,20 @@ export function useSignalPulseList({
 type CandidateArgs = {
   token: string;
   candidateId: string | null;
+  visibility?: SignalPulseVisibilityFilter;
 };
 
-export function useSignalPulseCandidate({ token, candidateId }: CandidateArgs) {
+export function useSignalPulseCandidate({
+  token,
+  candidateId,
+  visibility = "public",
+}: CandidateArgs) {
   return useQuery({
-    queryKey: queryKeys.signalPulseCandidate(candidateId),
+    queryKey: queryKeys.signalPulseCandidate(candidateId, visibility),
     queryFn: () =>
       getApi<SignalPulseItem>("/api/signal-lab/pulse/" + encodeURIComponent(candidateId!), {
         token,
+        params: { visibility: visibility === "hidden" ? visibility : undefined },
       }),
     enabled: Boolean(token && candidateId),
     staleTime: 8_000,

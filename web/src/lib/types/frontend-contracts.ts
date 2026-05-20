@@ -1329,11 +1329,13 @@ export type TokenSocialTimelineData = {
 
 export type SignalPulseStatus = "trade_candidate" | "token_watch" | "risk_rejected_high_info";
 export type SignalPulseStatusFilter = "all" | SignalPulseStatus;
+export type SignalPulseVisibilityFilter = "public" | "hidden";
 
 export type SignalPulseQuery = {
   window: WindowKey;
   scope: ScopeKey;
   status?: SignalPulseStatus | null;
+  visibility?: SignalPulseVisibilityFilter | null;
   handle?: string | null;
   q?: string | null;
 };
@@ -1344,6 +1346,7 @@ export type SignalPulseHealth = {
   agent_worker_running: boolean;
   candidate_count: number;
   public_candidate_count?: number | null;
+  hidden_candidate_count?: number | null;
   blocked_low_information_count: number;
   dead_job_count: number;
   market_ready_rate: number;

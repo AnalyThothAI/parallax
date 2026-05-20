@@ -138,6 +138,10 @@ function buildChips({
   if (item.scope === "matched") {
     chips.push({ label: "关注匹配", tone: "alert" });
   }
+  const displayStatus = item.display_status ?? "";
+  if (displayStatus.startsWith("hidden_")) {
+    chips.push({ label: hiddenDisplayLabel(displayStatus), tone: "risk" });
+  }
   if (watchedOnly) {
     chips.push({ label: "仅关注源", tone: "alert" });
   }
@@ -162,6 +166,10 @@ function buildChips({
     chips.push({ label: "锚点缺失", tone: "risk" });
   }
   return chips.slice(0, 4);
+}
+
+function hiddenDisplayLabel(value: string): string {
+  return value.replace(/^hidden_/, "隐藏 ").replaceAll("_", " ");
 }
 
 function buildMeta(item: SignalPulseItem): string {

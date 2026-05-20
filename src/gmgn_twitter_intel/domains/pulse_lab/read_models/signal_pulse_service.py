@@ -16,6 +16,7 @@ PUBLIC_DISPLAY_STATUSES = {
     "display_token_watch",
     "display_risk_rejected_high_info",
 }
+SIGNAL_PULSE_VISIBILITIES = {"public", "hidden"}
 ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
 
 
@@ -35,18 +36,23 @@ class SignalPulseService:
         limit: int,
         cursor: str | None,
         agent_worker_running: bool,
+        visibility: str = "public",
     ) -> dict[str, Any]:
+        parsed_visibility = _visibility(visibility)
+        public_only = parsed_visibility == "public"
         page = self.pulse_read_repository.list_candidates(
             window=window,
             scope=scope,
-            status=status,
+            status=status if public_only else None,
             limit=limit,
             cursor=cursor,
             q=q,
             handle=handle,
-            displayable_only=True,
+            displayable_only=public_only,
+            hidden_only=parsed_visibility == "hidden",
         )
-        page_rows = [row for row in _rows(page) if _is_displayable(row)]
+        row_filter = _is_displayable if public_only else _is_hidden_viewable
+        page_rows = [row for row in _rows(page) if row_filter(row)]
         aggregate = self.pulse_read_repository.pulse_summary(window=window, scope=scope, q=q, handle=handle)
         candidate_count = int(aggregate.get("candidate_count") or 0)
         freshness_health = _freshness_health(self.pulse_read_repository, window=window, scope=scope)
@@ -56,12 +62,17 @@ class SignalPulseService:
             freshness_health.get("public_candidates_4h"),
             candidate_count,
         )
+        hidden_candidate_count = _first_int(
+            aggregate.get("hidden_candidate_count"),
+            candidate_count - public_candidate_count,
+        )
         result_health = {
             "pulse_ready": public_candidate_count > 0,
             "public_ready": public_candidate_count > 0,
             "agent_worker_running": bool(agent_worker_running),
             "candidate_count": candidate_count,
             "public_candidate_count": public_candidate_count,
+            "hidden_candidate_count": max(0, hidden_candidate_count),
             "blocked_low_information_count": int(aggregate.get("blocked_low_information_count") or 0),
             "dead_job_count": int(aggregate.get("dead_job_count") or 0),
             "market_ready_rate": float(aggregate.get("market_ready_rate") or 0.0),
@@ -75,9 +86,10 @@ class SignalPulseService:
             "query": {
                 "window": window,
                 "scope": scope,
-                "status": status,
+                "status": status if public_only else None,
                 "handle": handle,
                 "q": q,
+                "visibility": parsed_visibility,
             },
             "health": result_health,
             "summary": _summary(aggregate),
@@ -87,11 +99,14 @@ class SignalPulseService:
             "next_cursor": page.get("next_cursor"),
         }
 
-    def candidate(self, *, candidate_id: str) -> dict[str, Any] | None:
+    def candidate(self, *, candidate_id: str, visibility: str = "public") -> dict[str, Any] | None:
         row = self.pulse_read_repository.candidate_by_id(candidate_id)
         if row is None:
             return None
-        if not _is_displayable(row):
+        parsed_visibility = _visibility(visibility)
+        if parsed_visibility == "public" and not _is_displayable(row):
+            return None
+        if parsed_visibility == "hidden" and not _is_hidden_viewable(row):
             return None
         item = pulse_item_from_row(row)
         item["stages"] = self._stages_for(row.get("agent_run_id"))
@@ -131,6 +146,10 @@ class SignalPulseService:
 
 def _rows(page: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in page.get("items", []) if isinstance(row, dict)]
+
+
+def _visibility(value: str | None) -> str:
+    return value if value in SIGNAL_PULSE_VISIBILITIES else "public"
 
 
 def _summary(aggregate: dict[str, Any]) -> dict[str, Any]:
@@ -201,6 +220,12 @@ def _is_displayable(row: dict[str, Any]) -> bool:
         row.get("display_status") in PUBLIC_DISPLAY_STATUSES
         and bool(row.get("evidence_packet_hash"))
         and _valid_factor_snapshot(row.get("factor_snapshot_json"))
+    )
+
+
+def _is_hidden_viewable(row: dict[str, Any]) -> bool:
+    return str(row.get("display_status") or "").startswith("hidden_") and _valid_factor_snapshot(
+        row.get("factor_snapshot_json")
     )
 
 

@@ -1610,6 +1610,8 @@ export interface components {
             failed_jobs_4h?: number | null;
             /** Hidden Abstain 4H */
             hidden_abstain_4h?: number | null;
+            /** Hidden Candidate Count */
+            hidden_candidate_count?: number | null;
             /** Hidden Hold Publish 4H */
             hidden_hold_publish_4h?: number | null;
             /** Hidden Insufficient Evidence 4H */
@@ -2233,6 +2235,19 @@ export interface components {
         };
         /** WorkerStatusData */
         WorkerStatusData: {
+            /** Active Run Once Age Ms */
+            active_run_once_age_ms?: number | null;
+            /**
+             * Active Run Once Count
+             * @default 0
+             */
+            active_run_once_count: number;
+            /** Active Run Once Hard Timed Out At Ms */
+            active_run_once_hard_timed_out_at_ms?: number | null;
+            /** Active Run Once Soft Timed Out At Ms */
+            active_run_once_soft_timed_out_at_ms?: number | null;
+            /** Active Run Once Started At Ms */
+            active_run_once_started_at_ms?: number | null;
             /** Details */
             details?: {
                 [key: string]: unknown;
@@ -2915,6 +2930,7 @@ export interface operations {
                 status?: string;
                 handle?: string;
                 q?: string;
+                visibility?: string;
                 limit?: number;
                 cursor?: string;
             };
@@ -2946,7 +2962,9 @@ export interface operations {
     };
     signal_lab_pulse_by_id_api_signal_lab_pulse__candidate_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                visibility?: string;
+            };
             header?: never;
             path: {
                 candidate_id: string;

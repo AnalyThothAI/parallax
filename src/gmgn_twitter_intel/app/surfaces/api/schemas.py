@@ -292,6 +292,7 @@ class SignalPulseHealth(ApiSchema):
     agent_worker_running: bool | None = None
     candidate_count: int | None = None
     public_candidate_count: int | None = None
+    hidden_candidate_count: int | None = None
     blocked_low_information_count: int | None = None
     dead_job_count: int | None = None
     market_ready_rate: float | None = None
