@@ -36,11 +36,44 @@ def test_backfill_token_radar_first_seen_dispatches_to_repository(monkeypatch) -
             "upserted": 2,
             "has_more": True,
             "last_cursor": {"computed_at_ms": 1700000000123, "row_id": "row-3"},
+            "next_after_cursor": "{\"computed_at_ms\":1700000000123,\"row_id\":\"row-3\"}",
             "batches": 1,
             "rows_scanned": 3,
             "rows_upserted": 2,
         },
     }
+
+
+def test_backfill_token_radar_first_seen_accepts_json_cursor(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    token_radar = _FakeTokenRadar()
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(token_radar=token_radar)
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "backfill-token-radar-first-seen",
+            "--batch-size",
+            "5000",
+            "--max-batches",
+            "1",
+            "--after-cursor",
+            '{"computed_at_ms":1700000000000,"row_id":"row-before"}',
+        ],
+        stdout=stdout,
+    )
+
+    assert code == 0
+    assert token_radar.calls[0]["after_computed_at_ms"] == 1_700_000_000_000
+    assert token_radar.calls[0]["after_row_id"] == "row-before"
 
 
 def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -> None:
@@ -78,6 +111,7 @@ def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -
             "upserted": 2,
             "has_more": True,
             "last_cursor": {"received_at_ms": 1700000000123, "event_id": "event-3"},
+            "next_after_cursor": "{\"event_id\":\"event-3\",\"received_at_ms\":1700000000123}",
             "batches": 1,
             "signal_events": 2,
             "normalized_handles": 1,

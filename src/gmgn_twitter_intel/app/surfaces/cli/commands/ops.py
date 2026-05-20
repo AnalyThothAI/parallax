@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -166,6 +167,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 repos.token_radar,
                 batch_size=args.batch_size,
                 max_batches=args.max_batches,
+                after_cursor=args.after_cursor,
             )
             return 0, {"ok": True, "data": data}
 
@@ -174,6 +176,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 repos.watchlist_intel,
                 batch_size=args.batch_size,
                 max_batches=args.max_batches,
+                after_cursor=args.after_cursor,
                 dry_run=bool(args.dry_run),
             )
             return 0, {"ok": True, "data": data}
@@ -288,11 +291,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
     return 2, {"ok": False, "error": f"unknown ops command: {args.ops_command}"}
 
 
-def _backfill_token_radar_first_seen(repository: object, *, batch_size: int, max_batches: int) -> dict[str, Any]:
+def _backfill_token_radar_first_seen(
+    repository: object,
+    *,
+    batch_size: int,
+    max_batches: int,
+    after_cursor: str = "",
+) -> dict[str, Any]:
     parsed_batch_size = max(1, int(batch_size))
     parsed_max_batches = max(1, int(max_batches))
-    after_computed_at_ms: int | None = None
-    after_row_id: str | None = None
+    parsed_cursor = _cursor_mapping(after_cursor)
+    after_computed_at_ms = _optional_int(parsed_cursor.get("computed_at_ms"))
+    after_row_id = str(parsed_cursor.get("row_id") or "") or None
     batches = 0
     rows_scanned = 0
     rows_upserted = 0
@@ -330,6 +340,7 @@ def _backfill_token_radar_first_seen(repository: object, *, batch_size: int, max
         "upserted": rows_upserted,
         "has_more": has_more,
         "last_cursor": last_cursor,
+        "next_after_cursor": _cursor_json(last_cursor),
         "batches": batches,
         "rows_scanned": rows_scanned,
         "rows_upserted": rows_upserted,
@@ -342,11 +353,13 @@ def _backfill_watchlist_signal_stats(
     batch_size: int,
     max_batches: int,
     dry_run: bool,
+    after_cursor: str = "",
 ) -> dict[str, Any]:
     parsed_batch_size = max(1, int(batch_size))
     parsed_max_batches = max(1, int(max_batches))
-    after_received_at_ms: int | None = None
-    after_event_id: str | None = None
+    parsed_cursor = _cursor_mapping(after_cursor)
+    after_received_at_ms = _optional_int(parsed_cursor.get("received_at_ms"))
+    after_event_id = str(parsed_cursor.get("event_id") or "") or None
     batches = 0
     processed = 0
     signal_events = 0
@@ -385,6 +398,7 @@ def _backfill_watchlist_signal_stats(
         "upserted": signal_events,
         "has_more": has_more,
         "last_cursor": last_cursor,
+        "next_after_cursor": _cursor_json(last_cursor),
         "batches": batches,
         "signal_events": signal_events,
         "normalized_handles": normalized_handles,
@@ -392,6 +406,24 @@ def _backfill_watchlist_signal_stats(
         "last_event_id": after_event_id,
         "dry_run": bool(dry_run),
     }
+
+
+def _cursor_mapping(raw: str) -> dict[str, Any]:
+    if not str(raw or "").strip():
+        return {}
+    try:
+        payload = json.loads(str(raw))
+    except json.JSONDecodeError as exc:
+        raise ValueError("after-cursor must be a JSON object") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("after-cursor must be a JSON object")
+    return payload
+
+
+def _cursor_json(value: dict[str, Any] | None) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _optional_int(value: object) -> int | None:

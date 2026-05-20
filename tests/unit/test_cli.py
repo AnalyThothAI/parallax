@@ -19,6 +19,7 @@ def test_ops_backfill_token_radar_first_seen_parser_accepts_batch_controls() -> 
     assert args.ops_command == "backfill-token-radar-first-seen"
     assert args.batch_size == 5000
     assert args.max_batches == 1
+    assert args.after_cursor == ""
 
 
 def test_ops_backfill_watchlist_signal_stats_parser_accepts_batch_controls() -> None:
@@ -38,6 +39,7 @@ def test_ops_backfill_watchlist_signal_stats_parser_accepts_batch_controls() -> 
     assert args.ops_command == "backfill-watchlist-signal-stats"
     assert args.batch_size == 5000
     assert args.max_batches == 1
+    assert args.after_cursor == ""
     assert args.dry_run is True
 
 
