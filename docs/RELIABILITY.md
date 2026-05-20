@@ -57,6 +57,24 @@ calls `aclose()`, and closes the pool bundle. Runtime health endpoints
 and CLI status must read worker state from the scheduler's `workers`
 map, not bespoke top-level runtime fields.
 
+Worker timeout supervision has four layers. `WorkerBase`
+`soft_timeout_seconds` is an overrun signal only: it exposes
+`active_run_once_age_ms`, records one soft-timeout event, and keeps
+waiting for the original task. `WorkerBase` `hard_timeout_seconds` is
+cooperative cancellation: the current task is cancelled and awaited
+before any replacement task can be created. Agent lane `timeout_seconds`
+belongs to `AgentExecutionGateway` and represents provider execution
+budget. PostgreSQL `statement_timeout_seconds` remains the final guard
+for synchronous SQL because cancelling `asyncio.to_thread(...)` does not
+kill the underlying thread or database statement.
+
+Any domain worker interrupted by hard timeout must persist retry or
+audit cleanup before re-raising `asyncio.CancelledError`. Claimed jobs
+must not be left `running`; model/agent audit rows must be terminal or
+retryable according to the domain state machine. If a synchronous
+provider or DB call ignores cooperative cancellation, process restart is
+the escalation path; Python must not attempt to kill the thread directly.
+
 ## Agent execution backpressure
 
 LLM-backed providers share one `AgentExecutionGateway` per process. The
@@ -78,6 +96,10 @@ no-start response from capacity, circuit, RPM, or parent-reservation
 pressure is backpressure, not a provider attempt. Provider-started
 latency timeouts remain started execution failures and follow the
 domain retry/audit policy.
+Supervisor cancellation is also auditable: the gateway records
+`cancelled` result metadata and releases lane/global counters, then
+propagates cancellation as `asyncio.CancelledError` so domain cleanup can
+run.
 
 `/api/status` exposes the gateway snapshot under `agent_execution`, and
 Prometheus exposes `gmgn_agent_execution_*` metrics. These are ops

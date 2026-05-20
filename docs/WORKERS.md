@@ -215,14 +215,25 @@ Adding a wake channel requires all of these in one change:
 - `WorkerScheduler.start()` starts enabled workers in registry priority
   order. `WorkerScheduler.stop()` calls `stop()`, waits for tasks,
   cancels stragglers, calls `aclose()`, and closes the `DBPoolBundle`.
+- Worker timeout settings are layered. `soft_timeout_seconds` is an
+  overrun signal owned by `WorkerBase`; it records active task age and
+  keeps waiting for the same `run_once()` task. `hard_timeout_seconds`
+  is a cooperative cancellation boundary; the worker cancels, awaits
+  cleanup, and only then may start another `run_once()`. Agent lane
+  `timeout_seconds` is a provider execution boundary inside
+  `AgentExecutionGateway`. `statement_timeout_seconds` is the final SQL
+  guard for synchronous DB work.
+- Non-continuous workers must have a finite `hard_timeout_seconds`.
+  `collector` is the only zero-hard-timeout worker because it is a
+  continuous stream lifecycle with its own snapshot gate and watchdog.
 - `/readyz`, `/api/status`, and `ops worker-status` expose worker state
   only under the `workers` map. `collector.details` carries collector
   counters, including `snapshot_gate_outcomes`; `snapshot_gate` is a
   global health field copied from those counters.
 - Runtime knobs live in `~/.gmgn-twitter-intel/workers.yaml`. The
   application/provider config in `config.yaml` must not contain worker
-  interval, batch, concurrency, lease, max-attempt, timeout, advisory
-  lock, or wake-channel settings.
+  interval, batch, concurrency, lease, max-attempt, soft/hard timeout,
+  advisory lock, or wake-channel settings.
 
 ## Agent Execution Plane
 

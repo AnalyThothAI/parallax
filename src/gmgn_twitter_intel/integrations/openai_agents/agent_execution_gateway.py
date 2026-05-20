@@ -24,6 +24,7 @@ from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import 
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
+    AgentExecutionCancelled,
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentExecutionRequestAudit,
@@ -39,6 +40,7 @@ from gmgn_twitter_intel.platform.agent_hashing import (
     json_sha256,
     trace_id_for,
 )
+from gmgn_twitter_intel.platform.cancellation import cancellation_reason
 
 
 @dataclass(slots=True)
@@ -321,6 +323,27 @@ class AgentExecutionGateway:
                 started=started,
             )
             return AgentExecutionResult(final_output=final_output, audit=result_audit, raw_result=raw_result)
+        except asyncio.CancelledError as exc:
+            execution_started = runner_entered["value"]
+            failed = self._failed_audit(
+                audit,
+                started=started,
+                error_class=AgentExecutionErrorClass.CANCELLED,
+                message="agent execution cancelled",
+                execution_started=execution_started,
+            )
+            self._record_execution_call(
+                stage,
+                status=failed.status,
+                error_class=failed.error_class,
+                started=started,
+            )
+            raise AgentExecutionCancelled(
+                failed.error_message or "agent execution cancelled",
+                audit=failed,
+                execution_started=execution_started,
+                cancellation_reason=cancellation_reason(exc),
+            ) from exc
         except AgentExecutionError:
             raise
         except SafetyNetExhausted as exc:

@@ -77,7 +77,12 @@ class LivePriceGateway(WorkerBase):
         telemetry: Any | None = None,
     ) -> None:
         interval = max(0.001, float(interval_seconds))
-        settings = SimpleNamespace(enabled=True, interval_seconds=interval, timeout_seconds=120.0)
+        settings = SimpleNamespace(
+            enabled=True,
+            interval_seconds=interval,
+            soft_timeout_seconds=120.0,
+            hard_timeout_seconds=180.0,
+        )
         super().__init__(name=name, settings=settings, db=pool_bundle, telemetry=telemetry or object())
         # NOTE: LivePriceGateway no longer owns any upstream price provider.
         # OKX DEX WS is owned exclusively by MarketTickStreamWorker; CEX/REST quotes are

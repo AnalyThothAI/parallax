@@ -320,7 +320,8 @@ def _settings(
         return SimpleNamespace(
             enabled=True,
             interval_seconds=interval_seconds if interval_seconds is not None else 5.0,
-            timeout_seconds=120.0,
+            soft_timeout_seconds=120.0,
+            hard_timeout_seconds=180.0,
             subscription_limit=subscription_limit,
             stream_cycle_seconds=stream_cycle_seconds,
         )

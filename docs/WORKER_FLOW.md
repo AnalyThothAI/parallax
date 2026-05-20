@@ -111,6 +111,26 @@ timeouts, backoff, status payloads, advisory locks, and close semantics.
 Domain workers should keep external provider IO outside DB sessions and
 should use `DBPoolBundle.worker_session()`.
 
+Timeout supervision is explicit:
+
+```text
+idle
+  -> active
+  -> soft_timed_out
+  -> hard_cancelling
+  -> cleanup_persisted
+  -> backoff
+  -> active
+```
+
+`soft_timed_out` means the current `run_once()` exceeded its expected
+duration; it is not an interrupt and it must not start overlapping work.
+`hard_cancelling` is cooperative cancellation: `WorkerBase` cancels and
+awaits the in-flight task. Domain workers then persist their own
+`cleanup_persisted` step, such as returning a claimed job to pending,
+failing an agent run audit row, or backing off a digest target, before
+they re-raise cancellation.
+
 ## State Machines
 
 The system has several state machines stacked together. That is normal
@@ -230,11 +250,16 @@ Use these rules when adding or reviewing a worker:
    Materialize DB rows, close the session, call the provider, then open a
    new worker session to persist results.
 
-6. Public surfaces read read models or query services. They do not call
+6. Cancellation cleanup is part of the domain state machine. If a
+   hard timeout interrupts provider IO after a claim, the worker must
+   terminalize or requeue the claim and persist audit evidence before
+   re-raising `asyncio.CancelledError`.
+
+7. Public surfaces read read models or query services. They do not call
    providers, perform token resolution, run scoring, or reconstruct old
    fallback payloads.
 
-7. Cache-only state must be labeled cache-only. `LivePriceGateway`
+8. Cache-only state must be labeled cache-only. `LivePriceGateway`
    publishes latest market display updates but does not write market
    facts and must not become a correctness dependency.
 

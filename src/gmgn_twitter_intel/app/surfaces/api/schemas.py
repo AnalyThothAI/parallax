@@ -46,6 +46,11 @@ class WorkerStatusData(ApiSchema):
     iteration_duration_p99_ms: float | None = None
     queue_depth: int | None = None
     pool_wait_ms_p99: float | None = None
+    active_run_once_started_at_ms: int | None = None
+    active_run_once_age_ms: int | None = None
+    active_run_once_soft_timed_out_at_ms: int | None = None
+    active_run_once_hard_timed_out_at_ms: int | None = None
+    active_run_once_count: int = 0
     details: JsonObject = Field(default_factory=dict)
 
 

@@ -88,6 +88,9 @@ class WorkerScheduler:
                         reasons.append(f"worker:{task_key}:stopped")
                     continue
             last_error = getattr(worker, "last_error", None)
+            if _worker_hard_timed_out(worker):
+                reasons.append(f"worker:{name}:hard_timeout")
+                continue
             if last_error:
                 reasons.append(f"worker:{name}:errored:{last_error}")
         return reasons
@@ -125,6 +128,14 @@ def _worker_concurrency(name: str, worker: Any) -> int:
         return 1
     settings = getattr(worker, "settings", None)
     return max(1, int(getattr(settings, "concurrency", 1) or 1))
+
+
+def _worker_hard_timed_out(worker: Any) -> bool:
+    hard_timed_out_at_ms = getattr(worker, "active_run_once_hard_timed_out_at_ms", None)
+    if hard_timed_out_at_ms is not None:
+        return True
+    last_error = getattr(worker, "last_error", None)
+    return isinstance(last_error, str) and last_error.startswith("WorkerRunHardTimeout")
 
 
 def _worker_task_items(

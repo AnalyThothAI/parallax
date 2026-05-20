@@ -306,3 +306,19 @@ def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_
         await scheduler.stop()
 
     asyncio.run(scenario())
+
+
+def test_scheduler_unhealthy_reasons_reports_hard_timeout_as_liveness_failure() -> None:
+    async def scenario() -> None:
+        hard_timed_out = FakeWorker("pulse_candidate")
+        hard_timed_out.last_error = "WorkerRunHardTimeout: worker:pulse_candidate:run_once hard timeout after 660s"
+        scheduler = WorkerScheduler(
+            workers={"pulse_candidate": hard_timed_out},
+            db=FakeDB(),
+            stop_timeout_seconds=0.1,
+        )
+        scheduler.tasks["pulse_candidate"] = asyncio.Future()
+
+        assert "worker:pulse_candidate:hard_timeout" in scheduler.unhealthy_reasons()
+
+    asyncio.run(scenario())

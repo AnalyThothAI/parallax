@@ -22,6 +22,7 @@ from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_servi
 )
 from gmgn_twitter_intel.domains.narrative_intel.services.evidence_ref_validator import EvidenceRefValidator
 from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
+from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
 
 
 class TokenDiscussionDigestWorker(WorkerBase):
@@ -144,6 +145,47 @@ class TokenDiscussionDigestWorker(WorkerBase):
             try:
                 llm_calls += 1
                 result = await self.provider.summarize_discussion(run_id=run_id, request=request)
+            except asyncio.CancelledError as exc:
+                if not is_worker_hard_timeout_cancelled(exc):
+                    raise
+                finished_at_ms = _now_ms()
+                await asyncio.to_thread(
+                    self._record_failed_run_sync,
+                    run={
+                        "run_id": run_id,
+                        "stage": "discussion_digest",
+                        "target_type": target["target_type"],
+                        "target_id": target["target_id"],
+                        "window": target["window"],
+                        "scope": target["scope"],
+                        "provider": self.provider.provider,
+                        "model": self.provider.model,
+                        "schema_version": NARRATIVE_SCHEMA_VERSION,
+                        "prompt_version": DISCUSSION_DIGEST_PROMPT_VERSION,
+                        "artifact_version_hash": self.provider.artifact_version_hash,
+                        "input_hash": input_hash,
+                        "output_hash": None,
+                        "request_json": request.model_dump(mode="json"),
+                        "response_json": None,
+                        "usage_json": request_audit.get("usage") or {},
+                        "trace_metadata_json": {
+                            **request_audit,
+                            "error_type": "CancelledError",
+                        },
+                        "status": "failed",
+                        "error": "worker_timeout_cancelled",
+                        "started_at_ms": started_at_ms,
+                        "finished_at_ms": finished_at_ms,
+                        "latency_ms": finished_at_ms - started_at_ms,
+                    },
+                )
+                await asyncio.to_thread(
+                    self._mark_digest_scanned_sync,
+                    target=target,
+                    now_ms=finished_at_ms,
+                    next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=finished_at_ms),
+                )
+                raise
             except Exception as exc:
                 if _is_agent_no_start_backpressure(exc):
                     await asyncio.to_thread(

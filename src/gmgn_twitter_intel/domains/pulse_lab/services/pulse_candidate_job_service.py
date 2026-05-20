@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -67,6 +68,7 @@ from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionErrorClass,
 )
+from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 _NO_START_BACKPRESSURE_CLASSES = {
@@ -502,6 +504,29 @@ class PulseCandidateJobService:
                     commit=False,
                 )
                 repos.pulse_jobs.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
+        except asyncio.CancelledError as exc:
+            if not is_worker_hard_timeout_cancelled(exc):
+                raise
+            failed_at_ms = _now_ms()
+            execution_started = _cancelled_execution_started(exc, run_started=run_started)
+            with self._repository_session() as repos, _transaction(repos.conn):
+                if run_started:
+                    repos.pulse_runs.finish_agent_run(
+                        run_id,
+                        "failed",
+                        error="worker_timeout_cancelled",
+                        outcome="worker_timeout",
+                        trace_metadata_json_patch={"failure_reason": "worker_timeout_cancelled"},
+                        finished_at_ms=failed_at_ms,
+                        commit=False,
+                    )
+                repos.pulse_jobs.mark_job_cancelled_by_worker_timeout(
+                    job,
+                    now_ms=failed_at_ms,
+                    execution_started=execution_started,
+                    commit=False,
+                )
+            raise
         except Exception as exc:
             backpressure_reason = _agent_no_start_backpressure_reason(exc)
             failed_at_ms = int(now_ms) if backpressure_reason else _now_ms()
@@ -774,6 +799,19 @@ def _agent_no_start_backpressure_reason(exc: Exception) -> str | None:
     if execution_started is not False:
         return None
     return str(error_class.value if isinstance(error_class, AgentExecutionErrorClass) else error_class)
+
+
+def _cancelled_execution_started(exc: asyncio.CancelledError, *, run_started: bool) -> bool:
+    execution_started = getattr(exc, "execution_started", None)
+    if execution_started is None:
+        audit = getattr(exc, "audit", None) or getattr(exc, "agent_audit", None)
+        if isinstance(audit, dict):
+            execution_started = audit.get("execution_started")
+        else:
+            execution_started = getattr(audit, "execution_started", None)
+    if execution_started is None:
+        return bool(run_started)
+    return bool(execution_started)
 
 
 def _agent_error_class(exc: Exception) -> AgentExecutionErrorClass | None:

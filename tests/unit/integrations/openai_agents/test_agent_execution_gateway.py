@@ -10,6 +10,7 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway impor
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
+    AgentExecutionCancelled,
     AgentExecutionError,
     AgentExecutionErrorClass,
     AgentExecutionStatus,
@@ -634,5 +635,46 @@ def test_execute_releases_internal_reservation_after_cancellation() -> None:
         snapshot = gateway.status_snapshot()
         assert snapshot["global_in_flight"] == 0
         assert snapshot["lanes"]["test.lane"]["in_flight"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_gateway_supervisor_cancellation_records_cancelled_audit_and_releases_reservation() -> None:
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        runner = FakeRunner(delay_seconds=60, entered=entered)
+        gateway = AgentExecutionGateway(
+            llm_gateway=FakeLLMGateway(),
+            base_url="https://example.com/v1",
+            trace_enabled=False,
+            trace_include_sensitive_data=False,
+            policy=_policy(),
+            runner=runner,
+        )
+
+        task = asyncio.create_task(gateway.execute(_spec()))
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        running_snapshot = gateway.status_snapshot()
+        assert running_snapshot["global_in_flight"] == 1
+        assert running_snapshot["lanes"]["test.lane"]["in_flight"] == 1
+        assert running_snapshot["lanes"]["test.lane"]["provider_running"] == 1
+
+        task.cancel()
+        exceptions = await asyncio.gather(task, return_exceptions=True)
+
+        assert len(exceptions) == 1
+        assert isinstance(exceptions[0], asyncio.CancelledError)
+        with pytest.raises(AgentExecutionCancelled) as err:
+            await task
+        exc = err.value
+        assert exc.audit is not None
+        assert exc.audit.error_class is AgentExecutionErrorClass.CANCELLED
+        assert exc.audit.status is AgentExecutionStatus.FAILED
+        assert exc.execution_started is True
+        assert exc.audit.execution_started is True
+        snapshot = gateway.status_snapshot()
+        assert snapshot["global_in_flight"] == 0
+        assert snapshot["lanes"]["test.lane"]["in_flight"] == 0
+        assert snapshot["lanes"]["test.lane"]["provider_running"] == 0
 
     asyncio.run(scenario())

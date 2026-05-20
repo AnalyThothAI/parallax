@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.narrative_intel._constants import (
 from gmgn_twitter_intel.domains.narrative_intel.providers import NarrativeIntelProvider
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import deterministic_run_id
 from gmgn_twitter_intel.domains.narrative_intel.services.mention_semantics_service import MentionSemanticsService
+from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
 
 
 class MentionSemanticsWorker(WorkerBase):
@@ -80,6 +81,51 @@ class MentionSemanticsWorker(WorkerBase):
         )
         try:
             result = await self.provider.label_mentions(run_id=run_id, request=request)
+        except asyncio.CancelledError as exc:
+            if not is_worker_hard_timeout_cancelled(exc):
+                raise
+            finished_at_ms = _now_ms()
+            failures = [
+                _provider_failure_for_row(
+                    row,
+                    error="worker_timeout_cancelled",
+                    default_next_retry_at_ms=self._provider_failure_next_retry_at_ms(now_ms=finished_at_ms),
+                    max_attempts=0,
+                )
+                for row in rows
+            ]
+            run_payload = {
+                "run_id": run_id,
+                "stage": "mention_semantics",
+                "provider": self.provider.provider,
+                "model": self.provider.model,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "prompt_version": MENTION_SEMANTICS_PROMPT_VERSION,
+                "artifact_version_hash": self.provider.artifact_version_hash,
+                "input_hash": input_hash,
+                "output_hash": None,
+                "evidence_event_ids_json": [row.get("event_id") for row in rows if row.get("event_id")],
+                "request_json": request.model_dump(mode="json"),
+                "response_json": None,
+                "usage_json": request_audit.get("usage") or {},
+                "trace_metadata_json": {
+                    **request_audit,
+                    "error_type": "CancelledError",
+                },
+                "status": "failed",
+                "error": "worker_timeout_cancelled",
+                "started_at_ms": started_at_ms,
+                "finished_at_ms": finished_at_ms,
+                "latency_ms": finished_at_ms - started_at_ms,
+            }
+            await asyncio.to_thread(
+                self._record_completion_sync,
+                run=run_payload,
+                labels=[],
+                failures=failures,
+                now_ms=finished_at_ms,
+            )
+            raise
         except Exception as exc:
             if _is_agent_no_start_backpressure(exc):
                 reason = _agent_backpressure_reason(exc)
@@ -357,6 +403,13 @@ class MentionSemanticsWorker(WorkerBase):
                 )
             )
 
+    def _provider_failure_next_retry_at_ms(self, *, now_ms: int) -> int:
+        backoff_ms = max(
+            1,
+            int(float(getattr(self.settings, "provider_failure_backoff_seconds", 60.0) or 60.0) * 1000),
+        )
+        return int(now_ms) + backoff_ms
+
     @contextmanager
     def _repository_session(self) -> Iterator[Any]:
         with self.db.worker_session(
@@ -417,7 +470,7 @@ def _provider_failure_for_row(
         "error": error,
         "next_retry_at_ms": default_next_retry_at_ms,
     }
-    if int(row.get("retry_count") or 0) + 1 >= max_attempts:
+    if max_attempts > 0 and int(row.get("retry_count") or 0) + 1 >= max_attempts:
         failure["status"] = "semantic_unavailable"
         failure["next_retry_at_ms"] = 0
     return failure
