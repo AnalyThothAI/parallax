@@ -127,6 +127,7 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
                 "market_cap_usd": Decimal("28486.254971513744"),
                 "liquidity_usd": Decimal("18230.629102955"),
                 "volume_24h_usd": Decimal("26133.3652616"),
+                "open_interest_usd": Decimal("1200000.5"),
                 "holders": 551,
                 "observed_at_ms": NOW_MS - 2_000,
                 "received_at_ms": NOW_MS - 1_000,
@@ -151,6 +152,7 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
     assert dossier["market_live"]["market_cap_usd"] == 28486.254971513744
     assert dossier["market_live"]["liquidity_usd"] == 18230.629102955
     assert dossier["market_live"]["volume_24h_usd"] == 26133.3652616
+    assert dossier["market_live"]["open_interest_usd"] == 1200000.5
     assert dossier["market_live"]["holders"] == 551
     assert dossier["market_live"]["age_ms"] == 1_000
     assert "agent_brief" not in dossier

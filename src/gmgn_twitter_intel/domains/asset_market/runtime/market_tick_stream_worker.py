@@ -256,6 +256,7 @@ def _tick_from_update(
         market_cap_usd=_decimal_or_none(update.market_cap_usd),
         holders=_int_or_none(update.holders),
         created_at_ms=received_at_ms,
+        open_interest_usd=_decimal_or_none(update.open_interest_usd),
         raw_payload_json=update.raw or {},
     )
 

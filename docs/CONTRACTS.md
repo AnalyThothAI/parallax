@@ -358,8 +358,8 @@ Search V2 contract:
     display-gated and never changes Radar rank or Token Case narrative.
   - `data.market_live`: request-time/process-local live market snapshot with
     `status` (`ready`, `live`, `missing`, `unsupported`, `stale`, or `error`),
-    provider metadata, and nullable price, market-cap, liquidity, holder, and
-    observation fields.
+    provider metadata, and nullable price, market-cap, liquidity, open-interest,
+    holder, volume, and observation fields.
 - Token Case responses do not expose Token Radar score audit blocks. Ranking
   facts remain owned by `/api/token-radar`; dossier pages show evidence,
   propagation, profile, discussion digest, semantic timeline labels, and live

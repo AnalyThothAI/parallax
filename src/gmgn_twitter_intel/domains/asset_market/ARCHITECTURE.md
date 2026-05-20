@@ -46,7 +46,14 @@ type before any persistence call.
 - `source_provider` records the concrete provider path, such as
   `okx_dex_ws`, `okx_dex_rest`, or `okx_cex_rest`.
 - Numeric market fields are optional except `price_usd`, which must be a
-  positive finite decimal.
+  positive finite decimal. CEX derivatives scalars such as
+  `open_interest_usd` belong on the tick only when normalized as scalar market
+  facts for the same instrument/observation.
+- CEX liquidation levels / heatmap zones are not tick facts. CoinGlass-derived
+  level snapshots should enter through an Asset Market provider + append-only
+  derivatives snapshot table with one runtime writer, then be copied into Token
+  Case and Pulse evidence packets from persisted facts. Public reads and agents
+  must not shell out to CoinGlass directly.
 - `raw_payload_json` stores the provider payload needed for audit without
   making provider frames the business fact.
 

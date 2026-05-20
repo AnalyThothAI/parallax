@@ -35,6 +35,7 @@ def upgrade() -> None:
           price_usd NUMERIC NOT NULL CHECK (price_usd > 0),
           liquidity_usd NUMERIC,
           volume_24h_usd NUMERIC,
+          open_interest_usd NUMERIC,
           market_cap_usd NUMERIC,
           holders BIGINT,
           raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,

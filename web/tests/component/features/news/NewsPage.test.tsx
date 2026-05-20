@@ -88,7 +88,9 @@ describe("NewsPage", () => {
 
     expect(await screen.findByText("Completely different headline about BTC")).toBeInTheDocument();
     expect(screen.getByText("Coinbase 上线 NEWX，短线关注流动性确认。")).toBeInTheDocument();
-    expect(screen.getByText("上市带来交易所可得性，但仍需确认真实成交与身份映射。")).toBeInTheDocument();
+    expect(
+      screen.getByText("上市带来交易所可得性，但仍需确认真实成交与身份映射。"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/broad beta pressure/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/specific flow catalyst/i)).not.toBeInTheDocument();
   });
@@ -103,6 +105,38 @@ describe("NewsPage", () => {
     );
 
     expect(screen.getByTestId("location")).toHaveTextContent("/news/news-1");
+  });
+
+  it("refetches the first news page when pulled down from the top", async () => {
+    fetchNewsRowsMock
+      .mockResolvedValueOnce({ items: [firstPageRow], next_cursor: null })
+      .mockResolvedValueOnce({
+        items: [{ ...firstPageRow, row_id: "row-refreshed", headline: "Fresh pull story" }],
+        next_cursor: null,
+      });
+
+    renderNews(<NewsPage token="test-token" />);
+
+    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
+    const scrollContainer = screen.getByLabelText("News intel scroll container");
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+
+    fireEvent.touchStart(scrollContainer, { touches: [{ clientY: 16 }] });
+    fireEvent.touchMove(scrollContainer, { touches: [{ clientY: 112 }] });
+    fireEvent.touchEnd(scrollContainer);
+
+    await waitFor(() => expect(fetchNewsRowsMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Fresh pull story")).toBeInTheDocument();
+    expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+      cursor: null,
+      limit: 25,
+      status: null,
+      token: "test-token",
+    });
   });
 
   it("renders item detail with the persisted agent panel and original source", async () => {
@@ -131,7 +165,9 @@ describe("NewsPage", () => {
     expect(screen.getAllByText("WLFI").length).toBeGreaterThan(0);
     expect(screen.queryByText("AI Financial")).not.toBeInTheDocument();
     expect(screen.getByText("Token identity")).toBeInTheDocument();
-    expect(screen.queryByText(/Solvency warning around a WLFI-linked treasury vehicle/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Solvency warning around a WLFI-linked treasury vehicle/i),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /original/i })).toHaveAttribute(
       "href",
       "https://example.test/news-1",

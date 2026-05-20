@@ -413,6 +413,7 @@ def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick:
         market_cap_usd=_decimal_or_none(row.get("market_cap_usd")),
         holders=_int_or_none(row.get("holders")),
         created_at_ms=int(row["created_at_ms"]),
+        open_interest_usd=_decimal_or_none(row.get("open_interest_usd")),
         raw_payload_json=dict(row.get("raw_payload_json") or {}),
     )
 

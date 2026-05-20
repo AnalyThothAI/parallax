@@ -322,7 +322,7 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
             last_price=70_000.25,
             volume_24h=1_250_000.5,
             open_interest=None,
-            raw={"instId": "BTC-USDT", "ts": str(EVENT_MS + 50)},
+            raw={"instId": "BTC-USDT", "ts": str(EVENT_MS + 50), "openInterestUsd": "9100000"},
         )
     )
     service = EventMarketCaptureService(
@@ -363,7 +363,12 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
     assert result.tick.received_at_ms == NOW_MS
     assert result.tick.price_usd == Decimal("70000.25")
     assert result.tick.volume_24h_usd == Decimal("1250000.5")
-    assert result.tick.raw_payload_json == {"instId": "BTC-USDT", "ts": str(EVENT_MS + 50)}
+    assert result.tick.open_interest_usd == Decimal("9100000")
+    assert result.tick.raw_payload_json == {
+        "instId": "BTC-USDT",
+        "ts": str(EVENT_MS + 50),
+        "openInterestUsd": "9100000",
+    }
     assert result.capture.capture_method == "tier3_inline"
     assert result.capture.capture_reason == "inline_ticker"
     assert result.capture.tick_lag_ms == 50

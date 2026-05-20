@@ -326,7 +326,9 @@
   color: inherit;
   background: transparent;
   padding: 0;
+  cursor: pointer;
   text-align: left;
+  text-decoration: none;
 }
 
 .token-cell,

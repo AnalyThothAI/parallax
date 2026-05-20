@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -260,9 +261,10 @@ describe("TokenRadarTable rows", () => {
     expect(screen.getByText("Token Radar 暂不可用 · boom")).toBeInTheDocument();
   });
 
-  it("opens token detail from the whole row", () => {
+  it("opens token detail in a new tab from the compact action and whole row", () => {
     const item = mixedFreshnessToken();
     const onSelect = vi.fn();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     render(
       <TokenRadarTable
         error={null}
@@ -277,10 +279,22 @@ describe("TokenRadarTable rows", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("article", { name: "Token Radar item $TROLL" }));
+    const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
+    const expectedHref =
+      "/token/Asset/asset%3Adex%3Aeth%3A0x1111111111111111111111111111111111111111";
+    expect(within(row).getByRole("link", { name: "Open token item $TROLL" })).toHaveAttribute(
+      "href",
+      expectedHref,
+    );
+    expect(within(row).getByRole("link", { name: "Open token item $TROLL" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
 
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect).toHaveBeenCalledWith(item);
+    fireEvent.click(row);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(openSpy).toHaveBeenCalledWith(expectedHref, "_blank", "noopener,noreferrer");
   });
 
   it("does not fall back to token price for DEX rows without market cap", () => {

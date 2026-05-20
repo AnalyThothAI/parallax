@@ -31,6 +31,7 @@ class MarketTick:
     market_cap_usd: Decimal | None
     holders: int | None
     created_at_ms: int
+    open_interest_usd: Decimal | None = None
     raw_payload_json: dict[str, Any] = field(default_factory=dict)
 
 

@@ -41,7 +41,10 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.propagation.statusPills.some((pill) => pill.label.startsWith("last ready "))).toBe(
       true,
     );
-    expect(vm.dataGaps).toEqual(["live market snapshot missing", "official liquidity route not confirmed"]);
+    expect(vm.dataGaps).toEqual([
+      "live market snapshot missing",
+      "official liquidity route not confirmed",
+    ]);
   });
 
   it("does not read canonical token agent_brief as a fallback narrative", () => {
@@ -252,5 +255,25 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.market.status).toBe("stale");
     expect(vm.market.tone).toBe("warn");
     expect(vm.market.emptyTitle).toBe("Live market stale");
+  });
+
+  it("surfaces CEX open interest in the live market panel", () => {
+    const dossier = tokenCaseFixture();
+    const vm = buildTokenCaseViewModel({
+      dossier: {
+        ...dossier,
+        market_live: {
+          ...dossier.market_live,
+          status: "ready",
+          provider: "okx_cex_rest",
+          price_usd: 1.24,
+          open_interest_usd: 12_400_000,
+        },
+      },
+      route: { window: "1h", scope: "all", postSort: "recent" },
+      posts: dossier.posts,
+    });
+
+    expect(vm.market.openInterestLabel).toBe("$12M");
   });
 });

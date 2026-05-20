@@ -199,6 +199,7 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
   const liquidity = numberValue(live.liquidity_usd);
   const holders = numberValue(live.holders);
   const volume24h = numberValue(live.volume_24h_usd);
+  const openInterest = numberValue(live.open_interest_usd);
   const ready = status === "ready" || status === "live";
   return {
     status,
@@ -208,6 +209,7 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
     liquidityLabel: liquidity === null ? "-" : formatUsdCompact(liquidity),
     holdersLabel: holders === null ? "-" : compactNumber(holders),
     volume24hLabel: volume24h === null ? "-" : formatUsdCompact(volume24h),
+    openInterestLabel: openInterest === null ? "-" : formatUsdCompact(openInterest),
     observedAtLabel: numberValue(live.observed_at_ms)
       ? timeAgoLabel(Number(live.observed_at_ms))
       : null,
@@ -385,9 +387,7 @@ function digestCurrentnessView(
   const currentness = digest.currentness;
   const displayStatus = currentness.display_status;
   const deltaSourceEventCount = nonNegativeNumber(currentness.delta_source_event_count);
-  const deltaIndependentAuthorCount = nonNegativeNumber(
-    currentness.delta_independent_author_count,
-  );
+  const deltaIndependentAuthorCount = nonNegativeNumber(currentness.delta_independent_author_count);
   const lastReadyComputedAtMs = numberValue(currentness.last_ready_computed_at_ms);
   const deltaLabel = currentnessDeltaLabel(deltaSourceEventCount, deltaIndependentAuthorCount);
   return {
@@ -452,7 +452,8 @@ function digestStages(
   digest: TokenDiscussionDigest,
 ): TokenCaseViewModel["propagation"]["stages"] {
   const fromClusters = clusters.slice(0, 3).map((cluster) => {
-    const state = cluster.propagation_state ?? digestPropagationState(digest) ?? cluster.cluster_key;
+    const state =
+      cluster.propagation_state ?? digestPropagationState(digest) ?? cluster.cluster_key;
     const lead = cluster.lead_accounts?.[0]?.handle;
     return {
       id: cluster.cluster_key,
