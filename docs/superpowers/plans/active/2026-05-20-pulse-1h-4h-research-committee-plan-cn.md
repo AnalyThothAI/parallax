@@ -561,13 +561,13 @@ Known-failing baseline tests:
 - Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
 - Test: `tests/unit/test_pulse_display_status.py`
 
-- [ ] Write failing tests:
+- [x] Write failing tests:
   - watched-only row with `rank_score=44` is not enqueued.
   - watched-only row with rank-score boost does not become public trade/watch.
   - matched-only single-author risk reject maps to hidden source quality.
   - multi-author `1h/all` row remains eligible.
 
-- [ ] Implement `PulseSourceQuality`.
+- [x] Implement `PulseSourceQuality`.
   It must read from factor snapshot families:
   - `families.social_heat.facts.unique_authors`
   - `families.social_heat.facts.watched_mentions`
@@ -577,23 +577,23 @@ Known-failing baseline tests:
   - `families.social_propagation.facts.top_author_share`
   - `families.social_propagation.facts.duplicate_text_share`
 
-- [ ] Remove watched shortcut from `_is_asset_trigger`.
+- [x] Remove watched shortcut from `_is_asset_trigger`.
   New return rule:
   ```python
   return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score
   ```
 
-- [ ] Add Pulse-specific source-quality decision before enqueue.
-  This does not modify Token Radar factor scoring.
+- [x] Add Pulse-specific source-quality decision before public write.
+  This does not modify Token Radar factor scoring and still persists hidden rows for auditability.
 
-- [ ] Add hidden display mapping for source-quality blocked rows.
+- [x] Add hidden display mapping for source-quality blocked rows.
 
-- [ ] Run:
+- [x] Run:
   ```bash
   uv run pytest tests/unit/domains/pulse_lab/test_pulse_source_quality.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_display_status.py -q
   ```
 
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_source_quality.py src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py src/gmgn_twitter_intel/domains/pulse_lab/services/write_gate.py src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_state.py tests/unit/domains/pulse_lab/test_pulse_source_quality.py tests/unit/test_pulse_candidate_worker.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py tests/unit/test_pulse_display_status.py
   git commit -m "feat: require pulse source quality for public display"

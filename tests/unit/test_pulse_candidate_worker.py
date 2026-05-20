@@ -122,6 +122,32 @@ def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcu
     assert repos.pulse_jobs.jobs == []
 
 
+def test_watched_only_rank_44_is_not_enqueued() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [
+        _radar_row(
+            factor_snapshot_json=_factor_snapshot(
+                rank_score=44,
+                recommended_decision="low_info",
+                watched_mentions=1,
+                unique_authors=1,
+                independent_authors=1,
+                effective_authors=1.0,
+                top_author_share=1.0,
+            )
+        )
+    ]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse_jobs.jobs == []
+
+
 def test_abstain_decision_maps_to_evidence_insufficient_outcome() -> None:
     final_decision = FinalDecision(
         route="meme",
@@ -293,6 +319,80 @@ def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     assert "radar_score_json" not in upsert
     assert "market_context_json" not in upsert
     assert "thesis_json" not in upsert
+
+
+def test_watched_only_high_score_is_hidden_by_source_quality() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        watched_mentions=1,
+        unique_authors=1,
+        independent_authors=1,
+        effective_authors=1.0,
+        top_author_share=1.0,
+    )
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["display_status"] == "hidden_source_quality"
+    assert upsert["gate_json"]["source_quality"]["public_allowed"] is False
+    assert "watched_only_source" in upsert["gate_json"]["source_quality"]["reasons"]
+    assert repos.pulse_playbooks.playbook_upserts == []
+
+
+def test_matched_single_author_risk_reject_is_hidden_by_source_quality() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        blocked_reasons=["timing_chase_risk"],
+        watched_mentions=0,
+        unique_authors=1,
+        independent_authors=1,
+        effective_authors=1.0,
+        top_author_share=1.0,
+    )
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos, settings=_settings(scopes=("matched",)))
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["scope"] == "matched"
+    assert upsert["decision_status"] == "risk_rejected_high_info"
+    assert upsert["display_status"] == "hidden_source_quality"
+    assert "single_author_source" in upsert["gate_json"]["source_quality"]["reasons"]
+
+
+def test_multi_author_all_scope_remains_public() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(
+        rank_score=82,
+        watched_mentions=0,
+        unique_authors=4,
+        independent_authors=4,
+        effective_authors=4.0,
+        top_author_share=0.4,
+    )
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = _worker(repos)
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 1
+    upsert = repos.pulse_candidates.candidate_upserts[0]
+    assert upsert["display_status"] == "display_token_watch"
+    assert upsert["gate_json"]["source_quality"]["public_allowed"] is True
 
 
 def test_worker_trigger_metrics_use_v3_families_and_gates() -> None:
@@ -1782,6 +1882,12 @@ def _factor_snapshot(
     blocked_reasons: list[str] | None = None,
     recommended_decision: str | None = None,
     watched_mentions: int = 1,
+    unique_authors: int = 7,
+    independent_authors: int = 7,
+    effective_authors: float | None = None,
+    source_weighted_effective_authors: float | None = None,
+    top_author_share: float = 0.2,
+    duplicate_text_share: float = 0.0,
 ) -> dict[str, Any]:
     decision = recommended_decision or ("high_alert" if rank_score >= 72 else "watch")
     return {
@@ -1834,7 +1940,11 @@ def _factor_snapshot(
                 "score": rank_score,
                 "weight": 0.35,
                 "data_health": "ready",
-                "facts": {"mentions_1h": 8, "unique_authors": 7, "watched_mentions": watched_mentions},
+                "facts": {
+                    "mentions_1h": 8,
+                    "unique_authors": unique_authors,
+                    "watched_mentions": watched_mentions,
+                },
                 "factors": {
                     "watched_mentions": {
                         "family": "social_heat",
@@ -1848,7 +1958,17 @@ def _factor_snapshot(
                 "score": rank_score,
                 "weight": 0.3,
                 "data_health": "ready",
-                "facts": {"independent_authors": 7},
+                "facts": {
+                    "independent_authors": independent_authors,
+                    "effective_authors": effective_authors if effective_authors is not None else independent_authors,
+                    "source_weighted_effective_authors": (
+                        source_weighted_effective_authors
+                        if source_weighted_effective_authors is not None
+                        else independent_authors
+                    ),
+                    "top_author_share": top_author_share,
+                    "duplicate_text_share": duplicate_text_share,
+                },
                 "factors": {
                     "independent_authors": {
                         "family": "social_propagation",

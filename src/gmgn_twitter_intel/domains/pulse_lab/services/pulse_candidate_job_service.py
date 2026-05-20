@@ -47,6 +47,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateThresholds,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_freshness_health import PulseFreshnessHealthService
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_source_quality import PulseSourceQuality
 from gmgn_twitter_intel.domains.pulse_lab.services.recommendation_clipper import clip_recommendation
 from gmgn_twitter_intel.domains.pulse_lab.services.write_gate import PulseWriteGate
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
@@ -356,6 +357,11 @@ class PulseCandidateJobService:
                     now_ms=finished_at_ms,
                     since_hours=4,
                 )
+                source_quality = PulseSourceQuality().evaluate(
+                    factor_snapshot=context.factor_snapshot,
+                    window=context.window,
+                    scope=context.scope,
+                )
                 write_gate_decision = PulseWriteGate().evaluate(
                     final_decision=final_decision,
                     eval_result=eval_result,
@@ -363,6 +369,7 @@ class PulseCandidateJobService:
                     evidence_gate=evidence_gate,
                     claim_verification=claim_verification,
                     health_status=health_status,
+                    source_quality=source_quality,
                 )
                 eval_result = _eval_result_with_write_gate(eval_result, write_gate_decision.to_json())
                 repos.pulse_agent_eval.upsert_agent_eval_result(
@@ -451,7 +458,11 @@ class PulseCandidateJobService:
                         trigger_signature=context.trigger_signature,
                         timeline_signature=context.timeline_signature,
                         factor_snapshot_json=context.factor_snapshot,
-                        gate_json={**gate.to_json(), "write_gate": write_gate_decision.to_json()},
+                        gate_json={
+                            **gate.to_json(),
+                            "source_quality": source_quality.to_json(),
+                            "write_gate": write_gate_decision.to_json(),
+                        },
                         **decision_fields,
                         gate_reasons_json=gate.gate_reasons,
                         risk_reasons_json=gate.risk_reasons,

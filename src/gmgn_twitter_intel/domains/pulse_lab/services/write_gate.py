@@ -39,6 +39,7 @@ class PulseWriteGate:
         evidence_gate: Any | None = None,
         claim_verification: Any | None = None,
         health_status: dict[str, Any] | None = None,
+        source_quality: Any | None = None,
     ) -> PulseWriteGateDecision:
         evidence_status = str(getattr(evidence_gate, "evidence_status", "") or "complete")
         claim_valid = bool(getattr(claim_verification, "valid", True))
@@ -65,6 +66,15 @@ class PulseWriteGate:
                 decision_status="invalid",
                 display_status="hidden_invalid_output",
                 reason="deterministic_eval_failed",
+            )
+        if source_quality is not None and not bool(getattr(source_quality, "public_allowed", True)):
+            return PulseWriteGateDecision(
+                write_allowed=True,
+                public_write_allowed=False,
+                playbook_write_allowed=False,
+                decision_status=decision_status,
+                display_status="hidden_source_quality",
+                reason="source_quality_failed",
             )
         publish_allowed = bool(getattr(evidence_gate, "public_allowed", True))
         display_status = display_status_from_decision(

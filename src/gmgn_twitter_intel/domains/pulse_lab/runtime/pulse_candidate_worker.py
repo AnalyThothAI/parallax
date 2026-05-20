@@ -434,8 +434,7 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     resolved_thresholds = thresholds or PulseTriggerThresholds()
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
-    watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_heat", "facts", "watched_mentions"))
-    return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score or watched_mentions > 0
+    return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score
 
 
 def _trigger_thresholds_from_settings(settings: Any) -> PulseTriggerThresholds:
