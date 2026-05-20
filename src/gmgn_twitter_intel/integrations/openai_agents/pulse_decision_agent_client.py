@@ -620,18 +620,25 @@ def _is_model_contract_stage_failure(step: StageRunAudit) -> bool:
 def _abstain_reason_for_stage_failure(step: StageRunAudit) -> str:
     if step.status == "timeout":
         return "stage_timeout"
-    return "invalid_unknown_evidence_ref"
+    text = str(step.error or "").lower()
+    if "outside allowed_evidence_refs" in text:
+        return "invalid_unknown_evidence_ref"
+    return "invalid_model_output"
 
 
 def _stage_failure_summary(abstain_reason: str) -> str:
     if abstain_reason == "stage_timeout":
         return "LLM 证据辩论阶段超时，本次不发布候选。"
+    if abstain_reason == "invalid_model_output":
+        return "模型输出不符合结构化合同，本次不发布候选。"
     return "模型输出引用了证据包外的 ref，本次不发布候选。"
 
 
 def _stage_failure_thesis(abstain_reason: str) -> str:
     if abstain_reason == "stage_timeout":
         return "LLM 阶段超过实时预算，没有形成可验证的完整结论；本次仅记录超时并等待下一轮有效证据综合。"
+    if abstain_reason == "invalid_model_output":
+        return "模型输出未通过结构化合同校验，无法形成可靠结论；本次仅记录无效输出并等待下一轮有效证据综合。"
     return "模型输出包含证据包以外的引用，违反封闭证据合同；本次仅记录无效输出并等待下一轮有效证据综合。"
 
 

@@ -24,11 +24,16 @@ StageStatus = Literal["ok", "failed", "timeout", "skipped"]
 BullBearStrength = Literal["absent", "weak", "moderate", "strong"]
 MonitoringHorizon = Literal["1h", "4h", "24h"]
 
-_FORBIDDEN_EXECUTION_RE = re.compile(
-    r"买入|卖出|开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|"
-    r"\b(?:buy|sell|leverage|position\s+sizing?|stop[-\s]+loss|take[-\s]+profit|target\s+price)\b|"
+_PRESCRIPTIVE_EXECUTION_RE = re.compile(
+    r"(建议|推荐|应当|应该|必须|不要|立刻|马上|适合).{0,12}"
+    r"(买入|卖出|开仓|建仓|做多|做空|止损|止盈|加仓|减仓)|"
+    r"(买入|卖出|开仓|建仓|做多|做空).{0,8}(止损|止盈|目标价|杠杆|仓位)|"
+    r"(止损|止盈|目标价|杠杆|仓位).{0,8}(买入|卖出|开仓|做多|做空)|"
+    r"\b(?:should|must|recommend(?:ed)?|advise(?:d)?)\s+"
+    r"(?:buy|sell|open|enter|go\s+long|go\s+short|set\s+a\s+stop)\b|"
+    r"\bbuy\s+signal\b|"
     r"\b(?:go|enter|open)\s+(?:long|short)\b|"
-    r"\b(?:long|short)\s+position\b",
+    r"\b(?:leverage|position\s+sizing?|stop[-\s]+loss|take[-\s]+profit|target\s+price)\b",
     re.IGNORECASE,
 )
 
@@ -55,9 +60,8 @@ class BullBearView(BaseModel):
                 raise ValueError("strength=absent requires empty thesis_zh")
             if self.supporting_event_ids:
                 raise ValueError("strength=absent requires empty supporting_event_ids")
-        else:
-            if not _clean_text(self.thesis_zh):
-                raise ValueError("strength != absent requires non-empty thesis_zh")
+        elif not _clean_text(self.thesis_zh):
+            raise ValueError("strength != absent requires non-empty thesis_zh")
         _reject_execution_language(self.model_dump(mode="json"))
         return self
 
@@ -285,7 +289,7 @@ class PulseStageFailure(Exception):
 
 
 def contains_trading_execution_instruction(text: str) -> bool:
-    return bool(_FORBIDDEN_EXECUTION_RE.search(text))
+    return bool(_PRESCRIPTIVE_EXECUTION_RE.search(text))
 
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)

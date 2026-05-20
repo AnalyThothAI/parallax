@@ -108,6 +108,29 @@ class _FailingAgentGateway(_FakeAgentGateway):
         )
 
 
+class _TransportFailingAgentGateway(_FakeAgentGateway):
+    async def execute(self, stage, **kwargs):
+        self.execute_calls.append({"stage": stage, "kwargs": kwargs})
+        request_audit = self.request_audit(stage)
+        failed = AgentExecutionResultAudit(
+            **_request_audit_base(request_audit),
+            status=AgentExecutionStatus.FAILED,
+            execution_started=True,
+            latency_ms=31.0,
+            usage={"input_tokens": 3},
+            parse_mode="strict",
+            safety_net={"safety_net_used": False, "safety_net_retries": 0},
+            error_class=AgentExecutionErrorClass.TRANSPORT_ERROR,
+            error_message="connection reset by provider",
+        )
+        raise AgentExecutionError(
+            AgentExecutionErrorClass.TRANSPORT_ERROR,
+            "connection reset by provider",
+            audit=failed,
+            execution_started=True,
+        )
+
+
 class _NoStartBackpressureGateway(_FakeAgentGateway):
     async def execute(self, stage, **kwargs):
         self.execute_calls.append({"stage": stage, "kwargs": kwargs})
@@ -451,8 +474,78 @@ def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures
 
     assert len(gateway.execute_calls) == 1
     assert result.final_decision.recommendation == "abstain"
+    assert result.final_decision.abstain_reason == "invalid_unknown_evidence_ref"
     assert result.stage_audits[0].status == "failed"
     assert "outside allowed_evidence_refs" in (result.stage_audits[0].error or "")
+
+
+def test_schema_invalid_evidence_debate_returns_invalid_model_output_abstain() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "evidence_debate": {
+                "bull_claims": [
+                    {
+                        "claim": "建议买入并设置止损。",
+                        "evidence_refs": ["event:event-1"],
+                        "stance": "bull",
+                    }
+                ],
+                "bear_claims": [],
+                "rebuttal_claims": [],
+                "data_gap_claims": [],
+                "allowed_evidence_ref_ids": ["event:event-1"],
+            }
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+        )
+    )
+
+    assert result.final_decision.recommendation == "abstain"
+    assert result.final_decision.abstain_reason == "invalid_model_output"
+    assert result.stage_audits[0].status == "failed"
+    assert "ValidationError" in (result.stage_audits[0].error or "")
+
+
+def test_provider_transport_failure_preserves_error_class_without_unknown_ref_label() -> None:
+    gateway = _TransportFailingAgentGateway()
+    client = OpenAIAgentsPulseDecisionClient(
+        model="gpt-test",
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    import pytest
+
+    with pytest.raises(PulseStageFailure) as exc:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_pipeline_context(),
+                run_id="run-1",
+                job={"job_id": "job-1", "attempt_count": 1},
+                route="meme",
+                completeness={"status": "complete"},
+                runtime_manifest={"runtime_version": "test"},
+            )
+        )
+
+    failed = exc.value.audits[0]
+    assert failed.status == "failed"
+    assert failed.trace_metadata_json["error_class"] == "transport_error"
+    assert "invalid_unknown_evidence_ref" not in str(exc.value)
 
 
 def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() -> None:

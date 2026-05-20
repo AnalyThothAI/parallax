@@ -156,6 +156,44 @@ def test_evidence_debate_claim_requires_evidence_refs() -> None:
     assert claim.evidence_refs == ()
 
 
+def test_evidence_claim_allows_factual_buy_language() -> None:
+    claim = EvidenceClaim(claim="链上记录显示地址买入并推高热度。", evidence_refs=("event:1",), stance="bull")
+
+    assert claim.claim == "链上记录显示地址买入并推高热度。"
+
+
+@pytest.mark.parametrize(
+    "claim_text",
+    [
+        "链上可以看到鲸鱼买入。",
+        "可以看到地址买入并推高热度。",
+        "社群记录显示卖压出现但资金仍然流入。",
+    ],
+)
+def test_evidence_claim_allows_factual_market_flow_language(claim_text: str) -> None:
+    claim = EvidenceClaim(claim=claim_text, evidence_refs=("event:1",), stance="bull")
+
+    assert claim.claim == claim_text
+
+
+@pytest.mark.parametrize(
+    "claim_text",
+    [
+        "建议买入并设置止损。",
+        "推荐买入。",
+        "应当买入。",
+        "必须买入。",
+        "不要买入。",
+        "建议建仓。",
+        "应该加仓。",
+        "适合减仓。",
+    ],
+)
+def test_evidence_claim_rejects_prescriptive_execution_advice(claim_text: str) -> None:
+    with pytest.raises(ValidationError, match="trading execution"):
+        EvidenceClaim(claim=claim_text, evidence_refs=("event:1",), stance="bull")
+
+
 # ---------------------------------------------------------------------------
 # FinalDecision (v2)
 # ---------------------------------------------------------------------------
@@ -303,6 +341,13 @@ def test_final_decision_round_trip_model_validate_dump_consistent() -> None:
 def test_final_decision_rejects_execution_language_in_summary() -> None:
     kwargs = _hc_kwargs()
     kwargs["summary_zh"] = "可以买入并设置止损止盈"
+    with pytest.raises(ValidationError, match="trading execution"):
+        FinalDecision(**kwargs)
+
+
+def test_final_decision_rejects_prescriptive_execution_advice_in_summary() -> None:
+    kwargs = _hc_kwargs()
+    kwargs["summary_zh"] = "建议买入。"
     with pytest.raises(ValidationError, match="trading execution"):
         FinalDecision(**kwargs)
 

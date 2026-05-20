@@ -5,10 +5,21 @@ from typing import Any
 
 import pytest
 
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.services import pulse_candidate_job_service as job_module
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import PulseCandidateJobService
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import PulseStageFailure, StageRunAudit
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
+    PulseCandidateJobService,
+    _normalized_failure_reason,
+)
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
+    BullBearView,
+    FinalDecision,
+    PulseStageFailure,
+    StageRunAudit,
+    TradePlaybook,
+)
+from gmgn_twitter_intel.platform.agent_execution import AgentExecutionErrorClass
 from tests.unit.test_pulse_candidate_worker import (
     NOW_MS,
     FakeClient,
@@ -80,6 +91,99 @@ def test_provider_stage_failure_records_failed_run_eval_and_job_failure() -> Non
     }
     assert repos.pulse_agent_eval.eval_results[0]["status"] == "pass"
     assert repos.pulse_jobs.failures[0]["failure_reason"] == "invalid_schema"
+
+
+def test_invalid_model_output_abstain_finishes_run_done(monkeypatch: pytest.MonkeyPatch) -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+
+    class InvalidModelOutputClient(FakeClient):
+        async def run_decision_pipeline(self, **kwargs: Any) -> Any:
+            self.run_calls += 1
+            audit = self.request_audit(
+                context=kwargs["context"],
+                run_id=kwargs["run_id"],
+                job=kwargs["job"],
+                route=kwargs["route"],
+                completeness=kwargs["completeness"],
+                runtime_manifest=kwargs["runtime_manifest"],
+            )
+            failed_audit = _failed_stage_audit(
+                route=kwargs["route"],
+                status="failed",
+                error="ValidationError: trading execution language is not allowed",
+            )
+            return PulseDecisionResult(
+                final_decision=_invalid_model_output_abstain(route=kwargs["route"]),
+                agent_run_audit={**audit, "output_hash": "output-hash"},
+                stage_audits=(failed_audit,),
+            )
+
+    monkeypatch.setattr(job_module, "grade_pulse_deterministic_eval_case", _passing_eval_result)
+    service = _service(repos, client=InvalidModelOutputClient())
+
+    asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "done")
+    assert finished_run["outcome"] == "abstain_insufficient_evidence"
+    assert repos.pulse_jobs.successes == [job["job_id"]]
+    assert repos.pulse_jobs.failures == []
+
+
+@pytest.mark.parametrize(
+    ("error_class", "expected"),
+    [
+        (AgentExecutionErrorClass.TRANSPORT_ERROR, "provider_unavailable"),
+        (AgentExecutionErrorClass.PROVIDER_ERROR, "provider_unavailable"),
+        (AgentExecutionErrorClass.RATE_LIMITED, "provider_rate_limited"),
+        (AgentExecutionErrorClass.TIMEOUT, "timeout"),
+        (AgentExecutionErrorClass.SCHEMA_INVALID, "invalid_schema"),
+        (AgentExecutionErrorClass.DOMAIN_VALIDATION_FAILED, "invalid_schema"),
+    ],
+)
+def test_stage_failure_reason_uses_stage_trace_error_class(
+    error_class: AgentExecutionErrorClass,
+    expected: str,
+) -> None:
+    failure = PulseStageFailure(
+        "agent stage failed",
+        audits=(
+            _failed_stage_audit(
+                route="meme",
+                status="timeout" if error_class is AgentExecutionErrorClass.TIMEOUT else "failed",
+                error="connection reset by provider",
+                error_class=error_class,
+            ),
+        ),
+    )
+
+    assert _normalized_failure_reason(failure) == expected
+
+
+def test_provider_transport_stage_failure_records_provider_unavailable() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+
+    class TransportFailingClient(FakeClient):
+        async def run_decision_pipeline(self, **kwargs: Any) -> Any:
+            failed_audit = _failed_stage_audit(
+                route=kwargs["route"],
+                status="failed",
+                error="connection reset by provider",
+                error_class=AgentExecutionErrorClass.TRANSPORT_ERROR,
+            )
+            raise PulseStageFailure("agent stage failed", audits=(failed_audit,))
+
+    service = _service(repos, client=TransportFailingClient())
+
+    with pytest.raises(PulseStageFailure):
+        asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    failed_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "failed")
+    assert failed_run["trace_metadata_json_patch"] == {"failure_reason": "provider_unavailable"}
+    assert repos.pulse_jobs.failures[0]["failure_reason"] == "provider_unavailable"
 
 
 def test_hard_blocked_success_records_evidence_gate_without_provider_run() -> None:
@@ -230,6 +334,56 @@ def _passing_eval_result(case: dict[str, Any]) -> dict[str, Any]:
         "grader_version": "test",
         "details_json": {"violations": []},
     }
+
+
+def _failed_stage_audit(
+    *,
+    route: str,
+    status: str,
+    error: str,
+    error_class: AgentExecutionErrorClass | None = None,
+) -> StageRunAudit:
+    trace_metadata_json = {"stage": "evidence_debate"}
+    if error_class is not None:
+        trace_metadata_json["error_class"] = str(error_class.value)
+    return StageRunAudit(
+        stage="evidence_debate",
+        route=route,  # type: ignore[arg-type]
+        attempt_index=0,
+        input_json={"context": "test"},
+        prompt_text="fake evidence debate prompt",
+        response_json=None,
+        trace_metadata_json=trace_metadata_json,
+        usage_json={"input_tokens": 11},
+        latency_ms=42,
+        started_at_ms=NOW_MS - 42,
+        finished_at_ms=NOW_MS,
+        status=status,  # type: ignore[arg-type]
+        error=error,
+    )
+
+
+def _invalid_model_output_abstain(*, route: str) -> FinalDecision:
+    return FinalDecision(
+        route=route,  # type: ignore[arg-type]
+        recommendation="abstain",
+        confidence=0.0,
+        abstain_reason="invalid_model_output",
+        summary_zh="模型输出不符合结构化合同，本次不发布候选。",
+        narrative_archetype="unclear",
+        narrative_thesis_zh="模型输出未通过结构化合同校验，无法形成可靠结论；本次仅记录无效输出并等待下一轮有效证据综合。",
+        bull_view=BullBearView(strength="absent"),
+        bear_view=BullBearView(strength="absent"),
+        playbook=TradePlaybook(
+            has_playbook=False,
+            watch_signals=[],
+            exit_triggers=[],
+            monitoring_horizon="1h",
+        ),
+        invalidation_conditions=[],
+        residual_risks=["invalid_model_output"],
+        evidence_event_ids=[],
+    )
 
 
 def _enqueue_context_job(repos: FakeRepos, context: Any) -> dict[str, Any]:

@@ -702,6 +702,15 @@ def _compact_error(exc: Exception, *, limit: int = 500) -> str:
 
 
 def _normalized_failure_reason(exc: Exception) -> str:
+    stage_error_class = _stage_failure_error_class(exc)
+    if stage_error_class == "timeout":
+        return "timeout"
+    if stage_error_class == "rate_limited":
+        return "provider_rate_limited"
+    if stage_error_class in {"transport_error", "provider_error"}:
+        return "provider_unavailable"
+    if stage_error_class in {"schema_invalid", "domain_validation_failed"}:
+        return "invalid_schema"
     text = str(exc).lower()
     if "unknown evidence" in text or "unknown final evidence" in text or "unknown event ids" in text:
         return "invalid_unknown_evidence_ref"
@@ -714,6 +723,19 @@ def _normalized_failure_reason(exc: Exception) -> str:
     if "provider unavailable" in text or "503" in text:
         return "provider_unavailable"
     return "unexpected_exception"
+
+
+def _stage_failure_error_class(exc: Exception) -> str | None:
+    if not isinstance(exc, PulseStageFailure):
+        return None
+    for audit in reversed(exc.audits):
+        trace = audit.trace_metadata_json
+        raw = trace.get("error_class") if isinstance(trace, dict) else None
+        if raw:
+            return str(raw).strip().lower()
+        if audit.status == "timeout":
+            return "timeout"
+    return None
 
 
 def _agent_no_start_backpressure_reason(exc: Exception) -> str | None:

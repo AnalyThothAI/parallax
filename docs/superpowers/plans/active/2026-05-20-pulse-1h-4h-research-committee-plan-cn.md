@@ -4,7 +4,7 @@
 
 **Goal:** Hard-cut Signal Lab Pulse away from unstable 5m/watched-only flow and rebuild Pulse Agent around 1h/4h discovery plus a packet-only research committee.
 
-**Architecture:** Keep `PulseCandidateWorker` as the only Pulse read-model writer. Add explicit horizon/source-quality policy before admission, make material evidence changes visible to the edge state machine, replace the two-stage agent with `signal_analyst -> bear_case -> risk_portfolio_judge`, and update API/frontend defaults to 4h/all with 1h as the early-confirmation lane.
+**Architecture:** Keep `PulseCandidateWorker` as the only Pulse read-model writer. Because the Task 1 live-data evaluator returned `stop` due to agent run failures, fix evidence-reference handling and agent backpressure before hard-cutting runtime horizons. Then add explicit horizon/source-quality policy before admission, make material evidence changes visible to the edge state machine, replace the two-stage agent with `signal_analyst -> bear_case -> risk_portfolio_judge`, and update API/frontend defaults to 4h/all with 1h as the early-confirmation lane.
 
 **Tech Stack:** Python 3.13, FastAPI, psycopg, Pydantic v2, OpenAI Agents gateway, pytest, React 19, TanStack Query, Vite/Vitest.
 
@@ -33,6 +33,35 @@ Forbidden:
 - Keeping `evidence_debate` or `decision_maker` as new-run stage names.
 - Publishing watched-only or matched-only single-author rows in default discovery.
 - Adding `legacy_`, `compat_`, `old_`, or `v1` runtime branches to support removed behavior.
+
+## Live-Data Pivot After Task 1
+
+Task 1 was executed against the operator-owned runtime config and live database on 2026-05-20. The generated report recommends `stop` for immediate 1h/4h runtime hard cut:
+
+- Proposed primary sample: `1h/all + 4h/all`.
+- Radar latest-snapshot sample size: `273`.
+- Candidate quality improved, but not enough to green-light runtime cut by itself: `ge3_author_ratio=0.47`, `single_author_ratio=0.41`.
+- Agent execution is the blocker: run failure rate `0.55`, invalid-ref rate `0.14`, job backpressure rate `0.12`.
+
+Revised decision:
+
+- Do not stop the project.
+- Do not hard-cut horizons while agent execution is failing at this rate.
+- Continue with a remediation-first path: fix evidence refs, invalid-output handling, and backpressure accounting before changing worker defaults or operator config.
+- Keep the no-compatibility rule. The remediation replaces broken behavior; it must not add aliases for removed stages or fallback acceptance for old horizons.
+
+## Revised Execution Order
+
+1. Complete Task 1 evaluator and report. Status: complete.
+2. Execute Task 2A: agent execution health remediation for evidence refs, invalid outputs, timeout/backpressure classification, and job no-run accounting.
+3. Execute Task 5: replace the old two-stage agent with the packet-only research committee.
+4. Execute original Task 2: hard-cut Pulse horizons to 1h/4h.
+5. Execute original Task 3: source-quality/default-display gating.
+6. Execute original Task 4: material evidence-change admission.
+7. Execute original Tasks 6 and 7: API/read model/frontend surfaces.
+8. Execute original Task 8: docs, generated contracts, and architecture guardrails.
+
+Task numbering below is preserved to minimize churn in references. Task 2A is the inserted remediation task and must be completed before original Task 2.
 
 ## Pre-flight
 
@@ -413,6 +442,75 @@ Known-failing baseline tests:
   git commit -m "test: evaluate pulse 1h 4h policy"
   ```
 
+### Task 2A: Remediate agent execution health before horizon hard cut
+
+**Files:**
+
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py`
+- Modify: `src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py`
+- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py`
+- Test: `tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py`
+- Test: `tests/unit/test_pulse_decision_agent_client.py`
+- Test: `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`
+
+- [x] Write failing schema tests:
+  - `EvidenceClaim(claim="链上记录显示地址买入并推高热度。", evidence_refs=("event:1",), stance="bull")` is accepted as factual evidence language.
+  - `EvidenceClaim(claim="建议买入并设置止损。", evidence_refs=("event:1",), stance="bull")` is rejected as prescriptive execution language.
+  - `FinalDecision(summary_zh="建议买入。", ...)` is rejected when the final answer gives execution advice.
+
+- [x] Write failing client tests:
+  - A schema-invalid `evidence_debate` stage returns an abstain final decision with `abstain_reason="invalid_model_output"`, not `invalid_unknown_evidence_ref`.
+  - A real unknown evidence ref still returns `abstain_reason="invalid_unknown_evidence_ref"`.
+  - A provider transport/connection failure preserves stage trace `error_class="transport_error"` and is not mislabeled as an unknown evidence-ref failure.
+
+- [x] Write failing job-service tests:
+  - A stage failure with `invalid_model_output` finishes the run as `done` with outcome `abstain_insufficient_evidence`.
+  - A provider transport failure maps failure reason to `provider_unavailable` instead of `unexpected_exception`.
+  - A timeout stage failure maps to `timeout` and keeps retry/backpressure accounting separate from schema invalidity.
+
+- [x] Replace the blanket execution-language regex with intent-aware rejection:
+  ```python
+  _PRESCRIPTIVE_EXECUTION_RE = re.compile(
+      r"建议.{0,12}(买入|卖出|开仓|做多|做空|止损|止盈|加仓|减仓)|"
+      r"(应该|可以|立刻|马上|适合).{0,12}(买入|卖出|开仓|做多|做空)|"
+      r"\b(?:should|must|recommend(?:ed)?|advise(?:d)?)\\s+"
+      r"(?:buy|sell|open|enter|go\\s+long|go\\s+short|set\\s+a\\s+stop)\\b",
+      re.IGNORECASE,
+  )
+  ```
+  Factual evidence phrases such as “某地址买入”, “卖压出现”, and “资金流入” are allowed inside evidence claims and debate summaries.
+
+- [x] Split model-contract failures from true unknown refs in the client:
+  - `_abstain_reason_for_stage_failure(step)` returns:
+    - `"stage_timeout"` for timeout;
+    - `"invalid_unknown_evidence_ref"` only when the failed stage error explicitly says refs are outside `allowed_evidence_refs`;
+    - `"invalid_model_output"` for schema, validation, safety-net, or execution-language failures.
+  - `_stage_failure_summary` and `_stage_failure_thesis` include an `invalid_model_output` branch.
+
+- [x] Preserve provider error class for job-service classification:
+  - Keep `StageRunAudit.trace_metadata_json["error_class"]`.
+  - `_normalized_failure_reason(exc)` inspects `PulseStageFailure.audits[*].trace_metadata_json.error_class`.
+  - Map `transport_error` and `provider_error` to `provider_unavailable`.
+  - Map `rate_limited` to `provider_rate_limited`.
+  - Map `timeout` to `timeout`.
+
+- [x] Run:
+  ```bash
+  uv run pytest tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py -q
+  ```
+
+- [x] Rerun the live evaluator:
+  ```bash
+  uv run python scripts/evaluate_pulse_1h_4h_policy.py --lookback-hours 24
+  ```
+  Expected: historical report may still show old failures, but newly corrected classifications are covered by tests and the report remains read-only.
+
+- [ ] Commit:
+  ```bash
+  git add docs/superpowers/plans/active/2026-05-20-pulse-1h-4h-research-committee-plan-cn.md src/gmgn_twitter_intel/domains/pulse_lab/types/agent_decision.py src/gmgn_twitter_intel/integrations/openai_agents/pulse_decision_agent_client.py src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_job_service.py tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py tests/unit/test_pulse_decision_agent_client.py tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py docs/generated/
+  git commit -m "fix: classify pulse agent output and provider failures"
+  ```
+
 ### Task 2: Hard-cut Pulse horizons in config and API validators
 
 **Files:**
@@ -699,29 +797,32 @@ Known-failing baseline tests:
 ## PR Breakdown
 
 1. **PR 1 — Evaluation and policy measurement**: Task 1 only. Mergeable on its own because it is read-only and writes a generated report.
-2. **PR 2 — Horizon and source-quality hard cut**: Tasks 2, 3, and 4. This changes admission behavior without changing the LLM committee yet.
-3. **PR 3 — Research committee runtime**: Task 5. This is the agent runtime break and should not mix with frontend work.
-4. **PR 4 — API/frontend surface**: Tasks 6 and 7. This makes the product default match the backend policy.
-5. **PR 5 — Docs, contracts, architecture guardrails**: Task 8 plus final generated contract checks.
+2. **PR 2 — Agent health remediation**: Task 2A. This fixes false unknown-ref classification, over-strict evidence language rejection, and provider failure taxonomy before runtime policy changes.
+3. **PR 3 — Research committee runtime**: Task 5. This is the agent runtime break and should not mix with horizon/default changes.
+4. **PR 4 — Horizon and source-quality hard cut**: Tasks 2, 3, and 4. This changes admission behavior after the agent execution layer is healthier.
+5. **PR 5 — API/frontend surface**: Tasks 6 and 7. This makes the product default match the backend policy.
+6. **PR 6 — Docs, contracts, architecture guardrails**: Task 8 plus final generated contract checks.
 
 ## Rollout Order
 
-1. Run Task 1 evaluator on live DB and review report. Stop if the report says “stop”.
-2. Update operator-owned `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml` to set:
+1. Run Task 1 evaluator on live DB and review report.
+2. If the report says `stop` because agent execution is unhealthy, execute Task 2A and Task 5 before any runtime horizon cut.
+3. Rerun evaluator and compare new runs after the remediation deployment timestamp.
+4. Update operator-owned `/Users/qinghuan/.gmgn-twitter-intel/workers.yaml` to set:
    ```yaml
    pulse_candidate:
      windows: ["1h", "4h"]
      scopes: ["all", "matched"]
      stale_job_ttl_by_window_seconds: {}
    ```
-3. Deploy backend hard-cut policy.
-4. Verify config with:
+5. Deploy backend hard-cut policy.
+6. Verify config with:
    ```bash
    uv run gmgn-twitter-intel config
    ```
-5. Start workers and verify no new 5m Pulse jobs are created after deployment timestamp.
-6. Deploy frontend default change.
-7. Run live API smoke checks for `4h/all`, `1h/all`, and `5m` rejection.
+7. Start workers and verify no new 5m Pulse jobs are created after deployment timestamp.
+8. Deploy frontend default change.
+9. Run live API smoke checks for `4h/all`, `1h/all`, and `5m` rejection.
 
 ## Rollback
 
