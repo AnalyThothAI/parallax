@@ -34,7 +34,7 @@ describe("NewsPage", () => {
     renderNews(<NewsPage token="test-token" />);
 
     expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
-    expect(screen.getByText("Time / Source")).toBeInTheDocument();
+    expect(screen.getByText("Time")).toBeInTheDocument();
     expect(screen.getByText("Brief")).toBeInTheDocument();
     expect(screen.getByText("Direction")).toBeInTheDocument();
     expect(screen.getByText("Decision")).toBeInTheDocument();

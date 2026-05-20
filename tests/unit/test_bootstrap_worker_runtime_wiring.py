@@ -295,13 +295,11 @@ def _settings(
     narrative_intel_configured: bool = False,
     news_item_brief_configured: bool = False,
 ) -> Settings:
-    llm = {"api_key": "secret", "model": "gpt-test"} if narrative_intel_configured else {}
+    llm = {"api_key": "secret"} if narrative_intel_configured else {}
+    agent_lanes = {}
     if news_item_brief_configured:
-        llm = {
-            **llm,
-            "api_key": "secret",
-            "news_item_brief_model": "gpt-5-mini",
-        }
+        llm = {**llm, "api_key": "secret"}
+        agent_lanes["news.item_brief"] = {"model": "gpt-5-mini"}
     return Settings(
         ws_token="secret",
         llm=llm,
@@ -316,6 +314,10 @@ def _settings(
             },
         },
         workers={
+            "agent_runtime": {
+                "defaults": {"model": "gpt-test"},
+                "lanes": agent_lanes,
+            },
             "collector": {"enabled": collector_enabled},
             "market_tick_stream": {"enabled": True},
             "market_tick_poll": {"enabled": True},

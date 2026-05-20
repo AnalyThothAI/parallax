@@ -18,12 +18,11 @@ def news_item_brief_instructions() -> str:
     return (Path(__file__).resolve().parents[1] / "prompts" / "news_item_brief.md").read_text(encoding="utf-8")
 
 
-def build_news_item_brief_stage(*, model: str, packet: NewsItemBriefInputPacket, run_id: str) -> AgentStageSpec:
+def build_news_item_brief_stage(*, packet: NewsItemBriefInputPacket, run_id: str) -> AgentStageSpec:
     news_item_id = packet.news_item.news_item_id
     return AgentStageSpec(
         lane=NEWS_ITEM_BRIEF_LANE,
         stage="news_item_brief",
-        model=model,
         instructions=news_item_brief_instructions(),
         input_payload=packet.model_dump(mode="json", exclude={"input_hash"}),
         output_type=NewsItemBriefPayload,

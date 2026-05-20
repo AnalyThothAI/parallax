@@ -24,7 +24,7 @@ from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sh
 
 def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsNewsItemBriefClient(model="gpt-news", agent_gateway=gateway)
+    client = OpenAIAgentsNewsItemBriefClient(agent_gateway=gateway)
     packet = _packet()
 
     reservation = client.try_reserve_execution(NEWS_ITEM_BRIEF_LANE)
@@ -38,7 +38,7 @@ def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None
     assert stage.lane == NEWS_ITEM_BRIEF_LANE
     assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
     assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
-    assert stage.model == "gpt-news"
+    assert client.model == "gpt-news"
     assert stage.tools == []
     assert stage.max_turns == 1
     assert stage.output_type is NewsItemBriefPayload
@@ -46,7 +46,7 @@ def test_news_item_brief_client_builds_stage_and_delegates_reservation() -> None
 
 def test_news_item_brief_client_executes_strict_payload_with_caller_reservation() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsNewsItemBriefClient(model="gpt-news", agent_gateway=gateway)
+    client = OpenAIAgentsNewsItemBriefClient(agent_gateway=gateway)
     packet = _packet()
     reservation = object()
 
@@ -57,7 +57,6 @@ def test_news_item_brief_client_executes_strict_payload_with_caller_reservation(
     assert stage.lane == NEWS_ITEM_BRIEF_LANE
     assert stage.workflow_name == NEWS_ITEM_BRIEF_WORKFLOW_NAME
     assert stage.agent_name == NEWS_ITEM_BRIEF_AGENT_NAME
-    assert stage.model == "gpt-news"
     assert stage.tools == []
     assert stage.max_turns == 1
     assert stage.output_type is NewsItemBriefPayload
@@ -85,11 +84,15 @@ class FakeGateway:
         self.reserved_lanes.append(lane)
         return self.reservation
 
+    def model_for_lane(self, lane: str) -> str:
+        assert lane == NEWS_ITEM_BRIEF_LANE
+        return "gpt-news"
+
     def request_audit(self, stage: Any) -> Any:
         self.audit_stages.append(stage)
         output_schema = StrictJsonOutputSchema(stage.output_type)
         artifact_version_hash = artifact_hash_for(
-            model=stage.model,
+            model=self.model_for_lane(stage.lane),
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
             runtime_version=RUNTIME_VERSION,

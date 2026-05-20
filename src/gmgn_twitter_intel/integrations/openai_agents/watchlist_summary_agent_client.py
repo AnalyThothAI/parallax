@@ -25,17 +25,17 @@ class OpenAIAgentsWatchlistSummaryClient:
     def __init__(
         self,
         *,
-        model: str,
         agent_gateway: Any,
         max_turns: int = 1,
     ) -> None:
-        self.model = str(model or "").strip()
-        if not self.model:
-            raise ValueError("watchlist_handle_summary_model is required")
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         self._agent_gateway = agent_gateway
         self.max_turns = max(1, min(2, int(max_turns)))
+
+    @property
+    def model(self) -> str:
+        return self._agent_gateway.model_for_lane("watchlist.handle_summary")
 
     @property
     def artifact_version_hash(self) -> str:
@@ -60,7 +60,6 @@ class OpenAIAgentsWatchlistSummaryClient:
         context: dict[str, Any],
     ) -> dict[str, Any]:
         stage = build_handle_summary_stage(
-            model=self.model,
             handle=handle,
             events=events,
             run_id=run_id,
@@ -81,7 +80,6 @@ class OpenAIAgentsWatchlistSummaryClient:
         reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]:
         stage = build_handle_summary_stage(
-            model=self.model,
             handle=handle,
             events=events,
             run_id=run_id,

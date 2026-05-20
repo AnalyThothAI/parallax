@@ -32,16 +32,11 @@ storage:
 llm:
   provider: "openai"
   api_key:
-  model:
   base_url: "https://api.openai.com/v1"
   timeout_seconds: 120
   trace_enabled: true
   trace_api_key:
   trace_include_sensitive_data: false
-  pulse_agent_model:
-  watchlist_handle_summary_model:
-  narrative_intel_model:
-  news_item_brief_model:
 
 gmgn:
   api_key:

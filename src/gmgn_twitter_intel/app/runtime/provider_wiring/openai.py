@@ -139,9 +139,7 @@ def openai_social_event_provider(
     *,
     agent_gateway: AgentExecutionGateway,
 ) -> OpenAIAgentsSocialEventClient:
-    model = settings.llm_model or ""
     return OpenAIAgentsSocialEventClient(
-        model=model,
         agent_gateway=agent_gateway,
     )
 
@@ -154,10 +152,8 @@ def openai_pulse_decision_provider(
 ) -> OpenAIPulseDecisionProvider:
     if db_pool is None:
         raise RuntimeError("db_pool is required for OpenAIPulseDecisionProvider")
-    model = settings.pulse_agent_model or ""
     return OpenAIPulseDecisionProvider(
         OpenAIAgentsPulseDecisionClient(
-            model=model,
             decision_runtime=PulseDecisionRuntimeService(db_pool=db_pool),
             agent_gateway=agent_gateway,
         ),
@@ -170,10 +166,8 @@ def openai_narrative_intel_provider(
     *,
     agent_gateway: AgentExecutionGateway,
 ) -> OpenAINarrativeIntelProvider:
-    model = settings.narrative_intel_model or ""
     return OpenAINarrativeIntelProvider(
         OpenAIAgentsNarrativeIntelClient(
-            model=model,
             agent_gateway=agent_gateway,
         )
     )
@@ -184,9 +178,7 @@ def openai_watchlist_summary_provider(
     *,
     agent_gateway: AgentExecutionGateway,
 ) -> OpenAIAgentsWatchlistSummaryClient:
-    model = settings.watchlist_handle_summary_model or ""
     return OpenAIAgentsWatchlistSummaryClient(
-        model=model,
         agent_gateway=agent_gateway,
     )
 
@@ -196,9 +188,7 @@ def openai_news_item_brief_provider(
     *,
     agent_gateway: AgentExecutionGateway,
 ) -> OpenAIAgentsNewsItemBriefClient:
-    model = settings.news_item_brief_model or ""
     return OpenAIAgentsNewsItemBriefClient(
-        model=model,
         agent_gateway=agent_gateway,
     )
 
@@ -236,14 +226,7 @@ def _build_safety_net(settings: Settings, *, model: str) -> InstructorSafetyNet 
 
 
 def _safety_net_model(settings: Settings) -> str:
-    return (
-        settings.llm_model
-        or settings.pulse_agent_model
-        or settings.narrative_intel_model
-        or settings.watchlist_handle_summary_model
-        or settings.news_item_brief_model
-        or ""
-    )
+    return settings.agent_runtime_default_model
 
 
 def _agent_runtime_lane_timeout_seconds(settings: Settings, lane: str) -> float:

@@ -39,14 +39,10 @@ class OpenAIAgentsNarrativeIntelClient:
     def __init__(
         self,
         *,
-        model: str,
         agent_gateway: Any,
         workflow_name: str = WORKFLOW_NAME,
         max_turns: int = 1,
     ) -> None:
-        self.model = str(model or "").strip()
-        if not self.model:
-            raise ValueError("narrative_intel_model is required")
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         self._agent_gateway = agent_gateway
@@ -54,9 +50,18 @@ class OpenAIAgentsNarrativeIntelClient:
         self.max_turns = max(1, int(max_turns))
 
     @property
+    def model(self) -> str:
+        return self._agent_gateway.model_for_lane("narrative.mention_semantics")
+
+    @property
     def artifact_version_hash(self) -> str:
         return artifact_hash_for(
-            model=self.model,
+            model=json_sha256(
+                {
+                    "mention_semantics": self._agent_gateway.model_for_lane("narrative.mention_semantics"),
+                    "discussion_digest": self._agent_gateway.model_for_lane("narrative.discussion_digest"),
+                }
+            ),
             prompt_version="narrative-intel-provider",
             schema_version="narrative-intel-provider",
             runtime_version=RUNTIME_VERSION,
@@ -138,7 +143,6 @@ class OpenAIAgentsNarrativeIntelClient:
         return AgentStageSpec(
             lane="narrative.mention_semantics",
             stage="mention_semantics",
-            model=self.model,
             instructions=_instructions("mention_semantics.md"),
             input_payload=_input_payload(payload),
             output_type=MentionSemanticsAgentPayload,
@@ -152,7 +156,6 @@ class OpenAIAgentsNarrativeIntelClient:
                 "stage": "mention_semantics",
                 "schema_version": request.schema_version,
                 "prompt_version": request.prompt_version,
-                "model": self.model,
                 "mention_count": len(request.mentions),
                 "target_count": len(_mention_targets(request)),
                 "targets": _mention_targets(request),
@@ -170,7 +173,6 @@ class OpenAIAgentsNarrativeIntelClient:
         return AgentStageSpec(
             lane="narrative.discussion_digest",
             stage="discussion_digest",
-            model=self.model,
             instructions=_instructions("discussion_digest.md"),
             input_payload=_input_payload(payload),
             output_type=DiscussionDigestAgentPayload,
@@ -184,7 +186,6 @@ class OpenAIAgentsNarrativeIntelClient:
                 "stage": "discussion_digest",
                 "schema_version": request.schema_version,
                 "prompt_version": request.prompt_version,
-                "model": self.model,
                 "target_type": request.target_type,
                 "target_id": request.target_id,
                 "window": request.window,

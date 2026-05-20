@@ -62,7 +62,7 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                 "enrichment": {
                     "llm_configured": settings.llm_configured,
                     "provider": settings.llm_provider,
-                    "model": settings.llm_model,
+                    "model": settings.agent_runtime_default_model,
                     "base_url": settings.llm_base_url,
                     "backend": "openai_agents_sdk",
                     "trace_enabled": settings.llm_trace_enabled,

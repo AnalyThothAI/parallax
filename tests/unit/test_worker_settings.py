@@ -18,11 +18,13 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     payload = yaml.safe_load(default_workers_yaml())
     settings = WorkersSettings(**payload)
 
-    assert set(payload) - {"defaults"} == set(CANONICAL_WORKER_NAMES)
+    assert set(payload) - {"defaults", "agent_runtime"} == set(CANONICAL_WORKER_NAMES)
     assert _legacy_anchor_worker_key() not in payload
     assert settings.defaults.enabled is True
     assert settings.defaults.interval_seconds == 5
     assert settings.defaults.backoff.kind == "exponential"
+    assert settings.agent_runtime.defaults.model == "qwen3.6"
+    assert settings.agent_runtime.lanes["pulse.signal_analyst"].model is None
     assert settings.collector.mode == "continuous"
     assert settings.collector.snapshot_timeout_seconds == 0.5
     assert settings.market_tick_stream.interval_seconds == 5
@@ -161,6 +163,9 @@ def test_agent_runtime_settings_default_lanes() -> None:
 
     assert settings.agent_runtime.global_max_concurrency == 4
     assert settings.agent_runtime.global_rpm_limit == 60
+    assert settings.agent_runtime.defaults.model == "qwen3.6"
+    assert settings.agent_runtime.defaults.disable_thinking is True
+    assert settings.agent_runtime.defaults.include_usage is True
     assert settings.agent_runtime.lanes["pulse.signal_analyst"].priority == "high"
     assert settings.agent_runtime.lanes["pulse.bear_case"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["pulse.risk_portfolio_judge"].timeout_seconds == 180
@@ -182,6 +187,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
             "lanes": {
                 "pulse.risk_portfolio_judge": {
                     "priority": "high",
+                    "model": "gpt-judge",
                     "max_concurrency": 1,
                     "timeout_seconds": 90,
                     "circuit_breaker": {
@@ -197,9 +203,11 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
     lane = settings.agent_runtime.lanes["pulse.risk_portfolio_judge"]
     assert settings.agent_runtime.global_max_concurrency == 2
     assert settings.agent_runtime.global_rpm_limit == 30
+    assert lane.model == "gpt-judge"
     assert lane.timeout_seconds == 90
     assert lane.circuit_breaker.failure_threshold == 3
     assert settings.agent_runtime.lanes["pulse.pipeline"].timeout_seconds == 240
+    assert settings.agent_runtime.lanes["pulse.pipeline"].model is None
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
@@ -213,6 +221,7 @@ def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
             "lanes": {
                 "news.item_brief": {
                     "priority": "low",
+                    "model": "gpt-news",
                     "max_concurrency": 1,
                     "timeout_seconds": 210,
                 }
@@ -222,6 +231,7 @@ def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
 
     lane = settings.agent_runtime.lanes["news.item_brief"]
     assert lane.priority == "low"
+    assert lane.model == "gpt-news"
     assert lane.max_concurrency == 1
     assert lane.timeout_seconds == 210
 

@@ -22,7 +22,6 @@ def handle_summary_instructions() -> str:
 
 def build_handle_summary_stage(
     *,
-    model: str,
     handle: str,
     events: list[dict[str, Any]],
     run_id: str,
@@ -38,7 +37,6 @@ def build_handle_summary_stage(
     return AgentStageSpec(
         lane="watchlist.handle_summary",
         stage="summary",
-        model=model,
         instructions=handle_summary_instructions(),
         input_payload=json.dumps(input_json, ensure_ascii=False, sort_keys=True),
         output_type=HANDLE_SUMMARY_PAYLOAD_TYPE,

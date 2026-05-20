@@ -14,6 +14,7 @@ from gmgn_twitter_intel.platform.agent_execution import (
     AgentExecutionErrorClass,
     AgentExecutionStatus,
     AgentLanePolicy,
+    AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
@@ -97,7 +98,6 @@ def _spec(lane: str = "test.lane") -> AgentStageSpec:
     return AgentStageSpec(
         lane=lane,
         stage="stage",
-        model="qwen3.6",
         instructions="Return JSON.",
         input_payload={"x": 1},
         output_type=Payload,
@@ -112,6 +112,7 @@ def _spec(lane: str = "test.lane") -> AgentStageSpec:
 
 def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
+        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
         global_max_concurrency=1,
         global_rpm_limit=1000,
         lanes={
@@ -130,6 +131,7 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
 
 def _pulse_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
+        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
         global_max_concurrency=1,
         global_rpm_limit=1000,
         lanes={
@@ -143,6 +145,7 @@ def _pulse_policy() -> AgentRuntimePolicy:
 
 def _lane_rpm_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
+        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
         global_max_concurrency=2,
         global_rpm_limit=1000,
         lanes={

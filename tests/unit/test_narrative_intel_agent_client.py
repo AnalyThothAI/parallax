@@ -28,10 +28,15 @@ class FakeGateway:
         self.audit_calls = []
         self.execute_calls = []
 
+    def model_for_lane(self, lane: str) -> str:
+        if lane == "narrative.discussion_digest":
+            return "gpt-digest"
+        return "gpt-narrative"
+
     def request_audit(self, stage):
         self.audit_calls.append(stage)
         return AgentExecutionRequestAudit(
-            model=stage.model,
+            model=self.model_for_lane(stage.lane),
             lane=stage.lane,
             stage=stage.stage,
             workflow_name=stage.workflow_name,
@@ -73,7 +78,7 @@ class FakeGateway:
 
 def test_narrative_label_mentions_request_audit_builds_gateway_stage():
     gateway = FakeGateway({"labels": [], "failures": []})
-    client = OpenAIAgentsNarrativeIntelClient(model="qwen3.6", agent_gateway=gateway)
+    client = OpenAIAgentsNarrativeIntelClient(agent_gateway=gateway)
     request = _mention_request()
 
     audit = client.request_audit_for_label_mentions(run_id="run-mention-1", request=request)
@@ -114,7 +119,6 @@ def test_narrative_client_labels_mentions_through_execution_gateway():
         }
     )
     client = OpenAIAgentsNarrativeIntelClient(
-        model="gpt-narrative",
         agent_gateway=gateway,
         max_turns=2,
     )
@@ -131,14 +135,14 @@ def test_narrative_client_labels_mentions_through_execution_gateway():
     assert len(gateway.execute_calls) == 1
     stage = gateway.execute_calls[0]
     assert stage.lane == "narrative.mention_semantics"
-    assert stage.model == "gpt-narrative"
+    assert client.model == "gpt-narrative"
     assert stage.group_id == "event-1"
     assert stage.max_turns == 2
 
 
 def test_narrative_summarize_discussion_request_audit_builds_gateway_stage():
     gateway = FakeGateway({"digest": _digest_payload()})
-    client = OpenAIAgentsNarrativeIntelClient(model="qwen3.6", agent_gateway=gateway)
+    client = OpenAIAgentsNarrativeIntelClient(agent_gateway=gateway)
     request = _digest_request()
 
     audit = client.request_audit_for_summarize_discussion(run_id="run-digest-1", request=request)
@@ -159,7 +163,6 @@ def test_narrative_summarize_discussion_request_audit_builds_gateway_stage():
 def test_narrative_client_summarizes_discussion_through_execution_gateway():
     gateway = FakeGateway({"digest": _digest_payload()})
     client = OpenAIAgentsNarrativeIntelClient(
-        model="gpt-narrative",
         agent_gateway=gateway,
     )
     request = _digest_request()
@@ -167,7 +170,7 @@ def test_narrative_client_summarizes_discussion_through_execution_gateway():
     result = asyncio.run(client.summarize_discussion(run_id="run-digest-1", request=request))
 
     assert isinstance(result, DiscussionDigestResult)
-    assert result.digest.headline_zh == "SOL 讨论从价格防守切到轮动叙事。"
+    assert result.digest["headline_zh"] == "SOL 讨论从价格防守切到轮动叙事。"
     assert result.raw_response["digest"]["target_id"] == request.target_id
     assert result.agent_run_audit["output_hash"] == "sha256:output"
     assert len(gateway.execute_calls) == 1

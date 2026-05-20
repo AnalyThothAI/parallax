@@ -24,9 +24,8 @@ settings. It must not contain worker runtime knobs.
 - `api` — FastAPI bind address and replay settings.
 - `storage.postgres` — DSN, password file, pool, timeout.
 - `llm` — optional LLM provider config: credentials, provider/base URL,
-  default model, Pulse model override, Watchlist handle-summary model
-  override, News item-brief model override, timeout, and tracing/export
-  settings.
+  timeout, instructor safety-net, and tracing/export settings. It does not
+  own model selection.
 - Optional market-related groups (OKX, GMGN OpenAPI, Binance, Marketlane) for
   identity discovery, route sync, profile source refresh, market tick capture,
   cache-only live price fan-out, and request-time US equity quote snapshots.
@@ -61,10 +60,12 @@ The schema is `WorkersSettings`; the canonical key list is guarded
 against `worker_registry.py` and `docs/WORKERS.md`.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
-contains global concurrency/RPM limits plus named lane policies for
-Pulse, Narrative, Social enrichment, Watchlist summaries, and future
-News fact-candidate extraction plus `news.item_brief`. Lane status and backpressure counters
-are operational signals only; they are not product readiness and are not
+contains the global default model, global concurrency/RPM limits, and
+named lane policies for Pulse, Narrative, Social enrichment, Watchlist
+summaries, future News fact-candidate extraction, and `news.item_brief`.
+Each lane may override `model`; otherwise it inherits
+`agent_runtime.defaults.model`. Lane status and backpressure counters are
+operational signals only; they are not product readiness and are not
 business facts.
 
 ## WebSocket at `/ws`

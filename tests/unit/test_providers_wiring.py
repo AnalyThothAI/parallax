@@ -333,14 +333,13 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     created: list[object] = []
 
     def fake_social_client(**kwargs):
-        client = SimpleNamespace(provider="openai", model=kwargs["model"], _agent_gateway=kwargs["agent_gateway"])
+        client = SimpleNamespace(provider="openai", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
     def fake_narrative_client(**kwargs):
         client = SimpleNamespace(
             provider="openai",
-            model=kwargs["model"],
             artifact_version_hash="artifact:narrative",
             _agent_gateway=kwargs["agent_gateway"],
         )
@@ -350,7 +349,6 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     def fake_pulse_client(**kwargs):
         client = SimpleNamespace(
             provider="openai",
-            model=kwargs["model"],
             timeout_seconds=120.0,
             artifact_version_hash="artifact:pulse",
             runtime_contract=SimpleNamespace(
@@ -364,12 +362,12 @@ def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
         return client
 
     def fake_watchlist_client(**kwargs):
-        client = SimpleNamespace(provider="openai", model=kwargs["model"], _agent_gateway=kwargs["agent_gateway"])
+        client = SimpleNamespace(provider="openai", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
     def fake_news_item_brief_client(**kwargs):
-        client = SimpleNamespace(provider="openai", model=kwargs["model"], _agent_gateway=kwargs["agent_gateway"])
+        client = SimpleNamespace(provider="openai", _agent_gateway=kwargs["agent_gateway"])
         created.append(client)
         return client
 
@@ -422,9 +420,9 @@ def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_ne
         ws_token="secret",
         llm={
             "api_key": "sk-test",
-            "news_item_brief_model": "gpt-news",
         },
         workers={
+            "agent_runtime": {"defaults": {"model": "gpt-news"}},
             "news_item_brief": {"enabled": True},
         },
     )
@@ -781,10 +779,16 @@ def _settings_with_all_llm_models() -> Settings:
         ws_token="secret",
         llm={
             "api_key": "sk-test",
-            "model": "gpt-enrich",
-            "pulse_agent_model": "gpt-pulse",
-            "watchlist_handle_summary_model": "gpt-summary",
-            "news_item_brief_model": "gpt-news",
+        },
+        workers={
+            "agent_runtime": {
+                "defaults": {"model": "gpt-enrich"},
+                "lanes": {
+                    "pulse.signal_analyst": {"model": "gpt-pulse"},
+                    "watchlist.handle_summary": {"model": "gpt-summary"},
+                    "news.item_brief": {"model": "gpt-news"},
+                },
+            },
         },
     )
 

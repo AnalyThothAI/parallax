@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
@@ -43,16 +43,42 @@ class AgentCircuitBreakerPolicy(BaseModel):
 class AgentLanePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    model: str | None = None
     priority: str = "normal"
     max_concurrency: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=180.0, ge=1)
     rpm_limit: int | None = Field(default=None, ge=1)
     circuit_breaker: AgentCircuitBreakerPolicy = Field(default_factory=AgentCircuitBreakerPolicy)
 
+    @field_validator("model", mode="before")
+    @classmethod
+    def parse_optional_model(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+
+class AgentRuntimeDefaultsPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = "qwen3.6"
+    disable_thinking: bool = True
+    include_usage: bool = True
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def parse_model(cls, value: Any) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("agent_runtime.defaults.model is required")
+        return normalized
+
 
 class AgentRuntimePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    defaults: AgentRuntimeDefaultsPolicy = Field(default_factory=AgentRuntimeDefaultsPolicy)
     global_max_concurrency: int = Field(default=4, ge=1)
     global_rpm_limit: int = Field(default=60, ge=1)
     lanes: dict[str, AgentLanePolicy] = Field(default_factory=dict)
@@ -60,13 +86,16 @@ class AgentRuntimePolicy(BaseModel):
     def lane_for(self, lane: str) -> AgentLanePolicy:
         return self.lanes.get(str(lane), AgentLanePolicy())
 
+    def model_for_lane(self, lane: str) -> str:
+        lane_model = self.lane_for(lane).model
+        return str(lane_model or self.defaults.model).strip()
+
 
 class AgentStageSpec(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     lane: str
     stage: str
-    model: str
     instructions: str
     input_payload: Any
     output_type: Any
@@ -119,11 +148,12 @@ class AgentExecutionRequestAudit(BaseModel):
         *,
         trace_id: str,
         artifact_version_hash: str,
+        model: str,
     ) -> AgentExecutionRequestAudit:
         trace_metadata = {
             **stage.trace_metadata,
             "backend": "openai_agents_sdk",
-            "model": stage.model,
+            "model": model,
             "lane": stage.lane,
             "stage": stage.stage,
             "prompt_version": stage.prompt_version,
@@ -133,7 +163,7 @@ class AgentExecutionRequestAudit(BaseModel):
             "input_hash": stage.input_hash,
         }
         return cls(
-            model=stage.model,
+            model=model,
             lane=stage.lane,
             stage=stage.stage,
             workflow_name=stage.workflow_name,
@@ -216,6 +246,7 @@ __all__ = [
     "AgentExecutionResultAudit",
     "AgentExecutionStatus",
     "AgentLanePolicy",
+    "AgentRuntimeDefaultsPolicy",
     "AgentRuntimePolicy",
     "AgentStageSpec",
 ]

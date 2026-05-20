@@ -182,16 +182,11 @@ class LlmConfig(BaseModel):
 
     provider: str = "openai"
     api_key: str | None = None
-    model: str | None = None
     base_url: str = "https://api.openai.com/v1"
     timeout_seconds: float = 120.0
     trace_enabled: bool = True
     trace_api_key: str | None = None
     trace_include_sensitive_data: bool = False
-    pulse_agent_model: str | None = None
-    watchlist_handle_summary_model: str | None = None
-    narrative_intel_model: str | None = None
-    news_item_brief_model: str | None = None
     instructor_safety_net_enabled: bool = True
     instructor_max_retries: int = 2
 
@@ -205,12 +200,7 @@ class LlmConfig(BaseModel):
 
     @field_validator(
         "api_key",
-        "model",
         "trace_api_key",
-        "pulse_agent_model",
-        "watchlist_handle_summary_model",
-        "narrative_intel_model",
-        "news_item_brief_model",
         mode="before",
     )
     @classmethod
@@ -553,11 +543,20 @@ class AgentCircuitBreakerSettings(BaseModel):
 class AgentLaneSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    model: str | None = None
     priority: Literal["high", "normal", "bulk", "low"] = "normal"
     max_concurrency: int = Field(default=1, ge=1)
     timeout_seconds: float = Field(default=180.0, ge=1)
     rpm_limit: int | None = Field(default=None, ge=1)
     circuit_breaker: AgentCircuitBreakerSettings = Field(default_factory=AgentCircuitBreakerSettings)
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def parse_optional_model(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
@@ -575,9 +574,26 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     }
 
 
+class AgentRuntimeDefaultsSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = "qwen3.6"
+    disable_thinking: bool = True
+    include_usage: bool = True
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def parse_model(cls, value: Any) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("agent_runtime.defaults.model is required")
+        return normalized
+
+
 class AgentRuntimeSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    defaults: AgentRuntimeDefaultsSettings = Field(default_factory=AgentRuntimeDefaultsSettings)
     global_max_concurrency: int = Field(default=4, ge=1)
     global_rpm_limit: int = Field(default=60, ge=1)
     lanes: dict[str, AgentLaneSettings] = Field(default_factory=_default_agent_lanes)
@@ -1047,8 +1063,15 @@ class Settings(BaseModel):
         return self.llm.api_key
 
     @property
-    def llm_model(self) -> str | None:
-        return self.llm.model
+    def agent_runtime_default_model(self) -> str:
+        return self.workers.agent_runtime.defaults.model
+
+    def agent_runtime_model_for_lane(self, lane: str) -> str:
+        lane_key = str(lane)
+        lane_settings = self.workers.agent_runtime.lanes.get(lane_key)
+        if lane_settings is not None and lane_settings.model:
+            return lane_settings.model
+        return self.agent_runtime_default_model
 
     @property
     def llm_base_url(self) -> str:
@@ -1063,36 +1086,20 @@ class Settings(BaseModel):
         return self.llm.timeout_seconds
 
     @property
-    def pulse_agent_model(self) -> str | None:
-        return self.llm.pulse_agent_model or self.llm_model
-
-    @property
     def pulse_agent_configured(self) -> bool:
-        return bool(self.llm_api_key and self.pulse_agent_model)
-
-    @property
-    def watchlist_handle_summary_model(self) -> str | None:
-        return self.llm.watchlist_handle_summary_model or self.llm_model
+        return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
     def watchlist_handle_summary_configured(self) -> bool:
-        return bool(self.llm_api_key and self.watchlist_handle_summary_model)
-
-    @property
-    def narrative_intel_model(self) -> str | None:
-        return self.llm.narrative_intel_model or self.llm_model
+        return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
     def narrative_intel_configured(self) -> bool:
-        return bool(self.llm_api_key and self.narrative_intel_model)
-
-    @property
-    def news_item_brief_model(self) -> str | None:
-        return self.llm.news_item_brief_model or self.llm_model
+        return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
     def news_item_brief_configured(self) -> bool:
-        return bool(self.llm_api_key and self.news_item_brief_model)
+        return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -1118,7 +1125,7 @@ class Settings(BaseModel):
 
     @property
     def llm_configured(self) -> bool:
-        return bool(self.llm_api_key and self.llm_model)
+        return bool(self.llm_api_key and self.agent_runtime_default_model)
 
     @property
     def gmgn_api_key(self) -> str | None:
@@ -1334,16 +1341,11 @@ storage:
 llm:
   provider: "openai"
   api_key:
-  model:
   base_url: "https://api.openai.com/v1"
   timeout_seconds: 120
   trace_enabled: true
   trace_api_key:
   trace_include_sensitive_data: false
-  pulse_agent_model:
-  watchlist_handle_summary_model:
-  narrative_intel_model:
-  news_item_brief_model:
 
 gmgn:
   api_key:
@@ -1442,6 +1444,54 @@ defaults:
     kind: "exponential"
     base_ms: 1000
     max_ms: 60000
+agent_runtime:
+  defaults:
+    model: "qwen3.6"
+    disable_thinking: true
+    include_usage: true
+  global_max_concurrency: 4
+  global_rpm_limit: 60
+  lanes:
+    pulse.pipeline:
+      priority: "high"
+      max_concurrency: 1
+      timeout_seconds: 240.0
+    pulse.signal_analyst:
+      priority: "high"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    pulse.bear_case:
+      priority: "high"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    pulse.risk_portfolio_judge:
+      priority: "high"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    narrative.mention_semantics:
+      priority: "bulk"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    narrative.discussion_digest:
+      priority: "normal"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    social.event_enrichment:
+      priority: "normal"
+      max_concurrency: 2
+      timeout_seconds: 180.0
+    watchlist.handle_summary:
+      priority: "low"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    news.fact_candidate:
+      priority: "low"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    news.item_brief:
+      priority: "low"
+      max_concurrency: 1
+      timeout_seconds: 180.0
 collector:
   enabled: true
   mode: "continuous"

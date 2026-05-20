@@ -61,9 +61,9 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.llm_timeout_seconds * 1000 < RUNNING_TIMEOUT_MS
-    assert settings.pulse_agent_model is None
+    assert settings.agent_runtime_default_model == "qwen3.6"
+    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "qwen3.6"
     assert settings.pulse_agent_configured is False
-    assert settings.watchlist_handle_summary_model is None
     assert settings.watchlist_handle_summary_configured is False
     assert settings.workers.enrichment.interval_seconds == 2
     assert settings.workers.enrichment.concurrency == 4
@@ -191,14 +191,11 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
             "llm": {
                 "provider": "openai",
                 "api_key": "sk-test",
-                "model": "gpt-test",
                 "base_url": "https://example.test/v1/",
                 "timeout_seconds": 7,
                 "trace_enabled": True,
                 "trace_api_key": "sk-trace",
                 "trace_include_sensitive_data": False,
-                "pulse_agent_model": " ",
-                "watchlist_handle_summary_model": " ",
             },
         },
     )
@@ -206,6 +203,18 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
         tmp_path,
         yaml.safe_load(default_workers_yaml())
         | {
+            "agent_runtime": {
+                "defaults": {
+                    "model": "gpt-test",
+                    "disable_thinking": True,
+                    "include_usage": True,
+                },
+                "lanes": {
+                    "watchlist.handle_summary": {
+                        "model": "gpt-summary",
+                    },
+                },
+            },
             "enrichment": {"interval_seconds": 0.5, "concurrency": 3},
             "pulse_candidate": {
                 "interval_seconds": 1,
@@ -242,7 +251,7 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.postgres_connect_timeout_seconds == 4
     assert not hasattr(settings, "sqlite_path")
     assert settings.llm_configured is True
-    assert settings.llm_model == "gpt-test"
+    assert settings.agent_runtime_default_model == "gpt-test"
     assert settings.llm_base_url == "https://example.test/v1"
     assert settings.llm_timeout_seconds == 7
     assert settings.llm_trace_enabled is True
@@ -254,14 +263,14 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.workers.pulse_candidate.interval_seconds == 1
     assert settings.workers.pulse_candidate.batch_size == 100
     assert settings.workers.pulse_candidate.max_attempts == 1
-    assert settings.pulse_agent_model == "gpt-test"
+    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "gpt-test"
     assert settings.pulse_agent_configured is True
     assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 60
     assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 70
     assert settings.workers.pulse_candidate.gate_thresholds.token_watch_min == 40
     assert settings.workers.pulse_candidate.gate_thresholds.high_info_rejection_min == 25
     assert settings.workers.pulse_candidate.gate_thresholds.high_conviction_min == 74
-    assert settings.watchlist_handle_summary_model == "gpt-test"
+    assert settings.agent_runtime_model_for_lane("watchlist.handle_summary") == "gpt-summary"
     assert settings.watchlist_handle_summary_configured is True
     assert settings.workers.handle_summary.signal_threshold == 1
     assert settings.workers.handle_summary.time_threshold_ms == 60_000
@@ -274,7 +283,36 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.workers.handle_summary.max_attempts == 1
 
 
-def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
+def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+            },
+        },
+    )
+    workers = yaml.safe_load(default_workers_yaml())
+    workers["agent_runtime"]["defaults"]["model"] = "gpt-base"
+    workers["agent_runtime"]["lanes"]["pulse.signal_analyst"]["model"] = "gpt-pulse"
+    workers["agent_runtime"]["lanes"]["news.item_brief"]["model"] = "gpt-news"
+    write_workers_config(tmp_path, workers)
+
+    settings = load_settings()
+
+    assert settings.agent_runtime_default_model == "gpt-base"
+    assert settings.agent_runtime_model_for_lane("pulse.signal_analyst") == "gpt-pulse"
+    assert settings.agent_runtime_model_for_lane("pulse.bear_case") == "gpt-base"
+    assert settings.agent_runtime_model_for_lane("news.item_brief") == "gpt-news"
+    assert settings.pulse_agent_configured is True
+    assert settings.news_item_brief_configured is True
+
+
+def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -286,151 +324,15 @@ def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
                 "api_key": "sk-test",
                 "model": "gpt-base",
                 "pulse_agent_model": "gpt-pulse",
-            },
-        },
-    )
-
-    settings = load_settings()
-
-    assert settings.llm_model == "gpt-base"
-    assert settings.pulse_agent_model == "gpt-pulse"
-    assert settings.pulse_agent_configured is True
-
-
-def test_watchlist_summary_model_can_override_llm_model(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "provider": "openai",
-                "api_key": "sk-test",
-                "model": "gpt-base",
                 "watchlist_handle_summary_model": "gpt-watchlist",
-            },
-        },
-    )
-
-    settings = load_settings()
-
-    assert settings.llm_model == "gpt-base"
-    assert settings.watchlist_handle_summary_model == "gpt-watchlist"
-    assert settings.watchlist_handle_summary_configured is True
-
-
-def test_news_item_brief_model_can_override_llm_model(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "provider": "openai",
-                "api_key": "sk-test",
-                "model": "gpt-base",
+                "narrative_intel_model": "gpt-narrative",
                 "news_item_brief_model": "gpt-news",
             },
         },
     )
 
-    settings = load_settings()
-
-    assert settings.llm_model == "gpt-base"
-    assert settings.news_item_brief_model == "gpt-news"
-    assert settings.news_item_brief_configured is True
-
-
-def test_news_item_brief_model_falls_back_to_llm_model(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "provider": "openai",
-                "api_key": "sk-test",
-                "model": "gpt-base",
-            },
-        },
-    )
-
-    settings = load_settings()
-
-    assert settings.news_item_brief_model == "gpt-base"
-    assert settings.news_item_brief_configured is True
-
-
-def test_news_item_brief_model_empty_string_normalizes_to_fallback(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "provider": "openai",
-                "api_key": "sk-test",
-                "model": "gpt-base",
-                "news_item_brief_model": " ",
-            },
-        },
-    )
-
-    settings = load_settings()
-
-    assert settings.llm.news_item_brief_model is None
-    assert settings.news_item_brief_model == "gpt-base"
-    assert settings.news_item_brief_configured is True
-
-
-def test_pulse_agent_can_be_configured_without_enrichment_model(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "provider": "openai",
-                "api_key": "sk-test",
-                "pulse_agent_model": "gpt-pulse",
-            },
-        },
-    )
-
-    settings = load_settings()
-
-    assert settings.llm_model is None
-    assert settings.llm_configured is False
-    assert settings.pulse_agent_model == "gpt-pulse"
-    assert settings.pulse_agent_configured is True
-
-
-def test_news_item_brief_can_be_configured_without_default_llm_model(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "provider": "openai",
-                "api_key": "sk-test",
-                "news_item_brief_model": "gpt-news",
-            },
-        },
-    )
-
-    settings = load_settings()
-
-    assert settings.llm_model is None
-    assert settings.llm_configured is False
-    assert settings.news_item_brief_model == "gpt-news"
-    assert settings.news_item_brief_configured is True
+    with pytest.raises(ValidationError):
+        load_settings()
 
 
 def test_openai_root_base_url_with_api_key_counts_as_trace_export_configured(tmp_path, monkeypatch):
@@ -781,16 +683,11 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     assert list(llm) == [
         "provider",
         "api_key",
-        "model",
         "base_url",
         "timeout_seconds",
         "trace_enabled",
         "trace_api_key",
         "trace_include_sensitive_data",
-        "pulse_agent_model",
-        "watchlist_handle_summary_model",
-        "narrative_intel_model",
-        "news_item_brief_model",
     ]
     assert "workers" not in payload
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))

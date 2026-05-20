@@ -41,12 +41,12 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
     settings = Settings(
         llm={
             "api_key": "sk-test",
-            "model": "qwen3.6",
             "base_url": "https://example.com/v1",
             "instructor_safety_net_enabled": False,
         },
         workers={
             "agent_runtime": {
+                "defaults": {"model": "qwen3.6"},
                 "global_max_concurrency": 2,
                 "global_rpm_limit": 30,
                 "lanes": {
@@ -71,9 +71,9 @@ def test_build_agent_execution_gateway_uses_news_item_brief_model_for_news_only_
     settings = Settings(
         llm={
             "api_key": "sk-test",
-            "news_item_brief_model": "gpt-news",
             "instructor_safety_net_enabled": True,
         },
+        workers={"agent_runtime": {"defaults": {"model": "gpt-news"}}},
     )
 
     gateway = build_agent_execution_gateway(settings, llm_gateway=FakeLLMGateway())
@@ -87,13 +87,17 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         ws_token="secret",
         llm={
             "api_key": "sk-test",
-            "model": "gpt-social",
-            "pulse_agent_model": "gpt-pulse",
-            "narrative_intel_model": "gpt-narrative",
-            "watchlist_handle_summary_model": "gpt-watchlist",
-            "news_item_brief_model": "gpt-news",
         },
         workers={
+            "agent_runtime": {
+                "defaults": {"model": "gpt-social"},
+                "lanes": {
+                    "pulse.signal_analyst": {"model": "gpt-pulse"},
+                    "narrative.mention_semantics": {"model": "gpt-narrative"},
+                    "watchlist.handle_summary": {"model": "gpt-watchlist"},
+                    "news.item_brief": {"model": "gpt-news"},
+                },
+            },
             "pulse_candidate": {"enabled": True},
             "mention_semantics": {"enabled": True},
             "token_discussion_digest": {"enabled": True},
@@ -111,7 +115,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         **kwargs: Any,
     ) -> object:
         assert "llm_gateway" not in kwargs
-        calls.append(("social", settings.llm_model or "", agent_gateway))
+        calls.append(("social", settings.agent_runtime_model_for_lane("social.event_enrichment"), agent_gateway))
         return object()
 
     def fake_narrative(
@@ -121,7 +125,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         **kwargs: Any,
     ) -> object:
         assert "llm_gateway" not in kwargs
-        calls.append(("narrative", settings.narrative_intel_model or "", agent_gateway))
+        calls.append(("narrative", settings.agent_runtime_model_for_lane("narrative.mention_semantics"), agent_gateway))
         return object()
 
     def fake_pulse(
@@ -133,7 +137,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
     ) -> object:
         assert "llm_gateway" not in kwargs
         assert db_pool is db_pool_token
-        calls.append(("pulse", settings.pulse_agent_model or "", agent_gateway))
+        calls.append(("pulse", settings.agent_runtime_model_for_lane("pulse.signal_analyst"), agent_gateway))
         return object()
 
     def fake_watchlist(
@@ -143,7 +147,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         **kwargs: Any,
     ) -> object:
         assert "llm_gateway" not in kwargs
-        calls.append(("watchlist", settings.watchlist_handle_summary_model or "", agent_gateway))
+        calls.append(("watchlist", settings.agent_runtime_model_for_lane("watchlist.handle_summary"), agent_gateway))
         return object()
 
     def fake_news_item_brief(
@@ -153,7 +157,7 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(m
         **kwargs: Any,
     ) -> object:
         assert "llm_gateway" not in kwargs
-        calls.append(("news_item_brief", settings.news_item_brief_model or "", agent_gateway))
+        calls.append(("news_item_brief", settings.agent_runtime_model_for_lane("news.item_brief"), agent_gateway))
         return object()
 
     db_pool_token = object()
@@ -185,11 +189,10 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
         ws_token="secret",
         llm={
             "api_key": "sk-test",
-            "model": "gpt-social",
-            "pulse_agent_model": "gpt-pulse",
         },
         workers={
             "agent_runtime": {
+                "defaults": {"model": "gpt-social"},
                 "lanes": {
                     "pulse.pipeline": {
                         "timeout_seconds": 305,

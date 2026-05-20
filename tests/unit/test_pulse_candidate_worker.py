@@ -867,9 +867,15 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
         ws_token="secret",
         llm={
             "api_key": "sk-test",
-            "model": "gpt-enrich",
-            "pulse_agent_model": "gpt-pulse",
-            "watchlist_handle_summary_model": "gpt-summary",
+        },
+        workers={
+            "agent_runtime": {
+                "defaults": {"model": "gpt-enrich"},
+                "lanes": {
+                    "pulse.signal_analyst": {"model": "gpt-pulse"},
+                    "watchlist.handle_summary": {"model": "gpt-summary"},
+                },
+            },
         },
     )
     wired = providers_wiring.wire_providers(
@@ -1117,6 +1123,13 @@ class FakeDB:
 
 
 class FakeAgentExecutionGateway:
+    def model_for_lane(self, lane: str) -> str:
+        if lane == "pulse.signal_analyst":
+            return "gpt-pulse"
+        if lane == "watchlist.handle_summary":
+            return "gpt-summary"
+        return "gpt-enrich"
+
     def try_reserve(self, lane: str, **_: Any) -> AgentCapacityReservation:
         return AgentCapacityReservation(lane=lane, acquired=True)
 

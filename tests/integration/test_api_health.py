@@ -155,7 +155,9 @@ def fake_wired_providers(
             discovery_chain_ids=(),
         ),
         social_enrichment=SimpleNamespace(event_enrichment=None),
-        pulse_lab=SimpleNamespace(decision_provider=FakePulseProvider(model=settings.pulse_agent_model)),
+        pulse_lab=SimpleNamespace(
+            decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.signal_analyst"))
+        ),
         watchlist_intel=SimpleNamespace(summary_provider=None),
         marketlane=SimpleNamespace(stock_quote_provider=None),
         agent_execution_gateway=agent_execution_gateway,
@@ -388,9 +390,11 @@ def test_bootstrap_creates_pulse_worker_when_enabled_and_configured(monkeypatch,
         storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
         llm={
             "api_key": "test-key",
-            "pulse_agent_model": "gpt-pulse",
         },
-        workers={"pulse_candidate": {"batch_size": 7}},
+        workers={
+            "agent_runtime": {"lanes": {"pulse.signal_analyst": {"model": "gpt-pulse"}}},
+            "pulse_candidate": {"batch_size": 7},
+        },
         notifications={"enabled": False},
     )
     settings.set_config_dir(tmp_path / "app-home")

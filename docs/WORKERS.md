@@ -237,7 +237,9 @@ construction, trace export configuration, and cleanup. It does not expose
 worker/stage execution limits.
 
 Current lanes are configured under `workers.agent_runtime` in
-`workers.yaml`: `pulse.pipeline`, `pulse.signal_analyst`,
+`workers.yaml`. `agent_runtime.defaults.model` is the single global
+agent model default; any lane can override `model` locally and otherwise
+inherits that default. Current lanes are `pulse.pipeline`, `pulse.signal_analyst`,
 `pulse.bear_case`, `pulse.risk_portfolio_judge`,
 `narrative.mention_semantics`, `narrative.discussion_digest`,
 `social.event_enrichment`, `watchlist.handle_summary`,

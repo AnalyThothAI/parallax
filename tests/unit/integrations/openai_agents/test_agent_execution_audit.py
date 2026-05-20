@@ -89,7 +89,6 @@ def test_agent_stage_spec_request_audit_shape() -> None:
     spec = AgentStageSpec(
         lane="social.event_enrichment",
         stage="social_event",
-        model="qwen3.6",
         instructions="Return JSON.",
         input_payload={"event_id": "e1"},
         output_type=dict,
@@ -104,6 +103,7 @@ def test_agent_stage_spec_request_audit_shape() -> None:
         spec,
         trace_id="trace_abc",
         artifact_version_hash="sha256:abc",
+        model="qwen3.6",
     )
 
     assert audit.provider == "openai"
@@ -133,6 +133,7 @@ def test_runtime_policy_uses_default_lane_when_missing() -> None:
 
     assert known.timeout_seconds == 15
     assert missing.timeout_seconds == 180
+    assert policy.model_for_lane("known") == "qwen3.6"
     assert missing is not policy.lane_for("missing")
     assert AgentExecutionErrorClass.TIMEOUT.value == "timeout"
 

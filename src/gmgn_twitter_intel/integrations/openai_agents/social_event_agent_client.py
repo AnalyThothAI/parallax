@@ -27,19 +27,19 @@ class OpenAIAgentsSocialEventClient:
     def __init__(
         self,
         *,
-        model: str,
         agent_gateway: Any,
         workflow_name: str = WORKFLOW_NAME,
         max_turns: int = 1,
     ):
-        self.model = str(model or "").strip()
-        if not self.model:
-            raise ValueError("llm.model is required")
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         self._agent_gateway = agent_gateway
         self.workflow_name = str(workflow_name or "").strip() or WORKFLOW_NAME
         self.max_turns = max(1, min(2, int(max_turns)))
+
+    @property
+    def model(self) -> str:
+        return self._agent_gateway.model_for_lane("social.event_enrichment")
 
     @property
     def artifact_version_hash(self) -> str:
@@ -95,7 +95,6 @@ class OpenAIAgentsSocialEventClient:
         return AgentStageSpec(
             lane="social.event_enrichment",
             stage="social_event",
-            model=self.model,
             instructions=social_event_agent_instructions(),
             input_payload=social_event_agent_input(event=event, entities=entities),
             output_type=SocialEventPayload,

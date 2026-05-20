@@ -98,9 +98,10 @@ class AgentExecutionGateway:
         }
 
     def request_audit(self, stage: AgentStageSpec) -> AgentExecutionRequestAudit:
+        model_name = self.model_for_lane(stage.lane)
         output_schema = StrictJsonOutputSchema(stage.output_type)
         artifact_version_hash = artifact_hash_for(
-            model=stage.model,
+            model=model_name,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
             runtime_version=RUNTIME_VERSION,
@@ -110,7 +111,7 @@ class AgentExecutionGateway:
             {
                 "lane": stage.lane,
                 "stage": stage.stage,
-                "model": stage.model,
+                "model": model_name,
                 "workflow_name": stage.workflow_name,
                 "agent_name": stage.agent_name,
                 "group_id": stage.group_id,
@@ -124,7 +125,14 @@ class AgentExecutionGateway:
             stage,
             trace_id=trace_id_for(trace_source),
             artifact_version_hash=artifact_version_hash,
+            model=model_name,
         )
+
+    def model_for_lane(self, lane: str) -> str:
+        model_name = self._policy.model_for_lane(lane)
+        if not model_name:
+            raise ValueError(f"agent model is required for lane: {lane}")
+        return model_name
 
     def try_reserve(
         self,
@@ -402,6 +410,7 @@ class AgentExecutionGateway:
         lanes: dict[str, Any] = {}
         for lane, lane_state in self._lanes.items():
             lanes[lane] = {
+                "model": self.model_for_lane(lane),
                 "priority_label": lane_state.policy.priority,
                 "rpm_limit": lane_state.policy.rpm_limit,
                 "max_concurrency": lane_state.policy.max_concurrency,
@@ -437,15 +446,19 @@ class AgentExecutionGateway:
         runner_entered: dict[str, bool],
     ) -> tuple[Any, Any | None, dict[str, Any]]:
         lane_policy = self._lane_state(stage.lane).policy
+        model_name = self.model_for_lane(stage.lane)
         output_schema = StrictJsonOutputSchema(stage.output_type)
-        model = self._model_for(stage.model, timeout_s=float(lane_policy.timeout_seconds))
+        model = self._model_for(model_name, timeout_s=float(lane_policy.timeout_seconds))
         agent = Agent(
             name=stage.agent_name,
             instructions=stage.instructions,
             output_type=output_schema,
             tools=stage.tools,
             model=model,
-            model_settings=default_agent_model_settings(),
+            model_settings=default_agent_model_settings(
+                disable_thinking=self._policy.defaults.disable_thinking,
+                include_usage=self._policy.defaults.include_usage,
+            ),
         )
         run_config = RunConfig(
             workflow_name=stage.workflow_name,
@@ -640,7 +653,7 @@ class AgentExecutionGateway:
             method(
                 lane=stage.lane,
                 stage=stage.stage,
-                model=stage.model,
+                model=self.model_for_lane(stage.lane),
                 status=str(status.value),
                 error_class=error_class.value if error_class is not None else None,
                 seconds=max(0.0, time.perf_counter() - started),

@@ -25,15 +25,15 @@ class OpenAIAgentsNewsItemBriefClient:
     def __init__(
         self,
         *,
-        model: str,
         agent_gateway: Any,
     ) -> None:
-        self.model = str(model or "").strip()
-        if not self.model:
-            raise ValueError("news_item_brief_model is required")
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         self._agent_gateway = agent_gateway
+
+    @property
+    def model(self) -> str:
+        return self._agent_gateway.model_for_lane("news.item_brief")
 
     @property
     def artifact_version_hash(self) -> str:
@@ -49,7 +49,7 @@ class OpenAIAgentsNewsItemBriefClient:
         return self._agent_gateway.try_reserve(lane)
 
     def request_audit(self, *, run_id: str, packet: NewsItemBriefInputPacket) -> dict[str, Any]:
-        stage = build_news_item_brief_stage(model=self.model, packet=packet, run_id=run_id)
+        stage = build_news_item_brief_stage(packet=packet, run_id=run_id)
         return self._agent_gateway.request_audit(stage).model_dump(mode="json")
 
     async def brief_item(
@@ -59,7 +59,7 @@ class OpenAIAgentsNewsItemBriefClient:
         packet: NewsItemBriefInputPacket,
         reservation: AgentCapacityReservation | None = None,
     ) -> dict[str, Any]:
-        stage = build_news_item_brief_stage(model=self.model, packet=packet, run_id=run_id)
+        stage = build_news_item_brief_stage(packet=packet, run_id=run_id)
         execution = await self._agent_gateway.execute(stage, reservation=reservation)
         payload = _coerce_news_item_brief_payload(execution.final_output)
         return {

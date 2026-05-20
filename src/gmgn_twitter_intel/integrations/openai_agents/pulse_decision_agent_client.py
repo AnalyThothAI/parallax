@@ -58,7 +58,6 @@ class OpenAIAgentsPulseDecisionClient:
     def __init__(
         self,
         *,
-        model: str,
         agent_gateway: Any,
         decision_runtime: PulseDecisionRuntime,
         workflow_name: str = WORKFLOW_NAME,
@@ -66,9 +65,6 @@ class OpenAIAgentsPulseDecisionClient:
         bear_case_max_turns: int = 1,
         risk_portfolio_judge_max_turns: int = 1,
     ) -> None:
-        self.model = str(model or "").strip()
-        if not self.model:
-            raise ValueError("llm.pulse_agent_model or llm.model is required")
         if agent_gateway is None:
             raise ValueError("agent_gateway is required")
         if decision_runtime is None:
@@ -85,9 +81,19 @@ class OpenAIAgentsPulseDecisionClient:
         return _DEFAULT_TIMEOUT_SECONDS
 
     @property
+    def model(self) -> str:
+        return self._agent_gateway.model_for_lane("pulse.signal_analyst")
+
+    @property
     def artifact_version_hash(self) -> str:
         return artifact_hash_for(
-            model=self.model,
+            model=json_sha256(
+                {
+                    "signal_analyst": self._agent_gateway.model_for_lane("pulse.signal_analyst"),
+                    "bear_case": self._agent_gateway.model_for_lane("pulse.bear_case"),
+                    "risk_portfolio_judge": self._agent_gateway.model_for_lane("pulse.risk_portfolio_judge"),
+                }
+            ),
             prompt_version=PULSE_DECISION_PROMPT_VERSION,
             schema_version=PULSE_DECISION_SCHEMA_VERSION,
             runtime_version=RUNTIME_VERSION,
@@ -144,7 +150,7 @@ class OpenAIAgentsPulseDecisionClient:
             route=route,
             completeness=completeness,
             runtime_manifest=runtime_manifest,
-            model=self.model,
+            model=self._pipeline_model_manifest(),
             artifact_version_hash=self.artifact_version_hash,
             workflow_name=self.workflow_name,
             agent_name=AGENT_NAME,
@@ -495,7 +501,6 @@ class OpenAIAgentsPulseDecisionClient:
         return AgentStageSpec(
             lane=_stage_lane(spec.stage),
             stage=spec.stage,
-            model=self.model,
             instructions=spec.prompt_text,
             input_payload=spec.input_payload,
             output_type=output_type,
@@ -512,6 +517,15 @@ class OpenAIAgentsPulseDecisionClient:
                 "lane": _stage_lane(spec.stage),
             },
             max_turns=max_turns,
+        )
+
+    def _pipeline_model_manifest(self) -> str:
+        return json_sha256(
+            {
+                "signal_analyst": self._agent_gateway.model_for_lane("pulse.signal_analyst"),
+                "bear_case": self._agent_gateway.model_for_lane("pulse.bear_case"),
+                "risk_portfolio_judge": self._agent_gateway.model_for_lane("pulse.risk_portfolio_judge"),
+            }
         )
 
     async def aclose(self) -> None:

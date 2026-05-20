@@ -21,10 +21,14 @@ class FakeAgentGateway:
         self.audit_calls = []
         self.execute_calls = []
 
+    def model_for_lane(self, lane: str) -> str:
+        assert lane == "watchlist.handle_summary"
+        return "gpt-test"
+
     def request_audit(self, stage):
         self.audit_calls.append(stage)
         return AgentExecutionRequestAudit(
-            model=stage.model,
+            model=self.model_for_lane(stage.lane),
             lane=stage.lane,
             stage=stage.stage,
             workflow_name=stage.workflow_name,
@@ -73,7 +77,6 @@ def test_watchlist_summary_client_runs_summary_through_gateway():
         }
     )
     client = OpenAIAgentsWatchlistSummaryClient(
-        model="gpt-test",
         agent_gateway=gateway,
         max_turns=2,
     )
@@ -91,7 +94,7 @@ def test_watchlist_summary_client_runs_summary_through_gateway():
     assert len(gateway.execute_calls) == 1
     stage = gateway.execute_calls[0]
     assert stage.lane == "watchlist.handle_summary"
-    assert stage.model == "gpt-test"
+    assert client.model == "gpt-test"
     assert stage.group_id == "watched"
     assert stage.max_turns == 2
     assert result["summary_zh"] == "账户围绕 SOL 客户端进展反复发声。"

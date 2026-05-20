@@ -24,6 +24,10 @@ class FakeGateway:
         self.requested_stage = None
         self.executed_stage = None
 
+    def model_for_lane(self, lane: str) -> str:
+        assert lane == "social.event_enrichment"
+        return "qwen3.6"
+
     def request_audit(self, stage):
         self.requested_stage = stage
         return FakeAudit(
@@ -88,7 +92,7 @@ class FakeGateway:
 
 def test_social_event_client_uses_agent_execution_gateway() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsSocialEventClient(model="qwen3.6", agent_gateway=gateway)
+    client = OpenAIAgentsSocialEventClient(agent_gateway=gateway)
 
     result = asyncio.run(
         client.enrich_event(
@@ -107,7 +111,7 @@ def test_social_event_client_uses_agent_execution_gateway() -> None:
     stage = gateway.executed_stage
     assert stage.lane == "social.event_enrichment"
     assert stage.stage == "social_event"
-    assert stage.model == "qwen3.6"
+    assert client.model == "qwen3.6"
     assert stage.workflow_name == "gmgn-twitter-intel.social_event_extraction"
     assert stage.agent_name == "SocialEventExtractionAgent"
     assert stage.group_id == "event-1"
@@ -126,7 +130,7 @@ def test_social_event_client_uses_agent_execution_gateway() -> None:
 
 def test_social_event_client_request_audit_delegates_to_gateway_and_returns_dict() -> None:
     gateway = FakeGateway()
-    client = OpenAIAgentsSocialEventClient(model="qwen3.6", agent_gateway=gateway)
+    client = OpenAIAgentsSocialEventClient(agent_gateway=gateway)
 
     audit = client.request_audit(
         event={"event_id": "event-fail", "search_text": "$FAIL"},

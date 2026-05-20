@@ -40,9 +40,17 @@ class _FakeAgentGateway:
         self.outputs = outputs or {}
         self.execute_calls = []
 
+    def model_for_lane(self, lane: str) -> str:
+        return {
+            "pulse.signal_analyst": "gpt-signal",
+            "pulse.bear_case": "gpt-bear",
+            "pulse.risk_portfolio_judge": "gpt-judge",
+        }.get(lane, "gpt-test")
+
     def request_audit(self, stage):
+        model = self.model_for_lane(stage.lane)
         return AgentExecutionRequestAudit(
-            model=stage.model,
+            model=model,
             lane=stage.lane,
             stage=stage.stage,
             workflow_name=stage.workflow_name,
@@ -51,7 +59,7 @@ class _FakeAgentGateway:
             group_id=stage.group_id,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
-            artifact_version_hash=f"artifact:{stage.model}",
+            artifact_version_hash=f"artifact:{model}",
             input_hash=stage.input_hash,
             trace_metadata={
                 "stage": stage.stage,
@@ -206,7 +214,6 @@ def test_pulse_client_requires_decision_runtime_only() -> None:
 
     with pytest.raises(ValueError, match="decision_runtime is required"):
         OpenAIAgentsPulseDecisionClient(
-            model="gpt-test",
             agent_gateway=_FakeAgentGateway(),
             decision_runtime=None,  # type: ignore[arg-type]
         )
@@ -214,7 +221,6 @@ def test_pulse_client_requires_decision_runtime_only() -> None:
 
 def test_pulse_client_runtime_contract_is_packet_only_without_tools() -> None:
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=_FakeAgentGateway(),
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -310,7 +316,6 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
         }
     )
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
         signal_analyst_max_turns=2,
@@ -371,7 +376,6 @@ def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
         }
     )
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -413,7 +417,6 @@ def test_pulse_client_omits_parent_reservation_keyword_for_legacy_gateway() -> N
         }
     )
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -449,7 +452,6 @@ def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -
         }
     )
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -489,7 +491,6 @@ def test_pulse_client_normalizes_gateway_output_before_domain_ref_validation() -
 def test_invalid_evidence_refs_remain_pulse_domain_failures_not_gateway_failures() -> None:
     gateway = _FakeAgentGateway({"signal_analyst": _signal_analyst_raw(["event:outside"])})
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -528,7 +529,6 @@ def test_schema_invalid_signal_analyst_returns_invalid_model_output_abstain() ->
         }
     )
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -553,7 +553,6 @@ def test_schema_invalid_signal_analyst_returns_invalid_model_output_abstain() ->
 def test_provider_transport_failure_preserves_error_class_without_unknown_ref_label() -> None:
     gateway = _TransportFailingAgentGateway()
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -581,7 +580,6 @@ def test_provider_transport_failure_preserves_error_class_without_unknown_ref_la
 def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() -> None:
     gateway = _FailingAgentGateway()
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )
@@ -609,7 +607,6 @@ def test_gateway_execution_timeout_degrades_to_abstain_without_retrying_job() ->
 def test_no_start_agent_execution_error_is_not_collapsed_into_stage_failure() -> None:
     gateway = _NoStartBackpressureGateway()
     client = OpenAIAgentsPulseDecisionClient(
-        model="gpt-test",
         agent_gateway=gateway,
         decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
     )

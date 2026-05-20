@@ -119,11 +119,13 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     if ws_token is not None:
         payload["ws_token"] = ws_token
     payload["gmgn"] = {"api_key": "gmgn-test", "openapi_base_url": "https://openapi.gmgn.ai"}
+    workers_payload = yaml.safe_load(default_workers_yaml())
     if llm:
-        payload["llm"] = {"provider": "openai", "api_key": "sk-test", "model": "gpt-test"}
+        payload["llm"] = {"provider": "openai", "api_key": "sk-test"}
+        workers_payload["agent_runtime"]["defaults"]["model"] = "gpt-test"
     path = app_home / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
-    (app_home / "workers.yaml").write_text(default_workers_yaml(), encoding="utf-8")
+    (app_home / "workers.yaml").write_text(yaml.safe_dump(workers_payload, sort_keys=False), encoding="utf-8")
     return path
 
 
