@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 
 import { NotificationLayer, type ShellNotificationProps } from "./CockpitShell";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
+import { MobileRouteNav } from "./MobileRouteNav";
 
 export type SearchShellProps = {
   topbar: CockpitTopbarProps;
@@ -19,6 +20,7 @@ export function SearchShell({ topbar, notifications, onHotkey }: SearchShellProp
   return (
     <div className="cockpit-shell search-shell">
       <CockpitTopbar {...topbar} search={{ ...topbar.search, showMainRouteButton: true }} />
+      <MobileRouteNav />
       <div className="cockpit-grid search-focus-mode">
         <section className="center-column">
           <Outlet />

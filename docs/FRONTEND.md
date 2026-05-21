@@ -4,22 +4,22 @@
 
 ## Source Layer Map (`web/src/`)
 
-| Directory | Responsibility |
-|-----------|----------------|
-| `app/` | Application composition: providers, router wiring, top-level error boundary, and route fallback. It may compose feature route elements, but it must not own feature data queries or business rendering. |
-| `routes/` | Route entries and URL-state orchestration. Route modules parse/serialize shareable state and choose the owning feature view. |
-| `features/<name>/api/` | Feature-owned React Query hooks and endpoint adapters. This is the only feature layer that calls `@lib/api/client` or owns query keys for its server data. |
-| `features/<name>/model/` | Pure feature helpers, view models, and constants. Framework-free where practical. |
-| `features/<name>/state/` | Local client state that is not shareable URL state and not server cache state. Keep it narrow and feature-owned. |
-| `features/<name>/ui/` | Feature screens and components. UI reads data from props or feature hooks exposed through the feature public index, not from another feature's deep files. |
-| `shared/query/` | Cross-feature React Query primitives, query-key helpers, and cache patching utilities. |
-| `shared/routing/` | Reusable route parsing, path building, and URL search-param helpers. |
-| `shared/socket/` | WebSocket provider, route-aware subscription registry, and socket test helpers. |
-| `shared/ui/` | Reusable presentational primitives and cross-feature token display components. No server fetching. |
-| `lib/api/` | Typed HTTP client facade and auth-token plumbing. No feature query hooks. |
-| `lib/env/` | Runtime environment parsing. |
-| `lib/types/` | Generated OpenAPI types and compatibility UI payload types. |
-| `styles/` | Global Tailwind import, design tokens, and base element styles only. Feature/page selectors belong beside their owning component or feature as side-effect CSS, or as real CSS Modules with local class bindings. |
+| Directory                | Responsibility                                                                                                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/`                   | Application composition: providers, router wiring, top-level error boundary, and route fallback. It may compose feature route elements, but it must not own feature data queries or business rendering.           |
+| `routes/`                | Route entries and URL-state orchestration. Route modules parse/serialize shareable state and choose the owning feature view.                                                                                      |
+| `features/<name>/api/`   | Feature-owned React Query hooks and endpoint adapters. This is the only feature layer that calls `@lib/api/client` or owns query keys for its server data.                                                        |
+| `features/<name>/model/` | Pure feature helpers, view models, and constants. Framework-free where practical.                                                                                                                                 |
+| `features/<name>/state/` | Local client state that is not shareable URL state and not server cache state. Keep it narrow and feature-owned.                                                                                                  |
+| `features/<name>/ui/`    | Feature screens and components. UI reads data from props or feature hooks exposed through the feature public index, not from another feature's deep files.                                                        |
+| `shared/query/`          | Cross-feature React Query primitives, query-key helpers, and cache patching utilities.                                                                                                                            |
+| `shared/routing/`        | Reusable route parsing, path building, and URL search-param helpers.                                                                                                                                              |
+| `shared/socket/`         | WebSocket provider, route-aware subscription registry, and socket test helpers.                                                                                                                                   |
+| `shared/ui/`             | Reusable presentational primitives and cross-feature token display components. No server fetching.                                                                                                                |
+| `lib/api/`               | Typed HTTP client facade and auth-token plumbing. No feature query hooks.                                                                                                                                         |
+| `lib/env/`               | Runtime environment parsing.                                                                                                                                                                                      |
+| `lib/types/`             | Generated OpenAPI types and compatibility UI payload types.                                                                                                                                                       |
+| `styles/`                | Global Tailwind import, design tokens, and base element styles only. Feature/page selectors belong beside their owning component or feature as side-effect CSS, or as real CSS Modules with local class bindings. |
 
 Do not add new code under old `api/`, `store/`, or `components/` roots. Public feature imports should come from `@features/<name>`; deep imports across feature internals are blocked by lint and grep gates.
 
@@ -27,17 +27,17 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 
 `web/src/` contains production frontend code only. Frontend Vitest, React Testing Library, MSW, fixtures, architecture gates, and Playwright specs live under `web/tests/`. Repository-root `tests/` remains the Python/FastAPI pytest tree.
 
-| Directory | Responsibility |
-|-----------|----------------|
-| `unit/` | Pure model, state, mapper, and library tests that mirror production source paths. |
-| `component/` | Focused React component, hook, and feature API hook tests. |
-| `routes/` | App and route integration tests that render `App` or route shells. |
-| `architecture/` | Static source gates for import boundaries, CSS ownership, test placement, and dead compatibility code. |
-| `fixtures/` | Shared frontend test fixtures. |
-| `msw/` | MSW server, handlers, and named API scenarios. |
-| `render/` | React Testing Library render wrappers and route render harnesses. |
-| `socket/` | Socket snapshot and subscription test utilities. |
-| `e2e/golden-paths/` | Playwright browser golden paths. |
+| Directory           | Responsibility                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `unit/`             | Pure model, state, mapper, and library tests that mirror production source paths.                      |
+| `component/`        | Focused React component, hook, and feature API hook tests.                                             |
+| `routes/`           | App and route integration tests that render `App` or route shells.                                     |
+| `architecture/`     | Static source gates for import boundaries, CSS ownership, test placement, and dead compatibility code. |
+| `fixtures/`         | Shared frontend test fixtures.                                                                         |
+| `msw/`              | MSW server, handlers, and named API scenarios.                                                         |
+| `render/`           | React Testing Library render wrappers and route render harnesses.                                      |
+| `socket/`           | Socket snapshot and subscription test utilities.                                                       |
+| `e2e/golden-paths/` | Playwright browser golden paths.                                                                       |
 
 ## Conventions
 
@@ -68,6 +68,11 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   scoring or infer missing values.
 - **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
+- **Responsive CSS contract.** Mobile behavior is a tested architecture surface, not a best-effort visual tweak. Shell CSS owns `.cockpit-shell`, `.cockpit-grid`, `.center-column`, `.topbar`, `.desktop-side-rail`, `.responsive-control-panel`, `.mobile-task-nav`, and `.mobile-route-nav`; feature CSS must not redefine those selectors. Non-module side-effect CSS must either be in the current migration allowlist or declare an explicit app layer such as `@layer app.shell`, `@layer app.features`, or `@layer app.primitives`.
+- **Shell navigation.** The desktop side rail is desktop-only. Mobile users must still be able to reach Radar, Stocks, News, Macro, Watchlist, Ops, and Search from shell-owned navigation. The live Radar/Tape/Lab task switcher is separate from top-level route navigation.
+- **Scrolling.** `body` remains locked for the app shell. `.center-column` is the shell-managed route scroll container. Route-level nested scrollers are allowed only when they are intentionally bounded and covered by Playwright overflow/reachability assertions.
+- **Breakpoint policy.** Desktop density starts at `1280px`. Tablet uses a single route column from `768px` through `1279px`. Mobile rules are `max-width: 767px` and must appear late enough in the cascade to win over base and desktop/tablet rules. Use container queries for local card/panel behavior when component width matters more than viewport width.
+- **Side-effect CSS budget.** Architecture tests report side-effect CSS files above 700 lines during the migration. The target budget after this responsive hard cut is 500 lines per side-effect CSS file; component-specific styling should move toward CSS Modules or smaller owner files.
 - **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.
 - **Score display.** Any displayed ranking score includes its component breakdown from the API. The UI does not recompute ranking facts locally.
 - **Token images.** Token profile and radar logos render
@@ -88,6 +93,16 @@ Common frontend gates:
 - `cd web && npm run build`
 - `cd web && npm run test:e2e`
 
+Playwright projects are part of the frontend contract:
+
+- `desktop-1366` (`1366x720`)
+- `desktop-1920` (`1920x1080`)
+- `tablet-834` (`834x1194`)
+- `mobile-390` (`390x844`)
+- `mobile-430` (`430x932`)
+
+Desktop-only specs must explicitly skip non-desktop projects. Mobile-only specs must explicitly skip non-mobile projects. New `page.setViewportSize` calls are allowed only in dedicated responsive specs or explicitly marked desktop-only specs.
+
 Full repository completion gate:
 
 - `make check-all`
@@ -98,7 +113,7 @@ Production bundles ship inside the same Docker image as the Python service and a
 
 Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
-1. Hard-reload `/`, `/search`, `/signal-lab`, `/stocks`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
+1. Hard-reload `/`, `/search`, `/signal-lab`, `/signal-lab/pulse/:candidateId`, `/stocks`, `/news`, `/news/:newsItemId`, `/macro`, `/watchlist`, `/ops`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
 3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
 4. Confirm no failing `/api/*` requests in the browser session.
@@ -106,3 +121,4 @@ Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually 
 6. Confirm token logos either load from `/api/token-images/{image_id}` or show
    fallback marks, with no browser requests to provider image URLs such as
    GMGN `external-res`.
+7. At `390px`, confirm the desktop side rail is hidden, the mobile route nav is visible, Radar/Tape/Lab task switching works without route reload, and no page-level or route-critical nested horizontal overflow is required.

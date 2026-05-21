@@ -7,6 +7,7 @@ import { Outlet } from "react-router-dom";
 import { CockpitMobileNav, type CockpitMobileNavProps } from "./CockpitMobileNav";
 import { CockpitSideRail, type CockpitSideRailProps } from "./CockpitSideRail";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
+import { MobileRouteNav } from "./MobileRouteNav";
 import { RadarControls } from "./RadarControls";
 import "./cockpit.css";
 
@@ -42,6 +43,7 @@ export function CockpitShell({
   return (
     <div className={clsx("cockpit-shell", `mobile-task-${mobile.mobileTask}`)}>
       <CockpitTopbar {...topbar} />
+      <MobileRouteNav />
       <div className={clsx("cockpit-grid", `mobile-task-${mobile.mobileTask}`)}>
         <CockpitSideRail {...sideRail} />
         <section className="responsive-control-panel" aria-label="cockpit controls">

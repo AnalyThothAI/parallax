@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { installMockApi } from "@tests/e2e/support/mockApi";
 
+// @desktop-only-spec
+test.beforeEach(({}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop-only layout contract");
+});
+
 test("topbar gives status chips priority over search width", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 720 });
   await installMockApi(page);

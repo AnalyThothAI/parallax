@@ -68,14 +68,15 @@ describe("live radar route", () => {
     });
     renderAppRoute("/");
 
-    const views = await screen.findByRole("heading", { name: "views" });
-    const viewButtons = within(views.closest("section") as HTMLElement).getAllByRole("button");
+    const markets = await screen.findByRole("heading", { name: "markets" });
+    const viewButtons = within(markets.closest("section") as HTMLElement).getAllByRole("button");
 
     await waitFor(() => {
       expect(viewButtons.map((button) => button.textContent)).toEqual([
         "1Radar0",
         "2Stocks2",
         "3News2+",
+        "MMacro",
       ]);
     });
   });

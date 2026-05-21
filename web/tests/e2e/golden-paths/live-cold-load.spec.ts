@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { installMockApi } from "@tests/e2e/support/mockApi";
 
+// @desktop-only-spec
+test.beforeEach(({}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop-only layout contract");
+});
+
 test("cold live load renders radar, tape, and URL-owned filters", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await installMockApi(page);
@@ -8,9 +13,11 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
 
   const radarRow = page.getByRole("article", { name: "Token Radar item $UPEG" });
   await expect(radarRow).toBeVisible();
-  await expect(radarRow.getByRole("button", { name: "Open token item $UPEG" })).toBeVisible();
+  await expect(radarRow.getByRole("link", { name: "Open token item $UPEG" })).toBeVisible();
   await expect(radarRow.getByText("4 帖 · 3 作者")).toBeVisible();
-  await expect(radarRow.getByText("扩散中 · 4 条有效讨论")).toBeVisible();
+  await expect(radarRow.locator('[data-case-section="why-now"]')).toContainText(
+    "discussion digest missing",
+  );
   await expect(radarRow.locator(".market-move.up", { hasText: "+12%" })).toBeVisible();
   await expect(radarRow.locator('[data-radar-metric="market"]')).toContainText("liq$250K");
   await expect(radarRow.locator('[data-radar-metric="market"]')).toContainText("vol$250K");

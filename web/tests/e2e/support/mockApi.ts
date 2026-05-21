@@ -5,8 +5,11 @@ import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCa
 const NOW = 1_777_746_300_000;
 const ADDRESS = "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
 const TARGET_ID = `asset:dex:eth:${ADDRESS.toLowerCase()}`;
+const unhandledApiRequests = new WeakMap<Page, string[]>();
 
 export async function installMockApi(page: Page) {
+  unhandledApiRequests.set(page, []);
+
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -22,6 +25,7 @@ export async function installMockApi(page: Page) {
     if (path === "/api/recent") return fulfill(route, recentData());
     if (path === "/api/token-radar") return fulfill(route, tokenRadarData(url));
     if (path === "/api/token-case") return fulfill(route, tokenCaseData(url));
+    if (path.startsWith("/api/token-images/")) return fulfillTokenImage(route);
     if (path === "/api/search/inspect") return fulfill(route, searchInspectData(url));
     if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
     if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
@@ -32,17 +36,42 @@ export async function installMockApi(page: Page) {
     if (path === "/api/notification-summary") return fulfill(route, notificationSummary());
     if (path === "/api/notifications") return fulfill(route, notificationsData());
     if (path === "/api/news") return fulfill(route, newsRowsData());
+    if (path.startsWith("/api/news/items/")) return fulfill(route, newsItemDetailData(path));
     if (path.endsWith("/read"))
       return fulfill(route, { notification_id: "notification-1", updated: true });
     if (path === "/api/notifications/read-all") return fulfill(route, { updated: true });
     if (path === "/api/stocks-radar") return fulfill(route, stocksRadarData(url));
+    if (path === "/api/watchlist/handles/overview") return fulfill(route, watchlistOverviewData());
+    if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/overview$/)) {
+      return fulfill(route, watchlistHandleOverviewData(handleFromPath(path)));
+    }
+    if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/summary$/)) {
+      return fulfill(route, watchlistHandleSummaryData(handleFromPath(path)));
+    }
+    if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/timeline$/)) {
+      return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
+    }
+    if (path === "/api/macro") return fulfill(route, macroData());
+    if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsData());
+    if (path.startsWith("/api/ops/queues/")) return fulfill(route, opsQueueData(path));
 
+    recordUnhandledApiRequest(page, url);
     return route.fulfill({
       status: 404,
       contentType: "application/json",
       body: JSON.stringify({ ok: false, error: `unhandled ${path}` }),
     });
   });
+}
+
+export function getUnhandledApiRequests(page: Page): string[] {
+  return [...(unhandledApiRequests.get(page) ?? [])];
+}
+
+function recordUnhandledApiRequest(page: Page, url: URL) {
+  const requests = unhandledApiRequests.get(page) ?? [];
+  requests.push(`${url.pathname}${url.search}`);
+  unhandledApiRequests.set(page, requests);
 }
 
 function newsRowsData() {
@@ -54,9 +83,52 @@ function newsRowsData() {
         lifecycle_status: "processed",
         headline: "Macro desk flags liquidity rotation",
         latest_at_ms: NOW,
+        canonical_url: "https://example.com/macro-liquidity",
+        source_domain: "example.com",
+        summary: "Liquidity rotation is visible across crypto beta and rates-sensitive assets.",
+        token_lanes: [
+          { lane: "resolved", symbol: "UPEG", target_type: "Asset", target_id: TARGET_ID },
+        ],
+        fact_lanes: [{ lane: "accepted", summary: "Funding stress remains elevated." }],
       },
     ],
     next_cursor: null,
+  };
+}
+
+function newsItemDetailData(path: string) {
+  const newsItemId = decodeURIComponent(path.split("/").pop() ?? "news-row-1");
+  return {
+    row_id: newsItemId,
+    news_item_id: newsItemId,
+    lifecycle_status: "processed",
+    headline: "Macro desk flags liquidity rotation",
+    latest_at_ms: NOW,
+    canonical_url: "https://example.com/macro-liquidity",
+    source_domain: "example.com",
+    summary: "Liquidity rotation is visible across crypto beta and rates-sensitive assets.",
+    content:
+      "A deterministic e2e article body gives the mobile cold-load route enough detail content.",
+    source: {
+      source_name: "Example Wire",
+      source_domain: "example.com",
+      trust_tier: "tier_1",
+      source_role: "wire",
+    },
+    token_lanes: [{ lane: "resolved", symbol: "UPEG", target_type: "Asset", target_id: TARGET_ID }],
+    fact_lanes: [{ lane: "accepted", summary: "Funding stress remains elevated." }],
+    token_mentions: [],
+    fact_candidates: [],
+    story_members: [],
+    agent_brief: {
+      status: "ready",
+      summary_zh: "流动性轮动正在影响高 beta crypto。",
+      key_points: ["Funding stress elevated", "Crypto beta in focus"],
+      data_gaps: [],
+      evidence_refs: [],
+      computed_at_ms: NOW,
+    },
+    agent_run: null,
   };
 }
 
@@ -65,6 +137,14 @@ async function fulfill(route: Route, data: unknown) {
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({ ok: true, data }),
+  });
+}
+
+async function fulfillTokenImage(route: Route) {
+  return route.fulfill({
+    status: 200,
+    contentType: "image/svg+xml",
+    body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#121713"/><circle cx="20" cy="20" r="12" fill="#d99a28"/></svg>`,
   });
 }
 
@@ -1017,5 +1097,326 @@ function stocksRadarData(url: URL) {
       },
     ],
     health: { returned_count: 1, quote_ready_count: 1, quote_unavailable_count: 0 },
+  };
+}
+
+function handleFromPath(path: string) {
+  const parts = path.split("/");
+  const handleIndex = parts.includes("handle")
+    ? parts.indexOf("handle") + 1
+    : parts.indexOf("handles") + 1;
+  return decodeURIComponent(parts[handleIndex] ?? "toly");
+}
+
+function watchlistOverviewData() {
+  return {
+    window: "7d",
+    items: [
+      {
+        handle: "toly",
+        last_source_event_at_ms: NOW,
+        recent_source_event_count: 3,
+        recent_signal_event_count: 2,
+        total_signal_event_count: 5,
+        summary_status: "ready",
+        summary_is_stale: false,
+      },
+      {
+        handle: "marionawfal",
+        last_source_event_at_ms: NOW - 60_000,
+        recent_source_event_count: 42,
+        recent_signal_event_count: 12,
+        total_signal_event_count: 42,
+        summary_status: "ready",
+        summary_is_stale: false,
+      },
+    ],
+  };
+}
+
+function watchlistHandleOverviewData(handle: string) {
+  return {
+    query: { handle, scope: "signal", window: "7d" },
+    metrics: {
+      source_event_count: 42,
+      signal_event_count: 12,
+      resolved_token_count: 1,
+      candidate_mention_count: 3,
+      narrative_count: 1,
+      last_source_event_at_ms: NOW,
+    },
+    resolved_token_clusters: [
+      {
+        label: "$UPEG",
+        count: 4,
+        query: "$UPEG",
+        kind: "resolved_token",
+        source: "token_resolutions",
+        target_type: "Asset",
+        target_id: TARGET_ID,
+      },
+    ],
+    candidate_mention_clusters: [
+      {
+        label: "$ALOY",
+        count: 3,
+        query: "$ALOY",
+        kind: "candidate_mention",
+        source: "social_event_candidates",
+      },
+    ],
+    narrative_clusters: [
+      { label: "Liquidity rotation", count: 2, query: "liquidity", kind: "narrative" },
+    ],
+    risk_notes: [],
+  };
+}
+
+function watchlistHandleSummaryData(handle: string) {
+  return {
+    handle,
+    status: "ready",
+    generated_at_ms: NOW,
+    staleness_ms: 0,
+    is_stale: false,
+    pending_recompute: false,
+    signal_count: 12,
+    input_event_count: 42,
+    signal_count_at_generation: 12,
+    model: "e2e-model",
+    summary_zh: `${handle} has fresh deterministic watchlist context.`,
+    topics: [
+      {
+        title: "UPEG",
+        description: "UPEG is repeatedly mentioned by watched and public accounts.",
+        event_count: 4,
+        top_event_ids: ["event-upeg-1"],
+        symbols: ["UPEG"],
+        confidence: 0.86,
+      },
+    ],
+  };
+}
+
+function watchlistHandleTimelineData(handle: string) {
+  return {
+    query: { handle, scope: "signal", limit: 80 },
+    items: postsData().items.map((item) => ({
+      event_id: item.event_id,
+      received_at_ms: item.received_at_ms,
+      author_handle: handle,
+      action: "tweet",
+      text_clean: item.text,
+      canonical_url: item.url,
+      cashtags: ["UPEG"],
+      hashtags: [],
+      mentions: [],
+      social_event: {
+        is_signal_event: true,
+        summary_zh: item.text,
+        confidence: 0.82,
+        token_candidates: [{ symbol: "UPEG", target_id: TARGET_ID }],
+      },
+    })),
+    has_more: false,
+    next_cursor: null,
+  };
+}
+
+function macroData() {
+  return {
+    snapshot: {
+      snapshot_id: "macro-view:macro_regime_v2:e2e",
+      projection_version: "macro_regime_v2",
+      asof_date: "2026-05-20",
+      status: "partial",
+      regime: "funding_stress",
+      overall_score: 7.25,
+      computed_at_ms: NOW,
+    },
+    panels: {
+      liquidity: {
+        score: 9,
+        regime: "funding_stress",
+        evidence: ["sofr_iorb_spread_bps=15.0"],
+        data_gaps: [],
+      },
+      rates: {
+        score: 7,
+        regime: "term_premium_pressure",
+        evidence: ["10y=4.70"],
+        data_gaps: [],
+      },
+    },
+    indicators: {
+      sofr_iorb_spread_bps: {
+        label: "SOFR minus IORB",
+        value: 15,
+        unit: "bps",
+        observed_at: "2026-05-20",
+        sources: ["nyfed", "fred"],
+        series_keys: ["nyfed:SOFR", "fred:IORB"],
+      },
+    },
+    triggers: [{ code: "sofr_above_iorb", description: "SOFR is above IORB", value: 15 }],
+    data_gaps: ["missing:fred:SP500"],
+    source_coverage: {
+      observed_series_count: 10,
+      required_series_count: 10,
+      coverage_ratio: 1,
+      latest_observed_at: "2026-05-20",
+    },
+    features: {
+      "fred:DGS10": {
+        latest: { value: 4.7, observed_at: "2026-05-20", unit: "percent" },
+        freshness_days: 1,
+        delta: { "5d": 0.1, "20d": 0.35, "60d": null },
+        zscore: { lookback: 252, value: 1.4 },
+        percentile: { lookback: 252, value: 0.82 },
+        data_gaps: [],
+      },
+    },
+    chain: {
+      liquidity: {
+        score: 8,
+        regime: "funding_stress",
+        evidence: ["sofr_iorb_spread_bps=15.0"],
+        data_gaps: [],
+      },
+      fed_corridor: {
+        score: 7,
+        regime: "corridor_pressure",
+        evidence: ["sofr_iorb_spread_bps=15.0"],
+        data_gaps: [],
+      },
+    },
+    scenario: {
+      current_regime: "funding_stress",
+      confidence: 0.72,
+      time_window: "1w",
+      confirmations: [
+        {
+          code: "sofr_above_iorb",
+          description: "SOFR is above IORB",
+          indicator_keys: ["sofr_iorb_spread_bps"],
+          value: 15,
+        },
+      ],
+      contradictions: [{ code: "volatility_carry", node: "volatility" }],
+      watch_triggers: [
+        {
+          code: "repo_pressure_persists_3d",
+          description: "SOFR remains above IORB across multiple observations.",
+        },
+      ],
+      invalidations: [
+        {
+          code: "sofr_iorb_normalizes",
+          description: "SOFR trades back below or in line with IORB.",
+        },
+      ],
+      trade_map: [
+        {
+          expression: "risk_down_credit_sensitive",
+          time_window: "1w",
+          confirms_on: ["sofr_above_iorb"],
+          invalidates_on: ["sofr_iorb_normalizes"],
+        },
+      ],
+    },
+    scorecard: {
+      projection_version: "macro_regime_v2",
+      modules: {
+        liquidity: { score: 9, regime: "funding_stress", evidence: [], data_gaps: [] },
+      },
+    },
+  };
+}
+
+function opsDiagnosticsData() {
+  return {
+    schema_version: "ops_diagnostics_v1",
+    generated_at_ms: NOW,
+    overall: { status: "ok", severity: "info", reasons: [], section_status_counts: { ok: 4 } },
+    config: { status: "ok", config_path: "~/.gmgn-twitter-intel/config.yaml" },
+    database: { status: "ok", latency_ms: 4 },
+    collector: { status: "ok", frames_received: 88, matched_twitter_events: 7 },
+    providers: [
+      {
+        provider: "gmgn",
+        domain: "social",
+        configured: true,
+        capabilities: ["websocket"],
+        state: "connected",
+        status: "ok",
+        reason: null,
+      },
+    ],
+    workers: [
+      {
+        name: "collector",
+        group: "ingest",
+        enabled: true,
+        running: true,
+        queue_depth: 0,
+        status: "ok",
+        reason: null,
+      },
+    ],
+    queues: [
+      {
+        queue_name: "asset_profile_refresh",
+        table: "asset_profile_refresh_jobs",
+        worker_name: "asset_profile_refresh",
+        counts_by_status: { due: 0, running: 0, failed: 0, dead: 0 },
+        due_count: 0,
+        running_count: 0,
+        failed_count: 0,
+        dead_count: 0,
+        status: "ok",
+        reason: null,
+      },
+    ],
+    agent_execution: { status: "ok", lanes: {} },
+    domains: { token_intel: { status: "ok", reason: "ready", due_jobs: 0 } },
+    suggested_checks: [],
+  };
+}
+
+function opsQueueData(path: string) {
+  const queueName = decodeURIComponent(path.split("/").pop() ?? "asset_profile_refresh");
+  const summary = {
+    queue_name: queueName,
+    table: `${queueName}_jobs`,
+    worker_name: queueName,
+    counts_by_status: { due: 1, running: 0, failed: 0, dead: 0 },
+    due_count: 1,
+    running_count: 0,
+    failed_count: 0,
+    dead_count: 0,
+    oldest_due_age_ms: 12_000,
+    status: "ok",
+    reason: null,
+  };
+  return {
+    schema_version: "ops_queue_v1",
+    queue_name: queueName,
+    status_filter: null,
+    counts_by_status: summary.counts_by_status,
+    summary,
+    items: [
+      {
+        id: "job-e2e-1",
+        status: "due",
+        attempt_count: 0,
+        max_attempts: 3,
+        created_at_ms: NOW - 60_000,
+        updated_at_ms: NOW - 30_000,
+        next_run_at_ms: NOW,
+        last_error_type: null,
+        last_error_preview: null,
+        source: { target_id: TARGET_ID },
+      },
+    ],
   };
 }

@@ -134,3 +134,78 @@
     display: none;
   }
 }
+
+@media (max-width: 767px) {
+  .stocks-radar-panel {
+    min-height: 0;
+    overflow-x: hidden;
+  }
+
+  .stocks-radar-toolbar .stocks-health {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .stocks-radar-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .stocks-radar-controls .segmented {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stocks-radar-controls .scope-toggle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stocks-radar-controls .segmented button {
+    min-width: 0;
+    padding: 0 6px;
+  }
+
+  .stocks-radar-table,
+  .stock-radar-row {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .stock-radar-head {
+    display: none;
+  }
+
+  .stock-radar-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .stock-radar-row > * {
+    min-width: 0;
+  }
+
+  .stock-token-cell,
+  .stock-mentions-cell,
+  .stock-price-cell,
+  .stock-move-cell,
+  .stock-quote-cell {
+    grid-column: 1;
+  }
+
+  .stock-mentions-cell,
+  .stock-price-cell,
+  .stock-move-cell,
+  .stock-quote-cell {
+    min-height: 42px;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.018);
+    padding: 7px;
+  }
+}

@@ -85,7 +85,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
   const token = session.token;
   const tokenItems = liveRadar.tokenItems;
   const stockItemsCount =
-    stocksRadarQuery.data?.health?.returned_count ?? stocksRadarQuery.data?.rows.length ?? 0;
+    stocksRadarQuery.data?.health?.returned_count ?? stocksRadarQuery.data?.rows?.length ?? 0;
   const newsRows = newsRowsQuery.data?.items ?? EMPTY_NEWS_ROWS;
   const newsItemsHasMore = Boolean(newsRowsQuery.data?.next_cursor);
   const windowKey = liveRoute.window;
