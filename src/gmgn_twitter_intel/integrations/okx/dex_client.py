@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from gmgn_twitter_intel.integrations.okx.cex_client import OkxClientError, _items_from_response, _rows_from_response
+from gmgn_twitter_intel.integrations.okx.http_utils import OkxClientError, items_from_response, rows_from_response
 from gmgn_twitter_intel.integrations.okx.models import OkxCandle, OkxDexTokenCandidate, OkxDexTokenPrice
 
 EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$", re.IGNORECASE)
@@ -98,7 +98,7 @@ class OkxDexClient:
         request = self._client.build_request("GET", path, params={key: value for key, value in params.items() if value})
         self._sign_request(request, body="")
         response = self._client.send(request)
-        return _items_from_response(response, endpoint=path)
+        return items_from_response(response, endpoint=path)
 
     def _post(self, path: str, *, body: list[dict[str, str]]) -> list[dict[str, Any]]:
         raw_body = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
@@ -110,7 +110,7 @@ class OkxDexClient:
         )
         self._sign_request(request, body=raw_body)
         response = self._client.send(request)
-        return _rows_from_response(response, endpoint=path)
+        return rows_from_response(response, endpoint=path)
 
     def _sign_request(self, request: httpx.Request, *, body: str) -> None:
         if not self.api_key or not self.secret_key or not self.passphrase:

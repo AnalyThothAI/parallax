@@ -62,7 +62,7 @@ def test_capture_for_event_does_not_call_provider_when_no_fresh_tick() -> None:
     dex_provider = RaisingDexQuoteProvider()
     cex_provider = RaisingCexMarketProvider()
     service = EventMarketCaptureService(
-        providers=AssetMarketProviders(dex_quote_market=dex_provider, message_cex_market=cex_provider),
+        providers=AssetMarketProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         now_ms=lambda: NOW_MS,
     )
     lookup = RecordingTickLookup(row=None)
@@ -127,7 +127,7 @@ def test_capture_backfill_quote_dispatches_chain_token_to_dex_provider() -> None
 def test_capture_backfill_quote_dispatches_cex_symbol_to_cex_provider() -> None:
     provider = RecordingCexMarketProvider(
         CexTicker(
-            inst_id="BTC-USDT",
+            inst_id="BTCUSDT",
             inst_type="SPOT",
             last_price=70_000.25,
             volume_24h=None,
@@ -136,7 +136,7 @@ def test_capture_backfill_quote_dispatches_cex_symbol_to_cex_provider() -> None:
         )
     )
     service = EventMarketCaptureService(
-        providers=AssetMarketProviders(message_cex_market=provider),
+        providers=AssetMarketProviders(cex_market=provider),
         now_ms=lambda: NOW_MS,
     )
 
@@ -146,14 +146,14 @@ def test_capture_backfill_quote_dispatches_cex_symbol_to_cex_provider() -> None:
         resolution_id="resolution-2",
         resolution={
             "target_type": "cex_symbol",
-            "target_id": "OKX:BTC-USDT",
+            "target_id": "OKX:BTCUSDT",
             "exchange": "OKX",
-            "instrument": "BTC-USDT",
+            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
 
-    assert provider.calls == ["BTC-USDT"]
+    assert provider.calls == ["BTCUSDT"]
     assert result.tick is not None
     assert result.tick.source_tier == "tier3_inline"
     assert result.capture.capture_method == "tier3_inline"
@@ -317,16 +317,16 @@ def test_inline_dex_quote_parses_chain_and_address_from_target_id(
 def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
     provider = RecordingCexMarketProvider(
         CexTicker(
-            inst_id="BTC-USDT",
+            inst_id="BTCUSDT",
             inst_type="SPOT",
             last_price=70_000.25,
             volume_24h=1_250_000.5,
             open_interest=None,
-            raw={"instId": "BTC-USDT", "ts": str(EVENT_MS + 50), "openInterestUsd": "9100000"},
+            raw={"instId": "BTCUSDT", "ts": str(EVENT_MS + 50), "openInterestUsd": "9100000"},
         )
     )
     service = EventMarketCaptureService(
-        providers=AssetMarketProviders(message_cex_market=provider),
+        providers=AssetMarketProviders(cex_market=provider),
         now_ms=lambda: NOW_MS,
     )
 
@@ -336,36 +336,36 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
         resolution_id="resolution-2",
         resolution={
             "target_type": "cex_symbol",
-            "target_id": "OKX:BTC-USDT",
+            "target_id": "OKX:BTCUSDT",
             "exchange": "OKX",
-            "instrument": "BTC-USDT",
+            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
 
-    assert provider.calls == ["BTC-USDT"]
+    assert provider.calls == ["BTCUSDT"]
     assert result.tick is not None
     assert result.tick.tick_id == market_tick_id(
         target_type="cex_symbol",
-        target_id="OKX:BTC-USDT",
-        source_provider="okx_cex_rest",
+        target_id="OKX:BTCUSDT",
+        source_provider="binance_cex_rest",
         observed_at_ms=EVENT_MS + 50,
     )
     assert result.tick.target_type == "cex_symbol"
-    assert result.tick.target_id == "OKX:BTC-USDT"
+    assert result.tick.target_id == "OKX:BTCUSDT"
     assert result.tick.chain is None
     assert result.tick.token_address is None
     assert result.tick.exchange == "OKX"
-    assert result.tick.instrument == "BTC-USDT"
+    assert result.tick.instrument == "BTCUSDT"
     assert result.tick.source_tier == "tier3_inline"
-    assert result.tick.source_provider == "okx_cex_rest"
+    assert result.tick.source_provider == "binance_cex_rest"
     assert result.tick.observed_at_ms == EVENT_MS + 50
     assert result.tick.received_at_ms == NOW_MS
     assert result.tick.price_usd == Decimal("70000.25")
     assert result.tick.volume_24h_usd == Decimal("1250000.5")
     assert result.tick.open_interest_usd == Decimal("9100000")
     assert result.tick.raw_payload_json == {
-        "instId": "BTC-USDT",
+        "instId": "BTCUSDT",
         "ts": str(EVENT_MS + 50),
         "openInterestUsd": "9100000",
     }
@@ -377,7 +377,7 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
 def test_inline_cex_ticker_parses_exchange_and_instrument_from_target_id() -> None:
     provider = RecordingCexMarketProvider(
         CexTicker(
-            inst_id="PEPE-USDT",
+            inst_id="PEPEUSDT",
             inst_type="SPOT",
             last_price=0.0000123,
             volume_24h=None,
@@ -387,20 +387,20 @@ def test_inline_cex_ticker_parses_exchange_and_instrument_from_target_id() -> No
     )
 
     result = EventMarketCaptureService(
-        providers=AssetMarketProviders(message_cex_market=provider),
+        providers=AssetMarketProviders(cex_market=provider),
         now_ms=lambda: NOW_MS,
     ).capture_backfill_quote(
         event_id="event-1",
         intent_id="intent-1",
         resolution_id="resolution-1",
-        resolution={"target_type": "cex_symbol", "target_id": "okx:PEPE-USDT"},
+        resolution={"target_type": "cex_symbol", "target_id": "binance:PEPEUSDT"},
         event_ms=EVENT_MS,
     )
 
-    assert provider.calls == ["PEPE-USDT"]
+    assert provider.calls == ["PEPEUSDT"]
     assert result.tick is not None
-    assert result.tick.exchange == "okx"
-    assert result.tick.instrument == "PEPE-USDT"
+    assert result.tick.exchange == "binance"
+    assert result.tick.instrument == "PEPEUSDT"
 
 
 def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
@@ -538,9 +538,9 @@ def test_inline_dex_invalid_optional_market_fields_do_not_block_tick() -> None:
 def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
     result = EventMarketCaptureService(
         providers=AssetMarketProviders(
-            message_cex_market=RecordingCexMarketProvider(
+            cex_market=RecordingCexMarketProvider(
                 CexTicker(
-                    inst_id="BTC-USDT",
+                    inst_id="BTCUSDT",
                     inst_type="SPOT",
                     last_price=last_price,
                     volume_24h=None,
@@ -556,9 +556,9 @@ def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
         resolution_id="resolution-1",
         resolution={
             "target_type": "cex_symbol",
-            "target_id": "OKX:BTC-USDT",
+            "target_id": "OKX:BTCUSDT",
             "exchange": "OKX",
-            "instrument": "BTC-USDT",
+            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
@@ -571,9 +571,9 @@ def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
 def test_inline_cex_invalid_optional_volume_does_not_block_tick() -> None:
     result = EventMarketCaptureService(
         providers=AssetMarketProviders(
-            message_cex_market=RecordingCexMarketProvider(
+            cex_market=RecordingCexMarketProvider(
                 CexTicker(
-                    inst_id="BTC-USDT",
+                    inst_id="BTCUSDT",
                     inst_type="SPOT",
                     last_price=70_000.25,
                     volume_24h="not-a-number",
@@ -589,9 +589,9 @@ def test_inline_cex_invalid_optional_volume_does_not_block_tick() -> None:
         resolution_id="resolution-1",
         resolution={
             "target_type": "cex_symbol",
-            "target_id": "OKX:BTC-USDT",
+            "target_id": "OKX:BTCUSDT",
             "exchange": "OKX",
-            "instrument": "BTC-USDT",
+            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
@@ -741,7 +741,7 @@ def _market_tick_row(*, observed_at_ms: int, source_tier: str) -> dict[str, Any]
         "instrument": None,
         "pricefeed_id": None,
         "source_tier": source_tier,
-        "source_provider": "okx_dex_ws",
+        "source_provider": "binance_dex_ws",
         "observed_at_ms": observed_at_ms,
         "received_at_ms": observed_at_ms + 10,
         "price_usd": Decimal("1.11"),

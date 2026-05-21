@@ -258,8 +258,10 @@ class RegistryRepository:
                 WHERE pricefeed_id = %s
                   AND subject_type = 'CexToken'
                   AND subject_id = %s
-                  AND feed_type LIKE 'cex_%%'
-                  AND status IN ('candidate', 'canonical')
+                  AND provider = 'binance'
+                  AND feed_type = 'cex_swap'
+                  AND quote_symbol = 'USDT'
+                  AND status = 'canonical'
                 """,
                 (pricefeed_id, cex_token_id),
             ).fetchone()
@@ -271,20 +273,11 @@ class RegistryRepository:
             FROM price_feeds
             WHERE subject_type = 'CexToken'
               AND subject_id = %s
-              AND feed_type LIKE 'cex_%%'
-              AND status IN ('candidate', 'canonical')
+              AND provider = 'binance'
+              AND feed_type = 'cex_swap'
+              AND quote_symbol = 'USDT'
+              AND status = 'canonical'
             ORDER BY
-              CASE
-                WHEN feed_type = 'cex_spot' THEN 0
-                WHEN feed_type = 'cex_swap' THEN 1
-                ELSE 2
-              END,
-              CASE
-                WHEN quote_symbol = 'USDT' THEN 0
-                WHEN quote_symbol = 'USD' THEN 1
-                WHEN quote_symbol = 'USDC' THEN 2
-                ELSE 9
-              END,
               updated_at_ms DESC,
               native_market_id ASC
             LIMIT 1
@@ -472,7 +465,7 @@ class RegistryRepository:
                 NULL::text AS address,
                 COALESCE(selected_pricefeed.native_market_id, preferred_pricefeed.native_market_id) AS native_market_id,
                 COALESCE(selected_pricefeed.quote_symbol, preferred_pricefeed.quote_symbol) AS quote_symbol,
-                COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider, 'okx') AS provider,
+                COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider) AS provider,
                 active_targets.computed_at_ms,
                 active_targets.source_max_received_at_ms,
                 active_targets.rank_score,
@@ -483,25 +476,20 @@ class RegistryRepository:
                 ON selected_pricefeed.pricefeed_id = active_targets.pricefeed_id
                AND selected_pricefeed.subject_type = 'CexToken'
                AND selected_pricefeed.subject_id = active_targets.target_id
+               AND selected_pricefeed.provider = 'binance'
+               AND selected_pricefeed.feed_type = 'cex_swap'
+               AND selected_pricefeed.quote_symbol = 'USDT'
+               AND selected_pricefeed.status = 'canonical'
               LEFT JOIN LATERAL (
                 SELECT *
                 FROM price_feeds
                 WHERE price_feeds.subject_type = 'CexToken'
                   AND price_feeds.subject_id = active_targets.target_id
-                  AND price_feeds.feed_type LIKE 'cex_%%'
-                  AND price_feeds.status IN ('candidate', 'canonical')
+                  AND price_feeds.provider = 'binance'
+                  AND price_feeds.feed_type = 'cex_swap'
+                  AND price_feeds.quote_symbol = 'USDT'
+                  AND price_feeds.status = 'canonical'
                 ORDER BY
-                  CASE
-                    WHEN price_feeds.feed_type = 'cex_spot' THEN 0
-                    WHEN price_feeds.feed_type = 'cex_swap' THEN 1
-                    ELSE 2
-                  END,
-                  CASE
-                    WHEN price_feeds.quote_symbol = 'USDT' THEN 0
-                    WHEN price_feeds.quote_symbol = 'USD' THEN 1
-                    WHEN price_feeds.quote_symbol = 'USDC' THEN 2
-                    ELSE 9
-                  END,
                   price_feeds.updated_at_ms DESC,
                   price_feeds.native_market_id ASC
                 LIMIT 1
@@ -541,13 +529,87 @@ class RegistryRepository:
             """
             SELECT *
             FROM price_feeds
-            WHERE provider = %s AND native_market_id = %s AND feed_type LIKE 'cex_%%'
+            WHERE provider = 'binance'
+              AND %s = 'binance'
+              AND native_market_id = %s
+              AND feed_type = 'cex_swap'
+              AND quote_symbol = 'USDT'
+              AND status = 'canonical'
             ORDER BY updated_at_ms DESC
             LIMIT 1
             """,
             (exchange.strip().lower(), native_market_id.strip().upper()),
         ).fetchone()
         return dict(row) if row else None
+
+    def binance_usdt_perp_sync_plan_counts(
+        self,
+        *,
+        base_symbols: list[str],
+        native_market_ids: list[str],
+    ) -> dict[str, int]:
+        normalized_symbols = sorted({_symbol(symbol) for symbol in base_symbols if _symbol(symbol)})
+        normalized_token_ids = [f"cex_token:{symbol}" for symbol in normalized_symbols]
+        normalized_market_ids = sorted({str(market_id or "").strip().upper() for market_id in native_market_ids})
+        row = self.conn.execute(
+            """
+            SELECT
+              (
+                SELECT COUNT(*)::bigint
+                FROM unnest(%s::text[]) AS route_token(cex_token_id)
+                WHERE NOT EXISTS (
+                  SELECT 1
+                  FROM cex_tokens
+                  WHERE cex_tokens.cex_token_id = route_token.cex_token_id
+                )
+              ) AS cex_tokens_to_insert,
+              (
+                SELECT COUNT(*)::bigint
+                FROM cex_tokens
+                WHERE NOT (cex_tokens.cex_token_id = ANY(%s::text[]))
+              ) AS cex_tokens_to_delete,
+              (
+                SELECT COUNT(*)::bigint
+                FROM unnest(%s::text[]) AS route_market(native_market_id)
+                WHERE NOT EXISTS (
+                  SELECT 1
+                  FROM price_feeds
+                  WHERE price_feeds.provider = 'binance'
+                    AND price_feeds.feed_type = 'cex_swap'
+                    AND price_feeds.quote_symbol = 'USDT'
+                    AND price_feeds.status = 'canonical'
+                    AND price_feeds.native_market_id = route_market.native_market_id
+                )
+              ) AS pricefeeds_to_insert,
+              (
+                (
+                  SELECT COUNT(*)::bigint
+                  FROM price_feeds
+                  WHERE provider = 'okx'
+                    AND left(feed_type, 4) = 'cex_'
+                )
+                + (
+                  SELECT COUNT(*)::bigint
+                  FROM market_ticks
+                  WHERE target_type = 'cex_symbol'
+                    AND (target_id LIKE 'okx:%%' OR source_provider = 'okx_cex_rest')
+                )
+                + (
+                  SELECT COUNT(*)::bigint
+                  FROM token_capture_tier
+                  WHERE target_type = 'cex_symbol'
+                    AND target_id LIKE 'okx:%%'
+                )
+              ) AS old_okx_cex_rows_to_delete
+            """,
+            (normalized_token_ids, normalized_token_ids, normalized_market_ids),
+        ).fetchone()
+        return {
+            "cex_tokens_to_insert": int(row["cex_tokens_to_insert"] or 0) if row else 0,
+            "cex_tokens_to_delete": int(row["cex_tokens_to_delete"] or 0) if row else 0,
+            "pricefeeds_to_insert": int(row["pricefeeds_to_insert"] or 0) if row else 0,
+            "old_okx_cex_rows_to_delete": int(row["old_okx_cex_rows_to_delete"] or 0) if row else 0,
+        }
 
     def find_preferred_cex_pricefeed(self, base_symbol: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -556,20 +618,11 @@ class RegistryRepository:
             FROM price_feeds
             WHERE subject_type = 'CexToken'
               AND base_symbol = %s
-              AND feed_type LIKE 'cex_%%'
-              AND status IN ('candidate', 'canonical')
+              AND provider = 'binance'
+              AND feed_type = 'cex_swap'
+              AND quote_symbol = 'USDT'
+              AND status = 'canonical'
             ORDER BY
-              CASE
-                WHEN feed_type = 'cex_spot' THEN 0
-                WHEN feed_type = 'cex_swap' THEN 1
-                ELSE 2
-              END,
-              CASE
-                WHEN quote_symbol = 'USDT' THEN 0
-                WHEN quote_symbol = 'USD' THEN 1
-                WHEN quote_symbol = 'USDC' THEN 2
-                ELSE 9
-              END,
               updated_at_ms DESC,
               native_market_id ASC
             LIMIT 1

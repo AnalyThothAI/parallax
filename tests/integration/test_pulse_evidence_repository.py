@@ -119,8 +119,8 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
               first_seen_at_ms, updated_at_ms
             )
             VALUES (
-              'pricefeed:cex:okx:swap:NVDA-USDT-SWAP', 'swap', 'okx', 'CexToken', 'cex_token:NVDA',
-              'NVDA-USDT-SWAP', 'NVDA', 'USDT', 'canonical', 'provider_exact',
+              'pricefeed:cex:binance:swap:NVDAUSDT', 'swap', 'binance', 'CexToken', 'cex_token:NVDA',
+              'NVDAUSDT', 'NVDA', 'USDT', 'canonical', 'provider_exact',
               1800000000000, 1800000000001
             )
             """,
@@ -134,8 +134,8 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
               raw_payload_json, created_at_ms
             )
             VALUES (
-              'tick-cex-1', 'cex_symbol', 'okx:NVDA-USDT-SWAP', NULL, NULL, 'okx', 'NVDA-USDT-SWAP',
-              'pricefeed:cex:okx:swap:NVDA-USDT-SWAP', 'tier2_poll', 'okx_cex_rest',
+              'tick-cex-1', 'cex_symbol', 'binance:NVDAUSDT', NULL, NULL, 'binance', 'NVDAUSDT',
+              'pricefeed:cex:binance:swap:NVDAUSDT', 'tier2_poll', 'binance_cex_rest',
               1800000000000, 1800000000001, 228.44, NULL, 46036.11, 3200000, NULL, NULL,
               '{}'::jsonb, 1800000000001
             )
@@ -150,7 +150,7 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
                     "decision_latest": {
                         "target_type": "CexToken",
                         "target_id": "cex_token:NVDA",
-                        "pricefeed_id": "pricefeed:cex:okx:swap:NVDA-USDT-SWAP",
+                        "pricefeed_id": "pricefeed:cex:binance:swap:NVDAUSDT",
                     }
                 }
             },
@@ -163,7 +163,7 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
     assert rows
     assert rows[0]["route"] == "cex"
     assert rows[0]["target_market_type"] == "cex"
-    assert rows[0]["instrument_ref"] == "pricefeed:cex:okx:swap:NVDA-USDT-SWAP"
+    assert rows[0]["instrument_ref"] == "pricefeed:cex:binance:swap:NVDAUSDT"
     assert float(rows[0]["price_usd"]) == 228.44
     assert float(rows[0]["open_interest_usd"]) == 3_200_000
 
@@ -406,11 +406,11 @@ def _packet(*, run_id: str, candidate_id: str, packet_id: str) -> PulseEvidenceP
             "route": "cex",
             "target_market_type": "cex",
             "price_usd": 600.0,
-            "venue_ref": "okx",
+            "venue_ref": "binance",
             "instrument_ref": "pf-1",
             "observed_at_ms": 1_800_000_000_000,
             "freshness_status": "fresh",
-            "source_provider": "okx_cex_rest",
+            "source_provider": "binance_cex_rest",
             "pricefeed_id": "pf-1",
         },
         identity_evidence={

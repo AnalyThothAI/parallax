@@ -21,7 +21,7 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
     repos = FakeRepos(
         [
             asset_target("asset-mid", chain_id="sol", address="mid", score=Decimal("7")),
-            cex_target("cex-eth", provider="okx", native_market_id="ETH-USDT", score=Decimal("12")),
+            cex_target("cex-eth", provider="binance", native_market_id="ETHUSDT", score=Decimal("12")),
             asset_target("asset-hot", chain_id="sol", address="hot", score=Decimal("20")),
         ]
     )
@@ -41,7 +41,7 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
     assert repos.token_capture_tiers.upserts == [
         tier("chain_token", "sol:hot", 1, "ws_subscribed", "20"),
         tier("chain_token", "sol:mid", 1, "ws_subscribed", "7"),
-        tier("cex_symbol", "okx:ETH-USDT", 2, "batch_poll", "12"),
+        tier("cex_symbol", "binance:ETHUSDT", 2, "batch_poll", "12"),
     ]
     assert repos.conn.commit_count == 1
 
@@ -49,7 +49,7 @@ def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
 def test_project_once_never_assigns_cex_symbol_to_tier1_ws_even_when_hottest() -> None:
     repos = FakeRepos(
         [
-            cex_target("cex-btc", provider="okx", native_market_id="BTC-USDT", score=Decimal("999")),
+            cex_target("cex-btc", provider="binance", native_market_id="BTCUSDT", score=Decimal("999")),
             asset_target(
                 "asset-sol",
                 chain_id="solana",
@@ -73,7 +73,7 @@ def test_project_once_never_assigns_cex_symbol_to_tier1_ws_even_when_hottest() -
         ),
         tier(
             "cex_symbol",
-            "okx:BTC-USDT",
+            "binance:BTCUSDT",
             2,
             "batch_poll",
             "999",
@@ -94,7 +94,7 @@ def test_project_once_demotes_old_hot_rows_absent_from_current_projection() -> N
             },
             {
                 "target_type": "cex_symbol",
-                "target_id": "okx:OLD-USDT",
+                "target_id": "binance:OLDUSDT",
                 "tier": 2,
                 "reason": "batch_poll",
             },
@@ -113,7 +113,7 @@ def test_project_once_demotes_old_hot_rows_absent_from_current_projection() -> N
     ]
     assert repos.token_capture_tiers.demoted == [
         ("chain_token", "solana:oldhot"),
-        ("cex_symbol", "okx:OLD-USDT"),
+        ("cex_symbol", "binance:OLDUSDT"),
     ]
 
 
@@ -196,7 +196,7 @@ def test_worker_run_once_returns_worker_result_processed_count() -> None:
         FakeRepos(
             [
                 asset_target("asset-hot", chain_id="sol", address="hot", score=3),
-                cex_target("cex-eth", provider="okx", native_market_id="ETH-USDT", score=2),
+                cex_target("cex-eth", provider="binance", native_market_id="ETHUSDT", score=2),
             ]
         )
     )

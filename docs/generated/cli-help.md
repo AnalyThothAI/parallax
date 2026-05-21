@@ -53,10 +53,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-okx-cex-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -76,10 +76,13 @@ positional arguments:
     validate-projections
                         validate projection read models against PostgreSQL
                         facts
-    sync-okx-cex-universe
-                        sync OKX public CEX instruments
+    sync-binance-usdt-perp-universe
+                        sync Binance USD-M USDT perpetual contracts into the
+                        CEX registry
     sync-binance-cex-profiles
                         sync Binance CEX token profiles
+    cex-binance-hard-cut-cleanup
+                        clean old OKX CEX rows after Binance CEX registry sync
     sync-us-equity-symbols
                         sync Nasdaq Trader US equity symbols
     sync-gmgn-directory

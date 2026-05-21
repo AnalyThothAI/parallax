@@ -17,6 +17,10 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
+from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_derivative_series_repository import (
+    CexDerivativeSeriesRepository,
+)
+from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repository import CexOiRadarRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
@@ -92,6 +96,8 @@ class RepositorySession:
     narratives: NarrativeRepository
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
+    cex_derivative_series: CexDerivativeSeriesRepository
+    cex_oi_radar: CexOiRadarRepository
 
     def unit_of_work(self):
         return transaction(self.conn)
@@ -136,6 +142,8 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         narratives=NarrativeRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
+        cex_derivative_series=CexDerivativeSeriesRepository(conn),
+        cex_oi_radar=CexOiRadarRepository(conn),
     )
 
 

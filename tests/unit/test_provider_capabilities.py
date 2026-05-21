@@ -17,7 +17,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
     gmgn = FakeGmgnProvider()
     binance = FakeBinanceProvider()
 
-    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: cex)
+    monkeypatch.setattr(binance_wiring, "binance_usdm_futures_market", lambda settings: cex)
     monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: discovery)
     monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: quote)
     monkeypatch.setattr(okx_wiring, "okx_dex_ws_market", lambda settings: stream)
@@ -29,8 +29,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
             ws_token="secret",
             gmgn={"api_key": "gmgn-key"},
             providers={
-                "okx": {
-                    "cex_sync_enabled": True,
+            "okx": {
                     "dex_api_key": "okx-key",
                     "dex_secret_key": "okx-secret",
                     "dex_passphrase": "okx-pass",
@@ -40,8 +39,9 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
         start_collector=True,
     ).asset_market
 
-    assert providers.sync_cex_market is cex
-    assert providers.message_cex_market is cex
+    assert providers.cex_market is cex
+    assert not hasattr(providers, "sync_cex_market")
+    assert not hasattr(providers, "message_cex_market")
     assert providers.dex_discovery_market is not None
     assert isinstance(providers.dex_quote_market, asset_market_wiring.FallbackDexQuoteProvider)
     assert providers.stream_dex_market is stream
@@ -50,7 +50,6 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
         provider="okx",
         capabilities=frozenset(
             {
-                MarketCapability.QUOTE_CEX,
                 MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.SEARCH_DEX,
                 MarketCapability.STREAM_DEX,
@@ -75,6 +74,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
             {
                 MarketCapability.PROFILE_CEX,
                 MarketCapability.PROFILE_DEX_EXACT,
+                MarketCapability.QUOTE_CEX,
             }
         ),
         configured=True,
@@ -82,13 +82,12 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
 
 
 def test_okx_stream_capability_comes_from_credentials_not_enabled_flag(monkeypatch) -> None:
-    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: object())
     monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: FakeDiscoveryProvider())
     monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: FakeQuoteProvider())
     monkeypatch.setattr(okx_wiring, "okx_dex_ws_market", lambda settings: FakeStreamProvider())
 
     providers = providers_wiring.wire_providers(
-        Settings(ws_token="secret", providers={"okx": {"cex_sync_enabled": False}}),
+        Settings(ws_token="secret"),
         start_collector=True,
     ).asset_market
 

@@ -17,14 +17,14 @@ def test_live_price_gateway_uses_market_ticks_without_upstream_price_providers()
             ("chain_token", "solana:abc"): _market_tick_row(
                 target_type="chain_token",
                 target_id="solana:abc",
-                source_provider="okx_dex_ws",
+                source_provider="binance_dex_ws",
                 price_usd="1.23",
             ),
         },
     )
     providers = SimpleNamespace(
         stream_dex_market=ExplodingStreamProvider(),
-        message_cex_market=ExplodingCexProvider(),
+        cex_market=ExplodingCexProvider(),
     )
     published: list[dict[str, Any]] = []
     gateway = LivePriceGateway(
@@ -41,11 +41,11 @@ def test_live_price_gateway_uses_market_ticks_without_upstream_price_providers()
     assert len(published) == 1
     assert published[0]["target_type"] == "chain_token"
     assert published[0]["target_id"] == "solana:abc"
-    assert published[0]["provider"] == "okx_dex_ws"
+    assert published[0]["provider"] == "binance_dex_ws"
     assert published[0]["market"]["decision_latest"]["price_usd"] == pytest.approx(1.23)
     # The gateway must never have touched the upstream providers
     assert providers.stream_dex_market.calls == []
-    assert providers.message_cex_market.calls == []
+    assert providers.cex_market.calls == []
 
 
 def test_live_price_gateway_publishes_cex_tick_with_quote_basis() -> None:
@@ -53,18 +53,19 @@ def test_live_price_gateway_publishes_cex_tick_with_quote_basis() -> None:
         active_targets=[
             _live_target(
                 "cex_symbol",
-                "okx:BTC-USDT-SWAP",
-                provider="okx",
-                native_market_id="BTC-USDT-SWAP",
+                "binance:BTCUSDT",
+                provider="binance",
+                native_market_id="BTCUSDT",
                 quote_symbol="USDT",
             )
         ],
         latest_ticks={
-            ("cex_symbol", "okx:BTC-USDT-SWAP"): _market_tick_row(
+            ("cex_symbol", "binance:BTCUSDT"): _market_tick_row(
                 target_type="cex_symbol",
-                target_id="okx:BTC-USDT-SWAP",
-                source_provider="okx_cex_rest",
+                target_id="binance:BTCUSDT",
+                source_provider="binance_cex_rest",
                 price_usd="65000.0",
+                open_interest_usd="123456789.0",
             ),
         },
     )
@@ -73,7 +74,7 @@ def test_live_price_gateway_publishes_cex_tick_with_quote_basis() -> None:
         pool_bundle=FakeDB(repos),
         providers=SimpleNamespace(
             stream_dex_market=ExplodingStreamProvider(),
-            message_cex_market=ExplodingCexProvider(),
+            cex_market=ExplodingCexProvider(),
         ),
         interval_seconds=0.01,
         projection_version="token_radar_v7",
@@ -85,7 +86,8 @@ def test_live_price_gateway_publishes_cex_tick_with_quote_basis() -> None:
 
     assert len(published) == 1
     assert published[0]["target_type"] == "cex_symbol"
-    assert published[0]["provider"] == "okx_cex_rest"
+    assert published[0]["provider"] == "binance_cex_rest"
+    assert published[0]["market"]["decision_latest"]["open_interest_usd"] == pytest.approx(123456789.0)
 
 
 def test_live_price_gateway_skips_targets_without_recent_tick() -> None:
@@ -98,7 +100,7 @@ def test_live_price_gateway_skips_targets_without_recent_tick() -> None:
         pool_bundle=FakeDB(repos),
         providers=SimpleNamespace(
             stream_dex_market=ExplodingStreamProvider(),
-            message_cex_market=ExplodingCexProvider(),
+            cex_market=ExplodingCexProvider(),
         ),
         interval_seconds=0.01,
         projection_version="token_radar_v7",
@@ -123,7 +125,7 @@ def test_live_price_gateway_publishes_every_live_frame_without_material_writes()
             ("chain_token", "solana:abc"): _market_tick_row(
                 target_type="chain_token",
                 target_id="solana:abc",
-                source_provider="okx_dex_ws",
+                source_provider="binance_dex_ws",
                 price_usd="1.0001",
             ),
         },
@@ -133,7 +135,7 @@ def test_live_price_gateway_publishes_every_live_frame_without_material_writes()
         pool_bundle=FakeDB(repos),
         providers=SimpleNamespace(
             stream_dex_market=ExplodingStreamProvider(),
-            message_cex_market=ExplodingCexProvider(),
+            cex_market=ExplodingCexProvider(),
         ),
         interval_seconds=0.1,
         projection_version="token-radar-v12-anchor-live-hard-cut",
@@ -178,6 +180,7 @@ def _market_tick_row(
     target_id: str,
     source_provider: str,
     price_usd: str,
+    open_interest_usd: str | None = None,
     observed_at_ms: int = 1_777_800_000_000,
     received_at_ms: int = 1_777_800_000_000,
 ) -> dict[str, Any]:
@@ -192,6 +195,7 @@ def _market_tick_row(
         "market_cap_usd": None,
         "liquidity_usd": None,
         "volume_24h_usd": None,
+        "open_interest_usd": Decimal(open_interest_usd) if open_interest_usd is not None else None,
         "holders": None,
         "pricefeed_id": None,
     }

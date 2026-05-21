@@ -77,9 +77,6 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                         "token_info_cache_ttl_seconds": settings.gmgn_token_info_cache_ttl_seconds,
                     },
                     "okx": {
-                        "cex_base_url": settings.okx_cex_base_url,
-                        "cex_sync_enabled": settings.okx_cex_sync_enabled,
-                        "cex_inst_types": list(settings.okx_cex_inst_types),
                         "dex_base_url": settings.okx_dex_base_url,
                         "dex_chain_indexes": list(settings.okx_dex_chain_indexes),
                         "dex_configured": settings.okx_dex_configured,
@@ -87,7 +84,10 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                     "binance": {
                         "enabled": settings.binance_enabled,
                         "web3_base_url": settings.binance_web3_base_url,
-                        "cex_base_url": settings.binance_cex_base_url,
+                        "cex_profile_base_url": settings.binance_cex_profile_base_url,
+                        "usdm_futures_base_url": settings.binance_usdm_futures_base_url,
+                        "cex_universe_quote_symbol": settings.binance_cex_universe_quote_symbol,
+                        "cex_universe_contract_type": settings.binance_cex_universe_contract_type,
                         "timeout_seconds": settings.binance_timeout_seconds,
                     },
                 },

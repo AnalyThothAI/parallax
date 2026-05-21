@@ -4,7 +4,10 @@ import re
 from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.provider_wiring import binance, gmgn, okx
-from gmgn_twitter_intel.app.runtime.provider_wiring.binance import BinanceWeb3DexProfileProvider
+from gmgn_twitter_intel.app.runtime.provider_wiring.binance import (
+    BinanceUsdmFuturesMarketProvider,
+    BinanceWeb3DexProfileProvider,
+)
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import AssetMarketProviders, OkxProviderBundle
 from gmgn_twitter_intel.domains.asset_market.providers import (
     DexProfileSource,
@@ -61,10 +64,12 @@ class FallbackDexQuoteProvider:
 
 def wire_asset_market(settings: Settings) -> AssetMarketProviders:
     okx_bundle: OkxProviderBundle | None = None
+    binance_cex_market: BinanceUsdmFuturesMarketProvider | None = None
     gmgn_dex_market: object | None = None
     binance_profile_market: BinanceWeb3DexProfileProvider | None = None
     try:
         okx_bundle = okx.wire_okx_provider_bundle(settings)
+        binance_cex_market = binance.binance_usdm_futures_market(settings) if settings.binance_enabled else None
         gmgn_dex_market = gmgn.gmgn_dex_market(settings) if settings.gmgn_configured else None
         binance_profile_market = binance.binance_web3_profile_market(settings) if settings.binance_enabled else None
         dex_profile_sources = _dex_profile_sources(
@@ -72,8 +77,7 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
             binance_profile_market=binance_profile_market,
         )
         return AssetMarketProviders(
-            sync_cex_market=okx_bundle.sync_cex_market,
-            message_cex_market=okx_bundle.message_cex_market,
+            cex_market=binance_cex_market,
             dex_discovery_market=okx_bundle.dex_discovery_market,
             dex_quote_market=_dex_quote_market(
                 primary=gmgn_dex_market,
@@ -92,8 +96,7 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
     except Exception as exc:
         _close_partial_providers(
             exc,
-            getattr(okx_bundle, "sync_cex_market", None),
-            getattr(okx_bundle, "message_cex_market", None),
+            binance_cex_market,
             getattr(okx_bundle, "dex_discovery_market", None),
             getattr(okx_bundle, "dex_quote_market", None),
             getattr(okx_bundle, "stream_dex_market", None),

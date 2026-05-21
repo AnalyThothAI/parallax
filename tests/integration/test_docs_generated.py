@@ -24,6 +24,8 @@ GENERATED_REPORTS = {
     "duplicate-token-audit.md",
     "duplicate-token-audit-applied.md",
     "frontend-test-ownership.md",
+    "pulse-1h-4h-research-committee-evaluation-2026-05-20.md",
+    "signal-pulse-agent-cost-guard-2026-05-21.md",
 }
 EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS
 HEADER_MARKER = "AUTO-GENERATED"

@@ -9,7 +9,6 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.bootstrap import _cleanup_provider_roots_sync, bootstrap
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
-from gmgn_twitter_intel.app.runtime.provider_wiring.okx import OkxCexMarketProvider
 from gmgn_twitter_intel.app.runtime.provider_wiring.openai import build_agent_execution_gateway
 from gmgn_twitter_intel.app.runtime.providers_wiring import wire_asset_market_providers, wire_providers
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
@@ -20,7 +19,11 @@ from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_rep
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
-from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
+from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
+from gmgn_twitter_intel.domains.asset_market.services.cex_binance_hard_cut_cleanup import (
+    CexBinanceHardCutAbort,
+    cleanup_cex_binance_hard_cut,
+)
 from gmgn_twitter_intel.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
@@ -49,8 +52,8 @@ from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation imp
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_retention import TokenRadarRetentionService
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
+from gmgn_twitter_intel.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
-from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.platform.config.settings import load_settings
 from gmgn_twitter_intel.platform.db.postgres_audit import ProjectionValidationAudit
 
@@ -213,18 +216,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             data = ProjectionValidationAudit(signals.conn).run(sample=args.sample)
             return (0 if data.get("ok") else 1), {"ok": bool(data.get("ok")), "data": data}
 
-        if args.ops_command == "sync-okx-cex-universe":
-            inst_types = args.inst_type or ["SPOT", "SWAP"]
-            client = OkxCexClient(
-                base_url=settings.okx_cex_base_url,
-                timeout_seconds=settings.okx_timeout_seconds,
+        if args.ops_command == "sync-binance-usdt-perp-universe":
+            client = BinanceUsdmFuturesClient(
+                base_url=settings.binance_usdm_futures_base_url,
+                timeout_seconds=settings.binance_timeout_seconds,
             )
             try:
-                data = sync_cex_routes(
+                data = sync_binance_usdt_perp_routes(
                     registry=repos.registry,
-                    cex_market=OkxCexMarketProvider(client),
-                    inst_types=inst_types,
+                    client=client,
                     observed_at_ms=_now_ms(),
+                    dry_run=bool(args.dry_run),
+                    execute=bool(args.execute),
                 )
             finally:
                 client.close()
@@ -232,7 +235,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
         if args.ops_command == "sync-binance-cex-profiles":
             client = BinanceCexProfileClient(
-                base_url=settings.binance_cex_base_url,
+                base_url=settings.binance_cex_profile_base_url,
                 timeout_seconds=settings.binance_timeout_seconds,
             )
             try:
@@ -243,6 +246,19 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 )
             finally:
                 client.close()
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "cex-binance-hard-cut-cleanup":
+            try:
+                data = cleanup_cex_binance_hard_cut(
+                    repos.registry,
+                    dry_run=bool(args.dry_run),
+                    execute=bool(args.execute),
+                    min_binance_feeds=int(args.min_binance_feeds),
+                    now_ms=_now_ms(),
+                )
+            except CexBinanceHardCutAbort as exc:
+                return 1, {"ok": False, "error": str(exc)}
             return 0, {"ok": True, "data": data}
 
         if args.ops_command == "sync-us-equity-symbols":
@@ -809,8 +825,7 @@ def _effective_worker_advisory_lock_key(worker: object) -> int:
 def _close_asset_market_providers(asset_market: object) -> None:
     seen: set[int] = set()
     for name in (
-        "sync_cex_market",
-        "message_cex_market",
+        "cex_market",
         "dex_discovery_market",
         "dex_quote_market",
         "dex_candle_market",

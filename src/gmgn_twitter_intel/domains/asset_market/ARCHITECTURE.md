@@ -40,11 +40,11 @@ type before any persistence call.
   not business facts.
 - `target_type` is `chain_token` or `cex_symbol`.
 - `target_id` is the deterministic market target key, such as
-  `solana:<address>` or `okx:<symbol>-USDT`.
+  `solana:<address>` or `binance:<symbol>USDT`.
 - `source_tier` records whether the sample came from Tier 1 stream,
   Tier 2 poll, or inline event capture.
 - `source_provider` records the concrete provider path, such as
-  `okx_dex_ws`, `okx_dex_rest`, or `okx_cex_rest`.
+  `okx_dex_ws`, `okx_dex_rest`, or `binance_cex_rest`.
 - Numeric market fields are optional except `price_usd`, which must be a
   positive finite decimal. CEX derivatives scalars such as
   `open_interest_usd` belong on the tick only when normalized as scalar market
@@ -85,8 +85,8 @@ god interface.
   provider could theoretically support. Keep health aligned with actual
   wiring.
 
-Concrete provider clients (OKX CEX, OKX DEX, OKX DEX WS, GMGN OpenAPI,
-GMGN direct WS, Marketlane) are wired in
+Concrete provider clients (Binance USD-M CEX, OKX DEX, OKX DEX WS,
+GMGN OpenAPI, GMGN direct WS, Marketlane) are wired in
 `app/runtime/providers_wiring.py`. Asset Market services and workers
 receive provider protocols by injection and may not import
 `integrations/*`.

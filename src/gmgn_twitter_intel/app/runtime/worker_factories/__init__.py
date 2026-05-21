@@ -118,6 +118,12 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
     from gmgn_twitter_intel.app.runtime.worker_factories.asset_market import (
         construct_asset_market_workers,
     )
+    from gmgn_twitter_intel.app.runtime.worker_factories.cex_market_intel import (
+        WORKER_KEYS as CEX_MARKET_INTEL_KEYS,
+    )
+    from gmgn_twitter_intel.app.runtime.worker_factories.cex_market_intel import (
+        construct_cex_market_intel_workers,
+    )
     from gmgn_twitter_intel.app.runtime.worker_factories.enrichment import (
         WORKER_KEYS as ENRICHMENT_KEYS,
     )
@@ -171,6 +177,7 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
         WorkerFactorySpec("ingestion.py", INGESTION_KEYS, construct_ingestion_workers),
         WorkerFactorySpec("token_intel.py", TOKEN_INTEL_KEYS, construct_token_intel_workers),
         WorkerFactorySpec("asset_market.py", ASSET_MARKET_KEYS, construct_asset_market_workers),
+        WorkerFactorySpec("cex_market_intel.py", CEX_MARKET_INTEL_KEYS, construct_cex_market_intel_workers),
         WorkerFactorySpec("narrative_intel.py", NARRATIVE_INTEL_KEYS, construct_narrative_intel_workers),
         WorkerFactorySpec("news_intel.py", NEWS_INTEL_KEYS, construct_news_intel_workers),
         WorkerFactorySpec("pulse.py", PULSE_KEYS, construct_pulse_workers),

@@ -252,7 +252,7 @@ def target_social_timeline(
 def _market_candles_service(runtime: object) -> MarketCandlesService:
     providers = getattr(getattr(runtime, "providers", None), "asset_market", None)
     return MarketCandlesService(
-        cex_market=getattr(providers, "message_cex_market", None),
+        cex_market=getattr(providers, "cex_market", None),
         dex_candle_market=getattr(providers, "dex_candle_market", None),
     )
 

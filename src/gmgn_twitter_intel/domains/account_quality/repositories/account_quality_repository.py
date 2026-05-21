@@ -282,20 +282,11 @@ class AccountQualityRepository:
                 WHERE tir.target_type = 'CexToken'
                   AND price_feeds.subject_type = 'CexToken'
                   AND price_feeds.subject_id = tir.target_id
-                  AND price_feeds.feed_type LIKE 'cex_%%'
-                  AND price_feeds.status IN ('candidate', 'canonical')
+                  AND price_feeds.provider = 'binance'
+                  AND price_feeds.feed_type = 'cex_swap'
+                  AND price_feeds.quote_symbol = 'USDT'
+                  AND price_feeds.status = 'canonical'
                 ORDER BY
-                  CASE
-                    WHEN price_feeds.feed_type = 'cex_spot' THEN 0
-                    WHEN price_feeds.feed_type = 'cex_swap' THEN 1
-                    ELSE 2
-                  END,
-                  CASE
-                    WHEN price_feeds.quote_symbol = 'USDT' THEN 0
-                    WHEN price_feeds.quote_symbol = 'USD' THEN 1
-                    WHEN price_feeds.quote_symbol = 'USDC' THEN 2
-                    ELSE 9
-                  END,
                   price_feeds.updated_at_ms DESC,
                   price_feeds.native_market_id ASC
                 LIMIT 1

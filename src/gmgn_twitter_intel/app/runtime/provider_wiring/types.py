@@ -27,8 +27,7 @@ class IngestionProviders:
 
 @dataclass(frozen=True, slots=True)
 class AssetMarketProviders:
-    sync_cex_market: CexMarketProvider | None = None
-    message_cex_market: CexMarketProvider | None = None
+    cex_market: CexMarketProvider | None = None
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
     dex_quote_market: DexTokenQuoteProvider | None = None
     dex_candle_market: object | None = None
@@ -40,8 +39,6 @@ class AssetMarketProviders:
 
 @dataclass(frozen=True, slots=True)
 class OkxProviderBundle:
-    sync_cex_market: CexMarketProvider | None
-    message_cex_market: CexMarketProvider | None
     dex_discovery_market: DexTokenDiscoveryProvider | None
     dex_quote_market: DexTokenQuoteProvider | None
     stream_dex_market: DexMarketStreamProvider | None

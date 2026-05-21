@@ -134,9 +134,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="validate projection read models against PostgreSQL facts",
     )
     validate_projections.add_argument("--sample", type=int, default=100)
-    sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
-    sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
+    sync_binance_universe = ops_subcommands.add_parser(
+        "sync-binance-usdt-perp-universe",
+        help="sync Binance USD-M USDT perpetual contracts into the CEX registry",
+    )
+    sync_binance_universe_mode = sync_binance_universe.add_mutually_exclusive_group(required=True)
+    sync_binance_universe_mode.add_argument("--dry-run", action="store_true")
+    sync_binance_universe_mode.add_argument("--execute", action="store_true")
     ops_subcommands.add_parser("sync-binance-cex-profiles", help="sync Binance CEX token profiles")
+    cex_binance_cleanup = ops_subcommands.add_parser(
+        "cex-binance-hard-cut-cleanup",
+        help="clean old OKX CEX rows after Binance CEX registry sync",
+    )
+    cex_binance_cleanup.add_argument("--min-binance-feeds", type=int, default=400)
+    cleanup_mode = cex_binance_cleanup.add_mutually_exclusive_group(required=True)
+    cleanup_mode.add_argument("--dry-run", action="store_true")
+    cleanup_mode.add_argument("--execute", action="store_true")
     ops_subcommands.add_parser("sync-us-equity-symbols", help="sync Nasdaq Trader US equity symbols")
     sync_gmgn_directory = ops_subcommands.add_parser(
         "sync-gmgn-directory",

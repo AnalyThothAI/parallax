@@ -19,7 +19,7 @@ def test_market_candles_service_enriches_cex_payload_with_ohlc_series():
 
     assert market_candles["price_series_type"] == "ohlc"
     assert market_candles["candle_status"] == "ready"
-    assert market_candles["candle_source"] == "okx_cex_candles"
+    assert market_candles["candle_source"] == "binance_cex_candles"
     assert market_candles["candle_bar"] == "1H"
     assert market_candles["candles"][0]["open"] == 0.000027
     assert market_candles["candles"][0]["high"] == 0.0000285

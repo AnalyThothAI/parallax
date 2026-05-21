@@ -115,6 +115,17 @@ class DeterministicTokenResolver:
         lookup_keys: list[str],
         decision_time_ms: int,
     ) -> DeterministicResolution:
+        if str(keys.exchange or "").strip().lower() != "binance":
+            return _resolution(
+                intent_id=intent_id,
+                event_id=event_id,
+                status="NIL",
+                target_type=None,
+                target_id=None,
+                reason_codes=["CEX_EXCHANGE_NOT_SUPPORTED"],
+                lookup_keys=lookup_keys,
+                decision_time_ms=decision_time_ms,
+            )
         row = self.registry.find_cex_pricefeed(
             exchange=str(keys.exchange),
             native_market_id=str(keys.cex_pricefeed_id),
@@ -240,22 +251,20 @@ class DeterministicTokenResolver:
         if cex_token:
             target_id = str(cex_token["cex_token_id"])
             pricefeed = self.registry.find_preferred_cex_pricefeed(symbol)
-            pricefeed_id = str(pricefeed["pricefeed_id"]) if pricefeed else None
-            candidate_ids = [target_id]
-            if pricefeed_id:
-                candidate_ids.insert(0, pricefeed_id)
-            return _resolution(
-                intent_id=intent_id,
-                event_id=event_id,
-                status="UNIQUE_BY_CONTEXT",
-                target_type="CexToken",
-                target_id=target_id,
-                pricefeed_id=pricefeed_id,
-                reason_codes=["CONFIRMED_CEX_TOKEN"],
-                lookup_keys=lookup_keys,
-                candidate_ids=candidate_ids,
-                decision_time_ms=decision_time_ms,
-            )
+            if pricefeed:
+                pricefeed_id = str(pricefeed["pricefeed_id"])
+                return _resolution(
+                    intent_id=intent_id,
+                    event_id=event_id,
+                    status="UNIQUE_BY_CONTEXT",
+                    target_type="CexToken",
+                    target_id=target_id,
+                    pricefeed_id=pricefeed_id,
+                    reason_codes=["CONFIRMED_CEX_TOKEN"],
+                    lookup_keys=lookup_keys,
+                    candidate_ids=[pricefeed_id, target_id],
+                    decision_time_ms=decision_time_ms,
+                )
         us_equity = self.registry.find_us_equity_symbol(symbol)
         if us_equity:
             target_id = str(us_equity["market_instrument_id"])

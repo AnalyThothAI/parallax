@@ -181,8 +181,8 @@ def test_radar_feature_builder_sets_cex_tradeability_features():
                 received_at_ms=now_ms - 60_000,
                 target_type="CexToken",
                 target_id="cex-token:BTC",
-                pricefeed_id="pricefeed:okx:BTC-USDT",
-                native_market_id="BTC-USDT",
+                pricefeed_id="pricefeed:binance:BTCUSDT",
+                native_market_id="BTCUSDT",
                 market_observed_at_ms=now_ms - 10_000,
                 market_volume_24h_usd=100_000_000,
                 market_open_interest_usd=25_000_000,
@@ -197,7 +197,7 @@ def test_radar_feature_builder_sets_cex_tradeability_features():
 
     assert features.tradeability["target_type"] == "CexToken"
     assert features.tradeability["identity_status"] == "resolved_cex"
-    assert features.tradeability["native_market_id"] == "BTC-USDT"
+    assert features.tradeability["native_market_id"] == "BTCUSDT"
     assert features.tradeability["volume_24h"] == 100_000_000
 
 

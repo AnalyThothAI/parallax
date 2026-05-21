@@ -311,7 +311,7 @@ def _runtime() -> SimpleNamespace:
     return SimpleNamespace(
         conn=conn,
         repositories=lambda: nullcontext(repos),
-        providers=SimpleNamespace(asset_market=SimpleNamespace(message_cex_market=None, dex_candle_market=None)),
+        providers=SimpleNamespace(asset_market=SimpleNamespace(cex_market=None, dex_candle_market=None)),
         workers={},
     )
 

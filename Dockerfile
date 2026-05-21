@@ -26,7 +26,7 @@ COPY web ./
 RUN npm run build
 
 
-FROM python:3.13-slim-bookworm
+FROM python:3.13-slim-bookworm AS python-deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -38,7 +38,7 @@ RUN set -eu; \
     printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries; \
     for attempt in 1 2 3 4 5; do \
         apt-get update \
-        && apt-get install -y --no-install-recommends git \
+        && apt-get install -y --no-install-recommends build-essential git \
         && rm -rf /var/lib/apt/lists/* \
         && exit 0; \
         rm -rf /var/lib/apt/lists/*; \
@@ -71,6 +71,16 @@ RUN --mount=type=secret,id=github_token \
         sleep "$((attempt * 5))"; \
     done; \
     exit 1
+
+
+FROM python:3.13-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY --from=python-deps /app /app
 
 ENV PATH="/app/.venv/bin:${PATH}"
 

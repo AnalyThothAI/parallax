@@ -29,6 +29,7 @@ class LiveMarketSnapshot:
     liquidity_usd: float | None
     holders: int | None
     volume_24h_usd: float | None
+    open_interest_usd: float | None
     observed_at_ms: int | None
     received_at_ms: int | None
     provider: str | None
@@ -51,6 +52,7 @@ class LiveMarketSnapshot:
             "liquidity_usd": self.liquidity_usd,
             "holders": self.holders,
             "volume_24h_usd": self.volume_24h_usd,
+            "open_interest_usd": self.open_interest_usd,
             "observed_at_ms": self.observed_at_ms,
             "received_at_ms": self.received_at_ms,
             "age_ms": age_ms,
@@ -260,6 +262,7 @@ class LivePriceGateway(WorkerBase):
             liquidity_usd=_float(tick.get("liquidity_usd")),
             holders=_int(tick.get("holders")),
             volume_24h_usd=_float(tick.get("volume_24h_usd")),
+            open_interest_usd=_float(tick.get("open_interest_usd")),
             observed_at_ms=_int(tick.get("observed_at_ms")),
             received_at_ms=_int(tick.get("received_at_ms")) or received_at_ms,
             provider=source_provider,
@@ -393,6 +396,6 @@ def _decision_latest_payload(
         "liquidity_usd": snapshot.liquidity_usd,
         "holders": snapshot.holders,
         "volume_24h_usd": snapshot.volume_24h_usd,
-        "open_interest_usd": None,
+        "open_interest_usd": snapshot.open_interest_usd,
         "raw_payload_hash": None,
     }

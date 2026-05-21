@@ -546,7 +546,10 @@ def test_token_radar_source_query_uses_preferred_cex_pricefeed_when_resolution_h
     TokenRadarSourceQuery(conn).source_rows(since_ms=1, scope="all", now_ms=2)
 
     assert "preferred_price_feed" in conn.sql
-    assert "COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id)" in conn.sql
+    assert "COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id)" not in conn.sql
+    assert "WHEN token_intent_resolutions.target_type = 'CexToken'" in conn.sql
+    assert "THEN preferred_price_feed.pricefeed_id" in conn.sql
+    assert "ELSE token_intent_resolutions.pricefeed_id" in conn.sql
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 

@@ -30,7 +30,8 @@ def test_token_radar_source_query_uses_enriched_events_and_market_ticks_only():
     assert "event_price_capture" in sql
     assert "event_price_tick" in sql
     assert "latest_price" in sql
-    assert "event_price_capture.tick_lag_ms AS event_price_tick_lag_ms" in sql
+    assert "event_price_capture.tick_lag_ms ELSE NULL END" in sql
+    assert "AS event_price_tick_lag_ms" in sql
     assert "event_price_tick.holders AS event_price_holders" in sql
     assert "latest_price_tick.holders AS latest_price_holders" in sql
     assert "event_price_tick.open_interest_usd AS event_price_open_interest_usd" in sql

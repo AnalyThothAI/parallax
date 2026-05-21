@@ -78,6 +78,9 @@ EXPECTED_WORKERS = {
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
+    "cex_oi_radar_board": (
+        "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
+    ),
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
     "handle_summary": "gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker.HandleSummaryWorker",
@@ -222,12 +225,23 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
     },
+    "cex_oi_radar_runs": {
+        SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",
+        SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
+        SRC / "platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py",
+    },
+    "cex_oi_radar_rows": {
+        SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",
+        SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
+        SRC / "platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py",
+    },
 }
 
 LEGACY_ASSET_TABLES = ("assets", "asset_aliases", "asset_venues", "asset_market_snapshots")
 EXPECTED_WORKER_FACTORY_FILES = {
     "__init__.py",
     "asset_market.py",
+    "cex_market_intel.py",
     "enrichment.py",
     "ingestion.py",
     "narrative_intel.py",

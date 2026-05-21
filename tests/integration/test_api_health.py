@@ -145,8 +145,7 @@ def fake_wired_providers(
         ingestion=SimpleNamespace(upstream_client_factory=upstream_client_factory),
         asset_market=asset_market
         or SimpleNamespace(
-            sync_cex_market=None,
-            message_cex_market=None,
+            cex_market=None,
             dex_discovery_market=None,
             dex_quote_market=None,
             dex_candle_market=None,
@@ -237,7 +236,7 @@ def test_runtime_aclose_closes_wired_providers_even_when_scheduler_stop_fails(mo
         **{
             **providers.__dict__,
             "asset_market": SimpleNamespace(
-                message_cex_market=sync_provider,
+                cex_market=sync_provider,
                 dex_quote_market=sync_provider,
                 stream_dex_market=SimpleNamespace(inner=async_provider),
                 discovery_chain_ids=(),
@@ -312,7 +311,7 @@ def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, t
     sync_provider = FakeClosableProvider()
     async_provider = FakeAsyncClosableProvider()
     providers = SimpleNamespace(
-        asset_market=SimpleNamespace(message_cex_market=sync_provider, nested={"async": async_provider}),
+        asset_market=SimpleNamespace(cex_market=sync_provider, nested={"async": async_provider}),
         marketlane=SimpleNamespace(stock_quote_provider=sync_provider),
     )
     db = FakeDB()
@@ -442,8 +441,7 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
         return client
 
     asset_market = SimpleNamespace(
-        sync_cex_market=None,
-        message_cex_market=object(),
+        cex_market=object(),
         dex_discovery_market=None,
         dex_quote_market=None,
         dex_candle_market=None,
@@ -483,8 +481,7 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
 
 def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
     asset_market = SimpleNamespace(
-        sync_cex_market=None,
-        message_cex_market=object(),
+        cex_market=object(),
         dex_discovery_market=object(),
         dex_quote_market=object(),
         dex_candle_market=None,

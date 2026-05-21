@@ -5,26 +5,6 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
-class OkxCexInstrument:
-    inst_id: str
-    inst_type: str
-    base_symbol: str
-    quote_symbol: str
-    state: str
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class OkxCexTicker:
-    inst_id: str
-    inst_type: str
-    last_price: float | None
-    volume_24h: float | None
-    open_interest: float | None
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
 class OkxCandle:
     time_ms: int
     open: float | None

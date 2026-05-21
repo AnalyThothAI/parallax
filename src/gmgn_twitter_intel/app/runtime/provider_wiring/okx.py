@@ -5,7 +5,6 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import OkxProviderBundle
 from gmgn_twitter_intel.domains.asset_market.providers import (
-    CexTicker,
     DexMarketFactUpdate,
     DexMarketStreamProvider,
     DexTokenCandidate,
@@ -13,33 +12,13 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenQuote,
     DexTokenQuoteProvider,
     DexTokenQuoteRequest,
-    MarketCandle,
     MarketCapability,
     ProviderHealth,
 )
-from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
 from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
 from gmgn_twitter_intel.platform.config.settings import Settings
-
-
-class OkxCexMarketProvider:
-    def __init__(self, client: OkxCexClient) -> None:
-        self._client = client
-
-    def tickers(self, *, inst_type: str) -> list[CexTicker]:
-        return [_cex_ticker(ticker) for ticker in self._client.tickers(inst_type=inst_type)]
-
-    def ticker(self, *, inst_id: str) -> CexTicker | None:
-        ticker = self._client.ticker(inst_id=inst_id)
-        return _cex_ticker(ticker) if ticker is not None else None
-
-    def candles(self, *, inst_id: str, bar: str, limit: int) -> list[MarketCandle]:
-        return [_market_candle(candle) for candle in self._client.candles(inst_id=inst_id, bar=bar, limit=limit)]
-
-    def close(self) -> None:
-        self._client.close()
 
 
 class OkxDexDiscoveryProvider:
@@ -156,14 +135,10 @@ class OkxDexWebSocketMarketProviderAdapter:
 
 def wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
     capabilities: set[MarketCapability] = set()
-    shared_cex_market: OkxCexMarketProvider | None = None
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
     dex_quote_market: DexTokenQuoteProvider | None = None
     stream_dex_market: DexMarketStreamProvider | None = None
     try:
-        if settings.okx_cex_sync_enabled:
-            shared_cex_market = okx_cex_market(settings)
-            capabilities.add(MarketCapability.QUOTE_CEX)
         if settings.okx_dex_configured:
             dex_discovery_market = SerializedDiscoveryProvider(okx_dex_discovery_market(settings))
             dex_quote_market = okx_dex_quote_market(settings)
@@ -173,8 +148,6 @@ def wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
             stream_dex_market = okx_dex_ws_market(settings)
             capabilities.add(MarketCapability.STREAM_DEX)
         return OkxProviderBundle(
-            sync_cex_market=shared_cex_market,
-            message_cex_market=shared_cex_market,
             dex_discovery_market=dex_discovery_market,
             dex_quote_market=dex_quote_market,
             stream_dex_market=stream_dex_market,
@@ -185,17 +158,8 @@ def wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
             ),
         )
     except Exception as exc:
-        _close_partial_providers(exc, shared_cex_market, dex_discovery_market, dex_quote_market, stream_dex_market)
+        _close_partial_providers(exc, dex_discovery_market, dex_quote_market, stream_dex_market)
         raise
-
-
-def okx_cex_market(settings: Settings) -> OkxCexMarketProvider:
-    return OkxCexMarketProvider(
-        OkxCexClient(
-            base_url=settings.okx_cex_base_url,
-            timeout_seconds=settings.okx_timeout_seconds,
-        )
-    )
 
 
 def okx_dex_discovery_market(settings: Settings) -> OkxDexDiscoveryProvider:
@@ -264,17 +228,6 @@ def okx_chain_index(chain_id: Any) -> str | None:
     return OKX_CHAIN_TO_CHAIN_INDEX.get(normalized)
 
 
-def _cex_ticker(ticker: Any) -> CexTicker:
-    return CexTicker(
-        inst_id=ticker.inst_id,
-        inst_type=ticker.inst_type,
-        last_price=ticker.last_price,
-        volume_24h=ticker.volume_24h,
-        open_interest=ticker.open_interest,
-        raw=ticker.raw,
-    )
-
-
 def _dex_token_candidate(candidate: Any) -> DexTokenCandidate:
     return DexTokenCandidate(
         chain_id=okx_index_to_chain_id(candidate.chain_index) or str(candidate.chain_index),
@@ -287,21 +240,6 @@ def _dex_token_candidate(candidate: Any) -> DexTokenCandidate:
         holders=candidate.holders,
         community_recognized=candidate.community_recognized,
         raw=candidate.raw,
-    )
-
-
-def _market_candle(candle: Any) -> MarketCandle:
-    return MarketCandle(
-        time_ms=int(candle.time_ms),
-        open=candle.open,
-        high=candle.high,
-        low=candle.low,
-        close=candle.close,
-        volume=candle.volume,
-        volume_quote=candle.volume_quote,
-        volume_usd=candle.volume_usd,
-        confirmed=candle.confirmed,
-        raw=candle.raw,
     )
 
 
@@ -360,13 +298,11 @@ def _close_partial_providers(error: BaseException, *providers: object | None) ->
 
 
 __all__ = [
-    "OkxCexMarketProvider",
     "OkxDexDiscoveryProvider",
     "OkxDexQuoteProvider",
     "OkxDexWebSocketMarketProvider",
     "OkxDexWebSocketMarketProviderAdapter",
     "SerializedDiscoveryProvider",
-    "okx_cex_market",
     "okx_chain_index",
     "okx_chain_indexes_to_chain_ids",
     "okx_dex_discovery_market",

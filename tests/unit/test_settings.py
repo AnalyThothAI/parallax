@@ -92,8 +92,14 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
     assert settings.binance_enabled is True
     assert settings.binance_web3_base_url == "https://web3.binance.com"
-    assert settings.binance_cex_base_url == "https://www.binance.com"
+    assert settings.binance_cex_profile_base_url == "https://www.binance.com"
+    assert settings.binance_usdm_futures_base_url == "https://fapi.binance.com"
+    assert settings.binance_cex_universe_quote_symbol == "USDT"
+    assert settings.binance_cex_universe_contract_type == "PERPETUAL"
     assert settings.binance_timeout_seconds == 15
+    assert not hasattr(settings, "okx_cex_base_url")
+    assert not hasattr(settings, "okx_cex_sync_enabled")
+    assert not hasattr(settings, "okx_cex_inst_types")
     assert not hasattr(settings.workers, _legacy_anchor_worker_key())
     assert settings.workers.market_tick_stream.subscription_limit == 100
     assert settings.workers.market_tick_poll.interval_seconds == 15
@@ -380,9 +386,6 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
             },
             "providers": {
                 "okx": {
-                    "cex_base_url": "https://okx.example.test/",
-                    "cex_sync_enabled": True,
-                    "cex_inst_types": ["SPOT"],
                     "dex_base_url": "https://web3-okx.example.test/",
                     "dex_chain_indexes": ["501", "1"],
                     "dex_ws_url": "wss://okx-ws.example.test/ws/v6/dex",
@@ -390,7 +393,16 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
                     "dex_secret_key": "okx-secret",
                     "dex_passphrase": "okx-pass",
                     "timeout_seconds": 9,
-                }
+                },
+                "binance": {
+                    "enabled": True,
+                    "web3_base_url": "https://web3-binance.example.test/",
+                    "cex_profile_base_url": "https://binance-profile.example.test/",
+                    "usdm_futures_base_url": "https://fapi-binance.example.test/",
+                    "cex_universe_quote_symbol": "usdt",
+                    "cex_universe_contract_type": "perpetual",
+                    "timeout_seconds": 7,
+                },
             },
         },
     )
@@ -402,14 +414,17 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.gmgn_openapi_base_url == "https://openapi.example.test"
     assert settings.gmgn_timeout_seconds == 3
     assert settings.gmgn_token_info_cache_ttl_seconds == 60
-    assert settings.okx_cex_base_url == "https://okx.example.test"
-    assert settings.okx_cex_sync_enabled is True
-    assert settings.okx_cex_inst_types == ("SPOT",)
     assert settings.okx_dex_base_url == "https://web3-okx.example.test"
     assert settings.okx_dex_chain_indexes == ("501", "1")
     assert settings.okx_dex_ws_url == "wss://okx-ws.example.test/ws/v6/dex"
     assert settings.okx_dex_ws_configured is True
     assert settings.okx_timeout_seconds == 9
+    assert settings.binance_web3_base_url == "https://web3-binance.example.test"
+    assert settings.binance_cex_profile_base_url == "https://binance-profile.example.test"
+    assert settings.binance_usdm_futures_base_url == "https://fapi-binance.example.test"
+    assert settings.binance_cex_universe_quote_symbol == "USDT"
+    assert settings.binance_cex_universe_contract_type == "PERPETUAL"
+    assert settings.binance_timeout_seconds == 7
 
 
 def test_okx_dex_ws_configured_requires_url_and_all_credentials(tmp_path, monkeypatch):

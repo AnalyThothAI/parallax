@@ -226,7 +226,7 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
                 instrument="BTC-USDT",
                 pricefeed_id=None,
                 source_tier="tier3_inline",
-                source_provider="okx_cex_rest",
+                source_provider="binance_cex_rest",
                 observed_at_ms=EVENT_MS + 25,
                 received_at_ms=NOW_MS,
                 price_usd=Decimal("70000"),

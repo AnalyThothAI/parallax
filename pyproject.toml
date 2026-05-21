@@ -17,6 +17,7 @@ dependencies = [
     "instructor>=1.15.1",
     "jsonref>=1.1.0",
     "loguru>=0.7.2",
+    "coinglass-cli",
     "marketlane-cli",
     "openai>=2.0.0",
     "openai-agents>=0.10.5",
@@ -174,4 +175,5 @@ exclude_lines = [
 ]
 
 [tool.uv.sources]
+coinglass-cli = { git = "https://github.com/AnalyThothAI/coinglass-cli.git", rev = "592bf2f973411e4d516ca928f65aaabf40d707eb" }
 marketlane-cli = { git = "https://github.com/AnalyThothAI/marketlane-cli.git" }

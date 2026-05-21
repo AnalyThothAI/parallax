@@ -195,7 +195,6 @@ def test_okx_dex_ws_market_uses_worker_subscription_limit(monkeypatch) -> None:
             ws_token="secret",
             providers={
                 "okx": {
-                    "cex_sync_enabled": False,
                     "dex_api_key": "okx-key",
                     "dex_secret_key": "okx-secret",
                     "dex_passphrase": "okx-passphrase",
@@ -233,9 +232,11 @@ def test_discovery_provider_close_is_idempotent(monkeypatch) -> None:
 
 
 def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(monkeypatch) -> None:
+    binance_cex_provider = CloseCountingCexProvider()
     okx_provider = CloseCountingDexDiscoveryProvider()
     okx_quote_provider = CloseCountingDexQuoteProvider()
 
+    monkeypatch.setattr(binance_wiring, "binance_usdm_futures_market", lambda settings: binance_cex_provider)
     monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: okx_provider)
     monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: okx_quote_provider)
 
@@ -247,14 +248,17 @@ def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(
     with pytest.raises(RuntimeError, match="gmgn failed"):
         providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
 
+    assert binance_cex_provider.close_count == 1
     assert okx_provider.close_count == 1
     assert okx_quote_provider.close_count == 1
 
 
 def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(monkeypatch) -> None:
+    binance_cex_provider = CloseFailingCexProvider()
     okx_provider = CloseFailingDexDiscoveryProvider()
     okx_quote_provider = CloseFailingDexQuoteProvider()
 
+    monkeypatch.setattr(binance_wiring, "binance_usdm_futures_market", lambda settings: binance_cex_provider)
     monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: okx_provider)
     monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: okx_quote_provider)
 
@@ -267,32 +271,15 @@ def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(mon
         providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
 
     assert "cleanup failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
+    assert "cex close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "quote close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
 
 
-def test_okx_bundle_wiring_closes_cex_partial_provider_when_discovery_wiring_fails(monkeypatch) -> None:
-    cex_provider = CloseCountingCexProvider()
-
-    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: cex_provider)
-
-    def fail_discovery(settings: Settings):
-        raise RuntimeError("discovery failed")
-
-    monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", fail_discovery)
-
-    with pytest.raises(RuntimeError, match="discovery failed"):
-        okx_wiring.wire_okx_provider_bundle(_settings_with_okx_cex_and_dex_credentials())
-
-    assert cex_provider.close_count == 1
-
-
-def test_okx_bundle_wiring_closes_cex_and_discovery_when_stream_wiring_fails(monkeypatch) -> None:
-    cex_provider = CloseCountingCexProvider()
+def test_okx_bundle_wiring_closes_discovery_and_quote_when_stream_wiring_fails(monkeypatch) -> None:
     discovery_provider = CloseCountingDexDiscoveryProvider()
     quote_provider = CloseCountingDexQuoteProvider()
 
-    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: cex_provider)
     monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: discovery_provider)
     monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: quote_provider)
 
@@ -302,29 +289,31 @@ def test_okx_bundle_wiring_closes_cex_and_discovery_when_stream_wiring_fails(mon
     monkeypatch.setattr(okx_wiring, "okx_dex_ws_market", fail_stream)
 
     with pytest.raises(RuntimeError, match="stream failed"):
-        okx_wiring.wire_okx_provider_bundle(_settings_with_okx_cex_and_dex_credentials())
+        okx_wiring.wire_okx_provider_bundle(_settings_with_okx_dex_credentials())
 
-    assert cex_provider.close_count == 1
     assert discovery_provider.close_count == 1
     assert quote_provider.close_count == 1
 
 
 def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(monkeypatch) -> None:
-    cex_provider = CloseFailingCexProvider()
+    discovery_provider = CloseFailingDexDiscoveryProvider()
+    quote_provider = CloseFailingDexQuoteProvider()
 
-    monkeypatch.setattr(okx_wiring, "okx_cex_market", lambda settings: cex_provider)
+    monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", lambda settings: discovery_provider)
+    monkeypatch.setattr(okx_wiring, "okx_dex_quote_market", lambda settings: quote_provider)
 
-    def fail_discovery(settings: Settings):
-        raise RuntimeError("discovery failed")
+    def fail_stream(settings: Settings):
+        raise RuntimeError("stream failed")
 
-    monkeypatch.setattr(okx_wiring, "okx_dex_discovery_market", fail_discovery)
+    monkeypatch.setattr(okx_wiring, "okx_dex_ws_market", fail_stream)
 
-    with pytest.raises(RuntimeError, match="discovery failed") as exc_info:
-        okx_wiring.wire_okx_provider_bundle(_settings_with_okx_cex_and_dex_credentials())
+    with pytest.raises(RuntimeError, match="stream failed") as exc_info:
+        okx_wiring.wire_okx_provider_bundle(_settings_with_okx_dex_credentials())
 
     notes = "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "cleanup failed" in notes
-    assert "cex close failed" in notes
+    assert "close failed" in notes
+    assert "quote close failed" in notes
 
 
 def test_openai_providers_receive_agent_execution_gateway(monkeypatch) -> None:
@@ -751,21 +740,6 @@ def _settings_with_okx_dex_credentials() -> Settings:
         ws_token="secret",
         providers={
             "okx": {
-                "cex_sync_enabled": False,
-                "dex_api_key": "okx-key",
-                "dex_secret_key": "okx-secret",
-                "dex_passphrase": "okx-passphrase",
-            }
-        },
-    )
-
-
-def _settings_with_okx_cex_and_dex_credentials() -> Settings:
-    return Settings(
-        ws_token="secret",
-        providers={
-            "okx": {
-                "cex_sync_enabled": True,
                 "dex_api_key": "okx-key",
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",
@@ -799,7 +773,6 @@ def _settings_with_okx_and_gmgn() -> Settings:
         gmgn={"api_key": "gmgn-key"},
         providers={
             "okx": {
-                "cex_sync_enabled": False,
                 "dex_api_key": "okx-key",
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",
@@ -814,7 +787,6 @@ def _settings_with_okx_dex_ws_and_gmgn_enabled() -> Settings:
         gmgn={"api_key": "gmgn-key"},
         providers={
             "okx": {
-                "cex_sync_enabled": False,
                 "dex_api_key": "okx-key",
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",

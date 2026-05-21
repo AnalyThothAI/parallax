@@ -29,7 +29,7 @@ WORKER_KEYS = frozenset(
 def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
     workers = ctx.settings.workers
     asset_market = ctx.providers.asset_market
-    message_cex_market = getattr(asset_market, "message_cex_market", None)
+    cex_market = getattr(asset_market, "cex_market", None)
     dex_quote_market = getattr(asset_market, "dex_quote_market", None)
     dex_profile_sources = tuple(getattr(asset_market, "dex_profile_sources", ()) or ())
     dex_discovery_market = getattr(asset_market, "dex_discovery_market", None)
@@ -63,7 +63,7 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             wake_emitter=ctx.wake_bus,
             subscription_limit=workers.market_tick_stream.subscription_limit,
         )
-    if workers.market_tick_poll.enabled and (message_cex_market is not None or dex_quote_market is not None):
+    if workers.market_tick_poll.enabled and (cex_market is not None or dex_quote_market is not None):
         constructed["market_tick_poll"] = MarketTickPollWorker(
             name="market_tick_poll",
             settings=workers.market_tick_poll,
@@ -73,7 +73,7 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             wake_emitter=ctx.wake_bus,
             batch_size=workers.market_tick_poll.batch_size,
         )
-    if workers.event_anchor_backfill.enabled and (message_cex_market is not None or dex_quote_market is not None):
+    if workers.event_anchor_backfill.enabled and (cex_market is not None or dex_quote_market is not None):
         constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(
             name="event_anchor_backfill",
             settings=workers.event_anchor_backfill,

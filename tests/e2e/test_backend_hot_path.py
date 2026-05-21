@@ -81,7 +81,7 @@ def test_complete_backend_hot_path_without_notify_dependency(
                 pool_bundle=runtime.db,
                 providers=SimpleNamespace(
                     dex_quote_market=FakeDexQuoteProvider(observed_at_ms=FIXED_NOW_MS + 500),
-                    message_cex_market=None,
+                    cex_market=None,
                 ),
                 wake_emitter=wake,
                 batch_size=10,

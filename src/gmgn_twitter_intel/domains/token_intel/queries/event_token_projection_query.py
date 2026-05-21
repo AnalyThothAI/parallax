@@ -29,7 +29,10 @@ class EventTokenProjectionQuery:
               tir.event_id,
               tir.target_type,
               tir.target_id,
-              COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) AS pricefeed_id,
+              CASE
+                WHEN tir.target_type = 'CexToken' THEN preferred_price_feed.pricefeed_id
+                ELSE tir.pricefeed_id
+              END AS pricefeed_id,
               tir.resolution_status,
               tir.reason_codes_json,
               tir.candidate_ids_json,
@@ -47,11 +50,11 @@ class EventTokenProjectionQuery:
               NULL::numeric AS price_quote,
               NULL::text AS price_quote_symbol,
               COALESCE(
-                event_market_capture.capture_method,
+                CASE WHEN event_tick.tick_id IS NOT NULL THEN event_market_capture.capture_method ELSE NULL END,
                 CASE WHEN latest_tick.tick_id IS NOT NULL THEN 'latest_market_tick' ELSE NULL END
               ) AS market_capture_method,
               COALESCE(
-                event_market_capture.tick_lag_ms,
+                CASE WHEN event_tick.tick_id IS NOT NULL THEN event_market_capture.tick_lag_ms ELSE NULL END,
                 CASE
                   WHEN latest_tick.tick_id IS NOT NULL THEN ABS(latest_tick.observed_at_ms - events.received_at_ms)
                   ELSE NULL
@@ -80,32 +83,24 @@ class EventTokenProjectionQuery:
               WHERE tir.target_type = 'CexToken'
                 AND price_feeds.subject_type = 'CexToken'
                 AND price_feeds.subject_id = tir.target_id
-                AND price_feeds.feed_type LIKE 'cex_%%'
-                AND price_feeds.status IN ('candidate', 'canonical')
+                AND price_feeds.provider = 'binance'
+                AND price_feeds.feed_type = 'cex_swap'
+                AND price_feeds.quote_symbol = 'USDT'
+                AND price_feeds.status = 'canonical'
               ORDER BY
-                CASE
-                  WHEN price_feeds.feed_type = 'cex_spot' THEN 0
-                  WHEN price_feeds.feed_type = 'cex_swap' THEN 1
-                  ELSE 2
-                END,
-                CASE
-                  WHEN price_feeds.quote_symbol = 'USDT' THEN 0
-                  WHEN price_feeds.quote_symbol = 'USD' THEN 1
-                  WHEN price_feeds.quote_symbol = 'USDC' THEN 2
-                  ELSE 9
-                END,
                 price_feeds.updated_at_ms DESC,
                 price_feeds.native_market_id ASC
               LIMIT 1
             ) preferred_price_feed ON true
             LEFT JOIN price_feeds
-              ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
+              ON price_feeds.pricefeed_id = CASE
+                WHEN tir.target_type = 'CexToken' THEN preferred_price_feed.pricefeed_id
+                ELSE tir.pricefeed_id
+              END
             LEFT JOIN enriched_events event_market_capture
               ON event_market_capture.event_id = tir.event_id
              AND event_market_capture.intent_id = tir.intent_id
              AND event_market_capture.resolution_id = tir.resolution_id
-            LEFT JOIN market_ticks event_tick
-              ON event_tick.tick_id = event_market_capture.tick_id
             LEFT JOIN LATERAL (
               SELECT
                 CASE
@@ -131,6 +126,14 @@ class EventTokenProjectionQuery:
                   ELSE NULL
                 END AS target_id
             ) market_target ON true
+            LEFT JOIN market_ticks event_tick
+              ON event_tick.tick_id = event_market_capture.tick_id
+             AND event_tick.target_type = market_target.target_type
+             AND event_tick.target_id = market_target.target_id
+             AND event_tick.source_provider = CASE
+                WHEN tir.target_type = 'CexToken' THEN 'binance_cex_rest'
+                ELSE event_tick.source_provider
+              END
             LEFT JOIN LATERAL (
               SELECT market_ticks.*
               FROM market_ticks

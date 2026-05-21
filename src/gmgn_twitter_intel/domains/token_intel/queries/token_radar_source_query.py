@@ -65,7 +65,11 @@ class TokenRadarSourceQuery:
               token_intent_resolutions.resolution_id,
               token_intent_resolutions.target_type,
               token_intent_resolutions.target_id,
-              COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id) AS pricefeed_id,
+              CASE
+                WHEN token_intent_resolutions.target_type = 'CexToken'
+                  THEN preferred_price_feed.pricefeed_id
+                ELSE token_intent_resolutions.pricefeed_id
+              END AS pricefeed_id,
               token_intent_resolutions.resolution_status,
               token_intent_resolutions.reason_codes_json,
               token_intent_resolutions.candidate_ids_json,
@@ -108,10 +112,14 @@ class TokenRadarSourceQuery:
               NULL::numeric AS first_price_quote,
               NULL::text AS first_price_quote_symbol,
               NULL::text AS first_price_basis,
-              event_price_capture.tick_id AS event_price_capture_id,
-              event_price_capture.capture_method AS event_price_capture_method,
-              event_price_capture.capture_reason AS event_price_capture_reason,
-              event_price_capture.tick_lag_ms AS event_price_tick_lag_ms,
+              CASE WHEN event_price_tick.tick_id IS NOT NULL THEN event_price_capture.tick_id ELSE NULL END
+                AS event_price_capture_id,
+              CASE WHEN event_price_tick.tick_id IS NOT NULL THEN event_price_capture.capture_method ELSE NULL END
+                AS event_price_capture_method,
+              CASE WHEN event_price_tick.tick_id IS NOT NULL THEN event_price_capture.capture_reason ELSE NULL END
+                AS event_price_capture_reason,
+              CASE WHEN event_price_tick.tick_id IS NOT NULL THEN event_price_capture.tick_lag_ms ELSE NULL END
+                AS event_price_tick_lag_ms,
               event_price_tick.source_provider AS event_price_provider,
               event_price_tick.source_tier AS event_price_source_tier,
               event_price_tick.pricefeed_id AS event_price_pricefeed_id,
@@ -176,30 +184,22 @@ class TokenRadarSourceQuery:
               WHERE token_intent_resolutions.target_type = 'CexToken'
                 AND price_feeds.subject_type = 'CexToken'
                 AND price_feeds.subject_id = token_intent_resolutions.target_id
-                AND price_feeds.feed_type LIKE 'cex_%%'
-                AND price_feeds.status IN ('candidate', 'canonical')
+                AND price_feeds.provider = 'binance'
+                AND price_feeds.feed_type = 'cex_swap'
+                AND price_feeds.quote_symbol = 'USDT'
+                AND price_feeds.status = 'canonical'
               ORDER BY
-                CASE
-                  WHEN price_feeds.feed_type = 'cex_spot' THEN 0
-                  WHEN price_feeds.feed_type = 'cex_swap' THEN 1
-                  ELSE 2
-                END,
-                CASE
-                  WHEN price_feeds.quote_symbol = 'USDT' THEN 0
-                  WHEN price_feeds.quote_symbol = 'USD' THEN 1
-                  WHEN price_feeds.quote_symbol = 'USDC' THEN 2
-                  ELSE 9
-                END,
                 price_feeds.updated_at_ms DESC,
                 price_feeds.native_market_id ASC
               LIMIT 1
             ) preferred_price_feed ON source_intents.received_at_ms >= %s
             LEFT JOIN price_feeds
               ON source_intents.received_at_ms >= %s
-             AND price_feeds.pricefeed_id = COALESCE(
-                token_intent_resolutions.pricefeed_id,
-                preferred_price_feed.pricefeed_id
-              )
+             AND price_feeds.pricefeed_id = CASE
+                WHEN token_intent_resolutions.target_type = 'CexToken'
+                  THEN preferred_price_feed.pricefeed_id
+                ELSE token_intent_resolutions.pricefeed_id
+              END
             LEFT JOIN LATERAL (
               SELECT
                 CASE
@@ -242,6 +242,12 @@ class TokenRadarSourceQuery:
             ) event_price_capture ON true
             LEFT JOIN market_ticks event_price_tick
               ON event_price_tick.tick_id = event_price_capture.tick_id
+             AND event_price_tick.target_type = market_target.target_type
+             AND event_price_tick.target_id = market_target.target_id
+             AND event_price_tick.source_provider = CASE
+                WHEN token_intent_resolutions.target_type = 'CexToken' THEN 'binance_cex_rest'
+                ELSE event_price_tick.source_provider
+              END
             LEFT JOIN LATERAL (
               SELECT *
               FROM market_ticks

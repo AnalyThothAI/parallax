@@ -657,7 +657,7 @@ def _cex_market(overrides: dict[str, object] | None = None) -> dict[str, object]
         {
             "target_type": "CexToken",
             "target_id": "cex_token:BLEND",
-            "provider": "okx_cex",
+            "provider": "binance_cex",
             "pricefeed_id": "pf-blend",
             "volume_24h_usd": 45_000_000.0,
             "open_interest_usd": 8_000_000.0,

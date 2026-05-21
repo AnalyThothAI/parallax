@@ -77,7 +77,7 @@ def test_demote_absent_hot_rows_targets_only_tier1_and_tier2_rows() -> None:
     demoted = TokenCaptureTierRepository(conn).demote_absent_hot_rows(
         active_keys=[
             {"target_type": "chain_token", "target_id": "solana:abc"},
-            {"target_type": "cex_symbol", "target_id": "okx:ETH-USDT"},
+            {"target_type": "cex_symbol", "target_id": "binance:ETHUSDT"},
         ],
         updated_at_ms=1_777_800_000_000,
     )
@@ -95,7 +95,7 @@ def test_demote_absent_hot_rows_targets_only_tier1_and_tier2_rows() -> None:
     payload = params["active_keys"].obj
     assert payload == [
         {"target_type": "chain_token", "target_id": "solana:abc"},
-        {"target_type": "cex_symbol", "target_id": "okx:ETH-USDT"},
+        {"target_type": "cex_symbol", "target_id": "binance:ETHUSDT"},
     ]
 
 

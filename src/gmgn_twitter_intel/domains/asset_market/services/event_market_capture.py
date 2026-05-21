@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 TargetType = Literal["chain_token", "cex_symbol"]
 DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
-CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_cex_rest"
+CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "binance_cex_rest"
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +97,7 @@ class EventMarketCaptureService:
         Dispatches deterministically by ``target_type``: ``chain_token``
         uses ``providers.dex_quote_market`` (GMGN OpenAPI primary + OKX DEX
         REST fallback) and ``cex_symbol`` uses
-        ``providers.message_cex_market`` (OKX CEX REST). No free-form
+        ``providers.cex_market`` (Binance USD-M futures REST). No free-form
         provider choice.
         """
         target_type = _target_type(resolution.get("target_type"))
@@ -179,7 +179,7 @@ def _capture_cex_symbol(
     providers: AssetMarketProviders,
     now_ms: Callable[[], int],
 ) -> CaptureResult:
-    provider = providers.message_cex_market
+    provider = providers.cex_market
     if provider is None:
         return _unavailable(req, reason="missing_provider", created_at_ms=now_ms())
     exchange, instrument = _cex_market_key(resolution, target_id=req.target_id)

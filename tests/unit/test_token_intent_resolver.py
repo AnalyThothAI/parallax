@@ -9,6 +9,13 @@ from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver impor
 def test_token_intent_resolver_uses_cex_token_before_chain_candidates():
     registry = FakeRegistry(
         cex_tokens={"PEPE": {"cex_token_id": "cex_token:PEPE", "base_symbol": "PEPE"}},
+        preferred_cex_pricefeeds={
+            "PEPE": {
+                "pricefeed_id": "pricefeed:cex:binance:swap:PEPEUSDT",
+                "subject_type": "CexToken",
+                "subject_id": "cex_token:PEPE",
+            }
+        },
         symbol_assets={"PEPE": [{"asset_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"}]},
     )
     evidence = _evidence("$PEPE")
@@ -124,8 +131,9 @@ def _evidence(text: str):
 
 
 class FakeRegistry:
-    def __init__(self, *, cex_tokens=None, symbol_assets=None, address_assets=None):
+    def __init__(self, *, cex_tokens=None, preferred_cex_pricefeeds=None, symbol_assets=None, address_assets=None):
         self.cex_tokens = cex_tokens or {}
+        self.preferred_cex_pricefeeds = preferred_cex_pricefeeds or {}
         self.symbol_assets = symbol_assets or {}
         self.address_assets = address_assets or {}
 
@@ -133,7 +141,7 @@ class FakeRegistry:
         return self.cex_tokens.get(str(symbol).upper())
 
     def find_preferred_cex_pricefeed(self, base_symbol):
-        return None
+        return self.preferred_cex_pricefeeds.get(str(base_symbol).upper())
 
     def find_assets_by_symbol_with_identity_metadata(self, symbol):
         return list(self.symbol_assets.get(str(symbol).upper(), []))

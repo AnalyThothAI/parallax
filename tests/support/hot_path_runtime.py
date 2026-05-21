@@ -26,7 +26,6 @@ def backend_hot_path_settings(tmp_path: Path) -> Settings:
         storage=postgres_settings_storage(),
         providers={
             "okx": {
-                "cex_sync_enabled": False,
                 "dex_base_url": "",
                 "dex_ws_url": "",
             },

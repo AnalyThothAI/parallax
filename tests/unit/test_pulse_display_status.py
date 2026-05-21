@@ -47,12 +47,12 @@ def test_evidence_packet_hash_is_stable_across_dict_key_order() -> None:
     packet_a = _packet(
         source_fingerprints={
             "factor_snapshot": {"b": 2, "a": 1},
-            "market": {"provider": "okx_cex_rest", "pricefeed_id": "pf-1"},
+            "market": {"provider": "binance_cex_rest", "pricefeed_id": "pf-1"},
         }
     ).sealed_copy()
     packet_b = _packet(
         source_fingerprints={
-            "market": {"pricefeed_id": "pf-1", "provider": "okx_cex_rest"},
+            "market": {"pricefeed_id": "pf-1", "provider": "binance_cex_rest"},
             "factor_snapshot": {"a": 1, "b": 2},
         }
     ).sealed_copy()
@@ -122,7 +122,7 @@ def _packet(*, source_fingerprints: dict) -> PulseEvidencePacket:
             "instrument_ref": "pf-1",
             "observed_at_ms": 1_800_000_000_000,
             "freshness_status": "fresh",
-            "source_provider": "okx_cex_rest",
+            "source_provider": "binance_cex_rest",
             "pricefeed_id": "pf-1",
         },
         identity_evidence={"status": "complete", "identity_refs": (), "profile_refs": (), "summary_zh": "身份可识别"},

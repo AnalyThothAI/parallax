@@ -339,9 +339,9 @@ and `docs/superpowers/plans/active/2026-05-16-price-pipeline-throughput-recovery
 | Social ingestion | GMGN DirectWS | none | `events`, `token_intents`, `token_intent_resolutions` | Not a price source |
 | Tier 1 price stream | OKX DEX WS | none | `market_ticks(source_tier='tier1_ws')` | `chain_token` only; CEX symbols never enter Tier 1 |
 | Tier 2 DEX poll | GMGN OpenAPI REST | OKX DEX REST | `market_ticks(source_tier='tier2_poll')` | No GMGN price WS in the official skills repo |
-| Tier 2 CEX poll | OKX CEX REST | none | `market_ticks(source_tier='tier2_poll')` | CEX WS intentionally out of this pass |
+| Tier 2 CEX poll | Binance USD-M REST | none | `market_ticks(source_tier='tier2_poll')` | CEX WS intentionally out of this pass |
 | Event anchor DEX backfill | GMGN OpenAPI REST | OKX DEX REST | `market_ticks`, narrow `enriched_events` lifecycle update; `event_anchor_backfill_jobs` control state | Same `dex_quote_market` provider stack as Tier 2 |
-| Event anchor CEX backfill | OKX CEX REST | none | `market_ticks`, narrow `enriched_events` lifecycle update; `event_anchor_backfill_jobs` control state | Same `message_cex_market` provider as Tier 2 |
+| Event anchor CEX backfill | Binance USD-M REST | none | `market_ticks`, narrow `enriched_events` lifecycle update; `event_anchor_backfill_jobs` control state | Same `cex_market` provider as Tier 2 |
 | Frontend `/ws` | latest `market_ticks` read model | none | no facts | `LivePriceGateway` fan-out only; no upstream provider calls |
 
 Consequences for code review:

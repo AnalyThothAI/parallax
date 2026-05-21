@@ -396,9 +396,6 @@ class NotificationsConfig(BaseModel):
 class OkxProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cex_base_url: str = "https://www.okx.com"
-    cex_sync_enabled: bool = True
-    cex_inst_types: tuple[str, ...] = ("SPOT", "SWAP")
     dex_base_url: str = "https://web3.okx.com"
     dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453", "607")
     dex_ws_url: str = "wss://wsdex.okx.com/ws/v6/dex"
@@ -407,13 +404,13 @@ class OkxProviderConfig(BaseModel):
     dex_passphrase: str | None = None
     timeout_seconds: float = 15.0
 
-    @field_validator("cex_base_url", "dex_base_url", mode="before")
+    @field_validator("dex_base_url", mode="before")
     @classmethod
     def parse_base_url(cls, value: Any) -> str:
         normalized = str(value or "").strip().rstrip("/")
         return normalized
 
-    @field_validator("cex_inst_types", "dex_chain_indexes", mode="before")
+    @field_validator("dex_chain_indexes", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -437,13 +434,21 @@ class BinanceProviderConfig(BaseModel):
 
     enabled: bool = True
     web3_base_url: str = "https://web3.binance.com"
-    cex_base_url: str = "https://www.binance.com"
+    cex_profile_base_url: str = "https://www.binance.com"
+    usdm_futures_base_url: str = "https://fapi.binance.com"
+    cex_universe_quote_symbol: str = "USDT"
+    cex_universe_contract_type: str = "PERPETUAL"
     timeout_seconds: float = 15.0
 
-    @field_validator("web3_base_url", "cex_base_url", mode="before")
+    @field_validator("web3_base_url", "cex_profile_base_url", "usdm_futures_base_url", mode="before")
     @classmethod
     def parse_base_url(cls, value: Any) -> str:
         return str(value or "").strip().rstrip("/")
+
+    @field_validator("cex_universe_quote_symbol", "cex_universe_contract_type", mode="before")
+    @classmethod
+    def parse_uppercase_string(cls, value: Any) -> str:
+        return str(value or "").strip().upper()
 
 
 class MarketlaneProviderConfig(BaseModel):
@@ -790,6 +795,21 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
+class CexOiRadarBoardWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=300.0, ge=0)
+    batch_size: int = Field(default=500, ge=1)
+    statement_timeout_seconds: float = Field(default=120.0, ge=0)
+    advisory_lock_key: int = 2026052108
+    universe_limit: int = Field(default=500, ge=1)
+    period: str = "5m"
+
+    @field_validator("period", mode="before")
+    @classmethod
+    def parse_period(cls, value: Any) -> str:
+        normalized = str(value or "5m").strip().lower()
+        return normalized or "5m"
+
+
 class PulseCandidateTriggerThresholds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1043,6 +1063,7 @@ class WorkersSettings(BaseModel):
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
     )
+    cex_oi_radar_board: CexOiRadarBoardWorkerSettings = Field(default_factory=CexOiRadarBoardWorkerSettings)
     narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
     mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
     token_discussion_digest: TokenDiscussionDigestWorkerSettings = Field(
@@ -1236,18 +1257,6 @@ class Settings(BaseModel):
         return bool(self.gmgn_api_key)
 
     @property
-    def okx_cex_base_url(self) -> str:
-        return self.providers.okx.cex_base_url
-
-    @property
-    def okx_cex_sync_enabled(self) -> bool:
-        return self.providers.okx.cex_sync_enabled
-
-    @property
-    def okx_cex_inst_types(self) -> tuple[str, ...]:
-        return self.providers.okx.cex_inst_types or ("SPOT", "SWAP")
-
-    @property
     def okx_dex_base_url(self) -> str:
         return self.providers.okx.dex_base_url
 
@@ -1294,8 +1303,20 @@ class Settings(BaseModel):
         return self.providers.binance.web3_base_url
 
     @property
-    def binance_cex_base_url(self) -> str:
-        return self.providers.binance.cex_base_url
+    def binance_cex_profile_base_url(self) -> str:
+        return self.providers.binance.cex_profile_base_url
+
+    @property
+    def binance_usdm_futures_base_url(self) -> str:
+        return self.providers.binance.usdm_futures_base_url
+
+    @property
+    def binance_cex_universe_quote_symbol(self) -> str:
+        return self.providers.binance.cex_universe_quote_symbol
+
+    @property
+    def binance_cex_universe_contract_type(self) -> str:
+        return self.providers.binance.cex_universe_contract_type
 
     @property
     def binance_timeout_seconds(self) -> float:
@@ -1443,9 +1464,6 @@ gmgn:
 
 providers:
   okx:
-    cex_base_url: "https://www.okx.com"
-    cex_sync_enabled: true
-    cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453", "607"]
     dex_ws_url: "wss://wsdex.okx.com/ws/v6/dex"
@@ -1456,7 +1474,10 @@ providers:
   binance:
     enabled: true
     web3_base_url: "https://web3.binance.com"
-    cex_base_url: "https://www.binance.com"
+    cex_profile_base_url: "https://www.binance.com"
+    usdm_futures_base_url: "https://fapi.binance.com"
+    cex_universe_quote_symbol: "USDT"
+    cex_universe_contract_type: "PERPETUAL"
     timeout_seconds: 15
 
 {_default_news_intel_yaml()}
@@ -1651,6 +1672,14 @@ token_profile_current:
   enabled: true
   interval_seconds: 60.0
   batch_size: 500
+cex_oi_radar_board:
+  enabled: true
+  interval_seconds: 300.0
+  batch_size: 500
+  statement_timeout_seconds: 120.0
+  advisory_lock_key: 2026052108
+  universe_limit: 500
+  period: "5m"
 narrative_admission:
   enabled: true
   interval_seconds: 60.0

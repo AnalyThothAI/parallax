@@ -75,7 +75,7 @@ class EventAnchorBackfillWorker(WorkerBase):
         capture_service: EventMarketCaptureService | None = None,
         providers: Any | None = None,
         dex_quote_market: Any | None = None,
-        message_cex_market: Any | None = None,
+        cex_market: Any | None = None,
         wake_emitter: Any | None = None,
         wake_bus: Any | None = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -109,7 +109,7 @@ class EventAnchorBackfillWorker(WorkerBase):
         if capture_service is None:
             resolved_providers = providers or SimpleNamespace(
                 dex_quote_market=dex_quote_market,
-                message_cex_market=message_cex_market,
+                cex_market=cex_market,
             )
             capture_service = EventMarketCaptureService(
                 providers=cast("AssetMarketProviders", resolved_providers),

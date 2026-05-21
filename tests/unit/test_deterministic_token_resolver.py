@@ -13,6 +13,13 @@ from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolve
 def test_symbol_prefers_confirmed_cex_token_before_chain_assets():
     registry = FakeRegistry(
         cex_tokens={"PEPE": {"cex_token_id": "cex_token:PEPE", "base_symbol": "PEPE"}},
+        preferred_cex_pricefeeds={
+            "PEPE": {
+                "pricefeed_id": "pricefeed:cex:binance:swap:PEPEUSDT",
+                "subject_type": "CexToken",
+                "subject_id": "cex_token:PEPE",
+            }
+        },
         symbol_assets={
             "PEPE": [
                 {
@@ -46,7 +53,7 @@ def test_symbol_cex_token_binds_preferred_usdt_pricefeed():
         cex_tokens={"PEPE": {"cex_token_id": "cex_token:PEPE", "base_symbol": "PEPE"}},
         preferred_cex_pricefeeds={
             "PEPE": {
-                "pricefeed_id": "pricefeed:cex:okx:spot:PEPE-USDT",
+                "pricefeed_id": "pricefeed:cex:binance:swap:PEPEUSDT",
                 "subject_type": "CexToken",
                 "subject_id": "cex_token:PEPE",
             }
@@ -63,13 +70,48 @@ def test_symbol_cex_token_binds_preferred_usdt_pricefeed():
     assert result.resolution_status == "UNIQUE_BY_CONTEXT"
     assert result.target_type == "CexToken"
     assert result.target_id == "cex_token:PEPE"
-    assert result.pricefeed_id == "pricefeed:cex:okx:spot:PEPE-USDT"
-    assert result.candidate_ids == ["pricefeed:cex:okx:spot:PEPE-USDT", "cex_token:PEPE"]
+    assert result.pricefeed_id == "pricefeed:cex:binance:swap:PEPEUSDT"
+    assert result.candidate_ids == ["pricefeed:cex:binance:swap:PEPEUSDT", "cex_token:PEPE"]
+
+
+def test_symbol_cex_token_without_binance_pricefeed_does_not_resolve_cex():
+    registry = FakeRegistry(
+        cex_tokens={"PEPE": {"cex_token_id": "cex_token:PEPE", "base_symbol": "PEPE"}},
+        symbol_assets={
+            "PEPE": [
+                {
+                    "asset_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    "chain_id": "eip155:1",
+                    "symbol": "PEPE",
+                    "observed_at_ms": 1_778_145_000_000,
+                }
+            ],
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-pepe",
+        event_id="event-pepe",
+        keys=MentionKeys(symbol="PEPE"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    assert result.reason_codes == ["SINGLE_ACTIVE_CHAIN_ASSET"]
 
 
 def test_symbol_prefers_confirmed_cex_token_before_us_equity_symbol():
     registry = FakeRegistry(
         cex_tokens={"COIN": {"cex_token_id": "cex_token:COIN", "base_symbol": "COIN"}},
+        preferred_cex_pricefeeds={
+            "COIN": {
+                "pricefeed_id": "pricefeed:cex:binance:swap:COINUSDT",
+                "subject_type": "CexToken",
+                "subject_id": "cex_token:COIN",
+            }
+        },
         us_equities={
             "COIN": {
                 "market_instrument_id": "market_instrument:us_equity:COIN",
@@ -245,6 +287,13 @@ def test_us_equity_symbol_wins_over_mixed_dex_symbol_only_candidates():
 def test_cex_token_still_wins_over_us_equity_symbol():
     registry = FakeRegistry(
         cex_tokens={"COIN": {"cex_token_id": "cex_token:COIN", "base_symbol": "COIN"}},
+        preferred_cex_pricefeeds={
+            "COIN": {
+                "pricefeed_id": "pricefeed:cex:binance:swap:COINUSDT",
+                "subject_type": "CexToken",
+                "subject_id": "cex_token:COIN",
+            }
+        },
         us_equities={
             "COIN": {
                 "market_instrument_id": "market_instrument:us_equity:COIN",
@@ -271,7 +320,7 @@ def test_cex_native_pricefeed_is_exact_before_symbol_resolution():
     registry = FakeRegistry(
         cex_pricefeeds={
             ("binance", "PEPEUSDT"): {
-                "pricefeed_id": "pricefeed:cex:binance:spot:PEPEUSDT",
+                "pricefeed_id": "pricefeed:cex:binance:swap:PEPEUSDT",
                 "subject_type": "CexToken",
                 "subject_id": "cex_token:PEPE",
             }
@@ -289,8 +338,34 @@ def test_cex_native_pricefeed_is_exact_before_symbol_resolution():
     assert result.resolution_status == "EXACT"
     assert result.target_type == "CexToken"
     assert result.target_id == "cex_token:PEPE"
-    assert result.pricefeed_id == "pricefeed:cex:binance:spot:PEPEUSDT"
+    assert result.pricefeed_id == "pricefeed:cex:binance:swap:PEPEUSDT"
     assert result.reason_codes == ["CEX_NATIVE_PRICEFEED_EXACT"]
+
+
+def test_okx_cex_native_pricefeed_is_not_supported_after_binance_hard_cut():
+    registry = FakeRegistry(
+        cex_pricefeeds={
+            ("okx", "PEPE-USDT"): {
+                "pricefeed_id": "pricefeed:cex:okx:swap:PEPE-USDT",
+                "subject_type": "CexToken",
+                "subject_id": "cex_token:PEPE",
+            }
+        },
+        cex_tokens={"PEPE": {"cex_token_id": "cex_token:PEPE", "base_symbol": "PEPE"}},
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-pepe",
+        event_id="event-pepe",
+        keys=MentionKeys(symbol="PEPE", exchange="okx", cex_pricefeed_id="PEPE-USDT"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "NIL"
+    assert result.target_type is None
+    assert result.target_id is None
+    assert result.pricefeed_id is None
+    assert result.reason_codes == ["CEX_EXCHANGE_NOT_SUPPORTED"]
 
 
 def test_symbol_without_cex_token_selects_market_dominant_chain_asset():

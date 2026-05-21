@@ -42,7 +42,7 @@ def test_market_tick_poll_worker_persist_ticks_wakes_only_inserted_targets(tmp_p
         wake = _RecordingWakeEmitter()
         worker = MarketTickPollWorker(
             db=_DB(conn),
-            providers=SimpleNamespace(dex_quote_market=None, message_cex_market=None),
+            providers=SimpleNamespace(dex_quote_market=None, cex_market=None),
             wake_emitter=wake,
         )
         tick = _tick(source_provider="okx_dex_rest")

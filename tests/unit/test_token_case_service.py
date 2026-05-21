@@ -288,19 +288,21 @@ def test_token_target_repository_target_identity_escapes_cex_feed_like_pattern()
             "chain_id": None,
             "address": None,
             "status": "canonical",
-            "pricefeed_id": "pricefeed:okx:BTC-USDT",
-            "provider": "okx",
-            "native_market_id": "BTC-USDT",
-            "quote_symbol": "USDT",
-            "feed_type": "cex_spot",
-        }
-    )
+            "pricefeed_id": "pricefeed:binance:BTCUSDT",
+                "provider": "binance",
+                "native_market_id": "BTCUSDT",
+                "quote_symbol": "USDT",
+                "feed_type": "cex_swap",
+            }
+        )
     repo = TokenTargetRepository(conn)
 
     result = repo.target_identity(target_type="CexToken", target_id="cex_token:BTC")
 
     assert result["source"] == "cex_tokens"
-    assert "price_feeds.feed_type LIKE 'cex_%%'" in conn.sql
+    assert "price_feeds.provider = 'binance'" in conn.sql
+    assert "price_feeds.feed_type = 'cex_swap'" in conn.sql
+    assert "price_feeds.quote_symbol = 'USDT'" in conn.sql
     assert conn.params == ["cex_token:BTC"]
 
 

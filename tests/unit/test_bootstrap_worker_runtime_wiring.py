@@ -84,7 +84,7 @@ def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_legacy_anchor_worker(
 def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_providers() -> None:
     db = FakeDB()
     providers = FakeProviders(
-        message_cex_market=None,
+        cex_market=None,
         dex_quote_market=None,
         stream_dex_market=None,
     )
@@ -341,14 +341,14 @@ class FakeProviders:
     def __init__(
         self,
         *,
-        message_cex_market=_UNSET,
+        cex_market=_UNSET,
         dex_quote_market=_UNSET,
         stream_dex_market=_UNSET,
         upstream_client_factory=None,
         brief_provider=None,
     ) -> None:
         self.asset_market = SimpleNamespace(
-            message_cex_market=object() if message_cex_market is _UNSET else message_cex_market,
+            cex_market=object() if cex_market is _UNSET else cex_market,
             dex_quote_market=object() if dex_quote_market is _UNSET else dex_quote_market,
             dex_profile_sources=(),
             dex_discovery_market=None,

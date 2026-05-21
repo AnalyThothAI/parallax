@@ -141,8 +141,10 @@ class CliTests(unittest.TestCase):
             ["ops", "projection-status"],
             ["ops", "worker-status"],
             ["ops", "validate-projections", "--sample", "5"],
-            ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
+            ["ops", "sync-binance-usdt-perp-universe", "--dry-run"],
+            ["ops", "sync-binance-usdt-perp-universe", "--execute"],
             ["ops", "sync-binance-cex-profiles"],
+            ["ops", "cex-binance-hard-cut-cleanup", "--dry-run"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
             ["ops", "refresh-asset-profiles", "--limit", "5"],
             ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5", "--lookup-key", "symbol:SLOP"],
@@ -195,31 +197,36 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[5].ops_command, "worker-status")
         self.assertEqual(parsed[6].ops_command, "validate-projections")
         self.assertEqual(parsed[6].sample, 5)
-        self.assertEqual(parsed[7].ops_command, "sync-okx-cex-universe")
-        self.assertEqual(parsed[8].ops_command, "sync-binance-cex-profiles")
-        self.assertEqual(parsed[9].ops_command, "run-resolution-refresh")
-        self.assertEqual(parsed[9].limit, 5)
-        self.assertEqual(parsed[10].ops_command, "refresh-asset-profiles")
-        self.assertEqual(parsed[10].limit, 5)
-        self.assertEqual(parsed[11].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[11].window, "24h")
-        self.assertEqual(parsed[11].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[12].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[12].window, "5m")
-        self.assertEqual(parsed[13].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[14].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[15].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[16].ops_command, "rebuild-narrative-intel")
-        self.assertEqual(parsed[16].semantic_limit, 5)
-        self.assertEqual(parsed[16].digest_limit, 5)
-        self.assertTrue(parsed[16].drain)
-        self.assertEqual(parsed[17].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[17].limit, 200)
-        self.assertEqual(parsed[18].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[18].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[19].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[20].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[20].limit, 5)
+        self.assertEqual(parsed[7].ops_command, "sync-binance-usdt-perp-universe")
+        self.assertTrue(parsed[7].dry_run)
+        self.assertEqual(parsed[8].ops_command, "sync-binance-usdt-perp-universe")
+        self.assertTrue(parsed[8].execute)
+        self.assertEqual(parsed[9].ops_command, "sync-binance-cex-profiles")
+        self.assertEqual(parsed[10].ops_command, "cex-binance-hard-cut-cleanup")
+        self.assertTrue(parsed[10].dry_run)
+        self.assertEqual(parsed[11].ops_command, "run-resolution-refresh")
+        self.assertEqual(parsed[11].limit, 5)
+        self.assertEqual(parsed[12].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[12].limit, 5)
+        self.assertEqual(parsed[13].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[13].window, "24h")
+        self.assertEqual(parsed[13].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[14].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[14].window, "5m")
+        self.assertEqual(parsed[15].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[16].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[17].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[18].ops_command, "rebuild-narrative-intel")
+        self.assertEqual(parsed[18].semantic_limit, 5)
+        self.assertEqual(parsed[18].digest_limit, 5)
+        self.assertTrue(parsed[18].drain)
+        self.assertEqual(parsed[19].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[19].limit, 200)
+        self.assertEqual(parsed[20].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[20].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[21].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[22].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[22].limit, 5)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -13,9 +13,9 @@ def test_cex_with_pricefeed_id_source_provider_and_instrument_ref_passes_market_
             {
                 "route": "cex",
                 "price_usd": 1.25,
-                "pricefeed_id": "pricefeed:cex:okx:spot:TEST-USDT",
-                "instrument_ref": "pricefeed:cex:okx:spot:TEST-USDT",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:spot:TESTUSDT",
+                "instrument_ref": "pricefeed:cex:binance:spot:TESTUSDT",
+                "source_provider": "binance_cex_rest",
                 "freshness_status": "fresh",
             }
         ],
@@ -35,9 +35,9 @@ def test_cex_with_no_fresh_price_is_blocked_market_contract() -> None:
         market=[
             {
                 "route": "cex",
-                "pricefeed_id": "pricefeed:cex:okx:spot:TEST-USDT",
-                "instrument_ref": "pricefeed:cex:okx:spot:TEST-USDT",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:spot:TESTUSDT",
+                "instrument_ref": "pricefeed:cex:binance:spot:TESTUSDT",
+                "source_provider": "binance_cex_rest",
                 "freshness_status": "stale",
             }
         ],
@@ -105,9 +105,9 @@ def _packet(
             {
                 "route": route,
                 "price_usd": 1.25,
-                "pricefeed_id": "pricefeed:cex:okx:spot:TEST-USDT",
-                "instrument_ref": "pricefeed:cex:okx:spot:TEST-USDT",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:spot:TESTUSDT",
+                "instrument_ref": "pricefeed:cex:binance:spot:TESTUSDT",
+                "source_provider": "binance_cex_rest",
                 "freshness_status": "fresh",
             }
         ]

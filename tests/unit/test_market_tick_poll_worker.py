@@ -19,7 +19,7 @@ def test_market_tick_poll_worker_is_append_only_without_single_writer_lock() -> 
     state = FakeSessionState()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, FakeRepos(state, [])),
-        providers=FakeProviders(dex_quote_market=None, message_cex_market=None),
+        providers=FakeProviders(dex_quote_market=None, cex_market=None),
     )
 
     assert isinstance(worker, WorkerBase)
@@ -33,7 +33,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
         state,
         [
             tier_row(target_type="chain_token", target_id="eip155:1:0xAbC"),
-            tier_row(target_type="cex_symbol", target_id="okx:BTC-USDT-SWAP"),
+            tier_row(target_type="cex_symbol", target_id="binance:BTCUSDT"),
         ],
     )
     dex_provider = FakeDexQuoteProvider(
@@ -55,8 +55,8 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     cex_provider = FakeCexProvider(
         state,
         {
-            "BTC-USDT-SWAP": CexTicker(
-                inst_id="BTC-USDT-SWAP",
+            "BTCUSDT": CexTicker(
+                inst_id="BTCUSDT",
                 inst_type="SWAP",
                 last_price=50_123.4,
                 volume_24h=999.8,
@@ -68,7 +68,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     wake = FakeWakeEmitter()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=cex_provider),
+        providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         wake_emitter=wake,
         batch_size=10,
         clock=lambda: 1_800_000_000_100,
@@ -85,7 +85,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     assert dex_provider.saw_in_session == [False]
     assert dex_provider.requests == [("eip155:1", "0xAbC")]
     assert cex_provider.saw_in_session == [False]
-    assert cex_provider.requests == ["BTC-USDT-SWAP"]
+    assert cex_provider.requests == ["BTCUSDT"]
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 2
 
@@ -113,18 +113,18 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
 
     assert cex_tick.tick_id == market_tick_id(
         target_type="cex_symbol",
-        target_id="okx:BTC-USDT-SWAP",
-        source_provider="okx_cex_rest",
+        target_id="binance:BTCUSDT",
+        source_provider="binance_cex_rest",
         observed_at_ms=1_800_000_000_020,
     )
     assert cex_tick.target_type == "cex_symbol"
-    assert cex_tick.target_id == "okx:BTC-USDT-SWAP"
+    assert cex_tick.target_id == "binance:BTCUSDT"
     assert cex_tick.chain is None
     assert cex_tick.token_address is None
-    assert cex_tick.exchange == "okx"
-    assert cex_tick.instrument == "BTC-USDT-SWAP"
+    assert cex_tick.exchange == "binance"
+    assert cex_tick.instrument == "BTCUSDT"
     assert cex_tick.source_tier == "tier2_poll"
-    assert cex_tick.source_provider == "okx_cex_rest"
+    assert cex_tick.source_provider == "binance_cex_rest"
     assert cex_tick.price_usd == Decimal("50123.4")
     assert cex_tick.volume_24h_usd == Decimal("999.8")
     assert cex_tick.open_interest_usd == Decimal("333.2")
@@ -137,7 +137,7 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     assert wake.channels == ["market_tick_written", "market_tick_written"]
     assert wake.market_tick_notifications == [
         {"target_type": "chain_token", "target_id": "eip155:1:0xAbC"},
-        {"target_type": "cex_symbol", "target_id": "okx:BTC-USDT-SWAP"},
+        {"target_type": "cex_symbol", "target_id": "binance:BTCUSDT"},
     ]
 
 
@@ -162,7 +162,7 @@ def test_market_tick_poll_worker_preserves_gmgn_quote_source_provider() -> None:
     )
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=None),
+        providers=FakeProviders(dex_quote_market=dex_provider, cex_market=None),
         clock=lambda: 1_800_000_000_100,
     )
 
@@ -185,11 +185,11 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
         [
             tier_row(target_type="chain_token", target_id="bad-chain-token"),
             tier_row(target_type="cex_symbol", target_id="bad-cex-symbol"),
-            tier_row(target_type="nonsense", target_id="okx:ETH-USDT-SWAP"),
+            tier_row(target_type="nonsense", target_id="binance:ETHUSDT"),
             tier_row(target_type="chain_token", target_id="solana:missing"),
             tier_row(target_type="chain_token", target_id="solana:failing"),
-            tier_row(target_type="cex_symbol", target_id="okx:MISSING-USDT-SWAP"),
-            tier_row(target_type="cex_symbol", target_id="okx:FAIL-USDT-SWAP"),
+            tier_row(target_type="cex_symbol", target_id="binance:MISSINGUSDT"),
+            tier_row(target_type="cex_symbol", target_id="binance:FAILUSDT"),
         ],
     )
     dex_provider = FakeDexQuoteProvider(
@@ -199,12 +199,12 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
     )
     cex_provider = FakeCexProvider(
         state,
-        {"FAIL-USDT-SWAP": RuntimeError("cex unavailable")},
+        {"FAILUSDT": RuntimeError("cex unavailable")},
     )
     wake = FakeWakeEmitter()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=cex_provider),
+        providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         wake_emitter=wake,
         batch_size=20,
     )
@@ -253,7 +253,7 @@ def test_market_tick_poll_worker_retries_dex_batch_individually_to_preserve_vali
     wake = FakeWakeEmitter()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=None),
+        providers=FakeProviders(dex_quote_market=dex_provider, cex_market=None),
         wake_emitter=wake,
         clock=lambda: 1_800_000_000_100,
     )
@@ -283,7 +283,7 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
         state,
         [
             tier_row(target_type="chain_token", target_id="solana:BadDex"),
-            tier_row(target_type="cex_symbol", target_id="okx:BAD-USDT-SWAP"),
+            tier_row(target_type="cex_symbol", target_id="binance:BADUSDT"),
         ],
     )
     dex_provider = FakeDexQuoteProvider(
@@ -301,8 +301,8 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
     cex_provider = FakeCexProvider(
         state,
         {
-            "BAD-USDT-SWAP": CexTicker(
-                inst_id="BAD-USDT-SWAP",
+            "BADUSDT": CexTicker(
+                inst_id="BADUSDT",
                 inst_type="SWAP",
                 last_price=bad_price,
                 volume_24h=None,
@@ -314,7 +314,7 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
     wake = FakeWakeEmitter()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=cex_provider),
+        providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
         wake_emitter=wake,
     )
 
@@ -331,14 +331,14 @@ def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> No
     state = FakeSessionState()
     repos = FakeRepos(
         state,
-        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(4)],
+        [tier_row(target_type="cex_symbol", target_id=f"binance:SYM{i}USDT") for i in range(4)],
         sort_fresh_targets_last=True,
     )
     provider = FakeCexProvider(
         state,
         {
-            f"SYM{i}-USDT": CexTicker(
-                inst_id=f"SYM{i}-USDT",
+            f"SYM{i}USDT": CexTicker(
+                inst_id=f"SYM{i}USDT",
                 inst_type="SPOT",
                 last_price=Decimal(i + 1),
                 volume_24h=None,
@@ -350,7 +350,7 @@ def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> No
     )
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=None, message_cex_market=provider),
+        providers=FakeProviders(dex_quote_market=None, cex_market=provider),
         batch_size=2,
         settings=SimpleNamespace(
             enabled=True,
@@ -370,24 +370,24 @@ def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> No
             "tier": 2,
             "limit": 2,
             "exclude_keys": [
-                {"target_type": "cex_symbol", "target_id": "okx:SYM0-USDT"},
-                {"target_type": "cex_symbol", "target_id": "okx:SYM1-USDT"},
+                {"target_type": "cex_symbol", "target_id": "binance:SYM0USDT"},
+                {"target_type": "cex_symbol", "target_id": "binance:SYM1USDT"},
             ],
         },
     ]
-    assert set(provider.requests[:2]) == {"SYM0-USDT", "SYM1-USDT"}
-    assert set(provider.requests[2:]) == {"SYM2-USDT", "SYM3-USDT"}
+    assert set(provider.requests[:2]) == {"SYM0USDT", "SYM1USDT"}
+    assert set(provider.requests[2:]) == {"SYM2USDT", "SYM3USDT"}
 
 
 def test_market_tick_poll_worker_uses_stable_freshness_order_without_empty_page_wrap() -> None:
     state = FakeSessionState()
     repos = FakeRepos(
         state,
-        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(3)],
+        [tier_row(target_type="cex_symbol", target_id=f"binance:SYM{i}USDT") for i in range(3)],
     )
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=None, message_cex_market=FakeCexProvider(state, {})),
+        providers=FakeProviders(dex_quote_market=None, cex_market=FakeCexProvider(state, {})),
         batch_size=2,
         settings=SimpleNamespace(
             enabled=True,
@@ -407,8 +407,8 @@ def test_market_tick_poll_worker_uses_stable_freshness_order_without_empty_page_
             "tier": 2,
             "limit": 2,
             "exclude_keys": [
-                {"target_type": "cex_symbol", "target_id": "okx:SYM0-USDT"},
-                {"target_type": "cex_symbol", "target_id": "okx:SYM1-USDT"},
+                {"target_type": "cex_symbol", "target_id": "binance:SYM0USDT"},
+                {"target_type": "cex_symbol", "target_id": "binance:SYM1USDT"},
             ],
         },
     ]
@@ -418,12 +418,12 @@ def test_market_tick_poll_worker_rotates_recently_attempted_no_quote_targets_wit
     state = FakeSessionState()
     repos = FakeRepos(
         state,
-        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(4)],
+        [tier_row(target_type="cex_symbol", target_id=f"binance:SYM{i}USDT") for i in range(4)],
     )
     provider = FakeCexProvider(state, {})
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=None, message_cex_market=provider),
+        providers=FakeProviders(dex_quote_market=None, cex_market=provider),
         batch_size=2,
         settings=SimpleNamespace(
             enabled=True,
@@ -437,16 +437,16 @@ def test_market_tick_poll_worker_rotates_recently_attempted_no_quote_targets_wit
     asyncio.run(worker.run_once())
     asyncio.run(worker.run_once())
 
-    assert set(provider.requests[:2]) == {"SYM0-USDT", "SYM1-USDT"}
-    assert set(provider.requests[2:]) == {"SYM2-USDT", "SYM3-USDT"}
+    assert set(provider.requests[:2]) == {"SYM0USDT", "SYM1USDT"}
+    assert set(provider.requests[2:]) == {"SYM2USDT", "SYM3USDT"}
     assert repos.token_capture_tiers.calls == [
         {"tier": 2, "limit": 2},
         {
             "tier": 2,
             "limit": 2,
             "exclude_keys": [
-                {"target_type": "cex_symbol", "target_id": "okx:SYM0-USDT"},
-                {"target_type": "cex_symbol", "target_id": "okx:SYM1-USDT"},
+                {"target_type": "cex_symbol", "target_id": "binance:SYM0USDT"},
+                {"target_type": "cex_symbol", "target_id": "binance:SYM1USDT"},
             ],
         },
     ]
@@ -456,12 +456,12 @@ def test_market_tick_poll_worker_polls_cex_targets_with_bounded_concurrency() ->
     state = FakeSessionState()
     repos = FakeRepos(
         state,
-        [tier_row(target_type="cex_symbol", target_id=f"okx:SYM{i}-USDT") for i in range(4)],
+        [tier_row(target_type="cex_symbol", target_id=f"binance:SYM{i}USDT") for i in range(4)],
     )
     provider = BlockingCexProvider(state)
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
-        providers=FakeProviders(dex_quote_market=None, message_cex_market=provider),
+        providers=FakeProviders(dex_quote_market=None, cex_market=provider),
         batch_size=4,
         settings=SimpleNamespace(
             enabled=True,
@@ -482,7 +482,7 @@ def test_market_tick_poll_worker_polls_cex_targets_with_bounded_concurrency() ->
 
     assert provider.max_active == 2
     assert result.processed == 0  # tickers map is empty, so all CEX skipped
-    assert sorted(provider.requests) == ["SYM0-USDT", "SYM1-USDT", "SYM2-USDT", "SYM3-USDT"]
+    assert sorted(provider.requests) == ["SYM0USDT", "SYM1USDT", "SYM2USDT", "SYM3USDT"]
     # All 4 targets must be attempted, none in-session.
     assert len(provider.saw_in_session) == 4
     assert all(not seen for seen in provider.saw_in_session)
@@ -607,7 +607,7 @@ class FakeSession:
 
 class FakeProviders(SimpleNamespace):
     dex_quote_market: FakeDexQuoteProvider | None
-    message_cex_market: FakeCexProvider | None
+    cex_market: FakeCexProvider | None
 
 
 class FakeDexQuoteProvider:

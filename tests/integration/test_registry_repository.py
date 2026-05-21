@@ -59,7 +59,7 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
         cex_token = registry.upsert_cex_token(
             base_symbol="PEPE",
             project_id=None,
-            source="okx",
+            source="binance",
             observed_at_ms=1_778_145_000_000,
         )
         asset = registry.upsert_chain_asset(
@@ -69,22 +69,22 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
         )
         _write_identity(identity, asset, symbol="PEPE", name="Pepe")
         pricefeed = registry.upsert_pricefeed(
-            feed_type="cex_spot",
-            provider="okx",
+            feed_type="cex_swap",
+            provider="binance",
             subject_type="CexToken",
             subject_id=cex_token["cex_token_id"],
-            native_market_id="PEPE-USDT",
+            native_market_id="PEPEUSDT",
             base_cex_token_id=cex_token["cex_token_id"],
             base_symbol="PEPE",
             quote_symbol="USDT",
             observed_at_ms=1_778_145_000_000,
         )
         usdc_pricefeed = registry.upsert_pricefeed(
-            feed_type="cex_spot",
-            provider="okx",
+            feed_type="cex_swap",
+            provider="binance",
             subject_type="CexToken",
             subject_id=cex_token["cex_token_id"],
-            native_market_id="PEPE-USDC",
+                native_market_id="PEPEUSDC",
             base_cex_token_id=cex_token["cex_token_id"],
             base_symbol="PEPE",
             quote_symbol="USDC",
@@ -101,9 +101,9 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
     assert found_cex["cex_token_id"] == "cex_token:PEPE"
     assert asset["asset_id"] == "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"
     assert found_asset["market_cap_usd"] is None
-    assert pricefeed["pricefeed_id"] == "pricefeed:cex:okx:spot:PEPE-USDT"
-    assert usdc_pricefeed["pricefeed_id"] == "pricefeed:cex:okx:spot:PEPE-USDC"
-    assert preferred_feed["pricefeed_id"] == "pricefeed:cex:okx:spot:PEPE-USDT"
+    assert pricefeed["pricefeed_id"] == "pricefeed:cex:binance:swap:PEPEUSDT"
+    assert usdc_pricefeed["pricefeed_id"] == "pricefeed:cex:binance:swap:PEPEUSDC"
+    assert preferred_feed["pricefeed_id"] == "pricefeed:cex:binance:swap:PEPEUSDT"
 
 
 def test_chain_asset_upserts_by_identity_index_when_address_case_differs(tmp_path):
@@ -178,7 +178,7 @@ def test_registry_repository_writes_and_deactivates_us_equity_symbols(tmp_path):
     assert missing_after_deactivate is None
 
 
-def test_symbol_lookup_reads_market_metadata_from_okx_identity_evidence(tmp_path):
+def test_symbol_lookup_reads_market_metadata_from_binance_identity_evidence(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -270,7 +270,7 @@ def test_identity_current_selects_exact_provider_over_tweet_alias_without_regist
             name="SLOP",
             evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
             confidence=CONFIDENCE_PROVIDER_EXACT,
-            provider="okx",
+            provider="binance",
             lookup_mode="exact_address",
             observed_at_ms=1_778_145_060_000,
         )

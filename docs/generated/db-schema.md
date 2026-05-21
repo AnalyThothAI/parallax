@@ -134,6 +134,63 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `cex_derivative_series`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `series_id` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `exchange` | `TEXT` | False | `None` |
+| `native_market_id` | `TEXT` | False | `None` |
+| `base_symbol` | `TEXT` | False | `None` |
+| `quote_symbol` | `TEXT` | False | `None` |
+| `metric` | `TEXT` | False | `None` |
+| `period` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `value_numeric` | `NUMERIC` | True | `None` |
+| `value_usd` | `NUMERIC` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+
+## `cex_oi_radar_rows`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `row_id` | `TEXT` | False | `None` |
+| `run_id` | `TEXT` | False | `None` |
+| `rank` | `BIGINT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `native_market_id` | `TEXT` | False | `None` |
+| `base_symbol` | `TEXT` | False | `None` |
+| `quote_symbol` | `TEXT` | False | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `open_interest_change_pct_1h` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `funding_rate` | `NUMERIC` | True | `None` |
+| `mark_price` | `NUMERIC` | True | `None` |
+| `score` | `NUMERIC` | False | `None` |
+| `score_components_json` | `JSONB` | False | `'{}'::jsonb` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+
+## `cex_oi_radar_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `run_id` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `exchange` | `TEXT` | False | `None` |
+| `quote_symbol` | `TEXT` | False | `None` |
+| `contract_type` | `TEXT` | False | `None` |
+| `period` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | True | `None` |
+| `universe_count` | `BIGINT` | False | `0` |
+| `processed_count` | `BIGINT` | False | `0` |
+| `failed_count` | `BIGINT` | False | `0` |
+| `notes_json` | `JSONB` | False | `'{}'::jsonb` |
+
 ## `cex_token_profiles`
 
 | Column | Type | Nullable | Default |
@@ -296,6 +353,7 @@
 | `price_usd` | `NUMERIC` | False | `None` |
 | `liquidity_usd` | `NUMERIC` | True | `None` |
 | `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
 | `market_cap_usd` | `NUMERIC` | True | `None` |
 | `holders` | `BIGINT` | True | `None` |
 | `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |

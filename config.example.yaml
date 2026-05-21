@@ -46,15 +46,20 @@ gmgn:
 
 providers:
   okx:
-    cex_base_url: "https://www.okx.com"
-    cex_sync_enabled: true
-    cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453", "607"]
     dex_ws_url: "wss://wsdex.okx.com/ws/v6/dex"
     dex_api_key:
     dex_secret_key:
     dex_passphrase:
+    timeout_seconds: 15
+  binance:
+    enabled: true
+    web3_base_url: "https://web3.binance.com"
+    cex_profile_base_url: "https://www.binance.com"
+    usdm_futures_base_url: "https://fapi.binance.com"
+    cex_universe_quote_symbol: "USDT"
+    cex_universe_contract_type: "PERPETUAL"
     timeout_seconds: 15
   marketlane:
     enabled: true

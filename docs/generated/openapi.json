@@ -5230,6 +5230,47 @@
         ]
       }
     },
+    "/api/cex/radar-board": {
+      "get": {
+        "operationId": "cex_radar_board_api_cex_radar_board_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cex Radar Board",
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/enrichment-jobs": {
       "get": {
         "operationId": "enrichment_jobs_api_enrichment_jobs_get",

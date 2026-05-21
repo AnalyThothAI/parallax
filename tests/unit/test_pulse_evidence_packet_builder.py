@@ -51,7 +51,7 @@ class FakeEvidenceSourceRepository:
 def test_builds_complete_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
     context = _context(
         target_type="cex_token",
-        target_id="okx:BTC-USDT",
+        target_id="binance:BTCUSDT",
         source_event_ids=["event-1"],
         factor_snapshot={"market": {"decision_latest": {"price_usd": 99_999}}},
     )
@@ -62,8 +62,8 @@ def test_builds_complete_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
                 "route": "cex",
                 "target_market_type": "perpetual",
                 "price_usd": 67_000,
-                "pricefeed_id": "pricefeed:cex:okx:swap:BTC-USDT-SWAP",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "source_provider": "binance_cex_rest",
                 "observed_at_ms": NOW_MS - 30_000,
             }
         ],
@@ -73,8 +73,8 @@ def test_builds_complete_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
     packet = PulseEvidenceBuilder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
 
     market = _model_dump(packet.market_evidence)
-    assert market["instrument_ref"] == "pricefeed:cex:okx:swap:BTC-USDT-SWAP"
-    assert market["venue_ref"] == "venue:okx_cex_rest"
+    assert market["instrument_ref"] == "pricefeed:cex:binance:swap:BTCUSDT"
+    assert market["venue_ref"] == "venue:binance_cex_rest"
     assert market["price_usd"] == 67_000
     assert "event:event-1" in _ref_ids(packet)
     assert "metric:market:price_usd" in _ref_ids(packet)
@@ -110,7 +110,7 @@ def test_builds_dex_packet_with_pair_and_liquidity_evidence() -> None:
 def test_marks_market_evidence_stale_without_using_factor_snapshot_as_truth() -> None:
     context = _context(
         target_type="cex_token",
-        target_id="okx:ETH-USDT",
+        target_id="binance:ETHUSDT",
         source_event_ids=["event-1"],
         factor_snapshot={"market": {"decision_latest": {"price_usd": 9_999, "observed_at_ms": NOW_MS}}},
     )
@@ -120,8 +120,8 @@ def test_marks_market_evidence_stale_without_using_factor_snapshot_as_truth() ->
             {
                 "route": "cex",
                 "price_usd": 3_100,
-                "pricefeed_id": "pricefeed:cex:okx:spot:ETH-USDT",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:spot:ETHUSDT",
+                "source_provider": "binance_cex_rest",
                 "observed_at_ms": NOW_MS - 3_700_000,
             }
         ],
@@ -143,13 +143,13 @@ def test_marks_market_evidence_stale_without_using_factor_snapshot_as_truth() ->
 def test_packet_hash_is_stable_across_input_dict_key_order() -> None:
     context_a = _context(
         target_type="cex_token",
-        target_id="okx:BTC-USDT",
+        target_id="binance:BTCUSDT",
         source_event_ids=["event-1"],
         factor_snapshot={"b": 2, "a": {"z": 3, "y": 4}},
     )
     context_b = _context(
         target_type="cex_token",
-        target_id="okx:BTC-USDT",
+        target_id="binance:BTCUSDT",
         source_event_ids=["event-1"],
         factor_snapshot={"a": {"y": 4, "z": 3}, "b": 2},
     )
@@ -159,8 +159,8 @@ def test_packet_hash_is_stable_across_input_dict_key_order() -> None:
             {
                 "route": "cex",
                 "price_usd": 67_000,
-                "pricefeed_id": "pricefeed:cex:okx:spot:BTC-USDT",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:spot:BTCUSDT",
+                "source_provider": "binance_cex_rest",
                 "observed_at_ms": NOW_MS - 30_000,
             }
         ],
@@ -218,7 +218,7 @@ def test_stale_digest_prose_without_current_sources_blocks_non_abstain_packet() 
 
 
 def test_current_source_refs_remain_primary_when_digest_is_stale_context() -> None:
-    context = _context(target_type="cex_token", target_id="okx:BTC-USDT", source_event_ids=["event-current"])
+    context = _context(target_type="cex_token", target_id="binance:BTCUSDT", source_event_ids=["event-current"])
     repo = FakeEvidenceSourceRepository(
         events=[_event("event-current")],
         market_facts=[
@@ -226,8 +226,8 @@ def test_current_source_refs_remain_primary_when_digest_is_stale_context() -> No
                 "route": "cex",
                 "target_market_type": "perpetual",
                 "price_usd": 67_000,
-                "pricefeed_id": "pricefeed:cex:okx:swap:BTC-USDT-SWAP",
-                "source_provider": "okx_cex_rest",
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "source_provider": "binance_cex_rest",
                 "observed_at_ms": NOW_MS - 30_000,
             }
         ],

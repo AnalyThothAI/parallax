@@ -23,10 +23,10 @@ class MarketCandlesService:
     def _enrich_cex_candles(self, payload: dict[str, Any], *, bar: str, limit: int) -> dict[str, Any]:
         inst_id = _text(payload.get("native_market_id"))
         if not inst_id:
-            return _anchor_candles(payload, status="missing_market_id", bar=bar, source="okx_cex_candles")
+            return _anchor_candles(payload, status="missing_market_id", bar=bar, source="binance_cex_candles")
         candles = getattr(self.cex_market, "candles", None)
         if not candles:
-            return _anchor_candles(payload, status="unsupported", bar=bar, source="okx_cex_candles")
+            return _anchor_candles(payload, status="unsupported", bar=bar, source="binance_cex_candles")
         try:
             rows = candles(inst_id=inst_id, bar=bar, limit=limit)
         except Exception as exc:
@@ -34,10 +34,10 @@ class MarketCandlesService:
                 payload,
                 status="error",
                 bar=bar,
-                source="okx_cex_candles",
+                source="binance_cex_candles",
                 error=type(exc).__name__,
             )
-        return _ohlc_candles(payload, candles=rows, bar=bar, source="okx_cex_candles")
+        return _ohlc_candles(payload, candles=rows, bar=bar, source="binance_cex_candles")
 
     def _enrich_dex_candles(self, payload: dict[str, Any], *, bar: str, limit: int) -> dict[str, Any]:
         chain_id = _text(payload.get("chain_id"))

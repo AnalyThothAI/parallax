@@ -32,11 +32,12 @@ settings. It must not contain worker runtime knobs.
 - `gmgn` — GMGN OpenAPI key/base URL/timeout/cache settings. The exact-token
   profile lane uses this group to write persisted GMGN source
   `asset_profiles` facts, including DEX token `logo_url`.
-- `providers.okx` — OKX CEX/DEX REST and DEX WebSocket endpoints plus
-  credentials where required by the enabled provider lane.
-- `providers.binance` — Binance Web3 metadata and Binance CEX profile endpoint
-  settings. Binance DEX metadata writes `asset_profiles`; Binance CEX profiles
-  write `cex_token_profiles`.
+- `providers.okx` — OKX DEX REST and DEX WebSocket endpoints plus credentials
+  where required by the enabled DEX provider lane.
+- `providers.binance` — Binance Web3 metadata, Binance CEX profile endpoint,
+  and Binance USD-M futures settings. Binance DEX metadata writes
+  `asset_profiles`; Binance CEX profiles write `cex_token_profiles`; Binance
+  USD-M feeds own the CEX route, quote, candle, and OI/radar lane.
 
 Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`,
 `lease_ms`, `max_attempts`, advisory-lock, timeout, wake-channel, Pulse

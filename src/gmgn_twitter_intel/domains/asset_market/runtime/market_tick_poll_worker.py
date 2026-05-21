@@ -22,7 +22,7 @@ from gmgn_twitter_intel.domains.asset_market.types import (
 
 SOURCE_TIER: MarketTickSourceTier = "tier2_poll"
 DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
-CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_cex_rest"
+CEX_SOURCE_PROVIDER: MarketTickSourceProvider = "binance_cex_rest"
 DEFAULT_BATCH_SIZE = 100
 
 
@@ -35,7 +35,7 @@ class MarketTickPollWorker(WorkerBase):
         pool_bundle: Any | None = None,
         providers: Any | None = None,
         dex_quote_market: Any | None = None,
-        message_cex_market: Any | None = None,
+        cex_market: Any | None = None,
         wake_emitter: Any | None = None,
         wake_bus: Any | None = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -55,7 +55,7 @@ class MarketTickPollWorker(WorkerBase):
         )
         self.providers = providers or SimpleNamespace(
             dex_quote_market=dex_quote_market,
-            message_cex_market=message_cex_market,
+            cex_market=cex_market,
         )
         self.wake_emitter = wake_emitter or wake_bus
         self.batch_size = max(1, int(getattr(resolved_settings, "batch_size", batch_size)))
@@ -197,7 +197,7 @@ class MarketTickPollWorker(WorkerBase):
         targets: list[_CexTarget],
         semaphore: asyncio.Semaphore,
     ) -> _PollProviderResult:
-        provider = getattr(self.providers, "message_cex_market", None)
+        provider = getattr(self.providers, "cex_market", None)
         if provider is None:
             skipped: Counter[str] = Counter()
             skipped["cex_provider_unavailable"] += len(targets)

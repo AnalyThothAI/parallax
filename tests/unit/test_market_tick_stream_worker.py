@@ -135,7 +135,7 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
 
 def test_market_tick_stream_worker_skips_cex_symbol_tier1_targets() -> None:
     state = FakeSessionState()
-    repos = FakeRepos(state, [tier_row(target_type="cex_symbol", target_id="okx:BTC-USDT-SWAP")])
+    repos = FakeRepos(state, [tier_row(target_type="cex_symbol", target_id="binance:BTCUSDT")])
     db = FakeDB(state, repos)
     stream = FakeDexMarketStream(state, [])
     wake = FakeWakeEmitter()
