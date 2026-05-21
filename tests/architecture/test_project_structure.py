@@ -29,7 +29,9 @@ def test_project_uses_domain_package_src_layout():
     assert (api / "ws.py").is_file()
     assert (cli / "main.py").is_file()
     assert {path.name for path in api.glob("routes_*.py")} == {
+        "routes_cex.py",
         "routes_events.py",
+        "routes_macro.py",
         "routes_news.py",
         "routes_notifications.py",
         "routes_ops.py",
@@ -38,13 +40,14 @@ def test_project_uses_domain_package_src_layout():
         "routes_search.py",
         "routes_social_enrichment.py",
         "routes_status.py",
-        "routes_token_image.py",
+        "routes_token_images.py",
         "routes_watchlist.py",
     }
     assert {path.name for path in (cli / "commands").glob("*.py")} == {
         "__init__.py",
         "config.py",
         "db.py",
+        "macro.py",
         "ops.py",
         "pulse_replay.py",
         "read_models.py",
@@ -237,6 +240,46 @@ def test_runtime_source_does_not_reference_removed_token_radar_versions():
     text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
     for item in forbidden:
         assert item not in text
+
+
+def test_token_image_hard_cut_contracts_stay_removed():
+    old_proxy_pattern = re.compile(r"/api/token-image(?!s)")
+    production_paths = [
+        path
+        for base in (
+            ROOT / "src" / "gmgn_twitter_intel",
+            ROOT / "web" / "src",
+        )
+        for path in base.rglob("*")
+        if path.suffix in {".py", ".ts", ".tsx"} and "platform/db/alembic/versions" not in path.as_posix()
+    ]
+    public_contract_docs = [
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "CONTRACTS.md",
+        ROOT / "docs" / "FRONTEND.md",
+        ROOT / "docs" / "SETUP.md",
+        ROOT / "docs" / "WORKERS.md",
+        ROOT / "docs" / "WORKER_FLOW.md",
+    ]
+
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "app" / "surfaces" / "api" / "routes_token_image.py").exists()
+    assert not (ROOT / "web" / "src" / "shared" / "model" / "tokenImageUrl.ts").exists()
+
+    offenders: list[str] = []
+    for path in production_paths:
+        text = path.read_text(encoding="utf-8")
+        if "tokenImageUrl" in text:
+            offenders.append(f"{path.relative_to(ROOT)}: tokenImageUrl")
+        if old_proxy_pattern.search(text):
+            offenders.append(f"{path.relative_to(ROOT)}: /api/token-image")
+
+    profile_example_pattern = re.compile(r"logo_url[^\n]{0,80}https?://|https?://[^\n]{0,80}logo_url")
+    for path in public_contract_docs:
+        text = path.read_text(encoding="utf-8")
+        if profile_example_pattern.search(text):
+            offenders.append(f"{path.relative_to(ROOT)}: remote logo_url public example")
+
+    assert offenders == []
 
 
 def test_makefile_exposes_global_cli_install_targets():

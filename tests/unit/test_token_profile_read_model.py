@@ -22,7 +22,7 @@ def test_profile_read_model_returns_ready_block_from_current_profile_row():
                 source_ref="gmgn-evidence-1",
                 symbol="ABC",
                 name=" ",
-                logo_url="https://assets.example/abc.png",
+                logo_url="/api/token-images/image-abc",
                 banner_url="",
                 website_url=" https://abc.example ",
                 twitter_username="abc",
@@ -48,7 +48,7 @@ def test_profile_read_model_returns_ready_block_from_current_profile_row():
         "identity": {
             "symbol": "ABC",
             "name": None,
-            "logo_url": "https://assets.example/abc.png",
+            "logo_url": "/api/token-images/image-abc",
             "banner_url": None,
             "description": "project profile",
         },
@@ -93,6 +93,27 @@ def test_profile_read_model_preserves_full_twitter_url():
 
     assert profile["links"]["twitter_url"] == "https://twitter.com/abc"
     assert profile["source"]["raw_available"] is False
+
+
+def test_profile_read_model_nulls_stale_remote_logo_url():
+    token_profiles = FakeTokenProfiles(
+        rows={
+            ("Asset", "asset:eip155:1:erc20:0xabc"): profile_row(
+                target_type="Asset",
+                target_id="asset:eip155:1:erc20:0xabc",
+                status="ready",
+                profile_provider="gmgn_dex_profile",
+                logo_url="https://gmgn.example/stale.png",
+                source_payload_json={"logo_url": "https://gmgn.example/stale.png"},
+                observed_at_ms=1_000,
+            )
+        }
+    )
+    model = TokenProfileReadModel(token_profiles=token_profiles)
+
+    profile = model.profile_for_target(target_type="Asset", target_id="asset:eip155:1:erc20:0xabc")
+
+    assert profile["identity"]["logo_url"] is None
 
 
 def test_profile_read_model_returns_pending_missing_error_and_cex_unsupported_blocks():

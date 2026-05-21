@@ -2,6 +2,8 @@ import { buildTokenCaseViewModel } from "@features/token-case/model/buildTokenCa
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { describe, expect, it } from "vitest";
 
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+
 describe("buildTokenCaseViewModel", () => {
   it("maps a token-case dossier into the narrative view model", () => {
     const dossier = tokenCaseFixture();
@@ -22,7 +24,7 @@ describe("buildTokenCaseViewModel", () => {
       "watched",
       "readiness",
     ]);
-    expect(vm.hero.logoUrl).toBe("https://example.test/hansa.png");
+    expect(vm.hero.logoUrl).toBe(`${LOCAL_LOGO_PREFIX}hansa-local`);
     expect(vm.propagation.stages).toHaveLength(3);
     expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
     expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("bullish");
@@ -159,7 +161,7 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("$0.00042");
   });
 
-  it("uses the token image proxy for Binance-hosted hero logos", () => {
+  it("does not expose remote hero logos", () => {
     const dossier = tokenCaseFixture();
     const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png";
 
@@ -177,7 +179,7 @@ describe("buildTokenCaseViewModel", () => {
       route: { window: "1h", scope: "all", postSort: "recent" },
     });
 
-    expect(vm.hero.logoUrl).toBe(`/api/token-image?url=${encodeURIComponent(logoUrl)}`);
+    expect(vm.hero.logoUrl).toBeNull();
   });
 
   it("promotes event prices with a live-market comparison for the timeline", () => {

@@ -24,7 +24,8 @@ or read-model projection.
 | Tier 2 market poll | `runtime/market_tick_poll_worker.py` | `market_ticks(source_tier='tier2_poll')` | Poll targets come from `token_capture_tier(tier=2)`. DEX and CEX provider calls run outside DB sessions. |
 | Live market fan-out | `runtime/live_price_gateway.py` | in-process cache only | Raw provider frames update process-local latest state and WebSocket subscribers. The gateway does not write market facts. |
 | DEX profile source refresh | `runtime/asset_profile_refresh_worker.py`, `services/asset_profile_refresh.py`, `repositories/asset_profile_repository.py` | `asset_profiles` | Resolved DEX assets are enriched through explicit profile sources such as GMGN OpenAPI and Binance Web3. `asset_profiles` is a provider source cache, not the public profile read model. |
-| Token profile current projection | `runtime/token_profile_current_worker.py`, `services/token_profile_current_projection.py`, `repositories/token_profile_current_repository.py`, `queries/token_profile_source_query.py` | `token_profile_current` | Public profile/icon facts are projected from persisted GMGN OpenAPI rows, Binance Web3 rows, GMGN stream exact snapshot evidence, OKX DEX exact-address evidence, and `cex_token_profiles`. CEX profile absence is explicit `unsupported`; no symbol-only DEX icon matching. |
+| Token image mirror | `runtime/token_image_mirror_worker.py`, `services/token_image_mirror.py`, `repositories/token_image_asset_repository.py`, `queries/token_image_source_query.py` | `token_image_assets`, local files under `cache/token-images` | Provider logo URLs from profile source caches and exact evidence are mirrored into local media. Only ready local rows may become public logo URLs; provider URLs are never served directly. |
+| Token profile current projection | `runtime/token_profile_current_worker.py`, `services/token_profile_current_projection.py`, `repositories/token_profile_current_repository.py`, `queries/token_profile_source_query.py` | `token_profile_current` | Public profile/icon facts are projected from persisted GMGN OpenAPI rows, Binance Web3 rows, GMGN stream exact snapshot evidence, OKX DEX exact-address evidence, `cex_token_profiles`, and ready `token_image_assets`. CEX profile absence is explicit `unsupported`; no symbol-only DEX icon matching; no remote logo URL fallback. |
 | Resolution refresh and discovery | `runtime/resolution_refresh_worker.py`, `repositories/discovery_repository.py` | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | Recent NIL / AMBIGUOUS lookup keys are refreshed through OKX DEX, then affected intents are reprocessed. Successful refresh emits `resolution_updated` so downstream readers wake; the worker itself does not run inline Token Radar projection. |
 | CEX route and profile sync | `services/asset_market_sync.py`, `services/cex_token_profile_sync.py` | `cex_tokens`, `price_feeds`, `cex_token_profiles` | Maintains token/feed routing without refreshing prices. Binance CEX profiles enrich existing routed CEX tokens through a separate source cache; they do not create CEX routes or call providers from public reads. |
 | US equity symbol sync | `services/us_equity_symbol_sync.py` | `registry_assets` (MarketInstrument rows) | Confirms US equity symbols so the deterministic resolver can elevate them above DEX same-symbol assets. |
@@ -122,6 +123,9 @@ cross-domain inventory.
 - LLM enrichment may label watched social events, but token identity
   resolution stays deterministic and does not call an LLM in the hot
   path.
+- Provider logo URLs are mirror inputs only. Public profile reads expose
+  `identity.logo_url` as `NULL` or `/api/token-images/{image_id}`; no
+  frontend or API path may call GMGN, Binance, OKX, or CEX image URLs directly.
 
 ## Update Triggers
 

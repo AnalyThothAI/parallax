@@ -49,6 +49,28 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
 
 
 def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
+    ready_assets = {
+        "https://gmgn.example/logo.png": ready_image(
+            "https://gmgn.example/logo.png",
+            image_id="image-gmgn",
+            source_provider="gmgn_dex_profile",
+        ),
+        "https://binance.example/logo.png": ready_image(
+            "https://binance.example/logo.png",
+            image_id="image-binance",
+            source_provider="binance_web3_profile",
+        ),
+        "https://stream.example/logo.png": ready_image(
+            "https://stream.example/logo.png",
+            image_id="image-stream",
+            source_provider="gmgn_stream_snapshot",
+        ),
+        "https://bin.bnbstatic.com/btc.png": ready_image(
+            "https://bin.bnbstatic.com/btc.png",
+            image_id="image-cex",
+            source_provider="binance_cex_profile",
+        ),
+    }
     repos = FakeRepos(
         targets=[
             {"target_type": "Asset", "target_id": "asset:gmgn"},
@@ -100,6 +122,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
                 "observed_at_ms": 9_000,
             }
         },
+        ready_image_assets=ready_assets,
     )
 
     result = module.rebuild_token_profile_current_once(repos=repos, now_ms=10_000, limit=100)
@@ -115,7 +138,18 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     }
     assert [row["target_id"] for row in repos.token_profiles.rows] == ["asset:gmgn", "asset:stream", "cex_token:BTC"]
     assert repos.token_profiles.rows[1]["profile_provider"] == "binance_web3_profile"
-    assert repos.token_profiles.rows[2]["logo_url"] == "https://bin.bnbstatic.com/btc.png"
+    assert repos.token_profiles.rows[0]["logo_url"] == "/api/token-images/image-gmgn"
+    assert repos.token_profiles.rows[1]["logo_url"] == "/api/token-images/image-binance"
+    assert repos.token_profiles.rows[2]["logo_url"] == "/api/token-images/image-cex"
+    assert repos.token_profiles.rows[2]["logo_image_id"] == "image-cex"
+    assert repos.token_image_assets.source_url_calls == [
+        [
+            "https://gmgn.example/logo.png",
+            "https://binance.example/logo.png",
+            "https://stream.example/logo.png",
+            "https://bin.bnbstatic.com/btc.png",
+        ]
+    ]
     assert repos.token_profiles.commits == [False, False, False]
     assert repos.conn.commits == 1
 
@@ -162,6 +196,7 @@ class FakeRepos:
         okx_dex,
         binance_web3=None,
         cex_profiles=None,
+        ready_image_assets=None,
     ) -> None:
         self.conn = FakeConn()
         self.source_query = FakeSourceQuery(
@@ -173,6 +208,7 @@ class FakeRepos:
             cex_profiles=cex_profiles or {},
         )
         self.token_profiles = FakeTokenProfiles()
+        self.token_image_assets = FakeTokenImageAssets(ready_image_assets or {})
 
 
 class FakeConn:
@@ -223,3 +259,27 @@ class FakeTokenProfiles:
     def upsert_current(self, row, *, commit=True):
         self.rows.append(row)
         self.commits.append(commit)
+
+
+class FakeTokenImageAssets:
+    def __init__(self, assets_by_source_url: dict[str, dict]) -> None:
+        self.assets_by_source_url = assets_by_source_url
+        self.source_url_calls: list[list[str]] = []
+
+    def ready_by_source_urls(self, source_urls):
+        self.source_url_calls.append(list(source_urls))
+        return {
+            source_url: self.assets_by_source_url[source_url]
+            for source_url in source_urls
+            if source_url in self.assets_by_source_url
+        }
+
+
+def ready_image(source_url: str, *, image_id: str, source_provider: str) -> dict:
+    return {
+        "image_id": image_id,
+        "source_url": source_url,
+        "source_provider": source_provider,
+        "source_url_hash": f"hash-{image_id}",
+        "public_url": f"/api/token-images/{image_id}",
+    }

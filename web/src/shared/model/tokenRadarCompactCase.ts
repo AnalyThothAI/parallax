@@ -9,9 +9,10 @@ import type { NarrativeStatus, TokenDiscussionDigest, TokenFlowItem } from "@lib
 
 import { narrativeGapLabel } from "./narrativeDataGaps";
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
-import { tokenImageUrl } from "./tokenImageUrl";
 
 export type TokenRadarCompactCase = ReturnType<typeof buildTokenRadarCompactCase>;
+
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
 
 export function buildTokenRadarCompactCase(item: TokenFlowItem) {
   const tokenCase = buildTokenCaseView(item);
@@ -22,7 +23,7 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     externalLinks: compactExternalLinks(item, tokenCase.actions),
     label: tokenCase.label,
     listed: compactListedAt(item),
-    logoUrl: tokenImageUrl(item.profile?.identity?.logo_url),
+    logoUrl: localLogoUrl(item.profile?.identity?.logo_url),
     markTone: tokenCase.decision.tone,
     market: {
       ...tokenCase.market,
@@ -44,6 +45,11 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     )} 作者`,
     subtitle: tokenCase.subtitle,
   };
+}
+
+function localLogoUrl(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed?.startsWith(LOCAL_LOGO_PREFIX) ? trimmed : null;
 }
 
 type CompactExternalLink = {

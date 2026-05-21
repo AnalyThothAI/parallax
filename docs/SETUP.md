@@ -46,13 +46,19 @@ Useful live-data smoke checks:
 uv run gmgn-twitter-intel config
 uv run gmgn-twitter-intel ops worker-status
 uv run gmgn-twitter-intel ops refresh-asset-profiles --limit 5
+uv run gmgn-twitter-intel ops mirror-token-images --limit 50 --source-limit 500
+uv run gmgn-twitter-intel ops rebuild-token-profiles --limit 500
 uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
 ```
 
 The first command confirms the real config paths. The profile refresh command
 exercises the GMGN exact-token profile lane that feeds `asset_profiles.logo_url`
-for DEX token icons; provider blocks or rate limits should surface as explicit
-diagnostic results, not as fake token profile facts.
+for DEX token icon source URLs. The mirror command copies eligible provider
+images into `~/.gmgn-twitter-intel/cache/token-images`, and the rebuild command
+projects `token_profile_current.logo_url` to local `/api/token-images/{image_id}`
+paths or `NULL`. Provider blocks, rate limits, unsupported image types, and
+missing mirror rows should surface as explicit diagnostic results or fallback
+marks, not as fake public profile facts.
 
 The full CLI surface is documented by `uv run gmgn-twitter-intel --help`.
 Treat that output as the source of truth — do not enumerate commands

@@ -14,7 +14,7 @@ def select_gmgn_stream_source(rows: list[dict[str, Any]]) -> dict[str, Any] | No
         for row in rows
         if _clean(row.get("provider")) == "gmgn"
         and _clean(row.get("evidence_kind")) == EVIDENCE_GMGN_PAYLOAD_EXACT
-        and _valid_logo_url(_raw(row).get("i"))
+        and _has_gmgn_stream_metadata(row)
     ]
     return _latest(candidates)
 
@@ -25,23 +25,28 @@ def select_okx_dex_source(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
         for row in rows
         if _clean(row.get("provider")) == "okx"
         and _clean(row.get("evidence_kind")) == EVIDENCE_OKX_DEX_EXACT_ADDRESS
-        and _clean(_raw(row).get("tokenLogoUrl"))
+        and _has_okx_dex_metadata(row)
     ]
     return _latest(candidates)
 
 
-def _valid_logo_url(value: Any) -> bool:
-    return not _logo_quality_flags(_clean(value))
+def _has_gmgn_stream_metadata(row: dict[str, Any]) -> bool:
+    raw = _raw(row)
+    return any(_clean(value) for value in (raw.get("s"), raw.get("i"), row.get("symbol"), row.get("name")))
 
 
-def _logo_quality_flags(value: str | None) -> list[str]:
-    if not value:
-        return ["invalid_logo_url"]
-    if not value.startswith(("http://", "https://")):
-        return ["invalid_logo_url"]
-    if "/default-logo/" in value:
-        return ["placeholder_logo"]
-    return []
+def _has_okx_dex_metadata(row: dict[str, Any]) -> bool:
+    raw = _raw(row)
+    return any(
+        _clean(value)
+        for value in (
+            raw.get("tokenSymbol"),
+            raw.get("tokenName"),
+            raw.get("tokenLogoUrl"),
+            row.get("symbol"),
+            row.get("name"),
+        )
+    )
 
 
 def _raw(row: dict[str, Any]) -> dict[str, Any]:

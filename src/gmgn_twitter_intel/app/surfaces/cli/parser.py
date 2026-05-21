@@ -180,6 +180,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="rebuild canonical token profile current facts",
     )
     rebuild_token_profiles.add_argument("--limit", type=int, default=500)
+    mirror_token_images = ops_subcommands.add_parser(
+        "mirror-token-images",
+        help="mirror provider token images into the local cache",
+    )
+    mirror_token_images.add_argument("--limit", type=int, default=500)
+    mirror_token_images.add_argument("--source-limit", type=int, default=5000)
     reprocess_token_intents = ops_subcommands.add_parser(
         "reprocess-token-intents",
         help="re-resolve recent unresolved token intents and rebuild token radar",

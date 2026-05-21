@@ -63,7 +63,8 @@ The hot path from one public-stream frame to product output is:
    - event_anchor_backfill finishes short-lived pending event anchors
    - resolution_refresh discovers and reprocesses NIL / AMBIGUOUS lookups
    - asset_profile_refresh writes provider profile source caches
-   - token_profile_current projects public profile/icon facts
+   - token_image_mirror mirrors eligible provider logo URLs into local cached files
+   - token_profile_current projects public profile/icon facts from persisted sources and ready local image rows
    - live_price_gateway reads latest market_ticks and fans out cache-only WebSocket updates
 
 4. Token Intel projection

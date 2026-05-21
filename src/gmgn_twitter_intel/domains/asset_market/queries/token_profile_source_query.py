@@ -153,7 +153,6 @@ class TokenProfileSourceQuery:
             asset_ids=asset_ids,
             provider="gmgn",
             evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
-            raw_key="i",
         )
         return {
             asset_id: selected
@@ -166,7 +165,6 @@ class TokenProfileSourceQuery:
             asset_ids=asset_ids,
             provider="okx",
             evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
-            raw_key="tokenLogoUrl",
         )
         return {
             asset_id: selected
@@ -188,7 +186,6 @@ class TokenProfileSourceQuery:
               ON cex_tokens.cex_token_id = cex_token_profiles.cex_token_id
             WHERE cex_token_profiles.provider = 'binance_cex_profile'
               AND cex_token_profiles.status = 'ready'
-              AND cex_token_profiles.logo_url IS NOT NULL
               AND cex_tokens.cex_token_id = ANY(%s)
               AND cex_tokens.status IN ('candidate', 'canonical')
             """,
@@ -202,7 +199,6 @@ class TokenProfileSourceQuery:
         asset_ids: list[str],
         provider: str,
         evidence_kind: str,
-        raw_key: str,
     ) -> dict[str, list[dict[str, Any]]]:
         requested = _dedupe(asset_ids)
         if not requested:
@@ -213,11 +209,10 @@ class TokenProfileSourceQuery:
             FROM asset_identity_evidence
             WHERE provider = %s
               AND evidence_kind = %s
-              AND raw_payload_json ? %s
               AND asset_id = ANY(%s)
             ORDER BY asset_id ASC, observed_at_ms DESC, evidence_id DESC
             """,
-            (provider, evidence_kind, raw_key, requested),
+            (provider, evidence_kind, requested),
         ).fetchall()
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:

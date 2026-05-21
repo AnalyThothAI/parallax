@@ -43,6 +43,10 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
     gmgn_stream = query.gmgn_stream_profiles(asset_ids)
     okx_dex = query.okx_dex_profiles(asset_ids)
     cex_profiles = query.cex_token_profiles(cex_token_ids)
+    ready_images_by_source_url = _ready_images_by_source_url(
+        repos=repos,
+        sources=[gmgn_openapi, binance_web3, gmgn_stream, okx_dex, cex_profiles],
+    )
     result = _empty_result(now_ms=now_ms)
     result["selected"] = len(targets)
 
@@ -55,6 +59,7 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
             gmgn_stream=gmgn_stream.get(target_id),
             okx_dex=okx_dex.get(target_id),
             cex_profile=cex_profiles.get(target_id),
+            ready_images_by_source_url=ready_images_by_source_url,
             computed_at_ms=now_ms,
         )
         repos.token_profiles.upsert_current(row, commit=False)
@@ -62,6 +67,44 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
     repos.conn.commit()
     result["finished_at_ms"] = int(now_ms)
     return result
+
+
+def _ready_images_by_source_url(*, repos: Any, sources: list[dict[str, dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    source_urls = _candidate_logo_urls(sources)
+    if not source_urls:
+        return {}
+    token_image_assets = getattr(repos, "token_image_assets", None)
+    if token_image_assets is None:
+        return {}
+    return token_image_assets.ready_by_source_urls(source_urls)
+
+
+def _candidate_logo_urls(sources: list[dict[str, dict[str, Any]]]) -> list[str]:
+    urls: list[str] = []
+    for rows_by_target in sources:
+        for row in rows_by_target.values():
+            for value in _logo_url_values(row):
+                url = _clean_absolute_http_url(value)
+                if url:
+                    urls.append(url)
+    return list(dict.fromkeys(urls))
+
+
+def _logo_url_values(row: dict[str, Any]) -> list[Any]:
+    raw = row.get("raw_payload_json")
+    raw_payload = dict(raw) if isinstance(raw, dict) else {}
+    return [
+        row.get("logo_url"),
+        raw_payload.get("i"),
+        raw_payload.get("tokenLogoUrl"),
+    ]
+
+
+def _clean_absolute_http_url(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if text.startswith(("http://", "https://")):
+        return text
+    return None
 
 
 def _record_row(result: dict[str, Any], row: dict[str, Any]) -> None:

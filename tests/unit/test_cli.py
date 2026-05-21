@@ -78,3 +78,21 @@ def test_ops_prune_token_radar_parser_requires_explicit_mode() -> None:
     assert dry_run.execute is False
     assert execute.execute is True
     assert execute.dry_run is False
+
+
+def test_ops_mirror_token_images_parser_accepts_limits() -> None:
+    args = build_parser().parse_args(
+        [
+            "ops",
+            "mirror-token-images",
+            "--limit",
+            "500",
+            "--source-limit",
+            "5000",
+        ]
+    )
+
+    assert args.command == "ops"
+    assert args.ops_command == "mirror-token-images"
+    assert args.limit == 500
+    assert args.source_limit == 5000

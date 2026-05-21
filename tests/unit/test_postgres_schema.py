@@ -80,6 +80,9 @@ TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
 TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
 )
+TOKEN_IMAGE_ASSETS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_token_image_assets.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -331,6 +334,58 @@ def test_token_narrative_epochs_migration_adds_digest_epoch_metadata() -> None:
         "computed_at_ms DESC )"
     ) in normalized_text
     assert "restoring a pre-migration backup" in text
+
+
+def test_token_image_assets_migration_adds_local_mirror_storage() -> None:
+    text = TOKEN_IMAGE_ASSETS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260521_0077"',
+        'down_revision = "20260521_0076"',
+        "CREATE TABLE IF NOT EXISTS token_image_assets",
+        "image_id TEXT PRIMARY KEY",
+        "source_url TEXT NOT NULL",
+        "source_url_hash TEXT NOT NULL UNIQUE",
+        "source_provider TEXT NOT NULL",
+        "source_kind TEXT NOT NULL",
+        "status TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'error', 'unsupported'))",
+        "raw_ref_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "failure_count BIGINT NOT NULL DEFAULT 0",
+        "next_refresh_at_ms BIGINT NOT NULL",
+        "idx_token_image_assets_due",
+        "idx_token_image_assets_ready_source",
+        "ALTER TABLE token_profile_current",
+        "ADD COLUMN IF NOT EXISTS logo_image_id TEXT",
+        "ADD COLUMN IF NOT EXISTS logo_source_provider TEXT",
+        "ADD COLUMN IF NOT EXISTS logo_source_url_hash TEXT",
+        "idx_token_profile_current_logo_image",
+        "with op.get_context().autocommit_block():",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_profile_current_logo_image",
+        "WHERE logo_image_id IS NOT NULL",
+    ):
+        assert statement in text
+
+    for ready_requirement in (
+        "media_type IN ('image/gif', 'image/jpeg', 'image/png', 'image/webp')",
+        "file_extension IN ('.gif', '.jpg', '.png', '.webp')",
+        "content_sha256 IS NOT NULL",
+        "byte_size IS NOT NULL",
+        "byte_size > 0",
+        "storage_path IS NOT NULL",
+        "public_url IS NOT NULL",
+        "public_url LIKE '/api/token-images/%'",
+    ):
+        assert ready_requirement in text
+
+    assert (
+        "ON token_image_assets(status, next_refresh_at_ms, updated_at_ms)"
+        in normalized_text
+    )
+    assert (
+        "ON token_image_assets(source_url_hash) WHERE status = 'ready'"
+        in normalized_text
+    )
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

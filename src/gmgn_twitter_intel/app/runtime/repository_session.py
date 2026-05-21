@@ -17,6 +17,9 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
+from gmgn_twitter_intel.domains.asset_market.repositories.token_image_asset_repository import (
+    TokenImageAssetRepository,
+)
 from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_derivative_series_repository import (
     CexDerivativeSeriesRepository,
 )
@@ -70,6 +73,7 @@ class RepositorySession:
     asset_profiles: AssetProfileRepository
     cex_token_profiles: CexTokenProfileRepository
     token_profiles: TokenProfileCurrentRepository
+    token_image_assets: TokenImageAssetRepository
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
     intent_resolutions: IntentResolutionRepository
@@ -118,6 +122,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         asset_profiles=AssetProfileRepository(conn),
         cex_token_profiles=CexTokenProfileRepository(conn),
         token_profiles=TokenProfileCurrentRepository(conn),
+        token_image_assets=TokenImageAssetRepository(conn),
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),
         intent_resolutions=IntentResolutionRepository(conn),

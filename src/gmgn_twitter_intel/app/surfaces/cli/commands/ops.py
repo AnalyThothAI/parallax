@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_serv
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_binance_usdt_perp_routes
 from gmgn_twitter_intel.domains.asset_market.services.cex_binance_hard_cut_cleanup import (
@@ -73,6 +74,15 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
     if args.ops_command == "rebuild-token-profiles":
         data = _run_token_profile_current_worker_once(settings, limit=args.limit, now_ms=_now_ms())
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "mirror-token-images":
+        data = _run_token_image_mirror_worker_once(
+            settings,
+            limit=args.limit,
+            source_limit=args.source_limit,
+            now_ms=_now_ms(),
+        )
         return 0, {"ok": True, "data": data}
 
     if args.ops_command == "run-resolution-refresh":
@@ -528,6 +538,32 @@ def _run_token_profile_current_worker_once(settings: object, *, limit: int, now_
             settings=_worker_settings_with_overrides(settings.workers.token_profile_current, batch_size=limit),
             db=db,
             telemetry=telemetry,
+        )
+        result = asyncio.run(worker.run_once(now_ms=now_ms))
+        return dict(result.notes.get("result") or {})
+    finally:
+        if worker is not None:
+            asyncio.run(worker.aclose())
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _run_token_image_mirror_worker_once(settings: object, *, limit: int, source_limit: int, now_ms: int) -> dict:
+    telemetry = TelemetryRegistry()
+    db = None
+    worker = None
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        worker = TokenImageMirrorWorker(
+            name="token_image_mirror",
+            settings=_worker_settings_with_overrides(
+                settings.workers.token_image_mirror,
+                batch_size=limit,
+                source_limit=source_limit,
+            ),
+            db=db,
+            telemetry=telemetry,
+            app_home=settings.app_home,
         )
         result = asyncio.run(worker.run_once(now_ms=now_ms))
         return dict(result.notes.get("result") or {})

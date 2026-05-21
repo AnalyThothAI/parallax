@@ -1,6 +1,7 @@
 import type { TokenCaseDossier, TokenPostsData } from "@lib/types";
 
 const BASE_MS = 1_777_746_300_000;
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
 
 export function tokenCaseFixture(): TokenCaseDossier {
   return {
@@ -21,7 +22,7 @@ export function tokenCaseFixture(): TokenCaseDossier {
       identity: {
         symbol: "HANSA",
         name: "Hansa Network",
-        logo_url: "https://example.test/hansa.png",
+        logo_url: `${LOCAL_LOGO_PREFIX}hansa-local`,
         description: "Socially discovered Solana token with fast scanner pickup.",
       },
       links: {

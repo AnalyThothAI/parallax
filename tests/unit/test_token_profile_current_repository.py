@@ -47,7 +47,10 @@ def test_upsert_current_sanitizes_text_and_json_payloads():
             "source_ref": "okx\x00-1",
             "symbol": "ABC\x00",
             "name": "",
-            "logo_url": "https://okx.example/logo.png",
+            "logo_url": "/api/token-images/image-okx",
+            "logo_image_id": "image-okx",
+            "logo_source_provider": "okx_dex_evidence",
+            "logo_source_url_hash": "hash-okx",
             "quality_flags": ["invalid\x00_logo"],
             "source_payload": {"tokenLogoUrl\x00": "https://okx.example/logo.png"},
             "observed_at_ms": 1_000,
@@ -59,8 +62,15 @@ def test_upsert_current_sanitizes_text_and_json_payloads():
     assert params[5] == "okx-1"
     assert params[6] == "ABC"
     assert params[7] is None
-    assert isinstance(params[17], Jsonb)
-    assert isinstance(params[18], Jsonb)
+    assert params[8] == "/api/token-images/image-okx"
+    assert params[9] == "image-okx"
+    assert params[10] == "okx_dex_evidence"
+    assert params[11] == "hash-okx"
+    assert isinstance(params[20], Jsonb)
+    assert isinstance(params[21], Jsonb)
+    assert "logo_image_id" in conn.sqls[-1]
+    assert "logo_source_provider" in conn.sqls[-1]
+    assert "logo_source_url_hash" in conn.sqls[-1]
     assert conn.commits == 1
 
 

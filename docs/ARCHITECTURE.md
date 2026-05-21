@@ -90,7 +90,8 @@ are wrong too.
    `TokenDiscussionDigestWorker`. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
-   `TokenProfileCurrentWorker`. `news_story_groups` and `news_story_members`
+   `TokenProfileCurrentWorker`; it may expose token logos only from ready
+   local rows in `token_image_assets`. `news_story_groups` and `news_story_members`
    are written only by `NewsStoryProjectionWorker`;
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by
@@ -148,6 +149,9 @@ Cross-cutting primitives that implement these invariants:
   social-signal context can be replayed without provider calls.
 - `token_capture_tier` — rebuildable capture-control projection with
   `TokenCaptureTierWorker` as its only runtime writer.
+- `token_image_assets` — rebuildable local media mirror state written only by
+  `TokenImageMirrorWorker`. Provider logo URLs are source inputs for the
+  mirror and are never public image URLs.
 - `runtime.bootstrap()` — composition entry point that builds
   `DBPoolBundle`, provider wiring, repositories, the canonical worker
   map, `WorkerScheduler`, API/WebSocket surfaces, readiness dependencies,

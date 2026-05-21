@@ -50,6 +50,11 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert not hasattr(settings.live_price_gateway, "live_observation_heartbeat_seconds")
     assert settings.resolution_refresh.chain_ids == ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton")
     assert settings.asset_profile_refresh.statement_timeout_seconds == 120
+    assert settings.token_image_mirror.interval_seconds == 60
+    assert settings.token_image_mirror.source_limit == 5000
+    assert settings.token_image_mirror.batch_size == 100
+    assert settings.token_image_mirror.statement_timeout_seconds == 120
+    assert settings.token_image_mirror.advisory_lock_key == 2026052111
     assert settings.token_profile_current.interval_seconds == 60
     assert settings.token_profile_current.batch_size == 500
     assert settings.token_capture_tier.advisory_lock_key == 2026051503

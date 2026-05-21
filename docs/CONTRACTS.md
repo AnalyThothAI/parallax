@@ -47,9 +47,20 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 ### Worker Runtime Config (`workers.yaml`)
 
 `workers.yaml` is the only source for worker runtime knobs. It contains
-`defaults`, `agent_runtime`, and one block per canonical worker key guarded by
-`WorkersSettings`, `worker_registry.py`, and `docs/WORKERS.md`. The current
-macro-specific runtime key is `macro_view_projection`.
+`defaults`, `agent_runtime`, and one block per canonical worker key:
+
+`collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
+`live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
+`token_image_mirror`, `token_radar_projection`, `token_profile_current`,
+`narrative_admission`,
+`mention_semantics`, `token_discussion_digest`, `news_fetch`,
+`news_item_process`, `news_story_projection`, `news_item_brief`,
+`news_page_projection`, `cex_oi_radar_board`, `macro_view_projection`,
+`pulse_candidate`, `enrichment`, `handle_summary`, `notification_rule`, and
+`notification_delivery`.
+
+The schema is `WorkersSettings`; the canonical key list is guarded
+against `worker_registry.py` and `docs/WORKERS.md`.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
 contains the global default model, global concurrency/RPM limits, and
@@ -129,6 +140,19 @@ Runtime health/status contract:
   admitted `narrative_admissions.source_event_ids_json`, not from existing
   semantics rows alone. API/frontend consumers must use this surface instead of
   writing raw SQL.
+
+Token image contract:
+
+- `/api/token-images/{image_id}` is the only public token image surface.
+  `image_id` is the lowercase 64-hex source URL hash stored in
+  `token_image_assets`.
+- The route serves only `status='ready'` rows whose storage path resolves under
+  `~/.gmgn-twitter-intel/cache/token-images`. Missing rows, failed mirror rows,
+  missing files, invalid IDs, absolute paths, and traversal attempts return
+  `404`.
+- The removed `/api/token-image?url=...` proxy is not a compatibility surface.
+  Public clients must not pass provider URLs back to the server for image
+  fetching.
 
 News Intel contract:
 
@@ -221,13 +245,15 @@ Token Radar market contract:
 - Resolved DEX asset rows may expose a top-level `profile` block. Profile facts
   come from the persisted `token_profile_current` read model, not request-time provider
   calls and not `factor_snapshot_json`. `profile.status` is one of `ready`,
-  `pending`, `missing`, `unsupported`, or `error`. A `ready` block has a usable
-  `identity.logo_url` and contains
+  `pending`, `missing`, `unsupported`, or `error`. A `ready` block contains
   `identity` fields (`symbol`, `name`, `logo_url`, `banner_url`,
   `description`), normalized `links` (`website_url`, `twitter_url`,
   `twitter_username`, `telegram_url`, `gmgn_url`, `geckoterminal_url`), and
-  provider-attributed `source` metadata. Frontend clients must not derive
-  provider URLs from raw payloads; URL normalization is server-side.
+  provider-attributed `source` metadata. `identity.logo_url` is either `null`
+  or a same-origin `/api/token-images/{image_id}` path. Provider logo URLs from
+  GMGN, Binance, OKX, or CEX profile sources are retained only as server-side
+  mirror inputs and provenance; frontend clients must not derive or render
+  provider image URLs from raw payloads.
 
 US Stocks radar contract:
 

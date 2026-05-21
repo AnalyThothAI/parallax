@@ -1,5 +1,4 @@
 import type { TokenProfileBlock } from "@lib/types";
-import { tokenImageUrl } from "@shared/model/tokenImageUrl";
 import clsx from "clsx";
 import { ExternalLink, Globe, MessageCircle, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -25,6 +24,8 @@ type ProfileLink = {
   Icon: LucideIcon;
 };
 
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+
 export function TokenProfileCard({ profile, compact = false }: TokenProfileCardProps) {
   if (!profile || normalizedStatus(profile) !== "ready") {
     return <TokenProfileState compact={compact} profile={profile} />;
@@ -36,7 +37,7 @@ export function TokenProfileCard({ profile, compact = false }: TokenProfileCardP
   const name = cleanText(identity.name) ?? cleanText(identity.symbol) ?? "Unknown";
   const symbol = cleanText(identity.symbol);
   const description = cleanText(identity.description);
-  const logoUrl = tokenImageUrl(identity.logo_url);
+  const logoUrl = localLogoUrl(identity.logo_url);
   const provider = cleanText(profile.provider) ?? cleanText(source.provider);
   const twitterUsername = twitterUsernameText(linksBlock.twitter_username);
 
@@ -153,6 +154,11 @@ function buildProfileLinks(
     { label: "GMGN", href: cleanText(links.gmgn_url), Icon: Search },
     { label: "GeckoTerminal", href: cleanText(links.geckoterminal_url), Icon: ExternalLink },
   ].filter((item): item is ProfileLink => Boolean(item.href));
+}
+
+function localLogoUrl(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed?.startsWith(LOCAL_LOGO_PREFIX) ? trimmed : null;
 }
 
 function twitterUsernameText(value?: string | null): string | null {

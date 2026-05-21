@@ -9,6 +9,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker imp
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 
@@ -21,6 +22,7 @@ WORKER_KEYS = frozenset(
         "market_tick_stream",
         "resolution_refresh",
         "token_capture_tier",
+        "token_image_mirror",
         "token_profile_current",
     }
 )
@@ -42,6 +44,14 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             settings=workers.token_profile_current,
             db=ctx.db,
             telemetry=ctx.telemetry,
+        )
+    if workers.token_image_mirror.enabled:
+        constructed["token_image_mirror"] = TokenImageMirrorWorker(
+            name="token_image_mirror",
+            settings=workers.token_image_mirror,
+            db=ctx.db,
+            telemetry=ctx.telemetry,
+            app_home=ctx.settings.app_home,
         )
     if workers.token_capture_tier.enabled:
         constructed["token_capture_tier"] = TokenCaptureTierWorker(

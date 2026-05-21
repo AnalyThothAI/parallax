@@ -49,6 +49,9 @@ EXPECTED_WORKERS = {
     "asset_profile_refresh": (
         "gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"
     ),
+    "token_image_mirror": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker.TokenImageMirrorWorker"
+    ),
     "token_profile_current": (
         "gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"
     ),
@@ -99,6 +102,7 @@ OLD_READYZ_WORKER_KEYS = {
     "live_price_gateway",
     "resolution_refresh",
     "asset_profile_refresh",
+    "token_image_mirror",
     "token_profile_current",
     "token_radar_projection",
     "narrative_admission",
@@ -169,6 +173,10 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/asset_market/repositories/token_profile_current_repository.py",
         SRC / "domains/asset_market/runtime/token_profile_current_worker.py",
         SRC / "platform/db/alembic/versions/20260517_0052_token_profile_current.py",
+    },
+    "token_image_assets": {
+        SRC / "domains/asset_market/repositories/token_image_asset_repository.py",
+        SRC / "platform/db/alembic/versions/20260521_0077_token_image_assets.py",
     },
     "token_capture_tier": {
         SRC / "domains/asset_market/repositories/token_capture_tier_repository.py",
@@ -311,6 +319,14 @@ def test_worker_registry_matches_workers_yaml_schema() -> None:
     assert set(_START_PRIORITY) == expected_keys
     assert settings_keys == expected_keys
     assert docs_keys == expected_keys
+
+
+@pytest.mark.architecture
+def test_token_image_mirror_starts_between_profile_refresh_and_current_projection() -> None:
+    from gmgn_twitter_intel.app.runtime.worker_registry import WORKER_START_PRIORITY
+
+    assert WORKER_START_PRIORITY["asset_profile_refresh"] < WORKER_START_PRIORITY["token_image_mirror"]
+    assert WORKER_START_PRIORITY["token_image_mirror"] < WORKER_START_PRIORITY["token_profile_current"]
 
 
 @pytest.mark.architecture
