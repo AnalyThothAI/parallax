@@ -2,21 +2,12 @@ import json
 import time
 from dataclasses import replace
 from decimal import Decimal
-from types import SimpleNamespace
+from hashlib import sha256
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
-from gmgn_twitter_intel.app.surfaces.api import routes_token_image as token_image_api
-from gmgn_twitter_intel.app.surfaces.api.exceptions import (
-    ApiBadRequest,
-    api_bad_request_response,
-)
-from gmgn_twitter_intel.app.surfaces.api.http import (
-    create_api_router,
-)
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
@@ -183,134 +174,177 @@ def test_api_json_response_encodes_decimal_payloads():
     assert json.loads(response.body) == {"ok": True, "data": {"price": 1.23}}
 
 
-def test_token_image_proxy_fetches_binance_logo_without_auth(monkeypatch, tmp_path):
-    class FakeImageSession:
-        def __init__(self, **_kwargs):
-            pass
-
-        def get(self, url, **_kwargs):
-            return SimpleNamespace(
-                content=b"fake-png",
-                headers={"content-type": "image/png", "content-length": "8"},
-                status_code=200,
-                url=url,
-            )
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(token_image_api.curl_requests, "Session", FakeImageSession)
-    app = make_token_image_app(tmp_path)
+def test_token_images_serves_ready_local_file_without_auth(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        response = client.get(
-            "/api/token-image",
-            params={"url": "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png"},
-        )
+        image_id = seed_ready_token_image(client, content=b"fake-png")
+        response = client.get(f"/api/token-images/{image_id}")
 
     assert response.status_code == 200
     assert response.content == b"fake-png"
     assert response.headers["content-type"].startswith("image/png")
-    assert response.headers["cache-control"] == token_image_api.TOKEN_IMAGE_PROXY_CACHE_CONTROL
+    assert response.headers["cache-control"] == "public, max-age=86400"
 
 
-def test_token_image_proxy_caches_successful_fetches_under_app_home(monkeypatch, tmp_path):
-    session_calls: list[str] = []
-
-    class FakeImageSession:
-        def __init__(self, **_kwargs):
-            pass
-
-        def get(self, url, **_kwargs):
-            session_calls.append(url)
-            return SimpleNamespace(
-                content=b"fake-png",
-                headers={"content-type": "image/png", "content-length": "8"},
-                status_code=200,
-                url=url,
-            )
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(token_image_api.curl_requests, "Session", FakeImageSession)
-    app = make_token_image_app(tmp_path)
-    source_url = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png"
+def test_token_images_rejects_invalid_image_ids(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        miss = client.get("/api/token-image", params={"url": source_url})
-        hit = client.get("/api/token-image", params={"url": source_url})
+        responses = [
+            client.get(f"/api/token-images/{image_id}")
+            for image_id in ("a" * 63, "A" * 64, "g" * 64)
+        ]
 
-    cache_files = sorted((tmp_path / "cache" / "token-images").iterdir())
-    assert miss.status_code == 200
-    assert hit.status_code == 200
-    assert miss.content == hit.content == b"fake-png"
-    assert session_calls == [source_url]
-    assert len(cache_files) == 1
-    assert cache_files[0].suffix == ".png"
-    assert cache_files[0].read_bytes() == b"fake-png"
+    assert [response.status_code for response in responses] == [404, 404, 404]
 
 
-def test_token_image_proxy_fetches_gmgn_external_gif_with_chrome_impersonation(monkeypatch, tmp_path):
-    session_calls: list[dict[str, object]] = []
+def test_token_images_returns_404_for_missing_and_error_rows(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
-    class FakeImageSession:
-        def __init__(self, **kwargs):
-            session_calls.append({"init": kwargs})
-
-        def get(self, url, **kwargs):
-            session_calls.append({"get": {"url": url, **kwargs}})
-            return SimpleNamespace(
-                content=b"fake-gif",
-                headers={"content-type": "image/gif", "content-length": "8"},
-                status_code=200,
-                url=url,
+    with TestClient(app) as client:
+        source_url = "https://gmgn.ai/external-res/error-token.png"
+        with client.app.state.service.repositories() as repos:
+            repos.token_image_assets.upsert_pending_sources(
+                [
+                    {
+                        "source_url": source_url,
+                        "source_provider": "gmgn_dex_profile",
+                        "source_kind": "asset_profile.logo_url",
+                        "raw_ref_json": {"source": "test"},
+                    }
+                ],
+                now_ms=1_779_000_000_000,
+            )
+            repos.token_image_assets.mark_error(
+                source_url,
+                error="upstream failed",
+                now_ms=1_779_000_000_100,
+                retry_ms=30_000,
             )
 
-        def close(self):
-            session_calls.append({"close": True})
+        missing = client.get(f"/api/token-images/{'0' * 64}")
+        error = client.get(f"/api/token-images/{_sha256(source_url)}")
 
-    monkeypatch.setattr(token_image_api.curl_requests, "Session", FakeImageSession)
-    app = make_token_image_app(tmp_path)
+    assert missing.status_code == 404
+    assert error.status_code == 404
+
+
+def test_token_images_returns_404_when_ready_file_is_missing(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        image_id = seed_ready_token_image(client, storage_path="missing.png", write_file=False)
+        response = client.get(f"/api/token-images/{image_id}")
+
+    assert response.status_code == 404
+
+
+def test_token_images_rejects_storage_path_traversal(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        cache_root = runtime.settings.app_home / "cache"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        (cache_root / "outside.png").write_bytes(b"leaked")
+        image_id = insert_ready_token_image_row(client, storage_path="../outside.png")
+
+        response = client.get(f"/api/token-images/{image_id}")
+
+    assert response.status_code == 404
+    assert response.content != b"leaked"
+
+
+def test_old_token_image_proxy_route_is_absent(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
             "/api/token-image",
-            params={"url": "https://gmgn.ai/external-res/75864d15bdf7017b16529090ea5960d9.gif"},
+            params={"url": "https://gmgn.ai/external-res/token-alpha.png"},
         )
 
-    assert response.status_code == 200
-    assert response.content == b"fake-gif"
-    assert response.headers["content-type"].startswith("image/gif")
-    assert session_calls[0] == {"init": {"impersonate": token_image_api.TOKEN_IMAGE_PROXY_CURL_IMPERSONATE}}
+    assert response.status_code == 404
 
 
-def test_token_image_proxy_rejects_unapproved_hosts(tmp_path):
-    app = make_token_image_app(tmp_path)
-
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/token-image",
-            params={"url": "https://example.test/btc.png"},
+def seed_ready_token_image(
+    client: TestClient,
+    *,
+    source_url: str = "https://gmgn.ai/external-res/token-alpha.png",
+    storage_path: str = "token-alpha.png",
+    content: bytes = b"fake-png",
+    media_type: str = "image/png",
+    write_file: bool = True,
+) -> str:
+    runtime = client.app.state.service
+    cache_dir = runtime.settings.app_home / "cache" / "token-images"
+    if write_file:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / storage_path).write_bytes(content)
+    with runtime.repositories() as repos:
+        repos.token_image_assets.upsert_pending_sources(
+            [
+                {
+                    "source_url": source_url,
+                    "source_provider": "gmgn_dex_profile",
+                    "source_kind": "asset_profile.logo_url",
+                    "raw_ref_json": {"source": "test"},
+                }
+            ],
+            now_ms=1_779_000_000_000,
         )
-
-    assert response.status_code == 400
-    assert response.json() == {"ok": False, "error": "unsupported_image_url", "field": "url"}
-
-
-def make_token_image_app(app_home) -> FastAPI:
-    app = FastAPI()
-    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = SimpleNamespace(
-        settings=SimpleNamespace(
-            app_home=app_home,
-            ws_token="secret",
-            handles=(),
-            replay_limit=25,
+        row = repos.token_image_assets.mark_ready(
+            source_url,
+            media_type=media_type,
+            file_extension=".png",
+            content_sha256="a" * 64,
+            byte_size=len(content),
+            storage_path=storage_path,
+            now_ms=1_779_000_000_100,
         )
-    )
-    return app
+    return str(row["image_id"])
+
+
+def insert_ready_token_image_row(
+    client: TestClient,
+    *,
+    source_url: str = "https://gmgn.ai/external-res/traversal-token.png",
+    storage_path: str,
+) -> str:
+    image_id = _sha256(source_url)
+    with client.app.state.service.repositories() as repos:
+        repos.conn.execute(
+            """
+            INSERT INTO token_image_assets(
+              image_id, source_url, source_url_hash, source_provider, source_kind, status,
+              media_type, file_extension, content_sha256, byte_size, storage_path,
+              public_url, raw_ref_json, failure_count, next_refresh_at_ms,
+              created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %s, %s, %s, 'gmgn_dex_profile', 'asset_profile.logo_url', 'ready',
+              'image/png', '.png', %s, 6, %s, %s, '{}'::jsonb, 0, %s, %s, %s
+            )
+            """,
+            (
+                image_id,
+                source_url,
+                image_id,
+                "b" * 64,
+                storage_path,
+                f"/api/token-images/{image_id}",
+                1_779_000_000_000,
+                1_779_000_000_000,
+                1_779_000_000_000,
+            ),
+        )
+        repos.conn.commit()
+    return image_id
+
+
+def _sha256(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
 
 
 def make_settings(tmp_path) -> Settings:

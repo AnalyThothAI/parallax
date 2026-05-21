@@ -29,7 +29,9 @@ def test_project_uses_domain_package_src_layout():
     assert (api / "ws.py").is_file()
     assert (cli / "main.py").is_file()
     assert {path.name for path in api.glob("routes_*.py")} == {
+        "routes_cex.py",
         "routes_events.py",
+        "routes_macro.py",
         "routes_news.py",
         "routes_notifications.py",
         "routes_ops.py",
@@ -38,7 +40,7 @@ def test_project_uses_domain_package_src_layout():
         "routes_search.py",
         "routes_social_enrichment.py",
         "routes_status.py",
-        "routes_token_image.py",
+        "routes_token_images.py",
         "routes_watchlist.py",
     }
     assert {path.name for path in (cli / "commands").glob("*.py")} == {

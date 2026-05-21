@@ -17,7 +17,7 @@ from gmgn_twitter_intel.app.surfaces.api import (
     routes_search,
     routes_social_enrichment,
     routes_status,
-    routes_token_image,
+    routes_token_images,
     routes_watchlist,
 )
 
@@ -25,7 +25,7 @@ from gmgn_twitter_intel.app.surfaces.api import (
 def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["api"])
     router.include_router(routes_status.create_router(readiness_payload))
-    router.include_router(routes_token_image.router)
+    router.include_router(routes_token_images.router)
     router.include_router(routes_events.router)
     router.include_router(routes_watchlist.router)
     router.include_router(routes_search.router)
