@@ -25,7 +25,7 @@ describe("NewsPage", () => {
     cleanup();
   });
 
-  it("renders a persisted agent brief news table and loads the next cursor at scroll bottom", async () => {
+  it("renders a persisted agent brief news table and pages with explicit controls", async () => {
     fetchNewsRowsMock.mockImplementation(async (params = {}) => ({
       items: params.cursor === "cursor-2" ? [secondPageRow] : [firstPageRow],
       next_cursor: params.cursor === "cursor-2" ? null : "cursor-2",
@@ -42,80 +42,67 @@ describe("NewsPage", () => {
     expect(screen.getByText("Coinbase 上线 NEWX，短线关注流动性确认。")).toBeInTheDocument();
     expect(screen.getByText("bullish")).toBeInTheDocument();
     expect(screen.getByText("driver")).toBeInTheDocument();
-    expect(screen.queryByText(/page\s+1/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Next news page")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /all/i })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("tab", { name: /bullish/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /bear/i })).toBeInTheDocument();
+    expect(screen.getByText(/page\s+1/i)).toBeInTheDocument();
     expect(fetchNewsRowsMock).toHaveBeenCalledWith({
       cursor: null,
-      limit: 25,
+      direction: null,
+      limit: 100,
       status: null,
       token: "test-token",
     });
 
-    const scrollContainer = screen.getByLabelText("News intel scroll container");
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 500,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1_000,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      value: 470,
-      writable: true,
-    });
-    fireEvent.scroll(scrollContainer);
+    fireEvent.click(screen.getByRole("button", { name: /next news page/i }));
 
     expect(await screen.findByText("Second page story")).toBeInTheDocument();
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
         cursor: "cursor-2",
-        limit: 25,
+        direction: null,
+        limit: 100,
+        status: null,
+        token: "test-token",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /previous news page/i }));
+    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        cursor: null,
+        direction: null,
+        limit: 100,
         status: null,
         token: "test-token",
       }),
     );
   });
 
-  it("loads the next cursor when the cockpit shell scroll host reaches bottom", async () => {
+  it("requests backend direction filters from the news tabs", async () => {
     fetchNewsRowsMock.mockImplementation(async (params = {}) => ({
-      items: params.cursor === "cursor-2" ? [secondPageRow] : [firstPageRow],
-      next_cursor: params.cursor === "cursor-2" ? null : "cursor-2",
+      items: params.direction === "bearish" ? [bearishRow] : [firstPageRow],
+      next_cursor: params.direction === "bearish" ? null : "cursor-2",
     }));
 
-    renderNews(
-      <div className="center-column" data-testid="cockpit-scroll-host">
-        <NewsPage token="test-token" />
-      </div>,
-    );
+    renderNews(<NewsPage token="test-token" />);
 
     expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
-    const scrollHost = screen.getByTestId("cockpit-scroll-host");
-    Object.defineProperty(scrollHost, "clientHeight", {
-      configurable: true,
-      value: 500,
-    });
-    Object.defineProperty(scrollHost, "scrollHeight", {
-      configurable: true,
-      value: 1_000,
-    });
-    Object.defineProperty(scrollHost, "scrollTop", {
-      configurable: true,
-      value: 470,
-      writable: true,
-    });
-    fireEvent.scroll(scrollHost);
+    fireEvent.click(screen.getByRole("tab", { name: /bear/i }));
 
-    expect(await screen.findByText("Second page story")).toBeInTheDocument();
+    expect(await screen.findByText("Regulator sues token issuer")).toBeInTheDocument();
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
-        cursor: "cursor-2",
-        limit: 25,
+        cursor: null,
+        direction: "bearish",
+        limit: 100,
         status: null,
         token: "test-token",
       }),
     );
+    expect(screen.getByRole("tab", { name: /bear/i })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("button", { name: /previous news page/i })).toBeDisabled();
   });
 
   it("does not change rendered analysis when only the headline changes", async () => {
@@ -145,38 +132,6 @@ describe("NewsPage", () => {
     );
 
     expect(screen.getByTestId("location")).toHaveTextContent("/news/news-1");
-  });
-
-  it("refetches the first news page when pulled down from the top", async () => {
-    fetchNewsRowsMock
-      .mockResolvedValueOnce({ items: [firstPageRow], next_cursor: null })
-      .mockResolvedValueOnce({
-        items: [{ ...firstPageRow, row_id: "row-refreshed", headline: "Fresh pull story" }],
-        next_cursor: null,
-      });
-
-    renderNews(<NewsPage token="test-token" />);
-
-    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
-    const scrollContainer = screen.getByLabelText("News intel scroll container");
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      value: 0,
-      writable: true,
-    });
-
-    fireEvent.touchStart(scrollContainer, { touches: [{ clientY: 16 }] });
-    fireEvent.touchMove(scrollContainer, { touches: [{ clientY: 112 }] });
-    fireEvent.touchEnd(scrollContainer);
-
-    await waitFor(() => expect(fetchNewsRowsMock).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("Fresh pull story")).toBeInTheDocument();
-    expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
-      cursor: null,
-      limit: 25,
-      status: null,
-      token: "test-token",
-    });
   });
 
   it("renders item detail with the persisted agent panel and original source", async () => {
@@ -283,6 +238,29 @@ const secondPageRow: NewsRow = {
   fact_lanes: [{ event_type: "market", status: "attention" }],
   agent_brief: {
     status: "pending",
+  },
+};
+
+const bearishRow: NewsRow = {
+  row_id: "row-bear",
+  news_item_id: "news-bear",
+  lifecycle_status: "attention",
+  headline: "Regulator sues token issuer",
+  summary: "Complaint filed today",
+  source_domain: "example.test",
+  latest_at_ms: 1_765_000_000_002,
+  token_lanes: [],
+  fact_lanes: [{ event_type: "regulatory", status: "attention" }],
+  agent_brief: {
+    status: "ready",
+    direction: "bearish",
+    decision_class: "watch",
+    summary_zh: "监管行动压制风险偏好。",
+    market_read_zh: "负面事件需要观察流动性外溢。",
+    bull_strength: "weak",
+    bear_strength: "strong",
+    data_gap_count: 0,
+    evidence_refs: ["item:title"],
   },
 };
 

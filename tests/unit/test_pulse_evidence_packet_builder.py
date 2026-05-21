@@ -48,7 +48,7 @@ class FakeEvidenceSourceRepository:
         return self.discussion_digest
 
 
-def test_builds_complete_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
+def test_builds_partial_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
     context = _context(
         target_type="cex_token",
         target_id="binance:BTCUSDT",
@@ -79,6 +79,53 @@ def test_builds_complete_cex_packet_with_pricefeed_id_and_no_venue_id() -> None:
     assert "event:event-1" in _ref_ids(packet)
     assert "metric:market:price_usd" in _ref_ids(packet)
     assert packet.admission_context["factor_snapshot"]["market"]["decision_latest"]["price_usd"] == 99_999
+
+
+def test_builds_cex_snapshot_packet_with_derivatives_and_level_refs() -> None:
+    context = _context(
+        target_type="cex_token",
+        target_id="cex_token:BTC",
+        source_event_ids=["event-1"],
+    )
+    repo = FakeEvidenceSourceRepository(
+        events=[_event("event-1")],
+        market_facts=[
+            {
+                "source_table": "cex_detail_snapshots",
+                "route": "cex",
+                "target_market_type": "perpetual",
+                "price_usd": 67_000,
+                "mark_price": 67_050,
+                "open_interest_usd": 12_000_000_000,
+                "oi_change_pct_24h": 3.5,
+                "cvd_delta_4h": -1_250_000,
+                "funding_rate": 0.0001,
+                "native_market_id": "BTCUSDT",
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "source_provider": "binance",
+                "coinglass_status": "ready",
+                "level_bands": [
+                    {"kind": "resistance", "price": 72_000, "score": 0.82},
+                    {"kind": "support", "price": 64_000, "score": 0.7},
+                ],
+                "degraded_reasons": [],
+                "observed_at_ms": NOW_MS - 30_000,
+            }
+        ],
+        identity_facts=[{"source_id": "identity:btc", "symbol": "BTC", "observed_at_ms": NOW_MS - 60_000}],
+    )
+
+    packet = PulseEvidenceBuilder(repo).build(context, run_id="run-1", now_ms=NOW_MS)
+    gate = EvidenceCompletenessGate().evaluate(packet)
+
+    market = _model_dump(packet.market_evidence)
+    assert market["cex_snapshot"]["native_market_id"] == "BTCUSDT"
+    assert market["derivatives"]["oi_change_pct_24h"] == 3.5
+    assert market["derivatives"]["cvd_delta_4h"] == -1_250_000
+    assert market["levels"][0]["kind"] == "resistance"
+    assert "metric:cex:oi_change_pct_24h:BTCUSDT" in _ref_ids(packet)
+    assert "level:cex:BTCUSDT:resistance:72000" in _ref_ids(packet)
+    assert gate.max_decision_status == "trade_candidate"
 
 
 def test_builds_dex_packet_with_pair_and_liquidity_evidence() -> None:
@@ -243,7 +290,7 @@ def test_current_source_refs_remain_primary_when_digest_is_stale_context() -> No
     packet = PulseEvidenceBuilder(repo).build(context, run_id="run-current", now_ms=NOW_MS)
     gate = EvidenceCompletenessGate().evaluate(packet)
 
-    assert gate.max_decision_status == "trade_candidate"
+    assert gate.max_decision_status == "token_watch"
     assert {"event:event-current", "metric:market:price_usd", "identity:btc"}.issubset(_ref_ids(packet))
     assert "event:old-digest" not in _ref_ids(packet)
 

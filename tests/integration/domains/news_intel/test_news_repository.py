@@ -610,6 +610,37 @@ def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
     assert [row["row_id"] for row in second_page] == ["row-a", "row-b"]
 
 
+def test_list_news_page_rows_filters_by_agent_brief_direction(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        bullish_item_id = _insert_source_provider_and_item(repo, source_item_key="bullish", title="Bullish")
+        bearish_item_id = _insert_source_provider_and_item(repo, source_item_key="bearish", title="Bearish")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[bullish_item_id, bearish_item_id],
+            rows=[
+                {
+                    **_page_row("row-bullish", bullish_item_id, source_id="source-1"),
+                    "agent_status": "ready",
+                    "agent_brief_json": {"status": "ready", "direction": "bullish"},
+                },
+                {
+                    **_page_row("row-bearish", bearish_item_id, source_id="source-1"),
+                    "agent_status": "ready",
+                    "agent_brief_json": {"status": "ready", "direction": "bearish"},
+                },
+            ],
+        )
+
+        rows = repo.list_news_page_rows(limit=10, direction="bearish")
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in rows] == ["row-bearish"]
+    assert rows[0]["agent_brief_json"]["direction"] == "bearish"
+
+
 def test_page_projection_candidates_progress_after_partial_rebuild(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

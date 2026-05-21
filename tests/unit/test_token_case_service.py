@@ -31,7 +31,7 @@ def test_token_case_dossier_builds_all_sections_for_resolved_asset():
         now_ms=NOW_MS,
     )
 
-    assert list(dossier) == ["target", "profile", "timeline", "posts", "market_live"]
+    assert list(dossier) == ["target", "profile", "timeline", "posts", "market_live", "cex_detail"]
     assert dossier["target"]["target_id"] == TARGET_ID
     assert dossier["profile"]["status"] == "ready"
     assert dossier["timeline"]["summary"]["posts"] == 2
@@ -156,6 +156,62 @@ def test_token_case_uses_latest_market_tick_when_live_gateway_is_missing():
     assert dossier["market_live"]["holders"] == 551
     assert dossier["market_live"]["age_ms"] == 1_000
     assert "agent_brief" not in dossier
+
+
+def test_token_case_returns_cex_detail_snapshot_for_cex_tokens():
+    service = TokenCaseService(
+        targets=FakeTargets(
+            rows=[],
+            identity={
+                "target_type": "CexToken",
+                "target_id": "cex_token:BTC",
+                "symbol": "BTC",
+                "name": "Bitcoin",
+                "chain_id": None,
+                "address": None,
+                "status": "canonical",
+                "source": "cex_tokens",
+                "reason": "TARGET_ID",
+                "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                "provider": "binance",
+                "native_market_id": "BTCUSDT",
+                "quote_symbol": "USDT",
+                "feed_type": "cex_swap",
+            },
+        ),
+        profiles=FakeProfiles(),
+        live_price_gateway=FakeLivePriceGateway(snapshot=None),
+        cex_detail_snapshots=FakeCexDetailSnapshots(
+            snapshot={
+                "snapshot_id": "cex-detail:binance:BTCUSDT",
+                "target_type": "CexToken",
+                "target_id": "cex_token:BTC",
+                "exchange": "binance",
+                "native_market_id": "BTCUSDT",
+                "status": "partial",
+                "baseline_status": "ready",
+                "coinglass_status": "unavailable",
+                "open_interest_usd": 1_200_000_000,
+                "oi_change_pct_24h": 3.5,
+                "level_bands": [{"kind": "resistance", "price": 72_000}],
+                "degraded_reasons": ["coinglass_unavailable"],
+                "source_refs": [{"ref_id": "metric:cex:open_interest_usd:BTCUSDT"}],
+            }
+        ),
+    )
+
+    dossier = service.dossier(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+        window="1h",
+        scope="all",
+        posts_limit=2,
+        now_ms=NOW_MS,
+    )
+
+    assert dossier["cex_detail"]["native_market_id"] == "BTCUSDT"
+    assert dossier["cex_detail"]["open_interest_usd"] == 1_200_000_000
+    assert dossier["cex_detail"]["coinglass_status"] == "unavailable"
 
 
 def test_token_case_keeps_profile_and_market_context_without_agent_brief():
@@ -355,6 +411,18 @@ class FakeProfiles:
 
     def profile_for_target(self, *, target_type, target_id):
         return self.profile
+
+
+class FakeCexDetailSnapshots:
+    def __init__(self, *, snapshot=None):
+        self.snapshot = snapshot
+        self.calls = []
+
+    def latest_snapshot(self, *, target_type, target_id):
+        self.calls.append({"target_type": target_type, "target_id": target_id})
+        if self.snapshot is None:
+            return None
+        return self.snapshot
 
 
 class FakeLivePriceGateway:

@@ -23,6 +23,8 @@ def test_cex_oi_radar_board_worker_persists_latest_run():
     assert result.processed == 1
     assert db.repos.cex_oi_radar.started["universe_count"] == 1
     assert db.repos.cex_oi_radar.inserted[0]["target_id"] == "binance:BTCUSDT"
+    assert db.repos.cex_detail_snapshots.upserted[0]["target_id"] == "cex_token:BTC"
+    assert db.repos.cex_detail_snapshots.upserted[0]["oi_change_pct_1h"] is None
     assert db.repos.cex_oi_radar.finished["status"] == "success"
 
 
@@ -70,7 +72,7 @@ def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():
 
 class _DB:
     def __init__(self) -> None:
-        self.repos = SimpleNamespace(cex_oi_radar=_Repo())
+        self.repos = SimpleNamespace(cex_oi_radar=_Repo(), cex_detail_snapshots=_DetailRepo())
 
     def worker_session(self, *_args, **_kwargs):
         return _Session(self.repos)
@@ -96,7 +98,14 @@ class _Repo:
 
     def binance_usdt_perp_universe(self, *, limit):
         self.requested_limit = limit
-        return [{"pricefeed_id": "pf", "native_market_id": "BTCUSDT", "base_symbol": "BTC"}]
+        return [
+            {
+                "pricefeed_id": "pf",
+                "cex_token_id": "cex_token:BTC",
+                "native_market_id": "BTCUSDT",
+                "base_symbol": "BTC",
+            }
+        ]
 
     def start_run(self, **kwargs):
         self.started = kwargs
@@ -107,6 +116,15 @@ class _Repo:
 
     def finish_run(self, **kwargs):
         self.finished = kwargs
+
+
+class _DetailRepo:
+    def __init__(self) -> None:
+        self.upserted = []
+
+    def upsert_many(self, snapshots):
+        self.upserted = list(snapshots)
+        return len(self.upserted)
 
 
 class _Client:

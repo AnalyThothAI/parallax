@@ -19,7 +19,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     with TestClient(app) as client:
         response = client.get(
             "/api/news",
-            params={"limit": 1, "cursor": "2000:row-old"},
+            params={"limit": 1, "cursor": "2000:row-old", "direction": "bullish"},
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -27,6 +27,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     assert news.calls == [
         {
             "cursor": "2000:row-old",
+            "direction": "bullish",
             "lane": None,
             "limit": 1,
             "q": None,
@@ -80,11 +81,13 @@ class FakeNewsRepository:
         lane: str | None = None,
         source: str | None = None,
         target: str | None = None,
+        direction: str | None = None,
         q: str | None = None,
     ):
         self.calls.append(
             {
                 "cursor": cursor,
+                "direction": direction,
                 "lane": lane,
                 "limit": limit,
                 "q": q,

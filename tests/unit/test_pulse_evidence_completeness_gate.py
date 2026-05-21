@@ -7,7 +7,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate im
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidenceDataGap
 
 
-def test_cex_with_pricefeed_id_source_provider_and_instrument_ref_passes_market_contract() -> None:
+def test_cex_with_baseline_only_is_partial_token_watch() -> None:
     packet = _packet(
         market=[
             {
@@ -23,11 +23,41 @@ def test_cex_with_pricefeed_id_source_provider_and_instrument_ref_passes_market_
 
     result = EvidenceCompletenessGate().evaluate(packet)
 
-    assert result.evidence_status == "complete"
+    assert result.evidence_status == "partial"
     assert result.hard_blocked is False
     assert result.public_allowed is True
-    assert result.max_decision_status == "trade_candidate"
+    assert result.max_decision_status == "token_watch"
     assert result.blocked_reason is None
+
+
+def test_cex_with_ready_snapshot_derivatives_and_levels_passes_market_contract() -> None:
+    packet = _packet(
+        market=[
+            {
+                "route": "cex",
+                "price_usd": 1.25,
+                "pricefeed_id": "pricefeed:cex:binance:spot:TESTUSDT",
+                "instrument_ref": "pricefeed:cex:binance:spot:TESTUSDT",
+                "source_provider": "binance_cex_rest",
+                "freshness_status": "fresh",
+                "cex_snapshot": {"coinglass_status": "ready"},
+                "derivatives": {"oi_change_pct_24h": 2.5, "cvd_delta_4h": -1000},
+                "levels": [{"kind": "support", "price": 1.1}],
+            }
+        ],
+        refs=[
+            _ref("event:event-1", "event"),
+            _ref("metric:cex:oi_change_pct_24h:TESTUSDT", "metric"),
+            _ref("level:cex:TESTUSDT:support:1.1", "level"),
+            _ref("identity:token", "identity"),
+        ],
+    )
+
+    result = EvidenceCompletenessGate().evaluate(packet)
+
+    assert result.evidence_status == "complete"
+    assert result.hard_blocked is False
+    assert result.max_decision_status == "trade_candidate"
 
 
 def test_cex_with_no_fresh_price_is_blocked_market_contract() -> None:

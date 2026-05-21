@@ -98,6 +98,46 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
     assert wake_bus.notifications == []
 
 
+def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() -> None:
+    source = {
+        "source_id": "cryptopanic-en",
+        "provider_type": "cryptopanic",
+        "feed_url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
+        "source_domain": "cryptopanic.com",
+        "source_name": "CryptoPanic",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    feed = FakeFeedClient(
+        db,
+        FeedFetchResult(
+            status_code=200,
+            entries=[
+                {
+                    "id": "cryptopanic:32675220",
+                    "link": "https://coincu.com/mastercard-acquires-bvnk/",
+                    "title": "Mastercard Acquires BVNK",
+                    "summary": "Crypto payments deal explained.",
+                }
+            ],
+        ),
+    )
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert feed.calls == [
+        {
+            "url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
+            "etag": None,
+            "last_modified": None,
+            "provider_type": "cryptopanic",
+            "source_id": "cryptopanic-en",
+        }
+    ]
+    assert db.repo.provider_items[0]["source_item_key"] == "cryptopanic:32675220"
+
+
 def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> None:
     item = {
         "news_item_id": "news-1",
@@ -254,9 +294,22 @@ class FakeFeedClient:
         self.result = result
         self.calls: list[dict[str, object]] = []
 
-    def fetch(self, url: str, *, etag: str | None = None, last_modified: str | None = None) -> FeedFetchResult:
+    def fetch(
+        self,
+        url: str,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+        provider_type: str | None = None,
+        source: dict[str, object] | None = None,
+    ) -> FeedFetchResult:
         assert self.db.open_sessions == 0
-        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
+        call: dict[str, object] = {"url": url, "etag": etag, "last_modified": last_modified}
+        if provider_type is not None:
+            call["provider_type"] = provider_type
+        if source is not None:
+            call["source_id"] = source.get("source_id")
+        self.calls.append(call)
         return self.result
 
 

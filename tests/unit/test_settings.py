@@ -126,6 +126,7 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
         "cnbc-economy",
         "cnbc-markets",
         "yahoo-finance",
+        "cryptopanic-en",
     }.issubset(source_ids)
 
     enabled_source_ids = {source.source_id for source in settings.news_intel.sources if source.enabled}
@@ -139,7 +140,13 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
         "cnbc-economy",
         "cnbc-markets",
         "yahoo-finance",
+        "cryptopanic-en",
     }.issubset(enabled_source_ids)
+
+    cryptopanic = next(source for source in settings.news_intel.sources if source.source_id == "cryptopanic-en")
+    assert cryptopanic.provider_type == "cryptopanic"
+    assert cryptopanic.feed_url.startswith("cryptopanic://posts?")
+    assert cryptopanic.source_role == "aggregator"
 
 
 def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
@@ -158,6 +165,7 @@ def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
         "cnbc-economy",
         "cnbc-markets",
         "yahoo-finance",
+        "cryptopanic-en",
     }
 
 
