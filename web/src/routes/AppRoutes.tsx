@@ -73,7 +73,9 @@ export function AppRoutes({ session }: { session: AppSession }) {
   const scope = liveRoute.scope;
   const signalLabOverviewData = signalLabCompact.overviewData;
   const signalLabPulseData = signalLabCompact.pulseData;
+  const hiddenSignalLabPulseData = signalLabCompact.hiddenSignalPulseData;
   const signalPulseColdLoading = signalLabCompact.signalPulseColdLoading;
+  const hiddenSignalPulseLoading = signalLabCompact.hiddenSignalPulseLoading;
   const status = statusQuery.data?.data ?? null;
   const statusError = statusQuery.isError;
   const statusHandles = statusQuery.data?.data.handles ?? EMPTY_HANDLES;
@@ -212,7 +214,9 @@ export function AppRoutes({ session }: { session: AppSession }) {
       selectedTapeEventId={selection.selectedTapeEventId}
       onTapeSelect={selection.handleTapeSelect}
       signalLabPulseData={signalLabPulseData ?? null}
+      hiddenSignalLabPulseData={hiddenSignalLabPulseData ?? null}
       signalPulseLoading={signalPulseColdLoading}
+      hiddenSignalPulseLoading={hiddenSignalPulseLoading}
       selectedPulseItemId={selection.selectedPulseItemId}
       onSelectPulse={selection.selectPulseItem}
     >

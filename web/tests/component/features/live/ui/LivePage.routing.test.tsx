@@ -37,7 +37,9 @@ describe("LivePage", () => {
                   has_more: false,
                   next_cursor: null,
                 }}
+                hiddenSignalLabPulseData={null}
                 signalPulseLoading={false}
+                hiddenSignalPulseLoading={false}
                 selectedPulseItemId={null}
                 onSelectPulse={() => {}}
               />

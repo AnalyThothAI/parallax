@@ -43,21 +43,48 @@ export function useSignalLabCompactQuery({ token }: { token: string }) {
     refetchInterval: 20_000,
   });
 
+  const hiddenQuery = useQuery({
+    queryKey: queryKeys.signalPulseCompact(
+      SIGNAL_LAB_COMPACT_SCOPE,
+      SIGNAL_LAB_COMPACT_WINDOW,
+      "hidden",
+    ),
+    queryFn: () =>
+      getApi<SignalPulseData>("/api/signal-lab/pulse", {
+        token,
+        params: {
+          window: SIGNAL_LAB_COMPACT_WINDOW,
+          scope: SIGNAL_LAB_COMPACT_SCOPE,
+          visibility: "hidden",
+          limit: 80,
+          sort: "recent",
+        },
+      }),
+    enabled: Boolean(token),
+    refetchInterval: 20_000,
+  });
+
   const overviewData = overviewQuery.data?.data ?? compactQuery.data?.data;
   const pulseData = compactQuery.data?.data ?? overviewData;
+  const hiddenPulseData = hiddenQuery.data?.data ?? null;
 
   return useMemo(
     () => ({
       compactSignalPulseItems: pulseData?.items ?? [],
+      hiddenSignalPulseData: hiddenPulseData,
+      hiddenSignalPulseLoading: hiddenQuery.isPending && !hiddenPulseData,
       overviewData,
       pulseData,
       signalPulseColdLoading: compactQuery.isPending && !pulseData,
-      signalPulseFetching: compactQuery.isFetching,
+      signalPulseFetching: compactQuery.isFetching || hiddenQuery.isFetching,
       signalPulseTotal: signalPulseTotal(overviewData?.summary),
     }),
     [
       compactQuery.isFetching,
       compactQuery.isPending,
+      hiddenPulseData,
+      hiddenQuery.isFetching,
+      hiddenQuery.isPending,
       overviewData,
       pulseData,
     ],
