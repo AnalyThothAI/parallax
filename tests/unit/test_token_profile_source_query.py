@@ -48,7 +48,7 @@ def test_binance_web3_profiles_reads_ready_asset_profile_source_only():
     assert "status = 'ready'" in sql
 
 
-def test_gmgn_stream_profiles_reads_exact_payload_icons():
+def test_gmgn_stream_profiles_reads_exact_payload_metadata_without_requiring_icons():
     conn = _Conn(
         rows=[
             {
@@ -56,7 +56,7 @@ def test_gmgn_stream_profiles_reads_exact_payload_icons():
                 "provider": "gmgn",
                 "evidence_kind": "gmgn_payload_exact",
                 "evidence_id": "gmgn-1",
-                "raw_payload_json": {"i": "https://gmgn.example/icon.png"},
+                "raw_payload_json": {"s": "GMGN"},
             }
         ]
     )
@@ -69,11 +69,11 @@ def test_gmgn_stream_profiles_reads_exact_payload_icons():
     assert "FROM asset_identity_evidence" in sql
     assert "provider = %s" in sql
     assert "evidence_kind = %s" in sql
-    assert "raw_payload_json ? %s" in sql
-    assert params[:3] == ("gmgn", "gmgn_payload_exact", "i")
+    assert "raw_payload_json ? %s" not in sql
+    assert params == ("gmgn", "gmgn_payload_exact", ["asset:abc"])
 
 
-def test_okx_dex_profiles_reads_exact_address_logos_and_not_symbol_candidates():
+def test_okx_dex_profiles_reads_exact_address_metadata_without_requiring_logos():
     conn = _Conn(
         rows=[
             {
@@ -81,7 +81,7 @@ def test_okx_dex_profiles_reads_exact_address_logos_and_not_symbol_candidates():
                 "provider": "okx",
                 "evidence_kind": "okx_dex_exact_address",
                 "evidence_id": "okx-1",
-                "raw_payload_json": {"tokenLogoUrl": "https://okx.example/icon.png"},
+                "raw_payload_json": {"tokenSymbol": "OKX"},
             }
         ]
     )
@@ -94,8 +94,8 @@ def test_okx_dex_profiles_reads_exact_address_logos_and_not_symbol_candidates():
     assert "FROM asset_identity_evidence" in sql
     assert "provider = %s" in sql
     assert "evidence_kind = %s" in sql
-    assert "raw_payload_json ? %s" in sql
-    assert params[:3] == ("okx", "okx_dex_exact_address", "tokenLogoUrl")
+    assert "raw_payload_json ? %s" not in sql
+    assert params == ("okx", "okx_dex_exact_address", ["asset:abc"])
     assert "okx_dex_symbol_candidate" not in sql
 
 

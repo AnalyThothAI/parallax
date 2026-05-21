@@ -80,23 +80,45 @@ def test_project_token_profile_current_uses_gmgn_stream_when_openapi_is_missing_
 
 
 def test_project_token_profile_current_keeps_gmgn_openapi_metadata_without_logo():
+    okx_logo_url = "https://okx.example/logo.png"
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=None, symbol="GMGN", observed_at_ms=1_000),
         binance_web3=None,
         gmgn_stream=None,
-        okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
+        okx_dex=okx_row(logo_url=okx_logo_url, observed_at_ms=3_000),
+        ready_images_by_source_url=ready_images(okx_logo_url),
         computed_at_ms=10_000,
     )
 
     assert row["status"] == "ready"
     assert row["profile_provider"] == "gmgn_dex_profile"
     assert row["symbol"] == "GMGN"
-    assert row["logo_url"] is None
-    assert row["logo_image_id"] is None
-    assert row["logo_source_provider"] is None
-    assert row["logo_source_url_hash"] is None
-    assert row["quality_flags"] == ["source_without_logo"]
+    assert row["logo_url"] == "/api/token-images/image-okx"
+    assert row["logo_image_id"] == "image-okx"
+    assert row["logo_source_provider"] == "okx_dex_evidence"
+    assert row["logo_source_url_hash"] == "hash-okx"
+    assert row["quality_flags"] == []
+
+
+def test_project_token_profile_current_uses_lower_priority_ready_logo_when_metadata_logo_is_pending():
+    gmgn_logo_url = "https://gmgn.example/logo.png"
+    stream_logo_url = "https://gmgn-stream.example/icon.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=gmgn_logo_url, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=gmgn_stream_row(icon_url=stream_logo_url, observed_at_ms=2_000),
+        okx_dex=None,
+        ready_images_by_source_url=ready_images(stream_logo_url),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["profile_provider"] == "gmgn_dex_profile"
+    assert row["logo_url"] == "/api/token-images/image-stream"
+    assert row["logo_source_provider"] == "gmgn_stream_snapshot"
+    assert row["quality_flags"] == []
 
 
 def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_when_gmgn_openapi_missing():
@@ -282,6 +304,21 @@ def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fal
     assert row["quality_flags"] == ["logo_mirror_pending"]
 
 
+def test_project_token_profile_current_marks_source_without_logo_when_no_provider_logo_candidates():
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=None, symbol="GMGN", observed_at_ms=1_000),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] is None
+    assert row["quality_flags"] == ["source_without_logo"]
+
+
 def test_select_okx_dex_source_ignores_symbol_candidates():
     selected = select_okx_dex_source(
         [
@@ -304,16 +341,28 @@ def test_select_okx_dex_source_ignores_symbol_candidates():
     assert selected["evidence_id"] == "exact"
 
 
-def test_select_gmgn_stream_source_requires_icon_url():
+def test_select_okx_dex_source_can_use_symbol_metadata_without_logo():
+    selected = select_okx_dex_source(
+        [
+            okx_row(evidence_id="older-logo", logo_url="https://okx.example/exact.png", observed_at_ms=4_000),
+            okx_row(evidence_id="newer-symbol", logo_url=None, symbol="NEW", name="New Token", observed_at_ms=5_000),
+        ]
+    )
+
+    assert selected is not None
+    assert selected["evidence_id"] == "newer-symbol"
+
+
+def test_select_gmgn_stream_source_can_use_symbol_metadata_without_icon_url():
     selected = select_gmgn_stream_source(
         [
-            gmgn_stream_row(evidence_id="no-icon", icon_url=None, observed_at_ms=5_000),
+            gmgn_stream_row(evidence_id="no-icon", icon_url=None, symbol="GMGN", observed_at_ms=5_000),
             gmgn_stream_row(evidence_id="with-icon", icon_url="https://gmgn.example/icon.png", observed_at_ms=4_000),
         ]
     )
 
     assert selected is not None
-    assert selected["evidence_id"] == "with-icon"
+    assert selected["evidence_id"] == "no-icon"
 
 
 def asset_profile_row(
@@ -431,7 +480,7 @@ def ready_image(source_url: str) -> dict:
     elif "bnbstatic.com/btc" in source_url:
         slug = "cex"
         provider = "binance_cex_profile"
-    elif "okx.com" in source_url:
+    elif "okx" in source_url:
         slug = "okx"
         provider = "okx_dex_evidence"
     else:

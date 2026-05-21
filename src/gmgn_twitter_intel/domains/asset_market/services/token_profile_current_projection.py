@@ -29,13 +29,17 @@ def project_token_profile_current(
     target_type = _clean(target.get("target_type"))
     target_id = _clean(target.get("target_id"))
     if target_type == "CexToken":
+        logo = _select_logo(
+            _cex_logo_candidates(cex_profile),
+            ready_images,
+        )
         if _cex_profile_metadata_ready(cex_profile):
             return _cex_token_profile_row(
                 target_type=target_type,
                 target_id=target_id,
                 source=cex_profile or {},
                 computed_at_ms=computed_at_ms,
-                ready_images_by_source_url=ready_images,
+                logo=logo,
             )
         return _status_row(
             target_type=target_type,
@@ -46,6 +50,15 @@ def project_token_profile_current(
             quality_flags=["cex_profile_unsupported"],
         )
 
+    logo = _select_logo(
+        _asset_logo_candidates(
+            gmgn_openapi=gmgn_openapi,
+            binance_web3=binance_web3,
+            gmgn_stream=gmgn_stream,
+            okx_dex=okx_dex,
+        ),
+        ready_images,
+    )
     gmgn_openapi_source = gmgn_openapi
     if gmgn_openapi_source is not None and _asset_profile_metadata_ready(gmgn_openapi_source):
         return _gmgn_openapi_row(
@@ -53,7 +66,7 @@ def project_token_profile_current(
             target_id=target_id,
             source=gmgn_openapi_source,
             computed_at_ms=computed_at_ms,
-            ready_images_by_source_url=ready_images,
+            logo=logo,
         )
 
     binance_web3_source = binance_web3
@@ -64,7 +77,7 @@ def project_token_profile_current(
             profile_provider=BINANCE_WEB3_PROFILE_PROVIDER,
             source=binance_web3_source,
             computed_at_ms=computed_at_ms,
-            ready_images_by_source_url=ready_images,
+            logo=logo,
         )
 
     gmgn_stream_source = gmgn_stream
@@ -74,7 +87,7 @@ def project_token_profile_current(
             target_id=target_id,
             source=gmgn_stream_source,
             computed_at_ms=computed_at_ms,
-            ready_images_by_source_url=ready_images,
+            logo=logo,
         )
 
     if okx_dex is not None:
@@ -83,7 +96,7 @@ def project_token_profile_current(
             target_id=target_id,
             source=okx_dex,
             computed_at_ms=computed_at_ms,
-            ready_images_by_source_url=ready_images,
+            logo=logo,
         )
 
     return _status_row(
@@ -102,7 +115,7 @@ def _gmgn_openapi_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    logo: dict[str, Any],
 ) -> dict[str, Any]:
     return _asset_profile_row(
         target_type=target_type,
@@ -110,7 +123,7 @@ def _gmgn_openapi_row(
         profile_provider=GMGN_DEX_PROFILE_PROVIDER,
         source=source,
         computed_at_ms=computed_at_ms,
-        ready_images_by_source_url=ready_images_by_source_url,
+        logo=logo,
     )
 
 
@@ -121,7 +134,7 @@ def _asset_profile_row(
     profile_provider: str,
     source: dict[str, Any],
     computed_at_ms: int,
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    logo: dict[str, Any],
 ) -> dict[str, Any]:
     raw = _raw(source)
     return _ready_row(
@@ -144,7 +157,7 @@ def _asset_profile_row(
         source_payload=raw,
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
-        ready_images_by_source_url=ready_images_by_source_url,
+        logo=logo,
     )
 
 
@@ -154,7 +167,7 @@ def _gmgn_stream_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    logo: dict[str, Any],
 ) -> dict[str, Any]:
     raw = _raw(source)
     return _ready_row(
@@ -169,7 +182,7 @@ def _gmgn_stream_row(
         source_payload=raw,
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
-        ready_images_by_source_url=ready_images_by_source_url,
+        logo=logo,
     )
 
 
@@ -179,7 +192,7 @@ def _okx_dex_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    logo: dict[str, Any],
 ) -> dict[str, Any]:
     raw = _raw(source)
     logo_url = _clean(raw.get("tokenLogoUrl"))
@@ -213,7 +226,7 @@ def _okx_dex_row(
         source_payload=raw,
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
-        ready_images_by_source_url=ready_images_by_source_url,
+        logo=logo,
     )
 
 
@@ -223,7 +236,7 @@ def _cex_token_profile_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
-    ready_images_by_source_url: dict[str, dict[str, Any]],
+    logo: dict[str, Any],
 ) -> dict[str, Any]:
     provider = _clean(source.get("provider")) or BINANCE_CEX_PROFILE_PROVIDER
     source_ref = _clean(source.get("source_ref"))
@@ -241,7 +254,7 @@ def _cex_token_profile_row(
         source_payload=_raw(source),
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
-        ready_images_by_source_url=ready_images_by_source_url,
+        logo=logo,
     )
 
 
@@ -268,8 +281,9 @@ def _ready_row(
     observed_at_ms: int | None = None,
     quality_flags: list[str] | None = None,
     ready_images_by_source_url: dict[str, dict[str, Any]] | None = None,
+    logo: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    logo = _project_logo(logo_url, ready_images_by_source_url or {})
+    resolved_logo = logo or _project_logo(logo_url, ready_images_by_source_url or {})
     return {
         "target_type": _clean(target_type),
         "target_id": _clean(target_id),
@@ -279,10 +293,10 @@ def _ready_row(
         "source_ref": _clean(source_ref),
         "symbol": _clean(symbol),
         "name": _clean(name),
-        "logo_url": logo["logo_url"],
-        "logo_image_id": logo["logo_image_id"],
-        "logo_source_provider": logo["logo_source_provider"],
-        "logo_source_url_hash": logo["logo_source_url_hash"],
+        "logo_url": resolved_logo["logo_url"],
+        "logo_image_id": resolved_logo["logo_image_id"],
+        "logo_source_provider": resolved_logo["logo_source_provider"],
+        "logo_source_url_hash": resolved_logo["logo_source_url_hash"],
         "banner_url": _clean(banner_url),
         "website_url": _clean(website_url),
         "twitter_username": _clean(twitter_username),
@@ -291,7 +305,7 @@ def _ready_row(
         "gmgn_url": _clean(gmgn_url),
         "geckoterminal_url": _clean(geckoterminal_url),
         "description": _clean(description),
-        "quality_flags": list(quality_flags or []) + logo["quality_flags"],
+        "quality_flags": list(quality_flags or []) + resolved_logo["quality_flags"],
         "source_payload": dict(source_payload),
         "observed_at_ms": observed_at_ms,
         "computed_at_ms": int(computed_at_ms),
@@ -381,6 +395,57 @@ def _project_logo(provider_logo_url: Any, ready_images_by_source_url: dict[str, 
 
     fields["quality_flags"] = ["logo_mirror_pending"]
     return fields
+
+
+def _select_logo(
+    candidates: list[tuple[str, Any]],
+    ready_images_by_source_url: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    usable_source_urls: list[str] = []
+    fallback_flags: list[str] = ["source_without_logo"]
+    for _, source_url in candidates:
+        flags = _source_without_logo_flags(_clean(source_url))
+        if flags:
+            fallback_flags = flags
+            continue
+        usable_source_urls.append(str(_clean(source_url)))
+
+    for source_url in usable_source_urls:
+        logo = _project_logo(source_url, ready_images_by_source_url)
+        if logo["logo_url"]:
+            return logo
+
+    return _empty_logo(["logo_mirror_pending"] if usable_source_urls else fallback_flags)
+
+
+def _empty_logo(quality_flags: list[str]) -> dict[str, Any]:
+    return {
+        "logo_url": None,
+        "logo_image_id": None,
+        "logo_source_provider": None,
+        "logo_source_url_hash": None,
+        "quality_flags": quality_flags,
+    }
+
+
+def _asset_logo_candidates(
+    *,
+    gmgn_openapi: dict[str, Any] | None,
+    binance_web3: dict[str, Any] | None,
+    gmgn_stream: dict[str, Any] | None,
+    okx_dex: dict[str, Any] | None,
+) -> list[tuple[str, Any]]:
+    return [
+        (GMGN_DEX_PROFILE_PROVIDER, (gmgn_openapi or {}).get("logo_url")),
+        (BINANCE_WEB3_PROFILE_PROVIDER, (binance_web3 or {}).get("logo_url")),
+        (GMGN_STREAM_PROFILE_PROVIDER, _raw(gmgn_stream or {}).get("i")),
+        (OKX_DEX_PROFILE_PROVIDER, _raw(okx_dex or {}).get("tokenLogoUrl")),
+    ]
+
+
+def _cex_logo_candidates(cex_profile: dict[str, Any] | None) -> list[tuple[str, Any]]:
+    provider = _clean((cex_profile or {}).get("provider")) or BINANCE_CEX_PROFILE_PROVIDER
+    return [(provider, (cex_profile or {}).get("logo_url"))]
 
 
 def _source_without_logo_flags(value: str | None, *, placeholder_flag: str = "placeholder_logo") -> list[str]:

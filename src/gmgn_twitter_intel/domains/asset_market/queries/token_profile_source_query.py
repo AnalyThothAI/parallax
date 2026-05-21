@@ -153,7 +153,6 @@ class TokenProfileSourceQuery:
             asset_ids=asset_ids,
             provider="gmgn",
             evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
-            raw_key="i",
         )
         return {
             asset_id: selected
@@ -166,7 +165,6 @@ class TokenProfileSourceQuery:
             asset_ids=asset_ids,
             provider="okx",
             evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
-            raw_key="tokenLogoUrl",
         )
         return {
             asset_id: selected
@@ -201,7 +199,6 @@ class TokenProfileSourceQuery:
         asset_ids: list[str],
         provider: str,
         evidence_kind: str,
-        raw_key: str,
     ) -> dict[str, list[dict[str, Any]]]:
         requested = _dedupe(asset_ids)
         if not requested:
@@ -212,11 +209,10 @@ class TokenProfileSourceQuery:
             FROM asset_identity_evidence
             WHERE provider = %s
               AND evidence_kind = %s
-              AND raw_payload_json ? %s
               AND asset_id = ANY(%s)
             ORDER BY asset_id ASC, observed_at_ms DESC, evidence_id DESC
             """,
-            (provider, evidence_kind, raw_key, requested),
+            (provider, evidence_kind, requested),
         ).fetchall()
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
