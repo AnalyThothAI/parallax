@@ -81,7 +81,7 @@ TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
 )
 TOKEN_IMAGE_ASSETS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_token_image_assets.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -341,8 +341,8 @@ def test_token_image_assets_migration_adds_local_mirror_storage() -> None:
     normalized_text = " ".join(text.split())
 
     for statement in (
-        'revision = "20260521_0077"',
-        'down_revision = "20260521_0076"',
+        'revision = "20260521_0078"',
+        'down_revision = "20260521_0077"',
         "CREATE TABLE IF NOT EXISTS token_image_assets",
         "image_id TEXT PRIMARY KEY",
         "source_url TEXT NOT NULL",

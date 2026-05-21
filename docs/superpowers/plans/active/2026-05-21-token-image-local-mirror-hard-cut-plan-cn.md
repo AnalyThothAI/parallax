@@ -52,7 +52,7 @@ Known-failing baseline tests (none expected):
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_token_image_assets.py`.
+- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py`.
   ```sql
   CREATE TABLE IF NOT EXISTS token_image_assets (
     image_id TEXT PRIMARY KEY,
@@ -230,7 +230,7 @@ Known-failing baseline tests (none expected):
 ### Task 1: Storage and Repository Foundation
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_token_image_assets.py`
+- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py`
 - Create: `src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py`
 - Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
 - Test: `tests/unit/test_postgres_schema.py`
@@ -245,7 +245,7 @@ Known-failing baseline tests (none expected):
   ```
 - [ ] Commit:
   ```bash
-  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0077_token_image_assets.py \
+  git add src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py \
     src/gmgn_twitter_intel/domains/asset_market/repositories/token_image_asset_repository.py \
     src/gmgn_twitter_intel/app/runtime/repository_session.py \
     tests/unit/test_postgres_schema.py \
