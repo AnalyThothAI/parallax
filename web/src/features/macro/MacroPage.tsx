@@ -4,6 +4,7 @@ import type {
   MacroPanel,
   MacroScenario,
   MacroScorecard,
+  MacroSnapshotSummary,
   MacroTrigger,
 } from "@lib/types";
 import { RemoteState } from "@shared/ui/RemoteState";
@@ -11,6 +12,8 @@ import clsx from "clsx";
 import {
   Activity,
   AlertTriangle,
+  Database,
+  Eye,
   CircleDot,
   Gauge,
   GitBranch,
@@ -22,13 +25,13 @@ import {
 import { useMacroQuery } from "./api/useMacroQuery";
 import "./macro.css";
 
-const PANEL_ORDER = ["liquidity", "rates", "volatility", "credit", "cross_asset"];
+const PANEL_ORDER = ["rates", "liquidity", "credit", "volatility", "cross_asset"];
 const CHAIN_ORDER = [
-  "liquidity",
   "rates",
   "fed_corridor",
-  "volatility",
+  "liquidity",
   "credit",
+  "volatility",
   "positioning",
   "cross_asset",
 ];
@@ -48,19 +51,26 @@ export function MacroPage({ token }: { token: string }) {
   const gaps = data?.data_gaps ?? [];
   const scenario = data?.scenario ?? {};
   const scorecard = data?.scorecard ?? {};
+  const sourceCoverage = data?.source_coverage ?? {};
+  const activeRegime = scenario.current_regime ?? snapshot?.regime ?? "pending";
 
   return (
     <section className="macro-page-panel" aria-label="Macro">
       <header className="macro-page-toolbar">
         <div>
-          <h2>Macro</h2>
+          <h2>Macro Regime Engine</h2>
           <span>
-            REGIME <b>{snapshot?.regime ?? "pending"}</b>
+            REGIME <b>{activeRegime}</b>
           </span>
         </div>
         <div className="macro-regime-strip" aria-label="macro regime status">
           <MetricPill label="status" value={snapshot?.status ?? "missing"} />
-          <MetricPill label="score" value={scoreLabel(snapshot?.overall_score)} />
+          <MetricPill
+            label="score"
+            value={scoreLabel(scorecard.overall_score ?? snapshot?.overall_score)}
+          />
+          <MetricPill label="confidence" value={percentLabel(scenario.confidence)} />
+          <MetricPill label="coverage" value={coverageLabel(scorecard)} />
           <MetricPill label="asof" value={snapshot?.asof_date ?? "-"} />
         </div>
       </header>
@@ -77,20 +87,28 @@ export function MacroPage({ token }: { token: string }) {
 
       {snapshot ? (
         <div className="macro-page-grid">
-          <section className="macro-scoreboard" aria-label="macro panel scores">
-            {panelEntries.map(([key, panel]) => (
-              <MacroPanelCell key={key} panelKey={key} panel={panel} />
-            ))}
-          </section>
+          <RegimeBrief
+            activeRegime={activeRegime}
+            gaps={gaps}
+            indicators={data?.indicators ?? {}}
+            scenario={scenario}
+            scorecard={scorecard}
+            snapshot={snapshot}
+          />
 
           <section className="macro-chain-section" aria-label="macro transmission chain">
             <div className="macro-section-head">
               <GitBranch aria-hidden />
-              <h3>Transmission Chain</h3>
+              <h3>Transmission</h3>
             </div>
-            <div className="macro-chain-grid">
+            <div className="macro-chain-flow">
               {chainEntries.map(([key, node]) => (
-                <ChainNodeCell key={key} nodeKey={key} node={node} />
+                <ChainNodeCell
+                  key={key}
+                  nodeKey={key}
+                  node={node}
+                  step={CHAIN_ORDER.indexOf(key) + 1}
+                />
               ))}
               {chainEntries.length === 0 ? (
                 <span className="macro-muted">no chain nodes</span>
@@ -101,33 +119,21 @@ export function MacroPage({ token }: { token: string }) {
           <section className="macro-scenario-section" aria-label="macro scenario path">
             <div className="macro-section-head">
               <Route aria-hidden />
-              <h3>Scenario Path</h3>
+              <h3>Scenario</h3>
             </div>
             <ScenarioPath scenario={scenario} scorecard={scorecard} />
           </section>
 
-          <section
-            className="macro-confirmation-section"
-            aria-label="macro confirmations and contradictions"
-          >
+          <section className="macro-confirmation-section" aria-label="macro decision board">
             <div className="macro-section-head">
               <ShieldCheck aria-hidden />
-              <h3>Confirmations / Contradictions</h3>
+              <h3>Decision Board</h3>
             </div>
-            <div className="macro-signal-columns">
-              <SignalColumn
-                emptyLabel="no confirmations"
-                items={scenario.confirmations ?? []}
-                label="confirm"
-                tone="confirm"
-              />
-              <SignalColumn
-                emptyLabel="no contradictions"
-                items={scenario.contradictions ?? []}
-                label="contradict"
-                tone="contradict"
-              />
-            </div>
+            <DecisionBoard
+              indicators={data?.indicators ?? {}}
+              scenario={scenario}
+              triggers={triggers}
+            />
           </section>
 
           <section className="macro-trade-map-section" aria-label="macro trade map">
@@ -135,13 +141,29 @@ export function MacroPage({ token }: { token: string }) {
               <Map aria-hidden />
               <h3>Trade Map</h3>
             </div>
-            <TradeMapList entries={scenario.trade_map ?? []} />
+            <TradeMapList
+              entries={scenario.trade_map ?? []}
+              scenario={scenario}
+              triggers={triggers}
+            />
+          </section>
+
+          <section className="macro-scoreboard-section" aria-label="macro panel scores">
+            <div className="macro-section-head">
+              <Activity aria-hidden />
+              <h3>Regime Pillars</h3>
+            </div>
+            <div className="macro-scoreboard">
+              {panelEntries.map(([key, panel]) => (
+                <MacroPanelCell key={key} panelKey={key} panel={panel} />
+              ))}
+            </div>
           </section>
 
           <section className="macro-indicators" aria-label="macro validation indicators">
             <div className="macro-section-head">
               <Gauge aria-hidden />
-              <h3>Validation Indicators</h3>
+              <h3>Validation Matrix</h3>
             </div>
             <div className="macro-indicator-table">
               {indicators.map(([key, indicator]) => (
@@ -151,11 +173,19 @@ export function MacroPage({ token }: { token: string }) {
             </div>
           </section>
 
+          <section className="macro-source-section" aria-label="macro source coverage">
+            <div className="macro-section-head">
+              <Database aria-hidden />
+              <h3>Source Coverage</h3>
+            </div>
+            <SourceCoverage gaps={gaps} scorecard={scorecard} sourceCoverage={sourceCoverage} />
+          </section>
+
           <section className="macro-trigger-lane" aria-label="macro triggers and gaps">
             <div className="macro-trigger-column">
               <div className="macro-section-head">
-                <Activity aria-hidden />
-                <h3>Triggers</h3>
+                <Eye aria-hidden />
+                <h3>Active Triggers</h3>
               </div>
               <TriggerList triggers={triggers} />
             </div>
@@ -194,18 +224,97 @@ function MacroPanelCell({ panelKey, panel }: { panelKey: string; panel: MacroPan
   );
 }
 
-function ChainNodeCell({ nodeKey, node }: { nodeKey: string; node: MacroChainNode }) {
+function RegimeBrief({
+  activeRegime,
+  gaps,
+  indicators,
+  scenario,
+  scorecard,
+  snapshot,
+}: {
+  activeRegime: string;
+  gaps: string[];
+  indicators: Record<string, MacroIndicator>;
+  scenario: MacroScenario;
+  scorecard: MacroScorecard;
+  snapshot: NonNullable<MacroSnapshotSummary>;
+}) {
+  const confirmations = scenario.confirmations ?? [];
+  const contradictions = scenario.contradictions ?? [];
+  return (
+    <section className="macro-regime-brief" aria-label="macro regime brief">
+      <div className={clsx("macro-regime-dial", regimeTone(activeRegime))}>
+        <small>current regime</small>
+        <strong>{activeRegime}</strong>
+        <div>
+          <MetricTile
+            label="score"
+            value={scoreLabel(scorecard.overall_score ?? snapshot.overall_score)}
+          />
+          <MetricTile label="confidence" value={percentLabel(scenario.confidence)} />
+          <MetricTile label="window" value={scenario.time_window ?? "-"} />
+          <MetricTile label="coverage" value={coverageLabel(scorecard)} />
+        </div>
+      </div>
+      <div className="macro-regime-thesis">
+        <div className="macro-mini-lane">
+          <span className="macro-column-label">confirmed</span>
+          <SignalList
+            emptyLabel="no confirmations"
+            indicators={indicators}
+            items={confirmations.slice(0, 3)}
+            tone="confirm"
+          />
+        </div>
+        <div className="macro-mini-lane">
+          <span className="macro-column-label">contradicts</span>
+          <SignalList
+            emptyLabel="no contradictions"
+            indicators={indicators}
+            items={contradictions.slice(0, 2)}
+            tone="contradict"
+          />
+        </div>
+        <div className="macro-mini-lane compact">
+          <span className="macro-column-label">data state</span>
+          <div className="macro-source-kpis">
+            <MetricTile label="gaps" value={String(scorecard.data_gap_count ?? gaps.length)} />
+            <MetricTile label="observed" value={coverageLabel(scorecard)} />
+            <MetricTile label="asof" value={snapshot.asof_date ?? "-"} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ChainNodeCell({
+  nodeKey,
+  node,
+  step,
+}: {
+  nodeKey: string;
+  node: MacroChainNode;
+  step: number;
+}) {
   const regime = node.regime ?? "data_gap";
   const evidence = node.evidence ?? [];
   const dataGaps = node.data_gaps ?? [];
   return (
     <article className={clsx("macro-chain-node", regimeTone(regime))}>
       <div>
-        <span>{nodeTitle(nodeKey)}</span>
+        <span>
+          {String(step).padStart(2, "0")} {nodeTitle(nodeKey)}
+        </span>
         <b>{scoreLabel(node.score)}</b>
       </div>
       <strong>{regime}</strong>
-      <small>{evidence[0] ?? dataGaps[0] ?? "awaiting chain evidence"}</small>
+      <ul>
+        {(evidence.length > 0 ? evidence : dataGaps).slice(0, 3).map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+        {evidence.length === 0 && dataGaps.length === 0 ? <li>awaiting chain evidence</li> : null}
+      </ul>
     </article>
   );
 }
@@ -226,20 +335,6 @@ function ScenarioPath({
         <MetricTile label="chain avg" value={scoreLabel(scorecard.chain_average)} />
         <MetricTile label="coverage" value={coverageLabel(scorecard)} />
       </div>
-      <div className="macro-signal-columns">
-        <SignalColumn
-          emptyLabel="no watch triggers"
-          items={scenario.watch_triggers ?? []}
-          label="watch"
-          tone="watch"
-        />
-        <SignalColumn
-          emptyLabel="no invalidations"
-          items={scenario.invalidations ?? []}
-          label="invalidate"
-          tone="contradict"
-        />
-      </div>
     </div>
   );
 }
@@ -255,11 +350,13 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
 function SignalColumn({
   emptyLabel,
+  indicators,
   items,
   label,
   tone,
 }: {
   emptyLabel: string;
+  indicators?: Record<string, MacroIndicator>;
   items: ScenarioSignal[];
   label: string;
   tone: "confirm" | "contradict" | "watch";
@@ -267,17 +364,19 @@ function SignalColumn({
   return (
     <div className="macro-signal-column">
       <span className="macro-column-label">{label}</span>
-      <SignalList emptyLabel={emptyLabel} items={items} tone={tone} />
+      <SignalList emptyLabel={emptyLabel} indicators={indicators} items={items} tone={tone} />
     </div>
   );
 }
 
 function SignalList({
   emptyLabel,
+  indicators,
   items,
   tone,
 }: {
   emptyLabel: string;
+  indicators?: Record<string, MacroIndicator>;
   items: ScenarioSignal[];
   tone: "confirm" | "contradict" | "watch";
 }) {
@@ -293,6 +392,7 @@ function SignalList({
           <article className={clsx("macro-signal-item", tone)} key={`${code}-${index}`}>
             <b>{code}</b>
             {detail ? <small>{detail}</small> : null}
+            <IndicatorTokenLine indicators={indicators} keys={item.indicator_keys ?? []} />
           </article>
         );
       })}
@@ -300,10 +400,66 @@ function SignalList({
   );
 }
 
-function TradeMapList({ entries }: { entries: TradeMapEntry[] }) {
+function DecisionBoard({
+  indicators,
+  scenario,
+  triggers,
+}: {
+  indicators: Record<string, MacroIndicator>;
+  scenario: MacroScenario;
+  triggers: MacroTrigger[];
+}) {
+  return (
+    <div className="macro-decision-grid">
+      <SignalColumn
+        emptyLabel="no confirmations"
+        indicators={indicators}
+        items={scenario.confirmations ?? []}
+        label="confirms"
+        tone="confirm"
+      />
+      <SignalColumn
+        emptyLabel="no contradictions"
+        indicators={indicators}
+        items={scenario.contradictions ?? []}
+        label="contradicts"
+        tone="contradict"
+      />
+      <SignalColumn
+        emptyLabel="no watch triggers"
+        indicators={indicators}
+        items={scenario.watch_triggers ?? []}
+        label="watch next"
+        tone="watch"
+      />
+      <SignalColumn
+        emptyLabel="no invalidations"
+        indicators={indicators}
+        items={scenario.invalidations ?? []}
+        label="invalidates"
+        tone="contradict"
+      />
+      <div className="macro-signal-column active-trigger-column">
+        <span className="macro-column-label">active triggers</span>
+        <TriggerList triggers={triggers} />
+      </div>
+    </div>
+  );
+}
+
+function TradeMapList({
+  entries,
+  scenario,
+  triggers,
+}: {
+  entries: TradeMapEntry[];
+  scenario: MacroScenario;
+  triggers: MacroTrigger[];
+}) {
   if (entries.length === 0) {
     return <span className="macro-muted">no trade map</span>;
   }
+  const tokenStatus = tradeTokenStatuses(scenario, triggers);
   return (
     <div className="macro-trade-map-list">
       {entries.map((entry, index) => {
@@ -314,8 +470,16 @@ function TradeMapList({ entries }: { entries: TradeMapEntry[] }) {
               <b>{expression}</b>
               <span>{entry.time_window ?? "-"}</span>
             </div>
-            <TokenLine label="confirms" tokens={entry.confirms_on ?? []} />
-            <TokenLine label="invalidates" tokens={entry.invalidates_on ?? []} />
+            <TokenLine
+              label="confirms"
+              statusByToken={tokenStatus}
+              tokens={entry.confirms_on ?? []}
+            />
+            <TokenLine
+              label="invalidates"
+              statusByToken={tokenStatus}
+              tokens={entry.invalidates_on ?? []}
+            />
           </article>
         );
       })}
@@ -323,7 +487,15 @@ function TradeMapList({ entries }: { entries: TradeMapEntry[] }) {
   );
 }
 
-function TokenLine({ label, tokens }: { label: string; tokens: string[] }) {
+function TokenLine({
+  label,
+  statusByToken,
+  tokens,
+}: {
+  label: string;
+  statusByToken: Record<string, string>;
+  tokens: string[];
+}) {
   if (tokens.length === 0) {
     return null;
   }
@@ -332,9 +504,36 @@ function TokenLine({ label, tokens }: { label: string; tokens: string[] }) {
       <span>{label}</span>
       <div>
         {tokens.map((token) => (
-          <small key={token}>{token}</small>
+          <small className={statusByToken[token] ?? "unresolved"} key={token}>
+            {token}
+          </small>
         ))}
       </div>
+    </div>
+  );
+}
+
+function IndicatorTokenLine({
+  indicators,
+  keys,
+}: {
+  indicators?: Record<string, MacroIndicator>;
+  keys: string[];
+}) {
+  if (!indicators || keys.length === 0) {
+    return null;
+  }
+  return (
+    <div className="macro-indicator-token-line">
+      {keys.map((key) => {
+        const indicator = indicators[key];
+        return (
+          <small key={key}>
+            {key}: {indicator ? valueLabel(indicator.value) : "pending"}
+            {indicator?.unit ? ` ${indicator.unit}` : ""}
+          </small>
+        );
+      })}
     </div>
   );
 }
@@ -392,6 +591,30 @@ function GapList({ gaps }: { gaps: string[] }) {
   );
 }
 
+function SourceCoverage({
+  gaps,
+  scorecard,
+  sourceCoverage,
+}: {
+  gaps: string[];
+  scorecard: MacroScorecard;
+  sourceCoverage: Record<string, number | string | null | undefined>;
+}) {
+  const latestObservedAt = sourceCoverage.latest_observed_at;
+  return (
+    <div className="macro-source-coverage">
+      <div className="macro-source-kpis">
+        <MetricTile label="coverage" value={coverageLabel(scorecard)} />
+        <MetricTile label="ratio" value={percentLabel(numericOrNull(scorecard.coverage_ratio))} />
+        <MetricTile label="latest" value={latestObservedAt ? String(latestObservedAt) : "-"} />
+        <MetricTile label="gaps" value={String(scorecard.data_gap_count ?? gaps.length)} />
+      </div>
+      <GapList gaps={gaps.slice(0, 18)} />
+      {gaps.length > 18 ? <span className="macro-muted">+{gaps.length - 18} more gaps</span> : null}
+    </div>
+  );
+}
+
 function orderedPanels(panels: Record<string, MacroPanel>): Array<[string, MacroPanel]> {
   const ordered: Array<[string, MacroPanel]> = [];
   for (const key of PANEL_ORDER) {
@@ -427,13 +650,13 @@ function panelTitle(key: string): string {
 
 function nodeTitle(key: string): string {
   const titles: Record<string, string> = {
-    liquidity: "Liquidity",
-    rates: "Rates",
+    liquidity: "Onshore Funding",
+    rates: "Inflation / Rates",
     fed_corridor: "Fed Corridor",
-    volatility: "Volatility",
+    volatility: "Vol Structure",
     credit: "Credit",
     positioning: "Positioning",
-    cross_asset: "Cross-Asset",
+    cross_asset: "Asset Confirmation",
   };
   return titles[key] ?? key;
 }
@@ -480,6 +703,36 @@ function valueLabel(value: number | string | null | undefined): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
   }
   return value === null || value === undefined || value === "" ? "-" : String(value);
+}
+
+function numericOrNull(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function tradeTokenStatuses(
+  scenario: MacroScenario,
+  triggers: MacroTrigger[],
+): Record<string, string> {
+  const statusByToken: Record<string, string> = {};
+  for (const trigger of triggers) {
+    statusByToken[trigger.code] = "active";
+  }
+  for (const signal of scenario.confirmations ?? []) {
+    if (signal.code) {
+      statusByToken[signal.code] = "active";
+    }
+  }
+  for (const signal of scenario.watch_triggers ?? []) {
+    if (signal.code) {
+      statusByToken[signal.code] = "watch";
+    }
+  }
+  for (const signal of scenario.invalidations ?? []) {
+    if (signal.code) {
+      statusByToken[signal.code] = "invalidate";
+    }
+  }
+  return statusByToken;
 }
 
 function regimeTone(regime: string): string {
