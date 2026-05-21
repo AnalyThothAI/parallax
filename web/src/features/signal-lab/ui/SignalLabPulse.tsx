@@ -47,21 +47,13 @@ export function SignalLabPulse({
           onChange={setVisibility}
         />
       </header>
-      <div className="signal-attention-summary" aria-label="signal pulse summary">
-        {visibility === "public" ? (
-          <>
-            <SummaryPill label="候选" value={summary?.trade_candidate ?? 0} />
-            <SummaryPill label="代币" value={summary?.token_watch ?? 0} />
-            <SummaryPill label="拒绝" value={summary?.risk_rejected_high_info ?? 0} />
-          </>
-        ) : (
-          <>
-            <SummaryPill label="隐藏" value={hiddenCount} />
-            <SummaryPill label="公开" value={publicCount} />
-            <SummaryPill label="总计" value={Number(data?.health.candidate_count ?? 0)} />
-          </>
-        )}
-      </div>
+      {visibility === "public" ? (
+        <div className="signal-attention-summary" aria-label="signal pulse summary">
+          <SummaryPill label="候选" value={summary?.trade_candidate ?? 0} />
+          <SummaryPill label="代币" value={summary?.token_watch ?? 0} />
+          <SummaryPill label="拒绝" value={summary?.risk_rejected_high_info ?? 0} />
+        </div>
+      ) : null}
       <SignalPulseQueue
         compact
         isLoading={activeLoading}

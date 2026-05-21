@@ -130,7 +130,8 @@ describe("SignalLabPulse", () => {
 
     expect(screen.getByRole("button", { name: /TITTY/ })).toBeInTheDocument();
     expect(screen.getByText("隐藏 invalid output")).toBeInTheDocument();
-    expect(screen.getAllByText((_, node) => node?.textContent === "隐藏 3")).toHaveLength(2);
+    expect(screen.getAllByText((_, node) => node?.textContent === "隐藏 3")).toHaveLength(1);
+    expect(screen.queryByText((_, node) => node?.textContent === "总计 4")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /TITTY/ }));
 

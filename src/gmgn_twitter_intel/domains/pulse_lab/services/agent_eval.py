@@ -211,7 +211,13 @@ def _allowed_ref_ids(packet: dict[str, Any]) -> set[str]:
 def _final_refs(final: dict[str, Any]) -> set[str]:
     result: set[str] = set()
     for key in ("supporting_evidence_refs", "risk_evidence_refs", "data_gap_refs"):
-        result.update(str(value).strip() for value in _list(final.get(key)) if str(value or "").strip())
+        for value in _list(final.get(key)):
+            ref_id = str(value or "").strip()
+            if not ref_id:
+                continue
+            if key == "data_gap_refs" and ref_id.startswith("missing:"):
+                continue
+            result.add(ref_id)
     return result
 
 
