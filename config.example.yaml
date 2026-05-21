@@ -161,7 +161,7 @@ news_intel:
       refresh_interval_seconds: 600
     - source_id: cryptopanic-en
       provider_type: cryptopanic
-      feed_url: "cryptopanic://posts?regions=en&kind=news&max_items=50&profile_dir=/tmp/gmgn-twitter-intel/cryptopanic-profile&timeout=35"
+      feed_url: "cryptopanic://posts?regions=en&kind=all&max_items=50&profile_dir=~/.gmgn-twitter-intel/cryptopanic-profile&timeout=60"
       source_domain: cryptopanic.com
       source_name: CryptoPanic
       source_role: aggregator

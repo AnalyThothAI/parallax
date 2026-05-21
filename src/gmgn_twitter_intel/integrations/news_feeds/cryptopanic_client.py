@@ -116,7 +116,11 @@ def _parse_options(
         "profile_dir": profile_dir,
         "headless": not _truthy(headful) if headful is not None else default_headless,
         "timeout": timeout,
-        "proxy": _first(params, "proxy") or environ.get("CRYPTOPANIC_PROXY") or None,
+        "proxy": _first(params, "proxy")
+        or environ.get("CRYPTOPANIC_PROXY")
+        or environ.get("HTTPS_PROXY")
+        or environ.get("HTTP_PROXY")
+        or None,
         "evidence_dir": Path(evidence_dir_raw) if evidence_dir_raw else None,
         "max_items": max(1, int(_first(params, "max_items") or 50)),
         "query": query,

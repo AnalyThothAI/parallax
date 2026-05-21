@@ -36,10 +36,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN set -eu; \
+    sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
     printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries; \
     for attempt in 1 2 3 4 5; do \
         apt-get update \
-        && apt-get install -y --no-install-recommends build-essential git \
+        && apt-get install -y --no-install-recommends git \
         && rm -rf /var/lib/apt/lists/* \
         && exit 0; \
         rm -rf /var/lib/apt/lists/*; \
@@ -87,6 +88,7 @@ COPY --from=python-deps /app /app
 ENV PATH="/app/.venv/bin:${PATH}"
 
 RUN set -eu; \
+    sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
     printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries; \
     for attempt in 1 2 3 4 5; do \
         /app/.venv/bin/playwright install --with-deps chromium \
