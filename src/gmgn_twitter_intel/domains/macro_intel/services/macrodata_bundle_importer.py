@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession
@@ -134,10 +134,10 @@ def _sequence(value: object) -> Sequence[Any]:
 def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:
     unit_of_work = getattr(repos, "unit_of_work", None)
     if callable(unit_of_work):
-        return unit_of_work()
+        return cast("AbstractContextManager[Any]", unit_of_work())
     transaction = getattr(getattr(repos, "conn", None), "transaction", None)
     if callable(transaction):
-        return transaction()
+        return cast("AbstractContextManager[Any]", transaction())
     raise RuntimeError("repository session does not expose a transaction")
 
 
