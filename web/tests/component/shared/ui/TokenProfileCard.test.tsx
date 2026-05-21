@@ -3,8 +3,7 @@ import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
-const LOCAL_LOGO_URL = `${LOCAL_LOGO_PREFIX}zec-local`;
+const TOKEN_IMAGE_URL = "/api/token-images/zec-local";
 
 afterEach(() => cleanup());
 
@@ -17,7 +16,7 @@ describe("TokenProfileCard", () => {
     expect(screen.getByText("Privacy coin profile facts.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Zcash logo" })).toHaveAttribute(
       "src",
-      LOCAL_LOGO_URL,
+      TOKEN_IMAGE_URL,
     );
 
     expectLink("Website", "https://z.cash");
@@ -80,7 +79,7 @@ function readyProfile(): TokenProfileBlock {
     identity: {
       symbol: "ZEC",
       name: "Zcash",
-      logo_url: LOCAL_LOGO_URL,
+      logo_url: TOKEN_IMAGE_URL,
       banner_url: "https://cdn.example.test/zec-banner.png",
       description: "Privacy coin profile facts.",
     },

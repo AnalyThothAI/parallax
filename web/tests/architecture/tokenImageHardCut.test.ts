@@ -9,6 +9,8 @@ const srcRoot = join(webRoot, "src");
 const testRoot = join(webRoot, "tests");
 const sourceExtensions = new Set([".ts", ".tsx"]);
 const oldTokenImageProxyPattern = /\/api\/token-image(?!s)/;
+const remoteLogoUrlPattern = /logo_url:\s*["'`]https?:\/\//;
+const removedLogoCompatibilityNames = ["localLogoUrl", "_local_logo_url", "LOCAL_LOGO_PREFIX"];
 
 describe("token image hard cut", () => {
   it("does not restore the old frontend URL compatibility helper", () => {
@@ -22,6 +24,10 @@ describe("token image hard cut", () => {
           text.includes("tokenImageUrl") ? `${relative(webRoot, path)}: tokenImageUrl` : null,
           oldTokenImageProxyPattern.test(text) ? `${relative(webRoot, path)}: /api/token-image` : null,
           text.includes("gmgn.ai/external-res") ? `${relative(webRoot, path)}: gmgn.ai/external-res` : null,
+          remoteLogoUrlPattern.test(text) ? `${relative(webRoot, path)}: remote logo_url fixture` : null,
+          ...removedLogoCompatibilityNames
+            .filter((name) => text.includes(name))
+            .map((name) => `${relative(webRoot, path)}: ${name}`),
         ].filter((item): item is string => item !== null);
       });
 
@@ -36,6 +42,10 @@ describe("token image hard cut", () => {
         return [
           text.includes("tokenImageUrl") ? `${relative(webRoot, path)}: tokenImageUrl` : null,
           oldTokenImageProxyPattern.test(text) ? `${relative(webRoot, path)}: /api/token-image` : null,
+          remoteLogoUrlPattern.test(text) ? `${relative(webRoot, path)}: remote logo_url fixture` : null,
+          ...removedLogoCompatibilityNames
+            .filter((name) => text.includes(name))
+            .map((name) => `${relative(webRoot, path)}: ${name}`),
         ].filter((item): item is string => item !== null);
       });
 

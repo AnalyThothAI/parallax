@@ -391,7 +391,7 @@ def _project_logo(
 
     ready_image = ready_images_by_source_url.get(str(source_url))
     public_url = _clean((ready_image or {}).get("public_url"))
-    if public_url and public_url.startswith("/api/token-images/"):
+    if public_url:
         fields["logo_url"] = public_url
         fields["logo_image_id"] = _clean(ready_image.get("image_id"))
         fields["logo_source_provider"] = _clean(selected_source_provider) or _clean(ready_image.get("source_provider"))

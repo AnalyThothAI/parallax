@@ -73,10 +73,7 @@ def _ready_images_by_source_url(*, repos: Any, sources: list[dict[str, dict[str,
     source_urls = _candidate_logo_urls(sources)
     if not source_urls:
         return {}
-    token_image_assets = getattr(repos, "token_image_assets", None)
-    if token_image_assets is None:
-        return {}
-    return token_image_assets.ready_by_source_urls(source_urls)
+    return repos.token_image_assets.ready_by_source_urls(source_urls)
 
 
 def _candidate_logo_urls(sources: list[dict[str, dict[str, Any]]]) -> list[str]:

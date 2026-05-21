@@ -110,7 +110,7 @@ describe("token radar factor snapshot mapper", () => {
       identity: {
         symbol: "ZEC",
         name: "Zcash",
-        logo_url: "https://cdn.example.test/zec.png",
+        logo_url: "/api/token-images/zec-local",
         banner_url: null,
         description: "Privacy coin profile facts.",
       },

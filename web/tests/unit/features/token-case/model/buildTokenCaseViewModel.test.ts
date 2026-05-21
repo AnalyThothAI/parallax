@@ -2,7 +2,7 @@ import { buildTokenCaseViewModel } from "@features/token-case/model/buildTokenCa
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { describe, expect, it } from "vitest";
 
-const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+const HANSA_TOKEN_IMAGE_URL = "/api/token-images/hansa-local";
 
 describe("buildTokenCaseViewModel", () => {
   it("maps a token-case dossier into the narrative view model", () => {
@@ -24,7 +24,7 @@ describe("buildTokenCaseViewModel", () => {
       "watched",
       "readiness",
     ]);
-    expect(vm.hero.logoUrl).toBe(`${LOCAL_LOGO_PREFIX}hansa-local`);
+    expect(vm.hero.logoUrl).toBe(HANSA_TOKEN_IMAGE_URL);
     expect(vm.propagation.stages).toHaveLength(3);
     expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
     expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("bullish");

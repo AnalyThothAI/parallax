@@ -2,8 +2,7 @@ import type { TokenFlowItem } from "@lib/types";
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
 import { describe, expect, it } from "vitest";
 
-const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
-const LOCAL_LOGO_URL = `${LOCAL_LOGO_PREFIX}hansa-local`;
+const TOKEN_IMAGE_URL = "/api/token-images/hansa-local";
 
 describe("buildTokenRadarCompactCase", () => {
   it("drives WHY NOW from a ready discussion digest", () => {
@@ -101,12 +100,12 @@ describe("buildTokenRadarCompactCase", () => {
       profile: {
         status: "ready",
         identity: {
-          logo_url: LOCAL_LOGO_URL,
+          logo_url: TOKEN_IMAGE_URL,
         },
       },
     });
 
-    expect(view.logoUrl).toBe(LOCAL_LOGO_URL);
+    expect(view.logoUrl).toBe(TOKEN_IMAGE_URL);
   });
 
 });

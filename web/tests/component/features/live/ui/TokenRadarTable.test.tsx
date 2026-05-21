@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+const TOKEN_IMAGE_URL = "/api/token-images/troll-local";
 
 afterEach(() => {
   cleanup();
@@ -44,7 +44,7 @@ describe("TokenRadarTable rows", () => {
     );
     expect(row.querySelector(".radar-token-logo")).toHaveAttribute(
       "src",
-      `${LOCAL_LOGO_PREFIX}troll-local`,
+      TOKEN_IMAGE_URL,
     );
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
     expect(within(row).getByText("ETH · 0x111111...111111")).toBeInTheDocument();
@@ -623,7 +623,7 @@ function mixedFreshnessToken(): TokenFlowItem {
       identity: {
         symbol: "TROLL",
         name: "Troll Protocol",
-        logo_url: `${LOCAL_LOGO_PREFIX}troll-local`,
+        logo_url: TOKEN_IMAGE_URL,
       },
       links: {
         website_url: "https://troll.example",
@@ -671,7 +671,7 @@ function cexToken(): TokenFlowItem {
       identity: {
         symbol: "OPN",
         name: "Open Protocol",
-        logo_url: "https://bin.bnbstatic.com/image/admin_mgs_image_upload/opn.png",
+        logo_url: null,
       },
       links: {
         twitter_username: "opn",
