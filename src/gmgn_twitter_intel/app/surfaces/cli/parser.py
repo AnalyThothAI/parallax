@@ -36,6 +36,14 @@ def build_parser() -> argparse.ArgumentParser:
     query_audit = db_subcommands.add_parser("query-audit", help="explain PostgreSQL hot read paths")
     query_audit.add_argument("--analyze", action="store_true", help="run EXPLAIN ANALYZE with buffers")
 
+    macro = subcommands.add_parser("macro", help="Macro Intelligence commands")
+    macro_subcommands = macro.add_subparsers(dest="macro_command", required=True)
+    macro_import_bundle = macro_subcommands.add_parser("import-bundle", help="import a macrodata-cli bundle envelope")
+    macro_import_bundle.add_argument("--file", default=None, help="path to macrodata-cli JSON envelope")
+    macro_import_bundle.add_argument("--stdin", action="store_true", help="read macrodata-cli JSON envelope from stdin")
+    macro_subcommands.add_parser("project-once", help="rebuild the latest macro view snapshot once")
+    macro_subcommands.add_parser("status", help="print macro import and projection status")
+
     recent = subcommands.add_parser("recent", help="print recent stored events")
     recent.add_argument("--limit", type=int, default=20)
     recent.add_argument("--handles", default="")

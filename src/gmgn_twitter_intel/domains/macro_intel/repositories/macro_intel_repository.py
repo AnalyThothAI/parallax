@@ -45,6 +45,44 @@ class MacroIntelRepository:
         )
         return observation_id
 
+    def record_import_run(self, import_run: Mapping[str, Any]) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO macro_import_runs(
+              run_id, source_name, bundle_name, asof_date, status, observations_count,
+              coverage_json, missing_series_json, series_errors_json, reason_codes_json,
+              started_at_ms, completed_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(run_id) DO UPDATE SET
+              source_name = excluded.source_name,
+              bundle_name = excluded.bundle_name,
+              asof_date = excluded.asof_date,
+              status = excluded.status,
+              observations_count = excluded.observations_count,
+              coverage_json = excluded.coverage_json,
+              missing_series_json = excluded.missing_series_json,
+              series_errors_json = excluded.series_errors_json,
+              reason_codes_json = excluded.reason_codes_json,
+              started_at_ms = excluded.started_at_ms,
+              completed_at_ms = excluded.completed_at_ms
+            """,
+            (
+                str(import_run["run_id"]),
+                str(import_run["source_name"]),
+                str(import_run["bundle_name"]),
+                import_run.get("asof_date"),
+                str(import_run["status"]),
+                int(import_run.get("observations_count") or 0),
+                Jsonb(dict(import_run.get("coverage_json") or {})),
+                Jsonb(list(import_run.get("missing_series_json") or [])),
+                Jsonb(list(import_run.get("series_errors_json") or [])),
+                Jsonb(list(import_run.get("reason_codes_json") or [])),
+                int(import_run["started_at_ms"]),
+                int(import_run["completed_at_ms"]),
+            ),
+        )
+
     def latest_observations(
         self,
         *,
@@ -98,9 +136,10 @@ class MacroIntelRepository:
             """
             INSERT INTO macro_view_snapshots(
               snapshot_id, projection_version, asof_date, status, regime, overall_score, panels_json,
-              indicators_json, triggers_json, data_gaps_json, source_coverage_json, computed_at_ms
+              indicators_json, triggers_json, data_gaps_json, source_coverage_json, features_json,
+              chain_json, scenario_json, scorecard_json, computed_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(snapshot_id) DO UPDATE SET
               status = excluded.status,
               regime = excluded.regime,
@@ -110,6 +149,10 @@ class MacroIntelRepository:
               triggers_json = excluded.triggers_json,
               data_gaps_json = excluded.data_gaps_json,
               source_coverage_json = excluded.source_coverage_json,
+              features_json = excluded.features_json,
+              chain_json = excluded.chain_json,
+              scenario_json = excluded.scenario_json,
+              scorecard_json = excluded.scorecard_json,
               computed_at_ms = excluded.computed_at_ms
             """,
             (
@@ -124,6 +167,10 @@ class MacroIntelRepository:
                 Jsonb(snapshot.get("triggers_json") or []),
                 Jsonb(snapshot.get("data_gaps_json") or []),
                 Jsonb(snapshot.get("source_coverage_json") or {}),
+                Jsonb(snapshot.get("features_json") or {}),
+                Jsonb(snapshot.get("chain_json") or {}),
+                Jsonb(snapshot.get("scenario_json") or {}),
+                Jsonb(snapshot.get("scorecard_json") or {}),
                 int(snapshot["computed_at_ms"]),
             ),
         )
@@ -140,6 +187,25 @@ class MacroIntelRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def observations_count(self) -> int:
+        row = self.conn.execute("SELECT COUNT(*) AS count FROM macro_observations").fetchone()
+        return _count(row)
+
+    def series_count(self) -> int:
+        row = self.conn.execute("SELECT COUNT(DISTINCT series_key) AS count FROM macro_observations").fetchone()
+        return _count(row)
+
+    def latest_import_run(self) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM macro_import_runs
+            ORDER BY completed_at_ms DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return dict(row) if row is not None else None
+
 
 def _observation_id(observation: Mapping[str, Any]) -> str:
     identity = "|".join(
@@ -151,6 +217,12 @@ def _observation_id(observation: Mapping[str, Any]) -> str:
     )
     digest = hashlib.sha256(identity.encode()).hexdigest()[:32]
     return f"macro-observation:{digest}"
+
+
+def _count(row: Any) -> int:
+    if row is None:
+        return 0
+    return int(dict(row).get("count") or 0)
 
 
 __all__ = ["MacroIntelRepository"]
