@@ -47,18 +47,9 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 ### Worker Runtime Config (`workers.yaml`)
 
 `workers.yaml` is the only source for worker runtime knobs. It contains
-`defaults` plus one block per canonical worker key:
-
-`collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
-`live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
-`token_radar_projection`, `token_profile_current`, `narrative_admission`,
-`mention_semantics`, `token_discussion_digest`, `news_fetch`,
-`news_item_process`, `news_story_projection`, `news_item_brief`,
-`news_page_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
-`notification_rule`, and `notification_delivery`.
-
-The schema is `WorkersSettings`; the canonical key list is guarded
-against `worker_registry.py` and `docs/WORKERS.md`.
+`defaults`, `agent_runtime`, and one block per canonical worker key guarded by
+`WorkersSettings`, `worker_registry.py`, and `docs/WORKERS.md`. The current
+macro-specific runtime key is `macro_view_projection`.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
 contains the global default model, global concurrency/RPM limits, and

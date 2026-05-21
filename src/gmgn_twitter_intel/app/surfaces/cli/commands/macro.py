@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CORE_SERIES,
     MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+    MACRO_VIEW_PROJECTION_VERSION,
 )
 from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
@@ -85,7 +86,11 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 "observations_count": repos.macro_intel.observations_count(),
                 "series_count": repos.macro_intel.series_count(),
                 "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
-                "latest_snapshot": _json_ready(repos.macro_intel.latest_snapshot()),
+                "latest_snapshot": _json_ready(
+                    repos.macro_intel.latest_snapshot(
+                        projection_version=MACRO_VIEW_PROJECTION_VERSION,
+                    )
+                ),
             }
     except Exception:
         data = {

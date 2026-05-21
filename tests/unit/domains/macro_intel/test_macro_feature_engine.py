@@ -104,6 +104,40 @@ def test_repository_observations_for_series_bounds_positive_integer_inputs() -> 
     assert conn.executions[0][1] == (["fred:DGS10"], 1, 1)
 
 
+def test_repository_latest_snapshot_filters_current_projection_version_by_default() -> None:
+    conn = LatestSnapshotConnection(
+        current_row={"snapshot_id": "v2", "projection_version": "macro_regime_v2", "computed_at_ms": 100},
+        any_version_row={"snapshot_id": "v1-newer", "projection_version": "macro_regime_v1", "computed_at_ms": 200},
+    )
+    repo = MacroIntelRepository(conn)
+
+    assert repo.latest_snapshot() == {
+        "snapshot_id": "v2",
+        "projection_version": "macro_regime_v2",
+        "computed_at_ms": 100,
+    }
+    query, params = conn.executions[0]
+    assert "WHERE projection_version = %s" in query
+    assert params == ("macro_regime_v2",)
+
+
+def test_repository_latest_snapshot_can_read_any_projection_version_when_requested() -> None:
+    conn = LatestSnapshotConnection(
+        current_row={"snapshot_id": "v2", "projection_version": "macro_regime_v2", "computed_at_ms": 100},
+        any_version_row={"snapshot_id": "v1-newer", "projection_version": "macro_regime_v1", "computed_at_ms": 200},
+    )
+    repo = MacroIntelRepository(conn)
+
+    assert repo.latest_snapshot(projection_version=None) == {
+        "snapshot_id": "v1-newer",
+        "projection_version": "macro_regime_v1",
+        "computed_at_ms": 200,
+    }
+    query, params = conn.executions[0]
+    assert "WHERE projection_version = %s" not in query
+    assert params == ()
+
+
 def _daily_observations(series_key: str, *, start: date, values: list[float]) -> list[dict[str, object]]:
     return [
         _obs(series_key, (start + timedelta(days=index)).isoformat(), value_numeric=value)
@@ -138,9 +172,27 @@ class FakeConnection:
         self.rows = rows
         self.executions: list[tuple[str, tuple[object, ...]]] = []
 
-    def execute(self, query: str, params: tuple[object, ...]) -> FakeCursor:
+    def execute(self, query: str, params: tuple[object, ...] = ()) -> FakeCursor:
         self.executions.append((query, params))
         return FakeCursor(self.rows)
+
+
+class LatestSnapshotConnection:
+    def __init__(
+        self,
+        *,
+        current_row: dict[str, object],
+        any_version_row: dict[str, object],
+    ) -> None:
+        self.current_row = current_row
+        self.any_version_row = any_version_row
+        self.executions: list[tuple[str, tuple[object, ...]]] = []
+
+    def execute(self, query: str, params: tuple[object, ...] = ()) -> FakeCursor:
+        self.executions.append((query, params))
+        if params:
+            return FakeCursor([self.current_row])
+        return FakeCursor([self.any_version_row])
 
 
 class FakeCursor:
@@ -149,3 +201,6 @@ class FakeCursor:
 
     def fetchall(self) -> list[dict[str, object]]:
         return self.rows
+
+    def fetchone(self) -> dict[str, object] | None:
+        return self.rows[0] if self.rows else None

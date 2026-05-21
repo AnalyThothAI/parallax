@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
 
 router = APIRouter()
 
@@ -15,7 +16,7 @@ router = APIRouter()
 def macro(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
-        snapshot = repos.macro_intel.latest_snapshot()
+        snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
     return _json({"ok": True, "data": _public_macro(snapshot)})
 
 

@@ -226,6 +226,7 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "latest_snapshot": {"snapshot_id": "snapshot-1", "status": "partial", "computed_at_ms": NOW_MS},
         },
     }
+    assert repo.latest_snapshot_projection_versions == ["macro_regime_v2"]
 
 
 def _patch_macro_dependencies(monkeypatch, macro_module, repo: FakeMacroIntelRepository) -> None:
@@ -264,6 +265,7 @@ class FakeMacroIntelRepository:
         self.observations_for_series_calls: list[dict[str, object]] = []
         self.latest_import: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
+        self.latest_snapshot_projection_versions: list[str | None] = []
         self.fail_record_run = fail_record_run
         self.fail_latest_observations = fail_latest_observations
         self.fail_observations_for_series = fail_observations_for_series
@@ -314,7 +316,8 @@ class FakeMacroIntelRepository:
     def latest_import_run(self) -> dict[str, object] | None:
         return self.latest_import
 
-    def latest_snapshot(self) -> dict[str, object] | None:
+    def latest_snapshot(self, *, projection_version: str | None = None) -> dict[str, object] | None:
+        self.latest_snapshot_projection_versions.append(projection_version)
         return self.latest
 
 

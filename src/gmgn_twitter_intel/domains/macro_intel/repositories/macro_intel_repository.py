@@ -6,6 +6,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+
 
 class MacroIntelRepository:
     def __init__(self, conn: Any):
@@ -215,15 +217,31 @@ class MacroIntelRepository:
         )
         self.conn.commit()
 
-    def latest_snapshot(self) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT *
-            FROM macro_view_snapshots
-            ORDER BY computed_at_ms DESC
-            LIMIT 1
-            """
-        ).fetchone()
+    def latest_snapshot(
+        self,
+        *,
+        projection_version: str | None = MACRO_VIEW_PROJECTION_VERSION,
+    ) -> dict[str, Any] | None:
+        if projection_version is None:
+            row = self.conn.execute(
+                """
+                SELECT *
+                FROM macro_view_snapshots
+                ORDER BY computed_at_ms DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """
+                SELECT *
+                FROM macro_view_snapshots
+                WHERE projection_version = %s
+                ORDER BY computed_at_ms DESC
+                LIMIT 1
+                """,
+                (projection_version,),
+            ).fetchone()
         return dict(row) if row is not None else None
 
     def observations_count(self) -> int:

@@ -64,7 +64,7 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
         response = client.get("/api/macro", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert repo.calls == ["latest_snapshot"]
+    assert repo.calls == [("latest_snapshot", "macro_regime_v2")]
     assert response.json() == {
         "ok": True,
         "data": {
@@ -139,10 +139,10 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
 class FakeMacroIntelRepository:
     def __init__(self, *, snapshot: dict[str, object] | None) -> None:
         self.snapshot = snapshot
-        self.calls: list[str] = []
+        self.calls: list[tuple[str, str | None]] = []
 
-    def latest_snapshot(self):
-        self.calls.append("latest_snapshot")
+    def latest_snapshot(self, *, projection_version: str | None = None):
+        self.calls.append(("latest_snapshot", projection_version))
         return self.snapshot
 
 

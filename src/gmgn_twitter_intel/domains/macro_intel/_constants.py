@@ -6,10 +6,10 @@ MACRO_VIEW_HISTORY_LIMIT_PER_SERIES = 800
 
 MACRO_CORE_SERIES = (
     "fred:WALCL",
+    "fred:WRBWFRBL",
     "fred:RRPONTSYD",
-    "treasury_fiscal:operating_cash_balance",
     "nyfed:SOFR",
-    "fred:IORB",
+    "treasury_fiscal:operating_cash_balance",
     "fred:DGS2",
     "fred:DGS5",
     "fred:DGS10",
@@ -22,6 +22,7 @@ MACRO_CORE_SERIES = (
     "fred:DFEDTARU",
     "fred:DFEDTARL",
     "fred:EFFR",
+    "fred:IORB",
     "fred:BAMLC0A0CM",
     "fred:BAMLH0A0HYM2",
     "fred:VIXCLS",
@@ -37,7 +38,6 @@ MACRO_CORE_SERIES = (
     "stooq:gld.us",
     "stooq:uso.us",
     "cftc:financial_futures:sp500_net_noncommercial",
-    "coingecko:bitcoin:usd",
 )
 
 __all__ = [

@@ -33,15 +33,24 @@ Outcome: 87 / 100; target met.
   and coverage `requested=33`, `available=3`.
 - `uv run gmgn-twitter-intel macro project-once` wrote a
   `macro_regime_v2` snapshot with `status=partial`, `regime=data_gap`, and
-  snapshot id `macro-view:macro_regime_v2:1779358329382`.
+  snapshot id `macro-view:macro_regime_v2:1779359875010`.
 - `uv run gmgn-twitter-intel macro status` after projection reported
   `migration_ready=true`, 3 observations, 3 series, and a latest v2 snapshot.
+  `macro status` and `/api/macro` request the current projection version
+  (`macro_regime_v2`) so stale or concurrently written v1 rows cannot shadow
+  the current read model.
   The snapshot features contained `nyfed:SOFR`,
   `treasury_fiscal:operating_cash_balance`, and
   `cftc:financial_futures:sp500_net_noncommercial`. The chain contained all
   seven chain keys. The scenario reported `current_regime=neutral`. The
   scorecard reported `coverage_ratio=0.0909`, `observed_series_count=3`,
   `required_series_count=33`, and `data_gap_count=30`.
+- Cross-repo source-set alignment was rechecked after review: gmgn's
+  `MACRO_CORE_SERIES` is identical in order and content to macrodata-cli's
+  `MACRO_CORE` bundle list. The latest snapshot includes
+  `missing:fred:WRBWFRBL` and does not include
+  `missing:coingecko:bitcoin:usd`; crypto is not counted as required until
+  macrodata-cli adds it to the bundle.
 
 ## API And UI Smoke
 
@@ -88,10 +97,19 @@ Macrodata-cli sibling worktree:
 Gmgn worktree:
 
 - `uv run python -m pytest tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py -q`
-  -> 30 passed.
+  -> 32 passed after current-version snapshot filtering.
+- `uv run python -m pytest tests/unit/domains/macro_intel tests/unit/test_api_macro_contract.py tests/unit/test_cli_macro_commands.py tests/architecture/test_worker_runtime_contracts.py -q`
+  -> 95 passed after adding direct repository regression coverage for mixed
+  v1/v2 snapshot rows.
+- `uv run python -m pytest tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py -q`
+  -> 30 passed after macro-core source-set alignment.
 - `uv run ruff check .` -> passed.
+- `uv run ruff check src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py tests/unit/domains/macro_intel tests/unit/test_cli_macro_commands.py`
+  -> passed after macro-core source-set alignment.
 - `uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
-  -> passed, 13 source files.
+  -> passed, 13 source files after current-version snapshot filtering.
+- `uv run mypy src/gmgn_twitter_intel/domains/macro_intel src/gmgn_twitter_intel/app/surfaces/cli/commands/macro.py`
+  -> passed, 12 source files after macro-core source-set alignment.
 - `cd web && npm test -- --run tests/component/features/macro/MacroPage.test.tsx tests/routes/macro.route.test.tsx`
   -> 2 files, 3 tests passed.
 - `cd web && npm run typecheck` -> passed.
@@ -100,7 +118,10 @@ Gmgn worktree:
   chunk-size warning for chunks over 500 kB.
 - `uv run gmgn-twitter-intel db health` -> ready at `20260521_0077`.
 - `uv run gmgn-twitter-intel macro status` -> `migration_ready=true`,
-  3 observations, 3 series, latest v2 snapshot after projection.
+  3 observations, 3 series, latest v2 snapshot after projection; post-review
+  rerun with projection-version filtering confirmed
+  `projection_version=macro_regime_v2`, `missing:fred:WRBWFRBL=true`, and
+  `missing:coingecko:bitcoin:usd=false`.
 
 ## Remaining Runtime Check
 

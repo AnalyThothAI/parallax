@@ -10,7 +10,7 @@ from gmgn_twitter_intel.domains.macro_intel.services.macro_feature_engine import
 from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import build_macro_scenario
 
 CORE_REQUIRED_SERIES = MACRO_CORE_SERIES
-OPTIONAL_CONFIRMATION_SERIES = ("fred:SP500", "fred:DEXUSEU", "fred:DCOILWTICO", "coingecko:bitcoin:usd")
+OPTIONAL_CONFIRMATION_SERIES = ("fred:SP500", "fred:DEXUSEU", "fred:DCOILWTICO")
 PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
 CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
 
@@ -395,7 +395,6 @@ def _cross_asset_chain_node(
     lqd = _value(latest.get("stooq:lqd.us"))
     dxy = _value(latest.get("fred:DTWEXBGS"))
     oil = _first_value(latest, ("fred:DCOILWTICO", "stooq:uso.us"))
-    btc = _value(latest.get("coingecko:bitcoin:usd"))
     risk_off_votes = 0
     risk_on_votes = 0
 
@@ -407,7 +406,6 @@ def _cross_asset_chain_node(
         ("lqd", lqd),
         ("dollar_index", dxy),
         ("oil", oil),
-        ("btc", btc),
     ):
         if value is not None:
             evidence.append(f"{label}={value:.2f}")
@@ -417,7 +415,6 @@ def _cross_asset_chain_node(
         ("qqq_20d_delta", _feature_delta(features, "stooq:qqq.us", "20d"), -1),
         ("iwm_20d_delta", _feature_delta(features, "stooq:iwm.us", "20d"), -1),
         ("hyg_20d_delta", _feature_delta(features, "stooq:hyg.us", "20d"), -1),
-        ("btc_20d_delta", _feature_delta(features, "coingecko:bitcoin:usd", "20d"), -1),
         ("dollar_20d_delta", _feature_delta(features, "fred:DTWEXBGS", "20d"), 1),
     )
     for label, delta, risk_off_sign in delta_votes:
@@ -438,7 +435,6 @@ def _cross_asset_chain_node(
         ("stooq:hyg.us", hyg),
         ("stooq:lqd.us", lqd),
         ("fred:DTWEXBGS", dxy),
-        ("coingecko:bitcoin:usd", btc),
     ):
         if value is None:
             data_gaps.append(f"missing:{series_key}")
