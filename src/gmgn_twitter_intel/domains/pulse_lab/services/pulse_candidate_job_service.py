@@ -43,6 +43,10 @@ from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate im
     EvidenceCompletenessGateResult,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_packet_builder import PulseEvidenceBuilder
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_agent_cost_guard import (
+    PulseCostGuardDecision,
+    decide_pulse_agent_cost,
+)
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
@@ -75,7 +79,10 @@ _NO_START_BACKPRESSURE_CLASSES = {
     AgentExecutionErrorClass.CAPACITY_DENIED,
     AgentExecutionErrorClass.CIRCUIT_OPEN,
     AgentExecutionErrorClass.RATE_LIMITED,
+    AgentExecutionErrorClass.PROVIDER_ERROR,
+    AgentExecutionErrorClass.TRANSPORT_ERROR,
 }
+_FINGERPRINT_REUSE_TTL_MS = 24 * 60 * 60 * 1000
 
 
 class PulseAgentBackpressureReleased(Exception):
@@ -119,6 +126,8 @@ class PulseCandidateJobService:
         run_started = False
         evidence_packet: PulseEvidencePacket | None = None
         evidence_gate: EvidenceCompletenessGateResult | None = None
+        cost_guard: PulseCostGuardDecision | None = None
+        terminal_run: dict[str, Any] | None = None
         try:
             run_id = _prefixed_id(
                 "pulse-run",
@@ -153,12 +162,51 @@ class PulseCandidateJobService:
                     now_ms=now_ms,
                 )
                 evidence_gate = EvidenceCompletenessGate().evaluate(evidence_packet)
+                source_quality = PulseSourceQuality().evaluate(
+                    factor_snapshot=context.factor_snapshot,
+                    window=context.window,
+                    scope=context.scope,
+                )
                 completeness_json = {**evidence_gate.to_json(), "route": route}
-                agent_context = {
+                agent_context_base = {
                     **context.agent_context(),
                     "evidence_packet": evidence_packet.model_dump(mode="json"),
                     "evidence_packet_hash": evidence_packet.evidence_packet_hash,
                     "evidence_gate": completeness_json,
+                }
+                lane_models = _pulse_lane_models(self.decision_client)
+                preliminary_cost_guard = decide_pulse_agent_cost(
+                    context=context,
+                    evidence_gate=evidence_gate,
+                    gate=gate,
+                    source_quality=source_quality,
+                    runtime_hash=runtime_hash,
+                    evidence_packet_hash=evidence_packet.evidence_packet_hash,
+                    lane_models=lane_models,
+                    terminal_fingerprint_found=False,
+                    provider_cooldown_until_ms=None,
+                    now_ms=now_ms,
+                )
+                terminal_run = repos.pulse_runs.terminal_run_for_fingerprint(
+                    candidate_id=context.candidate_id,
+                    fingerprint_json=preliminary_cost_guard.fingerprint.to_json(),
+                    since_ms=max(0, int(now_ms) - _FINGERPRINT_REUSE_TTL_MS),
+                )
+                cost_guard = decide_pulse_agent_cost(
+                    context=context,
+                    evidence_gate=evidence_gate,
+                    gate=gate,
+                    source_quality=source_quality,
+                    runtime_hash=runtime_hash,
+                    evidence_packet_hash=evidence_packet.evidence_packet_hash,
+                    lane_models=lane_models,
+                    terminal_fingerprint_found=terminal_run is not None,
+                    provider_cooldown_until_ms=None,
+                    now_ms=now_ms,
+                )
+                agent_context = {
+                    **agent_context_base,
+                    "cost_guard": _cost_guard_request_json(cost_guard, terminal_run=terminal_run),
                 }
                 audit = self.decision_client.request_audit(
                     context=agent_context,
@@ -254,7 +302,7 @@ class PulseCandidateJobService:
                         commit=False,
                     )
             run_started = True
-            if evidence_gate.hard_blocked:
+            if cost_guard is not None and cost_guard.action == "no_llm_finalize":
                 final_decision = _abstain_decision(
                     route=route,
                     reason=evidence_gate.blocked_reason or "evidence_completeness_blocked",
@@ -264,6 +312,10 @@ class PulseCandidateJobService:
                 )
                 stage_audits = pre_stage_audits
                 result_audit = audit
+            elif cost_guard is not None and cost_guard.action == "reuse_terminal_run" and terminal_run is not None:
+                final_decision = FinalDecision.model_validate(terminal_run.get("response_json") or {})
+                stage_audits = pre_stage_audits
+                result_audit = {**dict(audit or {}), "output_hash": terminal_run.get("output_hash"), "usage": {}}
             else:
                 result = await self.decision_client.run_decision_pipeline(
                     context=agent_context,
@@ -273,10 +325,17 @@ class PulseCandidateJobService:
                     completeness=completeness_json,
                     runtime_manifest=runtime_manifest,
                     parent_reservation=parent_reservation,
+                    stage_plan=cost_guard.stage_plan if cost_guard is not None else None,
                 )
                 final_decision = result.final_decision
                 stage_audits = (*pre_stage_audits, *result.stage_audits)
                 result_audit = result.agent_run_audit or audit
+            final_decision = _preserve_gate_ceiling_decision(
+                final_decision,
+                gate=gate,
+                route=route,
+                evidence_packet=evidence_packet,
+            )
             final_decision = clip_recommendation(final_decision, gate=gate, evidence_gate=evidence_gate)
             signal_memo, bear_memo = _committee_memos_from_stage_audits(stage_audits)
             claim_verification = ClaimEvidenceVerifier().verify(evidence_packet, signal_memo, bear_memo, final_decision)
@@ -358,11 +417,6 @@ class PulseCandidateJobService:
                     scope=context.scope,
                     now_ms=finished_at_ms,
                     since_hours=4,
-                )
-                source_quality = PulseSourceQuality().evaluate(
-                    factor_snapshot=context.factor_snapshot,
-                    window=context.window,
-                    scope=context.scope,
                 )
                 write_gate_decision = PulseWriteGate().evaluate(
                     final_decision=final_decision,
@@ -550,10 +604,12 @@ class PulseCandidateJobService:
                             finished_at_ms=failed_at_ms,
                             commit=False,
                         )
-                    repos.pulse_jobs.release_running_job_for_backpressure(
+                    cooldown_until_ms = failed_at_ms + _provider_cooldown_delay_ms(backpressure_reason)
+                    repos.pulse_jobs.release_running_job_for_provider_cooldown(
                         job,
-                        reason=backpressure_reason,
+                        reason=f"provider_cooldown:{backpressure_reason}",
                         now_ms=failed_at_ms,
+                        cooldown_until_ms=cooldown_until_ms,
                         commit=False,
                     )
                 else:
@@ -649,6 +705,42 @@ def _runtime_contract_from_client(client: Any) -> dict[str, Any]:
     if not kwargs.get("failure_taxonomy_version"):
         kwargs["failure_taxonomy_version"] = PULSE_FAILURE_TAXONOMY_VERSION
     return kwargs
+
+
+def _pulse_lane_models(client: Any) -> dict[str, str]:
+    lanes = (
+        "pulse.pipeline",
+        "pulse.signal_analyst",
+        "pulse.bear_case",
+        "pulse.risk_portfolio_judge",
+    )
+    gateway = getattr(client, "_agent_gateway", None)
+    model_for_lane = getattr(gateway, "model_for_lane", None) or getattr(client, "model_for_lane", None)
+    fallback = str(getattr(client, "model", "") or "")
+    models: dict[str, str] = {}
+    for lane in lanes:
+        model = ""
+        if callable(model_for_lane):
+            try:
+                model = str(model_for_lane(lane) or "")
+            except Exception:
+                model = ""
+        models[lane] = model or fallback
+    return models
+
+
+def _cost_guard_request_json(
+    cost_guard: PulseCostGuardDecision,
+    *,
+    terminal_run: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload = cost_guard.to_json()
+    return {
+        "decision": payload,
+        "fingerprint": cost_guard.fingerprint.to_json(),
+        "stage_plan": cost_guard.stage_plan.to_json(),
+        "reused_run_id": str(terminal_run.get("run_id")) if terminal_run else None,
+    }
 
 
 def _eval_result_with_write_gate(eval_result: dict[str, Any], write_gate: dict[str, Any]) -> dict[str, Any]:
@@ -801,6 +893,15 @@ def _agent_no_start_backpressure_reason(exc: Exception) -> str | None:
     return str(error_class.value if isinstance(error_class, AgentExecutionErrorClass) else error_class)
 
 
+def _provider_cooldown_delay_ms(reason: str) -> int:
+    normalized = str(reason or "").strip().lower()
+    if normalized in {"provider_error", "transport_error"}:
+        return 300_000
+    if normalized in {"circuit_open", "capacity_denied", "rate_limited"}:
+        return 120_000
+    return 120_000
+
+
 def _cancelled_execution_started(exc: asyncio.CancelledError, *, run_started: bool) -> bool:
     execution_started = getattr(exc, "execution_started", None)
     if execution_started is None:
@@ -903,6 +1004,54 @@ def _abstain_decision(
         evidence_event_ids=[],
         data_gap_refs=tuple(data_gap_refs or []),
     )
+
+
+def _preserve_gate_ceiling_decision(
+    final_decision: FinalDecision,
+    *,
+    gate: PulseGateResult,
+    route: DecisionRoute,
+    evidence_packet: PulseEvidencePacket,
+) -> FinalDecision:
+    if (
+        gate.pulse_status != "risk_rejected_high_info"
+        or final_decision.recommendation != "abstain"
+        or final_decision.abstain_reason != "cost_guard_research_only"
+    ):
+        return final_decision
+    ref = _first_allowed_ref(evidence_packet)
+    refs = (ref,) if ref else tuple()
+    reason = (gate.risk_reasons or gate.hard_risks or ["risk_rejected_high_info"])[0]
+    return FinalDecision(
+        route=route,
+        recommendation="ignore",
+        confidence=0.0,
+        abstain_reason=None,
+        summary_zh="因子门控识别为高信息风险拒绝，本次不进入付费最终判断。",
+        narrative_archetype="risk_rejected",
+        narrative_thesis_zh="确定性因子门控显示风险条件优先；系统保留研究审计并将候选限制为风险拒绝状态。",
+        bull_view=BullBearView(strength="absent"),
+        bear_view=BullBearView(strength="moderate", thesis_zh=str(reason)),
+        playbook=TradePlaybook(
+            has_playbook=False,
+            watch_signals=[],
+            exit_triggers=[],
+            monitoring_horizon="1h",
+        ),
+        invalidation_conditions=[],
+        residual_risks=list(gate.risk_reasons or gate.hard_risks or [reason]),
+        evidence_event_ids=[],
+        supporting_evidence_refs=refs,
+        risk_evidence_refs=refs,
+        data_gap_refs=tuple(),
+    )
+
+
+def _first_allowed_ref(packet: PulseEvidencePacket) -> str | None:
+    for ref in packet.allowed_evidence_refs:
+        if ref.ref_id:
+            return ref.ref_id
+    return None
 
 
 def _run_outcome(

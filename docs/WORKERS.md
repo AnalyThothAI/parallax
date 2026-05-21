@@ -303,11 +303,33 @@ agent_runtime:
       model: deepseek-v4-flash
 ```
 
+Repository defaults pin Signal Pulse research lanes to the free Qwen route and
+reserve DeepSeek for the public final judge:
+
+```yaml
+agent_runtime:
+  lanes:
+    pulse.pipeline:
+      model: qwen3.6
+    pulse.signal_analyst:
+      model: qwen3.6
+    pulse.bear_case:
+      model: qwen3.6
+    pulse.risk_portfolio_judge:
+      model: deepseek-v4-flash
+```
+
 - `pulse_candidate` reserves `pulse.pipeline` before `pulse_agent_jobs`
   claim. The pipeline reservation owns the parent global slot for the
   full decision run; child stages reuse that parent global slot and
   acquire only their stage lane bulkhead (`pulse.signal_analyst`,
   `pulse.bear_case`, or `pulse.risk_portfolio_judge`).
+- Signal Pulse builds a domain-owned cost guard after evidence packet
+  construction and before LLM execution. Evidence-hard-blocked jobs finish
+  with deterministic audit only; duplicate terminal fingerprints reuse prior
+  output; source-quality-hidden and non-public paths run Qwen research without
+  DeepSeek; public trade/watch candidates run Qwen research plus the DeepSeek
+  final judge.
 - `enrichment` reserves `social.event_enrichment` before claiming
   enrichment jobs and passes that reservation into the actual stage.
 - `handle_summary` reserves `watchlist.handle_summary` before claiming

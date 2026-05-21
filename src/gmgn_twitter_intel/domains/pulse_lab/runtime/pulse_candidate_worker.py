@@ -371,6 +371,8 @@ class PulseCandidateWorker(WorkerBase):
             pending_score_band=_clean(existing_edge.get("pending_score_band")),
             pending_score_band_count=safe_int(existing_edge.get("pending_score_band_count")),
             recent_failure_count=recent_failure_count,
+            last_processed_at_ms=safe_int(existing_edge.get("last_processed_at_ms")) or None,
+            now_ms=now_ms,
         )
         context = _context_with_gate(context, gate, edge_state=edge_state, edge_events=decision.edge_events)
         with _transaction(repos.conn):

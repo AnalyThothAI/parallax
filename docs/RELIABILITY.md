@@ -96,10 +96,22 @@ no-start response from capacity, circuit, RPM, or parent-reservation
 pressure is backpressure, not a provider attempt. Provider-started
 latency timeouts remain started execution failures and follow the
 domain retry/audit policy.
+Signal Pulse releases no-start provider/circuit pressure into a bounded
+provider cooldown instead of the old 30-second retry loop. The job is returned
+to `pending`, its claim attempt is decremented, and `next_run_at_ms` is delayed
+by the lane/provider cooldown. This keeps outage noise out of business retries
+while preserving the audit row that explains why execution did not start.
 Supervisor cancellation is also auditable: the gateway records
 `cancelled` result metadata and releases lane/global counters, then
 propagates cancellation as `asyncio.CancelledError` so domain cleanup can
 run.
+
+Signal Pulse also performs deterministic cost gating before paid stages:
+evidence-hard-blocked, source-quality-hidden, duplicate-fingerprint, and
+non-public gate-ceiling paths cannot call the DeepSeek judge. The deterministic
+eval contract reads the recorded cost-guard stage plan, so Qwen-only and reused
+terminal runs are evaluated against the stages they were supposed to execute,
+not against the full three-stage public-judge path.
 
 `/api/status` exposes the gateway snapshot under `agent_execution`, and
 Prometheus exposes `gmgn_agent_execution_*` metrics. These are ops

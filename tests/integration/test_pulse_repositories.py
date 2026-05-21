@@ -94,6 +94,43 @@ def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
     assert claimed["updated_at_ms"] == 1_000
 
 
+def test_release_running_job_for_provider_cooldown_delays_without_burning_attempt(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
+            job_id="job-provider-cooldown",
+            candidate_id="candidate-provider-cooldown",
+            candidate_type="token_target",
+            subject_key="asset-1",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger",
+            timeline_signature="timeline",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        claimed = repo.jobs.claim_due_job(now_ms=1_000)
+        assert claimed is not None
+
+        released = repo.jobs.release_running_job_for_provider_cooldown(
+            claimed,
+            reason="provider_cooldown:circuit_open",
+            now_ms=1_000,
+            cooldown_until_ms=301_000,
+        )
+    finally:
+        conn.close()
+
+    assert released is not None
+    assert released["status"] == "pending"
+    assert released["next_run_at_ms"] == 301_000
+    assert released["attempt_count"] == 0
+    assert "provider_cooldown" in released["last_error"]
+
+
 def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -763,6 +800,89 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
     assert finished["decision_stage_count"] == 3
 
 
+def test_pulse_runs_terminal_run_for_fingerprint_returns_latest_matching_terminal_run(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    fingerprint = {
+        "candidate_id": "candidate-fingerprint",
+        "trigger_signature": "trigger-a",
+        "timeline_signature": "timeline-a",
+        "evidence_packet_hash": "packet-a",
+        "runtime_hash": "runtime-a",
+        "stage_plan_hash": "stage-plan-a",
+        "route": "meme",
+    }
+    try:
+        migrate(conn)
+        repo = _repo_bundle(conn)
+        repo.jobs.enqueue_job(
+            job_id="job-fingerprint",
+            candidate_id="candidate-fingerprint",
+            candidate_type="token_target",
+            subject_key="asset-1",
+            target_type="Asset",
+            target_id="asset-1",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-a",
+            timeline_signature="timeline-a",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        _insert_fingerprint_run(
+            repo,
+            run_id="run-too-old",
+            fingerprint=fingerprint,
+            status="done",
+            outcome="completed",
+            finished_at_ms=1_000,
+        )
+        _insert_fingerprint_run(
+            repo,
+            run_id="run-latest-terminal",
+            fingerprint=fingerprint,
+            status="done",
+            outcome="completed",
+            finished_at_ms=3_000,
+        )
+        _insert_fingerprint_run(
+            repo,
+            run_id="run-running-later",
+            fingerprint=fingerprint,
+            status="running",
+            outcome="running",
+            finished_at_ms=4_000,
+        )
+        _insert_fingerprint_run(
+            repo,
+            run_id="run-failed-later",
+            fingerprint=fingerprint,
+            status="failed",
+            outcome="invalid_schema",
+            finished_at_ms=5_000,
+        )
+        _insert_fingerprint_run(
+            repo,
+            run_id="run-different-fingerprint",
+            fingerprint={**fingerprint, "stage_plan_hash": "stage-plan-b"},
+            status="done",
+            outcome="completed",
+            finished_at_ms=6_000,
+        )
+
+        row = repo.runs.terminal_run_for_fingerprint(
+            candidate_id="candidate-fingerprint",
+            fingerprint_json=fingerprint,
+            since_ms=2_000,
+        )
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["run_id"] == "run-latest-terminal"
+    assert row["request_json"]["cost_guard"]["fingerprint"] == fingerprint
+
+
 def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_outcome(tmp_path) -> None:
     signature = inspect.signature(PulseRunsRepository.finish_agent_run)
     assert signature.parameters["outcome"].default is inspect.Parameter.empty
@@ -791,6 +911,42 @@ def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_
             "run-missing-outcome",
             "done",
         )
+
+
+def _insert_fingerprint_run(
+    repo: SimpleNamespace,
+    *,
+    run_id: str,
+    fingerprint: dict[str, Any],
+    status: str,
+    outcome: str,
+    finished_at_ms: int,
+) -> dict[str, Any]:
+    return repo.runs.insert_agent_run(
+        run_id=run_id,
+        job_id="job-fingerprint",
+        candidate_id="candidate-fingerprint",
+        provider="openai",
+        model="qwen3.6",
+        workflow_name="signal_lab_pulse",
+        agent_name="pulse_decision_pipeline",
+        artifact_version_hash="artifact-hash",
+        prompt_version="pulse-decision-v1",
+        schema_version="pulse_decision_v1",
+        runtime_version="pulse-decision-runtime-v1",
+        runtime_hash="sha256:runtime-fingerprint",
+        input_hash=f"input-{run_id}",
+        request_json={"cost_guard": {"fingerprint": fingerprint}},
+        response_json={"status": outcome} if status == "done" else None,
+        trace_metadata_json={},
+        usage_json={},
+        status=status,
+        outcome=outcome,
+        decision_route="meme",
+        decision_stage_count=0,
+        started_at_ms=max(0, finished_at_ms - 100),
+        finished_at_ms=finished_at_ms,
+    )
 
 
 def test_agent_runtime_version_round_trip(tmp_path) -> None:

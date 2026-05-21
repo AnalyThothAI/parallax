@@ -287,3 +287,26 @@ class PulseRunsRepository:
             (run_id,),
         ).fetchall()
         return [_row(row) for row in rows]
+
+    def terminal_run_for_fingerprint(
+        self,
+        *,
+        candidate_id: str,
+        fingerprint_json: dict[str, Any],
+        since_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM pulse_agent_runs
+            WHERE candidate_id = %s
+              AND status = 'done'
+              AND response_json IS NOT NULL
+              AND finished_at_ms >= %s
+              AND request_json->'cost_guard'->'fingerprint' = %s::jsonb
+            ORDER BY finished_at_ms DESC, run_id DESC
+            LIMIT 1
+            """,
+            (candidate_id, int(since_ms), _json(fingerprint_json)),
+        ).fetchone()
+        return _optional_row(row)

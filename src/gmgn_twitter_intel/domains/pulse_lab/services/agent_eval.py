@@ -136,7 +136,7 @@ def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
             violations.append(_RULE_STAGE_CONTRACT)
             break
     if not hard_blocked:
-        for stage_name in _NON_BLOCKED_REQUIRED_STAGES:
+        for stage_name in _required_non_blocked_stages(context):
             if stage_status_by_name.get(stage_name) != "ok":
                 violations.append(_RULE_STAGE_CONTRACT)
                 break
@@ -198,6 +198,24 @@ def _stage_status_by_name(stages: list[Any]) -> dict[str, str]:
     return result
 
 
+def _required_non_blocked_stages(context: dict[str, Any]) -> tuple[str, ...]:
+    cost_guard = _mapping(context.get("cost_guard"))
+    decision = _mapping(cost_guard.get("decision"))
+    if str(decision.get("action") or "") == "reuse_terminal_run":
+        return tuple()
+    stage_plan = _mapping(cost_guard.get("stage_plan"))
+    if not stage_plan:
+        return _NON_BLOCKED_REQUIRED_STAGES
+    stages: list[str] = []
+    if bool(stage_plan.get("run_signal_analyst")):
+        stages.append("signal_analyst")
+    if bool(stage_plan.get("run_bear_case")):
+        stages.append("bear_case")
+    if bool(stage_plan.get("run_risk_portfolio_judge")):
+        stages.append("risk_portfolio_judge")
+    return tuple(stages)
+
+
 def _allowed_ref_ids(packet: dict[str, Any]) -> set[str]:
     refs = _list(packet.get("allowed_evidence_refs"))
     result: set[str] = set()
@@ -211,7 +229,13 @@ def _allowed_ref_ids(packet: dict[str, Any]) -> set[str]:
 def _final_refs(final: dict[str, Any]) -> set[str]:
     result: set[str] = set()
     for key in ("supporting_evidence_refs", "risk_evidence_refs", "data_gap_refs"):
-        result.update(str(value).strip() for value in _list(final.get(key)) if str(value or "").strip())
+        for value in _list(final.get(key)):
+            ref_id = str(value or "").strip()
+            if not ref_id:
+                continue
+            if key == "data_gap_refs" and ref_id.startswith("missing:"):
+                continue
+            result.add(ref_id)
     return result
 
 

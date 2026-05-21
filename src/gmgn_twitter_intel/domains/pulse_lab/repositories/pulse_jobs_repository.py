@@ -356,6 +356,49 @@ class PulseJobsRepository:
             self.conn.commit()
         return _optional_row(row)
 
+    def release_running_job_for_provider_cooldown(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        cooldown_until_ms: int,
+        decrement_attempt: bool = True,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        if job is None:
+            return None
+        now = int(now_ms)
+        attempts = int(job.get("attempt_count") or 0)
+        row = self.conn.execute(
+            """
+            UPDATE pulse_agent_jobs
+            SET status = 'pending',
+                next_run_at_ms = %s,
+                last_error = %s,
+                attempt_count = CASE
+                  WHEN %s THEN GREATEST(0, attempt_count - 1)
+                  ELSE attempt_count
+                END,
+                updated_at_ms = %s
+            WHERE job_id = %s
+              AND status = 'running'
+              AND attempt_count = %s
+            RETURNING *
+            """,
+            (
+                max(now, int(cooldown_until_ms)),
+                str(reason)[:1000],
+                bool(decrement_attempt),
+                now,
+                str(job["job_id"]),
+                attempts,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _optional_row(row)
+
     def job_for_candidate(self, candidate_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """

@@ -578,10 +578,30 @@ class AgentLaneSettings(BaseModel):
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
-        "pulse.pipeline": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=240.0),
-        "pulse.signal_analyst": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
-        "pulse.bear_case": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
-        "pulse.risk_portfolio_judge": AgentLaneSettings(priority="high", max_concurrency=1, timeout_seconds=180.0),
+        "pulse.pipeline": AgentLaneSettings(
+            model="qwen3.6",
+            priority="high",
+            max_concurrency=1,
+            timeout_seconds=240.0,
+        ),
+        "pulse.signal_analyst": AgentLaneSettings(
+            model="qwen3.6",
+            priority="high",
+            max_concurrency=1,
+            timeout_seconds=180.0,
+        ),
+        "pulse.bear_case": AgentLaneSettings(
+            model="qwen3.6",
+            priority="high",
+            max_concurrency=1,
+            timeout_seconds=180.0,
+        ),
+        "pulse.risk_portfolio_judge": AgentLaneSettings(
+            model="deepseek-v4-flash",
+            priority="high",
+            max_concurrency=1,
+            timeout_seconds=180.0,
+        ),
         "narrative.mention_semantics": AgentLaneSettings(priority="bulk", max_concurrency=1, timeout_seconds=180.0),
         "narrative.discussion_digest": AgentLaneSettings(priority="normal", max_concurrency=1, timeout_seconds=180.0),
         "social.event_enrichment": AgentLaneSettings(priority="normal", max_concurrency=2, timeout_seconds=180.0),
@@ -1522,18 +1542,22 @@ agent_runtime:
   global_rpm_limit: 60
   lanes:
     pulse.pipeline:
+      model: "qwen3.6"
       priority: "high"
       max_concurrency: 1
       timeout_seconds: 240.0
     pulse.signal_analyst:
+      model: "qwen3.6"
       priority: "high"
       max_concurrency: 1
       timeout_seconds: 180.0
     pulse.bear_case:
+      model: "qwen3.6"
       priority: "high"
       max_concurrency: 1
       timeout_seconds: 180.0
     pulse.risk_portfolio_judge:
+      model: "deepseek-v4-flash"
       priority: "high"
       max_concurrency: 1
       timeout_seconds: 180.0

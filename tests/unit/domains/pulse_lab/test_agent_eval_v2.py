@@ -42,6 +42,15 @@ def test_evidence_first_eval_rejects_unknown_final_refs() -> None:
     assert result["details_json"]["unknown_refs"] == ["event:ghost"]
 
 
+def test_evidence_first_eval_allows_missing_data_gap_refs() -> None:
+    final = _final_decision(data_gap_refs=("missing:social_breadth",))
+
+    result = grade_pulse_deterministic_eval_case(_case(final=final))
+
+    assert result["status"] == "pass"
+    assert result["details_json"]["unknown_refs"] == []
+
+
 def test_hard_blocked_packet_does_not_require_llm_stages() -> None:
     final = _abstain_decision()
     case = _case(
@@ -53,6 +62,47 @@ def test_hard_blocked_packet_does_not_require_llm_stages() -> None:
         },
         stages=("evidence_pack", "evidence_completeness_gate"),
     )
+
+    result = grade_pulse_deterministic_eval_case(case)
+
+    assert result["status"] == "pass"
+
+
+def test_cost_guard_qwen_research_only_does_not_require_deepseek_judge_stage() -> None:
+    case = _case(
+        final=_abstain_decision(),
+        stages=("evidence_pack", "evidence_completeness_gate", "signal_analyst", "bear_case"),
+    )
+    case["input_json"]["context"]["cost_guard"] = {
+        "decision": {"action": "qwen_research_only"},
+        "stage_plan": {
+            "run_signal_analyst": True,
+            "run_bear_case": True,
+            "run_risk_portfolio_judge": False,
+        },
+    }
+
+    result = grade_pulse_deterministic_eval_case(case)
+
+    assert result["status"] == "pass"
+    assert result["details_json"]["checked_stage_names"] == [
+        "evidence_pack",
+        "evidence_completeness_gate",
+        "signal_analyst",
+        "bear_case",
+    ]
+
+
+def test_cost_guard_reused_terminal_run_does_not_require_model_stages() -> None:
+    case = _case(stages=("evidence_pack", "evidence_completeness_gate"))
+    case["input_json"]["context"]["cost_guard"] = {
+        "decision": {"action": "reuse_terminal_run"},
+        "stage_plan": {
+            "run_signal_analyst": True,
+            "run_bear_case": True,
+            "run_risk_portfolio_judge": True,
+        },
+    }
 
     result = grade_pulse_deterministic_eval_case(case)
 
@@ -130,7 +180,11 @@ def _stage(stage: str, *, status: str = "ok") -> StageRunAudit:
     )
 
 
-def _final_decision(*, supporting_evidence_refs: tuple[str, ...] = ("event:event-1",)) -> FinalDecision:
+def _final_decision(
+    *,
+    supporting_evidence_refs: tuple[str, ...] = ("event:event-1",),
+    data_gap_refs: tuple[str, ...] = (),
+) -> FinalDecision:
     return FinalDecision(
         route="meme",
         recommendation="watchlist",
@@ -157,6 +211,7 @@ def _final_decision(*, supporting_evidence_refs: tuple[str, ...] = ("event:event
         evidence_event_ids=["event-1"],
         supporting_evidence_refs=supporting_evidence_refs,
         risk_evidence_refs=("market:pf-1",),
+        data_gap_refs=data_gap_refs,
         residual_risks=["市场确认仍不足。"],
         invalidation_conditions=["讨论热度快速回落。"],
     )

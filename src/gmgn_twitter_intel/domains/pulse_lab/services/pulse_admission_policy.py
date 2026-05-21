@@ -27,6 +27,9 @@ class PulseAdmissionPolicy:
         pending_score_band: str | None,
         pending_score_band_count: int,
         recent_failure_count: int = 0,
+        last_processed_at_ms: int | None = None,
+        now_ms: int | None = None,
+        timeline_debounce_seconds: int = 600,
     ) -> PulseAdmissionDecision:
         previous = _mapping(previous_state)
         events = tuple(str(event) for event in edge_events if str(event or "").strip())
@@ -48,6 +51,13 @@ class PulseAdmissionPolicy:
             return PulseAdmissionDecision("enqueue_agent", "escalation", events)
         if "hard_risk_added" in events:
             return PulseAdmissionDecision("enqueue_agent", "hard_risk_added", events)
+        if _is_debounced_timeline_only(
+            events,
+            last_processed_at_ms=last_processed_at_ms,
+            now_ms=now_ms,
+            timeline_debounce_seconds=timeline_debounce_seconds,
+        ):
+            return PulseAdmissionDecision("suppress", "timeline_debounce", events)
         if _has_material_evidence_change(events):
             return PulseAdmissionDecision("enqueue_agent", "material_evidence_changed", events)
         return PulseAdmissionDecision("enqueue_agent", "material_edge", events)
@@ -73,6 +83,20 @@ def _is_escalation(edge_events: tuple[str, ...]) -> bool:
 
 def _has_material_evidence_change(edge_events: tuple[str, ...]) -> bool:
     return bool(set(edge_events) & MATERIAL_EVIDENCE_EDGE_EVENTS)
+
+
+def _is_debounced_timeline_only(
+    edge_events: tuple[str, ...],
+    *,
+    last_processed_at_ms: int | None,
+    now_ms: int | None,
+    timeline_debounce_seconds: int,
+) -> bool:
+    if set(edge_events) != {"timeline_evidence_changed"}:
+        return False
+    if last_processed_at_ms is None or now_ms is None:
+        return False
+    return int(now_ms) - int(last_processed_at_ms) < max(0, int(timeline_debounce_seconds)) * 1000
 
 
 def _clean(value: Any) -> str | None:

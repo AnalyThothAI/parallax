@@ -19,7 +19,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     StageRunAudit,
     TradePlaybook,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentExecutionErrorClass
+from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
 from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 from tests.unit.test_pulse_candidate_worker import (
     NOW_MS,
@@ -289,6 +289,37 @@ def test_worker_timeout_cleanup_does_not_mutate_newer_claim_attempt() -> None:
     assert repos.pulse_jobs.jobs[0].get("last_error") is None
 
 
+def test_no_start_circuit_open_releases_job_to_cooldown() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+
+    class CircuitOpenClient(FakeClient):
+        async def run_decision_pipeline(self, **_: Any) -> Any:
+            self.run_calls += 1
+            raise AgentExecutionError(
+                AgentExecutionErrorClass.CIRCUIT_OPEN,
+                "agent lane circuit is open",
+                audit=None,
+                execution_started=False,
+            )
+
+    service = _service(repos, client=CircuitOpenClient())
+
+    with pytest.raises(job_module.PulseAgentBackpressureReleased):
+        asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    assert repos.pulse_jobs.failures == []
+    assert repos.pulse_jobs.provider_cooldown_releases
+    released = repos.pulse_jobs.provider_cooldown_releases[0]
+    assert released["reason"] == "provider_cooldown:circuit_open"
+    assert released["cooldown_until_ms"] == NOW_MS + 120_000
+    stored_job = repos.pulse_jobs.jobs[0]
+    assert stored_job["status"] == "pending"
+    assert stored_job["attempt_count"] == 0
+    assert stored_job["next_run_at_ms"] == NOW_MS + 120_000
+
+
 def test_hard_blocked_success_records_evidence_gate_without_provider_run() -> None:
     repos = FakeRepos()
     repos.pulse_evidence_sources.market_facts = []
@@ -300,11 +331,74 @@ def test_hard_blocked_success_records_evidence_gate_without_provider_run() -> No
     asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
 
     assert client.run_calls == 0
+    stored_run = repos.pulse_runs.agent_runs[0]
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "no_llm_finalize"
     gate_step = next(row for row in repos.pulse_runs.agent_run_steps if row["stage"] == "evidence_completeness_gate")
     assert gate_step["response_json"]["hard_blocked"] is True
+    assert not any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "bear_case" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
     finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "done")
     assert finished_run["outcome"] == "blocked_market_contract"
     assert repos.pulse_jobs.successes == [job["job_id"]]
+
+
+def test_run_job_reuses_terminal_fingerprint_without_model_call() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(factor_snapshot=_factor_snapshot(rank_score=82))
+    job = _enqueue_context_job(repos, context)
+    repos.pulse_runs.terminal_fingerprint_result = {
+        "run_id": "run-existing-terminal",
+        "response_json": _invalid_model_output_abstain(route="meme").model_dump(mode="json"),
+        "output_hash": "sha256:existing-output",
+        "usage_json": {"input_tokens": 999, "output_tokens": 999},
+    }
+    client = FakeClient()
+    service = _service(repos, client=client)
+
+    asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    assert client.run_calls == 0
+    assert repos.pulse_runs.terminal_fingerprint_lookups
+    stored_run = repos.pulse_runs.agent_runs[0]
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "reuse_terminal_run"
+    assert stored_run["request_json"]["cost_guard"]["reused_run_id"] == "run-existing-terminal"
+    assert not any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
+    finished_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "done")
+    assert finished_run["usage_json"] == {}
+    assert repos.pulse_jobs.successes == [job["job_id"]]
+
+
+def test_source_quality_hidden_path_does_not_call_deepseek() -> None:
+    repos = FakeRepos()
+    context = _pulse_context(
+        factor_snapshot=_factor_snapshot(
+            rank_score=82,
+            watched_mentions=1,
+            unique_authors=1,
+            independent_authors=1,
+            effective_authors=1.0,
+            top_author_share=1.0,
+        )
+    )
+    job = _enqueue_context_job(repos, context)
+    client = FakeClient()
+    service = _service(repos, client=client)
+
+    asyncio.run(service.run_job(job, context, now_ms=NOW_MS))
+
+    assert client.run_calls == 1
+    assert client.stage_plans
+    assert client.stage_plans[0].run_signal_analyst is True
+    assert client.stage_plans[0].run_bear_case is True
+    assert client.stage_plans[0].run_risk_portfolio_judge is False
+    stored_run = repos.pulse_runs.agent_runs[0]
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "qwen_research_only"
+    assert stored_run["request_json"]["cost_guard"]["decision"]["deepseek_allowed"] is False
+    assert any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
+    assert any(row["stage"] == "bear_case" for row in repos.pulse_runs.agent_run_steps)
+    assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)
+    assert repos.pulse_candidates.candidate_upserts[0]["display_status"] == "hidden_source_quality"
 
 
 def test_normal_success_records_candidate_playbook_eval_and_job_success(monkeypatch: pytest.MonkeyPatch) -> None:
