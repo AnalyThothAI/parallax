@@ -12,8 +12,6 @@ import { buildTokenCaseView, marketMeta } from "./tokenCase";
 
 export type TokenRadarCompactCase = ReturnType<typeof buildTokenRadarCompactCase>;
 
-const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
-
 export function buildTokenRadarCompactCase(item: TokenFlowItem) {
   const tokenCase = buildTokenCaseView(item);
   const risk = compactRisk(item);
@@ -23,7 +21,7 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     externalLinks: compactExternalLinks(item, tokenCase.actions),
     label: tokenCase.label,
     listed: compactListedAt(item),
-    logoUrl: localLogoUrl(item.profile?.identity?.logo_url),
+    logoUrl: cleanText(item.profile?.identity?.logo_url),
     markTone: tokenCase.decision.tone,
     market: {
       ...tokenCase.market,
@@ -45,11 +43,6 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     )} 作者`,
     subtitle: tokenCase.subtitle,
   };
-}
-
-function localLogoUrl(value?: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed?.startsWith(LOCAL_LOGO_PREFIX) ? trimmed : null;
 }
 
 type CompactExternalLink = {

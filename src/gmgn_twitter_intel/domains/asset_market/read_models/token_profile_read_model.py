@@ -43,7 +43,7 @@ def _block_from_row(row: dict[str, Any]) -> dict[str, Any]:
             "identity": {
                 "symbol": _clean(row.get("symbol")),
                 "name": _clean(row.get("name")),
-                "logo_url": _local_logo_url(row.get("logo_url")),
+                "logo_url": _clean(row.get("logo_url")),
                 "banner_url": _clean(row.get("banner_url")),
                 "description": _clean(row.get("description")),
             },
@@ -126,13 +126,6 @@ def _twitter_url(username_or_url: str | None) -> str | None:
         return value
     handle = value.lstrip("@").strip("/")
     return f"https://x.com/{handle}" if handle else None
-
-
-def _local_logo_url(value: Any) -> str | None:
-    url = _clean(value)
-    if url and url.startswith("/api/token-images/"):
-        return url
-    return None
 
 
 def _provider(row: dict[str, Any]) -> str | None:

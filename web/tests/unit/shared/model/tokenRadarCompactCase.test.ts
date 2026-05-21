@@ -109,19 +109,6 @@ describe("buildTokenRadarCompactCase", () => {
     expect(view.logoUrl).toBe(LOCAL_LOGO_URL);
   });
 
-  it("drops remote logo URLs", () => {
-    const view = buildTokenRadarCompactCase({
-      ...tokenFlowFixture(),
-      profile: {
-        status: "ready",
-        identity: {
-          logo_url: "https://cdn.example.test/hansa.png",
-        },
-      },
-    });
-
-    expect(view.logoUrl).toBeNull();
-  });
 });
 
 function tokenFlowFixture(): TokenFlowItem {

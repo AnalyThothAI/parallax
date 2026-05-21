@@ -44,24 +44,6 @@ describe("TokenProfileCard", () => {
     expect(screen.getByText("@zcash")).toBeInTheDocument();
   });
 
-  it("falls back instead of rendering remote profile logos", () => {
-    const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png";
-    const profile = readyProfile();
-    render(
-      <TokenProfileCard
-        profile={{
-          ...profile,
-          identity: {
-            ...profile.identity!,
-            logo_url: logoUrl,
-          },
-        }}
-      />,
-    );
-
-    expect(screen.queryByRole("img", { name: "Zcash logo" })).not.toBeInTheDocument();
-  });
-
   it("renders pending, missing, and error states", () => {
     const { rerender } = render(<TokenProfileCard compact profile={stateProfile("pending")} />);
     expect(screen.getByText("profile pending")).toBeInTheDocument();

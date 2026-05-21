@@ -270,6 +270,12 @@ def test_token_image_hard_cut_contracts_stay_removed():
         text = path.read_text(encoding="utf-8")
         if "tokenImageUrl" in text:
             offenders.append(f"{path.relative_to(ROOT)}: tokenImageUrl")
+        if "localLogoUrl" in text:
+            offenders.append(f"{path.relative_to(ROOT)}: localLogoUrl")
+        if "_local_logo_url" in text:
+            offenders.append(f"{path.relative_to(ROOT)}: _local_logo_url")
+        if "LOCAL_LOGO_PREFIX" in text:
+            offenders.append(f"{path.relative_to(ROOT)}: LOCAL_LOGO_PREFIX")
         if old_proxy_pattern.search(text):
             offenders.append(f"{path.relative_to(ROOT)}: /api/token-image")
 

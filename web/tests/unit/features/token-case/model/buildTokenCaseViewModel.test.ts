@@ -161,27 +161,6 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("$0.00042");
   });
 
-  it("does not expose remote hero logos", () => {
-    const dossier = tokenCaseFixture();
-    const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png";
-
-    const vm = buildTokenCaseViewModel({
-      dossier: {
-        ...dossier,
-        profile: {
-          ...dossier.profile!,
-          identity: {
-            ...dossier.profile!.identity!,
-            logo_url: logoUrl,
-          },
-        },
-      },
-      route: { window: "1h", scope: "all", postSort: "recent" },
-    });
-
-    expect(vm.hero.logoUrl).toBeNull();
-  });
-
   it("promotes event prices with a live-market comparison for the timeline", () => {
     const dossier = tokenCaseFixture();
     const firstPost = dossier.posts.items[0];

@@ -27,8 +27,6 @@ import {
 
 import type { TokenCaseRouteState } from "../state/tokenCaseRouteState";
 
-const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
-
 export type BuildTokenCaseViewModelArgs = {
   dossier: TokenCaseDossier;
   route: TokenCaseRouteState;
@@ -82,7 +80,7 @@ export function buildTokenCaseViewModel({
       searchHref: `/search?q=${encodeURIComponent(symbol ? `$${symbol}` : target.target_id)}`,
     },
     hero: {
-      logoUrl: localLogoUrl(profileIdentity?.logo_url),
+      logoUrl: cleanText(profileIdentity?.logo_url),
       title,
       subtitle: heroSubtitle(dossier, digest),
       contractLabel: target.address
@@ -163,11 +161,6 @@ export function buildTokenCaseViewModel({
     })),
     dataGaps,
   };
-}
-
-function localLogoUrl(value?: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed?.startsWith(LOCAL_LOGO_PREFIX) ? trimmed : null;
 }
 
 function buildCexDetailView(snapshot?: CexDetailSnapshot | null): TokenCaseViewModel["cexDetail"] {
