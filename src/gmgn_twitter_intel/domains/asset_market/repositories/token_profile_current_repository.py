@@ -17,14 +17,15 @@ class TokenProfileCurrentRepository:
             """
             INSERT INTO token_profile_current(
               target_type, target_id, status, profile_provider, source_kind, source_ref,
-              symbol, name, logo_url, banner_url, website_url, twitter_username,
-              twitter_url, telegram_url, gmgn_url, geckoterminal_url, description,
-              quality_flags_json, source_payload_json, observed_at_ms, computed_at_ms,
-              updated_at_ms
+              symbol, name, logo_url, logo_image_id, logo_source_provider,
+              logo_source_url_hash, banner_url, website_url, twitter_username,
+              twitter_url, telegram_url, gmgn_url, geckoterminal_url,
+              description, quality_flags_json, source_payload_json,
+              observed_at_ms, computed_at_ms, updated_at_ms
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT(target_type, target_id) DO UPDATE SET
               status = excluded.status,
@@ -34,6 +35,9 @@ class TokenProfileCurrentRepository:
               symbol = excluded.symbol,
               name = excluded.name,
               logo_url = excluded.logo_url,
+              logo_image_id = excluded.logo_image_id,
+              logo_source_provider = excluded.logo_source_provider,
+              logo_source_url_hash = excluded.logo_source_url_hash,
               banner_url = excluded.banner_url,
               website_url = excluded.website_url,
               twitter_username = excluded.twitter_username,
@@ -58,6 +62,9 @@ class TokenProfileCurrentRepository:
                 _optional_text(row.get("symbol")),
                 _optional_text(row.get("name")),
                 _optional_text(row.get("logo_url")),
+                _optional_text(row.get("logo_image_id")),
+                _optional_text(row.get("logo_source_provider")),
+                _optional_text(row.get("logo_source_url_hash")),
                 _optional_text(row.get("banner_url")),
                 _optional_text(row.get("website_url")),
                 _optional_text(row.get("twitter_username")),

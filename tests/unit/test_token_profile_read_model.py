@@ -22,7 +22,7 @@ def test_profile_read_model_returns_ready_block_from_current_profile_row():
                 source_ref="gmgn-evidence-1",
                 symbol="ABC",
                 name=" ",
-                logo_url="https://assets.example/abc.png",
+                logo_url="/api/token-images/image-abc",
                 banner_url="",
                 website_url=" https://abc.example ",
                 twitter_username="abc",
@@ -48,7 +48,7 @@ def test_profile_read_model_returns_ready_block_from_current_profile_row():
         "identity": {
             "symbol": "ABC",
             "name": None,
-            "logo_url": "https://assets.example/abc.png",
+            "logo_url": "/api/token-images/image-abc",
             "banner_url": None,
             "description": "project profile",
         },

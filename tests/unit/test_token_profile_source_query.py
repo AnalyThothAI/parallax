@@ -99,7 +99,7 @@ def test_okx_dex_profiles_reads_exact_address_logos_and_not_symbol_candidates():
     assert "okx_dex_symbol_candidate" not in sql
 
 
-def test_cex_token_profiles_reads_binance_source_cache_not_registry_icon_columns():
+def test_cex_token_profiles_reads_binance_source_cache_without_requiring_logo_columns():
     conn = _Conn(
         rows=[
             {
@@ -128,7 +128,7 @@ def test_cex_token_profiles_reads_binance_source_cache_not_registry_icon_columns
     assert "FROM cex_token_profiles" in sql
     assert "JOIN cex_tokens" in sql
     assert "provider = 'binance_cex_profile'" in sql
-    assert "logo_url IS NOT NULL" in sql
+    assert "logo_url IS NOT NULL" not in sql
     assert "cex_tokens.status IN ('candidate', 'canonical')" in sql
     assert "cex_tokens.logo_url" not in sql
     assert "logo_source" not in sql

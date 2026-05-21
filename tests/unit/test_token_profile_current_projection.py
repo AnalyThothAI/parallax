@@ -12,11 +12,12 @@ ASSET_ID = "asset:eip155:1:erc20:0xabc"
 
 
 def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
+    gmgn_logo_url = "https://gmgn.example/logo.png"
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(
             status="ready",
-            logo_url="https://gmgn.example/logo.png",
+            logo_url=gmgn_logo_url,
             symbol="GMGN",
             raw_payload_json={"profile": True},
             observed_at_ms=1_000,
@@ -29,6 +30,7 @@ def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
         ),
         gmgn_stream=gmgn_stream_row(icon_url="https://stream.example/logo.png", observed_at_ms=2_000),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
+        ready_images_by_source_url=ready_images(gmgn_logo_url),
         computed_at_ms=10_000,
     )
 
@@ -38,7 +40,10 @@ def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
     assert row["profile_provider"] == "gmgn_dex_profile"
     assert row["source_kind"] == "asset_profiles"
     assert row["source_ref"] == f"gmgn_dex_profile:{ASSET_ID}"
-    assert row["logo_url"] == "https://gmgn.example/logo.png"
+    assert row["logo_url"] == "/api/token-images/image-gmgn"
+    assert row["logo_image_id"] == "image-gmgn"
+    assert row["logo_source_provider"] == "gmgn_dex_profile"
+    assert row["logo_source_url_hash"] == "hash-gmgn"
     assert row["symbol"] == "GMGN"
     assert row["quality_flags"] == []
     assert row["source_payload"] == {"profile": True}
@@ -47,16 +52,18 @@ def test_project_token_profile_current_prefers_gmgn_openapi_ready_profile():
 
 
 def test_project_token_profile_current_uses_gmgn_stream_when_openapi_is_missing_or_error():
+    stream_logo_url = "https://gmgn-stream.example/icon.png"
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(status="error", logo_url=None, observed_at_ms=1_000),
         binance_web3=None,
         gmgn_stream=gmgn_stream_row(
-            icon_url="https://gmgn-stream.example/icon.png",
+            icon_url=stream_logo_url,
             symbol="ABC",
             observed_at_ms=2_000,
         ),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
+        ready_images_by_source_url=ready_images(stream_logo_url),
         computed_at_ms=10_000,
     )
 
@@ -64,12 +71,15 @@ def test_project_token_profile_current_uses_gmgn_stream_when_openapi_is_missing_
     assert row["profile_provider"] == "gmgn_stream_snapshot"
     assert row["source_kind"] == "asset_identity_evidence"
     assert row["source_ref"] == "gmgn-evidence-1"
-    assert row["logo_url"] == "https://gmgn-stream.example/icon.png"
+    assert row["logo_url"] == "/api/token-images/image-stream"
+    assert row["logo_image_id"] == "image-stream"
+    assert row["logo_source_provider"] == "gmgn_stream_snapshot"
+    assert row["logo_source_url_hash"] == "hash-stream"
     assert row["symbol"] == "ABC"
     assert row["observed_at_ms"] == 2_000
 
 
-def test_project_token_profile_current_skips_gmgn_openapi_profile_without_logo():
+def test_project_token_profile_current_keeps_gmgn_openapi_metadata_without_logo():
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=gmgn_openapi_row(status="ready", logo_url=None, symbol="GMGN", observed_at_ms=1_000),
@@ -80,17 +90,23 @@ def test_project_token_profile_current_skips_gmgn_openapi_profile_without_logo()
     )
 
     assert row["status"] == "ready"
-    assert row["profile_provider"] == "okx_dex_evidence"
-    assert row["logo_url"] == "https://okx.example/logo.png"
+    assert row["profile_provider"] == "gmgn_dex_profile"
+    assert row["symbol"] == "GMGN"
+    assert row["logo_url"] is None
+    assert row["logo_image_id"] is None
+    assert row["logo_source_provider"] is None
+    assert row["logo_source_url_hash"] is None
+    assert row["quality_flags"] == ["source_without_logo"]
 
 
 def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_when_gmgn_openapi_missing():
+    binance_logo_url = "https://bin.bnbstatic.com/images/web3-data/public/token/logos/usdt.png"
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=None,
         binance_web3=asset_profile_row(
             provider="binance_web3_profile",
-            logo_url="https://bin.bnbstatic.com/images/web3-data/public/token/logos/usdt.png",
+            logo_url=binance_logo_url,
             symbol="USDT",
             name="Tether USD",
             raw_payload_json={"source_provider": "binance_web3_profile"},
@@ -98,6 +114,7 @@ def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_w
         ),
         gmgn_stream=gmgn_stream_row(icon_url="https://gmgn-stream.example/icon.png", observed_at_ms=2_000),
         okx_dex=okx_row(logo_url="https://okx.example/logo.png", observed_at_ms=3_000),
+        ready_images_by_source_url=ready_images(binance_logo_url),
         computed_at_ms=10_000,
     )
 
@@ -107,22 +124,24 @@ def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_w
     assert row["source_ref"] == f"binance_web3_profile:{ASSET_ID}"
     assert row["symbol"] == "USDT"
     assert row["name"] == "Tether USD"
-    assert row["logo_url"] == "https://bin.bnbstatic.com/images/web3-data/public/token/logos/usdt.png"
+    assert row["logo_url"] == "/api/token-images/image-binance-web3"
     assert row["observed_at_ms"] == 1_500
 
 
 def test_project_token_profile_current_uses_okx_exact_logo_when_gmgn_sources_are_absent():
+    okx_logo_url = "https://static.okx.com/cdn/wallet/logo/usdt.png"
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},
         gmgn_openapi=None,
         binance_web3=None,
         gmgn_stream=None,
         okx_dex=okx_row(
-            logo_url="https://static.okx.com/cdn/wallet/logo/usdt.png",
+            logo_url=okx_logo_url,
             symbol="USDT",
             name="Tether USD",
             observed_at_ms=3_000,
         ),
+        ready_images_by_source_url=ready_images(okx_logo_url),
         computed_at_ms=10_000,
     )
 
@@ -130,7 +149,7 @@ def test_project_token_profile_current_uses_okx_exact_logo_when_gmgn_sources_are
     assert row["profile_provider"] == "okx_dex_evidence"
     assert row["source_kind"] == "asset_identity_evidence"
     assert row["source_ref"] == "okx-evidence-1"
-    assert row["logo_url"] == "https://static.okx.com/cdn/wallet/logo/usdt.png"
+    assert row["logo_url"] == "/api/token-images/image-okx"
     assert row["symbol"] == "USDT"
     assert row["name"] == "Tether USD"
 
@@ -175,6 +194,7 @@ def test_project_token_profile_current_returns_cex_unsupported_without_symbol_ma
 
 
 def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
+    cex_logo_url = "https://bin.bnbstatic.com/btc.png"
     row = project_token_profile_current(
         target={"target_type": "CexToken", "target_id": "cex_token:BTC"},
         gmgn_openapi=None,
@@ -187,11 +207,12 @@ def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
             "provider": "binance_cex_profile",
             "symbol": "BTC",
             "name": "Bitcoin",
-            "logo_url": "https://bin.bnbstatic.com/btc.png",
+            "logo_url": cex_logo_url,
             "source_ref": "binance_marketing_symbol_list:BTC",
             "raw_payload_json": {"rank": 1},
             "observed_at_ms": 9_000,
         },
+        ready_images_by_source_url=ready_images(cex_logo_url),
         computed_at_ms=10_000,
     )
 
@@ -203,7 +224,10 @@ def test_project_token_profile_current_uses_binance_cex_profile_source_cache():
     assert row["source_ref"] == "binance_marketing_symbol_list:BTC"
     assert row["symbol"] == "BTC"
     assert row["name"] == "Bitcoin"
-    assert row["logo_url"] == "https://bin.bnbstatic.com/btc.png"
+    assert row["logo_url"] == "/api/token-images/image-cex"
+    assert row["logo_image_id"] == "image-cex"
+    assert row["logo_source_provider"] == "binance_cex_profile"
+    assert row["logo_source_url_hash"] == "hash-cex"
     assert row["source_payload"] == {"rank": 1}
     assert row["quality_flags"] == []
     assert row["observed_at_ms"] == 9_000
@@ -230,6 +254,32 @@ def test_project_token_profile_current_falls_back_to_specific_cex_source_ref():
 
     assert row["status"] == "ready"
     assert row["source_ref"] == "binance_cex_profile:cex_token:BTC"
+    assert row["logo_url"] is None
+    assert row["quality_flags"] == ["logo_mirror_pending"]
+
+
+def test_project_token_profile_current_sets_pending_flag_without_remote_logo_fallback():
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=gmgn_openapi_row(
+            status="ready",
+            logo_url="https://gmgn.example/logo.png",
+            symbol="GMGN",
+            observed_at_ms=1_000,
+        ),
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=None,
+        ready_images_by_source_url={},
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["logo_url"] is None
+    assert row["logo_image_id"] is None
+    assert row["logo_source_provider"] is None
+    assert row["logo_source_url_hash"] is None
+    assert row["quality_flags"] == ["logo_mirror_pending"]
 
 
 def test_select_okx_dex_source_ignores_symbol_candidates():
@@ -364,4 +414,33 @@ def okx_row(
         "name": name,
         "raw_payload_json": raw_payload,
         "observed_at_ms": observed_at_ms,
+    }
+
+
+def ready_images(*source_urls: str) -> dict[str, dict]:
+    return {source_url: ready_image(source_url) for source_url in source_urls}
+
+
+def ready_image(source_url: str) -> dict:
+    if "gmgn-stream" in source_url:
+        slug = "stream"
+        provider = "gmgn_stream_snapshot"
+    elif "bnbstatic.com/images/web3-data" in source_url:
+        slug = "binance-web3"
+        provider = "binance_web3_profile"
+    elif "bnbstatic.com/btc" in source_url:
+        slug = "cex"
+        provider = "binance_cex_profile"
+    elif "okx.com" in source_url:
+        slug = "okx"
+        provider = "okx_dex_evidence"
+    else:
+        slug = "gmgn"
+        provider = "gmgn_dex_profile"
+    return {
+        "image_id": f"image-{slug}",
+        "source_url": source_url,
+        "source_provider": provider,
+        "source_url_hash": f"hash-{slug}",
+        "public_url": f"/api/token-images/image-{slug}",
     }

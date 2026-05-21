@@ -23,16 +23,19 @@ def project_token_profile_current(
     okx_dex: dict[str, Any] | None,
     computed_at_ms: int,
     cex_profile: dict[str, Any] | None = None,
+    ready_images_by_source_url: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    ready_images = ready_images_by_source_url or {}
     target_type = _clean(target.get("target_type"))
     target_id = _clean(target.get("target_id"))
     if target_type == "CexToken":
-        if _cex_profile_ready(cex_profile):
+        if _cex_profile_metadata_ready(cex_profile):
             return _cex_token_profile_row(
                 target_type=target_type,
                 target_id=target_id,
                 source=cex_profile or {},
                 computed_at_ms=computed_at_ms,
+                ready_images_by_source_url=ready_images,
             )
         return _status_row(
             target_type=target_type,
@@ -44,35 +47,44 @@ def project_token_profile_current(
         )
 
     gmgn_openapi_source = gmgn_openapi
-    if gmgn_openapi_source is not None and _openapi_ready(gmgn_openapi_source):
+    if gmgn_openapi_source is not None and _asset_profile_metadata_ready(gmgn_openapi_source):
         return _gmgn_openapi_row(
             target_type=target_type,
             target_id=target_id,
             source=gmgn_openapi_source,
             computed_at_ms=computed_at_ms,
+            ready_images_by_source_url=ready_images,
         )
 
     binance_web3_source = binance_web3
-    if binance_web3_source is not None and _openapi_ready(binance_web3_source):
+    if binance_web3_source is not None and _asset_profile_metadata_ready(binance_web3_source):
         return _asset_profile_row(
             target_type=target_type,
             target_id=target_id,
             profile_provider=BINANCE_WEB3_PROFILE_PROVIDER,
             source=binance_web3_source,
             computed_at_ms=computed_at_ms,
+            ready_images_by_source_url=ready_images,
         )
 
     gmgn_stream_source = gmgn_stream
-    if gmgn_stream_source is not None and _gmgn_stream_ready(gmgn_stream_source):
+    if gmgn_stream_source is not None and _gmgn_stream_metadata_ready(gmgn_stream_source):
         return _gmgn_stream_row(
             target_type=target_type,
             target_id=target_id,
             source=gmgn_stream_source,
             computed_at_ms=computed_at_ms,
+            ready_images_by_source_url=ready_images,
         )
 
     if okx_dex is not None:
-        return _okx_dex_row(target_type=target_type, target_id=target_id, source=okx_dex, computed_at_ms=computed_at_ms)
+        return _okx_dex_row(
+            target_type=target_type,
+            target_id=target_id,
+            source=okx_dex,
+            computed_at_ms=computed_at_ms,
+            ready_images_by_source_url=ready_images,
+        )
 
     return _status_row(
         target_type=target_type,
@@ -90,6 +102,7 @@ def _gmgn_openapi_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
+    ready_images_by_source_url: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     return _asset_profile_row(
         target_type=target_type,
@@ -97,6 +110,7 @@ def _gmgn_openapi_row(
         profile_provider=GMGN_DEX_PROFILE_PROVIDER,
         source=source,
         computed_at_ms=computed_at_ms,
+        ready_images_by_source_url=ready_images_by_source_url,
     )
 
 
@@ -107,6 +121,7 @@ def _asset_profile_row(
     profile_provider: str,
     source: dict[str, Any],
     computed_at_ms: int,
+    ready_images_by_source_url: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     raw = _raw(source)
     return _ready_row(
@@ -129,6 +144,7 @@ def _asset_profile_row(
         source_payload=raw,
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
+        ready_images_by_source_url=ready_images_by_source_url,
     )
 
 
@@ -138,6 +154,7 @@ def _gmgn_stream_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
+    ready_images_by_source_url: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     raw = _raw(source)
     return _ready_row(
@@ -152,6 +169,7 @@ def _gmgn_stream_row(
         source_payload=raw,
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
+        ready_images_by_source_url=ready_images_by_source_url,
     )
 
 
@@ -161,12 +179,12 @@ def _okx_dex_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
+    ready_images_by_source_url: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     raw = _raw(source)
     logo_url = _clean(raw.get("tokenLogoUrl"))
-    flags = _logo_quality_flags(logo_url, placeholder_flag="okx_placeholder_logo")
+    flags = _source_without_logo_flags(logo_url, placeholder_flag="okx_placeholder_logo")
     if flags:
-        flags.append("source_without_logo")
         row = _status_row(
             target_type=target_type,
             target_id=target_id,
@@ -195,6 +213,7 @@ def _okx_dex_row(
         source_payload=raw,
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
+        ready_images_by_source_url=ready_images_by_source_url,
     )
 
 
@@ -204,6 +223,7 @@ def _cex_token_profile_row(
     target_id: str | None,
     source: dict[str, Any],
     computed_at_ms: int,
+    ready_images_by_source_url: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     provider = _clean(source.get("provider")) or BINANCE_CEX_PROFILE_PROVIDER
     source_ref = _clean(source.get("source_ref"))
@@ -221,6 +241,7 @@ def _cex_token_profile_row(
         source_payload=_raw(source),
         observed_at_ms=_int_or_none(source.get("observed_at_ms")),
         computed_at_ms=computed_at_ms,
+        ready_images_by_source_url=ready_images_by_source_url,
     )
 
 
@@ -245,7 +266,10 @@ def _ready_row(
     geckoterminal_url: Any = None,
     description: Any = None,
     observed_at_ms: int | None = None,
+    quality_flags: list[str] | None = None,
+    ready_images_by_source_url: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    logo = _project_logo(logo_url, ready_images_by_source_url or {})
     return {
         "target_type": _clean(target_type),
         "target_id": _clean(target_id),
@@ -255,7 +279,10 @@ def _ready_row(
         "source_ref": _clean(source_ref),
         "symbol": _clean(symbol),
         "name": _clean(name),
-        "logo_url": _clean(logo_url),
+        "logo_url": logo["logo_url"],
+        "logo_image_id": logo["logo_image_id"],
+        "logo_source_provider": logo["logo_source_provider"],
+        "logo_source_url_hash": logo["logo_source_url_hash"],
         "banner_url": _clean(banner_url),
         "website_url": _clean(website_url),
         "twitter_username": _clean(twitter_username),
@@ -264,7 +291,7 @@ def _ready_row(
         "gmgn_url": _clean(gmgn_url),
         "geckoterminal_url": _clean(geckoterminal_url),
         "description": _clean(description),
-        "quality_flags": [],
+        "quality_flags": list(quality_flags or []) + logo["quality_flags"],
         "source_payload": dict(source_payload),
         "observed_at_ms": observed_at_ms,
         "computed_at_ms": int(computed_at_ms),
@@ -295,6 +322,9 @@ def _status_row(
         "symbol": None,
         "name": None,
         "logo_url": None,
+        "logo_image_id": None,
+        "logo_source_provider": None,
+        "logo_source_url_hash": None,
         "banner_url": None,
         "website_url": None,
         "twitter_username": None,
@@ -311,31 +341,55 @@ def _status_row(
     }
 
 
-def _openapi_ready(row: dict[str, Any] | None) -> bool:
-    if not row or _clean(row.get("status")) != STATUS_READY:
+def _asset_profile_metadata_ready(row: dict[str, Any] | None) -> bool:
+    return bool(row and _clean(row.get("status")) == STATUS_READY)
+
+
+def _gmgn_stream_metadata_ready(row: dict[str, Any] | None) -> bool:
+    return bool(row)
+
+
+def _cex_profile_metadata_ready(row: dict[str, Any] | None) -> bool:
+    if not row:
         return False
-    return _valid_logo_url(row.get("logo_url"))
+    status = _clean(row.get("status"))
+    return status in {None, STATUS_READY}
 
 
-def _gmgn_stream_ready(row: dict[str, Any] | None) -> bool:
-    return bool(row and _valid_logo_url(_raw(row).get("i")))
+def _project_logo(provider_logo_url: Any, ready_images_by_source_url: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    source_url = _clean(provider_logo_url)
+    fields = {
+        "logo_url": None,
+        "logo_image_id": None,
+        "logo_source_provider": None,
+        "logo_source_url_hash": None,
+        "quality_flags": [],
+    }
+    missing_flags = _source_without_logo_flags(source_url)
+    if missing_flags:
+        fields["quality_flags"] = missing_flags
+        return fields
+
+    ready_image = ready_images_by_source_url.get(str(source_url))
+    public_url = _clean((ready_image or {}).get("public_url"))
+    if public_url and public_url.startswith("/api/token-images/"):
+        fields["logo_url"] = public_url
+        fields["logo_image_id"] = _clean(ready_image.get("image_id"))
+        fields["logo_source_provider"] = _clean(ready_image.get("source_provider"))
+        fields["logo_source_url_hash"] = _clean(ready_image.get("source_url_hash"))
+        return fields
+
+    fields["quality_flags"] = ["logo_mirror_pending"]
+    return fields
 
 
-def _cex_profile_ready(row: dict[str, Any] | None) -> bool:
-    return bool(row and _valid_logo_url(row.get("logo_url")))
-
-
-def _valid_logo_url(value: Any) -> bool:
-    return not _logo_quality_flags(_clean(value))
-
-
-def _logo_quality_flags(value: str | None, *, placeholder_flag: str = "placeholder_logo") -> list[str]:
+def _source_without_logo_flags(value: str | None, *, placeholder_flag: str = "placeholder_logo") -> list[str]:
     if not value:
-        return ["invalid_logo_url"]
+        return ["source_without_logo"]
     if not value.startswith(("http://", "https://")):
-        return ["invalid_logo_url"]
+        return ["invalid_logo_url", "source_without_logo"]
     if "/default-logo/" in value:
-        return [placeholder_flag]
+        return [placeholder_flag, "source_without_logo"]
     return []
 
 

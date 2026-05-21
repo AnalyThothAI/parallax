@@ -188,7 +188,6 @@ class TokenProfileSourceQuery:
               ON cex_tokens.cex_token_id = cex_token_profiles.cex_token_id
             WHERE cex_token_profiles.provider = 'binance_cex_profile'
               AND cex_token_profiles.status = 'ready'
-              AND cex_token_profiles.logo_url IS NOT NULL
               AND cex_tokens.cex_token_id = ANY(%s)
               AND cex_tokens.status IN ('candidate', 'canonical')
             """,
