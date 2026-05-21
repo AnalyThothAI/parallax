@@ -70,6 +70,35 @@ def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():
     assert db.repos.cex_oi_radar.started["universe_count"] == 1
 
 
+def test_cex_oi_radar_board_worker_adds_coinglass_enrichment_to_detail_snapshot():
+    db = _DB()
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(
+            enabled=True,
+            batch_size=10,
+            universe_limit=10,
+            period="5m",
+            statement_timeout_seconds=30,
+            coinglass_enrichment_limit=1,
+            coinglass_level_limit=2,
+        ),
+        db=db,
+        telemetry=SimpleNamespace(),
+        cex_market=_Client(),
+        coinglass=_CoinglassClient(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    worker.run_once_sync()
+
+    snapshot = db.repos.cex_detail_snapshots.upserted[0]
+    assert snapshot["coinglass_status"] == "ready"
+    assert snapshot["oi_change_pct_1h"] == 10.0
+    assert snapshot["cvd_delta_4h"] == 125.0
+    assert snapshot["level_bands"][0]["kind"] == "resistance"
+
+
 class _DB:
     def __init__(self) -> None:
         self.repos = SimpleNamespace(cex_oi_radar=_Repo(), cex_detail_snapshots=_DetailRepo())
@@ -139,3 +168,22 @@ class _Client:
             SimpleNamespace(symbol=symbol, open_interest_value=1000.0, time_ms=1),
             SimpleNamespace(symbol=symbol, open_interest_value=1100.0, time_ms=2),
         ]
+
+
+class _CoinglassClient:
+    def fetch_oi_history(self, *, symbol, time_type, lookback):
+        values = {"1": (100, 110), "2": (100, 125), "4": (100, 150)}[time_type]
+        return {"data": [{"timestamp": 1, "usd": values[0]}, {"timestamp": 2, "usd": values[1]}]}
+
+    def fetch_cvd_history(self, *, symbol, time_type, lookback):
+        deltas = {"1": [10, -5], "2": [100, 25], "4": [300, -50]}[time_type]
+        return {"data": [{"timestamp": index, "delta": delta} for index, delta in enumerate(deltas)]}
+
+    def fetch_long_short_ratio_history(self, *, symbol, time_type, lookback):
+        return {"data": [{"timestamp": 1, "longShortRatio": 1.1}, {"timestamp": 2, "longShortRatio": 1.3}]}
+
+    def fetch_top_trader_position_history(self, *, symbol, time_type, lookback):
+        return {"data": [{"timestamp": 1, "longShortRatio": 1.4}, {"timestamp": 2, "longShortRatio": 1.6}]}
+
+    def fetch_liquidation_levels(self, *, symbol, range):
+        return {"levels": [{"price": 72_000, "size": 2_000_000_000, "side": 2}]}

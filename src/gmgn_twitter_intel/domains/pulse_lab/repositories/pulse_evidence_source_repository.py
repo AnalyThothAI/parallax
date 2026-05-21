@@ -133,6 +133,65 @@ class PulseEvidenceSourceRepository:
             ).fetchone()
         )
 
+    def get_latest_cex_detail_snapshot(
+        self,
+        target_type: str,
+        target_id: str,
+        max_age_ms: int,
+        *,
+        now_ms: int,
+    ) -> dict[str, Any] | None:
+        min_computed_at_ms = max(0, int(now_ms) - max(0, int(max_age_ms)))
+        normalized_type = str(target_type or "").strip()
+        if normalized_type in {"CexToken", "cex_token"}:
+            if target_id.lower().startswith("binance:"):
+                native_market_id = target_id.split(":", 1)[1]
+                return _optional_row(
+                    self.conn.execute(
+                        """
+                        SELECT *
+                        FROM cex_detail_snapshots
+                        WHERE exchange = 'binance'
+                          AND native_market_id = %s
+                          AND computed_at_ms >= %s
+                        ORDER BY computed_at_ms DESC
+                        LIMIT 1
+                        """,
+                        (native_market_id.upper(), min_computed_at_ms),
+                    ).fetchone()
+                )
+            return _optional_row(
+                self.conn.execute(
+                    """
+                    SELECT *
+                    FROM cex_detail_snapshots
+                    WHERE target_type = 'CexToken'
+                      AND target_id = %s
+                      AND computed_at_ms >= %s
+                    ORDER BY computed_at_ms DESC
+                    LIMIT 1
+                    """,
+                    (target_id, min_computed_at_ms),
+                ).fetchone()
+            )
+        if normalized_type == "cex_symbol" and ":" in target_id:
+            exchange, native_market_id = target_id.split(":", 1)
+            return _optional_row(
+                self.conn.execute(
+                    """
+                    SELECT *
+                    FROM cex_detail_snapshots
+                    WHERE exchange = %s
+                      AND native_market_id = %s
+                      AND computed_at_ms >= %s
+                    ORDER BY computed_at_ms DESC
+                    LIMIT 1
+                    """,
+                    (exchange.lower(), native_market_id.upper(), min_computed_at_ms),
+                ).fetchone()
+            )
+        return None
+
     def list_market_facts(
         self,
         context: Any,
@@ -143,7 +202,17 @@ class PulseEvidenceSourceRepository:
         effective_now_ms = _now_ms() if now_ms is None else int(now_ms)
         rows: list[dict[str, Any]] = []
         seen_ticks: set[str] = set()
+        seen_snapshots: set[str] = set()
         for target_type, target_id in _market_lookup_keys(context):
+            snapshot = self.get_latest_cex_detail_snapshot(
+                target_type,
+                target_id,
+                max_age_ms,
+                now_ms=effective_now_ms,
+            )
+            if snapshot is not None and str(snapshot.get("snapshot_id") or "") not in seen_snapshots:
+                seen_snapshots.add(str(snapshot.get("snapshot_id") or ""))
+                rows.append(_market_fact_from_cex_detail_snapshot(snapshot))
             tick = self.get_latest_market_tick(target_type, target_id, max_age_ms, now_ms=effective_now_ms)
             if tick is not None and str(tick.get("tick_id") or "") not in seen_ticks:
                 seen_ticks.add(str(tick.get("tick_id") or ""))
@@ -381,7 +450,7 @@ def _append_market_key(keys: list[tuple[str, str]], target_type: str | None, tar
     target_id = _clean(target_id)
     if not target_type or not target_id:
         return
-    if target_type in {"chain_token", "cex_symbol"}:
+    if target_type in {"chain_token", "cex_symbol", "cex_token", "CexToken"}:
         keys.append((target_type, target_id))
         return
     if target_type == "Asset":
@@ -437,6 +506,21 @@ def _market_fact_from_tick(row: dict[str, Any]) -> dict[str, Any]:
         "instrument_ref": row.get("pricefeed_id") or row.get("target_id"),
         "source_provider": row.get("source_provider"),
         "observed_at_ms": row.get("observed_at_ms"),
+    }
+
+
+def _market_fact_from_cex_detail_snapshot(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **row,
+        "source_table": "cex_detail_snapshots",
+        "route": "cex",
+        "target_market_type": "perpetual",
+        "instrument_ref": f"pricefeed:cex:binance:swap:{row.get('native_market_id')}",
+        "source_provider": row.get("exchange") or "binance",
+        "observed_at_ms": row.get("observed_at_ms") or row.get("computed_at_ms"),
+        "level_bands": row.get("level_bands_json") or [],
+        "degraded_reasons": row.get("degraded_reasons_json") or [],
+        "source_refs": row.get("source_refs_json") or [],
     }
 
 

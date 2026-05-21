@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
-ProviderType = Literal["rss", "atom", "json_feed"]
+ProviderType = Literal["rss", "atom", "json_feed", "cryptopanic"]
 SourceRole = Literal[
     "official_exchange",
     "official_regulator",

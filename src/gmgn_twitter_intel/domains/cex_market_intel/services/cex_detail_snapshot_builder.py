@@ -23,10 +23,16 @@ def build_cex_detail_snapshot(
     if coinglass_status != "ready":
         degraded_reasons.append("coinglass_unavailable")
 
-    oi_1h, oi_4h, oi_24h, period_reason = _oi_delta_slots(
-        period=period,
-        change_pct=_float_or_none(row.get("open_interest_change_pct_1h")),
-    )
+    explicit_oi_1h = _float_or_none(row.get("oi_change_pct_1h"))
+    explicit_oi_4h = _float_or_none(row.get("oi_change_pct_4h"))
+    explicit_oi_24h = _float_or_none(row.get("oi_change_pct_24h"))
+    if explicit_oi_1h is not None or explicit_oi_4h is not None or explicit_oi_24h is not None:
+        oi_1h, oi_4h, oi_24h, period_reason = explicit_oi_1h, explicit_oi_4h, explicit_oi_24h, None
+    else:
+        oi_1h, oi_4h, oi_24h, period_reason = _oi_delta_slots(
+            period=period,
+            change_pct=_float_or_none(row.get("open_interest_change_pct_1h")),
+        )
     if period_reason:
         degraded_reasons.append(period_reason)
 
@@ -97,7 +103,11 @@ def _target_id(row: dict[str, Any], *, base_symbol: str) -> str:
     return target_id or "cex_token:unknown"
 
 
-def _oi_delta_slots(*, period: str, change_pct: float | None) -> tuple[float | None, float | None, float | None, str | None]:
+def _oi_delta_slots(
+    *,
+    period: str,
+    change_pct: float | None,
+) -> tuple[float | None, float | None, float | None, str | None]:
     if change_pct is None:
         return None, None, None, None
     normalized = str(period or "").strip().lower()

@@ -9,6 +9,7 @@ dependencies = [
     "alembic>=1.18.0",
     "apprise>=1.10.0",
     "curl-cffi>=0.14,<0.15",
+    "cryptopanic-cli",
     "eth-hash[pycryptodome]>=0.8.0",
     "eth-utils>=5.0.0",
     "fastapi>=0.115.0",
@@ -176,4 +177,5 @@ exclude_lines = [
 
 [tool.uv.sources]
 coinglass-cli = { git = "https://github.com/AnalyThothAI/coinglass-cli.git", rev = "592bf2f973411e4d516ca928f65aaabf40d707eb" }
+cryptopanic-cli = { git = "https://github.com/AnalyThothAI/cryptopanic-cli.git", rev = "921245022ff30fc027dd7dde7dd59f4a6d94ae7c" }
 marketlane-cli = { git = "https://github.com/AnalyThothAI/marketlane-cli.git" }

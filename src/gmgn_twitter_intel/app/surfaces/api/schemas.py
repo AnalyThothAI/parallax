@@ -173,6 +173,7 @@ class TokenCaseData(ApiSchema):
     narrative_clusters: list[JsonObject] = Field(default_factory=list)
     pulse_overlay: JsonObject | None = None
     market_live: JsonObject
+    cex_detail: JsonObject | None = None
 
 
 class TokenRadarRowData(ApiSchema):

@@ -75,7 +75,8 @@ are wrong too.
    are written only by `NewsStoryProjectionWorker`;
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by
-   `NewsPageProjectionWorker`.
+   `NewsPageProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
+   and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
@@ -205,6 +206,7 @@ own maps next to the code they describe, and this file links to them.
 | Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
 | Narrative intelligence | `src/gmgn_twitter_intel/domains/narrative_intel/ARCHITECTURE.md` | Mention semantics, token discussion digest generation, evidence refs, semantic coverage, and narrative worker state machines. |
 | Asset market and market tick capture | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
+| CEX market intelligence | [`src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 | News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, story grouping, fact candidates, and the News page read model. |
 

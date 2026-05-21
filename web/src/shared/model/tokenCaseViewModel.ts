@@ -60,6 +60,23 @@ export type TokenCaseMarketView = {
   tone: TokenCaseTone;
 };
 
+export type TokenCaseCexDetailView = {
+  statusLabel: string;
+  tone: TokenCaseTone;
+  instrumentLabel: string;
+  freshnessLabel: string | null;
+  metrics: TokenCaseMetric[];
+  oiDeltas: Array<{ label: string; value: string; tone: TokenCaseTone }>;
+  cvdDeltas: Array<{ label: string; value: string; tone: TokenCaseTone }>;
+  levels: Array<{
+    kind: string;
+    priceLabel: string;
+    scoreLabel: string | null;
+    tone: TokenCaseTone;
+  }>;
+  dataGaps: string[];
+};
+
 export type TokenCaseThesisView = {
   title: string;
   thesis: string;
@@ -127,6 +144,7 @@ export type TokenCaseViewModel = {
     emptyLabel: string | null;
   };
   market: TokenCaseMarketView;
+  cexDetail: TokenCaseCexDetailView | null;
   bullBear: {
     stance: string;
     bull: TokenCaseThesisView;

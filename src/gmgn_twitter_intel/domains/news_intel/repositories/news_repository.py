@@ -540,6 +540,7 @@ class NewsRepository:
         limit: int,
         cursor: str | None = None,
         status: str | None = None,
+        direction: str | None = None,
         lane: str | None = None,
         source: str | None = None,
         target: str | None = None,
@@ -551,6 +552,9 @@ class NewsRepository:
         if status:
             filters.append("lifecycle_status = %s")
             filter_params.append(str(status))
+        if direction:
+            filters.append("LOWER(agent_brief_json ->> 'direction') = %s")
+            filter_params.append(str(direction).strip().lower())
         if source:
             filters.append("source_domain = %s")
             filter_params.append(str(source))

@@ -87,6 +87,7 @@ export async function fetchNewsRows(
   params: {
     limit?: number;
     cursor?: string | null;
+    direction?: string | null;
     lane?: string | null;
     q?: string | null;
     source?: string | null;
@@ -98,6 +99,7 @@ export async function fetchNewsRows(
   const response = await getApi<NewsRowsData>("/api/news", {
     params: {
       cursor: params.cursor,
+      direction: params.direction,
       lane: params.lane,
       limit: params.limit ?? 100,
       q: params.q,

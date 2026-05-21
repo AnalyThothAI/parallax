@@ -7,6 +7,7 @@ import type {
 
 import { TokenCaseAmplifiersRail } from "./TokenCaseAmplifiersRail";
 import { TokenCaseBullBearRail } from "./TokenCaseBullBearRail";
+import { TokenCaseCexDetailRail } from "./TokenCaseCexDetailRail";
 import { TokenCaseDataGapsRail } from "./TokenCaseDataGapsRail";
 import { TokenCaseHero } from "./TokenCaseHero";
 import styles from "./TokenCasePanel.module.css";
@@ -49,6 +50,7 @@ export function TokenCasePanel({
           />
         </div>
         <div className={styles.sideRail} aria-label="Token case side rail">
+          {vm.cexDetail ? <TokenCaseCexDetailRail cexDetail={vm.cexDetail} /> : null}
           <TokenCaseBullBearRail bullBear={vm.bullBear} />
           <TokenCaseAmplifiersRail amplifiers={vm.amplifiers} />
           <TokenCaseDataGapsRail dataGaps={vm.dataGaps} />

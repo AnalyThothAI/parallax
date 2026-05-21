@@ -17,9 +17,10 @@ router = APIRouter()
 @router.get("/news", response_model=api_schemas.ApiEnvelope[api_schemas.NewsData])
 def list_news(
     request: Request,
-    limit: Annotated[int, Query()] = 50,
+    limit: Annotated[int, Query()] = 100,
     cursor: Annotated[str, Query()] = "",
     status: Annotated[str, Query()] = "",
+    direction: Annotated[str, Query()] = "",
     lane: Annotated[str, Query()] = "",
     source: Annotated[str, Query()] = "",
     target: Annotated[str, Query()] = "",
@@ -31,6 +32,7 @@ def list_news(
             limit=_limit(limit, maximum=200),
             cursor=cursor or None,
             status=status or None,
+            direction=direction or None,
             lane=lane or None,
             source=source or None,
             target=target or None,

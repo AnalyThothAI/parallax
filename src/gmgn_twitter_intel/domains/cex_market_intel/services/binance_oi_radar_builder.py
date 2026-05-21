@@ -45,6 +45,7 @@ def build_binance_oi_radar_rows(
         rows.append(
             {
                 "target_id": f"binance:{symbol}",
+                "cex_token_id": route.get("cex_token_id"),
                 "pricefeed_id": route.get("pricefeed_id"),
                 "native_market_id": symbol,
                 "base_symbol": str(route.get("base_symbol") or "").strip().upper(),

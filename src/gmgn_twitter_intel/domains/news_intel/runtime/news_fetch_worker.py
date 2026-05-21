@@ -72,11 +72,14 @@ class NewsFetchWorker(WorkerBase):
             with self._repository_session() as repos:
                 fetch_run_id = repos.news.start_fetch_run(source_id=source_id, started_at_ms=now_ms)
 
-            feed_result = self.feed_client.fetch(
-                str(source["feed_url"]),
-                etag=_optional_str(source.get("etag")),
-                last_modified=_optional_str(source.get("last_modified")),
-            )
+            feed_kwargs: dict[str, Any] = {
+                "etag": _optional_str(source.get("etag")),
+                "last_modified": _optional_str(source.get("last_modified")),
+            }
+            if str(source.get("provider_type") or "") == "cryptopanic":
+                feed_kwargs["provider_type"] = "cryptopanic"
+                feed_kwargs["source"] = source
+            feed_result = self.feed_client.fetch(str(source["feed_url"]), **feed_kwargs)
 
             with self._repository_session() as repos:
                 if feed_result.not_modified:

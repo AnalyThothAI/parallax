@@ -8,6 +8,17 @@ if TYPE_CHECKING:
     from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
     from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import PulseCandidateContext
 
+CEX_DERIVATIVE_METRICS = (
+    "oi_change_pct_1h",
+    "oi_change_pct_4h",
+    "oi_change_pct_24h",
+    "cvd_delta_1h",
+    "cvd_delta_4h",
+    "cvd_delta_24h",
+    "long_short_ratio",
+    "top_trader_position_ratio",
+)
+
 
 class PulseEvidenceBuilder:
     """Build a sealed evidence packet from repository facts before LLM stages."""
@@ -160,7 +171,15 @@ class PulseEvidenceBuilder:
         refs: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         evidence: list[dict[str, Any]] = []
-        metric_names = ("price_usd", "volume_24h_usd", "liquidity_usd", "open_interest_usd", "funding_rate")
+        metric_names = (
+            "price_usd",
+            "mark_price",
+            "volume_24h_usd",
+            "liquidity_usd",
+            "open_interest_usd",
+            "funding_rate",
+            *CEX_DERIVATIVE_METRICS,
+        )
         for row in market_facts:
             payload = _mapping(row)
             observed_at_ms = _int(payload.get("observed_at_ms") or payload.get("received_at_ms") or now_ms)
@@ -177,10 +196,33 @@ class PulseEvidenceBuilder:
                 for key in metric_names
                 if key in payload and payload.get(key) is not None
             }
+            route = str(payload.get("route") or _route_from_market_type(payload.get("target_market_type")))
+            native_market_id = _optional_str(payload.get("native_market_id"))
+            source_table = str(payload.get("source_table") or "market_ticks")
+            is_cex_snapshot = source_table == "cex_detail_snapshots" or bool(payload.get("cex_snapshot"))
+            level_bands = _list_of_mappings(payload.get("level_bands") or payload.get("level_bands_json"))
+            degraded_reasons = tuple(_stable_strings(_sequence(payload.get("degraded_reasons"))))
+            derivatives = {
+                key: market_row[key]
+                for key in CEX_DERIVATIVE_METRICS
+                if key in market_row and market_row.get(key) is not None
+            }
+            cex_snapshot = None
+            if route == "cex" and (is_cex_snapshot or native_market_id):
+                cex_snapshot = {
+                    "snapshot_id": _optional_str(payload.get("snapshot_id")),
+                    "exchange": _optional_str(payload.get("exchange")) or "binance",
+                    "native_market_id": native_market_id,
+                    "status": _optional_str(payload.get("status")),
+                    "baseline_status": _optional_str(payload.get("baseline_status")),
+                    "coinglass_status": _optional_str(payload.get("coinglass_status")),
+                    "computed_at_ms": _int(payload.get("computed_at_ms")),
+                }
+                cex_snapshot = {key: value for key, value in cex_snapshot.items() if value is not None}
             market_row.update(
                 {
                     "ref_id": _market_ref_id(payload, instrument_ref=instrument_ref),
-                    "route": str(payload.get("route") or _route_from_market_type(payload.get("target_market_type"))),
+                    "route": route,
                     "target_market_type": _optional_str(payload.get("target_market_type")),
                     "venue_ref": _venue_ref(payload, source_provider=source_provider, instrument_ref=instrument_ref),
                     "instrument_ref": instrument_ref,
@@ -189,14 +231,24 @@ class PulseEvidenceBuilder:
                     "freshness_status": freshness_status,
                     "source_provider": source_provider,
                     "pricefeed_id": pricefeed_id,
+                    "native_market_id": native_market_id,
                 }
             )
+            if cex_snapshot:
+                market_row["cex_snapshot"] = cex_snapshot
+            if derivatives:
+                market_row["derivatives"] = derivatives
+            if level_bands:
+                market_row["levels"] = tuple(level_bands)
+            if degraded_reasons:
+                market_row["data_gaps"] = degraded_reasons
+            market_refs = [str(market_row["ref_id"])]
             evidence.append(market_row)
             refs.append(
                 _ref(
                     ref_id=str(market_row["ref_id"]),
                     ref_type="market",
-                    source_table=str(payload.get("source_table") or "market_ticks"),
+                    source_table=source_table,
                     source_id=str(instrument_ref or pricefeed_id or market_row["ref_id"]),
                     observed_at_ms=observed_at_ms,
                     summary_zh="市场快照",
@@ -206,18 +258,41 @@ class PulseEvidenceBuilder:
             for metric_name in metric_names:
                 if market_row.get(metric_name) is None:
                     continue
-                ref_id = f"metric:market:{metric_name}"
+                if is_cex_snapshot and native_market_id:
+                    ref_id = f"metric:cex:{metric_name}:{native_market_id}"
+                else:
+                    ref_id = f"metric:market:{metric_name}"
+                market_refs.append(ref_id)
                 refs.append(
                     _ref(
                         ref_id=ref_id,
                         ref_type="metric",
-                        source_table=str(payload.get("source_table") or "market_ticks"),
+                        source_table=source_table,
                         source_id=str(instrument_ref or pricefeed_id or metric_name),
                         observed_at_ms=observed_at_ms,
                         summary_zh=f"市场指标 {metric_name}",
                         quality="high" if market_row["freshness_status"] == "fresh" else "medium",
                     )
                 )
+            for band in level_bands:
+                kind = str(band.get("kind") or "level").strip().lower()
+                price = band.get("price")
+                if not native_market_id or price is None:
+                    continue
+                ref_id = f"level:cex:{native_market_id}:{kind}:{price}"
+                market_refs.append(ref_id)
+                refs.append(
+                    _ref(
+                        ref_id=ref_id,
+                        ref_type="level",
+                        source_table=source_table,
+                        source_id=f"{native_market_id}:{kind}:{price}",
+                        observed_at_ms=observed_at_ms,
+                        summary_zh=f"CEX 关键价位 {kind} {price}",
+                        quality="high" if market_row["freshness_status"] == "fresh" else "medium",
+                    )
+                )
+            market_row["market_refs"] = tuple(sorted(set(market_refs)))
         return evidence
 
     def _build_identity_evidence(
@@ -434,7 +509,19 @@ def _market_contract(rows: list[dict[str, Any]], *, context: PulseCandidateConte
     if route == "meme" and str(row.get("target_market_type") or "").lower() == "dex":
         route = "dex"
     freshness_status = str(row.get("freshness_status") or "unknown")
-    market_refs = tuple(sorted(str(value) for value in (row.get("ref_id"), "metric:market:price_usd") if value))
+    market_refs = tuple(
+        sorted(
+            set(
+                str(value)
+                for value in [
+                    *_sequence(row.get("market_refs")),
+                    row.get("ref_id"),
+                    "metric:market:price_usd",
+                ]
+                if value
+            )
+        )
+    )
     status = "stale" if freshness_status == "stale" else "complete"
     return {
         "status": status,
@@ -452,8 +539,21 @@ def _market_contract(rows: list[dict[str, Any]], *, context: PulseCandidateConte
         "volume_24h_usd": row.get("volume_24h_usd"),
         "open_interest_usd": row.get("open_interest_usd"),
         "funding_rate": row.get("funding_rate"),
+        "mark_price": row.get("mark_price"),
+        "oi_change_pct_1h": row.get("oi_change_pct_1h"),
+        "oi_change_pct_4h": row.get("oi_change_pct_4h"),
+        "oi_change_pct_24h": row.get("oi_change_pct_24h"),
+        "cvd_delta_1h": row.get("cvd_delta_1h"),
+        "cvd_delta_4h": row.get("cvd_delta_4h"),
+        "cvd_delta_24h": row.get("cvd_delta_24h"),
+        "long_short_ratio": row.get("long_short_ratio"),
+        "top_trader_position_ratio": row.get("top_trader_position_ratio"),
         "liquidity_usd": row.get("liquidity_usd"),
         "market_cap_usd": row.get("market_cap_usd"),
+        "cex_snapshot": row.get("cex_snapshot"),
+        "derivatives": row.get("derivatives") or {},
+        "levels": tuple(_list_of_mappings(row.get("levels"))),
+        "data_gaps": tuple(_stable_strings(_sequence(row.get("data_gaps")))),
         "market_refs": market_refs,
     }
 
@@ -550,6 +650,10 @@ def _sequence(value: Any) -> list[Any]:
     if isinstance(value, list | tuple | set):
         return list(value)
     return []
+
+
+def _list_of_mappings(value: Any) -> list[dict[str, Any]]:
+    return [_mapping(item) for item in _sequence(value) if _mapping(item)]
 
 
 def _stable_strings(values: list[Any]) -> list[str]:

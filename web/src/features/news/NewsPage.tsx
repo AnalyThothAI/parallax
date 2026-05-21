@@ -1,4 +1,5 @@
 import { formatRelativeTime } from "@lib/format";
+import * as Tabs from "@radix-ui/react-tabs";
 import type {
   NewsAgentBrief,
   NewsAgentBriefView,
@@ -15,6 +16,8 @@ import { RemoteState } from "@shared/ui/RemoteState";
 import {
   ArrowLeft,
   Bot,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   ExternalLink,
   ShieldAlert,
@@ -22,17 +25,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  type Ref,
-  useRef,
-  useState,
-  type ReactNode,
-  type TouchEvent,
-  type UIEvent,
-} from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import "./news.css";
@@ -42,7 +35,7 @@ import {
   formatAgentBriefStrength,
   inferNewsInstruments,
 } from "./newsViewModel";
-import { NEWS_PAGE_SIZE, useInfiniteNewsPageWithToken, useNewsItemWithToken } from "./useNewsPage";
+import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
 
 type NewsPageProps = {
   token: string;
@@ -50,10 +43,8 @@ type NewsPageProps = {
 };
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
-const NEWS_SCROLL_LOAD_THRESHOLD_PX = 120;
-const NEWS_PULL_REFRESH_THRESHOLD_PX = 72;
 
-type NewsPullRefreshState = "idle" | "pulling" | "ready" | "refreshing";
+type NewsDirectionFilter = "all" | "bullish" | "bearish";
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
   if (newsItemId) {
@@ -64,155 +55,50 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
-  const query = useInfiniteNewsPageWithToken(token, { limit: NEWS_PAGE_SIZE });
-  const rows = useMemo(() => flattenNewsRows(query.data?.pages), [query.data?.pages]);
-  const hasNextPage = Boolean(query.hasNextPage);
-  const isFetchingNextPage = Boolean(query.isFetchingNextPage);
+  const [directionFilter, setDirectionFilter] = useState<NewsDirectionFilter>("all");
+  const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
+  const direction = directionFilter === "all" ? null : directionFilter;
+  const cursor = cursorStack[cursorStack.length - 1] ?? null;
+  const query = useNewsPageWithToken(token, { cursor, direction, limit: NEWS_PAGE_SIZE });
+  const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
+  const hasNextPage = Boolean(query.data?.next_cursor);
   const showLoading = query.isLoading && rows.length === 0;
   const showEmpty = !query.isLoading && !query.isError && rows.length === 0;
   const resultLabel = rows.length
-    ? `${rows.length} loaded${hasNextPage ? " · more available" : " · latest"}`
+    ? `${rows.length} loaded${hasNextPage ? " · next page" : " · latest"}`
     : query.isLoading
       ? "loading"
       : "no rows";
   const summary = useMemo(() => buildQueueSummary(rows), [rows]);
-  const pullStartYRef = useRef<number | null>(null);
-  const pullDistanceRef = useRef(0);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [pullRefreshState, setPullRefreshState] = useState<NewsPullRefreshState>("idle");
-
-  const loadNextPage = useCallback(() => {
-    if (!hasNextPage || isFetchingNextPage) {
-      return;
-    }
-    void query.fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, query]);
-
-  const checkForNextPage = useCallback(
-    (target: HTMLElement) => {
-      const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-      if (distanceToBottom <= NEWS_SCROLL_LOAD_THRESHOLD_PX) {
-        loadNextPage();
-      }
-    },
-    [loadNextPage],
-  );
-
-  const handleScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => {
-      checkForNextPage(event.currentTarget);
-    },
-    [checkForNextPage],
-  );
-
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    const loadMoreSentinel = loadMoreRef.current;
-    if (!scrollContainer || !loadMoreSentinel) {
-      return undefined;
-    }
-    const scrollRoot = findNewsScrollRoot(scrollContainer);
-    const cleanups: Array<() => void> = [];
-
-    if ("IntersectionObserver" in window) {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          if (entries.some((entry) => entry.isIntersecting)) {
-            loadNextPage();
-          }
-        },
-        {
-          root: scrollRoot === scrollContainer ? scrollContainer : scrollRoot,
-          rootMargin: `${NEWS_SCROLL_LOAD_THRESHOLD_PX}px 0px`,
-          threshold: 0,
-        },
-      );
-      observer.observe(loadMoreSentinel);
-      cleanups.push(() => observer.disconnect());
-    }
-
-    if (scrollRoot && scrollRoot !== scrollContainer) {
-      const handleRootScroll = () => checkForNextPage(scrollRoot);
-      scrollRoot.addEventListener("scroll", handleRootScroll, { passive: true });
-      cleanups.push(() => scrollRoot.removeEventListener("scroll", handleRootScroll));
-    }
-
-    return () => {
-      cleanups.forEach((cleanup) => cleanup());
-    };
-  }, [checkForNextPage, loadNextPage, rows.length]);
-
-  const refreshFromTop = useCallback(async () => {
-    if (isFetchingNextPage) {
-      return;
-    }
-    setPullRefreshState("refreshing");
-    try {
-      await query.refetch();
-    } finally {
-      pullStartYRef.current = null;
-      pullDistanceRef.current = 0;
-      setPullRefreshState("idle");
-    }
-  }, [isFetchingNextPage, query]);
-
-  const handlePullRefreshStart = useCallback(
-    (event: TouchEvent<HTMLDivElement>) => {
-      if (pullRefreshState === "refreshing" || event.currentTarget.scrollTop > 0) {
-        return;
-      }
-      pullStartYRef.current = event.touches[0]?.clientY ?? null;
-      pullDistanceRef.current = 0;
-    },
-    [pullRefreshState],
-  );
-
-  const handlePullRefreshMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
-    const startY = pullStartYRef.current;
-    const currentY = event.touches[0]?.clientY;
-    if (startY === null || currentY === undefined || event.currentTarget.scrollTop > 0) {
-      return;
-    }
-    const distance = Math.max(0, currentY - startY);
-    pullDistanceRef.current = distance;
-    if (distance <= 0) {
-      setPullRefreshState("idle");
-      return;
-    }
-    setPullRefreshState(distance >= NEWS_PULL_REFRESH_THRESHOLD_PX ? "ready" : "pulling");
-  }, []);
-
-  const handlePullRefreshEnd = useCallback(() => {
-    const shouldRefresh = pullDistanceRef.current >= NEWS_PULL_REFRESH_THRESHOLD_PX;
-    pullStartYRef.current = null;
-    pullDistanceRef.current = 0;
-    if (shouldRefresh) {
-      void refreshFromTop();
-      return;
-    }
-    setPullRefreshState("idle");
-  }, [refreshFromTop]);
-
-  const handlePullRefreshCancel = useCallback(() => {
-    pullStartYRef.current = null;
-    pullDistanceRef.current = 0;
-    setPullRefreshState("idle");
-  }, []);
+  const pageNumber = cursorStack.length;
 
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
-      <div
-        aria-label="News intel scroll container"
-        className="news-table-wrap"
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        onTouchCancel={handlePullRefreshCancel}
-        onTouchEnd={handlePullRefreshEnd}
-        onTouchMove={handlePullRefreshMove}
-        onTouchStart={handlePullRefreshStart}
-      >
-        <NewsPullRefreshStatus state={pullRefreshState} />
+      <div aria-label="News intel page container" className="news-table-wrap">
+        <div className="news-control-bar">
+          <NewsDirectionTabs
+            value={directionFilter}
+            onChange={(next) => {
+              setDirectionFilter(next);
+              setCursorStack([null]);
+            }}
+          />
+          <NewsPager
+            hasNextPage={hasNextPage}
+            isFetching={query.isFetching}
+            pageNumber={pageNumber}
+            rowCount={rows.length}
+            onNext={() => {
+              const nextCursor = query.data?.next_cursor;
+              if (nextCursor) {
+                setCursorStack((stack) => [...stack, nextCursor]);
+              }
+            }}
+            onPrevious={() => {
+              setCursorStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
+            }}
+          />
+        </div>
         {showLoading ? (
           <RemoteState.Loading layout="panel" rows={8} label="loading news table" />
         ) : null}
@@ -224,7 +110,7 @@ function NewsQueueRoute({ token }: { token: string }) {
           />
         ) : null}
         {!showLoading && !query.isError && rows.length ? (
-          <RemoteState.Stale updating={query.isFetching && !isFetchingNextPage}>
+          <RemoteState.Stale updating={query.isFetching && !query.isLoading}>
             <div className="news-desk">
               <NewsQueueSummary resultLabel={resultLabel} summary={summary} />
               <div className="news-feed-head" aria-hidden="true">
@@ -243,11 +129,6 @@ function NewsQueueRoute({ token }: { token: string }) {
                   />
                 ))}
               </div>
-              <NewsScrollStatus
-                hasNextPage={hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-                sentinelRef={loadMoreRef}
-              />
             </div>
           </RemoteState.Stale>
         ) : null}
@@ -256,44 +137,77 @@ function NewsQueueRoute({ token }: { token: string }) {
   );
 }
 
-function NewsPullRefreshStatus({ state }: { state: NewsPullRefreshState }) {
-  if (state === "idle") {
-    return null;
-  }
-  const label =
-    state === "refreshing" ? "Refreshing" : state === "ready" ? "Release to refresh" : "Pulling";
+function NewsDirectionTabs({
+  value,
+  onChange,
+}: {
+  value: NewsDirectionFilter;
+  onChange: (value: NewsDirectionFilter) => void;
+}) {
   return (
-    <div className={`news-pull-refresh is-${state}`} role="status">
-      {label}
-    </div>
+    <Tabs.Root
+      className="news-direction-tabs"
+      activationMode="manual"
+      value={value}
+      onValueChange={(next) => onChange(next as NewsDirectionFilter)}
+    >
+      <Tabs.List aria-label="News direction" className="news-direction-tab-list">
+        <Tabs.Trigger value="all" onClick={() => onChange("all")}>
+          All
+        </Tabs.Trigger>
+        <Tabs.Trigger value="bullish" onClick={() => onChange("bullish")}>
+          Bullish
+        </Tabs.Trigger>
+        <Tabs.Trigger value="bearish" onClick={() => onChange("bearish")}>
+          Bear
+        </Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
   );
 }
 
-function flattenNewsRows(pages: Array<{ items?: NewsRow[] }> | undefined): NewsRow[] {
-  if (!pages?.length) {
-    return EMPTY_NEWS_ROWS;
-  }
-  const rows: NewsRow[] = [];
-  const seen = new Set<string>();
-  for (const page of pages) {
-    for (const row of page.items ?? []) {
-      const key = `${row.row_id}:${row.news_item_id}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      rows.push(row);
-    }
-  }
-  return rows;
-}
-
-function findNewsScrollRoot(scrollContainer: HTMLElement): HTMLElement {
-  const shellRoot = scrollContainer.closest<HTMLElement>(".center-column");
-  if (shellRoot && shellRoot !== scrollContainer) {
-    return shellRoot;
-  }
-  return scrollContainer;
+function NewsPager({
+  hasNextPage,
+  isFetching,
+  pageNumber,
+  rowCount,
+  onNext,
+  onPrevious,
+}: {
+  hasNextPage: boolean;
+  isFetching: boolean;
+  pageNumber: number;
+  rowCount: number;
+  onNext: () => void;
+  onPrevious: () => void;
+}) {
+  return (
+    <nav className="news-pager" aria-label="News pagination">
+      <button
+        aria-label="Previous news page"
+        className="news-page-button"
+        type="button"
+        disabled={pageNumber <= 1 || isFetching}
+        onClick={onPrevious}
+      >
+        <ChevronLeft aria-hidden />
+        Previous
+      </button>
+      <span className="news-page-label">
+        Page {pageNumber} · {rowCount}/{NEWS_PAGE_SIZE}
+      </span>
+      <button
+        aria-label="Next news page"
+        className="news-page-button"
+        type="button"
+        disabled={!hasNextPage || isFetching}
+        onClick={onNext}
+      >
+        Next
+        <ChevronRight aria-hidden />
+      </button>
+    </nav>
+  );
 }
 
 function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: string }) {
@@ -363,33 +277,6 @@ function NewsQueueSummary({
       <SummaryMetric icon={<Target aria-hidden />} label="Drivers" value={summary.driverLabel} />
       <SummaryMetric icon={<ShieldAlert aria-hidden />} label="Gaps" value={summary.gapLabel} />
       <SummaryMetric icon={<Clock3 aria-hidden />} label="Loaded" value={resultLabel} />
-    </div>
-  );
-}
-
-function NewsScrollStatus({
-  hasNextPage,
-  isFetchingNextPage,
-  sentinelRef,
-}: {
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  sentinelRef: Ref<HTMLDivElement>;
-}) {
-  if (isFetchingNextPage) {
-    return (
-      <div ref={sentinelRef} className="news-scroll-status" role="status">
-        Loading more
-      </div>
-    );
-  }
-  return (
-    <div
-      ref={sentinelRef}
-      className={`news-scroll-status ${hasNextPage ? "" : "is-terminal"}`}
-      aria-live="polite"
-    >
-      {hasNextPage ? "More available" : "End of queue"}
     </div>
   );
 }

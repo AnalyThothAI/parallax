@@ -40,7 +40,10 @@ class FeedClient:
         *,
         etag: str | None = None,
         last_modified: str | None = None,
+        provider_type: str | None = None,
+        source: dict[str, Any] | None = None,
     ) -> FeedFetchResult:
+        del provider_type, source
         headers: dict[str, str] = {}
         if etag:
             headers["If-None-Match"] = etag

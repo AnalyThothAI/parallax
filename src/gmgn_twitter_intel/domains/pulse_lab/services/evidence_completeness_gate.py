@@ -82,12 +82,21 @@ class EvidenceCompletenessGate:
 
 
 def _cex_market_status(market: list[dict[str, Any]], ref_types: set[str]) -> tuple[str, str | None, tuple[str, ...]]:
+    partial_seen = False
     for row in market:
         has_price = row.get("price_usd") is not None and str(row.get("freshness_status") or "fresh") == "fresh"
         has_source = bool(row.get("source_provider"))
         has_instrument = bool(row.get("instrument_ref") or row.get("pricefeed_id"))
         if has_price and has_source and has_instrument and ("metric" in ref_types or "market" in ref_types):
-            return "complete", None, tuple()
+            derivatives = _mapping(row.get("derivatives"))
+            levels = _items(row.get("levels"))
+            snapshot = _mapping(row.get("cex_snapshot"))
+            coinglass_ready = str(snapshot.get("coinglass_status") or row.get("coinglass_status") or "") == "ready"
+            if coinglass_ready and (derivatives or levels or "level" in ref_types):
+                return "complete", None, tuple()
+            partial_seen = True
+    if partial_seen:
+        return "partial", None, tuple()
     stale_seen = any(str(row.get("freshness_status") or "") == "stale" for row in market)
     return ("stale" if stale_seen else "insufficient"), "blocked_market_contract", ("metric",)
 

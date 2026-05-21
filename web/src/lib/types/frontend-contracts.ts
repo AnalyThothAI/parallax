@@ -559,6 +559,46 @@ export type LiveMarketSnapshot = MarketObservationSnapshot & {
   [key: string]: unknown;
 };
 
+export type CexLevelBand = {
+  kind?: string | null;
+  price?: number | null;
+  score?: number | null;
+  side?: string | null;
+  [key: string]: unknown;
+};
+
+export type CexDetailSnapshot = {
+  snapshot_id?: string | null;
+  target_type?: "CexToken" | string | null;
+  target_id?: string | null;
+  exchange?: string | null;
+  native_market_id?: string | null;
+  base_symbol?: string | null;
+  quote_symbol?: string | null;
+  status?: string | null;
+  baseline_status?: string | null;
+  coinglass_status?: string | null;
+  price_usd?: number | null;
+  mark_price?: number | null;
+  funding_rate?: number | null;
+  volume_24h_usd?: number | null;
+  open_interest_usd?: number | null;
+  oi_change_pct_1h?: number | null;
+  oi_change_pct_4h?: number | null;
+  oi_change_pct_24h?: number | null;
+  cvd_delta_1h?: number | null;
+  cvd_delta_4h?: number | null;
+  cvd_delta_24h?: number | null;
+  long_short_ratio?: number | null;
+  top_trader_position_ratio?: number | null;
+  level_bands?: CexLevelBand[] | null;
+  degraded_reasons?: string[] | null;
+  source_refs?: Array<{ ref_id?: string | null; [key: string]: unknown }> | null;
+  observed_at_ms?: number | null;
+  computed_at_ms?: number | null;
+  [key: string]: unknown;
+};
+
 export type TokenCasePostsQuery = Omit<TokenPostsQuery, "scope"> & {
   scope: TokenCaseApiScope;
 };
@@ -584,6 +624,7 @@ export type TokenCaseDossier = {
   narrative_clusters: NarrativeCluster[];
   pulse_overlay?: PulseOverlay | null;
   market_live: LiveMarketSnapshot;
+  cex_detail?: CexDetailSnapshot | null;
 };
 
 export type SearchTokenResult = TokenCaseDossier;

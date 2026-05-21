@@ -144,6 +144,8 @@ News Intel contract:
 - `/api/news` is read-only and paginated. Rows come from `news_page_rows` or
   the raw visible item fallback; handlers do not fetch feeds, run extraction,
   execute agents, or rebuild projections.
+- `/api/news` accepts optional filters including `direction=bullish|bearish`;
+  direction filtering is based only on persisted `agent_brief.direction`.
 - News rows expose deterministic fields (`headline`, `summary`,
   `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata) plus
   compact `agent_brief`, `agent_brief_status`, and

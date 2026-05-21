@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cex/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cex Detail */
+        get: operations["cex_detail_api_cex_detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cex/radar-board": {
         parameters: {
             query?: never;
@@ -2096,6 +2113,10 @@ export interface components {
         };
         /** TokenCaseData */
         TokenCaseData: {
+            /** Cex Detail */
+            cex_detail?: {
+                [key: string]: unknown;
+            } | null;
             discussion_digest: components["schemas"]["TokenDiscussionDigestData"];
             /** Market Live */
             market_live: {
@@ -2523,6 +2544,40 @@ export interface operations {
             };
         };
     };
+    cex_detail_api_cex_detail_get: {
+        parameters: {
+            query?: {
+                target_type?: string | null;
+                target_id?: string | null;
+                exchange?: string;
+                symbol?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cex_radar_board_api_cex_radar_board_get: {
         parameters: {
             query?: {
@@ -2624,6 +2679,7 @@ export interface operations {
                 limit?: number;
                 cursor?: string;
                 status?: string;
+                direction?: string;
                 lane?: string;
                 source?: string;
                 target?: string;

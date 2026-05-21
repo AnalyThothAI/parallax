@@ -30,11 +30,13 @@ class TokenCaseService:
         profiles: Any,
         live_price_gateway: Any | None,
         market_candles: Any | None = None,
+        cex_detail_snapshots: Any | None = None,
     ) -> None:
         self.targets = targets
         self.profiles = profiles
         self.live_price_gateway = live_price_gateway
         self.market_candles = market_candles
+        self.cex_detail_snapshots = cex_detail_snapshots
 
     def dossier(
         self,
@@ -81,6 +83,7 @@ class TokenCaseService:
             "timeline": timeline,
             "posts": posts,
             "market_live": market_live,
+            "cex_detail": self._cex_detail(target=target),
         }
 
     def _market_live(self, *, target: dict[str, Any], now_ms: int | None) -> dict[str, Any]:
@@ -100,6 +103,34 @@ class TokenCaseService:
         if snapshot is None:
             return _market_snapshot(target_type=target_type, target_id=target_id, status="missing")
         return cast(dict[str, Any], snapshot)
+
+    def _cex_detail(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
+        target_type = str(target.get("target_type") or "")
+        if target_type != "CexToken" or self.cex_detail_snapshots is None:
+            return None
+        target_id = str(target.get("target_id") or "")
+        latest = getattr(self.cex_detail_snapshots, "latest_snapshot", None)
+        if not callable(latest):
+            return None
+        snapshot = latest(target_type=target_type, target_id=target_id)
+        if snapshot is not None:
+            return cast(dict[str, Any], snapshot)
+        native_market_id = str(target.get("native_market_id") or "").strip().upper()
+        return {
+            "snapshot_id": f"cex-detail:binance:{native_market_id}" if native_market_id else None,
+            "target_type": target_type,
+            "target_id": target_id,
+            "exchange": str(target.get("provider") or "binance"),
+            "native_market_id": native_market_id or None,
+            "base_symbol": target.get("symbol"),
+            "quote_symbol": target.get("quote_symbol"),
+            "status": "missing",
+            "baseline_status": "missing",
+            "coinglass_status": "unavailable",
+            "degraded_reasons": ["cex_detail_snapshot_missing"],
+            "level_bands": [],
+            "source_refs": [],
+        }
 
 
 def _latest_market_tick(targets: Any, *, target_type: str, target_id: str) -> dict[str, Any] | None:

@@ -14,6 +14,12 @@ from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repos
 from gmgn_twitter_intel.domains.cex_market_intel.services.binance_oi_radar_builder import (
     build_binance_oi_radar_rows,
 )
+from gmgn_twitter_intel.domains.cex_market_intel.services.cex_detail_snapshot_builder import (
+    build_cex_detail_snapshot,
+)
+from gmgn_twitter_intel.domains.cex_market_intel.services.coinglass_detail_enricher import (
+    enrich_rows_with_coinglass,
+)
 
 
 class CexOiRadarBoardWorker(WorkerBase):
@@ -21,11 +27,13 @@ class CexOiRadarBoardWorker(WorkerBase):
         self,
         *,
         cex_market: Any,
+        coinglass: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.cex_market = cex_market
+        self.coinglass = coinglass
         self.clock_ms = clock_ms or _now_ms
         self._local_run_lock = Lock()
 
@@ -77,17 +85,29 @@ class CexOiRadarBoardWorker(WorkerBase):
                 period=period,
                 limit=limit,
             )
-            rows = list(built["rows"])
+            rows = enrich_rows_with_coinglass(
+                list(built["rows"]),
+                client=self.coinglass,
+                now_ms=now,
+                limit=int(getattr(self.settings, "coinglass_enrichment_limit", 0)),
+                level_limit=int(getattr(self.settings, "coinglass_level_limit", 6)),
+            )
             status = "success" if int(built["failed"]) == 0 else "partial"
             with self._repository_session() as repos:
                 written = repos.cex_oi_radar.insert_rows(run_id=run_id, rows=rows, computed_at_ms=now)
+                snapshots = [
+                    build_cex_detail_snapshot(row=row, computed_at_ms=now, period=period)
+                    for row in rows
+                    if row.get("native_market_id")
+                ]
+                detail_written = repos.cex_detail_snapshots.upsert_many(snapshots) if snapshots else 0
                 repos.cex_oi_radar.finish_run(
                     run_id=run_id,
                     status=status,
                     finished_at_ms=int(self.clock_ms()),
                     processed_count=written,
                     failed_count=int(built["failed"]),
-                    notes={"failed_symbols": built["failed_symbols"][:20]},
+                    notes={"failed_symbols": built["failed_symbols"][:20], "detail_snapshot_count": detail_written},
                 )
             return WorkerResult(
                 processed=len(rows),

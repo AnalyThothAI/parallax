@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_state import EvidenceStatus
 
-EvidenceRefType = Literal["event", "metric", "profile", "cluster", "market", "identity", "gate"]
+EvidenceRefType = Literal["event", "metric", "profile", "cluster", "market", "identity", "level", "gate"]
 EvidenceQuality = Literal["high", "medium", "low"]
 MarketRoute = Literal["cex", "dex", "meme", "unknown"]
 FreshnessStatus = Literal["fresh", "stale", "missing", "unknown"]
@@ -51,8 +51,21 @@ class MarketEvidence(BaseModel):
     volume_24h_usd: float | None = None
     open_interest_usd: float | None = None
     funding_rate: float | None = None
+    mark_price: float | None = None
+    oi_change_pct_1h: float | None = None
+    oi_change_pct_4h: float | None = None
+    oi_change_pct_24h: float | None = None
+    cvd_delta_1h: float | None = None
+    cvd_delta_4h: float | None = None
+    cvd_delta_24h: float | None = None
+    long_short_ratio: float | None = None
+    top_trader_position_ratio: float | None = None
     liquidity_usd: float | None = None
     market_cap_usd: float | None = None
+    cex_snapshot: dict[str, Any] | None = None
+    derivatives: dict[str, Any] = Field(default_factory=dict)
+    levels: tuple[dict[str, Any], ...] = ()
+    data_gaps: tuple[str, ...] = ()
     market_refs: tuple[str, ...] = ()
 
 

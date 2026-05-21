@@ -144,6 +144,7 @@ def token_case(
                 profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
                 live_price_gateway=_worker_object(runtime, "live_price_gateway"),
                 market_candles=_market_candles_service(runtime),
+                cex_detail_snapshots=repos.cex_detail_snapshots,
             ).dossier(
                 target_type=parsed_target_type,
                 target_id=target_id,

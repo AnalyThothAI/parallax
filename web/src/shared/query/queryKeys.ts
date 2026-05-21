@@ -51,14 +51,23 @@ export const queryKeys = {
   newsRows: ({
     limit,
     cursor,
+    direction,
     status,
   }: {
     limit: number;
     cursor?: string | null;
+    direction?: string | null;
     status?: string | null;
-  }) => ["news", limit, cursor ?? "", status ?? ""] as const,
-  newsRowsInfinite: ({ limit, status }: { limit: number; status?: string | null }) =>
-    ["news", "infinite", limit, status ?? ""] as const,
+  }) => ["news", limit, cursor ?? "", direction ?? "", status ?? ""] as const,
+  newsRowsInfinite: ({
+    direction,
+    limit,
+    status,
+  }: {
+    direction?: string | null;
+    limit: number;
+    status?: string | null;
+  }) => ["news", "infinite", limit, direction ?? "", status ?? ""] as const,
   newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,
   targetSocialTimeline: (targetKey: string | null, window: WindowKey, scope: ScopeKey) =>
     ["target-social-timeline", targetKey, window, scope] as const,

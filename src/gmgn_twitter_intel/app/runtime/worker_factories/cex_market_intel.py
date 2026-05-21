@@ -20,5 +20,16 @@ def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, W
             db=ctx.db,
             telemetry=ctx.telemetry,
             cex_market=getattr(ctx.providers.asset_market, "cex_market", None),
+            coinglass=_coinglass_client(settings),
         )
     }
+
+
+def _coinglass_client(settings):
+    if int(getattr(settings, "coinglass_enrichment_limit", 0)) <= 0:
+        return None
+    try:
+        from coinglass_cli.client import CoinglassClient
+    except Exception:
+        return None
+    return CoinglassClient()

@@ -30,6 +30,8 @@ export type {
   AssetFlowData,
   AssetFlowRow,
   BootstrapData,
+  CexDetailSnapshot,
+  CexLevelBand,
   Decision,
   EntityRecord,
   EventRecord,

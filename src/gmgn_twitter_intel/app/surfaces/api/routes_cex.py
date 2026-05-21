@@ -23,6 +23,28 @@ def cex_radar_board(
     return _json({"ok": True, "data": _public_board(board)})
 
 
+@router.get("/detail")
+def cex_detail(
+    request: Request,
+    target_type: Annotated[str | None, Query()] = None,
+    target_id: Annotated[str | None, Query()] = None,
+    exchange: Annotated[str, Query()] = "binance",
+    symbol: Annotated[str | None, Query()] = None,
+) -> JSONResponse:
+    runtime = _authenticated_runtime(request)
+    with runtime.repositories() as repos:
+        if target_type and target_id:
+            snapshot = repos.cex_detail_snapshots.latest_snapshot(target_type=target_type, target_id=target_id)
+        elif symbol:
+            snapshot = repos.cex_detail_snapshots.latest_snapshot_by_market(
+                exchange=exchange,
+                native_market_id=symbol,
+            )
+        else:
+            snapshot = None
+    return _json({"ok": True, "data": snapshot})
+
+
 def _public_board(board: dict) -> dict:
     run = board.get("run")
     return {

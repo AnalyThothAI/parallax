@@ -135,6 +135,20 @@ DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
         "enabled": True,
         "refresh_interval_seconds": 600,
     },
+    {
+        "source_id": "cryptopanic-en",
+        "provider_type": "cryptopanic",
+        "feed_url": (
+            "cryptopanic://posts?regions=en&kind=news&max_items=50"
+            "&profile_dir=/tmp/gmgn-twitter-intel/cryptopanic-profile&timeout=35"
+        ),
+        "source_domain": "cryptopanic.com",
+        "source_name": "CryptoPanic",
+        "source_role": "aggregator",
+        "trust_tier": "standard",
+        "enabled": True,
+        "refresh_interval_seconds": 300,
+    },
 )
 
 
@@ -471,7 +485,7 @@ class NewsSourceSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_id: str
-    provider_type: Literal["rss", "atom", "json_feed"] = "rss"
+    provider_type: Literal["rss", "atom", "json_feed", "cryptopanic"] = "rss"
     feed_url: str
     source_domain: str
     source_name: str
@@ -802,6 +816,8 @@ class CexOiRadarBoardWorkerSettings(PerWorkerSettings):
     advisory_lock_key: int = 2026052108
     universe_limit: int = Field(default=500, ge=1)
     period: str = "5m"
+    coinglass_enrichment_limit: int = Field(default=5, ge=0)
+    coinglass_level_limit: int = Field(default=6, ge=0)
 
     @field_validator("period", mode="before")
     @classmethod
@@ -1680,6 +1696,8 @@ cex_oi_radar_board:
   advisory_lock_key: 2026052108
   universe_limit: 500
   period: "5m"
+  coinglass_enrichment_limit: 5
+  coinglass_level_limit: 6
 narrative_admission:
   enabled: true
   interval_seconds: 60.0

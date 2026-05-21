@@ -4332,6 +4332,18 @@
       "TokenCaseData": {
         "additionalProperties": true,
         "properties": {
+          "cex_detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cex Detail"
+          },
           "discussion_digest": {
             "$ref": "#/components/schemas/TokenDiscussionDigestData"
           },
@@ -5230,6 +5242,95 @@
         ]
       }
     },
+    "/api/cex/detail": {
+      "get": {
+        "operationId": "cex_detail_api_cex_detail_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exchange",
+            "required": false,
+            "schema": {
+              "default": "binance",
+              "title": "Exchange",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cex Detail",
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/cex/radar-board": {
       "get": {
         "operationId": "cex_radar_board_api_cex_radar_board_get",
@@ -5392,7 +5493,7 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 50,
+              "default": 100,
               "title": "Limit",
               "type": "integer"
             }
@@ -5414,6 +5515,16 @@
             "schema": {
               "default": "",
               "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Direction",
               "type": "string"
             }
           },

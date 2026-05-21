@@ -21,6 +21,8 @@ class NewsFeedProvider(Protocol):
         *,
         etag: str | None = None,
         last_modified: str | None = None,
+        provider_type: str | None = None,
+        source: dict[str, Any] | None = None,
     ) -> NewsFeedFetchResult: ...
 
     def close(self) -> None: ...

@@ -33,7 +33,7 @@
    - Pulse evidence packet 包含 `cex_snapshot`、derivatives、level refs；CoinGlass 缺失时 gate 只降级 partial。
 2. 新增 Alembic 迁移 `20260521_0074_cex_detail_snapshots.py`。
 3. 新增 repository 与 snapshot builder。
-4. `CexOiRadarBoardWorker` 在 radar rows 写入成功后同步 upsert detail snapshot。
+4. `CexOiRadarBoardWorker` 在 radar rows 写入成功后，对 top-K 做可选 CoinGlass enrichment 并同步 upsert detail snapshot。
 5. `RepositorySession` 注入新 repository。
 6. `/api/token-case` 返回 `cex_detail`；新增只读 `/api/cex/detail` 便于调试。
 7. 更新 OpenAPI schema 与生成类型。
