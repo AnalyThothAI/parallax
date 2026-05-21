@@ -49,6 +49,36 @@ def test_mirror_marks_error_when_magic_bytes_mismatch_media_type(tmp_path) -> No
     assert not (tmp_path / "cache" / "token-images").exists()
 
 
+def test_mirror_marks_error_when_content_type_is_missing(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    service = TokenImageMirrorService(
+        repository=repo,
+        app_home=tmp_path,
+        http_client=_FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type=None)),
+    )
+
+    result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
+
+    assert result["status"] == "error"
+    assert repo.ready_rows == []
+    assert repo.error_rows[0]["error_prefix"] == "unsupported_image_type"
+
+
+def test_mirror_rejects_malformed_png_with_only_four_byte_prefix(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    service = TokenImageMirrorService(
+        repository=repo,
+        app_home=tmp_path,
+        http_client=_FakeImageClient(_FakeImageResponse(content=b"\x89PNGbad", content_type="image/png")),
+    )
+
+    result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
+
+    assert result["status"] == "error"
+    assert repo.ready_rows == []
+    assert repo.error_rows[0]["error_prefix"] == "unsupported_image_bytes"
+
+
 def test_mirror_marks_error_when_response_is_oversized(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
@@ -68,6 +98,50 @@ def test_mirror_marks_error_when_response_is_oversized(tmp_path) -> None:
     assert result["status"] == "error"
     assert repo.ready_rows == []
     assert repo.error_rows[0]["error_prefix"] == "image_too_large"
+
+
+def test_mirror_marks_error_when_actual_body_is_oversized(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    service = TokenImageMirrorService(
+        repository=repo,
+        app_home=tmp_path,
+        http_client=_FakeImageClient(
+            _FakeImageResponse(
+                content=b"\x89PNG\r\n\x1a\n" + (b"x" * TOKEN_IMAGE_MIRROR_MAX_BYTES),
+                content_type="image/png",
+            )
+        ),
+    )
+
+    result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
+
+    assert result["status"] == "error"
+    assert repo.ready_rows == []
+    assert repo.error_rows[0]["error_prefix"] == "image_too_large"
+
+
+def test_mirror_marks_upstream_404_as_error_with_retry_backoff(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    service = TokenImageMirrorService(
+        repository=repo,
+        app_home=tmp_path,
+        http_client=_FakeImageClient(
+            _FakeImageResponse(content=b"not found", content_type="text/plain", status_code=404)
+        ),
+    )
+
+    result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
+
+    assert result["status"] == "error"
+    assert repo.ready_rows == []
+    assert repo.error_rows == [
+        {
+            "source_url": GMGN_URL,
+            "now_ms": NOW_MS,
+            "retry_ms": TOKEN_IMAGE_MIRROR_RETRY_MS,
+            "error_prefix": "image_fetch_failed",
+        }
+    ]
 
 
 def test_mirror_writes_verified_image_atomically_and_marks_ready(tmp_path) -> None:
@@ -182,7 +256,7 @@ class _FakeImageResponse:
         self,
         *,
         content: bytes,
-        content_type: str,
+        content_type: str | None,
         status_code: int = 200,
         url: str = GMGN_URL,
         headers: dict[str, str] | None = None,
@@ -190,4 +264,6 @@ class _FakeImageResponse:
         self.content = content
         self.status_code = status_code
         self.url = url
-        self.headers = {"content-type": content_type, **(headers or {})}
+        self.headers = dict(headers or {})
+        if content_type is not None:
+            self.headers["content-type"] = content_type

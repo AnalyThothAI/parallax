@@ -180,15 +180,16 @@ def _required_source_url(value: Any) -> str:
 
 
 def _verified_media(*, content: bytes, content_type: str | None) -> _VerifiedMedia:
+    header_media_type = _header_media_type(content_type)
+    if header_media_type is None:
+        raise _TokenImageMirrorError("unsupported_image_type: content_type")
+
     magic_media_type = _magic_media_type(content)
     if magic_media_type is None:
         raise _TokenImageMirrorError("unsupported_image_bytes: unknown_magic")
 
-    header_media_type = _header_media_type(content_type)
-    if header_media_type is not None and header_media_type != magic_media_type:
+    if header_media_type != magic_media_type:
         raise _TokenImageMirrorError("unsupported_image_bytes: media_type_mismatch")
-    if content_type and header_media_type is None:
-        raise _TokenImageMirrorError("unsupported_image_type: content_type")
 
     return _VerifiedMedia(
         media_type=magic_media_type,
@@ -197,7 +198,7 @@ def _verified_media(*, content: bytes, content_type: str | None) -> _VerifiedMed
 
 
 def _magic_media_type(content: bytes) -> str | None:
-    if content.startswith(b"\x89PNG"):
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if content.startswith(b"\xff\xd8\xff"):
         return "image/jpeg"

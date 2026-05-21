@@ -53,7 +53,9 @@ def test_token_image_source_query_reads_current_and_recent_sources_without_old_r
             received_at_ms=NOW_MS - (25 * 60 * 60 * 1000),
         )
         cex_token_id = "cex_token:BTC"
+        unrelated_cex_token_id = "cex_token:ETH"
         _insert_cex_token(conn, cex_token_id=cex_token_id, base_symbol="BTC")
+        _insert_cex_token(conn, cex_token_id=unrelated_cex_token_id, base_symbol="ETH")
         _insert_radar_row(
             conn,
             row_id="radar-asset",
@@ -115,10 +117,31 @@ def test_token_image_source_query_reads_current_and_recent_sources_without_old_r
             provider=GMGN_DEX_PROFILE_PROVIDER,
             logo_url="https://gmgn.ai/external-res/stale-profile.png",
         )
+        _insert_identity_evidence(
+            conn,
+            evidence_id="evidence-gmgn-stale",
+            asset_id=stale_asset_id,
+            provider="gmgn",
+            evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
+            raw_payload={"i": "https://gmgn.ai/external-res/stale-stream.png"},
+        )
+        _insert_identity_evidence(
+            conn,
+            evidence_id="evidence-okx-stale",
+            asset_id=stale_asset_id,
+            provider="okx",
+            evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+            raw_payload={"tokenLogoUrl": "https://static.okx.com/cdn/stale-okx.png"},
+        )
         _insert_cex_profile(
             conn,
             cex_token_id=cex_token_id,
             logo_url="https://bin.bnbstatic.com/static/images/btc.png",
+        )
+        _insert_cex_profile(
+            conn,
+            cex_token_id=unrelated_cex_token_id,
+            logo_url="https://bin.bnbstatic.com/static/images/eth.png",
         )
         conn.commit()
 
@@ -158,6 +181,9 @@ def test_token_image_source_query_reads_current_and_recent_sources_without_old_r
         "source_ref": "binance_marketing_symbol_list:BTC",
     }
     assert "https://gmgn.ai/external-res/stale-profile.png" not in by_url
+    assert "https://gmgn.ai/external-res/stale-stream.png" not in by_url
+    assert "https://static.okx.com/cdn/stale-okx.png" not in by_url
+    assert "https://bin.bnbstatic.com/static/images/eth.png" not in by_url
     assert len(limited_rows) == 2
 
 
