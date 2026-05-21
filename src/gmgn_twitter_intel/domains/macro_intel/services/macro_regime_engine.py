@@ -5,22 +5,14 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_SERIES, MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel.services.macro_feature_engine import build_macro_features
+from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import build_macro_scenario
 
-CORE_REQUIRED_SERIES = (
-    "fred:WALCL",
-    "fred:RRPONTSYD",
-    "treasury_fiscal:operating_cash_balance",
-    "nyfed:SOFR",
-    "fred:IORB",
-    "fred:DGS2",
-    "fred:DGS10",
-    "fred:VIXCLS",
-    "fred:BAMLH0A0HYM2",
-    "fred:BAMLC0A0CM",
-)
+CORE_REQUIRED_SERIES = MACRO_CORE_SERIES
 OPTIONAL_CONFIRMATION_SERIES = ("fred:SP500", "fred:DEXUSEU", "fred:DCOILWTICO", "coingecko:bitcoin:usd")
 PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
+CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
 
 
 def build_macro_view_snapshot(
@@ -29,13 +21,23 @@ def build_macro_view_snapshot(
     computed_at_ms: int,
 ) -> dict[str, Any]:
     latest = _latest_by_series(observations)
+    features = build_macro_features(observations, computed_at_ms=computed_at_ms)
     panels, indicators, triggers, panel_gaps = _build_panels(latest)
+    chain = _build_chain(latest=latest, panels=panels, features=features)
     core_gaps = [f"missing:{series_key}" for series_key in CORE_REQUIRED_SERIES if series_key not in latest]
     data_gaps = _unique([*core_gaps, *panel_gaps])
     available_scores = [float(panel["score"]) for panel in panels.values() if panel.get("score") is not None]
     overall_score = round(sum(available_scores) / len(available_scores), 2) if available_scores else None
     status = _snapshot_status(latest=latest, data_gaps=data_gaps)
     asof_date = _asof_date(latest=latest, computed_at_ms=computed_at_ms)
+    scenario = build_macro_scenario(
+        chain=chain,
+        panels=panels,
+        features=features,
+        triggers=triggers,
+        data_gaps=data_gaps,
+    )
+    coverage = _source_coverage(latest)
     return {
         "snapshot_id": f"macro-view:{MACRO_VIEW_PROJECTION_VERSION}:{int(computed_at_ms)}",
         "projection_version": MACRO_VIEW_PROJECTION_VERSION,
@@ -47,7 +49,16 @@ def build_macro_view_snapshot(
         "indicators_json": indicators,
         "triggers_json": triggers,
         "data_gaps_json": data_gaps,
-        "source_coverage_json": _source_coverage(latest),
+        "source_coverage_json": coverage,
+        "features_json": features,
+        "chain_json": chain,
+        "scenario_json": scenario,
+        "scorecard_json": _scorecard(
+            overall_score=overall_score,
+            chain=chain,
+            coverage=coverage,
+            data_gaps=data_gaps,
+        ),
         "computed_at_ms": int(computed_at_ms),
     }
 
@@ -80,6 +91,369 @@ def _build_panels(
     triggers.extend(panel_triggers)
     data_gaps.extend(panel_gaps)
     return panels, indicators, triggers, data_gaps
+
+
+def _build_chain(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    panels: Mapping[str, Mapping[str, Any]],
+    features: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    return {
+        "liquidity": _liquidity_chain_node(latest=latest, panel=panels.get("liquidity", {}), features=features),
+        "rates": _rates_chain_node(latest=latest, panel=panels.get("rates", {}), features=features),
+        "fed_corridor": _fed_corridor_chain_node(latest=latest),
+        "volatility": _volatility_chain_node(panel=panels.get("volatility", {}), features=features),
+        "credit": _credit_chain_node(latest=latest, panel=panels.get("credit", {}), features=features),
+        "positioning": _positioning_chain_node(latest=latest, features=features),
+        "cross_asset": _cross_asset_chain_node(latest=latest, panel=panels.get("cross_asset", {}), features=features),
+    }
+
+
+def _liquidity_chain_node(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    panel: Mapping[str, Any],
+    features: Mapping[str, Any],
+) -> dict[str, Any]:
+    score = _panel_score(panel, default=4.0)
+    evidence = _panel_strings(panel, "evidence")
+    data_gaps = _panel_strings(panel, "data_gaps")
+
+    walcl_20d = _feature_delta(features, "fred:WALCL", "20d")
+    rrp_20d = _feature_delta(features, "fred:RRPONTSYD", "20d")
+    tga_20d = _feature_delta(features, "treasury_fiscal:operating_cash_balance", "20d")
+    if walcl_20d is not None:
+        evidence.append(f"walcl_20d_delta={walcl_20d:.2f}")
+        if walcl_20d <= -100_000:
+            score += 0.75
+    if rrp_20d is not None:
+        evidence.append(f"rrp_20d_delta={rrp_20d:.2f}")
+        if rrp_20d <= -100_000:
+            score += 0.5
+    if tga_20d is not None:
+        evidence.append(f"tga_20d_delta={tga_20d:.2f}")
+        if tga_20d >= 100_000:
+            score += 0.75
+
+    if not evidence:
+        return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    return _chain_node(
+        score=score,
+        regime=_liquidity_regime(_score(score)),
+        evidence=evidence,
+        data_gaps=data_gaps,
+    )
+
+
+def _rates_chain_node(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    panel: Mapping[str, Any],
+    features: Mapping[str, Any],
+) -> dict[str, Any]:
+    score = 4.0
+    evidence = _panel_strings(panel, "evidence")
+    data_gaps = _panel_strings(panel, "data_gaps")
+    dgs2 = _value(latest.get("fred:DGS2"))
+    dgs10 = _value(latest.get("fred:DGS10"))
+    curve_10y_2y = _value(latest.get("fred:T10Y2Y"))
+    if curve_10y_2y is None and dgs2 is not None and dgs10 is not None:
+        curve_10y_2y = dgs10 - dgs2
+    curve_10y_3m = _value(latest.get("fred:T10Y3M"))
+    real_10y = _value(latest.get("fred:DFII10"))
+    breakeven_10y = _value(latest.get("fred:T10YIE"))
+    forward_inflation = _value(latest.get("fred:T5YIFR"))
+    dgs10_20d = _feature_delta(features, "fred:DGS10", "20d")
+    dgs2_20d = _feature_delta(features, "fred:DGS2", "20d")
+
+    missing_series = (
+        ("fred:DGS5", _value(latest.get("fred:DGS5"))),
+        ("fred:DGS30", _value(latest.get("fred:DGS30"))),
+        ("fred:T10Y3M", curve_10y_3m),
+        ("fred:DFII10", real_10y),
+        ("fred:T10YIE", breakeven_10y),
+        ("fred:T5YIFR", forward_inflation),
+    )
+    data_gaps.extend(f"missing:{series_key}" for series_key, value in missing_series if value is None)
+
+    if dgs10 is not None:
+        evidence.append(f"10y={dgs10:.2f}")
+        if dgs10 >= 4.5:
+            score += 1.5
+    if curve_10y_2y is not None:
+        evidence.append(f"10y_2y_curve={curve_10y_2y:.2f}")
+        if curve_10y_2y <= -0.5:
+            score += 1.5
+        elif dgs10 is not None and dgs10 >= 4.5 and curve_10y_2y >= 0.25:
+            score += 1.0
+    if real_10y is not None:
+        evidence.append(f"real_10y={real_10y:.2f}")
+        if real_10y >= 2.0:
+            score += 1.0
+    if breakeven_10y is not None:
+        evidence.append(f"breakeven_10y={breakeven_10y:.2f}")
+        if breakeven_10y >= 2.5:
+            score += 0.5
+    if forward_inflation is not None:
+        evidence.append(f"forward_inflation_5y5y={forward_inflation:.2f}")
+        if forward_inflation >= 2.5:
+            score += 0.5
+    if dgs10_20d is not None:
+        evidence.append(f"dgs10_20d_delta={dgs10_20d:.2f}")
+        if dgs10_20d >= 0.25:
+            score += 1.0
+    if dgs2_20d is not None:
+        evidence.append(f"dgs2_20d_delta={dgs2_20d:.2f}")
+        if dgs2_20d >= 0.25:
+            score += 0.5
+
+    if not evidence:
+        return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    return _chain_node(
+        score=score,
+        regime=_rates_chain_regime(score=_score(score), dgs10=dgs10, curve=curve_10y_2y, real_10y=real_10y),
+        evidence=evidence,
+        data_gaps=data_gaps,
+    )
+
+
+def _fed_corridor_chain_node(*, latest: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    sofr = _value(latest.get("nyfed:SOFR"))
+    iorb = _value(latest.get("fred:IORB"))
+    effr = _value(latest.get("fred:EFFR"))
+    target_upper = _value(latest.get("fred:DFEDTARU"))
+    target_lower = _value(latest.get("fred:DFEDTARL"))
+    evidence: list[str] = []
+    data_gaps: list[str] = []
+    score = 4.0
+
+    for series_key, value in (
+        ("nyfed:SOFR", sofr),
+        ("fred:IORB", iorb),
+        ("fred:EFFR", effr),
+        ("fred:DFEDTARU", target_upper),
+        ("fred:DFEDTARL", target_lower),
+    ):
+        if value is None:
+            data_gaps.append(f"missing:{series_key}")
+
+    if sofr is not None and iorb is not None:
+        spread_bps = (sofr - iorb) * 100.0
+        evidence.append(f"sofr_iorb_spread_bps={spread_bps:.1f}")
+        if spread_bps > 0:
+            score += 2.0
+        if spread_bps >= 10:
+            score += 1.0
+    if effr is not None and iorb is not None:
+        spread_bps = (effr - iorb) * 100.0
+        evidence.append(f"effr_iorb_spread_bps={spread_bps:.1f}")
+        if spread_bps > 0:
+            score += 1.0
+    if target_upper is not None and target_lower is not None:
+        evidence.append(f"fed_target_range={target_lower:.2f}-{target_upper:.2f}")
+        if sofr is not None and sofr > target_upper:
+            score += 1.5
+            evidence.append("sofr_above_target_upper")
+        if effr is not None and not target_lower <= effr <= target_upper:
+            score += 1.0
+            evidence.append("effr_outside_target_range")
+
+    if not evidence:
+        return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    return _chain_node(
+        score=score,
+        regime="corridor_pressure" if score >= 7.0 else "watch" if score >= 5.5 else "orderly",
+        evidence=evidence,
+        data_gaps=data_gaps,
+    )
+
+
+def _volatility_chain_node(*, panel: Mapping[str, Any], features: Mapping[str, Any]) -> dict[str, Any]:
+    score = _panel_score(panel, default=0.0)
+    evidence = _panel_strings(panel, "evidence")
+    data_gaps = _panel_strings(panel, "data_gaps")
+    vix_5d = _feature_delta(features, "fred:VIXCLS", "5d")
+    vix_20d = _feature_delta(features, "fred:VIXCLS", "20d")
+    if vix_5d is not None:
+        evidence.append(f"vix_5d_delta={vix_5d:.2f}")
+        if vix_5d >= 3.0:
+            score += 0.75
+    if vix_20d is not None:
+        evidence.append(f"vix_20d_delta={vix_20d:.2f}")
+        if vix_20d >= 5.0:
+            score += 0.75
+
+    if not evidence:
+        return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    final_score = _score(score)
+    return _chain_node(
+        score=final_score,
+        regime="panic" if final_score >= 8.5 else "near_term_stress" if final_score >= 6.0 else "carry",
+        evidence=evidence,
+        data_gaps=data_gaps,
+    )
+
+
+def _credit_chain_node(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    panel: Mapping[str, Any],
+    features: Mapping[str, Any],
+) -> dict[str, Any]:
+    score = _panel_score(panel, default=0.0)
+    evidence = _panel_strings(panel, "evidence")
+    data_gaps = _panel_strings(panel, "data_gaps")
+    hy_oas = _value(latest.get("fred:BAMLH0A0HYM2"))
+    ig_oas = _value(latest.get("fred:BAMLC0A0CM"))
+    hy_5d = _feature_delta(features, "fred:BAMLH0A0HYM2", "5d")
+    hy_20d = _feature_delta(features, "fred:BAMLH0A0HYM2", "20d")
+    ig_20d = _feature_delta(features, "fred:BAMLC0A0CM", "20d")
+
+    if hy_oas is not None and ig_oas is not None:
+        hy_ig_spread = hy_oas - ig_oas
+        evidence.append(f"hy_ig_spread={hy_ig_spread:.2f}")
+        if hy_ig_spread >= 4.0:
+            score += 0.75
+    if hy_5d is not None:
+        evidence.append(f"hy_oas_5d_delta={hy_5d:.2f}")
+        if hy_5d >= 0.25:
+            score += 0.75
+    if hy_20d is not None:
+        evidence.append(f"hy_oas_20d_delta={hy_20d:.2f}")
+        if hy_20d >= 0.5:
+            score += 0.75
+    if ig_20d is not None:
+        evidence.append(f"ig_oas_20d_delta={ig_20d:.2f}")
+        if ig_20d >= 0.2:
+            score += 0.5
+
+    if not evidence:
+        return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    final_score = _score(score)
+    if (hy_oas is not None and hy_oas >= 7.0) or final_score >= 8.5:
+        regime = "credit_led_derisking"
+    elif (hy_oas is not None and hy_oas >= 5.0) or final_score >= 6.5:
+        regime = "low_quality_stress"
+    elif final_score <= 3.5:
+        regime = "confirmed_risk_on"
+    else:
+        regime = "watch"
+    return _chain_node(score=final_score, regime=regime, evidence=evidence, data_gaps=data_gaps)
+
+
+def _positioning_chain_node(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    features: Mapping[str, Any],
+) -> dict[str, Any]:
+    series_key = "cftc:financial_futures:sp500_net_noncommercial"
+    value = _value(latest.get(series_key))
+    if value is None:
+        return _chain_node(
+            score=None,
+            regime="data_gap",
+            evidence=[],
+            data_gaps=[f"missing:{series_key}", "positioning_data_gap"],
+        )
+    evidence = [f"sp500_net_noncommercial={value:.2f}"]
+    score = 5.0
+    percentile = _feature_percentile(features, series_key)
+    value_20d = _feature_delta(features, series_key, "20d")
+    if percentile is not None:
+        evidence.append(f"positioning_percentile={percentile:.2f}")
+        if percentile >= 0.8:
+            score += 1.5
+        elif percentile <= 0.2:
+            score += 1.0
+    if value_20d is not None:
+        evidence.append(f"positioning_20d_delta={value_20d:.2f}")
+        if abs(value_20d) >= 25_000:
+            score += 0.5
+    if value > 0 and percentile is not None and percentile >= 0.8:
+        regime = "crowded_risk_long"
+    elif value < 0 and percentile is not None and percentile <= 0.2:
+        regime = "defensive_short"
+    else:
+        regime = "neutral"
+    return _chain_node(score=score, regime=regime, evidence=evidence, data_gaps=[])
+
+
+def _cross_asset_chain_node(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    panel: Mapping[str, Any],
+    features: Mapping[str, Any],
+) -> dict[str, Any]:
+    score = _panel_score(panel, default=4.0)
+    evidence = _panel_strings(panel, "evidence")
+    data_gaps = _panel_strings(panel, "data_gaps")
+    spx = _first_value(latest, ("fred:SP500", "stooq:spy.us"))
+    qqq = _value(latest.get("stooq:qqq.us"))
+    iwm = _value(latest.get("stooq:iwm.us"))
+    hyg = _value(latest.get("stooq:hyg.us"))
+    lqd = _value(latest.get("stooq:lqd.us"))
+    dxy = _value(latest.get("fred:DTWEXBGS"))
+    oil = _first_value(latest, ("fred:DCOILWTICO", "stooq:uso.us"))
+    btc = _value(latest.get("coingecko:bitcoin:usd"))
+    risk_off_votes = 0
+    risk_on_votes = 0
+
+    for label, value in (
+        ("sp500", spx),
+        ("qqq", qqq),
+        ("iwm", iwm),
+        ("hyg", hyg),
+        ("lqd", lqd),
+        ("dollar_index", dxy),
+        ("oil", oil),
+        ("btc", btc),
+    ):
+        if value is not None:
+            evidence.append(f"{label}={value:.2f}")
+
+    delta_votes = (
+        ("sp500_20d_delta", _first_feature_delta(features, ("fred:SP500", "stooq:spy.us"), "20d"), -1),
+        ("qqq_20d_delta", _feature_delta(features, "stooq:qqq.us", "20d"), -1),
+        ("iwm_20d_delta", _feature_delta(features, "stooq:iwm.us", "20d"), -1),
+        ("hyg_20d_delta", _feature_delta(features, "stooq:hyg.us", "20d"), -1),
+        ("btc_20d_delta", _feature_delta(features, "coingecko:bitcoin:usd", "20d"), -1),
+        ("dollar_20d_delta", _feature_delta(features, "fred:DTWEXBGS", "20d"), 1),
+    )
+    for label, delta, risk_off_sign in delta_votes:
+        if delta is None:
+            continue
+        evidence.append(f"{label}={delta:.2f}")
+        if delta * risk_off_sign > 0:
+            risk_off_votes += 1
+        elif delta * risk_off_sign < 0:
+            risk_on_votes += 1
+
+    if hyg is not None and lqd is not None:
+        hyg_lqd_ratio = hyg / lqd if lqd else 0.0
+        evidence.append(f"hyg_lqd_ratio={hyg_lqd_ratio:.4f}")
+
+    for series_key, value in (
+        ("fred:SP500|stooq:spy.us", spx),
+        ("stooq:hyg.us", hyg),
+        ("stooq:lqd.us", lqd),
+        ("fred:DTWEXBGS", dxy),
+        ("coingecko:bitcoin:usd", btc),
+    ):
+        if value is None:
+            data_gaps.append(f"missing:{series_key}")
+
+    if not evidence:
+        return _chain_node(score=None, regime="data_gap", evidence=[], data_gaps=data_gaps)
+    if risk_off_votes >= 2:
+        score = max(score, 6.5 + min(2.0, risk_off_votes * 0.5))
+        regime = "risk_off_confirmation"
+    elif risk_on_votes >= 2:
+        score = min(score, 3.0)
+        regime = "risk_on_confirmation"
+    else:
+        regime = _panel_regime(panel, default="macro_confirmation_pending")
+    return _chain_node(score=score, regime=regime, evidence=evidence, data_gaps=data_gaps)
 
 
 def _liquidity_panel(
@@ -338,6 +712,119 @@ def _cross_asset_panel(
     )
 
 
+def _scorecard(
+    *,
+    overall_score: float | None,
+    chain: Mapping[str, Mapping[str, Any]],
+    coverage: Mapping[str, Any],
+    data_gaps: Sequence[str],
+) -> dict[str, Any]:
+    chain_scores = [
+        float(node["score"])
+        for node in chain.values()
+        if node.get("regime") != "data_gap" and node.get("score") is not None
+    ]
+    chain_average = round(sum(chain_scores) / len(chain_scores), 2) if chain_scores else None
+    return {
+        "projection_version": MACRO_VIEW_PROJECTION_VERSION,
+        "overall_score": overall_score,
+        "chain_average": chain_average,
+        "observed_series_count": int(coverage.get("observed_series_count") or 0),
+        "required_series_count": int(coverage.get("required_series_count") or len(CORE_REQUIRED_SERIES)),
+        "coverage_ratio": float(coverage.get("coverage_ratio") or 0.0),
+        "data_gap_count": len([gap for gap in data_gaps if gap]),
+        "chain_regimes": {node_key: str(node.get("regime") or "") for node_key, node in chain.items()},
+    }
+
+
+def _chain_node(
+    *,
+    score: float | None,
+    regime: str,
+    evidence: Sequence[str],
+    data_gaps: Sequence[str],
+) -> dict[str, Any]:
+    return {
+        "score": 0.0 if score is None else _score(score),
+        "regime": regime,
+        "evidence": _unique([str(item) for item in evidence]),
+        "data_gaps": _unique([str(item) for item in data_gaps]),
+    }
+
+
+def _rates_chain_regime(
+    *,
+    score: float,
+    dgs10: float | None,
+    curve: float | None,
+    real_10y: float | None,
+) -> str:
+    if dgs10 is not None and dgs10 >= 4.5 and score >= 6.5:
+        return "term_premium_pressure"
+    if real_10y is not None and real_10y >= 2.0 and score >= 6.5:
+        return "term_premium_pressure"
+    if curve is not None and curve <= -0.5:
+        return "policy_tight_growth_scare"
+    if score >= 6.5:
+        return "front_end_tightening"
+    if score <= 3.0:
+        return "easing"
+    return "neutral"
+
+
+def _panel_score(panel: Mapping[str, Any], *, default: float) -> float:
+    value = _float_value(panel.get("score"))
+    return default if value is None else value
+
+
+def _panel_strings(panel: Mapping[str, Any], key: str) -> list[str]:
+    value = panel.get(key)
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return []
+    return [str(item) for item in value if str(item)]
+
+
+def _panel_regime(panel: Mapping[str, Any], *, default: str) -> str:
+    value = str(panel.get("regime") or "")
+    return value or default
+
+
+def _feature_delta(features: Mapping[str, Any], series_key: str, horizon: str) -> float | None:
+    feature = features.get(series_key)
+    if not isinstance(feature, Mapping):
+        return None
+    delta = feature.get("delta")
+    if not isinstance(delta, Mapping):
+        return None
+    return _float_value(delta.get(horizon))
+
+
+def _first_feature_delta(features: Mapping[str, Any], series_keys: Sequence[str], horizon: str) -> float | None:
+    for series_key in series_keys:
+        value = _feature_delta(features, series_key, horizon)
+        if value is not None:
+            return value
+    return None
+
+
+def _feature_percentile(features: Mapping[str, Any], series_key: str) -> float | None:
+    feature = features.get(series_key)
+    if not isinstance(feature, Mapping):
+        return None
+    percentile = feature.get("percentile")
+    if not isinstance(percentile, Mapping):
+        return None
+    return _float_value(percentile.get("value"))
+
+
+def _first_value(latest: Mapping[str, Mapping[str, Any]], series_keys: Sequence[str]) -> float | None:
+    for series_key in series_keys:
+        value = _value(latest.get(series_key))
+        if value is not None:
+            return value
+    return None
+
+
 def _panel(*, score: float | None, regime: str, evidence: list[str], data_gaps: list[str]) -> dict[str, Any]:
     return {
         "score": None if score is None else round(float(score), 2),
@@ -438,6 +925,12 @@ def _value(observation: Mapping[str, Any] | None) -> float | None:
         return None
     value = observation.get("value_numeric")
     if value is None:
+        return None
+    return _float_value(value)
+
+
+def _float_value(value: Any) -> float | None:
+    if isinstance(value, bool):
         return None
     if isinstance(value, Decimal):
         return float(value)

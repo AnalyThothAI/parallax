@@ -7,6 +7,7 @@ from types import TracebackType
 
 from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
 from gmgn_twitter_intel.cli import main
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_SERIES
 
 NOW_MS = 1_779_000_000_000
 
@@ -144,7 +145,7 @@ def test_macro_import_bundle_reports_repository_failure_without_secret(tmp_path,
     assert repo.observations == []
 
 
-def test_macro_project_once_builds_snapshot_from_latest_observations(monkeypatch) -> None:
+def test_macro_project_once_builds_snapshot_from_bounded_history(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository(
@@ -169,17 +170,24 @@ def test_macro_project_once_builds_snapshot_from_latest_observations(monkeypatch
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert payload["ok"] is True
-    assert payload["data"]["projection_version"] == "macro_regime_v1"
+    assert payload["data"]["projection_version"] == "macro_regime_v2"
     assert payload["data"]["status"] == "partial"
-    assert payload["data"]["snapshot_id"] == "macro-view:macro_regime_v1:1779000000000"
-    assert repo.latest_observation_limits == [250]
+    assert payload["data"]["snapshot_id"] == "macro-view:macro_regime_v2:1779000000000"
+    assert repo.observations_for_series_calls == [
+        {
+            "series_keys": MACRO_CORE_SERIES,
+            "lookback_days": 1095,
+            "limit_per_series": 800,
+        }
+    ]
+    assert repo.latest_observation_limits == []
     assert len(repo.snapshots) == 1
 
 
 def test_macro_project_once_reports_repository_failure_without_secret(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository(fail_latest_observations=True)
+    repo = FakeMacroIntelRepository(fail_observations_for_series=True)
     _patch_macro_dependencies(monkeypatch, macro_module, repo)
     stdout = io.StringIO()
 
@@ -245,6 +253,7 @@ class FakeMacroIntelRepository:
         observations: list[dict[str, object]] | None = None,
         fail_record_run: bool = False,
         fail_latest_observations: bool = False,
+        fail_observations_for_series: bool = False,
     ) -> None:
         self.conn = FakeConnection()
         self.source_observations = observations or []
@@ -252,10 +261,12 @@ class FakeMacroIntelRepository:
         self.import_runs: list[dict[str, object]] = []
         self.snapshots: list[dict[str, object]] = []
         self.latest_observation_limits: list[int] = []
+        self.observations_for_series_calls: list[dict[str, object]] = []
         self.latest_import: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
         self.fail_record_run = fail_record_run
         self.fail_latest_observations = fail_latest_observations
+        self.fail_observations_for_series = fail_observations_for_series
         self.transaction_events: list[str] = []
 
     def upsert_observation(self, observation: dict[str, object]) -> str:
@@ -271,6 +282,24 @@ class FakeMacroIntelRepository:
         if self.fail_latest_observations:
             raise RuntimeError("postgres://user:secret@db latest failed")
         self.latest_observation_limits.append(limit)
+        return self.source_observations
+
+    def observations_for_series(
+        self,
+        *,
+        series_keys: tuple[str, ...],
+        lookback_days: int,
+        limit_per_series: int,
+    ) -> list[dict[str, object]]:
+        if self.fail_observations_for_series:
+            raise RuntimeError("postgres://user:secret@db history failed")
+        self.observations_for_series_calls.append(
+            {
+                "series_keys": series_keys,
+                "lookback_days": lookback_days,
+                "limit_per_series": limit_per_series,
+            }
+        )
         return self.source_observations
 
     def insert_snapshot(self, snapshot: dict[str, object]) -> None:

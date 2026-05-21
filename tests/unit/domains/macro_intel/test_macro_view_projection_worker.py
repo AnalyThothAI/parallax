@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_SERIES
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import (
     MacroViewProjectionWorker,
 )
@@ -28,7 +29,12 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     db = FakeDB(repo)
     worker = MacroViewProjectionWorker(
         name="macro_view_projection",
-        settings=SimpleNamespace(batch_size=250, statement_timeout_seconds=30),
+        settings=SimpleNamespace(
+            batch_size=250,
+            lookback_days=730,
+            limit_per_series=99,
+            statement_timeout_seconds=30,
+        ),
         db=db,
         telemetry=object(),
         clock_ms=lambda: NOW_MS,
@@ -37,12 +43,16 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     result = worker.run_once_sync()
 
     assert result.processed == 1
-    assert result.notes["projection_version"] == "macro_regime_v1"
+    assert result.notes["projection_version"] == "macro_regime_v2"
     assert result.notes["status"] == "partial"
     assert db.sessions == ["macro_view_projection"]
-    assert repo.latest_limit == 250
+    assert repo.observations_for_series_call == {
+        "series_keys": MACRO_CORE_SERIES,
+        "lookback_days": 730,
+        "limit_per_series": 99,
+    }
     assert len(repo.snapshots) == 1
-    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v1:1779000000000"
+    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v2:1779000000000"
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
 
 
@@ -61,11 +71,21 @@ class FakeDB:
 class FakeMacroIntelRepository:
     def __init__(self, *, observations: list[dict[str, object]]) -> None:
         self.observations = observations
-        self.latest_limit: int | None = None
+        self.observations_for_series_call: dict[str, object] | None = None
         self.snapshots: list[dict[str, object]] = []
 
-    def latest_observations(self, *, limit: int) -> list[dict[str, object]]:
-        self.latest_limit = limit
+    def observations_for_series(
+        self,
+        *,
+        series_keys: tuple[str, ...],
+        lookback_days: int,
+        limit_per_series: int,
+    ) -> list[dict[str, object]]:
+        self.observations_for_series_call = {
+            "series_keys": series_keys,
+            "lookback_days": lookback_days,
+            "limit_per_series": limit_per_series,
+        }
         return self.observations
 
     def insert_snapshot(self, snapshot: dict[str, object]) -> None:

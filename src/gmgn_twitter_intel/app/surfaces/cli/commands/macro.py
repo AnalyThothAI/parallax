@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CORE_SERIES,
+    MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
+    MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
 from gmgn_twitter_intel.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
 from gmgn_twitter_intel.platform.config.settings import load_settings
@@ -48,7 +53,11 @@ def _handle_project_once() -> tuple[int, dict[str, Any]]:
         now_ms = _now_ms()
         settings = load_settings(require_ws_token=False)
         with repositories(settings) as repos:
-            observations = repos.macro_intel.latest_observations(limit=250)
+            observations = repos.macro_intel.observations_for_series(
+                series_keys=MACRO_CORE_SERIES,
+                lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+                limit_per_series=MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
+            )
             snapshot = build_macro_view_snapshot(observations, computed_at_ms=now_ms)
             repos.macro_intel.insert_snapshot(snapshot)
     except Exception as exc:

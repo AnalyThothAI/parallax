@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CORE_SERIES,
+    MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
+    MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import (
     build_macro_view_snapshot,
 )
@@ -27,7 +32,11 @@ class MacroViewProjectionWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            observations = repos.macro_intel.latest_observations(limit=self._batch_size())
+            observations = repos.macro_intel.observations_for_series(
+                series_keys=MACRO_CORE_SERIES,
+                lookback_days=self._lookback_days(),
+                limit_per_series=self._limit_per_series(),
+            )
             snapshot = build_macro_view_snapshot(observations, computed_at_ms=now)
             repos.macro_intel.insert_snapshot(snapshot)
         return WorkerResult(
@@ -50,6 +59,12 @@ class MacroViewProjectionWorker(WorkerBase):
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 250)))
+
+    def _lookback_days(self) -> int:
+        return max(1, int(getattr(self.settings, "lookback_days", MACRO_VIEW_HISTORY_LOOKBACK_DAYS)))
+
+    def _limit_per_series(self) -> int:
+        return max(1, int(getattr(self.settings, "limit_per_series", MACRO_VIEW_HISTORY_LIMIT_PER_SERIES)))
 
 
 def _now_ms() -> int:
