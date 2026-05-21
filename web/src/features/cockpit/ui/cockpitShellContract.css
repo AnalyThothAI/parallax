@@ -1,0 +1,128 @@
+@layer app.shell {
+.mobile-route-nav {
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: rgba(8, 10, 10, 0.96);
+  padding: 7px 8px;
+  scrollbar-width: none;
+}
+
+.mobile-route-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-route-nav a {
+  display: inline-grid;
+  grid-template-columns: 14px auto;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ash);
+  background: rgba(18, 23, 19, 0.72);
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.mobile-route-nav svg {
+  width: 13px;
+  height: 13px;
+}
+
+.mobile-route-nav a.active {
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
+}
+
+@media (min-width: 1280px) {
+  .cockpit-shell {
+    grid-template-rows: var(--cockpit-topbar-height) minmax(0, 1fr);
+  }
+
+  .cockpit-grid {
+    grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
+  }
+
+  .desktop-side-rail {
+    display: grid;
+  }
+
+  .responsive-control-panel,
+  .mobile-task-nav,
+  .mobile-route-nav {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .cockpit-shell {
+    grid-template-rows: var(--cockpit-topbar-height) auto auto minmax(0, 1fr);
+  }
+
+  .cockpit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-side-rail,
+  .mobile-task-nav {
+    display: none;
+  }
+
+  .mobile-route-nav {
+    display: flex;
+  }
+
+  .responsive-control-panel {
+    display: grid;
+  }
+}
+
+@media (max-width: 767px) {
+  .cockpit-shell {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+  }
+
+  .cockpit-shell.search-shell {
+    padding-bottom: 0;
+  }
+
+  .cockpit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-side-rail {
+    display: none;
+  }
+
+  .mobile-route-nav {
+    display: flex;
+  }
+
+  .responsive-control-panel {
+    display: grid;
+  }
+
+  .cockpit-shell .cockpit-grid [data-mobile-task-panel] {
+    display: none;
+  }
+
+  .cockpit-shell.mobile-task-radar .cockpit-grid [data-mobile-task-panel="radar"],
+  .cockpit-shell.mobile-task-tape .cockpit-grid [data-mobile-task-panel="tape"],
+  .cockpit-shell.mobile-task-lab .cockpit-grid [data-mobile-task-panel="lab"] {
+    display: grid;
+  }
+
+  .mobile-task-nav {
+    display: grid;
+  }
+}
+}

@@ -10,6 +10,7 @@ import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
 import { MobileRouteNav } from "./MobileRouteNav";
 import { RadarControls } from "./RadarControls";
 import "./cockpit.css";
+import "./cockpitShellContract.css";
 
 export type ShellNotificationProps = {
   notifications: NotificationItem[];

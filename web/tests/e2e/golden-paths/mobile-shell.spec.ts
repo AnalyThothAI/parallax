@@ -15,6 +15,10 @@ test("mobile shell exposes task nav without desktop rail or route reloads", asyn
 
   await expect(page.locator(".desktop-side-rail")).toBeHidden();
 
+  const mobileRouteNav = page.locator(".mobile-route-nav");
+  await expect(mobileRouteNav).toBeVisible();
+  await expect(mobileRouteNav.getByRole("link", { name: "Stocks" })).toBeVisible();
+
   const mobileTaskNav = page.locator(".mobile-task-nav");
   await expect(mobileTaskNav).toBeVisible();
   const radarButton = mobileTaskNav.getByRole("button", { name: "Radar" });

@@ -16,6 +16,21 @@ def test_project_metadata_uses_gmgn_twitter_intel_name():
     }
 
 
+def test_macrodata_cli_is_packaged_from_versioned_git_source():
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    dependencies = set(metadata["project"]["dependencies"])
+    sources = metadata["tool"]["uv"]["sources"]
+
+    assert "macrodata-cli" in dependencies
+    assert sources["macrodata-cli"] == {
+        "git": "https://github.com/AnalyThothAI/macrodata-cli.git",
+        "tag": "v0.1.2",
+    }
+    assert "path" not in sources["macrodata-cli"]
+    assert "editable" not in sources["macrodata-cli"]
+    assert "url" not in sources["macrodata-cli"]
+
+
 def test_project_uses_domain_package_src_layout():
     base = ROOT / "src" / "gmgn_twitter_intel"
     api = base / "app" / "surfaces" / "api"

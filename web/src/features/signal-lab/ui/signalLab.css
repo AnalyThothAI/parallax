@@ -1,5 +1,5 @@
+@layer app.features {
 .signal-lab-pulse {
-  display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
 }
@@ -1144,13 +1144,8 @@
   }
 }
 
-@media (max-width: 767px) {
-  .mobile-task-radar .signal-lab-pulse[data-mobile-task-panel="lab"],
-  .mobile-task-tape .signal-lab-pulse[data-mobile-task-panel="lab"] {
-    display: none;
-  }
-
-  .mobile-task-lab .signal-lab-pulse[data-mobile-task-panel="lab"] {
+@media (min-width: 768px) {
+  .signal-lab-pulse {
     display: grid;
   }
 }
@@ -1321,4 +1316,5 @@
     justify-items: start;
     text-align: left;
   }
+}
 }

@@ -1,3 +1,5 @@
+@layer app.base, app.primitives, app.shell, app.features, app.overrides;
+
 :root {
   color-scheme: dark;
   --void: #070908;

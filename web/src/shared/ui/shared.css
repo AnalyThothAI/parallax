@@ -1,3 +1,4 @@
+@layer app.primitives {
 .load-more-posts {
   width: 100%;
   margin-top: 8px;
@@ -1372,4 +1373,5 @@
   color: var(--opportunity);
   border-color: var(--opportunity-line);
   background: var(--opportunity-soft);
+}
 }

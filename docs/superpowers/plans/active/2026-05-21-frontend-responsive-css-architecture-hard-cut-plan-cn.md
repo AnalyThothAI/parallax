@@ -10,6 +10,17 @@
 
 ---
 
+## Current Execution State — 2026-05-21
+
+- Done: P0 mobile shell recovery, mobile route cold-load matrix, deterministic E2E mocks, Docker build/start health check.
+- Done: real cascade layers are now active for base/primitives/shell/features side-effect CSS; the architecture test no longer allowlists unlayered app CSS except `styles/tailwind.css`.
+- Done: final shell breakpoint decisions moved into `web/src/features/cockpit/ui/cockpitShellContract.css`, so old `cockpit.css` source-order drift cannot decide rail/nav visibility.
+- Done: mobile task panel visibility is shell-owned; feature CSS is blocked from owning `[data-mobile-task-panel]`, `.mobile-task-radar`, `.mobile-task-tape`, or `.mobile-task-lab`.
+- Done: tablet shell regression coverage proves `834px` hides desktop rail, shows compact route navigation, hides mobile task nav, and can navigate to Stocks.
+- Still open: split oversized CSS files by responsibility, move component-specific selectors to CSS Modules, and convert remaining data-dense mobile surfaces beyond the tested no-overflow baseline.
+
+---
+
 ## File Structure
 
 ### Create

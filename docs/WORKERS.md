@@ -78,8 +78,9 @@ collector
 document because every downstream worker depends on the facts it writes.
 The macro bundle importer is also not a long-running worker: the
 `gmgn-twitter-intel macro import-bundle` CLI writes `macro_observations`
-facts plus `macro_import_runs` audit rows, and the projection worker later
-re-reads those persisted facts.
+facts plus `macro_import_runs` audit rows from JSON produced by the packaged
+`macrodata` executable, and the projection worker later re-reads those
+persisted facts.
 
 ## Worker Inventory
 

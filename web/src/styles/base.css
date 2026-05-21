@@ -1,3 +1,4 @@
+@layer app.base {
 * {
   box-sizing: border-box;
 }
@@ -59,4 +60,5 @@ svg {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   clip-path: inset(50%);
+}
 }

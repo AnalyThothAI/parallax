@@ -1,3 +1,4 @@
+@layer app.features {
 .news-panel {
   min-height: 100%;
 }
@@ -967,4 +968,5 @@
   .news-hero-agent h2 {
     font-size: 23px;
   }
+}
 }

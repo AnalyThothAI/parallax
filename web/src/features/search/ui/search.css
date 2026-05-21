@@ -1,3 +1,4 @@
+@layer app.features {
 .search-intel-page {
   min-height: calc(100dvh - var(--cockpit-topbar-height));
   padding: 10px 12px 18px;
@@ -744,4 +745,5 @@
   .search-evidence-list a {
     justify-self: start;
   }
+}
 }

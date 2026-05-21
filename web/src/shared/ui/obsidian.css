@@ -1,3 +1,4 @@
+@layer app.primitives {
 .ods-kicker {
   color: var(--opportunity);
   font-family: var(--mono);
@@ -591,4 +592,5 @@
   .ods-mini-page-body.with-aside {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 }

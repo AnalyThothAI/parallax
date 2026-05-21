@@ -1,3 +1,4 @@
+@layer app.features {
 .macro-workbench {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -821,4 +822,5 @@
   .macro-module-tab {
     min-height: 52px;
   }
+}
 }

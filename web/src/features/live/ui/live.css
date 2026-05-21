@@ -1,3 +1,4 @@
+@layer app.features {
 .radar-panel {
   min-width: 0;
   border-right: 1px solid var(--line);
@@ -256,7 +257,7 @@
   font-size: 9px;
 }
 
-.bottom-deck > [data-mobile-task-panel] {
+.bottom-deck > * {
   min-width: 0;
 }
 
@@ -526,7 +527,6 @@
 }
 
 .live-signal-tape {
-  display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 140px;
 }
@@ -715,7 +715,6 @@
 }
 
 .live-page > .mobile-task-surface {
-  display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
@@ -976,15 +975,12 @@
   .bottom-deck {
     display: contents;
   }
+}
 
-  [data-mobile-task-panel] {
-    display: none;
-  }
-
-  .mobile-task-radar [data-mobile-task-panel="radar"],
-  .mobile-task-tape [data-mobile-task-panel="tape"],
-  .mobile-task-lab [data-mobile-task-panel="lab"] {
-    display: block;
+@media (min-width: 768px) {
+  .live-page > .mobile-task-surface,
+  .live-signal-tape {
+    display: grid;
   }
 }
 
@@ -1614,4 +1610,5 @@
     justify-self: end;
     width: min(124px, 100%);
   }
+}
 }

@@ -3,7 +3,8 @@
 Macro Intel owns deterministic macro regime read models inside
 `gmgn-twitter-intel`. It does not fetch FRED, NY Fed, Treasury, Cboe, CFTC, or
 crypto provider data directly; normalized observations arrive as persisted
-facts from a macrodata-cli bundle importer or an operator-maintained path.
+facts from the packaged `macrodata-cli` bundle command or an
+operator-maintained path.
 
 ## Ownership
 
@@ -16,7 +17,7 @@ facts from a macrodata-cli bundle importer or an operator-maintained path.
 ## Flow
 
 ```text
-macrodata-cli providers
+macrodata bundle macro-core
   -> macro-core JSON bundle
   -> app/surfaces/cli/commands/macro.py import-bundle
   -> macro_observations / macro_import_runs
@@ -48,6 +49,11 @@ surface as `data_gap` / neutral scenario context, not as a false stress signal.
 
 ## CLI And Operations
 
+- Docker installs `AnalyThothAI/macrodata-cli` from the `v0.1.2` Git tag.
+  Its executable is `macrodata`; do not mount or reference a host-local
+  `/Users/.../macrodata-cli` checkout in deployment.
+- `macrodata bundle macro-core --asof <YYYY-MM-DD> | gmgn-twitter-intel macro
+  import-bundle --stdin` is the container-native import path.
 - `uv run gmgn-twitter-intel macro import-bundle --file /path/bundle.json`
   imports a macrodata-cli `macro-core` bundle. `--stdin` is the streaming
   equivalent. The command upserts observations and writes one import-run audit

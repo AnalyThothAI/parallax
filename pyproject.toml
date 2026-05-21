@@ -19,6 +19,7 @@ dependencies = [
     "jsonref>=1.1.0",
     "loguru>=0.7.2",
     "coinglass-cli",
+    "macrodata-cli",
     "marketlane-cli",
     "openai>=2.0.0",
     "openai-agents>=0.10.5",
@@ -178,4 +179,5 @@ exclude_lines = [
 [tool.uv.sources]
 coinglass-cli = { git = "https://github.com/AnalyThothAI/coinglass-cli.git", rev = "592bf2f973411e4d516ca928f65aaabf40d707eb" }
 cryptopanic-cli = { git = "https://github.com/AnalyThothAI/cryptopanic-cli.git", rev = "921245022ff30fc027dd7dde7dd59f4a6d94ae7c" }
+macrodata-cli = { git = "https://github.com/AnalyThothAI/macrodata-cli.git", tag = "v0.1.2" }
 marketlane-cli = { git = "https://github.com/AnalyThothAI/marketlane-cli.git" }

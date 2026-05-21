@@ -1,3 +1,4 @@
+@layer app.features {
 .ops-page {
   display: grid;
   min-width: 0;
@@ -663,4 +664,5 @@
   .ops-queue-row em {
     grid-column: 1 / -1;
   }
+}
 }

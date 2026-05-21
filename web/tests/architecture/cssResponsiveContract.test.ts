@@ -17,6 +17,7 @@ const shellSelectors = [
   ".desktop-side-rail",
   ".mobile-task-nav",
   ".responsive-control-panel",
+  ".mobile-route-nav",
 ] as const;
 
 const oversizedSideEffectCss = new Set([
@@ -33,20 +34,7 @@ const oversizedSideEffectCss = new Set([
 ]);
 
 const unlayeredSideEffectCss = new Set([
-  "features/cockpit/ui/cockpit.css",
-  "features/live/ui/live.css",
-  "features/macro/macro.css",
-  "features/news/news.css",
-  "features/ops/ui/ops.css",
-  "features/search/ui/search.css",
-  "features/signal-lab/ui/signalLab.css",
-  "features/stocks/ui/stocks.css",
-  "features/watchlist/ui/watchlist.css",
-  "shared/ui/obsidian.css",
-  "shared/ui/shared.css",
-  "styles/base.css",
   "styles/tailwind.css",
-  "styles/tokens.css",
 ]);
 
 describe("responsive CSS contract", () => {
@@ -114,6 +102,34 @@ describe("responsive CSS contract", () => {
             .map(
               (selector) =>
                 `${relativeToWeb(path)}:${lineNumber(css, rule.start)} owns ${selector} via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps mobile task panel visibility hooks in cockpit shell CSS", () => {
+    const forbiddenFragments = [
+      "[data-mobile-task-panel",
+      ".mobile-task-radar",
+      ".mobile-task-tape",
+      ".mobile-task-lab",
+    ];
+    const offenders = collectFiles(join(srcRoot, "features"))
+      .filter(isCssFile)
+      .filter((path) => !relative(srcRoot, path).startsWith("features/cockpit/"))
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css).flatMap((rule) =>
+          forbiddenFragments
+            .filter((fragment) => rule.selector.includes(fragment))
+            .map(
+              (fragment) =>
+                `${relativeToWeb(path)}:${lineNumber(css, rule.start)} owns ${fragment} via ${compactSelector(
                   rule.selector,
                 )}`,
             ),

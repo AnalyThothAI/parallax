@@ -1,3 +1,4 @@
+@layer app.shell {
 :root {
   --cockpit-rail-width: 196px;
   --cockpit-topbar-height: 53px;
@@ -854,7 +855,7 @@
   .mobile-task-radar [data-mobile-task-panel="radar"],
   .mobile-task-tape [data-mobile-task-panel="tape"],
   .mobile-task-lab [data-mobile-task-panel="lab"] {
-    display: block;
+    display: grid;
   }
 
   .mobile-task-nav {
@@ -1315,7 +1316,7 @@
   .cockpit-shell.mobile-task-radar .cockpit-grid [data-mobile-task-panel="radar"],
   .cockpit-shell.mobile-task-tape .cockpit-grid [data-mobile-task-panel="tape"],
   .cockpit-shell.mobile-task-lab .cockpit-grid [data-mobile-task-panel="lab"] {
-    display: block;
+    display: grid;
   }
 
   .mobile-route-nav {
@@ -1365,4 +1366,5 @@
   .mobile-task-nav {
     display: grid;
   }
+}
 }

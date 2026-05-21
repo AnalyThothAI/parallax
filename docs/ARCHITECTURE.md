@@ -22,10 +22,12 @@ GMGN public stream
 ```
 
 Macro intelligence has a sibling batch path because the service does not fetch
-macro providers directly:
+macro providers directly. The Docker image installs `macrodata-cli` from its
+versioned Git source (`v0.1.2`) and uses its `macrodata` executable; it must not
+depend on a host-local checkout path.
 
 ```text
-macrodata-cli providers
+macrodata bundle macro-core
   -> macro-core JSON bundle
   -> gmgn macro importer CLI
   -> macro_observations / macro_import_runs

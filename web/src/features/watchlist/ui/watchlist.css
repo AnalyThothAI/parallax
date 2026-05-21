@@ -1,3 +1,4 @@
+@layer app.features {
 .watchlist-page {
   height: 100%;
   min-height: 0;
@@ -501,4 +502,5 @@
   .watchlist-topic-strip {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 }

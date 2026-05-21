@@ -837,6 +837,7 @@ dependencies = [
     { name = "instructor" },
     { name = "jsonref" },
     { name = "loguru" },
+    { name = "macrodata-cli" },
     { name = "marketlane-cli" },
     { name = "openai" },
     { name = "openai-agents" },
@@ -876,6 +877,7 @@ requires-dist = [
     { name = "instructor", specifier = ">=1.15.1" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "loguru", specifier = ">=0.7.2" },
+    { name = "macrodata-cli", git = "https://github.com/AnalyThothAI/macrodata-cli.git?tag=v0.1.2" },
     { name = "marketlane-cli", git = "https://github.com/AnalyThothAI/marketlane-cli.git" },
     { name = "openai", specifier = ">=2.0.0" },
     { name = "openai-agents", specifier = ">=0.10.5" },
@@ -1233,6 +1235,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c", size = 61595, upload-time = "2024-12-06T11:20:54.538Z" },
+]
+
+[[package]]
+name = "macrodata-cli"
+version = "0.1.2"
+source = { git = "https://github.com/AnalyThothAI/macrodata-cli.git?tag=v0.1.2#e5d12f0d94f1a5a46400dc42b3215b719165ab7e" }
+dependencies = [
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "platformdirs" },
+    { name = "pydantic" },
+    { name = "tenacity" },
+    { name = "typer" },
 ]
 
 [[package]]

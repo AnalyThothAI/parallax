@@ -433,6 +433,10 @@ Macro one-shot CLI commands are operator surfaces, not background workers:
 observations, builds the `macro_regime_v2` snapshot, and writes
 `macro_view_snapshots`; `macro status` reports migration readiness,
 observation/series counts, the latest import run, and the latest snapshot.
+Docker builds install the `AnalyThothAI/macrodata-cli` `v0.1.2` Git dependency,
+whose executable is `macrodata`, so remote operators can pipe
+`macrodata bundle macro-core --asof <date>` into `macro import-bundle --stdin`
+without mounting a local source checkout.
 These commands may report partial coverage and data gaps; they must not print
 provider secrets, raw WebSocket tokens, or API keys.
 
