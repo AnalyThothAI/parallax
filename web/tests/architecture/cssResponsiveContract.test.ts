@@ -244,6 +244,87 @@ describe("responsive CSS contract", () => {
     expect(existsSync(join(cockpitUiRoot, "RadarControls.tsx"))).toBe(false);
   });
 
+  it("keeps retired generic radar table selectors out of live CSS", () => {
+    const liveCssPath = join(srcRoot, "features/live/ui/live.css");
+    const liveCss = readFileSync(liveCssPath, "utf8");
+    const forbiddenSelectors = [
+      ".radar-head",
+      ".radar-row",
+      ".radar-row-select",
+      ".radar-control-row",
+      ".token-cell",
+      ".case-cell",
+      ".venue-cell",
+      ".metric",
+      ".phase",
+      ".direction",
+      ".radar-skeleton",
+      ".segmented",
+      ".scope-toggle",
+      ".venue-filter",
+      ".sort-toggle",
+      ".account-lane-card",
+      ".account-kv",
+      ".entity-tags",
+      ".timeline-summary",
+      ".timeline-chart",
+      ".timeline-skeleton",
+      ".replay-focus-head",
+      ".replay-focus-grid",
+      ".replay-event-rail",
+      ".replay-metrics",
+      ".score-overview",
+      ".settlement-grid",
+      ".evidence-query-kv",
+      ".tabs",
+    ];
+    const offenders = findRules(liveCss).flatMap((rule) =>
+      forbiddenSelectors
+        .filter((selector) => selectorContains(rule.selector, selector))
+        .map(
+          (selector) =>
+            `${relativeToSrc(liveCssPath)}:${lineNumber(liveCss, rule.start)} keeps retired ${selector} via ${compactSelector(
+              rule.selector,
+            )}`,
+        ),
+    );
+
+    expect(
+      offenders,
+      [
+        "Live Token Radar must use token-radar-* selectors owned by live.css.",
+        "Stocks must own stock-radar-* selectors in stocks.css.",
+        "Shared RadarControls must own radar-controls-* selectors in shared/ui/RadarControls.css.",
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
+  it("keeps RadarControls styling on the shared primitive instead of feature CSS buckets", () => {
+    const radarControlsSource = readFileSync(join(srcRoot, "shared/ui/RadarControls.tsx"), "utf8");
+    const radarControlsCssPath = join(srcRoot, "shared/ui/RadarControls.css");
+    const radarControlsCss = readFileSync(radarControlsCssPath, "utf8");
+    const featureCssOffenders = collectFiles(join(srcRoot, "features"))
+      .filter(isCssFile)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css).flatMap((rule) =>
+          [".radar-controls-group", ".radar-controls-window", ".radar-controls-scope"]
+            .filter((selector) => selectorContains(rule.selector, selector))
+            .map(
+              (selector) =>
+                `${relativeToSrc(path)}:${lineNumber(css, rule.start)} owns shared ${selector} via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(radarControlsSource).not.toContain("segmented");
+    expect(radarControlsCss).toContain("@layer app.primitives");
+    expect(featureCssOffenders).toEqual([]);
+  });
+
   it("reports side-effect CSS files above the 700-line budget", () => {
     const oversized = collectFiles(srcRoot)
       .filter(isSideEffectCssFile)

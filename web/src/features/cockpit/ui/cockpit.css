@@ -417,8 +417,7 @@
   border-color: var(--opportunity-line);
 }
 
-.scope-stack button,
-.segmented button {
+.scope-stack button {
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--ash);
@@ -427,8 +426,7 @@
   font-size: 10px;
 }
 
-.scope-stack button.active,
-.segmented button.active {
+.scope-stack button.active {
   color: var(--opportunity);
   border-color: var(--opportunity-line);
   background: var(--opportunity-soft);

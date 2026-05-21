@@ -194,7 +194,7 @@ function VenueFilter({
   value: TokenRadarVenueFilter;
 }) {
   return (
-    <div className="segmented venue-filter" aria-label="token radar venue filter">
+    <div className="token-radar-venue-filter" aria-label="token radar venue filter">
       {TOKEN_RADAR_VENUE_FILTERS.map((item) => (
         <button
           aria-pressed={item.key === value}
