@@ -28,8 +28,15 @@
 .macro-regime-strip span,
 .macro-muted,
 .macro-panel-cell small,
+.macro-chain-node small,
 .macro-indicator-row small,
-.macro-chip small {
+.macro-chip small,
+.macro-metric-tile small,
+.macro-column-label,
+.macro-signal-item small,
+.macro-token-line span,
+.macro-token-line small,
+.macro-trade-map-item span {
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
@@ -152,6 +159,10 @@
   border-style: dashed;
 }
 
+.macro-chain-section,
+.macro-scenario-section,
+.macro-confirmation-section,
+.macro-trade-map-section,
 .macro-indicators,
 .macro-trigger-lane {
   display: grid;
@@ -160,6 +171,182 @@
   border-radius: 6px;
   background: rgba(8, 11, 11, 0.64);
   padding: 10px;
+}
+
+.macro-chain-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(112px, 1fr));
+  gap: 6px;
+}
+
+.macro-chain-node {
+  display: grid;
+  min-height: 86px;
+  align-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 5px;
+  background: rgba(18, 22, 21, 0.58);
+  padding: 9px;
+}
+
+.macro-chain-node > div,
+.macro-trade-map-item > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.macro-chain-node span,
+.macro-chain-node b,
+.macro-chain-node strong,
+.macro-metric-tile b,
+.macro-signal-item b,
+.macro-trade-map-item b,
+.macro-token-line span,
+.macro-token-line small {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.macro-chain-node span {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.macro-chain-node b {
+  color: var(--bone);
+  font-size: 16px;
+}
+
+.macro-chain-node strong,
+.macro-signal-item b,
+.macro-trade-map-item b {
+  overflow-wrap: anywhere;
+  color: var(--bone-2);
+  font-size: 11px;
+}
+
+.macro-chain-node.stress,
+.macro-signal-item.contradict {
+  border-color: rgba(255, 92, 122, 0.3);
+  background: rgba(38, 18, 23, 0.52);
+}
+
+.macro-chain-node.constructive,
+.macro-signal-item.confirm {
+  border-color: rgba(145, 234, 181, 0.28);
+  background: rgba(18, 34, 25, 0.46);
+}
+
+.macro-chain-node.gap {
+  border-style: dashed;
+}
+
+.macro-scenario-body {
+  display: grid;
+  gap: 8px;
+}
+
+.macro-scenario-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  gap: 6px;
+}
+
+.macro-metric-tile {
+  display: grid;
+  min-height: 50px;
+  align-content: center;
+  gap: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: rgba(15, 19, 18, 0.58);
+  padding: 8px;
+}
+
+.macro-metric-tile b {
+  overflow-wrap: anywhere;
+  color: var(--bone);
+  font-size: 13px;
+}
+
+.macro-signal-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.macro-signal-column {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.macro-column-label {
+  color: var(--ash);
+}
+
+.macro-signal-list,
+.macro-trade-map-list {
+  display: grid;
+  gap: 6px;
+}
+
+.macro-signal-item,
+.macro-trade-map-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: rgba(13, 17, 16, 0.62);
+  padding: 8px;
+}
+
+.macro-signal-item.watch {
+  border-color: rgba(255, 206, 115, 0.28);
+  background: rgba(42, 31, 12, 0.38);
+}
+
+.macro-trade-map-item {
+  border-color: rgba(108, 186, 255, 0.22);
+}
+
+.macro-trade-map-item > div:first-child span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.macro-token-line {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+
+.macro-token-line > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.macro-token-line small {
+  max-width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 4px;
+  color: var(--bone-2);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 2px 5px;
+  overflow-wrap: anywhere;
+  text-transform: none;
 }
 
 .macro-section-head {
@@ -263,6 +450,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .macro-chain-grid,
+  .macro-scenario-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .macro-signal-columns,
   .macro-trigger-lane {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -271,6 +464,9 @@
 @media (max-width: 720px) {
   .macro-page-toolbar,
   .macro-indicator-row,
+  .macro-chain-grid,
+  .macro-scenario-metrics,
+  .macro-token-line,
   .macro-scoreboard {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -39,8 +39,8 @@ describe("macro route", () => {
 function macroFixture(): MacroData {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v1:1779000000000",
-      projection_version: "macro_regime_v1",
+      snapshot_id: "macro-view:macro_regime_v2:1779000000000",
+      projection_version: "macro_regime_v2",
       asof_date: "2026-05-20",
       status: "partial",
       regime: "funding_stress",
@@ -59,5 +59,30 @@ function macroFixture(): MacroData {
     triggers: [],
     data_gaps: [],
     source_coverage: { observed_series_count: 10, required_series_count: 10, coverage_ratio: 1 },
+    features: {},
+    chain: {
+      liquidity: {
+        score: 8,
+        regime: "funding_stress",
+        evidence: ["sofr_iorb_spread_bps=15.0"],
+        data_gaps: [],
+      },
+    },
+    scenario: {
+      current_regime: "funding_stress",
+      confidence: 0.72,
+      time_window: "1w",
+      confirmations: [],
+      contradictions: [],
+      watch_triggers: [],
+      invalidations: [],
+      trade_map: [],
+    },
+    scorecard: {
+      projection_version: "macro_regime_v2",
+      observed_series_count: 10,
+      required_series_count: 10,
+      coverage_ratio: 1,
+    },
   };
 }

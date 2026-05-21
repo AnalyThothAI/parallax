@@ -27,10 +27,21 @@ describe("MacroPage", () => {
     renderWithProviders(<MacroPage token="test-token" />);
 
     expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
-    expect(await screen.findAllByText("funding_stress")).toHaveLength(2);
-    expect(screen.getByText("Liquidity")).toBeInTheDocument();
+    expect((await screen.findAllByText("funding_stress")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Transmission Chain" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Scenario Path" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Confirmations / Contradictions" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Trade Map" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Data Gaps" })).toBeInTheDocument();
+    expect(screen.getAllByText("Liquidity").length).toBeGreaterThan(0);
+    expect(screen.getByText("Fed Corridor")).toBeInTheDocument();
+    expect(screen.getByText("repo_pressure_persists_3d")).toBeInTheDocument();
+    expect(screen.getByText("volatility_carry")).toBeInTheDocument();
+    expect(screen.getByText("risk_down_credit_sensitive")).toBeInTheDocument();
     expect(screen.getByText("SOFR minus IORB")).toBeInTheDocument();
-    expect(screen.getByText("sofr_above_iorb")).toBeInTheDocument();
+    expect(screen.getAllByText("sofr_above_iorb").length).toBeGreaterThan(0);
     expect(screen.getByText("missing:fred:SP500")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro", { token: "test-token" }),
@@ -45,6 +56,10 @@ describe("MacroPage", () => {
       triggers: [],
       data_gaps: ["macro_view_snapshot_missing"],
       source_coverage: { observed_series_count: 0 },
+      features: {},
+      chain: {},
+      scenario: {},
+      scorecard: {},
     };
 
     renderWithProviders(<MacroPage token="test-token" />);
@@ -57,8 +72,8 @@ describe("MacroPage", () => {
 function populatedMacro(): MacroData {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v1:1779000000000",
-      projection_version: "macro_regime_v1",
+      snapshot_id: "macro-view:macro_regime_v2:1779000000000",
+      projection_version: "macro_regime_v2",
       asof_date: "2026-05-20",
       status: "partial",
       regime: "funding_stress",
@@ -96,6 +111,84 @@ function populatedMacro(): MacroData {
       required_series_count: 10,
       coverage_ratio: 1,
       latest_observed_at: "2026-05-20",
+    },
+    features: {
+      "fred:DGS10": {
+        latest: { value: 4.7, observed_at: "2026-05-20", unit: "percent" },
+        freshness_days: 1,
+        delta: { "5d": 0.1, "20d": 0.35, "60d": null },
+        zscore: { lookback: 252, value: 1.4 },
+        percentile: { lookback: 252, value: 0.82 },
+        data_gaps: [],
+      },
+    },
+    chain: {
+      liquidity: {
+        score: 8,
+        regime: "funding_stress",
+        evidence: ["sofr_iorb_spread_bps=15.0"],
+        data_gaps: [],
+      },
+      fed_corridor: {
+        score: 7,
+        regime: "corridor_pressure",
+        evidence: ["sofr_iorb_spread_bps=15.0"],
+        data_gaps: [],
+      },
+      volatility: {
+        score: 3,
+        regime: "carry",
+        evidence: ["vix=16.0"],
+        data_gaps: [],
+      },
+    },
+    scenario: {
+      current_regime: "funding_stress",
+      confidence: 0.72,
+      time_window: "1w",
+      confirmations: [
+        {
+          code: "sofr_above_iorb",
+          description: "SOFR is above IORB",
+          indicator_keys: ["sofr_iorb_spread_bps"],
+          value: 15,
+        },
+      ],
+      contradictions: [{ code: "volatility_carry", node: "volatility" }],
+      watch_triggers: [
+        {
+          code: "repo_pressure_persists_3d",
+          description: "SOFR remains above IORB across multiple observations.",
+        },
+      ],
+      invalidations: [
+        {
+          code: "sofr_iorb_normalizes",
+          description: "SOFR trades back below or in line with IORB.",
+        },
+      ],
+      trade_map: [
+        {
+          expression: "risk_down_credit_sensitive",
+          time_window: "1w",
+          confirms_on: ["sofr_above_iorb", "hy_oas_widening_5d", "vix_breaks_30"],
+          invalidates_on: ["sofr_iorb_normalizes", "hy_oas_tightens", "vix_returns_to_carry"],
+        },
+      ],
+    },
+    scorecard: {
+      projection_version: "macro_regime_v2",
+      overall_score: 7.25,
+      chain_average: 6,
+      observed_series_count: 10,
+      required_series_count: 70,
+      coverage_ratio: 0.14,
+      data_gap_count: 1,
+      chain_regimes: {
+        liquidity: "funding_stress",
+        fed_corridor: "corridor_pressure",
+        volatility: "carry",
+      },
     },
   };
 }

@@ -51,6 +51,74 @@ export type MacroTrigger = {
   value?: number | string | null;
 };
 
+export type MacroFeatureSnapshot = {
+  latest?: {
+    value?: number | string | null;
+    observed_at?: string | null;
+    unit?: string | null;
+  };
+  freshness_days?: number | null;
+  delta?: Record<string, number | null | undefined>;
+  zscore?: {
+    lookback?: number | null;
+    value?: number | null;
+  };
+  percentile?: {
+    lookback?: number | null;
+    value?: number | null;
+  };
+  data_gaps?: string[];
+};
+
+export type MacroChainNode = {
+  score?: number | null;
+  regime?: string | null;
+  evidence?: string[];
+  data_gaps?: string[];
+};
+
+export type MacroScenarioSignal = {
+  code?: string | null;
+  description?: string | null;
+  node?: string | null;
+  regime?: string | null;
+  evidence?: string[];
+  indicator_keys?: string[];
+  value?: number | string | null;
+  data_gap_count?: number | null;
+  delta_5d?: number | null;
+};
+
+export type MacroTradeMapEntry = {
+  expression?: string | null;
+  time_window?: string | null;
+  confirms_on?: string[];
+  invalidates_on?: string[];
+};
+
+export type MacroScenario = {
+  current_regime?: string | null;
+  confidence?: number | null;
+  time_window?: string | null;
+  confirmations?: MacroScenarioSignal[];
+  contradictions?: MacroScenarioSignal[];
+  watch_triggers?: MacroScenarioSignal[];
+  invalidations?: MacroScenarioSignal[];
+  trade_map?: MacroTradeMapEntry[];
+};
+
+export type MacroScorecard = {
+  projection_version?: string | null;
+  overall_score?: number | null;
+  chain_average?: number | null;
+  observed_series_count?: number | null;
+  required_series_count?: number | null;
+  coverage_ratio?: number | null;
+  data_gap_count?: number | null;
+  chain_regimes?: Record<string, string | null | undefined>;
+  [key: string]: unknown;
+};
+
 export type MacroData = {
   snapshot: MacroSnapshotSummary | null;
   panels: Record<string, MacroPanel>;
@@ -58,6 +126,10 @@ export type MacroData = {
   triggers: MacroTrigger[];
   data_gaps: string[];
   source_coverage: Record<string, number | string | null | undefined>;
+  features: Record<string, MacroFeatureSnapshot>;
+  chain: Record<string, MacroChainNode>;
+  scenario: MacroScenario;
+  scorecard: MacroScorecard;
 };
 
 export type BootstrapData = {

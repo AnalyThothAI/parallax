@@ -15,8 +15,8 @@ from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
-            "snapshot_id": "macro-view:macro_regime_v1:1",
-            "projection_version": "macro_regime_v1",
+            "snapshot_id": "macro-view:macro_regime_v2:1",
+            "projection_version": "macro_regime_v2",
             "asof_date": "2026-05-20",
             "status": "partial",
             "regime": "funding_stress",
@@ -26,6 +26,35 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
             "triggers_json": [{"code": "sofr_above_iorb"}],
             "data_gaps_json": ["missing:fred:SP500"],
             "source_coverage_json": {"observed_series_count": 10},
+            "features_json": {
+                "fred:DGS10": {
+                    "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                    "delta": {"5d": 0.1, "20d": 0.35, "60d": None},
+                }
+            },
+            "chain_json": {
+                "liquidity": {
+                    "score": 8.0,
+                    "regime": "funding_stress",
+                    "evidence": ["sofr_iorb_spread_bps=15.0"],
+                    "data_gaps": [],
+                }
+            },
+            "scenario_json": {
+                "current_regime": "funding_stress",
+                "confidence": 0.72,
+                "time_window": "1w",
+                "confirmations": [{"code": "sofr_above_iorb"}],
+                "contradictions": [],
+                "watch_triggers": [{"code": "vix_breaks_30"}],
+                "invalidations": [{"code": "sofr_iorb_normalizes"}],
+                "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+            },
+            "scorecard_json": {
+                "projection_version": "macro_regime_v2",
+                "chain_average": 7.8,
+                "observed_series_count": 10,
+            },
             "computed_at_ms": 1_779_000_000_000,
         }
     )
@@ -40,8 +69,8 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
         "ok": True,
         "data": {
             "snapshot": {
-                "snapshot_id": "macro-view:macro_regime_v1:1",
-                "projection_version": "macro_regime_v1",
+                "snapshot_id": "macro-view:macro_regime_v2:1",
+                "projection_version": "macro_regime_v2",
                 "asof_date": "2026-05-20",
                 "status": "partial",
                 "regime": "funding_stress",
@@ -53,6 +82,35 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
             "triggers": [{"code": "sofr_above_iorb"}],
             "data_gaps": ["missing:fred:SP500"],
             "source_coverage": {"observed_series_count": 10},
+            "features": {
+                "fred:DGS10": {
+                    "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                    "delta": {"5d": 0.1, "20d": 0.35, "60d": None},
+                }
+            },
+            "chain": {
+                "liquidity": {
+                    "score": 8.0,
+                    "regime": "funding_stress",
+                    "evidence": ["sofr_iorb_spread_bps=15.0"],
+                    "data_gaps": [],
+                }
+            },
+            "scenario": {
+                "current_regime": "funding_stress",
+                "confidence": 0.72,
+                "time_window": "1w",
+                "confirmations": [{"code": "sofr_above_iorb"}],
+                "contradictions": [],
+                "watch_triggers": [{"code": "vix_breaks_30"}],
+                "invalidations": [{"code": "sofr_iorb_normalizes"}],
+                "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
+            },
+            "scorecard": {
+                "projection_version": "macro_regime_v2",
+                "chain_average": 7.8,
+                "observed_series_count": 10,
+            },
         },
     }
 
@@ -71,6 +129,10 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
         "triggers": [],
         "data_gaps": ["macro_view_snapshot_missing"],
         "source_coverage": {"observed_series_count": 0},
+        "features": {},
+        "chain": {},
+        "scenario": {},
+        "scorecard": {},
     }
 
 

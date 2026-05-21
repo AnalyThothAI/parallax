@@ -28,6 +28,10 @@ def _public_macro(snapshot: dict[str, Any] | None) -> dict[str, Any]:
             "triggers": [],
             "data_gaps": ["macro_view_snapshot_missing"],
             "source_coverage": {"observed_series_count": 0},
+            "features": {},
+            "chain": {},
+            "scenario": {},
+            "scorecard": {},
         }
     return {
         "snapshot": {
@@ -44,6 +48,10 @@ def _public_macro(snapshot: dict[str, Any] | None) -> dict[str, Any]:
         "triggers": snapshot.get("triggers_json") or [],
         "data_gaps": snapshot.get("data_gaps_json") or [],
         "source_coverage": snapshot.get("source_coverage_json") or {},
+        "features": snapshot.get("features_json") or {},
+        "chain": snapshot.get("chain_json") or {},
+        "scenario": snapshot.get("scenario_json") or {},
+        "scorecard": snapshot.get("scorecard_json") or {},
     }
 
 
