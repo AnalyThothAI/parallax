@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -42,7 +44,7 @@ describe("TokenRadarTable rows", () => {
     );
     expect(row.querySelector(".radar-token-logo")).toHaveAttribute(
       "src",
-      "https://cdn.example.test/troll.png",
+      `${LOCAL_LOGO_PREFIX}troll-local`,
     );
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
     expect(within(row).getByText("ETH · 0x111111...111111")).toBeInTheDocument();
@@ -351,14 +353,10 @@ describe("TokenRadarTable rows", () => {
   });
 
   it("renders CEX venue links directly without a profile abstraction", () => {
-    const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/opn.png";
     renderTokenRadarTable([cexToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $OPN" });
-    expect(row.querySelector(".radar-token-logo")).toHaveAttribute(
-      "src",
-      `/api/token-image?url=${encodeURIComponent(logoUrl)}`,
-    );
+    expect(row.querySelector(".radar-token-logo")).not.toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "X" })).toHaveAttribute(
       "href",
       "https://x.com/opn",
@@ -625,7 +623,7 @@ function mixedFreshnessToken(): TokenFlowItem {
       identity: {
         symbol: "TROLL",
         name: "Troll Protocol",
-        logo_url: "https://cdn.example.test/troll.png",
+        logo_url: `${LOCAL_LOGO_PREFIX}troll-local`,
       },
       links: {
         website_url: "https://troll.example",

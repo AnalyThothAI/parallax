@@ -2,6 +2,9 @@ import type { TokenFlowItem } from "@lib/types";
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
 import { describe, expect, it } from "vitest";
 
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+const LOCAL_LOGO_URL = `${LOCAL_LOGO_PREFIX}hansa-local`;
+
 describe("buildTokenRadarCompactCase", () => {
   it("drives WHY NOW from a ready discussion digest", () => {
     const view = buildTokenRadarCompactCase(tokenFlowFixture());
@@ -90,6 +93,34 @@ describe("buildTokenRadarCompactCase", () => {
 
     expect(view.narrative.value).toBe("5m 实时信号");
     expect(view.narrative.detail).toBe("5m 实时信号");
+  });
+
+  it("keeps local mirrored logo URLs", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      profile: {
+        status: "ready",
+        identity: {
+          logo_url: LOCAL_LOGO_URL,
+        },
+      },
+    });
+
+    expect(view.logoUrl).toBe(LOCAL_LOGO_URL);
+  });
+
+  it("drops remote logo URLs", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      profile: {
+        status: "ready",
+        identity: {
+          logo_url: "https://cdn.example.test/hansa.png",
+        },
+      },
+    });
+
+    expect(view.logoUrl).toBeNull();
   });
 });
 

@@ -3,6 +3,9 @@ import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+const LOCAL_LOGO_PREFIX = "/api/" + "token-images/";
+const LOCAL_LOGO_URL = `${LOCAL_LOGO_PREFIX}zec-local`;
+
 afterEach(() => cleanup());
 
 describe("TokenProfileCard", () => {
@@ -14,7 +17,7 @@ describe("TokenProfileCard", () => {
     expect(screen.getByText("Privacy coin profile facts.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Zcash logo" })).toHaveAttribute(
       "src",
-      "https://cdn.example.test/zec.png",
+      LOCAL_LOGO_URL,
     );
 
     expectLink("Website", "https://z.cash");
@@ -41,7 +44,7 @@ describe("TokenProfileCard", () => {
     expect(screen.getByText("@zcash")).toBeInTheDocument();
   });
 
-  it("uses the token image proxy for Binance-hosted logos", () => {
+  it("falls back instead of rendering remote profile logos", () => {
     const logoUrl = "https://bin.bnbstatic.com/image/admin_mgs_image_upload/btc.png";
     const profile = readyProfile();
     render(
@@ -56,10 +59,7 @@ describe("TokenProfileCard", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "Zcash logo" })).toHaveAttribute(
-      "src",
-      `/api/token-image?url=${encodeURIComponent(logoUrl)}`,
-    );
+    expect(screen.queryByRole("img", { name: "Zcash logo" })).not.toBeInTheDocument();
   });
 
   it("renders pending, missing, and error states", () => {
@@ -98,7 +98,7 @@ function readyProfile(): TokenProfileBlock {
     identity: {
       symbol: "ZEC",
       name: "Zcash",
-      logo_url: "https://cdn.example.test/zec.png",
+      logo_url: LOCAL_LOGO_URL,
       banner_url: "https://cdn.example.test/zec-banner.png",
       description: "Privacy coin profile facts.",
     },
