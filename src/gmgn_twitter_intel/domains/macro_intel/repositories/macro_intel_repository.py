@@ -131,6 +131,45 @@ class MacroIntelRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def observations_for_series(
+        self,
+        *,
+        series_keys: Sequence[str],
+        lookback_days: int,
+        limit_per_series: int,
+    ) -> list[dict[str, Any]]:
+        bounded_lookback_days = max(1, int(lookback_days))
+        bounded_limit_per_series = max(1, int(limit_per_series))
+        rows = self.conn.execute(
+            """
+            WITH deduped AS (
+              SELECT *,
+                     row_number() OVER (
+                       PARTITION BY series_key, observed_at
+                       ORDER BY ingested_at_ms DESC
+                     ) AS dedupe_rn
+              FROM macro_observations
+              WHERE series_key = ANY(%s)
+                AND observed_at >= CURRENT_DATE - %s::int
+            ),
+            ranked AS (
+              SELECT *,
+                     row_number() OVER (
+                       PARTITION BY series_key
+                       ORDER BY observed_at DESC, ingested_at_ms DESC
+                     ) AS series_rn
+              FROM deduped
+              WHERE dedupe_rn = 1
+            )
+            SELECT *
+            FROM ranked
+            WHERE series_rn <= %s
+            ORDER BY series_key ASC, observed_at DESC, ingested_at_ms DESC
+            """,
+            (list(series_keys), bounded_lookback_days, bounded_limit_per_series),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def insert_snapshot(self, snapshot: Mapping[str, Any]) -> None:
         self.conn.execute(
             """
