@@ -581,7 +581,10 @@ function MacroHero({
           />
           <MetricTile label="coverage" value={coverageReadLabel(scorecard)} />
           <MetricTile label="asof" value={snapshot?.asof_date ?? "-"} />
-          <MetricTile label="gaps" value={String(scorecard.data_gap_count ?? data?.data_gaps.length ?? "-")} />
+          <MetricTile
+            label="gaps"
+            value={String(scorecard.data_gap_count ?? data?.data_gaps.length ?? "-")}
+          />
           <MetricTile label="refresh" value={isFetching ? "updating" : "live"} />
         </div>
       </div>
@@ -941,6 +944,7 @@ function FeatureChartCard({
         <MetricTile label="5d" value={deltaLabel(feature.delta?.["5d"])} />
         <MetricTile label="20d" value={deltaLabel(feature.delta?.["20d"])} />
         <MetricTile label="z" value={scoreLabel(feature.zscore?.value)} />
+        <MetricTile label="history" value={historyLabel(feature)} />
       </div>
     </article>
   );
@@ -1508,38 +1512,20 @@ function pickRecord<T>(record: Record<string, T>, keys: string[]): Record<string
 }
 
 function trendData(feature: MacroFeatureSnapshot): LineData[] {
-  const latestValue = numericOrNull(feature.latest?.value);
-  const observedAt = feature.latest?.observed_at;
-  if (latestValue === null || !observedAt) {
-    return [];
-  }
   const points: LineData[] = [];
-  const windows = [
-    { key: "60d", days: 60 },
-    { key: "20d", days: 20 },
-    { key: "5d", days: 5 },
-  ];
-  for (const window of windows) {
-    const delta = numericOrNull(feature.delta?.[window.key]);
-    if (delta !== null) {
-      points.push({
-        time: shiftDate(observedAt, -window.days),
-        value: latestValue - delta,
-      });
+  for (const point of feature.history ?? []) {
+    const value = numericOrNull(point.value);
+    const observedAt = point.observed_at;
+    if (value === null || !observedAt) {
+      continue;
     }
+    points.push({ time: observedAt, value });
   }
-  points.push({ time: observedAt, value: latestValue });
   const deduped = new globalThis.Map<string, LineData>();
   for (const point of points) {
     deduped.set(String(point.time), point);
   }
   return Array.from(deduped.values()).sort((a, b) => String(a.time).localeCompare(String(b.time)));
-}
-
-function shiftDate(dateText: string, days: number): string {
-  const date = new Date(`${dateText}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function featureTitle(key: string): string {
@@ -1676,6 +1662,16 @@ function deltaLabel(value: number | null | undefined): string {
   }
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2).replace(/\.?0+$/, "")}`;
+}
+
+function historyLabel(feature: MacroFeatureSnapshot): string {
+  const count =
+    feature.history?.filter((point) => numericOrNull(point.value) !== null && point.observed_at)
+      .length ?? 0;
+  if (count < 2) {
+    return "latest";
+  }
+  return `${count} pts`;
 }
 
 function numericOrNull(value: unknown): number | null {

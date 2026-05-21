@@ -31,6 +31,9 @@ def test_feature_engine_computes_latest_delta_zscore_and_percentile() -> None:
     assert dgs10["percentile"]["lookback"] == 252
     assert math.isfinite(dgs10["percentile"]["value"])
     assert 0.0 <= dgs10["percentile"]["value"] <= 1.0
+    assert len(dgs10["history"]) == 30
+    assert dgs10["history"][0] == {"observed_at": "2026-04-21", "value": pytest.approx(4.41)}
+    assert dgs10["history"][-1] == {"observed_at": "2026-05-20", "value": pytest.approx(4.70)}
     assert dgs10["data_gaps"] == ["insufficient_history:60d"]
 
 
@@ -41,6 +44,11 @@ def test_feature_engine_marks_insufficient_history_for_all_deltas_when_history_i
 
     dgs10 = features["fred:DGS10"]
     assert dgs10["latest"]["value"] == pytest.approx(4.70)
+    assert dgs10["history"] == [
+        {"observed_at": "2026-05-18", "value": pytest.approx(4.55)},
+        {"observed_at": "2026-05-19", "value": pytest.approx(4.60)},
+        {"observed_at": "2026-05-20", "value": pytest.approx(4.70)},
+    ]
     assert dgs10["delta"] == {"5d": None, "20d": None, "60d": None}
     assert dgs10["data_gaps"] == [
         "insufficient_history:5d",

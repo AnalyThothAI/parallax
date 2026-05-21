@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from decimal import Decimal
@@ -109,6 +110,15 @@ def _numeric_value(value: Any) -> int | float | Decimal | None:
         return None
     if isinstance(value, int | float | Decimal):
         return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+        return parsed if math.isfinite(parsed) else None
     return None
 
 

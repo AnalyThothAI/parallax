@@ -57,6 +57,10 @@ export type MacroFeatureSnapshot = {
     observed_at?: string | null;
     unit?: string | null;
   };
+  history?: Array<{
+    observed_at?: string | null;
+    value?: number | string | null;
+  }>;
   freshness_days?: number | null;
   delta?: Record<string, number | null | undefined>;
   zscore?: {

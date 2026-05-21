@@ -119,7 +119,7 @@ def test_import_macrodata_bundle_rolls_back_observations_when_import_run_fails()
     assert repos.macro_intel.import_runs == []
 
 
-@pytest.mark.parametrize("raw_value", ["3.51", True])
+@pytest.mark.parametrize("raw_value", ["n/a", True])
 def test_import_macrodata_bundle_stores_none_for_non_numeric_values(raw_value: object) -> None:
     envelope = deepcopy(ENVELOPE)
     envelope["data"]["snapshot"]["observations"][0]["value"] = raw_value
@@ -128,6 +128,16 @@ def test_import_macrodata_bundle_stores_none_for_non_numeric_values(raw_value: o
     import_macrodata_bundle(envelope, repos=repos, now_ms=NOW_MS)
 
     assert repos.macro_intel.observations[0]["value_numeric"] is None
+
+
+def test_import_macrodata_bundle_accepts_numeric_string_values() -> None:
+    envelope = deepcopy(ENVELOPE)
+    envelope["data"]["snapshot"]["observations"][0]["value"] = "3.51"
+    repos = FakeRepositorySession()
+
+    import_macrodata_bundle(envelope, repos=repos, now_ms=NOW_MS)
+
+    assert repos.macro_intel.observations[0]["value_numeric"] == pytest.approx(3.51)
 
 
 def test_import_macrodata_bundle_accepts_decimal_values() -> None:

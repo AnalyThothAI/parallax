@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 DELTA_HORIZONS = (5, 20, 60)
+HISTORY_POINTS = 252
 STAT_LOOKBACK = 252
 STALE_FRESHNESS_DAYS = 7
 
@@ -52,6 +53,7 @@ def _features_for_series(observations: Sequence[Mapping[str, Any]], *, computed_
             "delta": {f"{horizon}d": None for horizon in DELTA_HORIZONS},
             "zscore": {"lookback": STAT_LOOKBACK, "value": None},
             "percentile": {"lookback": STAT_LOOKBACK, "value": None},
+            "history": [],
             "data_gaps": _unique(data_gaps),
         }
 
@@ -90,8 +92,20 @@ def _features_for_series(observations: Sequence[Mapping[str, Any]], *, computed_
             "lookback": STAT_LOOKBACK,
             "value": None if percentile_value is None else _round(percentile_value),
         },
+        "history": _history_points(usable_observations),
         "data_gaps": _unique(data_gaps),
     }
+
+
+def _history_points(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+    for observation in reversed(observations[:HISTORY_POINTS]):
+        observed_at = str(observation.get("observed_at") or "").strip()
+        value = observation.get("value")
+        if not observed_at or not isinstance(value, int | float):
+            continue
+        points.append({"observed_at": observed_at, "value": _round(value)})
+    return points
 
 
 def _deduped_observations(observations: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
