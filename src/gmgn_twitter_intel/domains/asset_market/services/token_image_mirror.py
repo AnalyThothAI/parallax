@@ -46,9 +46,19 @@ class TokenImageMirrorService:
         self.retry_ms = int(retry_ms)
 
     def mirror_source(self, row: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
-        source_url = _required_source_url(row.get("source_url"))
+        source_url = str(row.get("source_url") or "").strip()
         try:
+            source_url = _required_claimed_source_url(source_url)
             result = self._mirror_source(source_url=source_url, now_ms=now_ms)
+        except ValueError as exc:
+            error = _error_text(exc)
+            self.repository.mark_error(
+                source_url,
+                error=error,
+                now_ms=int(now_ms),
+                retry_ms=self.retry_ms,
+            )
+            return {"status": "error", "source_url": source_url, "error": error}
         except _TokenImageMirrorError as exc:
             self.repository.mark_error(
                 source_url,
@@ -171,11 +181,12 @@ class _CurlCffiTokenImageClient:
             session.close()
 
 
-def _required_source_url(value: Any) -> str:
+def _required_claimed_source_url(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         raise ValueError("source_url is required")
-    validated_token_image_source_url(text)
+    if not text.startswith(("http://", "https://")):
+        raise ValueError("source_url must be an absolute URL")
     return text
 
 

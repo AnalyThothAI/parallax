@@ -49,6 +49,26 @@ def test_mirror_marks_error_when_magic_bytes_mismatch_media_type(tmp_path) -> No
     assert not (tmp_path / "cache" / "token-images").exists()
 
 
+def test_mirror_marks_unsupported_source_url_error_without_fetching(tmp_path) -> None:
+    repo = _FakeTokenImageAssetRepository()
+    client = _FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type="image/png"))
+    service = TokenImageMirrorService(repository=repo, app_home=tmp_path, http_client=client)
+
+    result = service.mirror_source({"source_url": "https://example.com/token.png"}, now_ms=NOW_MS)
+
+    assert result["status"] == "error"
+    assert repo.ready_rows == []
+    assert repo.error_rows == [
+        {
+            "source_url": "https://example.com/token.png",
+            "now_ms": NOW_MS,
+            "retry_ms": TOKEN_IMAGE_MIRROR_RETRY_MS,
+            "error_prefix": "unsupported_image_url",
+        }
+    ]
+    assert client.requests == []
+
+
 def test_mirror_marks_error_when_content_type_is_missing(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
