@@ -69,7 +69,7 @@ def test_mirror_marks_unsupported_source_url_error_without_fetching(tmp_path) ->
     assert client.requests == []
 
 
-def test_mirror_marks_error_when_content_type_is_missing(tmp_path) -> None:
+def test_mirror_accepts_valid_image_bytes_when_content_type_is_missing(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
         repository=repo,
@@ -79,9 +79,20 @@ def test_mirror_marks_error_when_content_type_is_missing(tmp_path) -> None:
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
-    assert result["status"] == "error"
-    assert repo.ready_rows == []
-    assert repo.error_rows[0]["error_prefix"] == "unsupported_image_type"
+    content_hash = sha256(PNG_BYTES).hexdigest()
+    assert result["status"] == "ready"
+    assert repo.ready_rows == [
+        {
+            "source_url": GMGN_URL,
+            "media_type": "image/png",
+            "file_extension": ".png",
+            "content_sha256": content_hash,
+            "byte_size": len(PNG_BYTES),
+            "storage_path": f"{content_hash}.png",
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert repo.error_rows == []
 
 
 def test_mirror_rejects_malformed_png_with_only_four_byte_prefix(tmp_path) -> None:

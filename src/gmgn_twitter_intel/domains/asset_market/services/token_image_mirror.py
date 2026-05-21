@@ -192,12 +192,15 @@ def _required_claimed_source_url(value: Any) -> str:
 
 def _verified_media(*, content: bytes, content_type: str | None) -> _VerifiedMedia:
     header_media_type = _header_media_type(content_type)
-    if header_media_type is None:
-        raise _TokenImageMirrorError("unsupported_image_type: content_type")
-
     magic_media_type = _magic_media_type(content)
     if magic_media_type is None:
         raise _TokenImageMirrorError("unsupported_image_bytes: unknown_magic")
+
+    if header_media_type is None:
+        return _VerifiedMedia(
+            media_type=magic_media_type,
+            file_extension=_MEDIA_EXTENSIONS[magic_media_type],
+        )
 
     if header_media_type != magic_media_type:
         raise _TokenImageMirrorError("unsupported_image_bytes: media_type_mismatch")

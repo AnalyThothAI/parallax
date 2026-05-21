@@ -173,6 +173,7 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/asset_market/repositories/token_profile_current_repository.py",
         SRC / "domains/asset_market/runtime/token_profile_current_worker.py",
         SRC / "platform/db/alembic/versions/20260517_0052_token_profile_current.py",
+        SRC / "platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py",
     },
     "token_image_assets": {
         SRC / "domains/asset_market/repositories/token_image_asset_repository.py",

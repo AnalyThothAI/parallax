@@ -83,6 +83,9 @@ TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
 TOKEN_IMAGE_ASSETS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0078_token_image_assets.py"
 )
+TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -386,6 +389,27 @@ def test_token_image_assets_migration_adds_local_mirror_storage() -> None:
         "ON token_image_assets(source_url_hash) WHERE status = 'ready'"
         in normalized_text
     )
+
+
+def test_token_profile_local_logo_migration_removes_remote_public_logos() -> None:
+    text = TOKEN_PROFILE_LOCAL_LOGO_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    for statement in (
+        'revision = "20260521_0079"',
+        'down_revision = "20260521_0078"',
+        "UPDATE token_profile_current",
+        "logo_url = NULL",
+        "logo_image_id = NULL",
+        "logo_source_provider = NULL",
+        "logo_source_url_hash = NULL",
+        "logo_url NOT LIKE '/api/token-images/%'",
+        "token_profile_current_local_logo_url_check",
+        "CHECK (logo_url IS NULL OR logo_url LIKE '/api/token-images/%')",
+    ):
+        assert statement in text
+
+    assert "quality_flags_json || '[\"logo_mirror_pending\"]'::jsonb" in normalized_text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:
