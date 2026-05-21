@@ -1,4 +1,4 @@
-import type { MacroViewsData } from "@lib/types";
+import type { MacroData } from "@lib/types";
 import { screen, waitFor } from "@testing-library/react";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
-describe("views route", () => {
+describe("macro route", () => {
   afterEach(() => {
     document.body.replaceChildren();
   });
@@ -17,26 +17,26 @@ describe("views route", () => {
       mockLiveRadarRoute(mock);
       const baseGetApi = mock.getApiImpl;
       mock.getApiImpl = async (path, options) => {
-        if (path === "/api/views/macro") return ok(macroViewsFixture());
+        if (path === "/api/macro") return ok(macroFixture());
         return baseGetApi(path, options);
       };
     });
   });
 
-  it("renders Macro Views inside the cockpit shell and marks the rail item active", async () => {
-    renderAppRoute("/views");
+  it("renders Macro inside the cockpit shell and marks the rail item active", async () => {
+    renderAppRoute("/macro");
 
-    expect(await screen.findByRole("heading", { name: "Macro Views" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Views/i })).toHaveClass("active");
+    expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Macro/i })).toHaveClass("active");
     await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/views/macro", {
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro", {
         token: "secret",
       }),
     );
   });
 });
 
-function macroViewsFixture(): MacroViewsData {
+function macroFixture(): MacroData {
   return {
     snapshot: {
       snapshot_id: "macro-view:macro_regime_v1:1779000000000",

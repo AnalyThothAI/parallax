@@ -12,7 +12,7 @@ from gmgn_twitter_intel.app.surfaces.api.exceptions import (
 from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 
 
-def test_macro_views_api_returns_latest_snapshot_without_postgres() -> None:
+def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
             "snapshot_id": "macro-view:macro_regime_v1:1",
@@ -32,7 +32,7 @@ def test_macro_views_api_returns_latest_snapshot_without_postgres() -> None:
     app = _app(repo)
 
     with TestClient(app) as client:
-        response = client.get("/api/views/macro", headers={"Authorization": "Bearer secret"})
+        response = client.get("/api/macro", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
     assert repo.calls == ["latest_snapshot"]
@@ -57,11 +57,11 @@ def test_macro_views_api_returns_latest_snapshot_without_postgres() -> None:
     }
 
 
-def test_macro_views_api_returns_data_gap_when_snapshot_missing() -> None:
+def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
     app = _app(FakeMacroIntelRepository(snapshot=None))
 
     with TestClient(app) as client:
-        response = client.get("/api/views/macro", headers={"Authorization": "Bearer secret"})
+        response = client.get("/api/macro", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
     assert response.json()["data"] == {

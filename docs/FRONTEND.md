@@ -62,8 +62,8 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   trading narrative from headline, summary, or fact-lane keyword heuristics.
   Queue pagination is explicit; direction tabs request backend filters rather
   than client-side reclassification.
-- **Views route.** `/views` renders deterministic Macro Intel state from
-  `/api/views/macro`. Regime, component scores, indicators, triggers, and data
+- **Macro route.** `/macro` renders deterministic Macro Intel state from
+  `/api/macro`. Regime, component scores, indicators, triggers, and data
   gaps come from `macro_view_snapshots`; frontend code does not recompute macro
   scoring or infer missing values.
 - **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.

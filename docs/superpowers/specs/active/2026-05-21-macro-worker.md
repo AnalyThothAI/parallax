@@ -1,13 +1,13 @@
-# Spec — Macro Views Worker
+# Spec — Macro Worker
 
 **Status**: Approved
 **Date**: 2026-05-21
 **Owner**: Codex
-**Related**: `docs/superpowers/plans/active/2026-05-21-macro-views-worker.md`
+**Related**: `docs/superpowers/plans/active/2026-05-21-macro-worker.md`
 
 ## Background
 
-`gmgn-twitter-intel` is PostgreSQL-first: facts and rebuildable read models are the durable truth, and workers re-read the database rather than trusting wake hints (`docs/ARCHITECTURE.md:33`, `docs/ARCHITECTURE.md:59`, `docs/WORKERS.md:10`, `docs/WORKERS.md:41`). The current worker inventory already contains read-model projection workers such as `news_page_projection` and `cex_oi_radar_board`, each with one runtime writer and API readers (`docs/WORKERS.md:111`, `docs/WORKERS.md:112`, `src/gmgn_twitter_intel/app/surfaces/api/http.py:24`). The frontend route shell is centralized in `web/src/routes/AppRoutes.tsx:242`, and the side rail currently exposes Radar, Stocks, and News inside a `views` section (`web/src/features/cockpit/ui/CockpitSideRail.tsx:49`).
+`gmgn-twitter-intel` is PostgreSQL-first: facts and rebuildable read models are the durable truth, and workers re-read the database rather than trusting wake hints (`docs/ARCHITECTURE.md:33`, `docs/ARCHITECTURE.md:59`, `docs/WORKERS.md:10`, `docs/WORKERS.md:41`). The current worker inventory already contains read-model projection workers such as `news_page_projection` and `cex_oi_radar_board`, each with one runtime writer and API readers (`docs/WORKERS.md:111`, `docs/WORKERS.md:112`, `src/gmgn_twitter_intel/app/surfaces/api/http.py:24`). The frontend route shell is centralized in `web/src/routes/AppRoutes.tsx:242`, and the side rail exposes market-facing routes such as Radar, Stocks, News, and Macro.
 
 The separate `macrodata-cli` package now owns public macro source access and normalization. This service should not duplicate provider fetching in the first integration; it should persist normalized macro observations and project them into a product-facing macro state view.
 
@@ -25,7 +25,7 @@ The application has crypto/social intelligence, news, stock radar, and CEX deriv
 
 - G1. A worker run with no macro observations still produces an observable degraded snapshot so API and UI can show a deterministic data-gap state.
 - G2. A worker run with representative liquidity, rates, credit, and volatility observations produces a persisted snapshot with component scores, regime label, indicators, triggers, and source coverage.
-- G3. `/api/views/macro` returns the latest snapshot through the authenticated API envelope, and `/views` renders it through a React Query feature hook.
+- G3. `/api/macro` returns the latest snapshot through the authenticated API envelope, and `/macro` renders it through a React Query feature hook.
 - G4. The feature is small enough to verify with targeted backend unit tests and frontend component/route tests before attempting the full repository gate.
 
 ## Non-goals
@@ -37,9 +37,9 @@ The application has crypto/social intelligence, news, stock radar, and CEX deriv
 
 ## Target Architecture
 
-Add a new `macro_intel` bounded context. It owns normalized macro observations, a deterministic macro regime engine, a `macro_view_projection` worker, a read repository, and an API route under `/api/views/macro`.
+Add a new `macro_intel` bounded context. It owns normalized macro observations, a deterministic macro regime engine, a `macro_view_projection` worker, a read repository, and an API route under `/api/macro`.
 
-The worker reads latest observations by curated series keys, computes a compact Macro Regime Engine snapshot, and writes `macro_view_snapshots`. The first MVP focuses on five panels: liquidity, rates, volatility, credit, and cross-asset confirmation. Each panel carries a score, status, supporting indicators, and data gaps. The frontend adds `/views` as a compact operator dashboard in the existing cockpit shell.
+The worker reads latest observations by curated series keys, computes a compact Macro Regime Engine snapshot, and writes `macro_view_snapshots`. The first MVP focuses on five panels: liquidity, rates, volatility, credit, and cross-asset confirmation. Each panel carries a score, status, supporting indicators, and data gaps. The frontend adds `/macro` as a compact operator dashboard in the existing cockpit shell.
 
 ## Conceptual Data Flow
 
@@ -48,8 +48,8 @@ macrodata-cli output / future importer
   -> macro_observations facts
   -> MacroViewProjectionWorker
   -> macro_view_snapshots read model
-  -> /api/views/macro
-  -> web /views
+  -> /api/macro
+  -> web /macro
 ```
 
 The changed arrow is independent of the GMGN ingest chain because macro observations are external market facts, not token events. The worker follows the existing projection pattern and never calls providers directly.
@@ -57,21 +57,21 @@ The changed arrow is independent of the GMGN ingest chain because macro observat
 ## Core Models
 
 - `MacroObservation`: normalized fact keyed by source and series. It stores `series_key`, `observed_at`, numeric value, unit, frequency, data quality, source timestamp, and raw payload reference.
-- `MacroViewSnapshot`: rebuildable read model for one computed macro state. It stores `snapshot_id`, `asof_date`, `status`, `regime`, `overall_score`, component score map, indicator map, trigger list, data gaps, source coverage, and `computed_at_ms`.
+- `MacroSnapshot`: rebuildable read model for one computed macro state. It stores `snapshot_id`, `asof_date`, `status`, `regime`, `overall_score`, component score map, indicator map, trigger list, data gaps, source coverage, and `computed_at_ms`.
 - `MacroPanelScore`: deterministic component output for liquidity, rates, volatility, credit, and cross-asset confirmation.
 
 ## Interface Contracts
 
-- HTTP: `GET /api/views/macro` requires the existing bearer/query token. It returns `{ ok: true, data: { snapshot, panels, triggers, data_gaps } }`; if no worker snapshot exists it returns a `snapshot: null` data-gap response rather than provider calls.
+- HTTP: `GET /api/macro` requires the existing bearer/query token. It returns `{ ok: true, data: { snapshot, panels, triggers, data_gaps } }`; if no worker snapshot exists it returns a `snapshot: null` data-gap response rather than provider calls.
 - Worker: `macro_view_projection` is a canonical worker with an advisory lock, bounded interval catch-up, and no wake dependency in the MVP.
-- UI: `/views` renders the latest macro state, with explicit empty/error/loading states and no local recomputation of scores.
+- UI: `/macro` renders the latest macro state, with explicit empty/error/loading states and no local recomputation of scores.
 
 ## Acceptance Criteria
 
 - AC1. WHEN `MacroViewProjectionWorker.run_once_sync()` runs against an empty observation set THEN it SHALL write a degraded snapshot with data gaps and no exception.
 - AC2. WHEN representative observations include WALCL, RRP, TGA, SOFR, IORB, DGS2, DGS10, VIX, HY OAS, and IG OAS THEN the worker SHALL write component scores and trigger/evidence JSON derived only from those observations.
-- AC3. WHEN an authenticated request calls `/api/views/macro` THEN the API SHALL return the latest snapshot envelope without provider IO.
-- AC4. WHEN a user opens `/views` THEN the frontend SHALL fetch `/api/views/macro` and render regime, component panels, validation indicators, triggers, and data gaps.
+- AC3. WHEN an authenticated request calls `/api/macro` THEN the API SHALL return the latest snapshot envelope without provider IO.
+- AC4. WHEN a user opens `/macro` THEN the frontend SHALL fetch `/api/macro` and render regime, component panels, validation indicators, triggers, and data gaps.
 
 ## Risks
 
@@ -96,6 +96,6 @@ Next work should add an importer that consumes `macrodata-cli bundle` envelopes 
 
 | Class | Behaviour |
 |-------|-----------|
-| Always | Persist normalized macro facts, project deterministic snapshots, expose latest snapshot through API and `/views`. |
+| Always | Persist normalized macro facts, project deterministic snapshots, expose latest snapshot through API and `/macro`. |
 | Ask first | Add live provider fetchers, paid data sources, LLM commentary, or trading recommendations. |
 | Never | Invent missing macro values, call provider APIs from the view route, or let UI recompute ranking/regime scores. |

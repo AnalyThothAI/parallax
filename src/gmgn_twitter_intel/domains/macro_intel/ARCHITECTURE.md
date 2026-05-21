@@ -19,8 +19,8 @@ macro_observations
   -> services/macro_regime_engine.py
   -> runtime/macro_view_projection_worker.py
   -> macro_view_snapshots
-  -> /api/views/macro
-  -> web /views
+  -> /api/macro
+  -> web /macro
 ```
 
 The macro regime engine emits component scores with evidence and data gaps. UI

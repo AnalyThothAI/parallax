@@ -2,7 +2,7 @@ import { WatchlistNotificationDot } from "@features/notifications";
 import type { WatchlistRow } from "@features/watchlist";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
-import { newsPath, stocksPath, viewsPath, watchlistPath } from "@shared/routing/paths";
+import { macroPath, newsPath, stocksPath, watchlistPath } from "@shared/routing/paths";
 import clsx from "clsx";
 import { UserRound } from "lucide-react";
 import type { ReactNode } from "react";
@@ -41,14 +41,14 @@ export function CockpitSideRail({
   const liveRouteMatch = useMatch({ path: "/", end: true });
   const newsRouteMatch = useMatch("/news/*");
   const stockRouteMatch = useMatch("/stocks/*");
-  const viewsRouteMatch = useMatch("/views/*");
+  const macroRouteMatch = useMatch("/macro/*");
   const watchlistRouteMatch = useMatch("/watchlist/*");
   const [searchParams] = useSearchParams();
   const activeWatchHandle = watchlistRouteMatch ? (searchParams.get("handle") ?? "") : "";
 
   return (
     <aside className="side-rail desktop-side-rail">
-      <RailSection label="views">
+      <RailSection label="markets">
         <RailButton
           active={Boolean(liveRouteMatch)}
           index="1"
@@ -71,10 +71,10 @@ export function CockpitSideRail({
           onClick={() => navigate(newsPath())}
         />
         <RailButton
-          active={Boolean(viewsRouteMatch)}
+          active={Boolean(macroRouteMatch)}
           index="M"
-          label="Views"
-          onClick={() => navigate(viewsPath())}
+          label="Macro"
+          onClick={() => navigate(macroPath())}
         />
       </RailSection>
 

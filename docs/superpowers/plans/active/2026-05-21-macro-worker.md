@@ -1,10 +1,10 @@
-# Macro Views Worker Implementation Plan
+# Macro Worker Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a durable macro regime view chain: normalized macro observations -> projection worker -> API -> `/views` frontend page.
+**Goal:** Add a durable macro regime view chain: normalized macro observations -> projection worker -> API -> `/macro` frontend page.
 
-**Architecture:** Add a `macro_intel` domain with PostgreSQL fact/read-model repositories, a deterministic regime engine, and one canonical worker. The UI consumes only `/api/views/macro` and does not recompute scores.
+**Architecture:** Add a `macro_intel` domain with PostgreSQL fact/read-model repositories, a deterministic regime engine, and one canonical worker. The UI consumes only `/api/macro` and does not recompute scores.
 
 **Tech Stack:** Python 3.13, FastAPI, psycopg/JSONB, Alembic, WorkerBase, React + React Query + TypeScript.
 
@@ -12,13 +12,13 @@
 
 **Status**: Approved
 **Date**: 2026-05-21
-**Owning spec**: `docs/superpowers/specs/active/2026-05-21-macro-views-worker.md`
+**Owning spec**: `docs/superpowers/specs/active/2026-05-21-macro-worker.md`
 **Worktree**: `.worktrees/macro-views-worker/`
 **Branch**: `codex/macro-views-worker`
 
 ## Pre-flight
 
-- [x] Spec is approved by the user's current request to continue with a views page and worker based on the macro regime design.
+- [x] Spec is approved by the user's current request to continue with a macro page and worker based on the macro regime design.
 - [x] Worktree exists at `.worktrees/macro-views-worker/` and `git branch --show-current` matches `codex/macro-views-worker`.
 - [x] Baseline `uv run ruff check .` passes.
 - [ ] Baseline `uv run pytest` passes.
@@ -107,31 +107,31 @@ Known-failing baseline tests:
 
 ### API
 
-- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_views.py`.
-  - `router = APIRouter(prefix="/views")`.
+- Create `src/gmgn_twitter_intel/app/surfaces/api/routes_macro.py`.
+  - `router = APIRouter()`.
   - `GET /macro` authenticates with `_authenticated_runtime`, reads `repos.macro_intel.latest_snapshot()`, and returns a stable data-gap payload when no snapshot exists.
 - Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
-  - Include `routes_views.router`.
+  - Include `routes_macro.router`.
 
 ### Frontend
 
 - Add macro contract types to `web/src/lib/types/frontend-contracts.ts` and export from `web/src/lib/types/index.ts`.
 - Modify `web/src/shared/query/queryKeys.ts`.
-  - Add `macroView: () => ["macro-view"] as const`.
+  - Add `macro: () => ["macro"] as const`.
 - Modify `web/src/shared/routing/paths.ts`.
-  - Add `viewsPath(): string`.
-- Create `web/src/features/views/api/useMacroViewQuery.ts`.
-  - Fetch `/api/views/macro` with the token.
-- Create `web/src/features/views/MacroViewsPage.tsx`.
+  - Add `macroPath(): string`.
+- Create `web/src/features/macro/api/useMacroQuery.ts`.
+  - Fetch `/api/macro` with the token.
+- Create `web/src/features/macro/MacroPage.tsx`.
   - Render one dense operator page: regime header, component score strip, transmission-chain panels, validation indicators, triggers, and data gaps.
-- Create `web/src/features/views/views.css`.
+- Create `web/src/features/macro/macro.css`.
   - Match the app's cockpit style with compact panels, no nested cards, stable panel heights, and responsive grid tracks.
-- Create `web/src/features/views/index.ts`.
-- Create `web/src/routes/views.route.tsx`.
+- Create `web/src/features/macro/index.ts`.
+- Create `web/src/routes/macro.route.tsx`.
 - Modify `web/src/routes/AppRoutes.tsx`.
-  - Import `ViewsRoute` and add `<Route path="views" element={<ViewsRoute token={token ?? ""} />} />`.
+  - Import `MacroRoute` and add `<Route path="macro" element={<MacroRoute token={token ?? ""} />} />`.
 - Modify `web/src/features/cockpit/ui/CockpitSideRail.tsx`.
-  - Add `viewsRouteMatch`, `viewsPath()`, and a `Views` rail button.
+  - Add `macroRouteMatch`, `macroPath()`, and a `Macro` rail button.
 
 ### Docs
 
@@ -142,9 +142,9 @@ Known-failing baseline tests:
   - Add `macro_view_projection` to the marker and inventory table.
   - Add wake/catch-up note: poll-only MVP.
 - Modify `docs/FRONTEND.md`.
-  - Document `/views` as a deterministic macro state page.
+  - Document `/macro` as a deterministic macro state page.
 - Modify `docs/CONTRACTS.md`.
-  - Document `/api/views/macro` semantics.
+  - Document `/api/macro` semantics.
 
 ### Tests
 
@@ -153,19 +153,19 @@ Known-failing baseline tests:
   - Test representative observations produce liquidity/rates/credit/vol panel scores and threshold triggers.
 - Create `tests/unit/domains/macro_intel/test_macro_view_projection_worker.py`.
   - Use a fake repository session to verify worker reads observations, inserts one snapshot, and returns notes.
-- Create `tests/unit/test_api_macro_views_contract.py`.
-  - Use `TestClient` with fake runtime to verify `/api/views/macro` returns the latest snapshot and missing-snapshot data-gap envelope.
+- Create `tests/unit/test_api_macro_contract.py`.
+  - Use `TestClient` with fake runtime to verify `/api/macro` returns the latest snapshot and missing-snapshot data-gap envelope.
 - Modify `tests/unit/test_bootstrap_worker_runtime_wiring.py`.
   - Assert `macro_view_projection` constructs with default settings.
-- Create `web/tests/component/features/views/MacroViewsPage.test.tsx`.
+- Create `web/tests/component/features/macro/MacroPage.test.tsx`.
   - Mock `getApi`, render loading/data-gap/populated states, and assert no local score recomputation.
-- Create `web/tests/routes/views.route.test.tsx`.
-  - Render `/views`, verify it calls `/api/views/macro`, and verify the side rail marks Views active.
+- Create `web/tests/routes/macro.route.test.tsx`.
+  - Render `/macro`, verify it calls `/api/macro`, and verify the side rail marks Macro active.
 
 ## PR Breakdown
 
 1. **PR 1 — Macro read model spine**: migration, domain service/repository/worker, runtime wiring, backend tests, docs.
-2. **PR 2 — Macro API and Views UI**: API route, frontend feature/route, UI tests, contract docs.
+2. **PR 2 — Macro API and UI**: API route, frontend feature/route, UI tests, contract docs.
 
 The user asked to land directly to `main`; this branch will be merged back to `main` after verification rather than opened as a separate PR unless redirected.
 
@@ -175,21 +175,21 @@ The user asked to land directly to `main`; this branch will be merged back to `m
 2. Run `macro_view_projection` once; with no data it should write an empty/degraded snapshot.
 3. Import normalized macro observations through a future `macrodata-cli` importer or direct repository maintenance path.
 4. Run worker again to compute the first populated snapshot.
-5. Open `/views` and verify API/UI render the latest snapshot.
+5. Open `/macro` and verify API/UI render the latest snapshot.
 
 ## Rollback
 
 - Code rollback: revert the feature commit or disable `workers.macro_view_projection.enabled`.
 - Data rollback: `downgrade()` drops `macro_view_snapshots` and `macro_observations`. This removes imported macro facts, so export/retain source bundles before downgrade if production data exists.
-- UI rollback: remove the `/views` route and side rail button; API can remain harmless if worker disabled.
+- UI rollback: remove the `/macro` route and side rail button; API can remain harmless if worker disabled.
 
 ## Acceptance Test Commands
 
 - AC1: `uv run python -m pytest tests/unit/domains/macro_intel/test_macro_regime_engine.py::test_empty_observations_emit_degraded_snapshot -q`
 - AC2: `uv run python -m pytest tests/unit/domains/macro_intel/test_macro_regime_engine.py::test_representative_observations_emit_scores_and_triggers -q`
-- AC3: `uv run python -m pytest tests/unit/test_api_macro_views_contract.py -q`
-- AC4: `cd web && npm test -- --run web/tests/component/features/views/MacroViewsPage.test.tsx web/tests/routes/views.route.test.tsx`
+- AC3: `uv run python -m pytest tests/unit/test_api_macro_contract.py -q`
+- AC4: `cd web && npm test -- --run tests/component/features/macro/MacroPage.test.tsx tests/routes/macro.route.test.tsx`
 
 ## Verification
 
-Record final output in `docs/superpowers/plans/active/2026-05-21-macro-views-worker-verification.md` before declaring completion. Run targeted backend/frontend tests, `uv run ruff check .`, `uv run mypy src`, and frontend type/lint checks. Run `make check-all`; if it still fails because of baseline architecture issues, include the exact pre-existing failures and confirm no new macro-related failures were introduced.
+Record final output in `docs/superpowers/plans/active/2026-05-21-macro-worker-verification.md` before declaring completion. Run targeted backend/frontend tests, `uv run ruff check .`, `uv run mypy src`, and frontend type/lint checks. Run `make check-all`; if it still fails because of baseline architecture issues, include the exact pre-existing failures and confirm no new macro-related failures were introduced.

@@ -47,8 +47,8 @@ export function newsPath(): string {
   return "/news";
 }
 
-export function viewsPath(): string {
-  return "/views";
+export function macroPath(): string {
+  return "/macro";
 }
 
 export function opsPath(): string {

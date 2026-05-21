@@ -1,19 +1,19 @@
-import { MacroViewsPage } from "@features/views";
-import type { MacroViewsData } from "@lib/types";
+import { MacroPage } from "@features/macro";
+import type { MacroData } from "@lib/types";
 import { screen, waitFor } from "@testing-library/react";
 import { ok } from "@tests/msw/fixtures";
 import { renderWithProviders } from "@tests/render/renderWithProviders";
 import { apiMock, setupAppRouteTest } from "@tests/routes/routeTestSetup";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-let macroData: MacroViewsData;
+let macroData: MacroData;
 
-describe("MacroViewsPage", () => {
+describe("MacroPage", () => {
   beforeEach(() => {
-    macroData = populatedMacroView();
+    macroData = populatedMacro();
     setupAppRouteTest((mock) => {
       mock.getApiImpl = async (path) => {
-        if (path === "/api/views/macro") return ok(macroData);
+        if (path === "/api/macro") return ok(macroData);
         throw new Error(`unexpected path ${path}`);
       };
     });
@@ -24,16 +24,16 @@ describe("MacroViewsPage", () => {
   });
 
   it("renders the persisted macro regime snapshot from the API", async () => {
-    renderWithProviders(<MacroViewsPage token="test-token" />);
+    renderWithProviders(<MacroPage token="test-token" />);
 
-    expect(await screen.findByRole("heading", { name: "Macro Views" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
     expect(await screen.findAllByText("funding_stress")).toHaveLength(2);
     expect(screen.getByText("Liquidity")).toBeInTheDocument();
     expect(screen.getByText("SOFR minus IORB")).toBeInTheDocument();
     expect(screen.getByText("sofr_above_iorb")).toBeInTheDocument();
     expect(screen.getByText("missing:fred:SP500")).toBeInTheDocument();
     await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/views/macro", { token: "test-token" }),
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro", { token: "test-token" }),
     );
   });
 
@@ -47,14 +47,14 @@ describe("MacroViewsPage", () => {
       source_coverage: { observed_series_count: 0 },
     };
 
-    renderWithProviders(<MacroViewsPage token="test-token" />);
+    renderWithProviders(<MacroPage token="test-token" />);
 
-    expect(await screen.findByText("Macro view pending")).toBeInTheDocument();
+    expect(await screen.findByText("Macro pending")).toBeInTheDocument();
     expect(screen.getByText("macro_view_snapshot_missing")).toBeInTheDocument();
   });
 });
 
-function populatedMacroView(): MacroViewsData {
+function populatedMacro(): MacroData {
   return {
     snapshot: {
       snapshot_id: "macro-view:macro_regime_v1:1779000000000",

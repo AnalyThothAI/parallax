@@ -8,18 +8,18 @@ from fastapi.responses import JSONResponse
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 
-router = APIRouter(prefix="/views")
+router = APIRouter()
 
 
 @router.get("/macro")
-def macro_views(request: Request) -> JSONResponse:
+def macro(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot()
-    return _json({"ok": True, "data": _public_macro_view(snapshot)})
+    return _json({"ok": True, "data": _public_macro(snapshot)})
 
 
-def _public_macro_view(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def _public_macro(snapshot: dict[str, Any] | None) -> dict[str, Any]:
     if snapshot is None:
         return {
             "snapshot": None,

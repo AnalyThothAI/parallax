@@ -250,9 +250,9 @@ US Stocks radar contract:
   failure returns `quote.status = "unavailable"` and does not fail the whole
   response.
 
-Macro Views contract:
+Macro contract:
 
-- `/api/views/macro` is authenticated and read-only. It performs no provider IO;
+- `/api/macro` is authenticated and read-only. It performs no provider IO;
   it reads the latest `macro_view_snapshots` row written by
   `MacroViewProjectionWorker`.
 - When no snapshot exists, the endpoint returns `ok: true` with

@@ -3,13 +3,13 @@ import { RemoteState } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { Activity, AlertTriangle, CircleDot, Gauge } from "lucide-react";
 
-import { useMacroViewQuery } from "./api/useMacroViewQuery";
-import "./views.css";
+import { useMacroQuery } from "./api/useMacroQuery";
+import "./macro.css";
 
 const PANEL_ORDER = ["liquidity", "rates", "volatility", "credit", "cross_asset"];
 
-export function MacroViewsPage({ token }: { token: string }) {
-  const query = useMacroViewQuery({ token });
+export function MacroPage({ token }: { token: string }) {
+  const query = useMacroQuery({ token });
   const data = query.data;
   const snapshot = data?.snapshot ?? null;
   const panels = data?.panels ?? {};
@@ -19,10 +19,10 @@ export function MacroViewsPage({ token }: { token: string }) {
   const gaps = data?.data_gaps ?? [];
 
   return (
-    <section className="macro-views-panel" aria-label="Macro Views">
-      <header className="macro-views-toolbar">
+    <section className="macro-page-panel" aria-label="Macro">
+      <header className="macro-page-toolbar">
         <div>
-          <h2>Macro Views</h2>
+          <h2>Macro</h2>
           <span>
             REGIME <b>{snapshot?.regime ?? "pending"}</b>
           </span>
@@ -34,18 +34,18 @@ export function MacroViewsPage({ token }: { token: string }) {
         </div>
       </header>
 
-      {query.isLoading ? <RemoteState.Loading layout="route" label="loading macro views" /> : null}
+      {query.isLoading ? <RemoteState.Loading layout="route" label="loading macro" /> : null}
       {query.isError ? <RemoteState.Error error={query.error} /> : null}
       {!query.isLoading && !query.isError && !snapshot ? (
         <div className="macro-empty-state">
           <AlertTriangle aria-hidden />
-          <b>Macro view pending</b>
+          <b>Macro pending</b>
           <span>{gaps[0] ?? "macro_view_snapshot_missing"}</span>
         </div>
       ) : null}
 
       {snapshot ? (
-        <div className="macro-views-grid">
+        <div className="macro-page-grid">
           <section className="macro-scoreboard" aria-label="macro transmission chain">
             {panelEntries.map(([key, panel]) => (
               <MacroPanelCell key={key} panelKey={key} panel={panel} />

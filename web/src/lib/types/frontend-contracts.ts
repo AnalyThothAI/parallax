@@ -19,7 +19,7 @@ export type TokenPostServerSort = "recent" | "catalyst";
 export type TokenDetailMode = "compact" | "replay";
 export type WatchlistTimelineScope = "signal" | "all";
 
-export type MacroViewSnapshotSummary = {
+export type MacroSnapshotSummary = {
   snapshot_id: string;
   projection_version: string;
   asof_date: string;
@@ -51,8 +51,8 @@ export type MacroTrigger = {
   value?: number | string | null;
 };
 
-export type MacroViewsData = {
-  snapshot: MacroViewSnapshotSummary | null;
+export type MacroData = {
+  snapshot: MacroSnapshotSummary | null;
   panels: Record<string, MacroPanel>;
   indicators: Record<string, MacroIndicator>;
   triggers: MacroTrigger[];
