@@ -23,6 +23,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services import pulse_candidate_job_se
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_admission_policy import PulseAdmissionPolicy
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_job_service import (
     _normalized_failure_reason,
@@ -554,6 +555,83 @@ def test_score_band_only_edge_waits_for_confirmation_without_job() -> None:
     assert edge["pending_score_band_count"] == 1
 
 
+def test_admission_policy_debounces_timeline_only_edge_inside_window() -> None:
+    decision = PulseAdmissionPolicy().classify(
+        previous_state={"candidate_id": "candidate-1", "score_band": "watch"},
+        current_state={"candidate_id": "candidate-1", "score_band": "watch"},
+        existing_job=None,
+        edge_events=("timeline_evidence_changed",),
+        pending_score_band=None,
+        pending_score_band_count=0,
+        last_processed_at_ms=NOW_MS - 120_000,
+        now_ms=NOW_MS,
+        timeline_debounce_seconds=600,
+    )
+
+    assert decision.action == "suppress"
+    assert decision.reason == "timeline_debounce"
+
+
+def test_admission_policy_escalation_and_hard_risk_bypass_timeline_debounce() -> None:
+    escalation = PulseAdmissionPolicy().classify(
+        previous_state={"candidate_id": "candidate-1", "pulse_status": "token_watch"},
+        current_state={"candidate_id": "candidate-1", "pulse_status": "trade_candidate"},
+        existing_job=None,
+        edge_events=("timeline_evidence_changed", "pulse_status_changed"),
+        pending_score_band=None,
+        pending_score_band_count=0,
+        last_processed_at_ms=NOW_MS - 120_000,
+        now_ms=NOW_MS,
+        timeline_debounce_seconds=600,
+    )
+    hard_risk = PulseAdmissionPolicy().classify(
+        previous_state={"candidate_id": "candidate-1", "hard_risks": []},
+        current_state={"candidate_id": "candidate-1", "hard_risks": ["timing_chase_risk"]},
+        existing_job=None,
+        edge_events=("timeline_evidence_changed", "hard_risk_added"),
+        pending_score_band=None,
+        pending_score_band_count=0,
+        last_processed_at_ms=NOW_MS - 120_000,
+        now_ms=NOW_MS,
+        timeline_debounce_seconds=600,
+    )
+
+    assert escalation.action == "enqueue_agent"
+    assert escalation.reason == "escalation"
+    assert hard_risk.action == "enqueue_agent"
+    assert hard_risk.reason == "hard_risk_added"
+
+
+def test_admission_policy_score_band_confirmation_still_requires_second_observation() -> None:
+    pending = PulseAdmissionPolicy().classify(
+        previous_state={"candidate_id": "candidate-1", "score_band": "watch"},
+        current_state={"candidate_id": "candidate-1", "score_band": "high_conviction"},
+        existing_job=None,
+        edge_events=("score_band_crossed",),
+        pending_score_band=None,
+        pending_score_band_count=0,
+        last_processed_at_ms=NOW_MS - 120_000,
+        now_ms=NOW_MS,
+        timeline_debounce_seconds=600,
+    )
+    confirmed = PulseAdmissionPolicy().classify(
+        previous_state={"candidate_id": "candidate-1", "score_band": "watch"},
+        current_state={"candidate_id": "candidate-1", "score_band": "high_conviction"},
+        existing_job=None,
+        edge_events=("score_band_crossed",),
+        pending_score_band="high_conviction",
+        pending_score_band_count=1,
+        last_processed_at_ms=NOW_MS - 120_000,
+        now_ms=NOW_MS,
+        timeline_debounce_seconds=600,
+    )
+
+    assert pending.action == "suppress"
+    assert pending.reason == "score_band_pending"
+    assert confirmed.action == "enqueue_agent"
+    assert confirmed.reason == "score_band_confirmed"
+
+
 def test_recent_schema_failure_circuit_suppresses_non_escalation_edge() -> None:
     repos = FakeRepos()
     repos.pulse_admission.recent_failure_count = 3
@@ -1024,13 +1102,14 @@ def test_no_start_agent_backpressure_reschedules_job_without_provider_failure() 
     assert result["processed"] == 0
     assert result["failed"] == 0
     assert repos.pulse_jobs.failures == []
-    assert len(repos.pulse_jobs.backpressure_releases) == 1
-    released = repos.pulse_jobs.backpressure_releases[0]
-    assert released["reason"] == "capacity_denied"
+    assert repos.pulse_jobs.backpressure_releases == []
+    assert len(repos.pulse_jobs.provider_cooldown_releases) == 1
+    released = repos.pulse_jobs.provider_cooldown_releases[0]
+    assert released["reason"] == "provider_cooldown:capacity_denied"
     job = repos.pulse_jobs.jobs[0]
     assert job["status"] == "pending"
     assert job["attempt_count"] == 0
-    assert job["next_run_at_ms"] == NOW_MS + 30_000
+    assert job["next_run_at_ms"] == NOW_MS + 120_000
     skipped_run = next(row for row in repos.pulse_runs.finished_runs if row["status"] == "skipped")
     assert skipped_run["outcome"] == "backpressure_capacity_denied"
     assert skipped_run["trace_metadata_json_patch"] == {
@@ -1351,6 +1430,8 @@ class FakePulseStore:
         self.agent_runs: list[dict[str, Any]] = []
         self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
+        self.terminal_fingerprint_result: dict[str, Any] | None = None
+        self.terminal_fingerprint_lookups: list[dict[str, Any]] = []
         self.runtime_versions: list[dict[str, Any]] = []
         self.eval_cases: list[dict[str, Any]] = []
         self.eval_results: list[dict[str, Any]] = []
@@ -1360,6 +1441,7 @@ class FakePulseStore:
         self.successes: list[str] = []
         self.failures: list[dict[str, Any]] = []
         self.backpressure_releases: list[dict[str, Any]] = []
+        self.provider_cooldown_releases: list[dict[str, Any]] = []
         self.timeout_cancellations: list[dict[str, Any]] = []
         self.claim_due_job_calls = 0
         self.admission_claims: list[dict[str, Any]] = []
@@ -1567,6 +1649,10 @@ class FakePulseStore:
         self.agent_run_steps.append(kwargs)
         return kwargs
 
+    def terminal_run_for_fingerprint(self, **kwargs: Any) -> dict[str, Any] | None:
+        self.terminal_fingerprint_lookups.append(kwargs)
+        return self.terminal_fingerprint_result
+
     def upsert_agent_runtime_version(self, **kwargs: Any) -> dict[str, Any]:
         self.runtime_versions.append(kwargs)
         return kwargs
@@ -1684,6 +1770,36 @@ class FakePulseStore:
                 return dict(stored)
         return {"job_id": job["job_id"], "status": "pending"}
 
+    def release_running_job_for_provider_cooldown(
+        self,
+        job: dict[str, Any],
+        *,
+        reason: str,
+        now_ms: int,
+        cooldown_until_ms: int,
+        decrement_attempt: bool = True,
+        **_: Any,
+    ) -> dict[str, Any]:
+        self.provider_cooldown_releases.append(
+            {
+                "job": job,
+                "reason": reason,
+                "now_ms": now_ms,
+                "cooldown_until_ms": cooldown_until_ms,
+                "decrement_attempt": decrement_attempt,
+            }
+        )
+        for stored in self.jobs:
+            if stored["job_id"] == job["job_id"] and stored.get("status") == "running":
+                stored["status"] = "pending"
+                if decrement_attempt:
+                    stored["attempt_count"] = max(0, int(stored.get("attempt_count") or 0) - 1)
+                stored["next_run_at_ms"] = int(cooldown_until_ms)
+                stored["last_error"] = reason
+                stored["updated_at_ms"] = now_ms
+                return dict(stored)
+        return {"job_id": job["job_id"], "status": "pending"}
+
 
 class FakeClient:
     provider = "fake"
@@ -1695,6 +1811,7 @@ class FakeClient:
     def __init__(self, *, recommendation: str = "watchlist") -> None:
         self.recommendation = recommendation
         self.contexts: list[dict[str, Any]] = []
+        self.stage_plans: list[Any] = []
         self.run_calls = 0
 
     def try_reserve_execution(self, lane: str, **_: Any) -> AgentCapacityReservation:
@@ -1741,8 +1858,10 @@ class FakeClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
+        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
         self.run_calls += 1
+        self.stage_plans.append(stage_plan)
         allowed_refs = [
             str(ref.get("ref_id"))
             for ref in context.get("evidence_packet", {}).get("allowed_evidence_refs", [])
@@ -1837,6 +1956,43 @@ class FakeClient:
             status="ok",
             error=None,
         )
+        if stage_plan is not None and not bool(getattr(stage_plan, "run_risk_portfolio_judge", True)):
+            final_decision = FinalDecision(
+                route=route,  # type: ignore[arg-type]
+                recommendation="abstain",
+                confidence=0.0,
+                abstain_reason="cost_guard_research_only",
+                summary_zh="成本门控仅完成研究阶段，本次不进入付费最终判断。",
+                narrative_archetype="unclear",
+                narrative_thesis_zh="确定性成本门控判定该样本不需要 DeepSeek 最终判断。",
+                bull_view=BullBearView(strength="absent"),
+                bear_view=BullBearView(strength="absent"),
+                playbook=TradePlaybook(
+                    has_playbook=False,
+                    watch_signals=[],
+                    exit_triggers=[],
+                    monitoring_horizon="1h",
+                ),
+                invalidation_conditions=[],
+                residual_risks=["cost_guard_research_only"],
+                evidence_event_ids=list(evidence_ids),
+                supporting_evidence_refs=tuple(),
+                risk_evidence_refs=tuple(),
+                data_gap_refs=tuple(),
+            )
+            audit = self.request_audit(
+                context=context,
+                run_id=run_id,
+                job=job,
+                route=route,
+                completeness=completeness,
+                runtime_manifest=runtime_manifest,
+            )
+            return PulseDecisionResult(
+                final_decision=final_decision,
+                agent_run_audit={**audit, "output_hash": "output-hash"},
+                stage_audits=(signal_audit, bear_audit),
+            )
         stage_audit = StageRunAudit(
             stage="risk_portfolio_judge",
             route=route,  # type: ignore[arg-type]

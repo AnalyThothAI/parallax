@@ -17,6 +17,7 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import (
     PulseEvidencePacket,
     SignalAnalystMemo,
 )
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_agent_cost_guard import PulseStagePlan
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     BullBearView,
     DecisionRoute,
@@ -166,6 +167,7 @@ class OpenAIAgentsPulseDecisionClient:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
+        stage_plan: PulseStagePlan | None = None,
     ) -> PulseDecisionAgentResult:
         audit = self.request_audit(
             context=context,
@@ -177,6 +179,19 @@ class OpenAIAgentsPulseDecisionClient:
         )
         evidence_packet = _evidence_packet_from_context(context)
         evidence_gate = completeness
+        if stage_plan is not None and not (stage_plan.run_signal_analyst and stage_plan.run_bear_case):
+            final = _stage_failure_abstain_decision(
+                route=route,
+                reason="cost_guard_no_llm_stage_plan",
+                evidence_packet=evidence_packet,
+                abstain_reason="cost_guard_research_only",
+            )
+            audit = self._decision_runtime.with_output_hash(audit, final=final)
+            return PulseDecisionAgentResult(
+                final_decision=final,
+                agent_run_audit=audit,
+                stage_audits=tuple(),
+            )
 
         signal_step = await self._run_signal_analyst(
             route=route,
@@ -270,6 +285,20 @@ class OpenAIAgentsPulseDecisionClient:
                 reason=str(exc),
                 evidence_packet=evidence_packet,
                 abstain_reason="invalid_unknown_evidence_ref",
+            )
+            audit = self._decision_runtime.with_output_hash(audit, final=final)
+            return PulseDecisionAgentResult(
+                final_decision=final,
+                agent_run_audit=audit,
+                stage_audits=tuple(stage_audits),
+            )
+
+        if stage_plan is not None and not stage_plan.run_risk_portfolio_judge:
+            final = _stage_failure_abstain_decision(
+                route=route,
+                reason="deepseek_judge_not_required",
+                evidence_packet=evidence_packet,
+                abstain_reason="cost_guard_research_only",
             )
             audit = self._decision_runtime.with_output_hash(audit, final=final)
             return PulseDecisionAgentResult(
@@ -743,6 +772,8 @@ def _abstain_reason_for_stage_failure(step: StageRunAudit) -> str:
 
 
 def _stage_failure_summary(abstain_reason: str) -> str:
+    if abstain_reason == "cost_guard_research_only":
+        return "成本门控仅完成研究阶段，本次不进入付费最终判断。"
     if abstain_reason == "stage_timeout":
         return "LLM 研究委员会阶段超时，本次不发布候选。"
     if abstain_reason == "invalid_model_output":
@@ -751,6 +782,8 @@ def _stage_failure_summary(abstain_reason: str) -> str:
 
 
 def _stage_failure_thesis(abstain_reason: str) -> str:
+    if abstain_reason == "cost_guard_research_only":
+        return "确定性成本门控判定该样本不需要 DeepSeek 最终判断；系统保留 Qwen 研究审计并等待下一轮公开资格确认。"
     if abstain_reason == "stage_timeout":
         return "LLM 阶段超过实时预算，没有形成可验证的完整结论；本次仅记录超时并等待下一轮有效证据综合。"
     if abstain_reason == "invalid_model_output":

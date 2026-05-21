@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
@@ -15,6 +15,9 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
+
+if TYPE_CHECKING:
+    from gmgn_twitter_intel.domains.pulse_lab.services.pulse_agent_cost_guard import PulseStagePlan
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +197,7 @@ class PulseDecisionProvider(Protocol):
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
+        stage_plan: PulseStagePlan | None = None,
     ) -> PulseDecisionResult: ...
 
 

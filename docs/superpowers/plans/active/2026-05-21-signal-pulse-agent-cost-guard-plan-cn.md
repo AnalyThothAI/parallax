@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft
+**Status:** Implemented and verified in `codex/signal-pulse-agent-cost-guard`
 **Date:** 2026-05-21
 **Owning spec:** `docs/superpowers/specs/active/2026-05-21-signal-pulse-agent-cost-guard-cn.md`
 **Worktree:** `.worktrees/signal-pulse-agent-cost-guard/`

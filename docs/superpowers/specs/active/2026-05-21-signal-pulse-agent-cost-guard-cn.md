@@ -1,6 +1,6 @@
 # Spec - Signal Pulse Agent Cost Guard And Hybrid Model Routing
 
-**Status**: Draft
+**Status**: Implemented and verified in `codex/signal-pulse-agent-cost-guard`
 **Date**: 2026-05-21
 **Owner**: Qinghuan / Codex
 **Related**:

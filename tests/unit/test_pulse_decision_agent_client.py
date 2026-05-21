@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.pulse_lab.providers import BearCaseMemo, SignalAnalystMemo
 from gmgn_twitter_intel.domains.pulse_lab.services.agent_runtime import build_pulse_runtime_manifest
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_agent_cost_guard import PulseStagePlan
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
 )
@@ -357,6 +358,94 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
     assert result.stage_audits[0].output_hash == "sha256:output-signal_analyst"
     assert result.stage_audits[1].output_hash == "sha256:output-bear_case"
     assert result.stage_audits[2].output_hash == "sha256:output-risk_portfolio_judge"
+
+
+def test_pulse_client_stage_plan_qwen_research_only_skips_deepseek_judge() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "signal_analyst": _signal_analyst_raw(["event:event-1"]),
+            "bear_case": _bear_case_raw(["event:event-1"]),
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    result = asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+            stage_plan=PulseStagePlan(
+                run_signal_analyst=True,
+                run_bear_case=True,
+                run_risk_portfolio_judge=False,
+                signal_model="qwen3.6",
+                bear_model="qwen3.6",
+                judge_model=None,
+            ),
+        )
+    )
+
+    assert [call["stage"].lane for call in gateway.execute_calls] == [
+        "pulse.signal_analyst",
+        "pulse.bear_case",
+    ]
+    assert "pulse.risk_portfolio_judge" not in [call["stage"].lane for call in gateway.execute_calls]
+    assert [audit.stage for audit in result.stage_audits] == ["signal_analyst", "bear_case"]
+    assert result.final_decision.recommendation == "abstain"
+    assert result.final_decision.abstain_reason == "cost_guard_research_only"
+
+
+def test_pulse_client_stage_plan_public_judge_runs_all_three_stages() -> None:
+    gateway = _FakeAgentGateway(
+        {
+            "signal_analyst": _signal_analyst_raw(["event:event-1"]),
+            "bear_case": _bear_case_raw(["event:event-1"]),
+            "risk_portfolio_judge": _final_decision_raw(
+                supporting_refs=["event:event-1"],
+                playbook={
+                    "has_playbook": False,
+                    "watch_signals": [],
+                    "exit_triggers": [],
+                    "monitoring_horizon": "4h",
+                },
+            ),
+        }
+    )
+    client = OpenAIAgentsPulseDecisionClient(
+        agent_gateway=gateway,
+        decision_runtime=PulseDecisionRuntimeService(db_pool=object()),
+    )
+
+    asyncio.run(
+        client.run_decision_pipeline(
+            context=_pipeline_context(),
+            run_id="run-1",
+            job={"job_id": "job-1", "attempt_count": 1},
+            route="meme",
+            completeness={"status": "complete"},
+            runtime_manifest={"runtime_version": "test"},
+            stage_plan=PulseStagePlan(
+                run_signal_analyst=True,
+                run_bear_case=True,
+                run_risk_portfolio_judge=True,
+                signal_model="qwen3.6",
+                bear_model="qwen3.6",
+                judge_model="deepseek-v4-flash",
+            ),
+        )
+    )
+
+    assert [call["stage"].lane for call in gateway.execute_calls] == [
+        "pulse.signal_analyst",
+        "pulse.bear_case",
+        "pulse.risk_portfolio_judge",
+    ]
 
 
 def test_pulse_client_passes_parent_reservation_to_stage_execution() -> None:
