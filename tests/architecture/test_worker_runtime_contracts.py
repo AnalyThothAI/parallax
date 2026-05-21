@@ -238,7 +238,7 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "macro_view_snapshots": {
         SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
         SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260521_0074_macro_views.py",
+        SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
     },
 }
 

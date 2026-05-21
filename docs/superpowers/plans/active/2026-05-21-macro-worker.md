@@ -31,7 +31,7 @@ Known-failing baseline tests:
 
 ### Storage / migrations
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0074_macro_views.py`.
+- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0076_macro_views.py`.
   ```sql
   CREATE TABLE IF NOT EXISTS macro_observations (
     observation_id TEXT PRIMARY KEY,

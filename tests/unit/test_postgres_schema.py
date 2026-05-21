@@ -3,6 +3,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from alembic.script import ScriptDirectory
+
+from gmgn_twitter_intel.platform.db.postgres_migrations import alembic_config
+
 MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py")
 QUEUE_MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0002_postgres_queue_claims.py")
 STALE_RUNNING_MIGRATION = Path(
@@ -100,6 +104,12 @@ def test_alembic_revision_ids_are_unique() -> None:
             duplicates.setdefault(revision, [str(revisions[revision])]).append(str(path))
         revisions[revision] = path
     assert duplicates == {}
+
+
+def test_alembic_revision_graph_has_single_head() -> None:
+    script = ScriptDirectory.from_config(alembic_config())
+
+    assert script.get_heads() == [script.get_current_head()]
 
 
 def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:
