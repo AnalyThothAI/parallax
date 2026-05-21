@@ -51,6 +51,7 @@ Review workers by separating four categories:
 | Read models | Rebuildable projections for reads and product workflows | `token_radar_rows`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
 | Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
+| Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
 
 The most common architecture bug is mixing these categories. For
 example, a job queue row can explain why work has not finished, but it
@@ -66,6 +67,7 @@ collector
   -> token_capture_tier
   -> market_tick_stream / market_tick_poll / event_anchor_backfill
   -> resolution_refresh and profile refresh lanes
+  -> token_image_mirror
   -> token_radar_projection
   -> narrative_admission
   -> mention_semantics / token_discussion_digest
@@ -101,7 +103,7 @@ notification_delivery
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
 | `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | provider logo URLs from `asset_profiles`, exact identity evidence, `cex_token_profiles`, current/recent targets | `token_image_assets`, local cache files | poll | none | `interval_seconds` |
 | `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_rows`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
-| `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
+| `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `token_image_assets`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | latest ready `token_radar_rows` frontier, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | due `narrative_admissions` source sets, `events`, queued semantics | `token_mention_semantics`, `narrative_model_runs` | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
 | `token_discussion_digest` (`TokenDiscussionDigestWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/token_discussion_digest_worker.py` | `narrative_admissions`, `token_mention_semantics`, market/profile facts | `token_discussion_digests`, `narrative_model_runs` | `token_radar_updated`, `narrative_semantics_updated`, `market_tick_written` | none | `interval_seconds` |

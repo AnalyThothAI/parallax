@@ -53,10 +53,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -95,6 +95,8 @@ positional arguments:
                         refresh due DEX token profile facts
     rebuild-token-profiles
                         rebuild canonical token profile current facts
+    mirror-token-images
+                        mirror provider token images into the local cache
     reprocess-token-intents
                         re-resolve recent unresolved token intents and rebuild
                         token radar

@@ -70,6 +70,11 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.
 - **Score display.** Any displayed ranking score includes its component breakdown from the API. The UI does not recompute ranking facts locally.
+- **Token images.** Token profile and radar logos come from
+  `profile.identity.logo_url` only when the value is a same-origin
+  `/api/token-images/{image_id}` path. Remote provider URLs render the fallback
+  mark. Do not restore `tokenImageUrl`, `/api/token-image?url=...`, or any
+  frontend proxy/helper that rewrites GMGN, Binance, OKX, or CEX image URLs.
 
 ## Build And Test
 
@@ -96,3 +101,6 @@ Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually 
 3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
 4. Confirm no failing `/api/*` requests in the browser session.
 5. Confirm route-aware WebSocket subscription behavior: global notifications remain subscribed, while token-radar `market_targets` are released after leaving `/`.
+6. Confirm token logos either load from `/api/token-images/{image_id}` or show
+   fallback marks, with no browser requests to provider image URLs such as
+   GMGN `external-res`.
