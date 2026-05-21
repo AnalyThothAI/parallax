@@ -176,6 +176,32 @@ def test_project_token_profile_current_uses_okx_exact_logo_when_gmgn_sources_are
     assert row["name"] == "Tether USD"
 
 
+def test_project_token_profile_current_uses_okx_exact_metadata_without_logo():
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=None,
+        binance_web3=None,
+        gmgn_stream=None,
+        okx_dex=okx_row(
+            logo_url=None,
+            symbol="USDT",
+            name="Tether USD",
+            observed_at_ms=3_000,
+        ),
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["profile_provider"] == "okx_dex_evidence"
+    assert row["symbol"] == "USDT"
+    assert row["name"] == "Tether USD"
+    assert row["logo_url"] is None
+    assert row["logo_image_id"] is None
+    assert row["logo_source_provider"] is None
+    assert row["logo_source_url_hash"] is None
+    assert row["quality_flags"] == ["source_without_logo"]
+
+
 def test_project_token_profile_current_filters_okx_default_logo_and_marks_missing():
     row = project_token_profile_current(
         target={"target_type": "Asset", "target_id": ASSET_ID},

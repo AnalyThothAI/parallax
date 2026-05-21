@@ -196,8 +196,8 @@ def _okx_dex_row(
 ) -> dict[str, Any]:
     raw = _raw(source)
     logo_url = _clean(raw.get("tokenLogoUrl"))
-    flags = _source_without_logo_flags(logo_url, placeholder_flag="okx_placeholder_logo")
-    if flags:
+    placeholder_flags = _okx_placeholder_logo_flags(logo_url)
+    if placeholder_flags:
         row = _status_row(
             target_type=target_type,
             target_id=target_id,
@@ -208,7 +208,7 @@ def _okx_dex_row(
             source_payload=raw,
             observed_at_ms=_int_or_none(source.get("observed_at_ms")),
             computed_at_ms=computed_at_ms,
-            quality_flags=flags,
+            quality_flags=placeholder_flags,
         )
         row["symbol"] = _clean(raw.get("tokenSymbol") or source.get("symbol"))
         row["name"] = _clean(raw.get("tokenName") or source.get("name"))
@@ -455,6 +455,12 @@ def _source_without_logo_flags(value: str | None, *, placeholder_flag: str = "pl
         return ["invalid_logo_url", "source_without_logo"]
     if "/default-logo/" in value:
         return [placeholder_flag, "source_without_logo"]
+    return []
+
+
+def _okx_placeholder_logo_flags(value: str | None) -> list[str]:
+    if value and value.startswith(("http://", "https://")) and "/default-logo/" in value:
+        return ["okx_placeholder_logo", "source_without_logo"]
     return []
 
 
