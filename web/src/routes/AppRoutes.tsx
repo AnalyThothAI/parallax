@@ -271,7 +271,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
         />
         <Route path="news" element={<NewsRoute token={token ?? ""} />} />
         <Route path="news/:newsItemId" element={<NewsRoute token={token ?? ""} />} />
-        <Route path="macro" element={<MacroRoute token={token ?? ""} />} />
+        <Route path="macro/*" element={<MacroRoute token={token ?? ""} />} />
         <Route
           path="ops"
           element={<OpsRoute token={token ?? ""} windowKey={windowKey} scope={scope} />}

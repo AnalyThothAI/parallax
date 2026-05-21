@@ -34,6 +34,19 @@ describe("macro route", () => {
       }),
     );
   });
+
+  it("opens a routed macro module and secondary page", async () => {
+    renderAppRoute("/macro/assets/macro-beta");
+
+    expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Inflation And Dollar Beta" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "商品/美元" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+  });
 });
 
 function macroFixture(): MacroData {

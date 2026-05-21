@@ -27,15 +27,15 @@ describe("MacroPage", () => {
     renderWithProviders(<MacroPage token="test-token" />);
 
     expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Market Read" })).toBeInTheDocument();
+    expect(await screen.findByText("funding_stress · 72% confidence · 1w")).toBeInTheDocument();
+    expect(await screen.findByText("10/70 observed")).toBeInTheDocument();
     expect((await screen.findAllByText("funding_stress")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "Transmission Chain" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Scenario Path" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Confirmations / Contradictions" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Trade Map" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Data Gaps" })).toBeInTheDocument();
-    expect(screen.getAllByText("Liquidity").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "宏观传导链" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "情景与交易地图" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "验证矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "数据覆盖" })).toBeInTheDocument();
+    expect(screen.getAllByText("Onshore Funding").length).toBeGreaterThan(0);
     expect(screen.getByText("Fed Corridor")).toBeInTheDocument();
     expect(screen.getByText("repo_pressure_persists_3d")).toBeInTheDocument();
     expect(screen.getByText("volatility_carry")).toBeInTheDocument();

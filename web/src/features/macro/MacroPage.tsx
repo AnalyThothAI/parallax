@@ -449,13 +449,35 @@ const FEATURE_TITLES: Record<string, string> = {
 
 const CHART_COLORS = ["#8fd6ff", "#f5be62", "#86dfa7", "#ee899a", "#d5c2ff", "#f2a56f"];
 
-export function MacroPage({ token }: { token: string }) {
+export function MacroPage({
+  moduleId,
+  onRouteChange,
+  sectionId,
+  token,
+}: {
+  moduleId?: string;
+  onRouteChange?: (moduleId: MacroModuleId, sectionId?: string) => void;
+  sectionId?: string;
+  token: string;
+}) {
   const query = useMacroQuery({ token });
   const data = query.data ?? null;
   const snapshot = data?.snapshot ?? null;
-  const [activeModule, setActiveModule] = useState<MacroModuleId>("overview");
+  const routedModule = normalizeModuleId(moduleId);
+  const [activeModule, setActiveModule] = useState<MacroModuleId>(routedModule);
   const moduleCards = useMemo(() => MODULES.map((module) => moduleSummary(module, data)), [data]);
   const activeRegime = data?.scenario.current_regime ?? snapshot?.regime ?? "pending";
+  const activeSection = sectionId;
+
+  useEffect(() => {
+    setActiveModule(routedModule);
+  }, [routedModule]);
+
+  const handleModuleChange = (nextModule: string) => {
+    const normalizedModule = normalizeModuleId(nextModule);
+    setActiveModule(normalizedModule);
+    onRouteChange?.(normalizedModule, defaultSectionId(normalizedModule));
+  };
 
   return (
     <section className="macro-workbench" aria-label="Macro">
@@ -481,7 +503,7 @@ export function MacroPage({ token }: { token: string }) {
           activationMode="manual"
           className="macro-shell"
           value={activeModule}
-          onValueChange={(next) => setActiveModule(next as MacroModuleId)}
+          onValueChange={handleModuleChange}
         >
           <aside className="macro-module-rail" aria-label="Macro modules">
             <Tabs.List className="macro-module-list">
@@ -505,7 +527,12 @@ export function MacroPage({ token }: { token: string }) {
           <div className="macro-module-stage">
             {MODULES.map((module) => (
               <Tabs.Content className="macro-module-content" key={module.id} value={module.id}>
-                <ModulePage data={data} module={MODULE_BY_ID[module.id]} />
+                <ModulePage
+                  activeSection={module.id === activeModule ? activeSection : undefined}
+                  data={data}
+                  module={MODULE_BY_ID[module.id]}
+                  onSectionChange={(nextSection) => onRouteChange?.(module.id, nextSection)}
+                />
               </Tabs.Content>
             ))}
           </div>
@@ -528,20 +555,23 @@ function MacroHero({
 }) {
   const scorecard = data?.scorecard ?? {};
   const scenario = data?.scenario ?? {};
+  const primarySignal = scenario.confirmations?.[0] ?? scenario.watch_triggers?.[0] ?? null;
   return (
     <header className="macro-hero">
       <div className="macro-hero-copy">
-        <span className="macro-eyebrow">US Macro Regime Console</span>
+        <span className="macro-eyebrow">US Macro Workbench</span>
         <h2>Macro</h2>
         <p>
-          从用户视角重排宏观链路：先看市场主线，再进入大类资产、利率、美联储、
-          流动性、经济数据、波动率与信用市场。
+          先读市场主线和证据强度，再下钻大类资产、利率、美联储、流动性、经济数据、
+          波动率与信用市场。
         </p>
       </div>
-      <div className="macro-hero-state">
-        <div className={clsx("macro-regime-badge", regimeTone(activeRegime))}>
-          <small>current regime</small>
-          <strong>{activeRegime}</strong>
+      <div className="macro-market-read">
+        <div className="macro-market-read-copy">
+          <span className="macro-eyebrow">Current read</span>
+          <h3>Market Read</h3>
+          <strong>{scenarioLine(activeRegime, scenario)}</strong>
+          <p>{primarySignal ? signalDetail(primarySignal) : "等待宏观链路形成可验证证据。"}</p>
         </div>
         <div className="macro-hero-kpis">
           <MetricTile label="status" value={snapshot?.status ?? "missing"} />
@@ -549,9 +579,9 @@ function MacroHero({
             label="score"
             value={scoreLabel(scorecard.overall_score ?? snapshot?.overall_score)}
           />
-          <MetricTile label="confidence" value={percentLabel(scenario.confidence)} />
-          <MetricTile label="coverage" value={coverageLabel(scorecard)} />
+          <MetricTile label="coverage" value={coverageReadLabel(scorecard)} />
           <MetricTile label="asof" value={snapshot?.asof_date ?? "-"} />
+          <MetricTile label="gaps" value={String(scorecard.data_gap_count ?? data?.data_gaps.length ?? "-")} />
           <MetricTile label="refresh" value={isFetching ? "updating" : "live"} />
         </div>
       </div>
@@ -559,13 +589,24 @@ function MacroHero({
   );
 }
 
-function ModulePage({ data, module }: { data: MacroData; module: MacroModule }) {
+function ModulePage({
+  activeSection,
+  data,
+  module,
+  onSectionChange,
+}: {
+  activeSection?: string;
+  data: MacroData;
+  module: MacroModule;
+  onSectionChange: (sectionId: string) => void;
+}) {
   const summary = moduleSummary(module, data);
   const triggers = matchingTriggers(data.triggers, module);
   const chainEntries = orderedSubset(data.chain, module.chainKeys, CHAIN_ORDER);
   const panelEntries = orderedSubset(data.panels, module.panelKeys, module.panelKeys);
   const indicators = pickRecord(data.indicators, module.indicatorKeys);
   const features = pickRecord(data.features, module.featureKeys);
+  const selectedSection = normalizeSectionId(module, activeSection);
 
   return (
     <article className="macro-module-page">
@@ -597,7 +638,8 @@ function ModulePage({ data, module }: { data: MacroData; module: MacroModule }) 
         <Tabs.Root
           activationMode="manual"
           className="macro-secondary-tabs"
-          defaultValue={module.secondaries[0]?.id ?? "snapshot"}
+          value={selectedSection}
+          onValueChange={onSectionChange}
         >
           <Tabs.List className="macro-secondary-list" aria-label={`${module.navLabel} sub pages`}>
             {module.secondaries.map((secondary) => (
@@ -918,7 +960,7 @@ function FeatureTrendChart({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || data.length < 2) {
+    if (!container || data.length < 2 || typeof window.matchMedia !== "function") {
       return undefined;
     }
     const chart: IChartApi = createChart(container, {
@@ -1359,6 +1401,33 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function normalizeModuleId(moduleId: string | undefined): MacroModuleId {
+  if (moduleId && moduleId in MODULE_BY_ID) {
+    return moduleId as MacroModuleId;
+  }
+  return "overview";
+}
+
+function defaultSectionId(moduleId: MacroModuleId): string | undefined {
+  const module = MODULE_BY_ID[moduleId];
+  if (module.id === "overview") {
+    return undefined;
+  }
+  return module.secondaries[0]?.id ?? "signals";
+}
+
+function normalizeSectionId(module: MacroModule, sectionId: string | undefined): string {
+  const availableSections = new Set([
+    ...module.secondaries.map((secondary) => secondary.id),
+    "signals",
+    "sources",
+  ]);
+  if (sectionId && availableSections.has(sectionId)) {
+    return sectionId;
+  }
+  return module.secondaries[0]?.id ?? "signals";
+}
+
 function moduleSummary(module: MacroModule, data: MacroData | null) {
   if (!data) {
     return {
@@ -1558,6 +1627,23 @@ function coverageLabel(scorecard: MacroScorecard): string {
     return String(scorecard.observed_series_count);
   }
   return percentLabel(scorecard.coverage_ratio);
+}
+
+function coverageReadLabel(scorecard: MacroScorecard): string {
+  const observed = scorecard.observed_series_count;
+  const required = scorecard.required_series_count;
+  if (observed !== null && observed !== undefined && required !== null && required !== undefined) {
+    return `${observed}/${required} observed`;
+  }
+  return coverageLabel(scorecard);
+}
+
+function scenarioLine(activeRegime: string, scenario: MacroScenario): string {
+  return [
+    activeRegime || "pending",
+    `${percentLabel(scenario.confidence)} confidence`,
+    scenario.time_window ?? "-",
+  ].join(" · ");
 }
 
 function percentLabel(value: number | null | undefined): string {

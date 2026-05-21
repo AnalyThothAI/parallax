@@ -9,7 +9,7 @@
 
 .macro-hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
+  grid-template-columns: minmax(260px, 0.68fr) minmax(0, 1.32fr);
   gap: 14px;
   align-items: stretch;
   border: 1px solid var(--line);
@@ -48,6 +48,7 @@
 }
 
 .macro-hero h2,
+.macro-market-read h3,
 .macro-module-head h3,
 .macro-section-head h4 {
   margin: 0;
@@ -60,7 +61,13 @@
   line-height: 0.95;
 }
 
+.macro-market-read h3 {
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
 .macro-hero p,
+.macro-market-read p,
 .macro-module-head p,
 .macro-reader-card b,
 .macro-section-copy {
@@ -71,31 +78,30 @@
   line-height: 1.5;
 }
 
-.macro-hero-state {
+.macro-market-read {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.92fr);
   gap: 10px;
   min-width: 0;
 }
 
-.macro-regime-badge {
+.macro-market-read-copy {
   display: grid;
-  align-content: space-between;
-  min-height: 132px;
-  border: 1px solid var(--line);
+  align-content: center;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--info-line);
   border-radius: 6px;
-  background: rgba(7, 9, 8, 0.72);
+  background: rgba(7, 9, 8, 0.6);
   padding: 12px;
 }
 
-.macro-regime-badge strong {
+.macro-market-read-copy strong {
   color: var(--bone);
   font-family: var(--mono);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 900;
-  line-height: 1.15;
   overflow-wrap: anywhere;
-  text-transform: uppercase;
 }
 
 .macro-hero-kpis,
@@ -778,7 +784,7 @@
     padding: 8px;
   }
 
-  .macro-hero-state,
+  .macro-market-read,
   .macro-module-read,
   .macro-chart-grid,
   .macro-decision-grid {
