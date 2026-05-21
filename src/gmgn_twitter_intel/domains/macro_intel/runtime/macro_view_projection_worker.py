@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING, Any, cast
+
+from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import (
+    build_macro_view_snapshot,
+)
+
+if TYPE_CHECKING:
+    from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession
+
+
+class MacroViewProjectionWorker(WorkerBase):
+    def __init__(self, *, clock_ms: Callable[[], int] | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.clock_ms = clock_ms or _now_ms
+
+    async def run_once(self) -> WorkerResult:
+        return await asyncio.to_thread(self.run_once_sync)
+
+    def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
+        now = int(now_ms if now_ms is not None else self.clock_ms())
+        with self._repository_session() as repos:
+            observations = repos.macro_intel.latest_observations(limit=self._batch_size())
+            snapshot = build_macro_view_snapshot(observations, computed_at_ms=now)
+            repos.macro_intel.insert_snapshot(snapshot)
+        return WorkerResult(
+            processed=1,
+            notes={
+                "projection_version": str(snapshot["projection_version"]),
+                "status": str(snapshot["status"]),
+                "regime": str(snapshot["regime"]),
+            },
+        )
+
+    def _repository_session(self) -> AbstractContextManager[RepositorySession]:
+        return cast(
+            "AbstractContextManager[RepositorySession]",
+            self.db.worker_session(
+                self.name,
+                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            ),
+        )
+
+    def _batch_size(self) -> int:
+        return max(1, int(getattr(self.settings, "batch_size", 250)))
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+__all__ = ["MacroViewProjectionWorker"]

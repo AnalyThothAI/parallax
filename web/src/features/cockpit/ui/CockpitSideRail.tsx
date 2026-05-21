@@ -2,7 +2,7 @@ import { WatchlistNotificationDot } from "@features/notifications";
 import type { WatchlistRow } from "@features/watchlist";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
-import { newsPath, stocksPath, watchlistPath } from "@shared/routing/paths";
+import { newsPath, stocksPath, viewsPath, watchlistPath } from "@shared/routing/paths";
 import clsx from "clsx";
 import { UserRound } from "lucide-react";
 import type { ReactNode } from "react";
@@ -41,6 +41,7 @@ export function CockpitSideRail({
   const liveRouteMatch = useMatch({ path: "/", end: true });
   const newsRouteMatch = useMatch("/news/*");
   const stockRouteMatch = useMatch("/stocks/*");
+  const viewsRouteMatch = useMatch("/views/*");
   const watchlistRouteMatch = useMatch("/watchlist/*");
   const [searchParams] = useSearchParams();
   const activeWatchHandle = watchlistRouteMatch ? (searchParams.get("handle") ?? "") : "";
@@ -68,6 +69,12 @@ export function CockpitSideRail({
           label="News"
           value={newsItemsHasMore ? `${compactNumber(newsItemsCount)}+` : newsItemsCount}
           onClick={() => navigate(newsPath())}
+        />
+        <RailButton
+          active={Boolean(viewsRouteMatch)}
+          index="M"
+          label="Views"
+          onClick={() => navigate(viewsPath())}
         />
       </RailSection>
 

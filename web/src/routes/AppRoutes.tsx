@@ -32,6 +32,7 @@ import { SignalLabPulseRoute } from "./signal-lab.pulse.route";
 import { SignalLabRoute } from "./signal-lab.route";
 import { StocksRoute } from "./stocks.route";
 import { TokenTargetRoute } from "./token-target.route";
+import { ViewsRoute } from "./views.route";
 import { WatchlistRoute } from "./watchlist.route";
 
 const EMPTY_HANDLES: string[] = [];
@@ -270,6 +271,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
         />
         <Route path="news" element={<NewsRoute token={token ?? ""} />} />
         <Route path="news/:newsItemId" element={<NewsRoute token={token ?? ""} />} />
+        <Route path="views" element={<ViewsRoute token={token ?? ""} />} />
         <Route
           path="ops"
           element={<OpsRoute token={token ?? ""} windowKey={windowKey} scope={scope} />}

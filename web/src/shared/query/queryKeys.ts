@@ -48,6 +48,7 @@ export const queryKeys = {
     ["search-inspect", token, q, window, scope] as const,
   stocksRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
     ["stocks-radar", window, scope, limit] as const,
+  macroView: () => ["macro-view"] as const,
   newsRows: ({
     limit,
     cursor,

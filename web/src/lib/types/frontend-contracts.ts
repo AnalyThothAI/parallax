@@ -19,6 +19,47 @@ export type TokenPostServerSort = "recent" | "catalyst";
 export type TokenDetailMode = "compact" | "replay";
 export type WatchlistTimelineScope = "signal" | "all";
 
+export type MacroViewSnapshotSummary = {
+  snapshot_id: string;
+  projection_version: string;
+  asof_date: string;
+  status: string;
+  regime: string;
+  overall_score?: number | null;
+  computed_at_ms: number;
+};
+
+export type MacroPanel = {
+  score?: number | null;
+  regime: string;
+  evidence: string[];
+  data_gaps: string[];
+};
+
+export type MacroIndicator = {
+  label: string;
+  value?: number | string | null;
+  unit?: string | null;
+  observed_at?: string | null;
+  sources?: string[];
+  series_keys?: string[];
+};
+
+export type MacroTrigger = {
+  code: string;
+  description?: string | null;
+  value?: number | string | null;
+};
+
+export type MacroViewsData = {
+  snapshot: MacroViewSnapshotSummary | null;
+  panels: Record<string, MacroPanel>;
+  indicators: Record<string, MacroIndicator>;
+  triggers: MacroTrigger[];
+  data_gaps: string[];
+  source_coverage: Record<string, number | string | null | undefined>;
+};
+
 export type BootstrapData = {
   ws_token: string;
   handles: string[];

@@ -62,6 +62,10 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   trading narrative from headline, summary, or fact-lane keyword heuristics.
   Queue pagination is explicit; direction tabs request backend filters rather
   than client-side reclassification.
+- **Views route.** `/views` renders deterministic Macro Intel state from
+  `/api/views/macro`. Regime, component scores, indicators, triggers, and data
+  gaps come from `macro_view_snapshots`; frontend code does not recompute macro
+  scoring or infer missing values.
 - **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.

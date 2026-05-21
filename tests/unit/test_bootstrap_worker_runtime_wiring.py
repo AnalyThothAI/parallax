@@ -15,6 +15,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker imp
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
+from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import MacroViewProjectionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
@@ -208,6 +209,9 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
         "news_item_brief_updated",
     )
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
+    assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
+    assert workers["macro_view_projection"].settings.advisory_lock_key == 2026052109
+    assert workers["macro_view_projection"].settings.batch_size == 250
 
 
 def test_worker_factory_wires_narrative_mention_and_digest_wake_waiters() -> None:

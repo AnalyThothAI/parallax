@@ -32,22 +32,22 @@ CANONICAL_WORKER_CLASSES = {
         "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
     ),
     "token_discussion_digest": (
-        "gmgn_twitter_intel.domains.narrative_intel.runtime."
-        "token_discussion_digest_worker.TokenDiscussionDigestWorker"
+        "gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
     ),
     "news_fetch": "gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
     "news_item_process": "gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker.NewsItemProcessWorker",
     "news_story_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
     ),
-    "news_item_brief": (
-        "gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"
-    ),
+    "news_item_brief": ("gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"),
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
     "cex_oi_radar_board": (
         "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
+    ),
+    "macro_view_projection": (
+        "gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker.MacroViewProjectionWorker"
     ),
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
@@ -80,6 +80,7 @@ WORKER_START_PRIORITY = {
     "news_item_brief": 94,
     "news_page_projection": 95,
     "cex_oi_radar_board": 95,
+    "macro_view_projection": 95,
     "pulse_candidate": 96,
     "enrichment": 100,
     "handle_summary": 110,

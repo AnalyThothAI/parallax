@@ -250,6 +250,19 @@ US Stocks radar contract:
   failure returns `quote.status = "unavailable"` and does not fail the whole
   response.
 
+Macro Views contract:
+
+- `/api/views/macro` is authenticated and read-only. It performs no provider IO;
+  it reads the latest `macro_view_snapshots` row written by
+  `MacroViewProjectionWorker`.
+- When no snapshot exists, the endpoint returns `ok: true` with
+  `data.snapshot = null`, empty `panels`, `indicators`, and `triggers`, plus
+  `data_gaps = ["macro_view_snapshot_missing"]`.
+- When a snapshot exists, the response exposes `snapshot` summary fields,
+  `panels`, `indicators`, `triggers`, `data_gaps`, and `source_coverage`
+  directly from the read model. Clients must not recompute regime or score
+  fields locally.
+
 Watchlist handle intel contract:
 
 - `/api/watchlist/handles/overview` is authenticated and returns configured

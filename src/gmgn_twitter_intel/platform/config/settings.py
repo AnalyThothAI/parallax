@@ -826,6 +826,13 @@ class CexOiRadarBoardWorkerSettings(PerWorkerSettings):
         return normalized or "5m"
 
 
+class MacroViewProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=300.0, ge=0)
+    batch_size: int = Field(default=250, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
+    advisory_lock_key: int = 2026052109
+
+
 class PulseCandidateTriggerThresholds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -953,9 +960,7 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     stance_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     price_move_refresh_pct: float = Field(default=12.0, ge=0)
-    digest_ttl_by_window_seconds: dict[str, int] = Field(
-        default_factory=lambda: {"1h": 900, "4h": 1800, "24h": 7200}
-    )
+    digest_ttl_by_window_seconds: dict[str, int] = Field(default_factory=lambda: {"1h": 900, "4h": 1800, "24h": 7200})
 
     @field_validator("wakes_on", "windows", "scopes", mode="before")
     @classmethod
@@ -1080,6 +1085,7 @@ class WorkersSettings(BaseModel):
         default_factory=TokenRadarProjectionWorkerSettings
     )
     cex_oi_radar_board: CexOiRadarBoardWorkerSettings = Field(default_factory=CexOiRadarBoardWorkerSettings)
+    macro_view_projection: MacroViewProjectionWorkerSettings = Field(default_factory=MacroViewProjectionWorkerSettings)
     narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
     mention_semantics: MentionSemanticsWorkerSettings = Field(default_factory=MentionSemanticsWorkerSettings)
     token_discussion_digest: TokenDiscussionDigestWorkerSettings = Field(
@@ -1698,6 +1704,12 @@ cex_oi_radar_board:
   period: "5m"
   coinglass_enrichment_limit: 5
   coinglass_level_limit: 6
+macro_view_projection:
+  enabled: true
+  interval_seconds: 300.0
+  batch_size: 250
+  statement_timeout_seconds: 30.0
+  advisory_lock_key: 2026052109
 narrative_admission:
   enabled: true
   interval_seconds: 60.0

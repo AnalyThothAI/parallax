@@ -26,6 +26,7 @@ from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_detail_snapsho
 from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repository import CexOiRadarRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
@@ -102,6 +103,7 @@ class RepositorySession:
     cex_derivative_series: CexDerivativeSeriesRepository
     cex_detail_snapshots: CexDetailSnapshotRepository
     cex_oi_radar: CexOiRadarRepository
+    macro_intel: MacroIntelRepository
 
     def unit_of_work(self):
         return transaction(self.conn)
@@ -149,6 +151,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         cex_derivative_series=CexDerivativeSeriesRepository(conn),
         cex_detail_snapshots=CexDetailSnapshotRepository(conn),
         cex_oi_radar=CexOiRadarRepository(conn),
+        macro_intel=MacroIntelRepository(conn),
     )
 
 

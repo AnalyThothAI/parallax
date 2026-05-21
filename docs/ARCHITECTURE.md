@@ -15,6 +15,8 @@ GMGN public stream
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/news_intel          (configured news ingestion, news facts, story and page read models)
+  → domains/cex_market_intel    (centralized exchange derivative radar read models)
+  → domains/macro_intel         (macro observation facts and regime view snapshots)
   → domains/notifications       (rules, delivery)
   → app/surfaces/api + app/surfaces/cli
 ```
@@ -34,7 +36,8 @@ are wrong too.
    `token_intents`, `token_intent_lookup_keys`, `token_intent_resolutions`,
    `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
    `market_ticks`, `enriched_events`, `news_provider_items`, `news_items`,
-   `news_item_entities`, `news_token_mentions`, and `news_fact_candidates` are
+   `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, and
+   `macro_observations` are
    the business fact tables. Control plane tables such as
    `event_anchor_backfill_jobs` and `news_fetch_runs` own worker scheduling state
    and are not product truth. Every derived read model can be rebuilt from the
@@ -76,7 +79,9 @@ are wrong too.
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by
    `NewsPageProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
-   and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`.
+   and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`;
+   `macro_view_snapshots` is written only by
+   `MacroViewProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
@@ -194,6 +199,8 @@ direction is still enforced by the package rules below.
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
 | `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, deterministic story grouping, fact candidates, item-scoped agent brief read model, and the News page read model. |
+| `domains/cex_market_intel/` | Centralized exchange derivative series and Binance OI radar board projection. |
+| `domains/macro_intel/` | Normalized macro observations, deterministic macro regime scoring, and Macro Views read model. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
 
 ## Module Architecture Documents
@@ -209,6 +216,7 @@ own maps next to the code they describe, and this file links to them.
 | CEX market intelligence | [`src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 | News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, story grouping, fact candidates, and the News page read model. |
+| Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | Macro observation facts, deterministic regime scoring, and Macro Views projection ownership. |
 
 When a subsystem needs more than a short row here, add
 `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this

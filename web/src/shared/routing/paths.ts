@@ -47,6 +47,10 @@ export function newsPath(): string {
   return "/news";
 }
 
+export function viewsPath(): string {
+  return "/views";
+}
+
 export function opsPath(): string {
   return "/ops";
 }

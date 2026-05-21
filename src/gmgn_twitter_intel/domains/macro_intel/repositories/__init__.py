@@ -1,0 +1,1 @@
+"""Macro intel persistence repositories."""

@@ -62,8 +62,7 @@ EXPECTED_WORKERS = {
         "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
     ),
     "token_discussion_digest": (
-        "gmgn_twitter_intel.domains.narrative_intel.runtime."
-        "token_discussion_digest_worker.TokenDiscussionDigestWorker"
+        "gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
     ),
     "news_fetch": "gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
     "news_item_process": (
@@ -72,14 +71,15 @@ EXPECTED_WORKERS = {
     "news_story_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
     ),
-    "news_item_brief": (
-        "gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"
-    ),
+    "news_item_brief": ("gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"),
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
     "cex_oi_radar_board": (
         "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
+    ),
+    "macro_view_projection": (
+        "gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker.MacroViewProjectionWorker"
     ),
     "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
     "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
@@ -235,6 +235,11 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
         SRC / "platform/db/alembic/versions/20260521_0073_cex_oi_radar_board.py",
     },
+    "macro_view_snapshots": {
+        SRC / "domains/macro_intel/repositories/macro_intel_repository.py",
+        SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260521_0074_macro_views.py",
+    },
 }
 
 LEGACY_ASSET_TABLES = ("assets", "asset_aliases", "asset_venues", "asset_market_snapshots")
@@ -244,6 +249,7 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "cex_market_intel.py",
     "enrichment.py",
     "ingestion.py",
+    "macro_intel.py",
     "narrative_intel.py",
     "news_intel.py",
     "notifications.py",
