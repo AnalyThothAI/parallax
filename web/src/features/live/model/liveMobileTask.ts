@@ -1,6 +1,6 @@
-import type { MobileTask } from "./mobileTask";
+export type LiveMobileTask = "radar" | "tape" | "lab";
 
-export function requiredMobileTaskForPathname(pathname: string): MobileTask | null {
+export function requiredLiveMobileTaskForPathname(pathname: string): LiveMobileTask | null {
   const routeRoot = pathname.split("/").filter(Boolean)[0] ?? "";
   if (routeRoot === "signal-lab") {
     return "lab";

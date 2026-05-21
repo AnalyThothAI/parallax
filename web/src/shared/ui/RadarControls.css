@@ -1,0 +1,58 @@
+@layer app.primitives {
+.radar-controls-group {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(3, 4, 3, 0.68);
+  padding: 3px;
+}
+
+.radar-controls-window {
+  flex-wrap: nowrap;
+}
+
+.radar-controls-scope {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 58px));
+}
+
+.radar-controls-group button {
+  min-width: 44px;
+  height: 27px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--ash);
+  background: transparent;
+  padding: 0 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.radar-controls-group button.active {
+  color: #ffd184;
+  background: var(--opportunity-soft);
+}
+
+@media (max-width: 767px) {
+  .radar-controls-group {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .radar-controls-window {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .radar-controls-scope {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .radar-controls-group button {
+    min-width: 0;
+    padding: 0 6px;
+  }
+}
+}

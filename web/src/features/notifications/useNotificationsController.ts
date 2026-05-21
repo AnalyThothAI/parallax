@@ -1,4 +1,4 @@
-import type { MobileTask } from "@features/cockpit";
+import type { LiveMobileTask } from "@features/live";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { signalLabPath, watchlistPath } from "@shared/routing/paths";
@@ -16,7 +16,7 @@ import {
 
 type UseNotificationsControllerArgs = {
   fallbackSummary?: NotificationSummary | null;
-  setMobileTask: (task: MobileTask) => void;
+  setMobileTask: (task: LiveMobileTask) => void;
   socketNotifications: NotificationLivePayload[];
   token: string;
 };

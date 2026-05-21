@@ -271,7 +271,7 @@ web/src/features/hook-radar/
 导航入口：
 - `CockpitTopbar.tsx` 顶部 nav 加 "Hook Radar"
 - `CockpitSideRail.tsx` 侧边导航加同名条目
-- `MobileTaskNav.tsx` 移动端 tab 加入口
+- `MobileRouteNav.tsx` 移动端顶级路由入口
 
 视觉风格：跟现有 `SignalLabWorkbench` 一致（表格 + 行高 + 风险色 + 时间格式），不引入新 design tokens。
 
@@ -360,7 +360,7 @@ hook_radar.snapshot.top_n_hooks          int,  默认 200
 - [ ] HookRadarWorker 启动后 30min 内 `hook_addresses` 至少有 N > 50 行（HookRank 主网 hook 数量级）
 - [ ] `risk_tier` 分布合理（不应全是 'unknown' —— inspector 起作用了）
 - [ ] `/api/hook-radar/feed?sort=volume` 返回非空且按 volume_24h_usd 倒序
-- [ ] 前端 `/hook-radar` 路由可访问，导航入口在 Topbar / SideRail / MobileTaskNav 三处都存在
+- [ ] 前端 `/hook-radar` 路由可访问，导航入口在 Topbar / SideRail / MobileRouteNav 三处都存在
 - [ ] HookRank endpoint 不可用时 worker 不死（仅 log error + 下个周期重试）
 - [ ] 无 ingestion / pulse_candidates / asset 表的写入（hook radar 完全独立）
 

@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 
 import type { LiveSignalTapeItem } from "../liveTapeModel";
+import type { LiveMobileTask } from "../model/liveMobileTask";
 
 import { LiveSignalTape } from "./LiveSignalTape";
+import { LiveTaskNav } from "./LiveTaskNav";
 import "./live.css";
 
 type LivePageProps = {
@@ -19,7 +21,9 @@ type LivePageProps = {
   signalPulseLoading: boolean;
   hiddenSignalPulseLoading: boolean;
   selectedPulseItemId: string | null;
+  mobileTask: LiveMobileTask;
   children?: ReactNode;
+  onMobileTaskChange: (task: LiveMobileTask) => void;
   onSelectPulse: (item: SignalPulseItem) => void;
 };
 
@@ -39,11 +43,13 @@ export function LivePage({
   signalPulseLoading,
   hiddenSignalPulseLoading,
   selectedPulseItemId,
+  mobileTask,
   children,
+  onMobileTaskChange,
   onSelectPulse,
 }: LivePageProps) {
   return (
-    <div data-testid="live-page" className="live-page">
+    <div data-testid="live-page" className={`live-page mobile-task-${mobileTask}`}>
       {children ?? <Outlet />}
 
       <div className="bottom-deck">
@@ -66,6 +72,8 @@ export function LivePage({
           onSelect={onSelectPulse}
         />
       </div>
+
+      <LiveTaskNav activeTask={mobileTask} onTaskChange={onMobileTaskChange} />
     </div>
   );
 }

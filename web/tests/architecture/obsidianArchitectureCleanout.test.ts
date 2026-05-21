@@ -204,8 +204,15 @@ describe("Obsidian Desk architecture cleanout", () => {
     expect(cockpitShell).not.toContain("detailPanel");
     expect(cockpitShell).not.toContain("detail-task-panel");
 
-    const mobileTask = readSource("features/cockpit/model/mobileTask.ts");
-    expect(mobileTask).not.toContain("detail");
+    const retiredCockpitTaskFiles = [
+      "features/cockpit/model/mobileTask.ts",
+      "features/cockpit/model/mobileRouteTask.ts",
+      "features/cockpit/state/cockpitStore.ts",
+      "features/cockpit/ui/CockpitMobileNav.tsx",
+      "features/cockpit/ui/MobileTaskNav.tsx",
+    ].filter((path) => existsSync(join(srcRoot, path)));
+
+    expect(retiredCockpitTaskFiles).toEqual([]);
 
     const drawerCss = collectFiles(srcRoot)
       .filter((path) => extname(path) === ".css")

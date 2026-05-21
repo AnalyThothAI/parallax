@@ -417,8 +417,7 @@
   border-color: var(--opportunity-line);
 }
 
-.scope-stack button,
-.segmented button {
+.scope-stack button {
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--ash);
@@ -427,8 +426,7 @@
   font-size: 10px;
 }
 
-.scope-stack button.active,
-.segmented button.active {
+.scope-stack button.active {
   color: var(--opportunity);
   border-color: var(--opportunity-line);
   background: var(--opportunity-soft);
@@ -742,157 +740,6 @@
   font-size: 10px;
 }
 
-@media (max-width: 1279px) {
-  .topbar {
-    grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) 32px;
-    grid-auto-rows: minmax(32px, auto);
-  }
-
-  .topbar .status-pills,
-  .topbar .top-stats {
-    grid-column: 1 / -1;
-    overflow-x: auto;
-  }
-
-  .cockpit-grid {
-    grid-template-columns: minmax(0, 1fr);
-    min-height: 0;
-    align-content: start;
-  }
-
-  .cockpit-grid.search-focus-mode {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .desktop-side-rail {
-    display: none;
-  }
-
-  .responsive-control-panel {
-    display: grid;
-    grid-template-columns: auto auto minmax(160px, 1fr);
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid var(--line);
-    background: rgba(13, 17, 17, 0.96);
-    padding: 8px 12px;
-  }
-
-  .responsive-control-panel .handle-filter {
-    margin-top: 0;
-  }
-
-  .center-column {
-    border-right: 0;
-  }
-}
-
-@media (max-width: 767px) {
-  .cockpit-shell {
-    padding-bottom: calc(62px + env(safe-area-inset-bottom));
-  }
-
-  .cockpit-shell.search-shell {
-    padding-bottom: 0;
-  }
-
-  .topbar {
-    position: sticky;
-    grid-template-columns: minmax(0, 1fr) 32px;
-    gap: 8px;
-    min-height: 0;
-    padding: 8px;
-  }
-
-  .brand-copy {
-    display: grid;
-    gap: 2px;
-  }
-
-  .brand h1 {
-    font-size: 12px;
-  }
-
-  .brand p {
-    max-width: 170px;
-  }
-
-  .status-pills,
-  .top-stats {
-    grid-column: 1 / -1;
-    gap: 10px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-
-  .searchbar {
-    grid-column: 1 / -1;
-    height: 36px;
-  }
-
-  .responsive-control-panel {
-    grid-template-columns: 1fr;
-    gap: 7px;
-    padding: 8px;
-  }
-
-  .responsive-control-panel .segmented {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .responsive-control-panel .scope-toggle {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .center-column {
-    min-height: 0;
-  }
-
-  [data-mobile-task-panel] {
-    display: none;
-  }
-
-  .mobile-task-radar [data-mobile-task-panel="radar"],
-  .mobile-task-tape [data-mobile-task-panel="tape"],
-  .mobile-task-lab [data-mobile-task-panel="lab"] {
-    display: grid;
-  }
-
-  .mobile-task-nav {
-    position: fixed;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 30;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    border-top: 1px solid var(--line);
-    background: rgba(9, 12, 12, 0.98);
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-    backdrop-filter: blur(14px);
-  }
-
-  .mobile-task-nav button {
-    display: grid;
-    min-height: 46px;
-    place-items: center;
-    gap: 3px;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--ash);
-    background: transparent;
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
-  .mobile-task-nav button.active,
-  .mobile-task-nav button[aria-current="page"] {
-    color: var(--opportunity);
-    border-color: var(--opportunity-line);
-    background: var(--opportunity-soft);
-  }
-}
-
 /* Obsidian Desk shell language ownership */
 .cockpit-shell {
   display: grid;
@@ -1144,12 +991,6 @@
   padding-right: 3px;
 }
 
-.responsive-control-panel,
-.mobile-task-nav,
-.mobile-route-nav {
-  display: none;
-}
-
 .rail-section h2 {
   margin: 0 0 9px;
   color: var(--dim);
@@ -1288,83 +1129,4 @@
   }
 }
 
-@media (min-width: 1280px) {
-  .desktop-side-rail {
-    display: grid;
-  }
-
-  .responsive-control-panel,
-  .mobile-task-nav,
-  .mobile-route-nav {
-    display: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .desktop-side-rail {
-    display: none;
-  }
-
-  .responsive-control-panel {
-    display: grid;
-  }
-
-  .cockpit-shell .cockpit-grid [data-mobile-task-panel] {
-    display: none;
-  }
-
-  .cockpit-shell.mobile-task-radar .cockpit-grid [data-mobile-task-panel="radar"],
-  .cockpit-shell.mobile-task-tape .cockpit-grid [data-mobile-task-panel="tape"],
-  .cockpit-shell.mobile-task-lab .cockpit-grid [data-mobile-task-panel="lab"] {
-    display: grid;
-  }
-
-  .mobile-route-nav {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    overflow-x: auto;
-    border-bottom: 1px solid var(--line);
-    background: rgba(8, 10, 10, 0.96);
-    padding: 7px 8px;
-    scrollbar-width: none;
-  }
-
-  .mobile-route-nav::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-route-nav a {
-    display: inline-grid;
-    grid-template-columns: 14px auto;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 5px;
-    min-height: 30px;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    color: var(--ash);
-    background: rgba(18, 23, 19, 0.72);
-    padding: 0 8px;
-    font-family: var(--mono);
-    font-size: 10px;
-    text-decoration: none;
-  }
-
-  .mobile-route-nav svg {
-    width: 13px;
-    height: 13px;
-  }
-
-  .mobile-route-nav a.active {
-    color: var(--opportunity);
-    border-color: var(--opportunity-line);
-    background: var(--opportunity-soft);
-  }
-
-  .mobile-task-nav {
-    display: grid;
-  }
-}
 }

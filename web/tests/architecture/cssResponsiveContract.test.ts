@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,8 +15,6 @@ const shellSelectors = [
   ".center-column",
   ".topbar",
   ".desktop-side-rail",
-  ".mobile-task-nav",
-  ".responsive-control-panel",
   ".mobile-route-nav",
 ] as const;
 
@@ -38,7 +36,7 @@ const unlayeredSideEffectCss = new Set([
 ]);
 
 describe("responsive CSS contract", () => {
-  it("scans every cockpit shell CSS unit for mobile-task-nav source-order regressions", () => {
+  it("keeps live task navigation out of cockpit shell CSS", () => {
     const shellCss = cockpitShellCssUnits()
       .map((path) => {
         const relativePath = relativeToWeb(path);
@@ -47,28 +45,84 @@ describe("responsive CSS contract", () => {
         return `\n/* @source ${relativePath} */\n${contents}`;
       })
       .join("\n");
-    const lastMobileGrid = lastMobileTaskNavDisplayGridIndex(shellCss);
+    const forbiddenFragments = [
+      ".live-task-nav",
+      ".mobile-task-nav",
+      ".mobile-task-radar",
+      ".mobile-task-tape",
+      ".mobile-task-lab",
+      "[data-mobile-task-panel",
+    ];
+    const offenders = findRules(shellCss).flatMap((rule) =>
+      forbiddenFragments
+        .filter((fragment) => rule.selector.includes(fragment))
+        .map(
+          (fragment) =>
+            `${sourceMarkerBefore(shellCss, rule.start)}:${lineNumberWithinSourceMarker(
+              shellCss,
+              rule.start,
+            )} owns live task fragment ${fragment} via ${compactSelector(rule.selector)}`,
+        ),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps live mobile task visibility owned by live.css", () => {
+    const liveCssPath = join(srcRoot, "features/live/ui/live.css");
+    const liveCss = readFileSync(liveCssPath, "utf8");
+    const lastMobileGrid = findMobileMediaBlocks(liveCss).reduce((lastIndex, block) => {
+      const matchingRule = [...findRules(block.body)]
+        .reverse()
+        .find(
+          (rule) =>
+            selectorContains(rule.selector, ".live-task-nav") &&
+            declarationValue(rule.body, "display") === "grid",
+        );
+
+      return matchingRule ? Math.max(lastIndex, block.start + matchingRule.start) : lastIndex;
+    }, -1);
 
     expect(
       lastMobileGrid,
-      "Cockpit shell CSS must include a mobile .mobile-task-nav display:grid rule",
+      "live.css must include a mobile .live-task-nav display:grid rule",
     ).not.toBe(-1);
+  });
 
-    const offenders = findRules(shellCss)
-      .filter((rule) => rule.start > lastMobileGrid)
-      .filter((rule) => selectorContains(rule.selector, ".mobile-task-nav"))
-      .filter((rule) => declarationValue(rule.body, "display") === "none")
-      .map(
+  it("keeps mobile LivePage from using overlay navigation or the desktop bottom-deck grid", () => {
+    const liveCssPath = join(srcRoot, "features/live/ui/live.css");
+    const liveCss = readFileSync(liveCssPath, "utf8");
+    const mobileBlocks = findMobileMediaBlocks(liveCss);
+    const livePageMobileRules = mobileBlocks.flatMap((block) =>
+      findRules(block.body).filter((rule) => selectorContains(rule.selector, ".live-page")),
+    );
+    const radarPanelMobileRules = mobileBlocks.flatMap((block) =>
+      findRules(block.body).filter((rule) => selectorContains(rule.selector, ".radar-panel")),
+    );
+    const liveTaskNavMobileRules = mobileBlocks.flatMap((block) =>
+      findRules(block.body).filter((rule) => selectorContains(rule.selector, ".live-task-nav")),
+    );
+
+    expect(
+      livePageMobileRules.some(
         (rule) =>
-          `${sourceMarkerBefore(shellCss, rule.start)}:${lineNumberWithinSourceMarker(
-            shellCss,
-            rule.start,
-          )} declares ${compactSelector(
-            rule.selector,
-          )} display:none after the last mobile .mobile-task-nav display:grid rule`,
-      );
-
-    expect(offenders).toEqual([]);
+          declarationValue(rule.body, "grid-template-rows") === "minmax(0, 1fr) auto" &&
+          declarationValue(rule.body, "overflow") === "hidden",
+      ),
+      "mobile .live-page must replace the desktop two-row bottom-deck grid with content + task-nav rows",
+    ).toBe(true);
+    expect(
+      radarPanelMobileRules.some(
+        (rule) =>
+          declarationValue(rule.body, "grid-template-rows") === "auto minmax(0, 1fr)" &&
+          declarationValue(rule.body, "overflow") === "hidden",
+      ),
+      "mobile .radar-panel must bound the token row scroller above the Live task nav",
+    ).toBe(true);
+    expect(
+      liveTaskNavMobileRules.some((rule) => declarationValue(rule.body, "position") === "static"),
+      "mobile .live-task-nav must be a real LivePage layout row instead of a fixed overlay",
+    ).toBe(true);
   });
 
   it("keeps desktop-side-rail hidden in the mobile shell contract", () => {
@@ -111,7 +165,7 @@ describe("responsive CSS contract", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps mobile task panel visibility hooks in cockpit shell CSS", () => {
+  it("keeps live task panel visibility hooks in live CSS only", () => {
     const forbiddenFragments = [
       "[data-mobile-task-panel",
       ".mobile-task-radar",
@@ -120,7 +174,7 @@ describe("responsive CSS contract", () => {
     ];
     const offenders = collectFiles(join(srcRoot, "features"))
       .filter(isCssFile)
-      .filter((path) => !relative(srcRoot, path).startsWith("features/cockpit/"))
+      .filter((path) => relativeToSrc(path) !== "features/live/ui/live.css")
       .flatMap((path) => {
         const css = readFileSync(path, "utf8");
 
@@ -137,6 +191,138 @@ describe("responsive CSS contract", () => {
       });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps final shell visibility breakpoints in the cockpit shell contract file only", () => {
+    const allowedPath = "src/features/cockpit/ui/cockpitShellContract.css";
+    const contractOwnedFragments = [
+      ".desktop-side-rail",
+      ".mobile-route-nav",
+    ];
+    const offenders = cockpitShellCssUnits()
+      .filter((path) => relativeToWeb(path) !== allowedPath)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css).flatMap((rule) =>
+          contractOwnedFragments
+            .filter((fragment) => rule.selector.includes(fragment))
+            .map(
+              (fragment) =>
+                `${relativeToWeb(path)}:${lineNumber(css, rule.start)} owns ${fragment} via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("removes the retired shell-level business control panel path", () => {
+    const responsiveControlPanelOffenders = collectFiles(srcRoot)
+      .filter((path) => [".css", ".ts", ".tsx"].includes(extname(path)))
+      .filter((path) => readFileSync(path, "utf8").includes("responsive-control-panel"))
+      .map(relativeToSrc);
+
+    expect(
+      responsiveControlPanelOffenders,
+      [
+        "Shell must not keep the retired responsive-control-panel compatibility path.",
+        "Route-specific filters belong to their feature pages; the shell owns only navigation, frame, scroll, and notifications.",
+      ].join("\n"),
+    ).toEqual([]);
+
+    const cockpitIndex = readFileSync(join(srcRoot, "features/cockpit/index.ts"), "utf8");
+    const cockpitRadarControlOffenders = collectFiles(join(srcRoot, "features/cockpit"))
+      .filter((path) => [".ts", ".tsx"].includes(extname(path)))
+      .filter((path) => readFileSync(path, "utf8").includes("RadarControls"))
+      .map(relativeToSrc);
+
+    expect(cockpitIndex).not.toContain("RadarControls");
+    expect(cockpitRadarControlOffenders).toEqual([]);
+    expect(existsSync(join(cockpitUiRoot, "RadarControls.tsx"))).toBe(false);
+  });
+
+  it("keeps retired generic radar table selectors out of live CSS", () => {
+    const liveCssPath = join(srcRoot, "features/live/ui/live.css");
+    const liveCss = readFileSync(liveCssPath, "utf8");
+    const forbiddenSelectors = [
+      ".radar-head",
+      ".radar-row",
+      ".radar-row-select",
+      ".radar-control-row",
+      ".token-cell",
+      ".case-cell",
+      ".venue-cell",
+      ".metric",
+      ".phase",
+      ".direction",
+      ".radar-skeleton",
+      ".segmented",
+      ".scope-toggle",
+      ".venue-filter",
+      ".sort-toggle",
+      ".account-lane-card",
+      ".account-kv",
+      ".entity-tags",
+      ".timeline-summary",
+      ".timeline-chart",
+      ".timeline-skeleton",
+      ".replay-focus-head",
+      ".replay-focus-grid",
+      ".replay-event-rail",
+      ".replay-metrics",
+      ".score-overview",
+      ".settlement-grid",
+      ".evidence-query-kv",
+      ".tabs",
+    ];
+    const offenders = findRules(liveCss).flatMap((rule) =>
+      forbiddenSelectors
+        .filter((selector) => selectorContains(rule.selector, selector))
+        .map(
+          (selector) =>
+            `${relativeToSrc(liveCssPath)}:${lineNumber(liveCss, rule.start)} keeps retired ${selector} via ${compactSelector(
+              rule.selector,
+            )}`,
+        ),
+    );
+
+    expect(
+      offenders,
+      [
+        "Live Token Radar must use token-radar-* selectors owned by live.css.",
+        "Stocks must own stock-radar-* selectors in stocks.css.",
+        "Shared RadarControls must own radar-controls-* selectors in shared/ui/RadarControls.css.",
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
+  it("keeps RadarControls styling on the shared primitive instead of feature CSS buckets", () => {
+    const radarControlsSource = readFileSync(join(srcRoot, "shared/ui/RadarControls.tsx"), "utf8");
+    const radarControlsCssPath = join(srcRoot, "shared/ui/RadarControls.css");
+    const radarControlsCss = readFileSync(radarControlsCssPath, "utf8");
+    const featureCssOffenders = collectFiles(join(srcRoot, "features"))
+      .filter(isCssFile)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css).flatMap((rule) =>
+          [".radar-controls-group", ".radar-controls-window", ".radar-controls-scope"]
+            .filter((selector) => selectorContains(rule.selector, selector))
+            .map(
+              (selector) =>
+                `${relativeToSrc(path)}:${lineNumber(css, rule.start)} owns shared ${selector} via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(radarControlsSource).not.toContain("segmented");
+    expect(radarControlsCss).toContain("@layer app.primitives");
+    expect(featureCssOffenders).toEqual([]);
   });
 
   it("reports side-effect CSS files above the 700-line budget", () => {
@@ -286,20 +472,6 @@ function findMatchingBrace(input: string, openBraceIndex: number): number {
   }
 
   return -1;
-}
-
-function lastMobileTaskNavDisplayGridIndex(css: string): number {
-  return findMobileMediaBlocks(css).reduce((lastIndex, block) => {
-    const matchingRule = [...findRules(block.body)]
-      .reverse()
-      .find(
-        (rule) =>
-          selectorContains(rule.selector, ".mobile-task-nav") &&
-          declarationValue(rule.body, "display") === "grid",
-      );
-
-    return matchingRule ? Math.max(lastIndex, block.start + matchingRule.start) : lastIndex;
-  }, -1);
 }
 
 function selectorContains(selectorList: string, classSelector: string): boolean {

@@ -204,10 +204,15 @@ for (const routeCase of routeCases) {
 
     await routeCase.primary(page);
     await expect(page.locator(".desktop-side-rail")).toBeHidden();
+    await expect(page.locator(".mobile-route-nav")).toBeVisible();
+    await expect(page.locator(".live-task-nav")).toBeHidden();
 
     await routeCase.specific(page);
     await expectNoDocumentHorizontalOverflow(page);
-    await expectNoNestedHorizontalOverflow(page, routeCase.nestedOverflowSelectors ?? []);
+    await expectNoNestedHorizontalOverflow(page, [
+      ".mobile-route-nav",
+      ...(routeCase.nestedOverflowSelectors ?? []),
+    ]);
     await expectScrollableToLastMeaningfulElement(
       page,
       routeCase.scrollContainerSelector ?? ".center-column",

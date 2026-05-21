@@ -1,18 +1,18 @@
-import { MobileTaskNav } from "@features/cockpit";
+import { LiveTaskNav } from "@features/live";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-describe("MobileTaskNav", () => {
+describe("LiveTaskNav", () => {
   afterEach(() => {
     cleanup();
   });
 
-  it("renders only the primary cockpit tasks", () => {
+  it("renders only the live route tasks", () => {
     const onChange = vi.fn();
 
-    render(<MobileTaskNav activeTask="radar" onTaskChange={onChange} />);
+    render(<LiveTaskNav activeTask="radar" onTaskChange={onChange} />);
 
-    expect(screen.getByRole("navigation", { name: "mobile cockpit tasks" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "live mobile tasks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Lab" })).toBeInTheDocument();
 
@@ -24,7 +24,7 @@ describe("MobileTaskNav", () => {
   it("switches into the lab task without a selected sidecar state", () => {
     const onChange = vi.fn();
 
-    render(<MobileTaskNav activeTask="lab" onTaskChange={onChange} />);
+    render(<LiveTaskNav activeTask="lab" onTaskChange={onChange} />);
 
     expect(screen.getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
 

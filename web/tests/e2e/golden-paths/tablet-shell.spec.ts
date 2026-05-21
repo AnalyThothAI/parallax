@@ -16,7 +16,7 @@ test("tablet shell keeps top-level route navigation when the desktop rail is hid
   await page.goto("/");
 
   await expect(page.locator(".desktop-side-rail")).toBeHidden();
-  await expect(page.locator(".mobile-task-nav")).toBeHidden();
+  await expect(page.locator(".live-task-nav")).toBeHidden();
 
   const routeNav = page.locator(".mobile-route-nav");
   await expect(routeNav).toBeVisible();

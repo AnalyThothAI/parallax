@@ -33,8 +33,8 @@ export function StocksRadarPage({
   const data = query.data;
   const rows = data?.rows ?? [];
   return (
-    <section className="radar-panel stocks-radar-panel" aria-label="US stocks radar">
-      <header className="radar-toolbar stocks-radar-toolbar">
+    <section className="stocks-radar-panel" aria-label="US stocks radar">
+      <header className="stocks-radar-toolbar">
         <div>
           <h2>US Stocks</h2>
           <span>
@@ -62,8 +62,8 @@ export function StocksRadarPage({
         </div>
       </header>
 
-      <div className="token-radar-table stocks-radar-table">
-        <div className="radar-head stock-radar-head">
+      <div className="stocks-radar-table">
+        <div className="stock-radar-head">
           <span>Symbol</span>
           <span>Mentions</span>
           <span>Authors</span>
@@ -101,10 +101,10 @@ function StockRow({ row }: { row: StockRadarRow }) {
   const quoteReady = row.quote.status === "ready";
   const quoteLabel = quoteReady ? row.quote.provider || "ready" : formatRisk(row.quote.error);
   return (
-    <article className="radar-row stock-radar-row" aria-label={`stock ${row.target.symbol}`}>
-      <span className="token-cell stock-token-cell">
-        <strong className="token-symbol">
-          <span className="symbol-line">
+    <article className="stock-radar-row" aria-label={`stock ${row.target.symbol}`}>
+      <span className="stock-token-cell">
+        <strong className="stock-token-symbol">
+          <span className="stock-symbol-line">
             <span>${row.target.symbol}</span>
           </span>
           <small>
@@ -113,34 +113,34 @@ function StockRow({ row }: { row: StockRadarRow }) {
         </strong>
       </span>
 
-      <span className="metric stock-mentions-cell" data-radar-metric="heat">
-        <b className={row.attention.watched_mentions > 0 ? "score-hot" : "score-warn"}>
+      <span className="stock-mentions-cell" data-radar-metric="heat">
+        <b className={row.attention.watched_mentions > 0 ? "stock-score-hot" : "stock-score-warn"}>
           {compactNumber(row.attention.mentions)}
         </b>
         <small>{compactNumber(row.attention.watched_mentions)} watched</small>
       </span>
 
-      <span className="metric stock-authors-cell" data-radar-metric="quality">
+      <span className="stock-authors-cell" data-radar-metric="quality">
         <b>{compactNumber(row.attention.unique_authors)}</b>
         <small>unique authors</small>
       </span>
 
-      <span className="phase stock-latest-cell" data-radar-metric="propagation">
+      <span className="stock-latest-cell" data-radar-metric="propagation">
         <b>{row.latest_event.author_handle ? `@${row.latest_event.author_handle}` : "-"}</b>
         <small>{formatRelativeTime(row.latest_event.received_at_ms)} ago</small>
       </span>
 
-      <span className="metric stock-price-cell" data-radar-metric="market">
+      <span className="stock-price-cell" data-radar-metric="market">
         <b>{formatTokenPriceUsd(row.quote.price)}</b>
         <small>{row.quote.provider_symbol || row.target.symbol || "US equity"}</small>
       </span>
 
-      <span className="phase stock-move-cell" data-radar-metric="timing">
+      <span className="stock-move-cell" data-radar-metric="timing">
         <span className="stock-move-line">
           {direction === "up" ? <ArrowUpRight aria-hidden /> : null}
           {direction === "down" ? <ArrowDownRight aria-hidden /> : null}
           {direction === "flat" ? <Minus aria-hidden /> : null}
-          <b className={clsx("direction", direction)}>{formatSignedPercent(change)}</b>
+          <b className={clsx("stock-direction", direction)}>{formatSignedPercent(change)}</b>
         </span>
         <small>{moveMeta(row)}</small>
       </span>
@@ -156,7 +156,7 @@ function StockRow({ row }: { row: StockRadarRow }) {
 
 function StocksSkeleton() {
   return (
-    <div className="radar-skeleton" aria-label="loading stocks radar">
+    <div className="stocks-radar-skeleton" aria-label="loading stocks radar">
       {Array.from({ length: 8 }, (_, index) => (
         <span key={index} />
       ))}

@@ -3,6 +3,8 @@ import type { ScopeKey, WindowKey } from "@lib/types";
 import { UserRound } from "lucide-react";
 import { useId } from "react";
 
+import "./RadarControls.css";
+
 type RadarControlsProps = {
   windowKey: WindowKey;
   scope: ScopeKey;
@@ -25,7 +27,7 @@ export function RadarControls({
   const handlesInputId = useId();
   return (
     <>
-      <div className="segmented" aria-label="radar window">
+      <div className="radar-controls-group radar-controls-window" aria-label="radar window">
         {OBSERVATION_WINDOWS.map((item) => (
           <button
             key={item}
@@ -37,7 +39,7 @@ export function RadarControls({
           </button>
         ))}
       </div>
-      <div className="segmented scope-toggle" aria-label="token flow scope">
+      <div className="radar-controls-group radar-controls-scope" aria-label="token flow scope">
         <button
           className={scope === "matched" ? "active" : ""}
           onClick={() => onScopeChange("matched")}

@@ -15,8 +15,11 @@
 - Done: P0 mobile shell recovery, mobile route cold-load matrix, deterministic E2E mocks, Docker build/start health check.
 - Done: real cascade layers are now active for base/primitives/shell/features side-effect CSS; the architecture test no longer allowlists unlayered app CSS except `styles/tailwind.css`.
 - Done: final shell breakpoint decisions moved into `web/src/features/cockpit/ui/cockpitShellContract.css`, so old `cockpit.css` source-order drift cannot decide rail/nav visibility.
-- Done: mobile task panel visibility is shell-owned; feature CSS is blocked from owning `[data-mobile-task-panel]`, `.mobile-task-radar`, `.mobile-task-tape`, or `.mobile-task-lab`.
-- Done: tablet shell regression coverage proves `834px` hides desktop rail, shows compact route navigation, hides mobile task nav, and can navigate to Stocks.
+- Done: Live task panel visibility is live-feature-owned; Cockpit Shell no longer owns `[data-mobile-task-panel]`, `.mobile-task-radar`, `.mobile-task-tape`, or `.mobile-task-lab`.
+- Done: tablet shell regression coverage proves `834px` hides desktop rail, shows compact route navigation, hides the Live-only task nav, and can navigate to Stocks.
+- Done: retired the Shell-level business filter panel. `CockpitShell` no longer renders window/scope/handle controls, and the cockpit re-export wrapper for shared `RadarControls` is removed; route-specific controls now stay with their owning feature pages.
+- Done: retired the cockpit `MobileTaskNav` compatibility path. `LiveTaskNav`, live task state, and mobile task visibility now live under `features/live`; non-Live mobile routes assert `.live-task-nav` is hidden.
+- Done: fixed the mobile Radar list clipping root cause. Mobile `LivePage` now leaves the desktop two-row `minmax(0, 1fr) 405px` grid and owns a bounded content + task-nav layout; `.live-task-nav` is a real bottom row, not a fixed overlay, and the mobile contract asserts Radar rows can scroll to the final row above it.
 - Still open: split oversized CSS files by responsibility, move component-specific selectors to CSS Modules, and convert remaining data-dense mobile surfaces beyond the tested no-overflow baseline.
 
 ---
@@ -51,13 +54,13 @@
 - `web/src/shared/ui/shared.css`  
   Split primitive/layout rules into `styles/primitives.css` or CSS Modules where ownership is local.
 - `web/src/features/cockpit/ui/cockpit.css`  
-  Short-term P0 fix, then split or layer shell/topbar/rail/task nav rules.
+  Short-term P0 fix, then split or layer shell/topbar/rail rules.
 - `web/src/features/cockpit/ui/CockpitShell.tsx`
 - `web/src/features/cockpit/ui/SearchShell.tsx`
 - `web/src/features/cockpit/ui/CockpitTopbar.tsx`
 - `web/src/features/cockpit/ui/CockpitSideRail.tsx`
-- `web/src/features/cockpit/ui/MobileTaskNav.tsx`
 - `web/src/features/live/ui/live.css`
+- `web/src/features/live/ui/LiveTaskNav.tsx`
 - `web/src/features/live/ui/TokenRadarTable.tsx`
 - `web/src/features/stocks/ui/stocks.css`
 - `web/src/features/stocks/ui/StocksRadarPage.tsx`
@@ -107,7 +110,7 @@
   - install MSW mock API with `installMockApi(page)`;
   - `page.goto("/")`;
   - assert `.desktop-side-rail` is hidden;
-  - assert `.mobile-task-nav` is visible;
+  - assert `.live-task-nav` is visible only on `/`;
   - assert `Radar`, `Tape`, and `Lab` nav buttons are visible;
   - assert `document.documentElement.scrollWidth <= window.innerWidth + 1`;
   - assert the active `[data-mobile-task-panel]` is visible and inactive panels are not visible;
@@ -164,7 +167,7 @@
 
 - [ ] Add `expectScrollableToLastMeaningfulElement(page, containerSelector, targetSelector)` helper.
 
-  It should scroll the container to the bottom, then assert the target is visible and not covered by fixed `.mobile-task-nav`.
+  It should scroll the container to the bottom, then assert the target is visible and not covered by fixed `.live-task-nav`.
 
 ## Task 2: Fix Cockpit Shell Source Order
 
@@ -181,7 +184,7 @@
   3. tablet rules under `@media (min-width: 768px) and (max-width: 1279px)`;
   4. mobile rules under `@media (max-width: 767px)` at the end of the file or in a later imported file.
 
-- [ ] Remove duplicate `.cockpit-shell`, `.topbar`, `.cockpit-grid`, `.side-rail`, `.responsive-control-panel`, and `.mobile-task-nav` base blocks that contradict one another.
+- [ ] Remove duplicate `.cockpit-shell`, `.topbar`, `.cockpit-grid`, `.side-rail`, and retired Shell business-filter panel rules that contradict one another.
 
 - [ ] Ensure mobile final computed behavior is:
 
@@ -191,11 +194,7 @@
       display: none;
     }
 
-    .responsive-control-panel {
-      display: grid;
-    }
-
-    .mobile-task-nav {
+    .mobile-route-nav {
       display: grid;
     }
   }
@@ -209,8 +208,7 @@
       display: grid;
     }
 
-    .responsive-control-panel,
-    .mobile-task-nav {
+    .mobile-route-nav {
       display: none;
     }
   }
@@ -229,16 +227,16 @@
 - Create: `web/tests/architecture/cssResponsiveContract.test.ts`
 - Modify: `web/tests/architecture/cssOwnership.test.ts` if shared helpers are needed
 
-- [ ] Add a test that scans all cockpit shell CSS units, not only `cockpit.css`.
+- [x] Add a test that scans all cockpit shell CSS units, not only `cockpit.css`.
 
   Shell CSS units include:
 
   - `web/src/features/cockpit/ui/*.css`
   - `web/src/features/cockpit/ui/*.module.css`
 
-- [ ] Add a test that fails if shell CSS declares `.mobile-task-nav { display: none; }` or grouped selectors containing `.mobile-task-nav` after the last mobile `display: grid` rule.
+- [x] Add a test that fails if shell CSS declares Live-only task selectors or `[data-mobile-task-panel]`.
 
-- [ ] Add a test that fails if `.desktop-side-rail` lacks a mobile hidden rule.
+- [x] Add a test that fails if `.desktop-side-rail` lacks a mobile hidden rule.
 
 - [ ] Add a test that fails if feature CSS outside `features/cockpit` owns shell selectors:
 
@@ -247,8 +245,9 @@
   - `.center-column`
   - `.topbar`
   - `.desktop-side-rail`
-  - `.mobile-task-nav`
-  - `.responsive-control-panel`
+  - `.mobile-route-nav`
+
+- [ ] Add a test that fails if the retired Shell business-filter panel class or cockpit `RadarControls` wrapper returns under `web/src`.
 
 - [ ] Add a test that reports side-effect CSS files above 700 lines.
 
@@ -356,13 +355,13 @@
 - Modify: `web/src/features/cockpit/ui/SearchShell.tsx`
 - Modify: `web/src/features/cockpit/ui/CockpitTopbar.tsx`
 - Modify: `web/src/features/cockpit/ui/CockpitSideRail.tsx`
-- Modify: `web/src/features/cockpit/ui/MobileTaskNav.tsx`
 - Create or modify: `web/src/features/cockpit/ui/MobileRouteNav.tsx`
+- Create or modify: `web/src/features/live/ui/LiveTaskNav.tsx`
 - Modify: `web/tests/component/features/cockpit/ui/*.test.tsx`
 - Modify: `web/tests/e2e/golden-paths/topbar-layout.spec.ts`
 - Modify: `web/tests/e2e/golden-paths/mobile-shell.spec.ts`
 
-- [ ] Split cockpit responsibilities into shell, topbar, side rail, and mobile task nav style units.
+- [ ] Split cockpit responsibilities into shell, topbar, side rail, and mobile route nav style units.
 
   Acceptable options:
 
@@ -379,7 +378,7 @@
 
 - [ ] Keep `CockpitSideRail` as desktop-only navigation and filter rail.
 
-- [ ] Keep `MobileTaskNav` as mobile-only task switcher.
+- [ ] Keep `LiveTaskNav` as Live-page-owned mobile-only task switcher.
 
 - [ ] Add a mobile top-level route navigation affordance for Radar, Stocks, News, Macro, Watchlist, Ops, and Search.
 

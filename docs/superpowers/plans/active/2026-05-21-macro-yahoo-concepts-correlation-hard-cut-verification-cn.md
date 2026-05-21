@@ -163,6 +163,20 @@ route rendered
 20d rendered matrix, strongest positive pairs, strongest negative pairs, and coverage complete
 ```
 
+## Post-main Integration
+
+After merging local `main` commit `0225df7f` into the feature branch, the target verification was rerun:
+
+```text
+backend target pytest: 134 passed in 36.09s
+backend ruff: All checks passed
+backend mypy: Success, no issues found in 14 source files
+frontend macro tests: 3 files passed, 6 tests passed
+frontend typecheck: passed
+frontend lint: passed
+frontend build: passed
+```
+
 ## Known Non-goals
 
 - Full architecture suite has pre-existing domain-boundary findings outside this macro hard-cut scope. Targeted architecture structure tests passed.

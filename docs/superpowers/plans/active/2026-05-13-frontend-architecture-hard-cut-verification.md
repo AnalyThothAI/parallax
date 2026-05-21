@@ -154,7 +154,7 @@ Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in
 ### Shell Split Changes
 
 - Replaced the old `CockpitLayout` file/component with `CockpitShell` and `SearchShell`.
-- Split cockpit shell UI into `CockpitTopbar`, `CockpitSideRail`, `CockpitMobileNav`, and a cockpit `RadarControls` export.
+- Split cockpit shell UI into `CockpitTopbar` and `CockpitSideRail`; later responsive hard-cut work moved Live task navigation to `features/live/LiveTaskNav` and removed the cockpit `RadarControls` re-export so route filters stay feature-owned.
 - Moved search input draft state into `CockpitTopbar`; submit passes the query text back to the live selection/navigation controller.
 - Routed `/search` through `SearchShell`, while live, stocks, token-target, and signal-lab use `CockpitShell`.
 - Replaced raw pathname branch checks in cockpit/app files with route matching or typed segment parsing.

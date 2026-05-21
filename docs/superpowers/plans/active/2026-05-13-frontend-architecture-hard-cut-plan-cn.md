@@ -267,7 +267,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Create/modify: `web/src/features/signal-lab/state/signalLabRouteState.ts`
 - Create/modify: `web/src/features/stocks/state/stocksRouteState.ts`
 - Create/modify: `web/src/features/token-target/state/tokenTargetRouteState.ts`
-- Create/modify: `web/src/features/cockpit/state/cockpitStore.ts`
+- Create/modify: `web/src/features/live/state/liveTaskStore.ts`
 - Create/modify: `web/src/features/live/state/liveSelectionSlice.ts`
 - Delete: `web/src/store/useTraderStore.ts`
 - Modify: every consumer of `useTraderStore`
@@ -282,7 +282,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - [x] Replace topbar search store state with local component state; submit writes URL through `paths.search({ q, window, scope })` or updates current Signal Lab search params.
 - [x] Split local state:
   - `features/live/state/liveSelectionSlice.ts`: detail tab/window/mode, selected bucket/event, post range/sort, duplicate/watch filters.
-  - `features/cockpit/state/cockpitStore.ts`: mobile task and shell-local UI only.
+  - `features/live/state/liveTaskStore.ts`: Live-only mobile task state.
   - `features/notifications/state/notificationStore.ts`: drawer open state only if local component state is not sufficient.
 - [x] Remove auth token from Zustand. Bootstrap query calls `setAuthToken(ws_token)` in `@lib/api/client`; API hooks use client auth implicitly.
 - [x] Delete `web/src/store/useTraderStore.ts`.
@@ -347,17 +347,16 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Create: `web/src/features/cockpit/ui/SearchShell.tsx`
 - Create: `web/src/features/cockpit/ui/CockpitTopbar.tsx`
 - Create: `web/src/features/cockpit/ui/CockpitSideRail.tsx`
-- Create: `web/src/features/cockpit/ui/CockpitMobileNav.tsx`
-- Create: `web/src/features/cockpit/ui/RadarControls.tsx`
+- Create: `web/src/features/live/ui/LiveTaskNav.tsx`
 - Delete: `web/src/features/cockpit/ui/CockpitLayout.tsx` if created by move, or old `web/src/components/CockpitLayout.tsx`
 - Modify: `web/src/routes/*.route.tsx`
 - Modify: `web/src/app/AppRoutes.tsx`
 
-- [x] `CockpitShell` renders common topbar, side rail, mobile nav, notification drawer/toast, and an `<Outlet />`. It must not branch on raw pathname except through typed route helpers for active nav state.
+- [x] `CockpitShell` renders common topbar, side rail, mobile route navigation, notification drawer/toast, and an `<Outlet />`. It must not branch on raw pathname except through typed route helpers for active nav state.
 - [x] `SearchShell` renders the topbar and search-focused outlet without the live side rail/detail panel.
 - [x] `CockpitTopbar` owns search input draft state and submit navigation. It reads status/socket summary through small hooks, not props from `CockpitApp`.
 - [x] `CockpitSideRail` owns view links, scope/handle controls, decision counts, and watchlist links through feature hooks.
-- [x] `CockpitMobileNav` derives route-safe task availability from typed route state and cockpit store.
+- [x] `LiveTaskNav` is Live-page-owned and derives task state from `features/live/state/liveTaskStore.ts`.
 - [x] Delete `CockpitLayout`; no successor component may accept more than 10 props.
 - [x] Run:
   ```bash

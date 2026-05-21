@@ -1,4 +1,3 @@
-import { requiredMobileTaskForPathname, useCockpitStore, type MobileTask } from "@features/cockpit";
 import { tokenSearchPath } from "@features/search";
 import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
 import { livePath, searchPath, signalLabPulsePath, tokenTargetPath } from "@shared/routing/paths";
@@ -9,6 +8,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 
 import { tapeItemId, type LiveSignalTapeItem } from "./liveTapeModel";
+import { requiredLiveMobileTaskForPathname, type LiveMobileTask } from "./model/liveMobileTask";
+import { useLiveTaskStore } from "./state/liveTaskStore";
 
 export type SelectedSignal =
   | { kind: "event"; item: LivePayload }
@@ -25,11 +26,11 @@ export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
   const isSignalLabRoute = location.pathname.startsWith("/signal-lab");
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
-  const mobileTask = useCockpitStore((state) => state.mobileTask);
-  const setMobileTask = useCockpitStore((state) => state.setMobileTask);
+  const mobileTask = useLiveTaskStore((state) => state.mobileTask);
+  const setMobileTask = useLiveTaskStore((state) => state.setMobileTask);
 
   useEffect(() => {
-    const requiredTask = requiredMobileTaskForPathname(location.pathname);
+    const requiredTask = requiredLiveMobileTaskForPathname(location.pathname);
     if (requiredTask && mobileTask !== requiredTask) {
       setMobileTask(requiredTask);
     }
@@ -109,7 +110,7 @@ export function useLiveSelection({ scope }: UseLiveSelectionArgs) {
     setMobileTask("tape");
   };
 
-  const handleMobileTaskChange = (task: MobileTask) => {
+  const handleMobileTaskChange = (task: LiveMobileTask) => {
     setMobileTask(task);
     if (task === "radar" || task === "tape") {
       navigate(livePath());

@@ -46,16 +46,20 @@
 
 `web/src/features/cockpit/ui/cockpit.css` 前半段已经写了移动端规则：
 
-- `@media (max-width: 1279px)` 隐藏 `.desktop-side-rail`，显示 `.responsive-control-panel`。
-- `@media (max-width: 767px)` 显示 `.mobile-task-nav`，并用 `data-mobile-task-panel` 切换 Radar / Tape / Lab。
+- `@media (max-width: 1279px)` 隐藏 `.desktop-side-rail`，同时尝试显示一个 Shell 级业务筛选面板。
+- `@media (max-width: 767px)` 尝试在 Shell 中显示 Live 任务切换，并用 `data-mobile-task-panel` 切换 Radar / Tape / Lab。
 
 但同一文件从 “Obsidian Desk shell language ownership” 段落开始重新定义了一套 shell：
 
 - `.cockpit-shell` 固定为 `width: 100vw; height: 100dvh; overflow: hidden;`
-- `.topbar`、`.cockpit-grid`、`.side-rail`、`.responsive-control-panel`、`.mobile-task-nav` 被重新声明。
-- 后半段把 `.responsive-control-panel, .mobile-task-nav { display: none; }` 放在基础层，且后续 mobile media query 没有恢复 `.mobile-task-nav`。
+- `.topbar`、`.cockpit-grid`、`.side-rail`、Shell 级业务筛选面板、Live 任务切换被重新声明。
+- 后半段把 Shell 级业务筛选面板和 Live 任务切换隐藏逻辑放在基础层，且后续 mobile media query 没有恢复任务切换。
 
 结果是源顺序打穿了早先移动端规则：手机端仍显示桌面侧栏，底部任务导航不显示，截图里的 UI 基本只剩 side rail。
+
+后续复查确认更深一层根因：Shell 级业务筛选面板本身就是错误边界。Token Radar、Stocks 等 feature 页面已经拥有自己的 window/scope/venue 控件，Shell 再渲染一套会在手机端形成重复控制面板，挤压内容区，并让 CSS 修复看起来像补丁。目标架构应彻底删除该 Shell 路径，而不是继续兼容。
+
+再次复查确认第二个边界错误：Radar/Tape/Lab 是 Live 页面内部任务，不是全局 Cockpit Shell 导航。它应由 `features/live` 拥有，并且只在 `/` Live 页面出现；Stocks、News、Macro、Watchlist、Ops、Search、Token Case 等非 Live 路由不得渲染该底栏。
 
 ### 3.3 布局和滚动风险
 
@@ -77,12 +81,12 @@
 Playwright 当前配置只跑 `Desktop Chrome`。现有 e2e 中只有 `1920x1080` 和 `1366x720` 的显式 viewport 检查，没有 `390x844`、`430x932` 或 tablet 项目。也没有断言：
 
 - mobile 下 `.desktop-side-rail` 不可见。
-- mobile 下 `.mobile-task-nav` 可见且可切换任务。
+- mobile 下 `/` 的 `.live-task-nav` 可见且可切换任务；非 Live 路由不渲染 `.live-task-nav`。
 - 页面级 `document.documentElement.scrollWidth <= viewportWidth`。
 - `/`、`/search`、`/signal-lab`、`/stocks`、`/news`、`/macro`、`/token/:targetType/:targetId` 手机冷加载可操作。
 - E2E mock API 当前没有覆盖 `/api/macro`、`/api/ops/diagnostics`、`/api/ops/queues/:queueName`、`/api/watchlist/:handle`、`/api/news/items/:id`。如果不先补 fixture，新增移动端路由测试会测试到错误态而不是布局。
 - `/search` 使用 `SearchShell`，不是 `CockpitShell`；它共享 `.cockpit-shell`、`.search-shell`、`.cockpit-grid`、`.center-column`。任何 shell CSS 拆分都必须把 `SearchShell` 纳入同一迁移。
-- 移动端隐藏 desktop rail 后，Radar / Stocks / News / Macro / Watchlist / Ops 的顶级导航入口会消失。当前 `MobileTaskNav` 只有 Radar / Tape / Lab，不覆盖跨路由导航。
+- 移动端隐藏 desktop rail 后，Radar / Stocks / News / Macro / Watchlist / Ops 的顶级导航必须由 Shell-owned mobile route nav 提供；Live-only `LiveTaskNav` 只覆盖 Radar / Tape / Lab。
 
 ## 4. Goals
 
@@ -124,6 +128,7 @@ AppRoot
 Rules:
 
 - `CockpitShell` / `SearchShell` 只拥有 layout、hotkey binding、topbar/notification layer composition。
+- `CockpitShell` / `SearchShell` 不渲染 route-specific filters；window/scope/venue/handle 控件由消费它们的 feature route 拥有。
 - feature API hooks、React Query cache mutation、WebSocket market target subscription 不进入 shell UI 组件。
 - `/search` 是 first-class shell variant，所有 shell CSS 拆分和 mobile tests 必须覆盖它。
 - mobile top-level navigation is shell-owned navigation UI, not a side effect of desktop rail.
@@ -144,7 +149,6 @@ web/src/features/cockpit/ui/
   CockpitShell.module.css
   CockpitTopbar.module.css
   CockpitSideRail.module.css
-  MobileTaskNav.module.css
   cockpit.tokens.css    # shell-level CSS variables used across two or more cockpit shell modules
 
 web/src/features/<feature>/ui/
@@ -212,18 +216,18 @@ Viewport media queries remain appropriate for shell-level decisions such as rail
 | `/token/:targetType/:targetId` | dossier + side rails | stacked dossier | hero, propagation, timeline, market, gaps in one column |
 | `/ops` | diagnostics grid | stacked diagnostics | one-column status cards; no blocking fixed table |
 
-Mobile top-level navigation must include Radar, Stocks, News, Macro, Watchlist, Ops, Search, plus the Live-only Radar/Tape/Lab task switching. These may be represented as a compact route drawer, segmented route rail, or command menu, but they must be reachable without desktop rail.
+Mobile top-level navigation must include Radar, Stocks, News, Macro, Watchlist, Ops, and Search. Live-only Radar/Tape/Lab task switching is a separate `features/live` concern and must not render on non-Live routes.
 
 ## 8. Acceptance Criteria
 
-- **AC1.** On exact mobile projects `390x844` and `430x932`, cold-loading `/` shows `.mobile-task-nav`, hides `.desktop-side-rail`, and has no page-level horizontal overflow.
+- **AC1.** On exact mobile projects `390x844` and `430x932`, cold-loading `/` shows `.live-task-nav`, hides `.desktop-side-rail`, and has no page-level horizontal overflow.
 - **AC2.** On mobile, tapping Radar/Tape/Lab changes the visible task panel without route reload and without blank content.
 - **AC3.** On mobile, topbar search submits to `/search?q=<query>` and the search route remains usable without side rail.
 - **AC4.** On mobile, `/stocks` renders stock rows as cards or a compact list; no required horizontal table scroll wider than viewport.
 - **AC5.** On mobile, `/news`, `/news/:newsItemId`, `/macro`, `/watchlist`, `/ops`, `/signal-lab/pulse/:candidateId`, and `/token/:targetType/:targetId` cold-load with visible primary content and no overlapping controls.
 - **AC6.** Mobile route tests assert no horizontal overflow both on `document.documentElement` and on route-critical nested containers.
 - **AC7.** Mobile route tests scroll each primary route container to bottom and assert the final meaningful row/card/action is reachable and not covered by fixed nav.
-- **AC8.** CSS architecture tests fail if any shell CSS unit reintroduces duplicate shell base blocks after mobile rules, if feature CSS owns shell selectors, or if `.mobile-task-nav` / top-level mobile nav is globally hidden after its mobile display rule.
+- **AC8.** CSS architecture tests fail if any shell CSS unit reintroduces duplicate shell base blocks after mobile rules, if feature CSS owns shell selectors, or if Live-only task selectors / top-level mobile nav are owned by the wrong layer.
 - **AC9.** CSS architecture tests report any side-effect CSS file above 700 lines unless allowlisted with a migration note; target after migration is no side-effect CSS file above 500 lines, including `shared/ui/obsidian.css` and `features/watchlist/ui/watchlist.css`.
 - **AC10.** Playwright has desktop, tablet, `mobile-390`, and `mobile-430` projects; desktop-only specs cannot force mobile projects back to desktop with `page.setViewportSize`.
 - **AC11.** `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`, and `npm run test:e2e` pass from `web/`.

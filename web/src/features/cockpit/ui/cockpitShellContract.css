@@ -42,6 +42,10 @@
   background: var(--opportunity-soft);
 }
 
+.mobile-route-nav {
+  display: none;
+}
+
 @media (min-width: 1280px) {
   .cockpit-shell {
     grid-template-rows: var(--cockpit-topbar-height) minmax(0, 1fr);
@@ -55,8 +59,6 @@
     display: grid;
   }
 
-  .responsive-control-panel,
-  .mobile-task-nav,
   .mobile-route-nav {
     display: none;
   }
@@ -64,35 +66,7 @@
 
 @media (min-width: 768px) and (max-width: 1279px) {
   .cockpit-shell {
-    grid-template-rows: var(--cockpit-topbar-height) auto auto minmax(0, 1fr);
-  }
-
-  .cockpit-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .desktop-side-rail,
-  .mobile-task-nav {
-    display: none;
-  }
-
-  .mobile-route-nav {
-    display: flex;
-  }
-
-  .responsive-control-panel {
-    display: grid;
-  }
-}
-
-@media (max-width: 767px) {
-  .cockpit-shell {
-    grid-template-rows: auto auto auto minmax(0, 1fr);
-    padding-bottom: calc(62px + env(safe-area-inset-bottom));
-  }
-
-  .cockpit-shell.search-shell {
-    padding-bottom: 0;
+    grid-template-rows: var(--cockpit-topbar-height) auto minmax(0, 1fr);
   }
 
   .cockpit-grid {
@@ -106,23 +80,37 @@
   .mobile-route-nav {
     display: flex;
   }
+}
 
-  .responsive-control-panel {
-    display: grid;
+@media (max-width: 767px) {
+  .cockpit-shell {
+    grid-template-rows: auto auto minmax(0, 1fr);
+    padding-bottom: 0;
   }
 
-  .cockpit-shell .cockpit-grid [data-mobile-task-panel] {
+  .cockpit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-side-rail {
     display: none;
   }
 
-  .cockpit-shell.mobile-task-radar .cockpit-grid [data-mobile-task-panel="radar"],
-  .cockpit-shell.mobile-task-tape .cockpit-grid [data-mobile-task-panel="tape"],
-  .cockpit-shell.mobile-task-lab .cockpit-grid [data-mobile-task-panel="lab"] {
+  .mobile-route-nav {
     display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow: visible;
   }
 
-  .mobile-task-nav {
-    display: grid;
+  .mobile-route-nav a {
+    grid-template-columns: 14px minmax(0, 1fr);
+    min-width: 0;
+    padding: 0 7px;
+  }
+
+  .mobile-route-nav a span {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 }
