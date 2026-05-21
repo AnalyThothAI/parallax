@@ -24,7 +24,9 @@ import {
 } from "lucide-react";
 import {
   useCallback,
+  useEffect,
   useMemo,
+  type Ref,
   useRef,
   useState,
   type ReactNode,
@@ -76,6 +78,8 @@ function NewsQueueRoute({ token }: { token: string }) {
   const summary = useMemo(() => buildQueueSummary(rows), [rows]);
   const pullStartYRef = useRef<number | null>(null);
   const pullDistanceRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [pullRefreshState, setPullRefreshState] = useState<NewsPullRefreshState>("idle");
 
   const loadNextPage = useCallback(() => {
@@ -85,9 +89,8 @@ function NewsQueueRoute({ token }: { token: string }) {
     void query.fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, query]);
 
-  const handleScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => {
-      const target = event.currentTarget;
+  const checkForNextPage = useCallback(
+    (target: HTMLElement) => {
       const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
       if (distanceToBottom <= NEWS_SCROLL_LOAD_THRESHOLD_PX) {
         loadNextPage();
@@ -95,6 +98,50 @@ function NewsQueueRoute({ token }: { token: string }) {
     },
     [loadNextPage],
   );
+
+  const handleScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      checkForNextPage(event.currentTarget);
+    },
+    [checkForNextPage],
+  );
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    const loadMoreSentinel = loadMoreRef.current;
+    if (!scrollContainer || !loadMoreSentinel) {
+      return undefined;
+    }
+    const scrollRoot = findNewsScrollRoot(scrollContainer);
+    const cleanups: Array<() => void> = [];
+
+    if ("IntersectionObserver" in window) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            loadNextPage();
+          }
+        },
+        {
+          root: scrollRoot === scrollContainer ? scrollContainer : scrollRoot,
+          rootMargin: `${NEWS_SCROLL_LOAD_THRESHOLD_PX}px 0px`,
+          threshold: 0,
+        },
+      );
+      observer.observe(loadMoreSentinel);
+      cleanups.push(() => observer.disconnect());
+    }
+
+    if (scrollRoot && scrollRoot !== scrollContainer) {
+      const handleRootScroll = () => checkForNextPage(scrollRoot);
+      scrollRoot.addEventListener("scroll", handleRootScroll, { passive: true });
+      cleanups.push(() => scrollRoot.removeEventListener("scroll", handleRootScroll));
+    }
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [checkForNextPage, loadNextPage, rows.length]);
 
   const refreshFromTop = useCallback(async () => {
     if (isFetchingNextPage) {
@@ -158,6 +205,7 @@ function NewsQueueRoute({ token }: { token: string }) {
       <div
         aria-label="News intel scroll container"
         className="news-table-wrap"
+        ref={scrollContainerRef}
         onScroll={handleScroll}
         onTouchCancel={handlePullRefreshCancel}
         onTouchEnd={handlePullRefreshEnd}
@@ -195,7 +243,11 @@ function NewsQueueRoute({ token }: { token: string }) {
                   />
                 ))}
               </div>
-              <NewsScrollStatus hasNextPage={hasNextPage} isFetchingNextPage={isFetchingNextPage} />
+              <NewsScrollStatus
+                hasNextPage={hasNextPage}
+                isFetchingNextPage={isFetchingNextPage}
+                sentinelRef={loadMoreRef}
+              />
             </div>
           </RemoteState.Stale>
         ) : null}
@@ -234,6 +286,14 @@ function flattenNewsRows(pages: Array<{ items?: NewsRow[] }> | undefined): NewsR
     }
   }
   return rows;
+}
+
+function findNewsScrollRoot(scrollContainer: HTMLElement): HTMLElement {
+  const shellRoot = scrollContainer.closest<HTMLElement>(".center-column");
+  if (shellRoot && shellRoot !== scrollContainer) {
+    return shellRoot;
+  }
+  return scrollContainer;
 }
 
 function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: string }) {
@@ -310,19 +370,25 @@ function NewsQueueSummary({
 function NewsScrollStatus({
   hasNextPage,
   isFetchingNextPage,
+  sentinelRef,
 }: {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
+  sentinelRef: Ref<HTMLDivElement>;
 }) {
   if (isFetchingNextPage) {
     return (
-      <div className="news-scroll-status" role="status">
+      <div ref={sentinelRef} className="news-scroll-status" role="status">
         Loading more
       </div>
     );
   }
   return (
-    <div className={`news-scroll-status ${hasNextPage ? "" : "is-terminal"}`} aria-live="polite">
+    <div
+      ref={sentinelRef}
+      className={`news-scroll-status ${hasNextPage ? "" : "is-terminal"}`}
+      aria-live="polite"
+    >
       {hasNextPage ? "More available" : "End of queue"}
     </div>
   );

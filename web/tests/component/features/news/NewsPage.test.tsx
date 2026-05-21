@@ -78,6 +78,46 @@ describe("NewsPage", () => {
     );
   });
 
+  it("loads the next cursor when the cockpit shell scroll host reaches bottom", async () => {
+    fetchNewsRowsMock.mockImplementation(async (params = {}) => ({
+      items: params.cursor === "cursor-2" ? [secondPageRow] : [firstPageRow],
+      next_cursor: params.cursor === "cursor-2" ? null : "cursor-2",
+    }));
+
+    renderNews(
+      <div className="center-column" data-testid="cockpit-scroll-host">
+        <NewsPage token="test-token" />
+      </div>,
+    );
+
+    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
+    const scrollHost = screen.getByTestId("cockpit-scroll-host");
+    Object.defineProperty(scrollHost, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    Object.defineProperty(scrollHost, "scrollHeight", {
+      configurable: true,
+      value: 1_000,
+    });
+    Object.defineProperty(scrollHost, "scrollTop", {
+      configurable: true,
+      value: 470,
+      writable: true,
+    });
+    fireEvent.scroll(scrollHost);
+
+    expect(await screen.findByText("Second page story")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        cursor: "cursor-2",
+        limit: 25,
+        status: null,
+        token: "test-token",
+      }),
+    );
+  });
+
   it("does not change rendered analysis when only the headline changes", async () => {
     fetchNewsRowsMock.mockResolvedValue({
       items: [{ ...firstPageRow, headline: "Completely different headline about BTC" }],

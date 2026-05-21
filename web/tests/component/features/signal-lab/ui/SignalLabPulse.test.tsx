@@ -17,7 +17,7 @@ describe("SignalLabPulse", () => {
     expect(screen.getByLabelText("loading signal pulse")).toBeInTheDocument();
   });
 
-  it("keeps the bottom panel while removing the queue opener", () => {
+  it("keeps the bottom panel without compact visibility or summary chrome", () => {
     const onSelect = vi.fn();
     render(
       <MemoryRouter>
@@ -50,14 +50,15 @@ describe("SignalLabPulse", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Signal Pulse" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "公开 1" })).toHaveAttribute("data-state", "active");
-    expect(screen.getByRole("tab", { name: "隐藏 2" })).toHaveAttribute("data-state", "inactive");
+    expect(screen.queryByRole("tab", { name: /公开/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /隐藏/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("signal pulse summary")).not.toBeInTheDocument();
     expect(screen.queryByText("打开队列")).not.toBeInTheDocument();
     const header = screen.getByRole("heading", { name: "Signal Pulse" }).closest("header");
     expect(header).not.toBeNull();
-    expect(screen.getByText((_, node) => node?.textContent === "候选 1")).toBeInTheDocument();
-    expect(screen.getByText((_, node) => node?.textContent === "代币 0")).toBeInTheDocument();
-    expect(screen.getByText((_, node) => node?.textContent === "拒绝 0")).toBeInTheDocument();
+    expect(screen.queryByText((_, node) => node?.textContent === "候选 1")).not.toBeInTheDocument();
+    expect(screen.queryByText((_, node) => node?.textContent === "代币 0")).not.toBeInTheDocument();
+    expect(screen.queryByText((_, node) => node?.textContent === "拒绝 0")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /TITTY/ }));
 
@@ -66,7 +67,7 @@ describe("SignalLabPulse", () => {
     );
   });
 
-  it("switches the compact panel to hidden Signal Pulse rows", () => {
+  it("keeps compact Signal Pulse focused on public rows when hidden data exists", () => {
     const onSelect = vi.fn();
     const hiddenFixture = {
       ...tittyPulseFixture,
@@ -126,17 +127,15 @@ describe("SignalLabPulse", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "隐藏 3" }));
-
     expect(screen.getByRole("button", { name: /TITTY/ })).toBeInTheDocument();
-    expect(screen.getByText("隐藏 invalid output")).toBeInTheDocument();
-    expect(screen.getAllByText((_, node) => node?.textContent === "隐藏 3")).toHaveLength(1);
+    expect(screen.queryByText("隐藏 invalid output")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /隐藏/ })).not.toBeInTheDocument();
     expect(screen.queryByText((_, node) => node?.textContent === "总计 4")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /TITTY/ }));
 
     expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ candidate_id: "pulse-hidden-titty" }),
+      expect.objectContaining({ candidate_id: tittyPulseFixture.candidate_id }),
     );
   });
 });
