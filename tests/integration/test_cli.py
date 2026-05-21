@@ -147,6 +147,7 @@ class CliTests(unittest.TestCase):
             ["ops", "cex-binance-hard-cut-cleanup", "--dry-run"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
             ["ops", "refresh-asset-profiles", "--limit", "5"],
+            ["ops", "mirror-token-images", "--limit", "5", "--source-limit", "50"],
             ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5", "--lookup-key", "symbol:SLOP"],
             ["ops", "rebuild-token-intents", "--window", "5m", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
@@ -208,25 +209,28 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[11].limit, 5)
         self.assertEqual(parsed[12].ops_command, "refresh-asset-profiles")
         self.assertEqual(parsed[12].limit, 5)
-        self.assertEqual(parsed[13].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[13].window, "24h")
-        self.assertEqual(parsed[13].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[14].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[14].window, "5m")
-        self.assertEqual(parsed[15].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[16].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[17].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[18].ops_command, "rebuild-narrative-intel")
-        self.assertEqual(parsed[18].semantic_limit, 5)
-        self.assertEqual(parsed[18].digest_limit, 5)
-        self.assertTrue(parsed[18].drain)
-        self.assertEqual(parsed[19].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[19].limit, 200)
-        self.assertEqual(parsed[20].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[20].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[21].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[22].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[22].limit, 5)
+        self.assertEqual(parsed[13].ops_command, "mirror-token-images")
+        self.assertEqual(parsed[13].limit, 5)
+        self.assertEqual(parsed[13].source_limit, 50)
+        self.assertEqual(parsed[14].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[14].window, "24h")
+        self.assertEqual(parsed[14].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[15].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[15].window, "5m")
+        self.assertEqual(parsed[16].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[17].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[18].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[19].ops_command, "rebuild-narrative-intel")
+        self.assertEqual(parsed[19].semantic_limit, 5)
+        self.assertEqual(parsed[19].digest_limit, 5)
+        self.assertTrue(parsed[19].drain)
+        self.assertEqual(parsed[20].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[20].limit, 200)
+        self.assertEqual(parsed[21].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[21].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[22].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[23].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[23].limit, 5)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1022,6 +1026,78 @@ def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tm
     assert captured["closed_worker"] is True
     assert closed == ["api", "worker", "tool", "wake"]
     assert payload["data"]["unsupported"] == 0
+
+
+def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_path):
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    captured: dict[str, object] = {}
+    closed: list[str] = []
+
+    @contextmanager
+    def fake_repositories(_settings):
+        raise AssertionError("mirror-token-images must not hold an outer repository session")
+
+    class FakePool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def close(self) -> None:
+            closed.append(self.name)
+
+    class FakeDB:
+        api_pool = FakePool("api")
+        worker_pool = FakePool("worker")
+        tool_pool = FakePool("tool")
+        wake_pool = FakePool("wake")
+
+    class FakeWorker:
+        def __init__(self, *, name, settings, db, telemetry, app_home):
+            captured["worker"] = (name, settings.batch_size, settings.source_limit, db, telemetry, app_home)
+
+        async def run_once(self, *, now_ms):
+            captured["now_ms"] = now_ms
+            return SimpleNamespace(
+                notes={
+                    "result": {
+                        "selected": 9,
+                        "pending_upserted": 8,
+                        "ready_existing": 1,
+                        "claimed": 3,
+                        "mirrored": 2,
+                        "error": 1,
+                        "unsupported": 0,
+                        "started_at_ms": now_ms,
+                        "finished_at_ms": now_ms,
+                    }
+                }
+            )
+
+        async def aclose(self):
+            captured["closed_worker"] = True
+
+    def fail_wire_asset_market_providers(*_args, **_kwargs):
+        raise AssertionError("mirror-token-images must not wire asset providers")
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db", llm=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
+    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fail_wire_asset_market_providers)
+    monkeypatch.setattr(ops_module, "TokenImageMirrorWorker", FakeWorker)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
+    stdout = io.StringIO()
+
+    code = main(["ops", "mirror-token-images", "--limit", "3", "--source-limit", "9"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured["worker"][0] == "token_image_mirror"
+    assert captured["worker"][1] == 3
+    assert captured["worker"][2] == 9
+    assert captured["closed_worker"] is True
+    assert closed == ["api", "worker", "tool", "wake"]
+    assert payload["data"]["mirrored"] == 2
 
 
 def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):

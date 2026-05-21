@@ -80,7 +80,7 @@ document because every downstream worker depends on the facts it writes.
 <!-- worker-inventory-keys:
 collector, token_capture_tier, market_tick_stream, market_tick_poll,
 event_anchor_backfill, live_price_gateway, resolution_refresh,
-asset_profile_refresh, token_radar_projection, token_profile_current,
+asset_profile_refresh, token_image_mirror, token_radar_projection, token_profile_current,
 narrative_admission, mention_semantics, token_discussion_digest,
 news_fetch, news_item_process, news_story_projection,
 news_item_brief, news_page_projection,
@@ -99,6 +99,7 @@ notification_delivery
 | `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | latest `market_ticks` per target | in-process latest cache and WebSocket fan-out only | poll | none | `interval_seconds` |
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
+| `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | provider logo URLs from `asset_profiles`, exact identity evidence, `cex_token_profiles`, current/recent targets | `token_image_assets`, local cache files | poll | none | `interval_seconds` |
 | `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_rows`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | latest ready `token_radar_rows` frontier, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |

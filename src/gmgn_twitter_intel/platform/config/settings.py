@@ -775,6 +775,14 @@ class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
 
 
+class TokenImageMirrorWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    source_limit: int = Field(default=5000, ge=0)
+    statement_timeout_seconds: float = Field(default=120.0, ge=0)
+    advisory_lock_key: int = 2026052111
+
+
 class TokenProfileCurrentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=500, ge=1)
@@ -1080,6 +1088,7 @@ class WorkersSettings(BaseModel):
     live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
     resolution_refresh: ResolutionRefreshWorkerSettings = Field(default_factory=ResolutionRefreshWorkerSettings)
     asset_profile_refresh: AssetProfileRefreshWorkerSettings = Field(default_factory=AssetProfileRefreshWorkerSettings)
+    token_image_mirror: TokenImageMirrorWorkerSettings = Field(default_factory=TokenImageMirrorWorkerSettings)
     token_profile_current: TokenProfileCurrentWorkerSettings = Field(default_factory=TokenProfileCurrentWorkerSettings)
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
@@ -1676,6 +1685,13 @@ asset_profile_refresh:
   interval_seconds: 60.0
   batch_size: 50
   statement_timeout_seconds: 120.0
+token_image_mirror:
+  enabled: true
+  interval_seconds: 60.0
+  batch_size: 100
+  source_limit: 5000
+  statement_timeout_seconds: 120.0
+  advisory_lock_key: 2026052111
 token_radar_projection:
   enabled: true
   interval_seconds: 10.0
