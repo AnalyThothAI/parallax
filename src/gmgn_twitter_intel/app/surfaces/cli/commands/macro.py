@@ -10,7 +10,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.macro_intel._constants import (
-    MACRO_CORE_SERIES,
+    MACRO_CORE_CONCEPTS,
     MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
     MACRO_VIEW_PROJECTION_VERSION,
@@ -54,8 +54,8 @@ def _handle_project_once() -> tuple[int, dict[str, Any]]:
         now_ms = _now_ms()
         settings = load_settings(require_ws_token=False)
         with repositories(settings) as repos:
-            observations = repos.macro_intel.observations_for_series(
-                series_keys=MACRO_CORE_SERIES,
+            observations = repos.macro_intel.observations_for_concepts(
+                concept_keys=MACRO_CORE_CONCEPTS,
                 lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
                 limit_per_series=MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
             )
@@ -84,7 +84,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             data = {
                 "migration_ready": True,
                 "observations_count": repos.macro_intel.observations_count(),
-                "series_count": repos.macro_intel.series_count(),
+                "concept_count": repos.macro_intel.concept_count(),
                 "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
                 "latest_snapshot": _json_ready(
                     repos.macro_intel.latest_snapshot(
@@ -96,7 +96,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
         data = {
             "migration_ready": False,
             "observations_count": 0,
-            "series_count": 0,
+            "concept_count": 0,
             "latest_import_run": None,
             "latest_snapshot": None,
         }

@@ -7,6 +7,11 @@ from contextlib import AbstractContextManager
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_PROVIDER_SERIES_SOURCE_PRIORITY,
+    MACRO_PROVIDER_SERIES_TO_CONCEPT,
+)
+
 if TYPE_CHECKING:
     from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession
 
@@ -91,9 +96,14 @@ def _observation(raw_observation: Mapping[str, Any], *, now_ms: int) -> dict[str
     series_key = str(raw_observation.get("series_key") or "").strip()
     if not series_key:
         raise ValueError("macrodata observation missing series_key")
+    concept_key = MACRO_PROVIDER_SERIES_TO_CONCEPT.get(series_key)
+    if concept_key is None:
+        raise ValueError(f"unknown macro-core series_key: {series_key}")
     return {
         "source_name": str(raw_observation.get("provider") or _provider_prefix(series_key)),
+        "concept_key": concept_key,
         "series_key": series_key,
+        "source_priority": MACRO_PROVIDER_SERIES_SOURCE_PRIORITY[series_key],
         "observed_at": raw_observation.get("observed_at"),
         "value_numeric": _numeric_value(raw_observation.get("value")),
         "unit": raw_observation.get("unit"),

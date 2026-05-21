@@ -88,6 +88,7 @@ export const queryKeys = {
   opsQueue: (queueName: string | null, status: string | null, limit: number) =>
     ["ops-queue", queueName ?? "", status ?? "", limit] as const,
   watchlistHandlesOverview: () => ["watchlist-handles-overview"] as const,
+  macroAssetCorrelation: (window: string) => ["macro", "asset-correlation", window] as const,
   watchlistHandleOverview: (handle: string, scope: WatchlistTimelineScope) =>
     ["watchlist-handle-overview", handle, scope] as const,
   watchlistHandleSummary: (handle: string) => ["watchlist-handle-summary", handle] as const,

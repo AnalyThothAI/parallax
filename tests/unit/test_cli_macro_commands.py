@@ -7,7 +7,7 @@ from types import TracebackType
 
 from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
 from gmgn_twitter_intel.cli import main
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_SERIES
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
 
 NOW_MS = 1_779_000_000_000
 
@@ -86,7 +86,9 @@ def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypa
     assert payload["data"]["bundle_name"] == "macro-core"
     assert payload["data"]["observations_count"] == 1
     assert payload["data"]["run_id"] == repo.import_runs[0]["run_id"]
+    assert repo.observations[0]["concept_key"] == "liquidity:sofr"
     assert repo.observations[0]["series_key"] == "nyfed:SOFR"
+    assert repo.observations[0]["source_priority"] == 100
     assert repo.conn.commits == 0
     assert repo.transaction_events == ["commit"]
 
@@ -152,7 +154,9 @@ def test_macro_project_once_builds_snapshot_from_bounded_history(monkeypatch) ->
         observations=[
             {
                 "source_name": "nyfed",
+                "concept_key": "liquidity:sofr",
                 "series_key": "nyfed:SOFR",
+                "source_priority": 100,
                 "observed_at": "2026-05-19",
                 "value_numeric": 3.51,
                 "unit": "percent",
@@ -170,12 +174,12 @@ def test_macro_project_once_builds_snapshot_from_bounded_history(monkeypatch) ->
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert payload["ok"] is True
-    assert payload["data"]["projection_version"] == "macro_regime_v2"
+    assert payload["data"]["projection_version"] == "macro_regime_v3"
     assert payload["data"]["status"] == "partial"
-    assert payload["data"]["snapshot_id"] == "macro-view:macro_regime_v2:1779000000000"
-    assert repo.observations_for_series_calls == [
+    assert payload["data"]["snapshot_id"] == "macro-view:macro_regime_v3:1779000000000"
+    assert repo.observations_for_concepts_calls == [
         {
-            "series_keys": MACRO_CORE_SERIES,
+            "concept_keys": MACRO_CORE_CONCEPTS,
             "lookback_days": 1095,
             "limit_per_series": 800,
         }
@@ -221,12 +225,12 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
         "data": {
             "migration_ready": True,
             "observations_count": 0,
-            "series_count": 0,
+            "concept_count": 0,
             "latest_import_run": {"run_id": "run-1", "bundle_name": "macro-core", "completed_at_ms": NOW_MS},
             "latest_snapshot": {"snapshot_id": "snapshot-1", "status": "partial", "computed_at_ms": NOW_MS},
         },
     }
-    assert repo.latest_snapshot_projection_versions == ["macro_regime_v2"]
+    assert repo.latest_snapshot_projection_versions == ["macro_regime_v3"]
 
 
 def _patch_macro_dependencies(monkeypatch, macro_module, repo: FakeMacroIntelRepository) -> None:
@@ -262,7 +266,7 @@ class FakeMacroIntelRepository:
         self.import_runs: list[dict[str, object]] = []
         self.snapshots: list[dict[str, object]] = []
         self.latest_observation_limits: list[int] = []
-        self.observations_for_series_calls: list[dict[str, object]] = []
+        self.observations_for_concepts_calls: list[dict[str, object]] = []
         self.latest_import: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
         self.latest_snapshot_projection_versions: list[str | None] = []
@@ -286,18 +290,18 @@ class FakeMacroIntelRepository:
         self.latest_observation_limits.append(limit)
         return self.source_observations
 
-    def observations_for_series(
+    def observations_for_concepts(
         self,
         *,
-        series_keys: tuple[str, ...],
+        concept_keys: tuple[str, ...],
         lookback_days: int,
         limit_per_series: int,
     ) -> list[dict[str, object]]:
         if self.fail_observations_for_series:
             raise RuntimeError("postgres://user:secret@db history failed")
-        self.observations_for_series_calls.append(
+        self.observations_for_concepts_calls.append(
             {
-                "series_keys": series_keys,
+                "concept_keys": concept_keys,
                 "lookback_days": lookback_days,
                 "limit_per_series": limit_per_series,
             }
@@ -310,8 +314,8 @@ class FakeMacroIntelRepository:
     def observations_count(self) -> int:
         return len(self.observations)
 
-    def series_count(self) -> int:
-        return len({observation["series_key"] for observation in self.observations})
+    def concept_count(self) -> int:
+        return len({observation["concept_key"] for observation in self.observations})
 
     def latest_import_run(self) -> dict[str, object] | None:
         return self.latest_import

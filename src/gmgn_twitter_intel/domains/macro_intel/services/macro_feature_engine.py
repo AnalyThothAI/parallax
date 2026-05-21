@@ -19,14 +19,14 @@ def build_macro_features(
 ) -> dict[str, dict[str, Any]]:
     grouped: dict[str, list[Mapping[str, Any]]] = {}
     for observation in observations:
-        series_key = str(observation.get("series_key") or "").strip()
-        if not series_key:
+        concept_key = str(observation.get("concept_key") or "").strip()
+        if not concept_key:
             continue
-        grouped.setdefault(series_key, []).append(observation)
+        grouped.setdefault(concept_key, []).append(observation)
 
     return {
-        series_key: _features_for_series(series_observations, computed_at_ms=computed_at_ms)
-        for series_key, series_observations in sorted(grouped.items())
+        concept_key: _features_for_series(series_observations, computed_at_ms=computed_at_ms)
+        for concept_key, series_observations in sorted(grouped.items())
     }
 
 
@@ -121,10 +121,11 @@ def _deduped_observations(observations: Sequence[Mapping[str, Any]]) -> list[Map
     return deduped
 
 
-def _sort_key(observation: Mapping[str, Any]) -> tuple[int, int]:
+def _sort_key(observation: Mapping[str, Any]) -> tuple[int, int, int]:
     observed_date = _date_value(observation.get("observed_at"))
     return (
         observed_date.toordinal() if observed_date is not None else 0,
+        _int_value(observation.get("source_priority")),
         _int_value(observation.get("ingested_at_ms")),
     )
 

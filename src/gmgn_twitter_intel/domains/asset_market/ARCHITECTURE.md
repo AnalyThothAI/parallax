@@ -87,7 +87,7 @@ god interface.
   wiring.
 
 Concrete provider clients (Binance USD-M CEX, OKX DEX, OKX DEX WS,
-GMGN OpenAPI, GMGN direct WS, Marketlane) are wired in
+GMGN OpenAPI, GMGN direct WS, macrodata-cli) are wired in
 `app/runtime/providers_wiring.py`. Asset Market services and workers
 receive provider protocols by injection and may not import
 `integrations/*`.

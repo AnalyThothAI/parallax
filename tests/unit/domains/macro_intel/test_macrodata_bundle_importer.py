@@ -53,7 +53,9 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
     assert repos.macro_intel.observations == [
         {
             "source_name": "nyfed",
+            "concept_key": "liquidity:sofr",
             "series_key": "nyfed:SOFR",
+            "source_priority": 100,
             "observed_at": "2026-05-19",
             "value_numeric": 3.51,
             "unit": "percent",
@@ -100,6 +102,19 @@ def test_import_macrodata_bundle_validates_all_observations_before_writing() -> 
     repos = FakeRepositorySession()
 
     with pytest.raises(ValueError, match="series_key"):
+        import_macrodata_bundle(envelope, repos=repos, now_ms=NOW_MS)
+
+    assert repos.transaction_events == []
+    assert repos.macro_intel.observations == []
+    assert repos.macro_intel.import_runs == []
+
+
+def test_import_macrodata_bundle_rejects_unknown_macro_core_series_before_writing() -> None:
+    envelope = deepcopy(ENVELOPE)
+    envelope["data"]["snapshot"]["observations"][0]["series_key"] = "fred:NOT_A_CORE_SERIES"
+    repos = FakeRepositorySession()
+
+    with pytest.raises(ValueError, match="unknown macro-core series_key"):
         import_macrodata_bundle(envelope, repos=repos, now_ms=NOW_MS)
 
     assert repos.transaction_events == []

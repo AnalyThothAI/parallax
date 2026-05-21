@@ -26,7 +26,7 @@ settings. It must not contain worker runtime knobs.
 - `llm` — optional LLM provider config: credentials, provider/base URL,
   timeout, instructor safety-net, and tracing/export settings. It does not
   own model selection.
-- Optional market-related groups (OKX, GMGN OpenAPI, Binance, Marketlane) for
+- Optional market-related groups (OKX, GMGN OpenAPI, Binance, macrodata-cli) for
   identity discovery, route sync, profile source refresh, market tick capture,
   cache-only live price fan-out, and request-time US equity quote snapshots.
 - `gmgn` — GMGN OpenAPI key/base URL/timeout/cache settings. The exact-token
@@ -263,7 +263,7 @@ US Stocks radar contract:
   `resolution_status = NON_CRYPTO` and `CONFIRMED_US_EQUITY`; `Asset` and
   `CexToken` rows are not part of this response.
 - Rows expose social attention facts, latest evidence, source event ids, and a
-  request-time `quote` snapshot from Marketlane. Quote lookup is per-row: a quote
+  request-time `quote` snapshot from macrodata-cli's Yahoo price provider. Quote lookup is per-row: a quote
   failure returns `quote.status = "unavailable"` and does not fail the whole
   response.
 
@@ -275,16 +275,21 @@ Macro contract:
 - When no snapshot exists, the endpoint returns `ok: true` with
   `data.snapshot = null`, empty `panels`, `indicators`, and `triggers`, plus
   `data_gaps = ["macro_view_snapshot_missing"]`, empty `features`, `chain`,
-  `scenario`, and `scorecard`, and `source_coverage.observed_series_count = 0`.
+  `scenario`, and `scorecard`, with `source_coverage.observed_concept_count = 0`
+  and `source_coverage.required_concept_count` set to the macro-core concept count.
 - When a snapshot exists, the response exposes `snapshot` summary fields,
   `panels`, `indicators`, `triggers`, `data_gaps`, `source_coverage`,
   `features`, `chain`, `scenario`, and `scorecard` directly from the read
-  model. `features` contains per-series latest/delta/z-score/percentile and
+  model. `features` contains concept-keyed latest/delta/z-score/percentile and
   freshness diagnostics; `chain` is the seven-node regime transmission chain;
   `scenario` carries current regime, confirmations, contradictions, trade map,
-  validation indicators, and watch triggers; `scorecard` carries v2 coverage
-  and chain-summary diagnostics. Clients must not recompute regime or score
-  fields locally.
+  validation indicators, and watch triggers; `scorecard` carries
+  `macro_regime_v3` concept coverage and chain-summary diagnostics. Clients
+  must not recompute regime or score fields locally.
+- Cross-asset features are canonical concepts. Yahoo-backed bundle members are
+  exposed as `asset:spy`, `asset:qqq`, `asset:iwm`, `asset:tlt`, `asset:hyg`,
+  `asset:lqd`, `asset:gld`, `asset:uso`, `fx:dxy`, `crypto:btc`, and
+  `crypto:eth`; clients must not look up raw provider symbols.
 
 Watchlist handle intel contract:
 
@@ -430,10 +435,10 @@ Macro one-shot CLI commands are operator surfaces, not background workers:
 `macro import-bundle --file <json>` or `--stdin` imports a macrodata-cli
 `macro-core` bundle into `macro_observations` and records a
 `macro_import_runs` audit row; `macro project-once` reads persisted
-observations, builds the `macro_regime_v2` snapshot, and writes
+observations, builds the `macro_regime_v3` snapshot, and writes
 `macro_view_snapshots`; `macro status` reports migration readiness,
-observation/series counts, the latest import run, and the latest snapshot.
-Docker builds install the `AnalyThothAI/macrodata-cli` `v0.1.2` Git dependency,
+observation/concept counts, the latest import run, and the latest snapshot.
+Docker builds install the `AnalyThothAI/macrodata-cli` `v0.1.5` Git dependency,
 whose executable is `macrodata`, so remote operators can pipe
 `macrodata bundle macro-core --asof <date>` into `macro import-bundle --stdin`
 without mounting a local source checkout.

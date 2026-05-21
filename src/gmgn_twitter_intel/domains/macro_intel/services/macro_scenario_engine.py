@@ -186,7 +186,7 @@ def _watch_triggers(
             {
                 "code": "hy_oas_widening_5d",
                 "description": "HY OAS widens over five trading days.",
-                "delta_5d": _feature_delta(features, "fred:BAMLH0A0HYM2", "5d"),
+                "delta_5d": _feature_delta(features, "credit:hy_oas", "5d"),
             },
             {
                 "code": "vix_breaks_30",
@@ -194,8 +194,8 @@ def _watch_triggers(
             },
         ]
         missing_equity_history = (
-            _feature_delta(features, "fred:SP500", "20d") is None
-            and _feature_delta(features, "stooq:spy.us", "20d") is None
+            _feature_delta(features, "asset:spx", "20d") is None
+            and _feature_delta(features, "asset:spy", "20d") is None
         )
         if missing_equity_history:
             watch.append(

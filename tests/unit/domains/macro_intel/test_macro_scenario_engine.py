@@ -28,12 +28,12 @@ def test_build_macro_scenario_emits_funding_stress_trade_map() -> None:
             },
         },
         panels={"credit": {"regime": "low_quality_stress", "score": 7.0}},
-        features={"fred:BAMLH0A0HYM2": {"delta": {"5d": 0.35}}},
+        features={"credit:hy_oas": {"delta": {"5d": 0.35}}},
         triggers=[
             {"code": "sofr_above_iorb", "description": "SOFR is above IORB", "value": 15.0},
             {"code": "hy_oas_stress", "description": "HY OAS is above 5%", "value": 5.8},
         ],
-        data_gaps=["missing:stooq:spy.us"],
+        data_gaps=["missing:asset:spy"],
     )
 
     assert scenario["current_regime"] == "funding_stress"
@@ -48,13 +48,18 @@ def test_build_macro_scenario_emits_funding_stress_trade_map() -> None:
 def test_build_macro_scenario_reports_data_gap_without_chain_evidence() -> None:
     scenario = build_macro_scenario(
         chain={
-            "liquidity": {"score": 0.0, "regime": "data_gap", "evidence": [], "data_gaps": ["missing:fred:WALCL"]},
-            "rates": {"score": 0.0, "regime": "data_gap", "evidence": [], "data_gaps": ["missing:fred:DGS10"]},
+            "liquidity": {
+                "score": 0.0,
+                "regime": "data_gap",
+                "evidence": [],
+                "data_gaps": ["missing:liquidity:fed_assets"],
+            },
+            "rates": {"score": 0.0, "regime": "data_gap", "evidence": [], "data_gaps": ["missing:rates:dgs10"]},
         },
         panels={},
         features={},
         triggers=[],
-        data_gaps=["missing:fred:WALCL", "missing:fred:DGS10"],
+        data_gaps=["missing:liquidity:fed_assets", "missing:rates:dgs10"],
     )
 
     assert scenario["current_regime"] == "data_gap"

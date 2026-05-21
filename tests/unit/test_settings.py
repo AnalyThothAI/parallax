@@ -733,6 +733,12 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     Settings(**{**payload, "workers": workers})
 
 
+def test_config_example_matches_settings_schema() -> None:
+    payload = yaml.safe_load(Path("config.example.yaml").read_text(encoding="utf-8"))
+
+    Settings(**payload, workers=WorkersSettings())
+
+
 def test_init_creates_config_workers_file_and_runtime_directories(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
 

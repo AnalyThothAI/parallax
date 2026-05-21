@@ -72,7 +72,7 @@ class WatchlistIntelProviders:
 
 
 @dataclass(frozen=True, slots=True)
-class MarketlaneProviders:
+class MacrodataProviders:
     stock_quote_provider: object | None = None
 
 
@@ -85,14 +85,14 @@ class WiredProviders:
     news_intel: NewsIntelProviders
     pulse_lab: PulseLabProviders
     watchlist_intel: WatchlistIntelProviders
-    marketlane: MarketlaneProviders
+    macrodata: MacrodataProviders
     agent_execution_gateway: object | None = None
 
 
 __all__ = [
     "AssetMarketProviders",
     "IngestionProviders",
-    "MarketlaneProviders",
+    "MacrodataProviders",
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "OkxProviderBundle",

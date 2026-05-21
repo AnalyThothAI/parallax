@@ -18,6 +18,7 @@ describe("macro route", () => {
       const baseGetApi = mock.getApiImpl;
       mock.getApiImpl = async (path, options) => {
         if (path === "/api/macro") return ok(macroFixture());
+        if (path === "/api/macro/assets/correlation") return ok(correlationFixture());
         return baseGetApi(path, options);
       };
     });
@@ -47,13 +48,26 @@ describe("macro route", () => {
       "active",
     );
   });
+
+  it("opens the macro asset correlation detail route", async () => {
+    renderAppRoute("/macro/assets/correlation");
+
+    expect(await screen.findByRole("heading", { name: "Asset Correlation" })).toBeInTheDocument();
+    expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
+        params: { window: "60d" },
+        token: "secret",
+      }),
+    );
+  });
 });
 
 function macroFixture(): MacroData {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v2:1779000000000",
-      projection_version: "macro_regime_v2",
+      snapshot_id: "macro-view:macro_regime_v3:1779000000000",
+      projection_version: "macro_regime_v3",
       asof_date: "2026-05-20",
       status: "partial",
       regime: "funding_stress",
@@ -71,7 +85,7 @@ function macroFixture(): MacroData {
     indicators: {},
     triggers: [],
     data_gaps: [],
-    source_coverage: { observed_series_count: 10, required_series_count: 10, coverage_ratio: 1 },
+    source_coverage: { observed_concept_count: 10, required_concept_count: 10, coverage_ratio: 1 },
     features: {},
     chain: {
       liquidity: {
@@ -92,10 +106,62 @@ function macroFixture(): MacroData {
       trade_map: [],
     },
     scorecard: {
-      projection_version: "macro_regime_v2",
-      observed_series_count: 10,
-      required_series_count: 10,
+      projection_version: "macro_regime_v3",
+      observed_concept_count: 10,
+      required_concept_count: 10,
       coverage_ratio: 1,
     },
+  };
+}
+
+function correlationFixture() {
+  return {
+    window: "60d",
+    asof_date: "2026-05-20",
+    assets: [
+      {
+        concept_key: "asset:spy",
+        title: "SPY",
+        observations_count: 64,
+        return_count: 60,
+        start_date: "2026-02-21",
+        end_date: "2026-05-20",
+        latest_observed_at: "2026-05-20",
+        sources: ["yahoo"],
+      },
+      {
+        concept_key: "asset:qqq",
+        title: "QQQ",
+        observations_count: 64,
+        return_count: 60,
+        start_date: "2026-02-21",
+        end_date: "2026-05-20",
+        latest_observed_at: "2026-05-20",
+        sources: ["yahoo"],
+      },
+    ],
+    matrix: [
+      {
+        concept_key: "asset:spy",
+        correlations: { "asset:spy": 1, "asset:qqq": 0.92 },
+      },
+      {
+        concept_key: "asset:qqq",
+        correlations: { "asset:spy": 0.92, "asset:qqq": 1 },
+      },
+    ],
+    pairs: [
+      {
+        left: "asset:spy",
+        right: "asset:qqq",
+        correlation: 0.92,
+        sample_size: 58,
+        start_date: "2026-02-24",
+        end_date: "2026-05-20",
+        available: true,
+        reason: null,
+      },
+    ],
+    data_gaps: [],
   };
 }

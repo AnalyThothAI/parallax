@@ -4,7 +4,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring import wire_asset_market_pro
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     IngestionProviders,
-    MarketlaneProviders,
+    MacrodataProviders,
     NarrativeIntelProviders,
     NewsIntelProviders,
     PulseLabProviders,
@@ -17,7 +17,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
 __all__ = [
     "AssetMarketProviders",
     "IngestionProviders",
-    "MarketlaneProviders",
+    "MacrodataProviders",
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",

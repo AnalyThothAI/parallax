@@ -42,7 +42,8 @@ describe("MacroPage", () => {
     expect(screen.getByText("risk_down_credit_sensitive")).toBeInTheDocument();
     expect(screen.getByText("SOFR minus IORB")).toBeInTheDocument();
     expect(screen.getAllByText("sofr_above_iorb").length).toBeGreaterThan(0);
-    expect(screen.getByText("missing:fred:SP500")).toBeInTheDocument();
+    expect(screen.getByText("missing:asset:spx")).toBeInTheDocument();
+    expect(screen.getAllByText("10Y Treasury").length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro", { token: "test-token" }),
     );
@@ -55,7 +56,7 @@ describe("MacroPage", () => {
       indicators: {},
       triggers: [],
       data_gaps: ["macro_view_snapshot_missing"],
-      source_coverage: { observed_series_count: 0 },
+      source_coverage: { observed_concept_count: 0 },
       features: {},
       chain: {},
       scenario: {},
@@ -72,8 +73,8 @@ describe("MacroPage", () => {
 function populatedMacro(): MacroData {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v2:1779000000000",
-      projection_version: "macro_regime_v2",
+      snapshot_id: "macro-view:macro_regime_v3:1779000000000",
+      projection_version: "macro_regime_v3",
       asof_date: "2026-05-20",
       status: "partial",
       regime: "funding_stress",
@@ -101,19 +102,19 @@ function populatedMacro(): MacroData {
         unit: "bps",
         observed_at: "2026-05-20",
         sources: ["nyfed", "fred"],
-        series_keys: ["nyfed:SOFR", "fred:IORB"],
+        concept_keys: ["liquidity:sofr", "fed:iorb"],
       },
     },
     triggers: [{ code: "sofr_above_iorb", description: "SOFR is above IORB", value: 15 }],
-    data_gaps: ["missing:fred:SP500"],
+    data_gaps: ["missing:asset:spx"],
     source_coverage: {
-      observed_series_count: 10,
-      required_series_count: 10,
+      observed_concept_count: 10,
+      required_concept_count: 10,
       coverage_ratio: 1,
       latest_observed_at: "2026-05-20",
     },
     features: {
-      "fred:DGS10": {
+      "rates:dgs10": {
         latest: { value: 4.7, observed_at: "2026-05-20", unit: "percent" },
         freshness_days: 1,
         delta: { "5d": 0.1, "20d": 0.35, "60d": null },
@@ -177,11 +178,11 @@ function populatedMacro(): MacroData {
       ],
     },
     scorecard: {
-      projection_version: "macro_regime_v2",
+      projection_version: "macro_regime_v3",
       overall_score: 7.25,
       chain_average: 6,
-      observed_series_count: 10,
-      required_series_count: 70,
+      observed_concept_count: 10,
+      required_concept_count: 70,
       coverage_ratio: 0.14,
       data_gap_count: 1,
       chain_regimes: {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_SERIES
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
 from gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker import (
     MacroViewProjectionWorker,
 )
@@ -16,7 +16,9 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         observations=[
             {
                 "source_name": "fred",
+                "concept_key": "vol:vix",
                 "series_key": "fred:VIXCLS",
+                "source_priority": 100,
                 "observed_at": "2026-05-20",
                 "value_numeric": 18.2,
                 "unit": "index",
@@ -43,16 +45,16 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     result = worker.run_once_sync()
 
     assert result.processed == 1
-    assert result.notes["projection_version"] == "macro_regime_v2"
+    assert result.notes["projection_version"] == "macro_regime_v3"
     assert result.notes["status"] == "partial"
     assert db.sessions == ["macro_view_projection"]
     assert repo.observations_for_series_call == {
-        "series_keys": MACRO_CORE_SERIES,
+        "concept_keys": MACRO_CORE_CONCEPTS,
         "lookback_days": 730,
         "limit_per_series": 99,
     }
     assert len(repo.snapshots) == 1
-    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v2:1779000000000"
+    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v3:1779000000000"
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
 
 
@@ -74,15 +76,15 @@ class FakeMacroIntelRepository:
         self.observations_for_series_call: dict[str, object] | None = None
         self.snapshots: list[dict[str, object]] = []
 
-    def observations_for_series(
+    def observations_for_concepts(
         self,
         *,
-        series_keys: tuple[str, ...],
+        concept_keys: tuple[str, ...],
         lookback_days: int,
         limit_per_series: int,
     ) -> list[dict[str, object]]:
         self.observations_for_series_call = {
-            "series_keys": series_keys,
+            "concept_keys": concept_keys,
             "lookback_days": lookback_days,
             "limit_per_series": limit_per_series,
         }

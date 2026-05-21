@@ -23,7 +23,7 @@ GMGN public stream
 
 Macro intelligence has a sibling batch path because the service does not fetch
 macro providers directly. The Docker image installs `macrodata-cli` from its
-versioned Git source (`v0.1.2`) and uses its `macrodata` executable; it must not
+versioned Git source (`v0.1.5`) and uses its `macrodata` executable; it must not
 depend on a host-local checkout path.
 
 ```text
@@ -195,7 +195,7 @@ direction is still enforced by the package rules below.
 
 | Marker | Meaning |
 |--------|---------|
-| `[ADAPTER]` | Translates third-party shapes such as GMGN, OKX, Marketlane, or OpenAI Agents into internal values. Does not own product decisions. |
+| `[ADAPTER]` | Translates third-party shapes such as GMGN, OKX, macrodata-cli, or OpenAI Agents into internal values. Does not own product decisions. |
 | `[COMMAND]` | Handles write-side use cases: ingesting events, resolving identity, refreshing facts, or writing material observations. |
 | `[FACT]` | Owns persisted business facts or value types that represent those facts. |
 | `[WAKE]` | Emits or consumes wake hints such as LISTEN/NOTIFY. Wake hints are never the source of correctness. |

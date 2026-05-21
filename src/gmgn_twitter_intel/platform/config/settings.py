@@ -465,7 +465,7 @@ class BinanceProviderConfig(BaseModel):
         return str(value or "").strip().upper()
 
 
-class MarketlaneProviderConfig(BaseModel):
+class MacrodataProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
@@ -478,7 +478,7 @@ class ProvidersConfig(BaseModel):
 
     okx: OkxProviderConfig = Field(default_factory=OkxProviderConfig)
     binance: BinanceProviderConfig = Field(default_factory=BinanceProviderConfig)
-    marketlane: MarketlaneProviderConfig = Field(default_factory=MarketlaneProviderConfig)
+    macrodata: MacrodataProviderConfig = Field(default_factory=MacrodataProviderConfig)
 
 
 class NewsSourceSettings(BaseModel):
@@ -1354,16 +1354,16 @@ class Settings(BaseModel):
         return self.providers.binance.timeout_seconds
 
     @property
-    def marketlane_enabled(self) -> bool:
-        return bool(self.providers.marketlane.enabled)
+    def macrodata_enabled(self) -> bool:
+        return bool(self.providers.macrodata.enabled)
 
     @property
-    def marketlane_quote_timeout_seconds(self) -> float:
-        return self.providers.marketlane.quote_timeout_seconds
+    def macrodata_quote_timeout_seconds(self) -> float:
+        return self.providers.macrodata.quote_timeout_seconds
 
     @property
-    def marketlane_quote_cache_ttl_seconds(self) -> float:
-        return self.providers.marketlane.quote_cache_ttl_seconds
+    def macrodata_quote_cache_ttl_seconds(self) -> float:
+        return self.providers.macrodata.quote_cache_ttl_seconds
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:

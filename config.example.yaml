@@ -61,7 +61,7 @@ providers:
     cex_universe_quote_symbol: "USDT"
     cex_universe_contract_type: "PERPETUAL"
     timeout_seconds: 15
-  marketlane:
+  macrodata:
     enabled: true
     quote_timeout_seconds: 5
     quote_cache_ttl_seconds: 30

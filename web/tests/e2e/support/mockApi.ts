@@ -1226,8 +1226,8 @@ function watchlistHandleTimelineData(handle: string) {
 function macroData() {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v2:e2e",
-      projection_version: "macro_regime_v2",
+      snapshot_id: "macro-view:macro_regime_v3:e2e",
+      projection_version: "macro_regime_v3",
       asof_date: "2026-05-20",
       status: "partial",
       regime: "funding_stress",
@@ -1255,19 +1255,19 @@ function macroData() {
         unit: "bps",
         observed_at: "2026-05-20",
         sources: ["nyfed", "fred"],
-        series_keys: ["nyfed:SOFR", "fred:IORB"],
+        concept_keys: ["liquidity:sofr", "fed:iorb"],
       },
     },
     triggers: [{ code: "sofr_above_iorb", description: "SOFR is above IORB", value: 15 }],
-    data_gaps: ["missing:fred:SP500"],
+    data_gaps: ["missing:asset:spx"],
     source_coverage: {
-      observed_series_count: 10,
-      required_series_count: 10,
+      observed_concept_count: 10,
+      required_concept_count: 10,
       coverage_ratio: 1,
       latest_observed_at: "2026-05-20",
     },
     features: {
-      "fred:DGS10": {
+      "rates:dgs10": {
         latest: { value: 4.7, observed_at: "2026-05-20", unit: "percent" },
         freshness_days: 1,
         delta: { "5d": 0.1, "20d": 0.35, "60d": null },
@@ -1325,7 +1325,7 @@ function macroData() {
       ],
     },
     scorecard: {
-      projection_version: "macro_regime_v2",
+      projection_version: "macro_regime_v3",
       modules: {
         liquidity: { score: 9, regime: "funding_stress", evidence: [], data_gaps: [] },
       },

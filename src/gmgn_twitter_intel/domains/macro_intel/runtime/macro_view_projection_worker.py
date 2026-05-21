@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.macro_intel._constants import (
-    MACRO_CORE_SERIES,
+    MACRO_CORE_CONCEPTS,
     MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
 )
@@ -32,8 +32,8 @@ class MacroViewProjectionWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            observations = repos.macro_intel.observations_for_series(
-                series_keys=MACRO_CORE_SERIES,
+            observations = repos.macro_intel.observations_for_concepts(
+                concept_keys=MACRO_CORE_CONCEPTS,
                 lookback_days=self._lookback_days(),
                 limit_per_series=self._limit_per_series(),
             )

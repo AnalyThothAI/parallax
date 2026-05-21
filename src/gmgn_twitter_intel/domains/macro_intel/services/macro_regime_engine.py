@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_SERIES, MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS, MACRO_VIEW_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.macro_intel.services.macro_feature_engine import build_macro_features
 from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import build_macro_scenario
 
-CORE_REQUIRED_SERIES = MACRO_CORE_SERIES
-OPTIONAL_CONFIRMATION_SERIES = ("fred:SP500", "fred:DEXUSEU", "fred:DCOILWTICO")
+CORE_REQUIRED_CONCEPTS = MACRO_CORE_CONCEPTS
+OPTIONAL_CONFIRMATION_CONCEPTS = ("asset:spx", "fx:broad_dollar", "commodity:wti")
 PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
 CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
 
@@ -20,11 +20,11 @@ def build_macro_view_snapshot(
     *,
     computed_at_ms: int,
 ) -> dict[str, Any]:
-    latest = _latest_by_series(observations)
+    latest = _latest_by_concept(observations)
     features = build_macro_features(observations, computed_at_ms=computed_at_ms)
     panels, indicators, triggers, panel_gaps = _build_panels(latest)
     chain = _build_chain(latest=latest, panels=panels, features=features)
-    core_gaps = [f"missing:{series_key}" for series_key in CORE_REQUIRED_SERIES if series_key not in latest]
+    core_gaps = [f"missing:{series_key}" for series_key in CORE_REQUIRED_CONCEPTS if series_key not in latest]
     data_gaps = _unique([*core_gaps, *panel_gaps])
     available_scores = [float(panel["score"]) for panel in panels.values() if panel.get("score") is not None]
     overall_score = round(sum(available_scores) / len(available_scores), 2) if available_scores else None
@@ -120,9 +120,9 @@ def _liquidity_chain_node(
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
 
-    walcl_20d = _feature_delta(features, "fred:WALCL", "20d")
-    rrp_20d = _feature_delta(features, "fred:RRPONTSYD", "20d")
-    tga_20d = _feature_delta(features, "treasury_fiscal:operating_cash_balance", "20d")
+    walcl_20d = _feature_delta(features, "liquidity:fed_assets", "20d")
+    rrp_20d = _feature_delta(features, "liquidity:on_rrp", "20d")
+    tga_20d = _feature_delta(features, "liquidity:tga", "20d")
     if walcl_20d is not None:
         evidence.append(f"walcl_20d_delta={walcl_20d:.2f}")
         if walcl_20d <= -100_000:
@@ -155,25 +155,25 @@ def _rates_chain_node(
     score = 4.0
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
-    dgs2 = _value(latest.get("fred:DGS2"))
-    dgs10 = _value(latest.get("fred:DGS10"))
-    curve_10y_2y = _value(latest.get("fred:T10Y2Y"))
+    dgs2 = _value(latest.get("rates:dgs2"))
+    dgs10 = _value(latest.get("rates:dgs10"))
+    curve_10y_2y = _value(latest.get("rates:10y2y"))
     if curve_10y_2y is None and dgs2 is not None and dgs10 is not None:
         curve_10y_2y = dgs10 - dgs2
-    curve_10y_3m = _value(latest.get("fred:T10Y3M"))
-    real_10y = _value(latest.get("fred:DFII10"))
-    breakeven_10y = _value(latest.get("fred:T10YIE"))
-    forward_inflation = _value(latest.get("fred:T5YIFR"))
-    dgs10_20d = _feature_delta(features, "fred:DGS10", "20d")
-    dgs2_20d = _feature_delta(features, "fred:DGS2", "20d")
+    curve_10y_3m = _value(latest.get("rates:10y3m"))
+    real_10y = _value(latest.get("rates:real_10y"))
+    breakeven_10y = _value(latest.get("inflation:10y_breakeven"))
+    forward_inflation = _value(latest.get("inflation:5y5y_forward"))
+    dgs10_20d = _feature_delta(features, "rates:dgs10", "20d")
+    dgs2_20d = _feature_delta(features, "rates:dgs2", "20d")
 
     missing_series = (
-        ("fred:DGS5", _value(latest.get("fred:DGS5"))),
-        ("fred:DGS30", _value(latest.get("fred:DGS30"))),
-        ("fred:T10Y3M", curve_10y_3m),
-        ("fred:DFII10", real_10y),
-        ("fred:T10YIE", breakeven_10y),
-        ("fred:T5YIFR", forward_inflation),
+        ("rates:dgs5", _value(latest.get("rates:dgs5"))),
+        ("rates:dgs30", _value(latest.get("rates:dgs30"))),
+        ("rates:10y3m", curve_10y_3m),
+        ("rates:real_10y", real_10y),
+        ("inflation:10y_breakeven", breakeven_10y),
+        ("inflation:5y5y_forward", forward_inflation),
     )
     data_gaps.extend(f"missing:{series_key}" for series_key, value in missing_series if value is None)
 
@@ -219,21 +219,21 @@ def _rates_chain_node(
 
 
 def _fed_corridor_chain_node(*, latest: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
-    sofr = _value(latest.get("nyfed:SOFR"))
-    iorb = _value(latest.get("fred:IORB"))
-    effr = _value(latest.get("fred:EFFR"))
-    target_upper = _value(latest.get("fred:DFEDTARU"))
-    target_lower = _value(latest.get("fred:DFEDTARL"))
+    sofr = _value(latest.get("liquidity:sofr"))
+    iorb = _value(latest.get("fed:iorb"))
+    effr = _value(latest.get("fed:effr"))
+    target_upper = _value(latest.get("fed:target_upper"))
+    target_lower = _value(latest.get("fed:target_lower"))
     evidence: list[str] = []
     data_gaps: list[str] = []
     score = 4.0
 
     for series_key, value in (
-        ("nyfed:SOFR", sofr),
-        ("fred:IORB", iorb),
-        ("fred:EFFR", effr),
-        ("fred:DFEDTARU", target_upper),
-        ("fred:DFEDTARL", target_lower),
+        ("liquidity:sofr", sofr),
+        ("fed:iorb", iorb),
+        ("fed:effr", effr),
+        ("fed:target_upper", target_upper),
+        ("fed:target_lower", target_lower),
     ):
         if value is None:
             data_gaps.append(f"missing:{series_key}")
@@ -273,8 +273,8 @@ def _volatility_chain_node(*, panel: Mapping[str, Any], features: Mapping[str, A
     score = _panel_score(panel, default=0.0)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
-    vix_5d = _feature_delta(features, "fred:VIXCLS", "5d")
-    vix_20d = _feature_delta(features, "fred:VIXCLS", "20d")
+    vix_5d = _feature_delta(features, "vol:vix", "5d")
+    vix_20d = _feature_delta(features, "vol:vix", "20d")
     if vix_5d is not None:
         evidence.append(f"vix_5d_delta={vix_5d:.2f}")
         if vix_5d >= 3.0:
@@ -304,11 +304,11 @@ def _credit_chain_node(
     score = _panel_score(panel, default=0.0)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
-    hy_oas = _value(latest.get("fred:BAMLH0A0HYM2"))
-    ig_oas = _value(latest.get("fred:BAMLC0A0CM"))
-    hy_5d = _feature_delta(features, "fred:BAMLH0A0HYM2", "5d")
-    hy_20d = _feature_delta(features, "fred:BAMLH0A0HYM2", "20d")
-    ig_20d = _feature_delta(features, "fred:BAMLC0A0CM", "20d")
+    hy_oas = _value(latest.get("credit:hy_oas"))
+    ig_oas = _value(latest.get("credit:ig_oas"))
+    hy_5d = _feature_delta(features, "credit:hy_oas", "5d")
+    hy_20d = _feature_delta(features, "credit:hy_oas", "20d")
+    ig_20d = _feature_delta(features, "credit:ig_oas", "20d")
 
     if hy_oas is not None and ig_oas is not None:
         hy_ig_spread = hy_oas - ig_oas
@@ -347,7 +347,7 @@ def _positioning_chain_node(
     latest: Mapping[str, Mapping[str, Any]],
     features: Mapping[str, Any],
 ) -> dict[str, Any]:
-    series_key = "cftc:financial_futures:sp500_net_noncommercial"
+    series_key = "positioning:sp500_net_noncommercial"
     value = _value(latest.get(series_key))
     if value is None:
         return _chain_node(
@@ -388,13 +388,13 @@ def _cross_asset_chain_node(
     score = _panel_score(panel, default=4.0)
     evidence = _panel_strings(panel, "evidence")
     data_gaps = _panel_strings(panel, "data_gaps")
-    spx = _first_value(latest, ("fred:SP500", "stooq:spy.us"))
-    qqq = _value(latest.get("stooq:qqq.us"))
-    iwm = _value(latest.get("stooq:iwm.us"))
-    hyg = _value(latest.get("stooq:hyg.us"))
-    lqd = _value(latest.get("stooq:lqd.us"))
-    dxy = _value(latest.get("fred:DTWEXBGS"))
-    oil = _first_value(latest, ("fred:DCOILWTICO", "stooq:uso.us"))
+    spx = _first_value(latest, ("asset:spx", "asset:spy"))
+    qqq = _value(latest.get("asset:qqq"))
+    iwm = _value(latest.get("asset:iwm"))
+    hyg = _value(latest.get("asset:hyg"))
+    lqd = _value(latest.get("asset:lqd"))
+    dxy = _value(latest.get("fx:broad_dollar"))
+    oil = _first_value(latest, ("commodity:wti", "asset:uso"))
     risk_off_votes = 0
     risk_on_votes = 0
 
@@ -411,11 +411,11 @@ def _cross_asset_chain_node(
             evidence.append(f"{label}={value:.2f}")
 
     delta_votes = (
-        ("sp500_20d_delta", _first_feature_delta(features, ("fred:SP500", "stooq:spy.us"), "20d"), -1),
-        ("qqq_20d_delta", _feature_delta(features, "stooq:qqq.us", "20d"), -1),
-        ("iwm_20d_delta", _feature_delta(features, "stooq:iwm.us", "20d"), -1),
-        ("hyg_20d_delta", _feature_delta(features, "stooq:hyg.us", "20d"), -1),
-        ("dollar_20d_delta", _feature_delta(features, "fred:DTWEXBGS", "20d"), 1),
+        ("sp500_20d_delta", _first_feature_delta(features, ("asset:spx", "asset:spy"), "20d"), -1),
+        ("qqq_20d_delta", _feature_delta(features, "asset:qqq", "20d"), -1),
+        ("iwm_20d_delta", _feature_delta(features, "asset:iwm", "20d"), -1),
+        ("hyg_20d_delta", _feature_delta(features, "asset:hyg", "20d"), -1),
+        ("dollar_20d_delta", _feature_delta(features, "fx:broad_dollar", "20d"), 1),
     )
     for label, delta, risk_off_sign in delta_votes:
         if delta is None:
@@ -431,10 +431,10 @@ def _cross_asset_chain_node(
         evidence.append(f"hyg_lqd_ratio={hyg_lqd_ratio:.4f}")
 
     for series_key, value in (
-        ("fred:SP500|stooq:spy.us", spx),
-        ("stooq:hyg.us", hyg),
-        ("stooq:lqd.us", lqd),
-        ("fred:DTWEXBGS", dxy),
+        ("asset:spx|asset:spy", spx),
+        ("asset:hyg", hyg),
+        ("asset:lqd", lqd),
+        ("fx:broad_dollar", dxy),
     ):
         if value is None:
             data_gaps.append(f"missing:{series_key}")
@@ -458,19 +458,19 @@ def _liquidity_panel(
     indicators: dict[str, dict[str, Any]] = {}
     triggers: list[dict[str, Any]] = []
     data_gaps: list[str] = []
-    walcl = _usd_millions(latest.get("fred:WALCL"))
-    rrp = _usd_millions(latest.get("fred:RRPONTSYD"))
-    tga = _usd_millions(latest.get("treasury_fiscal:operating_cash_balance"))
-    sofr = _value(latest.get("nyfed:SOFR"))
-    iorb = _value(latest.get("fred:IORB"))
+    walcl = _usd_millions(latest.get("liquidity:fed_assets"))
+    rrp = _usd_millions(latest.get("liquidity:on_rrp"))
+    tga = _usd_millions(latest.get("liquidity:tga"))
+    sofr = _value(latest.get("liquidity:sofr"))
+    iorb = _value(latest.get("fed:iorb"))
     score = 4.0
     evidence: list[str] = []
 
     if walcl is None or rrp is None or tga is None:
         for series_key, value in (
-            ("fred:WALCL", walcl),
-            ("fred:RRPONTSYD", rrp),
-            ("treasury_fiscal:operating_cash_balance", tga),
+            ("liquidity:fed_assets", walcl),
+            ("liquidity:on_rrp", rrp),
+            ("liquidity:tga", tga),
         ):
             if value is None:
                 data_gaps.append(f"missing:{series_key}")
@@ -481,9 +481,9 @@ def _liquidity_panel(
             unit="millions_usd",
             label="Fed net liquidity",
             observations=[
-                latest["fred:WALCL"],
-                latest["fred:RRPONTSYD"],
-                latest["treasury_fiscal:operating_cash_balance"],
+                latest["liquidity:fed_assets"],
+                latest["liquidity:on_rrp"],
+                latest["liquidity:tga"],
             ],
         )
         evidence.append(f"net_liquidity_usd_millions={net_liquidity:.0f}")
@@ -496,16 +496,16 @@ def _liquidity_panel(
 
     if sofr is None or iorb is None:
         if sofr is None:
-            data_gaps.append("missing:nyfed:SOFR")
+            data_gaps.append("missing:liquidity:sofr")
         if iorb is None:
-            data_gaps.append("missing:fred:IORB")
+            data_gaps.append("missing:fed:iorb")
     else:
         spread_bps = (sofr - iorb) * 100.0
         indicators["sofr_iorb_spread_bps"] = _indicator(
             value=spread_bps,
             unit="bps",
             label="SOFR minus IORB",
-            observations=[latest["nyfed:SOFR"], latest["fred:IORB"]],
+            observations=[latest["liquidity:sofr"], latest["fed:iorb"]],
         )
         evidence.append(f"sofr_iorb_spread_bps={spread_bps:.1f}")
         if spread_bps > 0:
@@ -535,27 +535,27 @@ def _rates_panel(
     indicators: dict[str, dict[str, Any]] = {}
     triggers: list[dict[str, Any]] = []
     data_gaps: list[str] = []
-    dgs2 = _value(latest.get("fred:DGS2"))
-    dgs10 = _value(latest.get("fred:DGS10"))
+    dgs2 = _value(latest.get("rates:dgs2"))
+    dgs10 = _value(latest.get("rates:dgs10"))
     score = 4.0
     evidence: list[str] = []
     if dgs2 is None:
-        data_gaps.append("missing:fred:DGS2")
+        data_gaps.append("missing:rates:dgs2")
     if dgs10 is None:
-        data_gaps.append("missing:fred:DGS10")
+        data_gaps.append("missing:rates:dgs10")
     if dgs2 is not None and dgs10 is not None:
         curve = dgs10 - dgs2
         indicators["ust_10y_2y_curve_pct"] = _indicator(
             value=curve,
             unit="percentage_points",
             label="10Y minus 2Y Treasury curve",
-            observations=[latest["fred:DGS10"], latest["fred:DGS2"]],
+            observations=[latest["rates:dgs10"], latest["rates:dgs2"]],
         )
         indicators["ust_10y_yield_pct"] = _indicator(
             value=dgs10,
             unit="percent",
             label="10Y Treasury yield",
-            observations=[latest["fred:DGS10"]],
+            observations=[latest["rates:dgs10"]],
         )
         evidence.append(f"10y={dgs10:.2f}")
         evidence.append(f"10y_2y_curve={curve:.2f}")
@@ -586,20 +586,20 @@ def _rates_panel(
 def _volatility_panel(
     latest: Mapping[str, Mapping[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[dict[str, Any]], list[str]]:
-    vix = _value(latest.get("fred:VIXCLS"))
+    vix = _value(latest.get("vol:vix"))
     if vix is None:
         return (
-            _panel(score=None, regime="data_gap", evidence=[], data_gaps=["missing:fred:VIXCLS"]),
+            _panel(score=None, regime="data_gap", evidence=[], data_gaps=["missing:vol:vix"]),
             {},
             [],
-            ["missing:fred:VIXCLS"],
+            ["missing:vol:vix"],
         )
     indicators = {
         "vix": _indicator(
             value=vix,
             unit="index",
             label="VIX 30D implied volatility",
-            observations=[latest["fred:VIXCLS"]],
+            observations=[latest["vol:vix"]],
         )
     }
     triggers: list[dict[str, Any]] = []
@@ -613,30 +613,30 @@ def _volatility_panel(
 def _credit_panel(
     latest: Mapping[str, Mapping[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[dict[str, Any]], list[str]]:
-    hy_oas = _value(latest.get("fred:BAMLH0A0HYM2"))
-    ig_oas = _value(latest.get("fred:BAMLC0A0CM"))
+    hy_oas = _value(latest.get("credit:hy_oas"))
+    ig_oas = _value(latest.get("credit:ig_oas"))
     indicators: dict[str, dict[str, Any]] = {}
     triggers: list[dict[str, Any]] = []
     data_gaps: list[str] = []
     evidence: list[str] = []
     if hy_oas is None:
-        data_gaps.append("missing:fred:BAMLH0A0HYM2")
+        data_gaps.append("missing:credit:hy_oas")
     else:
         indicators["hy_oas_pct"] = _indicator(
             value=hy_oas,
             unit="percent",
             label="US HY OAS",
-            observations=[latest["fred:BAMLH0A0HYM2"]],
+            observations=[latest["credit:hy_oas"]],
         )
         evidence.append(f"hy_oas={hy_oas:.2f}")
     if ig_oas is None:
-        data_gaps.append("missing:fred:BAMLC0A0CM")
+        data_gaps.append("missing:credit:ig_oas")
     else:
         indicators["ig_oas_pct"] = _indicator(
             value=ig_oas,
             unit="percent",
             label="US corporate IG OAS",
-            observations=[latest["fred:BAMLC0A0CM"]],
+            observations=[latest["credit:ig_oas"]],
         )
         evidence.append(f"ig_oas={ig_oas:.2f}")
     if hy_oas is None:
@@ -667,7 +667,7 @@ def _cross_asset_panel(
     latest: Mapping[str, Mapping[str, Any]],
     panels: Mapping[str, Mapping[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[dict[str, Any]], list[str]]:
-    spx = _value(latest.get("fred:SP500"))
+    spx = _value(latest.get("asset:spx"))
     if spx is None:
         synthetic_scores = [
             float(panel["score"])
@@ -681,18 +681,18 @@ def _cross_asset_panel(
                 score=score,
                 regime=regime,
                 evidence=["risk_asset_confirmation_missing"] if score is not None else [],
-                data_gaps=["missing:fred:SP500"],
+                data_gaps=["missing:asset:spx"],
             ),
             {},
             [],
-            ["missing:fred:SP500"],
+            ["missing:asset:spx"],
         )
     indicators = {
         "sp500_index": _indicator(
             value=spx,
             unit="index",
             label="S&P 500 index",
-            observations=[latest["fred:SP500"]],
+            observations=[latest["asset:spx"]],
         )
     }
     return (
@@ -725,8 +725,8 @@ def _scorecard(
         "projection_version": MACRO_VIEW_PROJECTION_VERSION,
         "overall_score": overall_score,
         "chain_average": chain_average,
-        "observed_series_count": int(coverage.get("observed_series_count") or 0),
-        "required_series_count": int(coverage.get("required_series_count") or len(CORE_REQUIRED_SERIES)),
+        "observed_concept_count": int(coverage.get("observed_concept_count") or 0),
+        "required_concept_count": int(coverage.get("required_concept_count") or len(CORE_REQUIRED_CONCEPTS)),
         "coverage_ratio": float(coverage.get("coverage_ratio") or 0.0),
         "data_gap_count": len([gap for gap in data_gaps if gap]),
         "chain_regimes": {node_key: str(node.get("regime") or "") for node_key, node in chain.items()},
@@ -795,9 +795,9 @@ def _feature_delta(features: Mapping[str, Any], series_key: str, horizon: str) -
     return _float_value(delta.get(horizon))
 
 
-def _first_feature_delta(features: Mapping[str, Any], series_keys: Sequence[str], horizon: str) -> float | None:
-    for series_key in series_keys:
-        value = _feature_delta(features, series_key, horizon)
+def _first_feature_delta(features: Mapping[str, Any], concept_keys: Sequence[str], horizon: str) -> float | None:
+    for concept_key in concept_keys:
+        value = _feature_delta(features, concept_key, horizon)
         if value is not None:
             return value
     return None
@@ -813,9 +813,9 @@ def _feature_percentile(features: Mapping[str, Any], series_key: str) -> float |
     return _float_value(percentile.get("value"))
 
 
-def _first_value(latest: Mapping[str, Mapping[str, Any]], series_keys: Sequence[str]) -> float | None:
-    for series_key in series_keys:
-        value = _value(latest.get(series_key))
+def _first_value(latest: Mapping[str, Mapping[str, Any]], concept_keys: Sequence[str]) -> float | None:
+    for concept_key in concept_keys:
+        value = _value(latest.get(concept_key))
         if value is not None:
             return value
     return None
@@ -882,32 +882,36 @@ def _snapshot_status(*, latest: Mapping[str, Mapping[str, Any]], data_gaps: Sequ
 
 
 def _source_coverage(latest: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
-    observed_core = sum(1 for series_key in CORE_REQUIRED_SERIES if series_key in latest)
+    observed_core = sum(1 for series_key in CORE_REQUIRED_CONCEPTS if series_key in latest)
     latest_observed_at = None
     if latest:
         latest_observed_at = max(str(observation.get("observed_at") or "") for observation in latest.values())
     return {
-        "observed_series_count": observed_core,
-        "required_series_count": len(CORE_REQUIRED_SERIES),
-        "coverage_ratio": round(observed_core / len(CORE_REQUIRED_SERIES), 4),
+        "observed_concept_count": observed_core,
+        "required_concept_count": len(CORE_REQUIRED_CONCEPTS),
+        "coverage_ratio": round(observed_core / len(CORE_REQUIRED_CONCEPTS), 4),
         "latest_observed_at": latest_observed_at,
     }
 
 
-def _latest_by_series(observations: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
+def _latest_by_concept(observations: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
     latest: dict[str, Mapping[str, Any]] = {}
     for observation in observations:
-        series_key = str(observation.get("series_key") or "").strip()
-        if not series_key:
+        concept_key = str(observation.get("concept_key") or "").strip()
+        if not concept_key:
             continue
-        previous = latest.get(series_key)
+        previous = latest.get(concept_key)
         if previous is None or _sort_key(observation) > _sort_key(previous):
-            latest[series_key] = observation
+            latest[concept_key] = observation
     return latest
 
 
-def _sort_key(observation: Mapping[str, Any]) -> tuple[str, str]:
-    return (str(observation.get("observed_at") or ""), str(observation.get("source_ts") or ""))
+def _sort_key(observation: Mapping[str, Any]) -> tuple[str, int, int]:
+    return (
+        str(observation.get("observed_at") or ""),
+        _int_value(observation.get("source_priority")),
+        _int_value(observation.get("ingested_at_ms") or observation.get("source_ts")),
+    )
 
 
 def _asof_date(*, latest: Mapping[str, Mapping[str, Any]], computed_at_ms: int) -> str:
@@ -936,6 +940,13 @@ def _float_value(value: Any) -> float | None:
         return None
 
 
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _usd_millions(observation: Mapping[str, Any] | None) -> float | None:
     value = _value(observation)
     if value is None:
@@ -959,7 +970,7 @@ def _indicator(
         "unit": unit,
         "observed_at": max(str(observation.get("observed_at") or "") for observation in observations),
         "sources": sorted({str(observation.get("source_name") or "") for observation in observations}),
-        "series_keys": [str(observation.get("series_key") or "") for observation in observations],
+        "concept_keys": [str(observation.get("concept_key") or "") for observation in observations],
     }
 
 
@@ -975,4 +986,4 @@ def _unique(values: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 
-__all__ = ["CORE_REQUIRED_SERIES", "build_macro_view_snapshot"]
+__all__ = ["CORE_REQUIRED_CONCEPTS", "build_macro_view_snapshot"]

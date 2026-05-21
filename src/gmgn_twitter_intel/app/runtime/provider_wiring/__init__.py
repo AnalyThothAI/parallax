@@ -5,7 +5,7 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     IngestionProviders,
-    MarketlaneProviders,
+    MacrodataProviders,
     NarrativeIntelProviders,
     NewsIntelProviders,
     PulseLabProviders,
@@ -23,7 +23,7 @@ def wire_providers(
     agent_execution_gateway: object | None = None,
     db_pool: Any | None = None,
 ) -> WiredProviders:
-    from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market, gmgn, marketlane, news, openai
+    from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market, gmgn, macrodata, news, openai
 
     return WiredProviders(
         ingestion=IngestionProviders(
@@ -82,7 +82,7 @@ def wire_providers(
             if settings.workers.handle_summary.enabled and settings.watchlist_handle_summary_configured
             else None,
         ),
-        marketlane=marketlane.wire_marketlane(settings),
+        macrodata=macrodata.wire_macrodata(settings),
         agent_execution_gateway=agent_execution_gateway,
     )
 
@@ -102,7 +102,7 @@ def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> 
 __all__ = [
     "AssetMarketProviders",
     "IngestionProviders",
-    "MarketlaneProviders",
+    "MacrodataProviders",
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",

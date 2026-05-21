@@ -18,11 +18,12 @@ class MacroIntelRepository:
         self.conn.execute(
             """
             INSERT INTO macro_observations(
-              observation_id, source_name, series_key, observed_at, value_numeric, unit, frequency,
-              data_quality, source_ts, raw_payload_json, ingested_at_ms
+              observation_id, source_name, concept_key, series_key, source_priority, observed_at, value_numeric, unit,
+              frequency, data_quality, source_ts, raw_payload_json, ingested_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(source_name, series_key, observed_at) DO UPDATE SET
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(concept_key, observed_at, source_name, series_key) DO UPDATE SET
+              source_priority = excluded.source_priority,
               value_numeric = excluded.value_numeric,
               unit = excluded.unit,
               frequency = excluded.frequency,
@@ -34,7 +35,9 @@ class MacroIntelRepository:
             (
                 observation_id,
                 str(observation["source_name"]),
+                str(observation["concept_key"]),
                 str(observation["series_key"]),
+                int(observation["source_priority"]),
                 observation["observed_at"],
                 observation.get("value_numeric"),
                 observation.get("unit"),
@@ -89,28 +92,28 @@ class MacroIntelRepository:
         self,
         *,
         limit: int = 250,
-        series_keys: Sequence[str] | None = None,
+        concept_keys: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         bounded_limit = max(1, int(limit))
-        if series_keys:
+        if concept_keys:
             rows = self.conn.execute(
                 """
                 WITH ranked AS (
                   SELECT *,
                          row_number() OVER (
-                           PARTITION BY series_key
-                           ORDER BY observed_at DESC, ingested_at_ms DESC
+                           PARTITION BY concept_key
+                           ORDER BY observed_at DESC, source_priority DESC, ingested_at_ms DESC
                          ) AS rn
                   FROM macro_observations
-                  WHERE series_key = ANY(%s)
+                  WHERE concept_key = ANY(%s)
                 )
                 SELECT *
                 FROM ranked
                 WHERE rn = 1
-                ORDER BY series_key ASC
+                ORDER BY concept_key ASC
                 LIMIT %s
                 """,
-                (list(series_keys), bounded_limit),
+                (list(concept_keys), bounded_limit),
             ).fetchall()
         else:
             rows = self.conn.execute(
@@ -118,25 +121,25 @@ class MacroIntelRepository:
                 WITH ranked AS (
                   SELECT *,
                          row_number() OVER (
-                           PARTITION BY series_key
-                           ORDER BY observed_at DESC, ingested_at_ms DESC
+                           PARTITION BY concept_key
+                           ORDER BY observed_at DESC, source_priority DESC, ingested_at_ms DESC
                          ) AS rn
                   FROM macro_observations
                 )
                 SELECT *
                 FROM ranked
                 WHERE rn = 1
-                ORDER BY series_key ASC
+                ORDER BY concept_key ASC
                 LIMIT %s
                 """,
                 (bounded_limit,),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def observations_for_series(
+    def observations_for_concepts(
         self,
         *,
-        series_keys: Sequence[str],
+        concept_keys: Sequence[str],
         lookback_days: int,
         limit_per_series: int,
     ) -> list[dict[str, Any]]:
@@ -147,18 +150,18 @@ class MacroIntelRepository:
             WITH deduped AS (
               SELECT *,
                      row_number() OVER (
-                       PARTITION BY series_key, observed_at
-                       ORDER BY ingested_at_ms DESC
+                       PARTITION BY concept_key, observed_at
+                       ORDER BY source_priority DESC, ingested_at_ms DESC
                      ) AS dedupe_rn
               FROM macro_observations
-              WHERE series_key = ANY(%s)
+              WHERE concept_key = ANY(%s)
                 AND observed_at >= CURRENT_DATE - %s::int
             ),
             ranked AS (
               SELECT *,
                      row_number() OVER (
-                       PARTITION BY series_key
-                       ORDER BY observed_at DESC, ingested_at_ms DESC
+                       PARTITION BY concept_key
+                       ORDER BY observed_at DESC, source_priority DESC, ingested_at_ms DESC
                      ) AS series_rn
               FROM deduped
               WHERE dedupe_rn = 1
@@ -166,9 +169,9 @@ class MacroIntelRepository:
             SELECT *
             FROM ranked
             WHERE series_rn <= %s
-            ORDER BY series_key ASC, observed_at DESC, ingested_at_ms DESC
+            ORDER BY concept_key ASC, observed_at DESC, source_priority DESC, ingested_at_ms DESC
             """,
-            (list(series_keys), bounded_lookback_days, bounded_limit_per_series),
+            (list(concept_keys), bounded_lookback_days, bounded_limit_per_series),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -248,8 +251,8 @@ class MacroIntelRepository:
         row = self.conn.execute("SELECT COUNT(*) AS count FROM macro_observations").fetchone()
         return _count(row)
 
-    def series_count(self) -> int:
-        row = self.conn.execute("SELECT COUNT(DISTINCT series_key) AS count FROM macro_observations").fetchone()
+    def concept_count(self) -> int:
+        row = self.conn.execute("SELECT COUNT(DISTINCT concept_key) AS count FROM macro_observations").fetchone()
         return _count(row)
 
     def latest_import_run(self) -> dict[str, Any] | None:
@@ -268,8 +271,9 @@ def _observation_id(observation: Mapping[str, Any]) -> str:
     identity = "|".join(
         [
             str(observation.get("source_name") or ""),
-            str(observation.get("series_key") or ""),
+            str(observation.get("concept_key") or ""),
             str(observation.get("observed_at") or ""),
+            str(observation.get("series_key") or ""),
         ]
     )
     digest = hashlib.sha256(identity.encode()).hexdigest()[:32]

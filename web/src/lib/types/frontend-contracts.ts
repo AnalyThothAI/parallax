@@ -42,7 +42,7 @@ export type MacroIndicator = {
   unit?: string | null;
   observed_at?: string | null;
   sources?: string[];
-  series_keys?: string[];
+  concept_keys?: string[];
 };
 
 export type MacroTrigger = {
@@ -115,8 +115,8 @@ export type MacroScorecard = {
   projection_version?: string | null;
   overall_score?: number | null;
   chain_average?: number | null;
-  observed_series_count?: number | null;
-  required_series_count?: number | null;
+  observed_concept_count?: number | null;
+  required_concept_count?: number | null;
   coverage_ratio?: number | null;
   data_gap_count?: number | null;
   chain_regimes?: Record<string, string | null | undefined>;
@@ -134,6 +134,52 @@ export type MacroData = {
   chain: Record<string, MacroChainNode>;
   scenario: MacroScenario;
   scorecard: MacroScorecard;
+};
+
+export type MacroAssetCorrelationAsset = {
+  concept_key: string;
+  title: string;
+  observations_count: number;
+  return_count: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  latest_observed_at?: string | null;
+  sources: string[];
+};
+
+export type MacroAssetCorrelationMatrixRow = {
+  concept_key: string;
+  correlations: Record<string, number | null>;
+};
+
+export type MacroAssetCorrelationPair = {
+  left: string;
+  right: string;
+  correlation: number | null;
+  sample_size: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  available: boolean;
+  reason?: string | null;
+};
+
+export type MacroAssetCorrelationGap = {
+  code: string;
+  concept_key?: string | null;
+  left?: string | null;
+  right?: string | null;
+  sample_size?: number | null;
+};
+
+export type MacroAssetCorrelationWindow = "20d" | "60d" | "120d";
+
+export type MacroAssetCorrelationData = {
+  window: MacroAssetCorrelationWindow;
+  assets: MacroAssetCorrelationAsset[];
+  matrix: MacroAssetCorrelationMatrixRow[];
+  pairs: MacroAssetCorrelationPair[];
+  data_gaps: MacroAssetCorrelationGap[];
+  asof_date?: string | null;
 };
 
 export type BootstrapData = {

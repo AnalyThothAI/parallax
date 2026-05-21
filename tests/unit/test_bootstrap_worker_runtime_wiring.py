@@ -366,7 +366,7 @@ class FakeProviders:
         self.watchlist_intel = SimpleNamespace(summary_provider=None)
         self.social_enrichment = SimpleNamespace(event_enrichment=None)
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
-        self.marketlane = SimpleNamespace(stock_quote_provider=None)
+        self.macrodata = SimpleNamespace(stock_quote_provider=None)
         self.news_intel = SimpleNamespace(feed_client=object(), brief_provider=brief_provider)
         self.narrative_intel = SimpleNamespace(narrative_provider=object())
 

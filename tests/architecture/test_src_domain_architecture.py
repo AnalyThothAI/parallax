@@ -66,7 +66,7 @@ PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
 PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "AssetMarketProviders",
     "IngestionProviders",
-    "MarketlaneProviders",
+    "MacrodataProviders",
     "NarrativeIntelProviders",
     "NewsIntelProviders",
     "PulseLabProviders",

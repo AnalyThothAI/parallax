@@ -113,13 +113,13 @@ const MODULES: MacroModule[] = [
       "sp500_index",
     ],
     featureKeys: [
-      "fred:DGS10",
-      "nyfed:SOFR",
-      "fred:WALCL",
-      "treasury_fiscal:operating_cash_balance",
-      "fred:BAMLH0A0HYM2",
-      "fred:VIXCLS",
-      "fred:SP500",
+      "rates:dgs10",
+      "liquidity:sofr",
+      "liquidity:fed_assets",
+      "liquidity:tga",
+      "credit:hy_oas",
+      "vol:vix",
+      "asset:spx",
     ],
     triggerKeywords: [],
     secondaries: [
@@ -128,7 +128,7 @@ const MODULES: MacroModule[] = [
         label: "总览",
         title: "Regime Snapshot",
         description: "先看当前 regime、链路平均分和确认/反驳项。",
-        featureKeys: ["fred:DGS10", "fred:WALCL", "fred:BAMLH0A0HYM2", "fred:VIXCLS"],
+        featureKeys: ["rates:dgs10", "liquidity:fed_assets", "credit:hy_oas", "vol:vix"],
         indicatorKeys: ["ust_10y_yield_pct", "net_liquidity_usd_millions", "hy_oas_pct", "vix"],
       },
       {
@@ -136,7 +136,7 @@ const MODULES: MacroModule[] = [
         label: "传导链",
         title: "Liquidity Transmission Chain",
         description: "按因果顺序看：利率/Fed -> funding -> credit -> vol -> asset confirmation。",
-        featureKeys: ["fred:DGS10", "nyfed:SOFR", "fred:WRBWFRBL", "fred:SP500"],
+        featureKeys: ["rates:dgs10", "liquidity:sofr", "liquidity:reserve_balances", "asset:spx"],
         indicatorKeys: ["sofr_iorb_spread_bps", "net_liquidity_usd_millions"],
       },
     ],
@@ -152,17 +152,20 @@ const MODULES: MacroModule[] = [
     panelKeys: ["cross_asset", "credit", "volatility"],
     indicatorKeys: ["sp500_index", "vix", "hy_oas_pct", "ig_oas_pct"],
     featureKeys: [
-      "fred:SP500",
-      "stooq:spy.us",
-      "stooq:qqq.us",
-      "stooq:iwm.us",
-      "stooq:tlt.us",
-      "stooq:hyg.us",
-      "stooq:lqd.us",
-      "stooq:uso.us",
-      "stooq:gld.us",
-      "fred:DTWEXBGS",
-      "fred:DCOILWTICO",
+      "asset:spx",
+      "asset:spy",
+      "asset:qqq",
+      "asset:iwm",
+      "asset:tlt",
+      "asset:hyg",
+      "asset:lqd",
+      "asset:uso",
+      "asset:gld",
+      "fx:broad_dollar",
+      "fx:dxy",
+      "commodity:wti",
+      "crypto:btc",
+      "crypto:eth",
     ],
     triggerKeywords: ["term", "hy", "vix"],
     secondaries: [
@@ -171,7 +174,7 @@ const MODULES: MacroModule[] = [
         label: "股票",
         title: "Equity Leadership",
         description: "看 SPX、QQQ、IWM 分化，判断是广谱 risk-on 还是 mega-cap 挤压。",
-        featureKeys: ["fred:SP500", "stooq:spy.us", "stooq:qqq.us", "stooq:iwm.us"],
+        featureKeys: ["asset:spx", "asset:spy", "asset:qqq", "asset:iwm"],
         indicatorKeys: ["sp500_index"],
       },
       {
@@ -179,7 +182,7 @@ const MODULES: MacroModule[] = [
         label: "债券/信用 ETF",
         title: "Bond And Credit Confirmation",
         description: "用 TLT、HYG、LQD 看利率压力和信用质量是否支持股票价格。",
-        featureKeys: ["stooq:tlt.us", "stooq:hyg.us", "stooq:lqd.us"],
+        featureKeys: ["asset:tlt", "asset:hyg", "asset:lqd"],
         indicatorKeys: ["hy_oas_pct", "ig_oas_pct"],
       },
       {
@@ -187,7 +190,15 @@ const MODULES: MacroModule[] = [
         label: "商品/美元",
         title: "Inflation And Dollar Beta",
         description: "油、金、美元指数用于区分通胀冲击、避险美元和真实需求。",
-        featureKeys: ["stooq:uso.us", "stooq:gld.us", "fred:DCOILWTICO", "fred:DTWEXBGS"],
+        featureKeys: [
+          "asset:uso",
+          "asset:gld",
+          "commodity:wti",
+          "fx:broad_dollar",
+          "fx:dxy",
+          "crypto:btc",
+          "crypto:eth",
+        ],
         indicatorKeys: [],
       },
     ],
@@ -203,15 +214,15 @@ const MODULES: MacroModule[] = [
     panelKeys: ["rates", "liquidity"],
     indicatorKeys: ["ust_10y_yield_pct", "ust_10y_2y_curve_pct"],
     featureKeys: [
-      "fred:DGS2",
-      "fred:DGS5",
-      "fred:DGS10",
-      "fred:DGS30",
-      "fred:DFII10",
-      "fred:T10Y2Y",
-      "fred:T10Y3M",
-      "fred:T10YIE",
-      "fred:T5YIFR",
+      "rates:dgs2",
+      "rates:dgs5",
+      "rates:dgs10",
+      "rates:dgs30",
+      "rates:real_10y",
+      "rates:10y2y",
+      "rates:10y3m",
+      "inflation:10y_breakeven",
+      "inflation:5y5y_forward",
     ],
     triggerKeywords: ["term", "yield", "real"],
     secondaries: [
@@ -220,7 +231,7 @@ const MODULES: MacroModule[] = [
         label: "曲线",
         title: "Nominal Yield Curve",
         description: "前端对应 Fed 路径，长端对应增长、通胀和期限溢价。",
-        featureKeys: ["fred:DGS2", "fred:DGS5", "fred:DGS10", "fred:DGS30"],
+        featureKeys: ["rates:dgs2", "rates:dgs5", "rates:dgs10", "rates:dgs30"],
         indicatorKeys: ["ust_10y_yield_pct", "ust_10y_2y_curve_pct"],
       },
       {
@@ -228,7 +239,7 @@ const MODULES: MacroModule[] = [
         label: "实际/通胀",
         title: "Real Yield And Inflation Compensation",
         description: "实际利率压估值，breakeven 和 5Y5Y 决定通胀叙事是否被确认。",
-        featureKeys: ["fred:DFII10", "fred:T10YIE", "fred:T5YIFR"],
+        featureKeys: ["rates:real_10y", "inflation:10y_breakeven", "inflation:5y5y_forward"],
         indicatorKeys: [],
       },
     ],
@@ -243,7 +254,7 @@ const MODULES: MacroModule[] = [
     chainKeys: ["fed_corridor", "liquidity", "rates"],
     panelKeys: ["rates", "liquidity"],
     indicatorKeys: ["sofr_iorb_spread_bps"],
-    featureKeys: ["fred:DFEDTARL", "fred:DFEDTARU", "fred:EFFR", "fred:IORB", "nyfed:SOFR"],
+    featureKeys: ["fed:target_lower", "fed:target_upper", "fed:effr", "fed:iorb", "liquidity:sofr"],
     triggerKeywords: ["sofr", "repo", "iorb", "fed"],
     secondaries: [
       {
@@ -251,7 +262,7 @@ const MODULES: MacroModule[] = [
         label: "走廊",
         title: "Policy Corridor",
         description: "目标区间、EFFR、IORB、SOFR 的相对位置决定政策传导是否顺畅。",
-        featureKeys: ["fred:DFEDTARL", "fred:DFEDTARU", "fred:EFFR", "fred:IORB", "nyfed:SOFR"],
+        featureKeys: ["fed:target_lower", "fed:target_upper", "fed:effr", "fed:iorb", "liquidity:sofr"],
         indicatorKeys: ["sofr_iorb_spread_bps"],
       },
       {
@@ -259,7 +270,7 @@ const MODULES: MacroModule[] = [
         label: "执行",
         title: "Implementation Stress",
         description: "SOFR-IORB 是边际 funding 压力；正利差持续扩大才需要升级风险。",
-        featureKeys: ["nyfed:SOFR", "fred:IORB", "fred:EFFR"],
+        featureKeys: ["liquidity:sofr", "fed:iorb", "fed:effr"],
         indicatorKeys: ["sofr_iorb_spread_bps"],
       },
     ],
@@ -275,12 +286,12 @@ const MODULES: MacroModule[] = [
     panelKeys: ["liquidity", "credit", "cross_asset"],
     indicatorKeys: ["net_liquidity_usd_millions", "sofr_iorb_spread_bps"],
     featureKeys: [
-      "fred:WALCL",
-      "fred:WRBWFRBL",
-      "fred:RRPONTSYD",
-      "treasury_fiscal:operating_cash_balance",
-      "nyfed:SOFR",
-      "fred:IORB",
+      "liquidity:fed_assets",
+      "liquidity:reserve_balances",
+      "liquidity:on_rrp",
+      "liquidity:tga",
+      "liquidity:sofr",
+      "fed:iorb",
     ],
     triggerKeywords: ["rrp", "tga", "liquidity", "sofr", "repo"],
     secondaries: [
@@ -289,7 +300,7 @@ const MODULES: MacroModule[] = [
         label: "净流动性",
         title: "WALCL - RRP - TGA",
         description: "Fed 资产负债表、RRP 缓冲和 TGA 抽水共同决定系统现金水位。",
-        featureKeys: ["fred:WALCL", "fred:RRPONTSYD", "treasury_fiscal:operating_cash_balance"],
+        featureKeys: ["liquidity:fed_assets", "liquidity:on_rrp", "liquidity:tga"],
         indicatorKeys: ["net_liquidity_usd_millions"],
       },
       {
@@ -297,7 +308,7 @@ const MODULES: MacroModule[] = [
         label: "资金价格",
         title: "SOFR / IORB Funding Price",
         description: "总量没恶化不代表没压力；repo 的边际价格会先动。",
-        featureKeys: ["nyfed:SOFR", "fred:IORB", "fred:WRBWFRBL"],
+        featureKeys: ["liquidity:sofr", "fed:iorb", "liquidity:reserve_balances"],
         indicatorKeys: ["sofr_iorb_spread_bps"],
       },
     ],
@@ -312,7 +323,7 @@ const MODULES: MacroModule[] = [
     chainKeys: ["rates", "cross_asset"],
     panelKeys: ["rates", "cross_asset"],
     indicatorKeys: ["ust_10y_yield_pct"],
-    featureKeys: ["fred:T10YIE", "fred:T5YIFR", "fred:DCOILWTICO", "fred:DTWEXBGS"],
+    featureKeys: ["inflation:10y_breakeven", "inflation:5y5y_forward", "commodity:wti", "fx:broad_dollar"],
     triggerKeywords: ["inflation", "yield", "oil"],
     missingTopics: ["CPI / PCE", "NFP / Unemployment", "ISM / PMI", "Retail sales"],
     secondaries: [
@@ -321,7 +332,7 @@ const MODULES: MacroModule[] = [
         label: "通胀",
         title: "Inflation Proxy",
         description: "Breakeven、5Y5Y 和油价先作为通胀数据接入前的可交易代理。",
-        featureKeys: ["fred:T10YIE", "fred:T5YIFR", "fred:DCOILWTICO"],
+        featureKeys: ["inflation:10y_breakeven", "inflation:5y5y_forward", "commodity:wti"],
         indicatorKeys: [],
       },
       {
@@ -329,7 +340,7 @@ const MODULES: MacroModule[] = [
         label: "增长",
         title: "Growth Proxy",
         description: "当前只用 SPX、美元、曲线代理增长预期；正式宏观 release 需要后续补齐。",
-        featureKeys: ["fred:SP500", "fred:DTWEXBGS", "fred:T10Y3M"],
+        featureKeys: ["asset:spx", "fx:broad_dollar", "rates:10y3m"],
         indicatorKeys: ["sp500_index"],
       },
     ],
@@ -344,7 +355,7 @@ const MODULES: MacroModule[] = [
     chainKeys: ["volatility", "credit", "rates"],
     panelKeys: ["volatility", "credit", "rates"],
     indicatorKeys: ["vix", "hy_oas_pct"],
-    featureKeys: ["fred:VIXCLS", "fred:BAMLH0A0HYM2", "fred:DGS10"],
+    featureKeys: ["vol:vix", "credit:hy_oas", "rates:dgs10"],
     triggerKeywords: ["vix", "volatility"],
     missingTopics: ["VIX9D / VIX3M / VIX1Y", "MOVE proxy", "IV vs RV", "GEX proxy"],
     secondaries: [
@@ -353,7 +364,7 @@ const MODULES: MacroModule[] = [
         label: "股票波动",
         title: "Equity Vol",
         description: "VIX 作为第一层，后续补 VIX term structure 判断 contango/backwardation。",
-        featureKeys: ["fred:VIXCLS"],
+        featureKeys: ["vol:vix"],
         indicatorKeys: ["vix"],
       },
       {
@@ -361,7 +372,7 @@ const MODULES: MacroModule[] = [
         label: "共振",
         title: "Vol / Credit / Rates",
         description: "VIX 若与 HY OAS 和长端利率共振，风险级别高于单独 VIX 上行。",
-        featureKeys: ["fred:VIXCLS", "fred:BAMLH0A0HYM2", "fred:DGS10"],
+        featureKeys: ["vol:vix", "credit:hy_oas", "rates:dgs10"],
         indicatorKeys: ["hy_oas_pct", "ust_10y_yield_pct"],
       },
     ],
@@ -377,11 +388,11 @@ const MODULES: MacroModule[] = [
     panelKeys: ["credit", "liquidity", "volatility"],
     indicatorKeys: ["hy_oas_pct", "ig_oas_pct", "vix"],
     featureKeys: [
-      "fred:BAMLH0A0HYM2",
-      "fred:BAMLC0A0CM",
-      "stooq:hyg.us",
-      "stooq:lqd.us",
-      "fred:VIXCLS",
+      "credit:hy_oas",
+      "credit:ig_oas",
+      "asset:hyg",
+      "asset:lqd",
+      "vol:vix",
     ],
     triggerKeywords: ["hy", "ig", "credit", "oas"],
     missingTopics: ["CDX IG/HY", "single-name CDS", "bank CDS", "private credit proxy"],
@@ -391,7 +402,7 @@ const MODULES: MacroModule[] = [
         label: "OAS",
         title: "HY / IG OAS",
         description: "HY 扩大说明低质量资产压力，IG 稳定但 HY 扩大通常是早期分化。",
-        featureKeys: ["fred:BAMLH0A0HYM2", "fred:BAMLC0A0CM"],
+        featureKeys: ["credit:hy_oas", "credit:ig_oas"],
         indicatorKeys: ["hy_oas_pct", "ig_oas_pct"],
       },
       {
@@ -399,7 +410,7 @@ const MODULES: MacroModule[] = [
         label: "ETF 确认",
         title: "HYG / LQD Confirmation",
         description: "用 HYG/LQD 观察信用 ETF 是否确认股票风险偏好。",
-        featureKeys: ["stooq:hyg.us", "stooq:lqd.us"],
+        featureKeys: ["asset:hyg", "asset:lqd"],
         indicatorKeys: [],
       },
     ],
@@ -412,50 +423,55 @@ const MODULE_BY_ID = Object.fromEntries(MODULES.map((module) => [module.id, modu
 >;
 
 const FEATURE_TITLES: Record<string, string> = {
-  "cftc:financial_futures:sp500_net_noncommercial": "CFTC SPX net noncommercial",
-  "fred:BAMLC0A0CM": "IG OAS",
-  "fred:BAMLH0A0HYM2": "HY OAS",
-  "fred:DCOILWTICO": "WTI oil",
-  "fred:DFEDTARL": "Fed lower bound",
-  "fred:DFEDTARU": "Fed upper bound",
-  "fred:DFII10": "10Y real yield",
-  "fred:DGS10": "10Y Treasury",
-  "fred:DGS2": "2Y Treasury",
-  "fred:DGS30": "30Y Treasury",
-  "fred:DGS5": "5Y Treasury",
-  "fred:DTWEXBGS": "Broad dollar",
-  "fred:EFFR": "EFFR",
-  "fred:IORB": "IORB",
-  "fred:RRPONTSYD": "ON RRP",
-  "fred:SP500": "S&P 500",
-  "fred:T10Y2Y": "10Y-2Y curve",
-  "fred:T10Y3M": "10Y-3M curve",
-  "fred:T10YIE": "10Y breakeven",
-  "fred:T5YIFR": "5Y5Y inflation",
-  "fred:VIXCLS": "VIX",
-  "fred:WALCL": "Fed assets",
-  "fred:WRBWFRBL": "Reserve balances",
-  "nyfed:SOFR": "SOFR",
-  "stooq:gld.us": "GLD",
-  "stooq:hyg.us": "HYG",
-  "stooq:iwm.us": "IWM",
-  "stooq:lqd.us": "LQD",
-  "stooq:qqq.us": "QQQ",
-  "stooq:spy.us": "SPY",
-  "stooq:tlt.us": "TLT",
-  "stooq:uso.us": "USO",
-  "treasury_fiscal:operating_cash_balance": "TGA",
+  "positioning:sp500_net_noncommercial": "CFTC SPX net noncommercial",
+  "credit:ig_oas": "IG OAS",
+  "credit:hy_oas": "HY OAS",
+  "commodity:wti": "WTI oil",
+  "fed:target_lower": "Fed lower bound",
+  "fed:target_upper": "Fed upper bound",
+  "rates:real_10y": "10Y real yield",
+  "rates:dgs10": "10Y Treasury",
+  "rates:dgs2": "2Y Treasury",
+  "rates:dgs30": "30Y Treasury",
+  "rates:dgs5": "5Y Treasury",
+  "fx:broad_dollar": "Broad dollar",
+  "fx:dxy": "DXY",
+  "fed:effr": "EFFR",
+  "fed:iorb": "IORB",
+  "liquidity:on_rrp": "ON RRP",
+  "asset:spx": "S&P 500",
+  "rates:10y2y": "10Y-2Y curve",
+  "rates:10y3m": "10Y-3M curve",
+  "inflation:10y_breakeven": "10Y breakeven",
+  "inflation:5y5y_forward": "5Y5Y inflation",
+  "vol:vix": "VIX",
+  "liquidity:fed_assets": "Fed assets",
+  "liquidity:reserve_balances": "Reserve balances",
+  "liquidity:sofr": "SOFR",
+  "asset:gld": "GLD",
+  "asset:hyg": "HYG",
+  "asset:iwm": "IWM",
+  "asset:lqd": "LQD",
+  "asset:qqq": "QQQ",
+  "asset:spy": "SPY",
+  "asset:tlt": "TLT",
+  "asset:uso": "USO",
+  "crypto:btc": "BTC",
+  "crypto:eth": "ETH",
+  "liquidity:tga": "TGA",
 };
 
 const CHART_COLORS = ["#8fd6ff", "#f5be62", "#86dfa7", "#ee899a", "#d5c2ff", "#f2a56f"];
 
 export function MacroPage({
   moduleId,
+  onOpenAssetCorrelation,
   onRouteChange,
   sectionId,
   token,
 }: {
   moduleId?: string;
+  onOpenAssetCorrelation?: () => void;
   onRouteChange?: (moduleId: MacroModuleId, sectionId?: string) => void;
   sectionId?: string;
   token: string;
@@ -531,6 +547,7 @@ export function MacroPage({
                   activeSection={module.id === activeModule ? activeSection : undefined}
                   data={data}
                   module={MODULE_BY_ID[module.id]}
+                  onOpenAssetCorrelation={onOpenAssetCorrelation}
                   onSectionChange={(nextSection) => onRouteChange?.(module.id, nextSection)}
                 />
               </Tabs.Content>
@@ -596,11 +613,13 @@ function ModulePage({
   activeSection,
   data,
   module,
+  onOpenAssetCorrelation,
   onSectionChange,
 }: {
   activeSection?: string;
   data: MacroData;
   module: MacroModule;
+  onOpenAssetCorrelation?: () => void;
   onSectionChange: (sectionId: string) => void;
 }) {
   const summary = moduleSummary(module, data);
@@ -620,6 +639,14 @@ function ModulePage({
         regime={summary.regime}
         tone={summary.tone}
       />
+      {module.id === "assets" ? (
+        <div className="macro-detail-strip">
+          <span>Rolling return correlation</span>
+          <button type="button" onClick={onOpenAssetCorrelation}>
+            Open matrix
+          </button>
+        </div>
+      ) : null}
 
       <section className="macro-module-read">
         <ReaderCard icon={GitBranch} label="这页回答" value={module.userQuestion} />
@@ -1272,7 +1299,7 @@ function IndicatorTable({ indicators }: { indicators: Record<string, MacroIndica
         <article className="macro-indicator-row" key={key}>
           <span>
             <b>{indicator.label || key}</b>
-            <small>{indicator.series_keys?.join(" / ") || key}</small>
+            <small>{indicator.concept_keys?.join(" / ") || key}</small>
           </span>
           <strong>
             {valueLabel(indicator.value)}
@@ -1606,18 +1633,18 @@ function regimeTone(regime: string): ModuleTone {
 }
 
 function coverageLabel(scorecard: MacroScorecard): string {
-  if (scorecard.observed_series_count !== null && scorecard.observed_series_count !== undefined) {
-    if (scorecard.required_series_count !== null && scorecard.required_series_count !== undefined) {
-      return `${scorecard.observed_series_count}/${scorecard.required_series_count}`;
+  if (scorecard.observed_concept_count !== null && scorecard.observed_concept_count !== undefined) {
+    if (scorecard.required_concept_count !== null && scorecard.required_concept_count !== undefined) {
+      return `${scorecard.observed_concept_count}/${scorecard.required_concept_count}`;
     }
-    return String(scorecard.observed_series_count);
+    return String(scorecard.observed_concept_count);
   }
   return percentLabel(scorecard.coverage_ratio);
 }
 
 function coverageReadLabel(scorecard: MacroScorecard): string {
-  const observed = scorecard.observed_series_count;
-  const required = scorecard.required_series_count;
+  const observed = scorecard.observed_concept_count;
+  const required = scorecard.required_concept_count;
   if (observed !== null && observed !== undefined && required !== null && required !== undefined) {
     return `${observed}/${required} observed`;
   }

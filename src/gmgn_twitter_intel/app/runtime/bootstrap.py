@@ -214,7 +214,7 @@ def _assemble_runtime(
         read_enrichment=enrichment,
         read_notifications=notifications,
         ingest=ingest,
-        stock_quote_provider=providers.marketlane.stock_quote_provider,
+        stock_quote_provider=providers.macrodata.stock_quote_provider,
     )
     if worker_collector_enabled:
         factory = providers.ingestion.upstream_client_factory
