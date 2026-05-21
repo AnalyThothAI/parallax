@@ -26,6 +26,48 @@ def test_cex_oi_radar_board_worker_persists_latest_run():
     assert db.repos.cex_oi_radar.finished["status"] == "success"
 
 
+def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(enabled=True, batch_size=10, period="5m", statement_timeout_seconds=30),
+        db=_DB(),
+        telemetry=SimpleNamespace(),
+        cex_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+    worker._local_run_lock.acquire()
+    try:
+        result = worker.run_once_sync()
+    finally:
+        worker._local_run_lock.release()
+
+    assert result.skipped == 1
+    assert result.notes == {"reason": "previous_run_still_finishing"}
+
+
+def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():
+    db = _DB()
+    worker = CexOiRadarBoardWorker(
+        name="cex_oi_radar_board",
+        settings=SimpleNamespace(
+            enabled=True,
+            batch_size=1,
+            universe_limit=500,
+            period="5m",
+            statement_timeout_seconds=30,
+        ),
+        db=db,
+        telemetry=SimpleNamespace(),
+        cex_market=_Client(),
+        clock_ms=lambda: 1_778_000_000_000,
+    )
+
+    worker.run_once_sync()
+
+    assert db.repos.cex_oi_radar.requested_limit == 1
+    assert db.repos.cex_oi_radar.started["universe_count"] == 1
+
+
 class _DB:
     def __init__(self) -> None:
         self.repos = SimpleNamespace(cex_oi_radar=_Repo())
@@ -50,8 +92,10 @@ class _Repo:
         self.started = {}
         self.inserted = []
         self.finished = {}
+        self.requested_limit = None
 
     def binance_usdt_perp_universe(self, *, limit):
+        self.requested_limit = limit
         return [{"pricefeed_id": "pf", "native_market_id": "BTCUSDT", "base_symbol": "BTC"}]
 
     def start_run(self, **kwargs):
