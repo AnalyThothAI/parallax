@@ -121,6 +121,34 @@ def test_project_token_profile_current_uses_lower_priority_ready_logo_when_metad
     assert row["quality_flags"] == []
 
 
+def test_project_token_profile_current_uses_selected_candidate_provider_for_logo_provenance():
+    shared_logo_url = "https://cdn.example/shared-logo.png"
+    row = project_token_profile_current(
+        target={"target_type": "Asset", "target_id": ASSET_ID},
+        gmgn_openapi=None,
+        binance_web3=None,
+        gmgn_stream=gmgn_stream_row(icon_url=shared_logo_url, observed_at_ms=2_000),
+        okx_dex=None,
+        ready_images_by_source_url={
+            shared_logo_url: {
+                "image_id": "image-shared",
+                "source_url": shared_logo_url,
+                "source_provider": "gmgn_dex_profile",
+                "source_url_hash": "hash-shared",
+                "public_url": "/api/token-images/image-shared",
+            }
+        },
+        computed_at_ms=10_000,
+    )
+
+    assert row["status"] == "ready"
+    assert row["profile_provider"] == "gmgn_stream_snapshot"
+    assert row["logo_url"] == "/api/token-images/image-shared"
+    assert row["logo_image_id"] == "image-shared"
+    assert row["logo_source_provider"] == "gmgn_stream_snapshot"
+    assert row["logo_source_url_hash"] == "hash-shared"
+
+
 def test_project_token_profile_current_uses_binance_web3_before_stream_and_okx_when_gmgn_openapi_missing():
     binance_logo_url = "https://bin.bnbstatic.com/images/web3-data/public/token/logos/usdt.png"
     row = project_token_profile_current(

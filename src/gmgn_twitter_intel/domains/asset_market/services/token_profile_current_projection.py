@@ -370,7 +370,12 @@ def _cex_profile_metadata_ready(row: dict[str, Any] | None) -> bool:
     return status in {None, STATUS_READY}
 
 
-def _project_logo(provider_logo_url: Any, ready_images_by_source_url: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _project_logo(
+    provider_logo_url: Any,
+    ready_images_by_source_url: dict[str, dict[str, Any]],
+    *,
+    selected_source_provider: str | None = None,
+) -> dict[str, Any]:
     source_url = _clean(provider_logo_url)
     fields = {
         "logo_url": None,
@@ -389,7 +394,7 @@ def _project_logo(provider_logo_url: Any, ready_images_by_source_url: dict[str, 
     if public_url and public_url.startswith("/api/token-images/"):
         fields["logo_url"] = public_url
         fields["logo_image_id"] = _clean(ready_image.get("image_id"))
-        fields["logo_source_provider"] = _clean(ready_image.get("source_provider"))
+        fields["logo_source_provider"] = _clean(selected_source_provider) or _clean(ready_image.get("source_provider"))
         fields["logo_source_url_hash"] = _clean(ready_image.get("source_url_hash"))
         return fields
 
@@ -401,21 +406,25 @@ def _select_logo(
     candidates: list[tuple[str, Any]],
     ready_images_by_source_url: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    usable_source_urls: list[str] = []
+    usable_candidates: list[tuple[str, str]] = []
     fallback_flags: list[str] = ["source_without_logo"]
-    for _, source_url in candidates:
+    for provider, source_url in candidates:
         flags = _source_without_logo_flags(_clean(source_url))
         if flags:
             fallback_flags = flags
             continue
-        usable_source_urls.append(str(_clean(source_url)))
+        usable_candidates.append((provider, str(_clean(source_url))))
 
-    for source_url in usable_source_urls:
-        logo = _project_logo(source_url, ready_images_by_source_url)
+    for provider, source_url in usable_candidates:
+        logo = _project_logo(
+            source_url,
+            ready_images_by_source_url,
+            selected_source_provider=provider,
+        )
         if logo["logo_url"]:
             return logo
 
-    return _empty_logo(["logo_mirror_pending"] if usable_source_urls else fallback_flags)
+    return _empty_logo(["logo_mirror_pending"] if usable_candidates else fallback_flags)
 
 
 def _empty_logo(quality_flags: list[str]) -> dict[str, Any]:
