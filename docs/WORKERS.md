@@ -74,6 +74,10 @@ collector
 
 `IngestService` is not a long-running worker, but it is listed in this
 document because every downstream worker depends on the facts it writes.
+The macro bundle importer is also not a long-running worker: the
+`gmgn-twitter-intel macro import-bundle` CLI writes `macro_observations`
+facts plus `macro_import_runs` audit rows, and the projection worker later
+re-reads those persisted facts.
 
 ## Worker Inventory
 
@@ -110,7 +114,7 @@ notification_delivery
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
 | `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_runs`, `cex_oi_radar_rows`, `cex_detail_snapshots` | poll | none | `interval_seconds` |
-| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | latest `macro_observations` facts | `macro_view_snapshots` | poll | none | `interval_seconds` |
+| `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | `macro_observations` history | `macro_view_snapshots` | poll | none | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope for Pulse `1h`/`4h` horizons, gate fields, route policy, source-quality policy | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, `social_event_extractions.normalized_handle`, `watchlist_handle_signal_events`, `watchlist_handle_signal_stats`, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | `watchlist_handle_signal_stats`, due `watchlist_handle_summary_jobs`, recent signal extractions for summary input | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |

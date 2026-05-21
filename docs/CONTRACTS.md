@@ -257,10 +257,16 @@ Macro contract:
   `MacroViewProjectionWorker`.
 - When no snapshot exists, the endpoint returns `ok: true` with
   `data.snapshot = null`, empty `panels`, `indicators`, and `triggers`, plus
-  `data_gaps = ["macro_view_snapshot_missing"]`.
+  `data_gaps = ["macro_view_snapshot_missing"]`, empty `features`, `chain`,
+  `scenario`, and `scorecard`, and `source_coverage.observed_series_count = 0`.
 - When a snapshot exists, the response exposes `snapshot` summary fields,
-  `panels`, `indicators`, `triggers`, `data_gaps`, and `source_coverage`
-  directly from the read model. Clients must not recompute regime or score
+  `panels`, `indicators`, `triggers`, `data_gaps`, `source_coverage`,
+  `features`, `chain`, `scenario`, and `scorecard` directly from the read
+  model. `features` contains per-series latest/delta/z-score/percentile and
+  freshness diagnostics; `chain` is the seven-node regime transmission chain;
+  `scenario` carries current regime, confirmations, contradictions, trade map,
+  validation indicators, and watch triggers; `scorecard` carries v2 coverage
+  and chain-summary diagnostics. Clients must not recompute regime or score
   fields locally.
 
 Watchlist handle intel contract:
@@ -402,6 +408,16 @@ returns `cleanup` plus `final_health` summaries without hand-written SQL or
 API-path side effects. Its cleanup phase is an ops maintenance writer
 exception that must run while holding the narrative worker advisory locks; it is
 not a runtime compatibility layer and is not callable from HTTP routes.
+
+Macro one-shot CLI commands are operator surfaces, not background workers:
+`macro import-bundle --file <json>` or `--stdin` imports a macrodata-cli
+`macro-core` bundle into `macro_observations` and records a
+`macro_import_runs` audit row; `macro project-once` reads persisted
+observations, builds the `macro_regime_v2` snapshot, and writes
+`macro_view_snapshots`; `macro status` reports migration readiness,
+observation/series counts, the latest import run, and the latest snapshot.
+These commands may report partial coverage and data gaps; they must not print
+provider secrets, raw WebSocket tokens, or API keys.
 
 ## Token Radar Factor Snapshot Discipline
 
