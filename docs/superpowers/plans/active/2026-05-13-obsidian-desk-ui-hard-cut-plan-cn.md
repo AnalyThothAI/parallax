@@ -96,7 +96,7 @@ The audit found that `CockpitApp`, relative cross-feature imports, and global CS
   - Move route-task lookup to `@features/cockpit` public index or `web/src/shared/routing/routeTasks.ts`.
   - Split navigation concerns from selected live entity state if the function remains over 200 lines after route extraction.
 - Modify `web/src/features/notifications/useNotificationsController.ts`.
-  - Remove relative import from `../cockpit/model/mobileTask`; consume a public cockpit type or shared route-task contract.
+  - Keep Live task state in `features/live`; do not import mobile task contracts from cockpit.
 - Modify `web/eslint.config.js:55-95`.
   - Keep existing alias deep-import restriction.
   - Add a guard for relative cross-feature internals, either through `no-restricted-imports` patterns or a dedicated test if ESLint cannot express it clearly.

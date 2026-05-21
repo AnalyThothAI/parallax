@@ -41,6 +41,8 @@ describe("LivePage", () => {
                 signalPulseLoading={false}
                 hiddenSignalPulseLoading={false}
                 selectedPulseItemId={null}
+                mobileTask="radar"
+                onMobileTaskChange={() => {}}
                 onSelectPulse={() => {}}
               />
             }

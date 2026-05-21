@@ -3,6 +3,8 @@ export { useLiveRadarRouteData } from "./api/useLiveRadarRouteData";
 export { useLiveRecentQuery } from "./api/useLiveRecentQuery";
 export { useLiveRouteState } from "./state/liveRouteState";
 export { useLiveSelection, type SelectedSignal } from "./useLiveSelection";
+export type { LiveMobileTask } from "./model/liveMobileTask";
 export { buildLiveSignalTapeItems } from "./liveTapeModel";
 export { LivePage } from "./ui/LivePage";
 export { LiveRadar } from "./ui/LiveRadar";
+export { LiveTaskNav } from "./ui/LiveTaskNav";

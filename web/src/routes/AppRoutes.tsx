@@ -190,13 +190,8 @@ export function AppRoutes({ session }: { session: AppSession }) {
     decisionCounts,
     watchlistRows,
   };
-  const mobileProps = {
-    mobileTask: selection.mobileTask,
-    onMobileTaskChange: selection.handleMobileTaskChange,
-  };
   const cockpitShellElement = (
     <CockpitShell
-      mobile={mobileProps}
       notifications={notificationProps}
       sideRail={sideRailProps}
       topbar={topbarProps}
@@ -219,6 +214,8 @@ export function AppRoutes({ session }: { session: AppSession }) {
       signalPulseLoading={signalPulseColdLoading}
       hiddenSignalPulseLoading={hiddenSignalPulseLoading}
       selectedPulseItemId={selection.selectedPulseItemId}
+      mobileTask={selection.mobileTask}
+      onMobileTaskChange={selection.handleMobileTaskChange}
       onSelectPulse={selection.selectPulseItem}
     >
       {children}

@@ -836,14 +836,11 @@ Update `web/src/features/cockpit/index.ts` to export only stable contracts used 
 ```ts
 export { CockpitShell } from "./ui/CockpitShell";
 export { SearchShell } from "./ui/SearchShell";
-export { requiredMobileTaskForPathname } from "./model/mobileRouteTask";
-export { useCockpitStore } from "./state/cockpitStore";
-export type { MobileTask } from "./model/mobileTask";
 ```
 
 - [ ] **Step 5.2: Remove relative cross-feature cockpit imports**
 
-Change `web/src/features/live/useLiveSelection.ts` from relative imports like `../cockpit/model/mobileRouteTask` to public imports from `@features/cockpit`.
+Keep Live task state in `features/live`; `web/src/features/live/useLiveSelection.ts` must not import mobile task state from cockpit.
 
 Acceptance:
 

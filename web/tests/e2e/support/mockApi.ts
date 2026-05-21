@@ -266,10 +266,13 @@ function liveEvent() {
 }
 
 function tokenRadarData(url: URL) {
+  const targets = shouldReturnLongMobileRadarList(url)
+    ? Array.from({ length: 8 }, () => assetFlowRow())
+    : [assetFlowRow()];
   return {
     window: url.searchParams.get("window") ?? "1h",
     scope: url.searchParams.get("scope") ?? "all",
-    targets: [assetFlowRow()],
+    targets,
     attention: [],
     projection: {
       status: "fresh",
@@ -279,6 +282,10 @@ function tokenRadarData(url: URL) {
       computed_at_ms: NOW,
     },
   };
+}
+
+function shouldReturnLongMobileRadarList(url: URL) {
+  return url.searchParams.get("window") === "24h" && url.searchParams.get("scope") === "matched";
 }
 
 function assetFlowRow() {

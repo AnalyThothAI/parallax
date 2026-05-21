@@ -1,14 +1,11 @@
 import { NotificationDrawer, NotificationToastBridge } from "@features/notifications";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
-import clsx from "clsx";
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
-import { CockpitMobileNav, type CockpitMobileNavProps } from "./CockpitMobileNav";
 import { CockpitSideRail, type CockpitSideRailProps } from "./CockpitSideRail";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
 import { MobileRouteNav } from "./MobileRouteNav";
-import { RadarControls } from "./RadarControls";
 import "./cockpit.css";
 import "./cockpitShellContract.css";
 
@@ -28,7 +25,6 @@ export type CockpitShellProps = {
   topbar: CockpitTopbarProps;
   sideRail: CockpitSideRailProps;
   notifications: ShellNotificationProps;
-  mobile: CockpitMobileNavProps;
   onHotkey: (event: KeyboardEvent) => void;
 };
 
@@ -36,33 +32,20 @@ export function CockpitShell({
   topbar,
   sideRail,
   notifications,
-  mobile,
   onHotkey,
 }: CockpitShellProps) {
   useShellHotkeys(onHotkey);
 
   return (
-    <div className={clsx("cockpit-shell", `mobile-task-${mobile.mobileTask}`)}>
+    <div className="cockpit-shell">
       <CockpitTopbar {...topbar} />
       <MobileRouteNav />
-      <div className={clsx("cockpit-grid", `mobile-task-${mobile.mobileTask}`)}>
+      <div className="cockpit-grid">
         <CockpitSideRail {...sideRail} />
-        <section className="responsive-control-panel" aria-label="cockpit controls">
-          <RadarControls
-            handles={sideRail.handles}
-            handlePlaceholder="handles"
-            scope={sideRail.scope}
-            windowKey={topbar.stats.windowKey}
-            onHandlesChange={sideRail.onHandlesChange}
-            onScopeChange={sideRail.onScopeChange}
-            onWindowChange={sideRail.onWindowChange}
-          />
-        </section>
         <section className="center-column">
           <Outlet />
         </section>
       </div>
-      <CockpitMobileNav {...mobile} />
       <NotificationLayer {...notifications} />
     </div>
   );

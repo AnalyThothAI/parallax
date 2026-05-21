@@ -1,14 +1,14 @@
 import { Activity, FlaskConical, ListChecks } from "lucide-react";
 
-import type { MobileTask } from "../model/mobileTask";
+import type { LiveMobileTask } from "../model/liveMobileTask";
 
-type MobileTaskNavProps = {
-  activeTask: MobileTask;
-  onTaskChange: (task: MobileTask) => void;
+type LiveTaskNavProps = {
+  activeTask: LiveMobileTask;
+  onTaskChange: (task: LiveMobileTask) => void;
 };
 
 const TASKS: Array<{
-  task: MobileTask;
+  task: LiveMobileTask;
   label: string;
   icon: typeof ListChecks;
 }> = [
@@ -17,9 +17,9 @@ const TASKS: Array<{
   { task: "lab", label: "Lab", icon: FlaskConical },
 ];
 
-export function MobileTaskNav({ activeTask, onTaskChange }: MobileTaskNavProps) {
+export function LiveTaskNav({ activeTask, onTaskChange }: LiveTaskNavProps) {
   return (
-    <nav aria-label="mobile cockpit tasks" className="mobile-task-nav">
+    <nav aria-label="live mobile tasks" className="live-task-nav">
       {TASKS.map(({ icon: Icon, label, task }) => {
         return (
           <button
