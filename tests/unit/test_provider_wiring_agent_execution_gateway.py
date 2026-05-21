@@ -20,6 +20,9 @@ class FakePulseClient:
     artifact_version_hash = "artifact-hash"
     runtime_contract = object()
 
+    def __init__(self) -> None:
+        self.pipeline_kwargs: dict[str, Any] | None = None
+
     def try_reserve_execution(self, lane, *, child_lanes=(), scope="execution"):
         raise AssertionError("not used")
 
@@ -27,6 +30,7 @@ class FakePulseClient:
         return {"input_hash": "hash-input"}
 
     async def run_decision_pipeline(self, **kwargs):
+        self.pipeline_kwargs = kwargs
         return SimpleNamespace(
             final_decision={"recommendation": "watchlist"},
             agent_run_audit={"output_hash": "hash-1"},
@@ -212,7 +216,9 @@ def test_pulse_provider_uses_agent_runtime_pipeline_timeout() -> None:
 
 
 def test_pulse_provider_maps_agent_run_audit_from_openai_client() -> None:
-    provider = openai.OpenAIPulseDecisionProvider(FakePulseClient(), pipeline_timeout_seconds=305)
+    client = FakePulseClient()
+    provider = openai.OpenAIPulseDecisionProvider(client, pipeline_timeout_seconds=305)
+    stage_plan = object()
 
     result = asyncio.run(
         provider.run_decision_pipeline(
@@ -222,9 +228,12 @@ def test_pulse_provider_maps_agent_run_audit_from_openai_client() -> None:
             route="meme",
             completeness={},
             runtime_manifest={},
+            stage_plan=stage_plan,
         )
     )
 
+    assert client.pipeline_kwargs is not None
+    assert client.pipeline_kwargs["stage_plan"] is stage_plan
     assert result.agent_run_audit == {"output_hash": "hash-1"}
     assert result.final_decision == {"recommendation": "watchlist"}
     assert result.stage_audits == ("signal_analyst",)

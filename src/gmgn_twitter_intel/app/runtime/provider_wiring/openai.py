@@ -76,6 +76,13 @@ class OpenAIPulseDecisionProvider:
     def runtime_contract(self) -> PulseAgentRuntimeContract:
         return self._client.runtime_contract
 
+    def model_for_lane(self, lane: str) -> str:
+        gateway = getattr(self._client, "_agent_gateway", None)
+        model_for_lane = getattr(gateway, "model_for_lane", None)
+        if callable(model_for_lane):
+            return str(model_for_lane(lane) or "")
+        return self.model
+
     def try_reserve_execution(
         self,
         lane: str,
@@ -114,6 +121,7 @@ class OpenAIPulseDecisionProvider:
         completeness: dict[str, Any],
         runtime_manifest: dict[str, Any],
         parent_reservation: AgentCapacityReservation | None = None,
+        stage_plan: Any | None = None,
     ) -> PulseDecisionResult:
         result = await self._client.run_decision_pipeline(
             context=context,
@@ -123,6 +131,7 @@ class OpenAIPulseDecisionProvider:
             completeness=completeness,
             runtime_manifest=runtime_manifest,
             parent_reservation=parent_reservation,
+            stage_plan=stage_plan,
         )
         return PulseDecisionResult(
             final_decision=result.final_decision,
