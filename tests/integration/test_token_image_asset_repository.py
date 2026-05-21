@@ -52,7 +52,7 @@ def test_upsert_pending_sources_is_idempotent_and_hashes_source_url(tmp_path):
     assert rows[0]["updated_at_ms"] == NOW_MS + 1
 
 
-def test_claim_due_sources_returns_due_pending_and_error_rows_in_order(tmp_path):
+def test_claim_due_sources_sets_durable_lease_before_returning_rows(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -71,15 +71,22 @@ def test_claim_due_sources_returns_due_pending_and_error_rows_in_order(tmp_path)
             retry_ms=5_000,
         )
 
-        before_retry = repo.claim_due_sources(now_ms=NOW_MS + 4_000, limit=10)
-        after_retry = repo.claim_due_sources(now_ms=NOW_MS + 6_000, limit=10)
+        claim_now_ms = NOW_MS + 6_000
+        claimed = repo.claim_due_sources(now_ms=claim_now_ms, limit=10)
+        duplicate_claim = repo.claim_due_sources(now_ms=claim_now_ms + 1, limit=10)
+        leased_until_ms = conn.execute(
+            "SELECT next_refresh_at_ms FROM token_image_assets WHERE source_url = %s",
+            (SOURCE_URL,),
+        ).fetchone()["next_refresh_at_ms"]
+        after_lease = repo.claim_due_sources(now_ms=leased_until_ms, limit=10)
     finally:
         conn.close()
 
-    assert [row["source_url"] for row in before_retry] == [SOURCE_URL]
-    assert [row["source_url"] for row in after_retry] == [SOURCE_URL, SECOND_SOURCE_URL]
-    assert after_retry[0]["status"] == "pending"
-    assert after_retry[1]["status"] == "error"
+    assert [row["source_url"] for row in claimed] == [SOURCE_URL, SECOND_SOURCE_URL]
+    assert [row["status"] for row in claimed] == ["pending", "pending"]
+    assert all(row["next_refresh_at_ms"] > claim_now_ms for row in claimed)
+    assert duplicate_claim == []
+    assert [row["source_url"] for row in after_lease] == [SOURCE_URL, SECOND_SOURCE_URL]
 
 
 def test_mark_ready_persists_download_metadata_and_public_url(tmp_path):
@@ -144,6 +151,38 @@ def test_mark_error_increments_failure_count_and_schedules_retry(tmp_path):
     assert row["last_error"] == "upstream timeout with nul"
     assert row["next_refresh_at_ms"] == NOW_MS + 30_200
     assert row["updated_at_ms"] == NOW_MS + 200
+
+
+def test_mark_error_does_not_downgrade_ready_row(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenImageAssetRepository(conn)
+        repo.upsert_pending_sources([_source_row(SOURCE_URL)], now_ms=NOW_MS)
+        ready_row = repo.mark_ready(
+            SOURCE_URL,
+            media_type="image/png",
+            file_extension=".png",
+            content_sha256="a" * 64,
+            byte_size=1234,
+            storage_path="aaaaaaaa.png",
+            now_ms=NOW_MS + 100,
+        )
+
+        repo.mark_error(
+            SOURCE_URL,
+            error="late worker failure",
+            now_ms=NOW_MS + 200,
+            retry_ms=30_000,
+        )
+        row = conn.execute(
+            "SELECT * FROM token_image_assets WHERE source_url = %s",
+            (SOURCE_URL,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == ready_row
 
 
 def test_ready_lookup_filters_non_ready_sources_and_supports_image_id(tmp_path):

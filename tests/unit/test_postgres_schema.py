@@ -360,6 +360,8 @@ def test_token_image_assets_migration_adds_local_mirror_storage() -> None:
         "ADD COLUMN IF NOT EXISTS logo_source_provider TEXT",
         "ADD COLUMN IF NOT EXISTS logo_source_url_hash TEXT",
         "idx_token_profile_current_logo_image",
+        "with op.get_context().autocommit_block():",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_profile_current_logo_image",
         "WHERE logo_image_id IS NOT NULL",
     ):
         assert statement in text

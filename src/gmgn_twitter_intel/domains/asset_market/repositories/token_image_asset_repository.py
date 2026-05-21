@@ -9,6 +9,7 @@ from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json, postg
 
 READY_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 READY_FILE_EXTENSIONS = {".gif", ".jpg", ".png", ".webp"}
+CLAIM_LEASE_MS = 10 * 60 * 1000
 
 
 class TokenImageAssetRepository:
@@ -66,17 +67,29 @@ class TokenImageAssetRepository:
         if claim_limit <= 0:
             return []
 
+        lease_until_ms = int(now_ms) + CLAIM_LEASE_MS
         rows = self.conn.execute(
             """
-            SELECT *
-            FROM token_image_assets
-            WHERE status IN ('pending', 'error')
-              AND next_refresh_at_ms <= %s
-            ORDER BY next_refresh_at_ms ASC, updated_at_ms ASC, image_id ASC
-            LIMIT %s
-            FOR UPDATE SKIP LOCKED
+            WITH picked AS (
+              SELECT image_id
+              FROM token_image_assets
+              WHERE status IN ('pending', 'error')
+                AND next_refresh_at_ms <= %s
+              ORDER BY next_refresh_at_ms ASC, updated_at_ms ASC, image_id ASC
+              LIMIT %s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE token_image_assets AS asset
+            SET status = 'pending',
+                next_refresh_at_ms = %s,
+                updated_at_ms = %s
+            FROM picked
+            WHERE asset.image_id = picked.image_id
+              AND asset.status IN ('pending', 'error')
+              AND asset.next_refresh_at_ms <= %s
+            RETURNING asset.*
             """,
-            (int(now_ms), claim_limit),
+            (int(now_ms), claim_limit, lease_until_ms, int(now_ms), int(now_ms)),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -148,6 +161,7 @@ class TokenImageAssetRepository:
                 next_refresh_at_ms = %s,
                 updated_at_ms = %s
             WHERE source_url_hash = %s
+              AND status <> 'ready'
             """,
             (
                 _optional_text(error),

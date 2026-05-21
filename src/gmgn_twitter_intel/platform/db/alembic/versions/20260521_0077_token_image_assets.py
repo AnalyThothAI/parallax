@@ -70,17 +70,19 @@ def upgrade() -> None:
           ADD COLUMN IF NOT EXISTS logo_source_url_hash TEXT
         """
     )
-    op.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_token_profile_current_logo_image
-          ON token_profile_current(logo_image_id)
-          WHERE logo_image_id IS NOT NULL
-        """
-    )
+    with op.get_context().autocommit_block():
+        op.execute(
+            """
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_profile_current_logo_image
+              ON token_profile_current(logo_image_id)
+              WHERE logo_image_id IS NOT NULL
+            """
+        )
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS idx_token_profile_current_logo_image")
+    with op.get_context().autocommit_block():
+        op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_token_profile_current_logo_image")
     op.execute(
         """
         ALTER TABLE token_profile_current
