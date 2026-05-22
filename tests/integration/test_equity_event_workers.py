@@ -10,8 +10,12 @@ import pytest
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker import EquityEventProcessWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_source_reconcile_worker import (
     EquityEventSourceReconcileWorker,
+)
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_story_projection_worker import (
+    EquityEventStoryProjectionWorker,
 )
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
@@ -125,6 +129,47 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
     assert event_documents[0]["fiscal_period"] == "2026Q1"
     assert fetch_runs[0]["status"] == "success"
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
+
+    process_worker = EquityEventProcessWorker(
+        name="equity_event_process",
+        settings=settings.workers.equity_event_process,
+        db=db,
+        telemetry=SimpleNamespace(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS + 2_000,
+    )
+    process_result = process_worker.run_once_sync()
+
+    story_worker = EquityEventStoryProjectionWorker(
+        name="equity_event_story_projection",
+        settings=settings.workers.equity_event_story_projection,
+        db=db,
+        telemetry=SimpleNamespace(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS + 3_000,
+    )
+    story_result = story_worker.run_once_sync()
+
+    processed_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    company_event = postgres_conn.execute("SELECT * FROM equity_company_events").fetchone()
+    source_spans = postgres_conn.execute("SELECT * FROM equity_event_source_spans").fetchall()
+    fact_candidates = postgres_conn.execute("SELECT * FROM equity_event_fact_candidates").fetchall()
+    story_group = postgres_conn.execute("SELECT * FROM equity_event_story_groups").fetchone()
+    story_member = postgres_conn.execute("SELECT * FROM equity_event_story_members").fetchone()
+
+    assert process_result.processed == 1
+    assert processed_document["lifecycle_status"] == "processed"
+    assert company_event["event_type"] == "quarterly_report"
+    assert company_event["priority"] == "P0"
+    assert len(source_spans) == 1
+    assert {candidate["fact_type"] for candidate in fact_candidates} == {"revenue_actual", "eps_actual"}
+    assert {candidate["source_span_id"] for candidate in fact_candidates} == {source_spans[0]["span_id"]}
+    assert wake_bus.events_processed == [1]
+    assert story_result.processed == 1
+    assert story_group["event_count"] == 1
+    assert story_member["company_event_id"] == company_event["company_event_id"]
+    assert story_member["match_reason"] == "new_story"
+    assert wake_bus.stories_updated == [1]
 
 
 def test_expected_event_reconcile_preserves_observed_and_stales_removed_config(postgres_conn) -> None:
@@ -402,12 +447,20 @@ class _RecordingWakeBus:
     def __init__(self) -> None:
         self.sources_reconciled: list[int] = []
         self.documents_written: list[tuple[str, int]] = []
+        self.events_processed: list[int] = []
+        self.stories_updated: list[int] = []
 
     def notify_equity_event_sources_reconciled(self, *, count: int) -> None:
         self.sources_reconciled.append(count)
 
     def notify_equity_event_document_written(self, *, source_id: str, count: int) -> None:
         self.documents_written.append((source_id, count))
+
+    def notify_equity_event_processed(self, *, count: int) -> None:
+        self.events_processed.append(count)
+
+    def notify_equity_event_story_updated(self, *, count: int) -> None:
+        self.stories_updated.append(count)
 
 
 class _FakeEquityDocumentProvider:
@@ -437,6 +490,14 @@ class _FakeEquityDocumentProvider:
                                 "filingDate": ["2026-04-25", "2026-04-26"],
                                 "reportDate": ["2026-03-31", ""],
                                 "primaryDocument": ["msft-20260331.htm", "xslF345X05/doc4.xml"],
+                                "title": ["Microsoft quarterly report", ""],
+                                "body_text": [
+                                    (
+                                        "Revenue was $62.0 billion for the quarter. "
+                                        "Diluted earnings per share were $2.94."
+                                    ),
+                                    "",
+                                ],
                             }
                         },
                     },

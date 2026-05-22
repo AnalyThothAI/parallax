@@ -293,6 +293,7 @@ def upgrade() -> None:
           fact_candidate_id TEXT PRIMARY KEY,
           company_event_id TEXT NOT NULL REFERENCES equity_company_events(company_event_id) ON DELETE CASCADE,
           event_document_id TEXT REFERENCES equity_event_documents(event_document_id) ON DELETE SET NULL,
+          source_span_id TEXT REFERENCES equity_event_source_spans(span_id) ON DELETE SET NULL,
           fact_type TEXT NOT NULL,
           claim TEXT NOT NULL,
           evidence_quote TEXT NOT NULL,

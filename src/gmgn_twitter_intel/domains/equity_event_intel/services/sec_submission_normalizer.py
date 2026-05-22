@@ -51,6 +51,9 @@ def normalize_sec_submission_documents(
         acceptance_datetime = _optional_string(_value_at(recent, "acceptanceDateTime", index))
         report_date = _optional_string(_value_at(recent, "reportDate", index))
         primary_document = _optional_string(_value_at(recent, "primaryDocument", index))
+        title = _optional_string(_value_at(recent, "title", index))
+        description = _optional_string(_value_at(recent, "description", index))
+        body_text = _optional_string(_value_at(recent, "body_text", index))
         document_url = _sec_document_url(cik=cik, accession_number=accession, primary_document=primary_document)
         if not document_url:
             continue
@@ -63,6 +66,9 @@ def normalize_sec_submission_documents(
             "filing_date": filing_date,
             "report_date": report_date,
             "primary_document": primary_document,
+            "title": title,
+            "description": description,
+            "body_text": body_text,
         }
         payload_hash = _hash_payload(raw_payload)
         docs.append(

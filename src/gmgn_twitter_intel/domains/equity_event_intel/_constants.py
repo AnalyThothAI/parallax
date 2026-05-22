@@ -1,4 +1,5 @@
 EQUITY_EVENT_STORY_POLICY_VERSION = "equity_event_story_grouping_v1"
+EQUITY_EVENT_FACT_POLICY_VERSION = "equity_event_fact_candidates_v1"
 EQUITY_EVENT_PAGE_PROJECTION_VERSION = "equity_event_page_rows_v1"
 EQUITY_EVENT_CALENDAR_PROJECTION_VERSION = "equity_event_calendar_rows_v1"
 EQUITY_EVENT_BRIEF_SCHEMA_VERSION = "equity_event_brief_v1"

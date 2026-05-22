@@ -668,6 +668,8 @@ class EquityEventRepository:
         event_time_ms: int,
         discovered_at_ms: int,
         lifecycle_status: str = "raw",
+        validation_status: str = "pending",
+        summary: str = "",
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
@@ -676,9 +678,9 @@ class EquityEventRepository:
             INSERT INTO equity_company_events (
               company_event_id, company_id, ticker, primary_document_id, event_type, priority,
               source_role, fiscal_period, event_time_ms, discovered_at_ms, lifecycle_status,
-              created_at_ms, updated_at_ms
+              validation_status, summary, created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (company_event_id) DO UPDATE SET
               company_id = EXCLUDED.company_id,
               ticker = EXCLUDED.ticker,
@@ -690,6 +692,8 @@ class EquityEventRepository:
               event_time_ms = EXCLUDED.event_time_ms,
               discovered_at_ms = EXCLUDED.discovered_at_ms,
               lifecycle_status = EXCLUDED.lifecycle_status,
+              validation_status = EXCLUDED.validation_status,
+              summary = EXCLUDED.summary,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING *
             """,
@@ -705,6 +709,8 @@ class EquityEventRepository:
                 int(event_time_ms),
                 int(discovered_at_ms),
                 lifecycle_status,
+                validation_status,
+                summary,
                 int(now_ms),
                 int(now_ms),
             ),
@@ -712,6 +718,296 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
         return dict(row)
+
+    def list_unprocessed_event_documents(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT documents.*,
+                   provider.raw_payload_json
+              FROM equity_event_documents AS documents
+              JOIN equity_provider_documents AS provider
+                ON provider.provider_document_id = documents.provider_document_id
+             WHERE documents.lifecycle_status = 'raw'
+             ORDER BY documents.event_time_ms ASC, documents.event_document_id ASC
+             LIMIT %s
+             FOR UPDATE SKIP LOCKED
+            """,
+            (max(0, int(limit)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def replace_source_spans(
+        self,
+        *,
+        event_document_id: str,
+        company_event_id: str,
+        spans: Sequence[Any],
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            DELETE FROM equity_event_source_spans
+             WHERE event_document_id = %s
+                OR company_event_id = %s
+            """,
+            (event_document_id, company_event_id),
+        )
+        for span in spans:
+            payload = _span_payload(span)
+            self.conn.execute(
+                """
+                INSERT INTO equity_event_source_spans (
+                  span_id, company_event_id, event_document_id, source_id, span_type, section_key,
+                  span_start, span_end, evidence_quote, confidence, created_at_ms
+                )
+                VALUES (
+                  %(span_id)s, %(company_event_id)s, %(event_document_id)s, %(source_id)s,
+                  %(span_type)s, %(section_key)s, %(span_start)s, %(span_end)s,
+                  %(evidence_quote)s, %(confidence)s, %(created_at_ms)s
+                )
+                """,
+                payload,
+            )
+        if commit:
+            self.conn.commit()
+
+    def replace_fact_candidates(
+        self,
+        *,
+        event_document_id: str,
+        company_event_id: str,
+        candidates: Sequence[Any],
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            DELETE FROM equity_event_fact_candidates
+             WHERE event_document_id = %s
+                OR company_event_id = %s
+            """,
+            (event_document_id, company_event_id),
+        )
+        for candidate in candidates:
+            payload = _fact_candidate_payload(candidate)
+            self.conn.execute(
+                """
+                INSERT INTO equity_event_fact_candidates (
+                  fact_candidate_id, company_event_id, event_document_id, source_span_id, fact_type,
+                  claim, evidence_quote, source_role, validation_status, rejection_reasons_json,
+                  extraction_method, policy_version, created_at_ms, updated_at_ms
+                )
+                VALUES (
+                  %(fact_candidate_id)s, %(company_event_id)s, %(event_document_id)s,
+                  %(source_span_id)s, %(fact_type)s, %(claim)s, %(evidence_quote)s,
+                  %(source_role)s, %(validation_status)s, %(rejection_reasons_json)s,
+                  %(extraction_method)s, %(policy_version)s, %(created_at_ms)s, %(updated_at_ms)s
+                )
+                """,
+                payload,
+            )
+        if commit:
+            self.conn.commit()
+
+    def mark_event_document_processed(
+        self,
+        *,
+        event_document_id: str,
+        processed_at_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_documents
+               SET lifecycle_status = 'processed',
+                   processing_error = NULL,
+                   processed_at_ms = %s,
+                   updated_at_ms = %s
+             WHERE event_document_id = %s
+            """,
+            (int(processed_at_ms), int(processed_at_ms), event_document_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def mark_event_document_process_failed(
+        self,
+        *,
+        event_document_id: str,
+        error: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_documents
+               SET lifecycle_status = 'process_failed',
+                   processing_attempts = processing_attempts + 1,
+                   processing_error = %s,
+                   updated_at_ms = %s
+             WHERE event_document_id = %s
+            """,
+            (_compact_error(error), int(now_ms), event_document_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def list_events_missing_story(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT events.*,
+                   documents.accession_number
+              FROM equity_company_events AS events
+              LEFT JOIN equity_event_documents AS documents
+                ON documents.event_document_id = events.primary_document_id
+              LEFT JOIN equity_event_story_members AS members
+                ON members.company_event_id = events.company_event_id
+             WHERE members.company_event_id IS NULL
+             ORDER BY events.event_time_ms ASC, events.company_event_id ASC
+             LIMIT %s
+             FOR UPDATE OF events SKIP LOCKED
+            """,
+            (max(0, int(limit)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def find_story_candidates_for_event(self, event: Mapping[str, Any], *, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT stories.story_id,
+                   stories.representative_headline,
+                   stories.company_id,
+                   stories.ticker,
+                   stories.latest_seen_at_ms,
+                   events.company_event_id,
+                   events.primary_document_id,
+                   events.event_type,
+                   events.fiscal_period,
+                   events.event_time_ms,
+                   documents.accession_number
+              FROM equity_event_story_groups AS stories
+              JOIN equity_event_story_members AS members
+                ON members.story_id = stories.story_id
+              JOIN equity_company_events AS events
+                ON events.company_event_id = members.company_event_id
+              LEFT JOIN equity_event_documents AS documents
+                ON documents.event_document_id = events.primary_document_id
+             WHERE stories.company_id = %s
+               AND stories.status = 'active'
+             ORDER BY stories.latest_seen_at_ms DESC, stories.story_id ASC
+             LIMIT %s
+            """,
+            (str(event["company_id"]), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def create_story_from_event(
+        self,
+        *,
+        story_id: str,
+        event: Mapping[str, Any],
+        policy_version: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO equity_event_story_groups (
+              story_id, policy_version, representative_headline, company_id, ticker,
+              first_seen_at_ms, latest_seen_at_ms, event_count, status, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 'active', %s, %s)
+            ON CONFLICT (story_id) DO UPDATE SET
+              policy_version = EXCLUDED.policy_version,
+              representative_headline = EXCLUDED.representative_headline,
+              company_id = EXCLUDED.company_id,
+              ticker = EXCLUDED.ticker,
+              latest_seen_at_ms = GREATEST(equity_event_story_groups.latest_seen_at_ms, EXCLUDED.latest_seen_at_ms),
+              status = 'active',
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING *
+            """,
+            (
+                story_id,
+                policy_version,
+                _headline_for_event(event),
+                str(event["company_id"]),
+                str(event["ticker"]).upper(),
+                int(event["event_time_ms"]),
+                int(event["event_time_ms"]),
+                int(now_ms),
+                int(now_ms),
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
+    def refresh_story_from_member(
+        self,
+        *,
+        story_id: str,
+        event: Mapping[str, Any],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_story_groups
+               SET latest_seen_at_ms = GREATEST(latest_seen_at_ms, %s),
+                   updated_at_ms = %s
+             WHERE story_id = %s
+            """,
+            (int(event["event_time_ms"]), int(now_ms), story_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def add_story_member(
+        self,
+        *,
+        story_id: str,
+        company_event_id: str,
+        relation: str,
+        match_reason: str,
+        match_score: float,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO equity_event_story_members (
+              story_id, company_event_id, relation, match_reason, match_score, created_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (story_id, company_event_id) DO UPDATE SET
+              relation = EXCLUDED.relation,
+              match_reason = EXCLUDED.match_reason,
+              match_score = EXCLUDED.match_score
+            """,
+            (story_id, company_event_id, relation, match_reason, float(match_score), int(now_ms)),
+        )
+        self.conn.execute(
+            """
+            UPDATE equity_event_story_groups AS stories
+               SET event_count = counts.event_count,
+                   latest_seen_at_ms = counts.latest_seen_at_ms,
+                   updated_at_ms = %s
+              FROM (
+                SELECT members.story_id,
+                       COUNT(*)::integer AS event_count,
+                       MAX(events.event_time_ms) AS latest_seen_at_ms
+                  FROM equity_event_story_members AS members
+                  JOIN equity_company_events AS events
+                    ON events.company_event_id = members.company_event_id
+                 WHERE members.story_id = %s
+                 GROUP BY members.story_id
+              ) AS counts
+             WHERE stories.story_id = counts.story_id
+            """,
+            (int(now_ms), story_id),
+        )
+        if commit:
+            self.conn.commit()
 
     def replace_page_rows(
         self,
@@ -836,6 +1132,51 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "computed_at_ms": int(row["computed_at_ms"]),
         "projection_version": str(row["projection_version"]),
     }
+
+
+def _span_payload(span: Any) -> dict[str, Any]:
+    return {
+        "span_id": _field(span, "span_id"),
+        "company_event_id": _field(span, "company_event_id"),
+        "event_document_id": _field(span, "event_document_id"),
+        "source_id": _field(span, "source_id"),
+        "span_type": _field(span, "span_type"),
+        "section_key": _field(span, "section_key"),
+        "span_start": int(_field(span, "span_start") or 0),
+        "span_end": int(_field(span, "span_end") or 0),
+        "evidence_quote": str(_field(span, "evidence_quote") or ""),
+        "confidence": float(_field(span, "confidence") or 0.0),
+        "created_at_ms": int(_field(span, "created_at_ms") or 0),
+    }
+
+
+def _fact_candidate_payload(candidate: Any) -> dict[str, Any]:
+    return {
+        "fact_candidate_id": _field(candidate, "fact_candidate_id"),
+        "company_event_id": _field(candidate, "company_event_id"),
+        "event_document_id": _field(candidate, "event_document_id"),
+        "source_span_id": _field(candidate, "source_span_id"),
+        "fact_type": _field(candidate, "fact_type"),
+        "claim": str(_field(candidate, "claim") or ""),
+        "evidence_quote": str(_field(candidate, "evidence_quote") or ""),
+        "source_role": _field(candidate, "source_role"),
+        "validation_status": _field(candidate, "validation_status"),
+        "rejection_reasons_json": Jsonb(list(_field(candidate, "rejection_reasons_json") or [])),
+        "extraction_method": _field(candidate, "extraction_method"),
+        "policy_version": _field(candidate, "policy_version"),
+        "created_at_ms": int(_field(candidate, "created_at_ms") or 0),
+        "updated_at_ms": int(_field(candidate, "updated_at_ms") or 0),
+    }
+
+
+def _field(value: Any, key: str) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
+def _headline_for_event(event: Mapping[str, Any]) -> str:
+    return str(event.get("summary") or event.get("event_type") or event["company_event_id"])[:240]
 
 
 def _json_dict(value: Any) -> dict[str, Any]:

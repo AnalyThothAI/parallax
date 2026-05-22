@@ -89,6 +89,7 @@ class EquityFactCandidate:
     created_at_ms: int
     updated_at_ms: int
     event_document_id: str | None = None
+    source_span_id: str | None = None
     rejection_reasons_json: list[str] | None = None
 
 

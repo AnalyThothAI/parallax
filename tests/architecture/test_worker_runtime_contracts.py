@@ -297,7 +297,10 @@ EXPECTED_WORKER_FACTORY_FILES = {
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
     "gmgn_twitter_intel.domains.ingestion.runtime.collector_service",
 }
-STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS = (".equity_event_intel.",)
+STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS = (
+    ".equity_event_intel.runtime.equity_event_brief_worker.",
+    ".equity_event_intel.runtime.equity_event_page_projection_worker.",
+)
 
 
 @pytest.mark.architecture
