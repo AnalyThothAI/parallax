@@ -880,6 +880,63 @@ def test_brief_worker_retry_budget_allows_new_source_generation_after_old_failur
     assert run["outcome"] == "ready"
 
 
+def test_brief_worker_retry_budget_ignores_stale_failure_started_before_source_refresh(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+    company_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+
+    def update_source(packet: Any) -> None:
+        postgres_conn.execute(
+            """
+            UPDATE equity_event_fact_candidates
+               SET claim = claim || ' Refreshed while stale run was executing.',
+                   updated_at_ms = %s
+             WHERE company_event_id = %s
+            """,
+            (NOW_MS + 5_000, packet.current_event.company_event_id),
+        )
+        postgres_conn.commit()
+
+    first_run_ids = iter(["stale-before-refresh-run"])
+    first = _brief_worker(
+        db,
+        provider=_FakeEquityBriefProvider(db, on_brief=update_source),
+        wake_bus=wake_bus,
+        clock_ms=_SequenceClock([NOW_MS + 4_000, NOW_MS + 4_000, NOW_MS + 6_000]),
+        max_attempts=1,
+        run_id_factory=lambda: next(first_run_ids),
+    ).run_once_sync()
+
+    second_run_ids = iter(["fresh-after-refresh-run"])
+    second = _brief_worker(
+        db,
+        provider=_FakeEquityBriefProvider(db),
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 7_000,
+        max_attempts=1,
+        run_id_factory=lambda: next(second_run_ids),
+    ).run_once_sync()
+
+    runs = {
+        row["run_id"]: row
+        for row in postgres_conn.execute("SELECT * FROM equity_event_agent_runs ORDER BY run_id").fetchall()
+    }
+    brief = postgres_conn.execute(
+        "SELECT * FROM equity_event_agent_briefs WHERE company_event_id = %s",
+        (company_event_id,),
+    ).fetchone()
+    assert first.failed == 1
+    assert runs["stale-before-refresh-run"]["error_class"] == "source_changed_before_publish"
+    assert runs["stale-before-refresh-run"]["started_at_ms"] < NOW_MS + 5_000
+    assert runs["stale-before-refresh-run"]["finished_at_ms"] > NOW_MS + 5_000
+    assert second.processed == 1
+    assert runs["fresh-after-refresh-run"]["status"] == "completed"
+    assert runs["fresh-after-refresh-run"]["outcome"] == "ready"
+    assert brief["agent_run_id"] == "fresh-after-refresh-run"
+    assert brief["status"] == "ready"
+
+
 def test_brief_worker_persists_insufficient_for_no_official_evidence_and_does_not_churn(postgres_conn) -> None:
     db = _WorkerDb(postgres_conn)
     wake_bus = _RecordingWakeBus()
@@ -967,6 +1024,18 @@ class _RecordingWakeBus:
 
     def notify_equity_event_page_updated(self, *, count: int) -> None:
         self.pages_updated.append(count)
+
+
+class _SequenceClock:
+    def __init__(self, values: list[int]) -> None:
+        self.values = list(values)
+        self.last_value = int(values[-1])
+
+    def __call__(self) -> int:
+        if not self.values:
+            return self.last_value
+        self.last_value = int(self.values.pop(0))
+        return self.last_value
 
 
 class _FakeEquityDocumentProvider:
@@ -1127,10 +1196,17 @@ def _brief_worker(
     *,
     provider: Any,
     wake_bus: Any | None,
-    now_ms: int,
+    now_ms: int | None = None,
+    clock_ms=None,
     run_id_factory,
     max_attempts: int = 3,
 ) -> EquityEventBriefWorker:
+    if clock_ms is None:
+        assert now_ms is not None
+
+        def clock_ms() -> int:
+            return now_ms
+
     settings = Settings(workers={"equity_event_brief": {"batch_size": 10, "max_attempts": max_attempts}})
     return EquityEventBriefWorker(
         name="equity_event_brief",
@@ -1139,7 +1215,7 @@ def _brief_worker(
         telemetry=SimpleNamespace(),
         provider=provider,
         wake_bus=wake_bus,
-        clock_ms=lambda: now_ms,
+        clock_ms=clock_ms,
         run_id_factory=run_id_factory,
     )
 

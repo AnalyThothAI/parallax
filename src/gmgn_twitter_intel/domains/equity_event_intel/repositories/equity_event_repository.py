@@ -1676,7 +1676,7 @@ class EquityEventRepository:
                          WHERE runs.status = 'failed'
                            AND runs.execution_started = true
                            AND runs.artifact_version_hash = %s
-                           AND runs.finished_at_ms >= COALESCE(source_state.source_updated_at_ms, events.updated_at_ms)
+                           AND runs.started_at_ms >= COALESCE(source_state.source_updated_at_ms, events.updated_at_ms)
                        )::integer AS failed_attempts,
                        (ARRAY_AGG(runs.status ORDER BY runs.finished_at_ms DESC, runs.run_id DESC))[1] AS latest_status,
                        MAX(runs.finished_at_ms) AS latest_finished_at_ms

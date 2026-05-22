@@ -195,7 +195,13 @@ def test_validation_rejects_trade_execution_instructions(phrase: str) -> None:
 
 @pytest.mark.parametrize(
     "phrase",
-    ["公司计划卖出非核心资产。", "公司公告买入云业务少数股权。", "回购计划包含买入公司股份。"],
+    [
+        "公司计划卖出非核心资产。",
+        "董事会建议卖出非核心资产。",
+        "公司公告买入云业务少数股权。",
+        "公司可以买入云业务少数股权。",
+        "回购计划包含买入公司股份。",
+    ],
 )
 def test_validation_allows_corporate_action_buy_sell_phrasing(phrase: str) -> None:
     packet = _packet()
