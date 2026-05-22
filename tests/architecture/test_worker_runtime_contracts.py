@@ -328,7 +328,7 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
             if ".narrative_intel." in qualified_name:
                 pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
             if _is_stubbed_task_worker(qualified_name):
-                pytest.skip(f"{worker_key} runtime lands in equity-event Task 3+: {exc.name}")
+                continue
             raise
         if worker_key in allowlist:
             continue
