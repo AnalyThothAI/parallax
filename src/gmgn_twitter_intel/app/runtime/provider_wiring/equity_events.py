@@ -51,9 +51,11 @@ class CompositeEquityEventDocumentProvider:
         except httpx.TimeoutException:
             return _failed_fetch(source=source, reason="sec_timeout")
         except httpx.HTTPStatusError as exc:
+            status_code = int(getattr(exc.response, "status_code", 0) or 0)
             return _failed_fetch(
                 source=source,
-                reason=f"sec_http_{exc.response.status_code}",
+                reason=f"sec_http_{status_code}",
+                status_code=status_code,
             )
         except httpx.TransportError:
             return _failed_fetch(source=source, reason="sec_transport_error")
@@ -106,9 +108,9 @@ def _sec_client(settings: Settings) -> SecEdgarClient | None:
     return SecEdgarClient(user_agent=user_agent)
 
 
-def _failed_fetch(*, source: dict[str, Any], reason: str) -> EquityDocumentProviderFetchResult:
+def _failed_fetch(*, source: dict[str, Any], reason: str, status_code: int = 0) -> EquityDocumentProviderFetchResult:
     return EquityDocumentProviderFetchResult(
-        status_code=0,
+        status_code=max(0, int(status_code)),
         documents=[
             {
                 "status": "failed",

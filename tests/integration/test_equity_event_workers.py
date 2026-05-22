@@ -174,6 +174,46 @@ def test_expected_event_reconcile_preserves_observed_and_stales_removed_config(p
     assert rows[removed_id]["status"] == "stale"
 
 
+def test_source_reconcile_stales_expected_events_when_config_list_is_empty(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    settings = Settings(
+        equity_event_intel={
+            "enabled": True,
+            "companies": [{"symbol": "MSFT", "cik": "0000789019"}],
+            "expected_events": [],
+        }
+    )
+    with db.worker_session("seed") as repos:
+        repos.equity_events.upsert_expected_event(
+            expected_event_id="expected:MSFT:2026Q1",
+            company_id="market_instrument:us_equity:MSFT",
+            ticker="MSFT",
+            event_type="earnings_release",
+            fiscal_period="2026Q1",
+            expected_at_ms=NOW_MS,
+            source_id="config:earnings",
+            source_role="calendar",
+            now_ms=NOW_MS,
+        )
+
+    worker = EquityEventSourceReconcileWorker(
+        name="equity_event_source_reconcile",
+        settings=settings.workers.equity_event_source_reconcile,
+        db=db,
+        telemetry=SimpleNamespace(),
+        equity_settings=settings.equity_event_intel,
+        wake_bus=None,
+        clock_ms=lambda: NOW_MS + 1_000,
+    )
+    worker.run_once_sync()
+
+    row = postgres_conn.execute(
+        "SELECT status FROM equity_expected_events WHERE expected_event_id = %s",
+        ("expected:MSFT:2026Q1",),
+    ).fetchone()
+    assert row["status"] == "stale"
+
+
 def test_reconcile_sources_deactivates_removed_universe_members(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.reconcile_sources(

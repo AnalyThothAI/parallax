@@ -4,6 +4,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+_DEFAULT_EXPECTED_EVENT_SOURCE_IDS = ("config:earnings",)
+
 
 @dataclass(frozen=True, slots=True)
 class SourceReconcilePayloads:
@@ -80,7 +82,7 @@ def build_source_reconcile_payloads(
             for event in _field(settings, "expected_events", ()) or ()
             if _field(event, "source_id") is not None
         }
-    )
+    ) or list(_DEFAULT_EXPECTED_EVENT_SOURCE_IDS)
     for event in _field(settings, "expected_events", ()) or ():
         if not bool(_field(event, "enabled", True)):
             continue
