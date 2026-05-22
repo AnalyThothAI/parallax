@@ -115,6 +115,22 @@ def test_equity_events_rejects_invalid_window() -> None:
     assert equity_events.event_page_calls == []
 
 
+def test_equity_events_rejects_invalid_window_before_repository_checkout() -> None:
+    runtime = RaisingRepositoryRuntime()
+    app = _app_with_runtime(runtime)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/api/equity-events",
+            params={"window": "abc"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
+    assert runtime.repository_context.entered == 0
+
+
 def test_equity_event_detail_returns_404_for_missing_event() -> None:
     equity_events = FakeEquityEventRepository()
     equity_events.event_detail = None
@@ -421,10 +437,35 @@ class FakeRuntime:
         return FakeRepositoryContext(self.equity_events)
 
 
+class RaisingRepositoryContext:
+    def __init__(self) -> None:
+        self.entered = 0
+
+    def __enter__(self):
+        self.entered += 1
+        raise RuntimeError("repository checkout should not happen")
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class RaisingRepositoryRuntime:
+    def __init__(self) -> None:
+        self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
+        self.repository_context = RaisingRepositoryContext()
+
+    def repositories(self):
+        return self.repository_context
+
+
 def _app(equity_events: FakeEquityEventRepository) -> FastAPI:
+    return _app_with_runtime(FakeRuntime(equity_events))
+
+
+def _app_with_runtime(runtime: object) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(equity_events)
+    app.state.service = runtime
     return app

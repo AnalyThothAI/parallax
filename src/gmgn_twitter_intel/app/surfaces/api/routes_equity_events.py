@@ -32,11 +32,12 @@ def list_equity_events(
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     validated_cursor = _public_cursor(cursor)
+    validated_window = _public_window(window)
     with runtime.repositories() as repos:
         data = _equity_event_read_model(repos).list_events(
             limit=_limit(limit, maximum=200),
             cursor=validated_cursor,
-            window=_public_window(window),
+            window=validated_window,
             universe=universe or None,
             ticker=ticker or None,
             event_type=event_type or None,
