@@ -1,4 +1,4 @@
-# Spec — Token Radar Narrative 1h Throughput Root Fix
+# Spec — Token Radar Narrative 1h Root Fix
 
 **Status**: Draft
 **Date**: 2026-05-22
@@ -104,10 +104,10 @@ remain "叙事分析中" even though Token Radar itself is fresh.
    better than eight nominal window/scope lanes that all show pending. Production
    should expose non-trigger windows honestly instead of pretending they are
    independently being analyzed.
-3. **Backlog is a throughput contract.** The system must be testable as
-   `admitted source rows -> semantic rows -> ready/status digest` under bounded
-   arrival rates. Passing unit tests for status transitions is insufficient if a
-   production-shaped batch cannot drain.
+3. **Backlog is an operator contract.** The system must expose
+   `admitted source rows -> semantic rows -> ready/status digest` health clearly
+   enough that operators can see whether the live lane is draining without
+   requiring a synthetic performance harness in the release gate.
 4. **No hidden compatibility paths.** Hard-cut runtime behavior must delete
    obsolete window support, fallback digest behavior, and misleading health
    semantics rather than keeping aliases that hide backlog.
@@ -119,16 +119,14 @@ remain "叙事分析中" even though Token Radar itself is fresh.
 
 ## Goals
 
-- **G1 — Production narrative scope is `1h` only.** Runtime narrative admission
-  and discussion digest workers SHALL admit and service only `1h` Token Radar
+- **G1 — Production narrative lane is `1h/all` only.** Runtime narrative admission
+  and discussion digest workers SHALL admit and service only `1h/all` Token Radar
   rows for realtime Token Radar narrative hydration. `5m`, `4h`, and `24h` may
   remain Token Radar scanner windows, but they are not realtime narrative digest
   SLA windows.
-- **G2 — Scope policy is explicit.** The allowed narrative scopes for the `1h`
-  lane SHALL be configurable, but production defaults SHALL start with the
-  smallest useful surface: `1h/all` and optionally `1h/matched` only when the
-  watched-account source volume justifies it. The spec does not require serving
-  all scopes by default.
+- **G2 — Scope policy is explicit.** The allowed realtime narrative scope is
+  `all`. `matched` can return only as a separately budgeted product lane with its
+  own SLO and health gate; it is not part of this root fix.
 - **G3 — Non-trigger windows can reuse `1h` narrative honestly.** Public Token
   Radar rows for `5m`, `4h`, and `24h` SHALL NOT trigger independent realtime
   narrative work by default. They MAY attach a same-target `1h` narrative digest
@@ -370,10 +368,10 @@ read models.
 - **AC5.** WHEN semantic coverage is below threshold or source/author volume is
   insufficient THEN digest status SHALL remain `pending`, `insufficient`, or
   `semantic_unavailable` with the specific reason preserved.
-- **AC6.** WHEN the throughput harness seeds a production-shaped `1h` backlog
-  using fake providers THEN the configured worker cycle SHALL reduce
-  `missing_semantic_rows` to zero or below tolerance and produce ready/status
-  digest rows within the expected number of cycles.
+- **AC6.** WHEN `/api/status/narrative-health` or the ops handoff checks inspect
+  the `1h/all` lane THEN they SHALL expose current source rows, missing/pending
+  semantic rows, ready/pending digest rows, and drain estimates without scanning
+  obsolete non-SLA lanes.
 - **AC7.** WHEN `/api/status/narrative-health` is called against a database with
   historical `token_radar_rows`, `narrative_admissions`, semantics, and digests
   THEN it SHALL return successfully within statement timeout and include drain
@@ -397,7 +395,7 @@ read models.
 | 1h-only feels like a feature regression for users browsing 4h/24h | Medium | Reuse compatible same-target `1h` overlays with explicit source-window metadata; keep true 4h/24h narrative as future budgeted lanes. |
 | Partial-complete digest could miss late source rows | Medium | Carry backlog metadata in digest/currentness and refresh on material delta or TTL. |
 | Admission capacity too low hides useful narratives | Medium | Expose admission skipped/suppressed counts and tune via measured drain rate, not guesswork. |
-| Throughput test becomes too synthetic | Medium | Use PostgreSQL-backed repositories and fake providers, seed multiple targets/source volumes, and assert DB-visible state transitions. |
+| Synthetic performance checks slow down release without matching live behavior | Medium | Remove the performance harness from this gate; rely on focused state-machine tests and realtime data-flow checks after image build. |
 | Health query times out on large historical tables | High | Restrict health calculations to current `1h` admissions and indexed joins; add regression test with seeded historical noise. |
 | Operator config still contains old windows | Medium | Hard-cut validation should fail or warn loudly; rollout command reports effective realtime windows. |
 
@@ -409,7 +407,7 @@ After `1h` is stable, `4h` and `24h` can return as explicit separate lanes:
 - own semantics/digest budgets;
 - own drain SLOs;
 - own UI labels;
-- own throughput tests.
+- own health gates and release checks.
 
 Do not re-expand windows by simply adding them back to `windows` defaults. A new
 window becomes production-supported only when its service rate is measured and
@@ -437,6 +435,6 @@ its backlog health has a pass/fail threshold.
 
 | Class | Behaviour |
 |-------|-----------|
-| Always | Realtime Narrative admits only configured SLA windows, defaulting to `1h`; non-trigger Radar surfaces may display compatible same-target `1h` overlays with explicit metadata; health exposes missing semantics and drain estimates; throughput tests prove drain. |
+| Always | Realtime Narrative admits only the configured SLA lane, defaulting to `1h/all`; non-trigger Radar surfaces may display compatible same-target `1h` overlays with explicit metadata; health exposes missing semantics and drain estimates; realtime data-flow checks prove the live lane is moving. |
 | Ask first | Re-enable `matched`, `4h`, or `24h` narrative lanes; change public labels; relax semantic coverage threshold below current production value. |
 | Never | Delete Token Radar facts; call LLM from HTTP routes; present a `1h` overlay as a true 5m/4h/24h digest; hide unsupported windows as "分析中"; introduce a central durable agent queue in this spec. |

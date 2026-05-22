@@ -280,16 +280,21 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"suppressed": int(getattr(cursor, "rowcount", 0) or 0)}
 
-    def due_admissions_for_semantics(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    def due_admissions_for_semantics(
+        self, *, now_ms: int, limit: int, windows: tuple[str, ...] = ("1h",), scopes: tuple[str, ...] = ("all",)
+    ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT *
             FROM narrative_admissions
-            WHERE status = 'admitted' AND next_semantics_due_at_ms <= %s
+            WHERE status = 'admitted'
+              AND next_semantics_due_at_ms <= %s
+              AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             ORDER BY priority DESC, last_seen_at_ms DESC
             LIMIT %s
             """,
-            (int(now_ms), int(limit)),
+            (int(now_ms), list(windows), list(scopes), int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
 
@@ -373,9 +378,11 @@ class NarrativeRepository:
         now_ms: int,
         limit: int,
         max_per_target: int | None = None,
+        windows: tuple[str, ...] = ("1h",),
+        scopes: tuple[str, ...] = ("all",),
     ) -> list[dict[str, Any]]:
         per_target_filter = ""
-        params: list[Any] = [int(now_ms)]
+        params: list[Any] = [int(now_ms), list(windows), list(scopes)]
         if max_per_target is not None and int(max_per_target) > 0:
             per_target_filter = "WHERE target_rank <= %s"
             params.append(int(max_per_target))
@@ -391,6 +398,17 @@ class NarrativeRepository:
               FROM token_mention_semantics AS semantics
               WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
                 AND semantics.next_retry_at_ms <= %s
+                AND EXISTS (
+                  SELECT 1
+                  FROM narrative_admissions AS admissions
+                  WHERE admissions.status = 'admitted'
+                    AND admissions.schema_version = semantics.schema_version
+                    AND admissions.target_type = semantics.target_type
+                    AND admissions.target_id = semantics.target_id
+                    AND admissions."window" = ANY(%s)
+                    AND admissions.scope = ANY(%s)
+                    AND admissions.source_event_ids_json ? semantics.event_id
+                )
             )
             SELECT ranked.*,
                    events.text_clean AS text_clean,
@@ -561,9 +579,11 @@ class NarrativeRepository:
         target_id: str,
         schema_version: str,
         model_version: str | None = None,
+        windows: tuple[str, ...] = ("1h",),
+        scopes: tuple[str, ...] = ("all",),
     ) -> int:
         model_clause = "AND model_version = %s" if model_version else ""
-        params: list[Any] = [target_type, target_id, schema_version]
+        params: list[Any] = [target_type, target_id, schema_version, list(windows), list(scopes)]
         if model_version:
             params.append(model_version)
         row = self.conn.execute(
@@ -573,6 +593,17 @@ class NarrativeRepository:
             WHERE target_type = %s
               AND target_id = %s
               AND schema_version = %s
+              AND EXISTS (
+                SELECT 1
+                FROM narrative_admissions AS admissions
+                WHERE admissions.status = 'admitted'
+                  AND admissions.schema_version = token_mention_semantics.schema_version
+                  AND admissions.target_type = token_mention_semantics.target_type
+                  AND admissions.target_id = token_mention_semantics.target_id
+                  AND admissions."window" = ANY(%s)
+                  AND admissions.scope = ANY(%s)
+                  AND admissions.source_event_ids_json ? token_mention_semantics.event_id
+              )
               {model_clause}
               AND status IN ('queued', 'retryable_error', 'stale')
             """,
@@ -653,7 +684,45 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"updated": int(getattr(cursor, "rowcount", 0) or 0)}
 
-    def cleanup_narrative_current_hard_cut(self, *, schema_version: str, now_ms: int) -> dict[str, int]:
+    def cleanup_narrative_current_hard_cut(
+        self,
+        *,
+        schema_version: str,
+        now_ms: int,
+        realtime_windows: Sequence[str] = ("1h",),
+        realtime_scopes: Sequence[str] = ("all",),
+    ) -> dict[str, int]:
+        windows = tuple(dict.fromkeys(str(window) for window in realtime_windows if str(window)))
+        if not windows:
+            windows = ("1h",)
+        scopes = tuple(dict.fromkeys(str(scope) for scope in realtime_scopes if str(scope)))
+        if not scopes:
+            scopes = ("all",)
+        suppressed_non_realtime = self.conn.execute(
+            """
+            UPDATE narrative_admissions
+            SET status = 'suppressed',
+                reason = 'non_realtime_narrative_window',
+                suppressed_at_ms = %s,
+                updated_at_ms = %s
+            WHERE schema_version = %s
+              AND status = 'admitted'
+              AND NOT ("window" = ANY(%s) AND scope = ANY(%s))
+            """,
+            (int(now_ms), int(now_ms), schema_version, list(windows), list(scopes)),
+        )
+        staled_non_realtime = self.conn.execute(
+            """
+            UPDATE token_discussion_digests
+            SET status = 'stale',
+                is_current = false,
+                superseded_at_ms = %s
+            WHERE schema_version = %s
+              AND is_current = true
+              AND NOT ("window" = ANY(%s) AND scope = ANY(%s))
+            """,
+            (int(now_ms), schema_version, list(windows), list(scopes)),
+        )
         obsolete = self.conn.execute(
             """
             WITH current_sources AS (
@@ -664,6 +733,8 @@ class NarrativeRepository:
               FROM narrative_admissions AS admissions
               WHERE admissions.status = 'admitted'
                 AND admissions.schema_version = %s
+                AND admissions."window" = ANY(%s)
+                AND admissions.scope = ANY(%s)
             )
             DELETE FROM token_mention_semantics AS semantics
             WHERE semantics.schema_version = %s
@@ -676,7 +747,7 @@ class NarrativeRepository:
                   AND current_sources.target_id = semantics.target_id
               )
             """,
-            (schema_version, schema_version),
+            (schema_version, list(windows), list(scopes), schema_version),
         )
         stale_suppressed = self.conn.execute(
             """
@@ -693,8 +764,10 @@ class NarrativeRepository:
               AND digest.scope = admissions.scope
               AND digest.schema_version = admissions.schema_version
               AND digest.is_current = true
+              AND digest."window" = ANY(%s)
+              AND digest.scope = ANY(%s)
             """,
-            (int(now_ms), schema_version),
+            (int(now_ms), schema_version, list(windows), list(scopes)),
         )
         mismatch_preserved = self.conn.execute(
             """
@@ -708,14 +781,18 @@ class NarrativeRepository:
              AND admissions.schema_version = digest.schema_version
              AND admissions.status = 'admitted'
              AND admissions.schema_version = %s
+             AND admissions."window" = ANY(%s)
+             AND admissions.scope = ANY(%s)
             WHERE digest.is_current = true
               AND digest.status = 'ready'
               AND COALESCE(digest.source_fingerprint, '') <> COALESCE(admissions.source_fingerprint, '')
             """,
-            (schema_version,),
+            (schema_version, list(windows), list(scopes)),
         ).fetchone()
         _commit_if_available(self.conn)
         return {
+            "suppressed_non_realtime_admissions": int(getattr(suppressed_non_realtime, "rowcount", 0) or 0),
+            "staled_non_realtime_digests": int(getattr(staled_non_realtime, "rowcount", 0) or 0),
             "deleted_obsolete_pending_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
             "stale_suppressed_digests": int(getattr(stale_suppressed, "rowcount", 0) or 0),
             "fingerprint_mismatch_digests_preserved": int(mismatch_preserved["count"] if mismatch_preserved else 0),
@@ -988,16 +1065,21 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"labeled": labeled, "semantic_unavailable": unavailable, "failed": failed}
 
-    def due_digest_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    def due_digest_targets(
+        self, *, now_ms: int, limit: int, windows: tuple[str, ...] = ("1h",), scopes: tuple[str, ...] = ("all",)
+    ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT *
             FROM narrative_admissions
-            WHERE status = 'admitted' AND next_digest_due_at_ms <= %s
+            WHERE status = 'admitted'
+              AND next_digest_due_at_ms <= %s
+              AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             ORDER BY priority DESC, last_seen_at_ms DESC
             LIMIT %s
             """,
-            (int(now_ms), int(limit)),
+            (int(now_ms), list(windows), list(scopes), int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
 

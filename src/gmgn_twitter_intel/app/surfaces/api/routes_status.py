@@ -38,8 +38,12 @@ def narrative_health(
     since_hours: Annotated[int, Query(ge=1, le=168)] = 4,
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
+    worker_settings = getattr(getattr(runtime, "settings", None), "workers", None)
     with runtime.repositories() as repos:
-        health = NarrativeBacklogHealthQuery(repos.conn).health(
+        health = NarrativeBacklogHealthQuery(
+            repos.conn,
+            **_narrative_health_worker_kwargs(worker_settings),
+        ).health(
             now_ms=_now_ms(),
             since_hours=since_hours,
         )
@@ -57,3 +61,36 @@ def create_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]
         return _json({"ok": True, "data": payload})
 
     return status_router
+
+
+def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
+    mention = getattr(workers, "mention_semantics", None)
+    digest = getattr(workers, "token_discussion_digest", None)
+    return {
+        "realtime_windows": tuple(getattr(digest, "windows", ("1h",)) or ("1h",)),
+        "realtime_scopes": tuple(getattr(digest, "scopes", ("all",)) or ("all",)),
+        "semantics_rows_per_cycle": min(
+            _positive_int(getattr(mention, "batch_size", 10), default=10),
+            _positive_int(getattr(mention, "provider_batch_size", 10), default=10),
+        ),
+        "semantics_interval_seconds": _nonnegative_int(getattr(mention, "interval_seconds", 60), default=60),
+        "digest_calls_per_cycle": max(
+            1,
+            _nonnegative_int(getattr(digest, "max_llm_calls_per_cycle", 3), default=3),
+        ),
+        "digest_interval_seconds": _nonnegative_int(getattr(digest, "interval_seconds", 120), default=120),
+    }
+
+
+def _positive_int(value: object, *, default: int) -> int:
+    try:
+        return max(1, int(value or default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _nonnegative_int(value: object, *, default: int) -> int:
+    try:
+        return max(0, int(value if value is not None else default))
+    except (TypeError, ValueError):
+        return default

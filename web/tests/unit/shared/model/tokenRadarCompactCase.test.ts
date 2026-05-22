@@ -14,6 +14,53 @@ describe("buildTokenRadarCompactCase", () => {
     expect(view.narrative.detail).not.toContain("有效讨论");
   });
 
+  it("labels reused non-1h overlays as 1h narrative context", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      flow: { ...tokenFlowFixture().flow, window: "4h" },
+      discussion_digest: {
+        ...tokenFlowFixture().discussion_digest!,
+        analysis_window: "1h",
+        source_window: "1h",
+        surface_window: "4h",
+        reuse_reason: "target_current_1h_narrative",
+      },
+      pulse_overlay: {
+        status: "ready",
+        pulse_status: "confirmed",
+        verdict: "accumulation holding",
+      },
+    });
+
+    expect(view.narrative.value).toBe("Expansion chase · 1h叙事 · bullish 62%");
+    expect(view.narrative.detail).toContain("1h context");
+    expect(view.narrative.detail).toContain("retail is rotating into contract-confirmed posts");
+    expect(view.narrative.detail).toContain("coverage 82%");
+    expect(view.narrative.detail).toContain("Pulse accumulation holding");
+  });
+
+  it("labels non-1h windows without reusable 1h digest as pending 1h narrative", () => {
+    const view = buildTokenRadarCompactCase({
+      ...tokenFlowFixture(),
+      flow: { ...tokenFlowFixture().flow, window: "24h" },
+      discussion_digest: {
+        status: "pending",
+        currentness: {
+          display_status: "not_ready",
+          reason: "no_reusable_1h_digest",
+        },
+        data_gaps: [{ reason: "no_reusable_1h_digest" }],
+        reuse_reason: "no_reusable_1h_digest",
+        surface_window: "24h",
+      },
+    });
+
+    expect(view.narrative.value).toBe("1h 叙事待生成");
+    expect(view.narrative.detail).toBe("1h 叙事待生成");
+    expect(view.narrative.value).not.toBe("叙事分析中");
+    expect(view.narrative.value).not.toBe("5m 实时信号");
+  });
+
   it.each([
     ["pending", "semantic_labeling_pending", "叙事分析中"],
     ["insufficient", "low_source_volume", "叙事样本不足"],

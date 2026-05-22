@@ -35,11 +35,13 @@ class DiscussionDigestService:
         min_source_mentions: int = 3,
         min_independent_authors: int = 2,
         min_semantic_coverage: float = 0.35,
+        max_pending_semantic_rows_for_digest: int = 5,
         max_mentions_per_digest: int = DEFAULT_MAX_MENTIONS_PER_DIGEST,
     ) -> None:
         self.min_source_mentions = max(1, int(min_source_mentions))
         self.min_independent_authors = max(1, int(min_independent_authors))
         self.min_semantic_coverage = max(0.0, min(1.0, float(min_semantic_coverage)))
+        self.max_pending_semantic_rows_for_digest = max(0, int(max_pending_semantic_rows_for_digest))
         self.max_mentions_per_digest = max(1, int(max_mentions_per_digest))
 
     def refresh_decision(self, context: dict[str, Any]) -> DigestRefreshDecision:
@@ -64,7 +66,8 @@ class DiscussionDigestService:
                 reason="low_independent_author_count",
                 status_if_not_refresh="insufficient",
             )
-        if missing_semantic_count + pending_semantic_count + retryable_semantic_count > 0:
+        pending_tail = missing_semantic_count + pending_semantic_count + retryable_semantic_count
+        if pending_tail > self.max_pending_semantic_rows_for_digest:
             return DigestRefreshDecision(
                 should_refresh=False,
                 reason="semantic_labeling_pending",
@@ -87,7 +90,8 @@ class DiscussionDigestService:
                 reason="low_semantic_coverage",
                 status_if_not_refresh="insufficient",
             )
-        return DigestRefreshDecision(should_refresh=True, reason="thresholds_met", status_if_not_refresh="pending")
+        reason = "thresholds_met_partial_semantic_tail" if pending_tail > 0 else "thresholds_met"
+        return DigestRefreshDecision(should_refresh=True, reason=reason, status_if_not_refresh="pending")
 
     def build_insufficient_digest(
         self,

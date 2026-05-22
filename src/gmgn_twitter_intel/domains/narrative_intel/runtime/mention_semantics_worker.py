@@ -50,9 +50,8 @@ class MentionSemanticsWorker(WorkerBase):
         batch_size = min(configured_batch_size, provider_batch_size)
         max_attempts = max(1, int(getattr(self.settings, "max_attempts", 3) or 3))
         rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
-        enqueue_stats: dict[str, int] = {}
+        enqueue_stats = await asyncio.to_thread(self._enqueue_missing_from_admissions_sync, now_ms=resolved_now_ms)
         if not rows:
-            enqueue_stats = await asyncio.to_thread(self._enqueue_missing_from_admissions_sync, now_ms=resolved_now_ms)
             rows = await asyncio.to_thread(self._claim_due_rows_sync, now_ms=resolved_now_ms, limit=batch_size)
         if not rows:
             return WorkerResult(
@@ -294,7 +293,12 @@ class MentionSemanticsWorker(WorkerBase):
         }
         remaining_cycle_budget = cycle_enqueue_budget
         with self._repository_session() as repos:
-            due_admissions = repos.narratives.due_admissions_for_semantics(now_ms=now_ms, limit=admission_limit)
+            due_admissions = repos.narratives.due_admissions_for_semantics(
+                now_ms=now_ms,
+                limit=admission_limit,
+                windows=_settings_windows(self.settings),
+                scopes=_settings_scopes(self.settings),
+            )
             stats["due_admissions"] = len(due_admissions)
             for admission in due_admissions:
                 source_rows = repos.narratives.source_rows_for_admission(admission, limit=source_limit)
@@ -309,6 +313,8 @@ class MentionSemanticsWorker(WorkerBase):
                     target_type=str(admission["target_type"]),
                     target_id=str(admission["target_id"]),
                     schema_version=NARRATIVE_SCHEMA_VERSION,
+                    windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
                 )
                 stats["semantic_pending_before"] += pending_count
                 target_budget = max(0, max_pending_per_target - pending_count)
@@ -365,6 +371,8 @@ class MentionSemanticsWorker(WorkerBase):
                     now_ms=now_ms,
                     limit=limit,
                     max_per_target=max_per_target,
+                    windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
                 )
             )
 
@@ -516,6 +524,14 @@ def _attach_semantic_identity(items: list[dict[str, Any]], *, rows: list[dict[st
             next_item.setdefault("text_fingerprint", row.get("text_fingerprint"))
         enriched.append(next_item)
     return enriched
+
+
+def _settings_windows(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
+
+
+def _settings_scopes(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "scopes", ("all",)) or ("all",))
 
 
 def _hash_json(payload: Any) -> str:

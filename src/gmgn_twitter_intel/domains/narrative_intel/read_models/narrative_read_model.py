@@ -8,6 +8,10 @@ from gmgn_twitter_intel.domains.narrative_intel.services.narrative_currentness i
     public_currentness,
 )
 
+TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW = "1h"
+TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS = frozenset({"5m", "4h", "24h"})
+OVERLAY_READY_STATUSES = frozenset({"current", "updating", "stale"})
+
 
 class NarrativeReadModel:
     def __init__(self, repository: Any) -> None:
@@ -15,17 +19,30 @@ class NarrativeReadModel:
 
     def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
         targets = _extract_targets(data)
+        normalized_scope = _normalize_scope(scope)
+        repository_window = (
+            TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW if window in TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS else window
+        )
         digests = self.repository.current_narrative_snapshots_for_targets(
             targets,
-            window=window,
-            scope=_normalize_scope(scope),
+            window=repository_window,
+            scope=normalized_scope,
             schema_version=NARRATIVE_SCHEMA_VERSION,
             now_ms=now_ms,
         )
         hydrated = dict(data)
         for key in ("targets", "attention", "items"):
             if isinstance(hydrated.get(key), list):
-                hydrated[key] = [self._hydrate_row(row, digests, now_ms=now_ms) for row in hydrated[key]]
+                hydrated[key] = [
+                    self._hydrate_row(
+                        row,
+                        digests,
+                        now_ms=now_ms,
+                        surface_window=window,
+                        scope=normalized_scope,
+                    )
+                    for row in hydrated[key]
+                ]
         return hydrated
 
     def hydrate_token_case(self, dossier: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
@@ -84,13 +101,25 @@ class NarrativeReadModel:
         digests: dict[tuple[str, str], dict[str, Any]],
         *,
         now_ms: int,
+        surface_window: str,
+        scope: str,
     ) -> dict[str, Any]:
         target_type = str(row.get("target_type") or row.get("type") or "")
         target_id = str(row.get("target_id") or row.get("id") or "")
+        digest = digests.get((target_type, target_id), _missing_digest("digest_not_ready"))
+        if surface_window in TOKEN_RADAR_NARRATIVE_SURFACE_WINDOWS:
+            digest = _token_radar_overlay_digest(
+                digest,
+                target_type=target_type,
+                target_id=target_id,
+                surface_window=surface_window,
+                scope=scope,
+                now_ms=now_ms,
+            )
         return {
             **row,
             "discussion_digest": _public_digest(
-                digests.get((target_type, target_id), _missing_digest("digest_not_ready")),
+                digest,
                 now_ms=now_ms,
                 surface="token_radar",
             ),
@@ -119,6 +148,76 @@ def _missing_digest(reason: str) -> dict[str, Any]:
         "data_gaps_json": [{"reason": reason}],
         "semantic_coverage": 0,
         "evidence_refs_json": [],
+    }
+
+
+def _token_radar_overlay_digest(
+    digest: dict[str, Any],
+    *,
+    target_type: str,
+    target_id: str,
+    surface_window: str,
+    scope: str,
+    now_ms: int,
+) -> dict[str, Any]:
+    if _is_reusable_token_radar_overlay_digest(digest, now_ms=now_ms):
+        return {
+            **digest,
+            "analysis_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
+            "source_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
+            "surface_window": surface_window,
+            "reuse_reason": "target_current_1h_narrative",
+        }
+    return _missing_token_radar_overlay_digest(
+        target_type=target_type,
+        target_id=target_id,
+        surface_window=surface_window,
+        scope=scope,
+        now_ms=now_ms,
+    )
+
+
+def _is_reusable_token_radar_overlay_digest(digest: dict[str, Any], *, now_ms: int) -> bool:
+    if digest.get("status") != "ready":
+        return False
+    currentness = _public_currentness_for_row(digest, now_ms=now_ms)
+    return currentness.get("display_status") in OVERLAY_READY_STATUSES
+
+
+def _missing_token_radar_overlay_digest(
+    *,
+    target_type: str,
+    target_id: str,
+    surface_window: str,
+    scope: str,
+    now_ms: int,
+) -> dict[str, Any]:
+    reason = "no_reusable_1h_digest"
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
+        "scope": scope,
+        "schema_version": NARRATIVE_SCHEMA_VERSION,
+        "status": "pending",
+        "is_current": False,
+        "analysis_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
+        "source_window": TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
+        "surface_window": surface_window,
+        "reuse_reason": reason,
+        "data_gaps_json": [{"reason": reason}],
+        "semantic_coverage": 0,
+        "source_event_count": 0,
+        "labeled_event_count": 0,
+        "independent_author_count": 0,
+        "evidence_refs_json": [],
+        "currentness": public_currentness(
+            digest=None,
+            admission=None,
+            window=TOKEN_RADAR_NARRATIVE_ANALYSIS_WINDOW,
+            now_ms=now_ms,
+            reason=reason,
+        ),
     }
 
 

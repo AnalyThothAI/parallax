@@ -9,8 +9,26 @@ _HOUR_MS = 60 * 60 * 1000
 
 
 class NarrativeBacklogHealthQuery:
-    def __init__(self, conn: Any) -> None:
+    def __init__(
+        self,
+        conn: Any,
+        *,
+        realtime_windows: tuple[str, ...] = ("1h",),
+        realtime_scopes: tuple[str, ...] = ("all",),
+        semantics_rows_per_cycle: int = 10,
+        semantics_interval_seconds: int = 60,
+        digest_calls_per_cycle: int = 3,
+        digest_interval_seconds: int = 120,
+    ) -> None:
         self.conn = conn
+        self.realtime_windows = tuple(dict.fromkeys(str(window) for window in realtime_windows if str(window))) or (
+            "1h",
+        )
+        self.realtime_scopes = tuple(dict.fromkeys(str(scope) for scope in realtime_scopes if str(scope))) or ("all",)
+        self.semantics_rows_per_cycle = max(1, int(semantics_rows_per_cycle or 1))
+        self.semantics_interval_seconds = max(0, int(semantics_interval_seconds or 0))
+        self.digest_calls_per_cycle = max(1, int(digest_calls_per_cycle or 1))
+        self.digest_interval_seconds = max(0, int(digest_interval_seconds or 0))
 
     def health(
         self,
@@ -22,16 +40,24 @@ class NarrativeBacklogHealthQuery:
         since_hours = max(1, int(since_hours or 1))
         since_ms = max(0, int(now_ms) - since_hours * _HOUR_MS)
         backlog = self._semantic_backlog(now_ms=int(now_ms), schema_version=schema_version)
+        pending_digest_count = self._pending_digest_count(schema_version=schema_version)
         return {
             "schema_version": schema_version,
             "now_ms": int(now_ms),
             "since_hours": since_hours,
+            "realtime_windows": list(self.realtime_windows),
+            "realtime_scopes": list(self.realtime_scopes),
             "admissions": self._admission_health(schema_version=schema_version),
             "semantic_backlog": backlog,
             "recent_runs": self._recent_runs(since_ms=since_ms, schema_version=schema_version),
             "digest_status_counts": self._digest_status_counts(schema_version=schema_version),
             "digest_reason_counts": self._digest_reason_counts(schema_version=schema_version),
-            "pending_digest_count": self._pending_digest_count(schema_version=schema_version),
+            "pending_digest_count": pending_digest_count,
+            "estimated_digest_drain_seconds": _estimate_drain_seconds(
+                pending_digest_count,
+                per_cycle=self.digest_calls_per_cycle,
+                interval_seconds=self.digest_interval_seconds,
+            ),
             "epoch": self._epoch_health(now_ms=int(now_ms), schema_version=schema_version),
         }
 
@@ -47,8 +73,10 @@ class NarrativeBacklogHealthQuery:
               ) AS current_independent_authors
             FROM narrative_admissions
             WHERE schema_version = %s
+              AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             """,
-            (schema_version,),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchone()
         data = _row(row)
         return {
@@ -74,6 +102,8 @@ class NarrativeBacklogHealthQuery:
               FROM narrative_admissions
               WHERE schema_version = %s
                 AND status = 'admitted'
+                AND "window" = ANY(%s)
+                AND scope = ANY(%s)
             ),
             current_sources AS (
               SELECT
@@ -106,6 +136,14 @@ class NarrativeBacklogHealthQuery:
               SELECT status, queued_at_ms, source_received_at_ms, next_retry_at_ms
               FROM token_mention_semantics
               WHERE schema_version = %s
+                AND EXISTS (
+                  SELECT 1
+                  FROM current_sources
+                  WHERE current_sources.event_id = token_mention_semantics.event_id
+                    AND current_sources.target_type = token_mention_semantics.target_type
+                    AND current_sources.target_id = token_mention_semantics.target_id
+                    AND current_sources.schema_version = token_mention_semantics.schema_version
+                )
             ),
             current_digests AS (
               SELECT
@@ -118,6 +156,8 @@ class NarrativeBacklogHealthQuery:
               FROM token_discussion_digests
               WHERE schema_version = %s
                 AND is_current = true
+                AND "window" = ANY(%s)
+                AND scope = ANY(%s)
             )
             SELECT
               (SELECT COUNT(*) FROM current_sources) AS current_source_rows,
@@ -199,7 +239,17 @@ class NarrativeBacklogHealthQuery:
                 )
               ) AS stale_fingerprint_current_digest_count
             """,
-            (schema_version, schema_version, schema_version, int(now_ms), int(now_ms)),
+            (
+                schema_version,
+                list(self.realtime_windows),
+                list(self.realtime_scopes),
+                schema_version,
+                schema_version,
+                list(self.realtime_windows),
+                list(self.realtime_scopes),
+                int(now_ms),
+                int(now_ms),
+            ),
         ).fetchone()
         data = _row(row)
         current_source_rows = _int(data.get("current_source_rows"))
@@ -228,6 +278,11 @@ class NarrativeBacklogHealthQuery:
             "suppressed_current_digest_count": _int(data.get("suppressed_current_digest_count")),
             "stale_fingerprint_current_digest_count": _int(data.get("stale_fingerprint_current_digest_count")),
             "oldest_due_age_ms": oldest_due_age_ms,
+            "estimated_semantic_drain_seconds": _estimate_drain_seconds(
+                missing_semantic_rows + pending_existing_rows,
+                per_cycle=self.semantics_rows_per_cycle,
+                interval_seconds=self.semantics_interval_seconds,
+            ),
         }
 
     def _recent_runs(self, *, since_ms: int, schema_version: str) -> dict[str, dict[str, int]]:
@@ -247,9 +302,10 @@ class NarrativeBacklogHealthQuery:
             FROM narrative_model_runs
             WHERE schema_version = %s
               AND finished_at_ms >= %s
+              AND (stage <> 'discussion_digest' OR ("window" = ANY(%s) AND scope = ANY(%s)))
             GROUP BY stage
             """,
-            (schema_version, int(since_ms)),
+            (schema_version, int(since_ms), list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchall()
         result = {
             "mention_semantics": {"success": 0, "failure": 0, "timeout": 0},
@@ -275,8 +331,10 @@ class NarrativeBacklogHealthQuery:
             WHERE schema_version = %s
               AND is_current = true
               AND status = 'pending'
+              AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             """,
-            (schema_version,),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchone()
         return _int(_row(row).get("pending_digest_count"))
 
@@ -287,9 +345,11 @@ class NarrativeBacklogHealthQuery:
             FROM token_discussion_digests
             WHERE schema_version = %s
               AND is_current = true
+              AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             GROUP BY status
             """,
-            (schema_version,),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchall()
         return {str(row["status"]): _int(row.get("count")) for row in rows}
 
@@ -301,12 +361,14 @@ class NarrativeBacklogHealthQuery:
             CROSS JOIN LATERAL jsonb_array_elements(data_gaps_json) AS gap
             WHERE schema_version = %s
               AND is_current = true
+              AND "window" = ANY(%s)
+              AND scope = ANY(%s)
               AND gap->>'reason' IS NOT NULL
             GROUP BY gap->>'reason'
             ORDER BY count DESC, reason ASC
             LIMIT 20
             """,
-            (schema_version,),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchall()
         return {str(row["reason"]): _int(row.get("count")) for row in rows if row.get("reason")}
 
@@ -318,6 +380,8 @@ class NarrativeBacklogHealthQuery:
               FROM narrative_admissions
               WHERE schema_version = %s
                 AND status = 'admitted'
+                AND "window" = ANY(%s)
+                AND scope = ANY(%s)
             ),
             latest_ready AS (
               SELECT DISTINCT ON (
@@ -337,6 +401,8 @@ class NarrativeBacklogHealthQuery:
               FROM token_discussion_digests
               WHERE schema_version = %s
                 AND status = 'ready'
+                AND "window" = ANY(%s)
+                AND scope = ANY(%s)
               ORDER BY target_type, target_id, "window", scope, schema_version, computed_at_ms DESC
             ),
             joined AS (
@@ -372,13 +438,11 @@ class NarrativeBacklogHealthQuery:
                   AND COALESCE(admission_source_fingerprint, '') <> COALESCE(ready_source_fingerprint, '')
               ) AS updating_snapshot_count,
               COUNT(*) FILTER (
-                WHERE "window" IN ('1h', '4h', '24h')
-                  AND next_digest_due_at_ms <= %s
+                WHERE next_digest_due_at_ms <= %s
                   AND ready_computed_at_ms IS NOT NULL
               ) AS material_delta_due_count,
               COUNT(*) FILTER (
-                WHERE "window" IN ('1h', '4h', '24h')
-                  AND next_digest_due_at_ms > %s
+                WHERE next_digest_due_at_ms > %s
                   AND ready_computed_at_ms IS NOT NULL
               ) AS no_material_delta_deferred_count,
               percentile_cont(0.50) WITHIN GROUP (
@@ -412,8 +476,7 @@ class NarrativeBacklogHealthQuery:
                   FROM (
                     SELECT "window", COUNT(*) AS count
                     FROM joined
-                    WHERE "window" IN ('1h', '4h', '24h')
-                      AND next_digest_due_at_ms <= %s
+                    WHERE next_digest_due_at_ms <= %s
                     GROUP BY "window"
                   ) AS due_by_window
                 ),
@@ -436,7 +499,11 @@ class NarrativeBacklogHealthQuery:
             """,
             (
                 schema_version,
+                list(self.realtime_windows),
+                list(self.realtime_scopes),
                 schema_version,
+                list(self.realtime_windows),
+                list(self.realtime_scopes),
                 EPOCH_POLICY_VERSION,
                 int(now_ms),
                 int(now_ms),
@@ -489,6 +556,13 @@ def _dict_of_ints(value: Any) -> dict[str, int]:
     if not isinstance(value, dict):
         return {}
     return {str(key): _int(item) for key, item in value.items()}
+
+
+def _estimate_drain_seconds(total: int, *, per_cycle: int, interval_seconds: int) -> int:
+    if total <= 0:
+        return 0
+    cycles = (int(total) + int(per_cycle) - 1) // int(per_cycle)
+    return cycles * int(interval_seconds)
 
 
 __all__ = ["NarrativeBacklogHealthQuery"]

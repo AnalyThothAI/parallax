@@ -194,7 +194,11 @@ function compactWhyNowTitle(item: TokenFlowItem): string {
     return `${title} · 上一版`;
   }
   const stance = topMixLabel(digest.stance_mix);
-  return stance ? `${title} · ${stance}` : title;
+  const titleParts = isReused1hNarrative(digest) ? [title, "1h叙事"] : [title];
+  if (stance) {
+    titleParts.push(stance);
+  }
+  return titleParts.join(" · ");
 }
 
 function compactWhyNowDetail(item: TokenFlowItem): string {
@@ -214,7 +218,12 @@ function compactWhyNowDetail(item: TokenFlowItem): string {
     return gap ?? narrativeStatusTitle(digest.status);
   }
   const summary = cleanText(digest.dominant_narrative?.summary_zh) ?? gap ?? "ready";
-  const details = [summary, coverageLabel(digest), pulseOverlayLabel(item)].filter(Boolean);
+  const details = [
+    isReused1hNarrative(digest) ? "1h context" : null,
+    summary,
+    coverageLabel(digest),
+    pulseOverlayLabel(item),
+  ].filter(Boolean);
   return details.join(" · ");
 }
 
@@ -266,6 +275,10 @@ function currentnessTitle(status: string): string {
 
 function firstGapLabel(digest: TokenDiscussionDigest): string | null {
   return narrativeGapLabel(digest.data_gaps.find(Boolean));
+}
+
+function isReused1hNarrative(digest: TokenDiscussionDigest): boolean {
+  return digest.reuse_reason === "target_current_1h_narrative";
 }
 
 function topMixLabel(mix: TokenDiscussionDigest["stance_mix"]): string | null {

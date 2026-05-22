@@ -134,7 +134,7 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
                     "admission_id": "admission-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
                 }
@@ -170,7 +170,73 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
         assert result.notes["enqueue_semantic_inserted"] == 2
         assert result.notes["enqueue_semantic_suppressed_budget"] == 3
         assert result.notes["enqueue_semantic_pending_before"] == 1
+        assert repo.due_admissions_for_semantics_calls == [
+            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        ]
+        assert repo.pending_semantics_count_calls == [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "schema_version": "narrative_intel_v1",
+                "model_version": None,
+                "windows": ("1h",),
+                "scopes": ("matched",),
+            }
+        ]
         assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
+        assert result.processed == 1
+
+    asyncio.run(scenario())
+
+
+def test_mention_semantics_enqueues_missing_rows_even_when_due_rows_exist():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            due_mentions=[
+                {
+                    "semantic_id": "semantic-ready",
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "ready row",
+                    "text_fingerprint": "fp-ready",
+                }
+            ],
+            due_admissions=[
+                {
+                    "admission_id": "admission-1h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "all",
+                    "source_event_ids_json": ["event-new"],
+                }
+            ],
+            source_rows=[
+                {
+                    "event_id": "event-new",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "new row",
+                    "text_fingerprint": "fp-new",
+                    "source_received_at_ms": 9_900,
+                }
+            ],
+        )
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(windows=("1h",), scopes=("all",)),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=BarrierNarrativeProvider(db),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["enqueue_semantic_inserted"] == 1
+        assert repo.enqueued_source_event_ids == ["event-new"]
+        assert result.notes["claimed"] == 1
         assert result.processed == 1
 
     asyncio.run(scenario())
@@ -184,7 +250,7 @@ def test_mention_semantics_enqueue_budget_counts_only_missing_rows():
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
             }
@@ -440,7 +506,7 @@ def test_mention_semantics_partial_enqueue_uses_short_retry_and_exposes_missing_
                     "admission_id": "admission-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
                 }
@@ -498,7 +564,9 @@ def test_mention_semantics_claim_passes_per_target_cycle_cap():
     rows = worker._claim_due_rows_sync(now_ms=10_000, limit=10)
 
     assert len(rows) == 1
-    assert repo.due_mentions_calls == [{"now_ms": 10_000, "limit": 10, "max_per_target": 3}]
+    assert repo.due_mentions_calls == [
+        {"now_ms": 10_000, "limit": 10, "max_per_target": 3, "windows": ("1h",), "scopes": ("matched",)}
+    ]
 
 
 def test_mention_semantics_worker_treats_unknown_provider_labels_as_retryable_failure():
@@ -565,6 +633,9 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
 
         assert result.processed == 0
         assert result.failed == 1
+        assert repo.due_digest_target_calls == [
+            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        ]
         assert result.notes["llm_calls"] == 1
         assert result.notes["llm_failures"] == 1
         assert repo.recorded_runs[0]["stage"] == "discussion_digest"
@@ -613,14 +684,14 @@ def test_token_discussion_digest_worker_defers_threshold_targets_after_llm_cycle
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
             {
                 "admission_id": "admission-2",
                 "target_type": "chain_token",
                 "target_id": "solana:Bonk",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
         ]
@@ -660,14 +731,14 @@ def test_token_discussion_digest_worker_defers_after_provider_failure_budget():
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
             {
                 "admission_id": "admission-2",
                 "target_type": "chain_token",
                 "target_id": "solana:Bonk",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
         ]
@@ -733,26 +804,40 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
-                    {"event_id": "event-2", "author_handle": "b", "status": "queued"},
-                    {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "labeled"},
+                    {"event_id": "event-4", "author_handle": "d", "status": "labeled"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                    {"event_id": "event-6", "author_handle": "f", "status": "queued"},
+                    {"event_id": "event-7", "author_handle": "g", "status": "queued"},
+                    {"event_id": "event-8", "author_handle": "h", "status": "retryable_error"},
+                    {"event_id": "event-9", "author_handle": "i", "status": "retryable_error"},
+                    {"event_id": "event-10", "author_handle": "j", "status": "retryable_error"},
                 ],
                 "semantic_rows": [
                     {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
-                    {"event_id": "event-2", "author_handle": "b", "status": "queued"},
-                    {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "labeled"},
+                    {"event_id": "event-4", "author_handle": "d", "status": "labeled"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                    {"event_id": "event-6", "author_handle": "f", "status": "queued"},
+                    {"event_id": "event-7", "author_handle": "g", "status": "queued"},
+                    {"event_id": "event-8", "author_handle": "h", "status": "retryable_error"},
+                    {"event_id": "event-9", "author_handle": "i", "status": "retryable_error"},
+                    {"event_id": "event-10", "author_handle": "j", "status": "retryable_error"},
                 ],
-                "source_event_count": 3,
-                "semantic_row_count": 3,
+                "source_event_count": 10,
+                "semantic_row_count": 10,
                 "missing_semantic_count": 0,
-                "pending_semantic_count": 1,
-                "retryable_semantic_count": 1,
+                "pending_semantic_count": 3,
+                "retryable_semantic_count": 3,
                 "terminal_unavailable_count": 0,
-                "labeled_event_count": 1,
-                "independent_author_count": 3,
+                "labeled_event_count": 4,
+                "independent_author_count": 10,
                 "allowed_refs": [],
             }
         )
@@ -776,7 +861,7 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
     asyncio.run(scenario())
 
 
-def test_token_discussion_digest_worker_skips_unsupported_5m_without_digest_write():
+def test_token_discussion_digest_worker_does_not_claim_unsupported_5m_by_default():
     async def scenario():
         repo = FakeDigestRepository(
             targets=[
@@ -800,14 +885,15 @@ def test_token_discussion_digest_worker_skips_unsupported_5m_without_digest_writ
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.processed == 1
-        assert result.failed == 0
-        assert result.notes["deferred_epoch_policy"] == 1
-        assert result.notes["refresh_reasons"]["unsupported_window"] == 1
-        assert repo.replaced_digests == []
-        assert repo.digest_scans == [
-            {"admission_ids": ["admission-5m"], "next_due_at_ms": 86_410_000, "now_ms": 10_000}
+        assert result.skipped == 1
+        assert result.notes == {"reason": "no_due_digest_targets", "claimed": 0}
+        assert repo.due_digest_target_calls == [
+            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
         ]
+        assert result.processed == 0
+        assert result.failed == 0
+        assert repo.replaced_digests == []
+        assert repo.digest_scans == []
 
     asyncio.run(scenario())
 
@@ -931,9 +1017,9 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
-                "source_event_ids": ["event-1", "event-2", "event-3"],
+                "source_event_ids": [f"event-{index}" for index in range(1, 8)],
                 "source_fingerprint": "source-current",
                 "mentions": [
                     {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
@@ -941,9 +1027,9 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
                     {"event_id": "event-3", "author_handle": "c", "status": "queued"},
                 ],
                 "semantic_rows": [{"event_id": "event-1", "author_handle": "a", "status": "labeled"}],
-                "source_event_count": 3,
+                "source_event_count": 7,
                 "semantic_row_count": 1,
-                "missing_semantic_count": 2,
+                "missing_semantic_count": 6,
                 "pending_semantic_count": 0,
                 "retryable_semantic_count": 0,
                 "terminal_unavailable_count": 0,
@@ -968,8 +1054,8 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
         assert digest["status"] == "pending"
         assert digest["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
         assert digest["epoch_policy_version"] == "token-narrative-epoch-v1"
-        assert digest["source_event_ids"] == ["event-1", "event-2", "event-3"]
-        assert digest["refresh_reason"] == "semantic_pending"
+        assert digest["source_event_ids"] == [f"event-{index}" for index in range(1, 8)]
+        assert digest["refresh_reason"] == "initial_ready"
 
     asyncio.run(scenario())
 
@@ -980,7 +1066,7 @@ def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {"event_id": "event-1", "author_handle": "a", "status": "semantic_unavailable"},
@@ -1020,7 +1106,91 @@ def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
         assert result.notes["refresh_reasons"]["semantic_provider_unavailable"] == 1
         assert repo.replaced_digests[0]["status"] == "semantic_unavailable"
         assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_provider_unavailable"}]
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 7_210_000, "now_ms": 10_000}]
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 910_000, "now_ms": 10_000}]
+
+    asyncio.run(scenario())
+
+
+def test_token_discussion_digest_worker_refreshes_no_ready_digest_with_bounded_pending_tail():
+    async def scenario():
+        pending_tail = 2
+        repo = FakeDigestRepository(
+            context={
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "1h",
+                "scope": "matched",
+                "mentions": [
+                    {
+                        "event_id": "event-1",
+                        "semantic_id": "semantic-1",
+                        "author_handle": "a",
+                        "status": "labeled",
+                        "evidence_refs_json": [{"ref_id": "event:event-1", "kind": "event", "source_table": "events"}],
+                    },
+                    {
+                        "event_id": "event-2",
+                        "semantic_id": "semantic-2",
+                        "author_handle": "b",
+                        "status": "labeled",
+                        "evidence_refs_json": [{"ref_id": "event:event-2", "kind": "event", "source_table": "events"}],
+                    },
+                    {
+                        "event_id": "event-3",
+                        "semantic_id": "semantic-3",
+                        "author_handle": "c",
+                        "status": "labeled",
+                        "evidence_refs_json": [{"ref_id": "event:event-3", "kind": "event", "source_table": "events"}],
+                    },
+                    {"event_id": "event-4", "author_handle": "d", "status": "queued"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                ],
+                "semantic_rows": [
+                    {"event_id": "event-1", "semantic_id": "semantic-1", "author_handle": "a", "status": "labeled"},
+                    {"event_id": "event-2", "semantic_id": "semantic-2", "author_handle": "b", "status": "labeled"},
+                    {"event_id": "event-3", "semantic_id": "semantic-3", "author_handle": "c", "status": "labeled"},
+                    {"event_id": "event-4", "author_handle": "d", "status": "queued"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                ],
+                "source_event_ids": ["event-1", "event-2", "event-3", "event-4", "event-5"],
+                "source_fingerprint": "source-current-with-tail",
+                "source_window_start_ms": 1_000,
+                "source_window_end_ms": 9_000,
+                "source_event_count": 5,
+                "semantic_row_count": 5,
+                "missing_semantic_count": 0,
+                "pending_semantic_count": pending_tail,
+                "retryable_semantic_count": 0,
+                "terminal_unavailable_count": 0,
+                "labeled_event_count": 3,
+                "independent_author_count": 5,
+                "allowed_refs": [
+                    {"ref_id": "event:event-1", "kind": "event", "source_table": "events"},
+                    {"ref_id": "event:event-2", "kind": "event", "source_table": "events"},
+                    {"ref_id": "event:event-3", "kind": "event", "source_table": "events"},
+                    {"ref_id": "semantic:semantic-1", "kind": "semantic", "source_table": "token_mention_semantics"},
+                    {"ref_id": "semantic:semantic-2", "kind": "semantic", "source_table": "token_mention_semantics"},
+                    {"ref_id": "semantic:semantic-3", "kind": "semantic", "source_table": "token_mention_semantics"},
+                ],
+            },
+            last_ready_digest=None,
+        )
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(max_pending_semantic_rows_for_digest=pending_tail),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=StaleButValidDigestProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["ready"] == 1
+        assert result.notes["refresh_reasons"]["thresholds_met_partial_semantic_tail"] == 1
+        assert repo.replaced_digests[0]["status"] == "ready"
+        assert repo.replaced_digests[0]["source_fingerprint"] == "source-current-with-tail"
+        assert repo.replaced_digests[0]["refresh_reason"] == "thresholds_met_partial_semantic_tail"
 
     asyncio.run(scenario())
 
@@ -1031,7 +1201,7 @@ def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {
@@ -1096,8 +1266,8 @@ def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
         assert repo.replaced_digests[0]["source_event_ids"] == ["event-1", "event-2", "event-3"]
         assert repo.replaced_digests[0]["source_window_start_ms"] == 1_000
         assert repo.replaced_digests[0]["source_window_end_ms"] == 9_000
-        assert repo.replaced_digests[0]["display_current_until_ms"] == 7_210_000
-        assert repo.replaced_digests[0]["refresh_reason"] == "initial_ready"
+        assert repo.replaced_digests[0]["display_current_until_ms"] == 910_000
+        assert repo.replaced_digests[0]["refresh_reason"] == "thresholds_met"
         assert repo.recorded_runs[0]["status"] == "done"
 
     asyncio.run(scenario())
@@ -1109,7 +1279,7 @@ def test_token_discussion_digest_worker_repairs_sparse_provider_digest_as_ready(
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {
@@ -1181,7 +1351,7 @@ def fake_settings(**overrides):
         timeout_seconds=0.0,
         statement_timeout_seconds=9.0,
         batch_size=10,
-        windows=("24h",),
+        windows=("1h",),
         scopes=("matched",),
         admission_limit=10,
         source_limit=100,
@@ -1202,7 +1372,7 @@ def fake_admission_settings(**overrides):
         interval_seconds=1.0,
         timeout_seconds=0.0,
         statement_timeout_seconds=9.0,
-        windows=("24h",),
+        windows=("1h",),
         scopes=("matched",),
         admission_limit=10,
         source_limit=100,
@@ -1227,6 +1397,8 @@ def fake_digest_settings(**overrides):
         max_llm_calls_per_cycle=3,
         max_llm_failures_per_cycle=2,
         provider_failure_backoff_seconds=600,
+        windows=("1h",),
+        scopes=("matched",),
     )
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -1272,6 +1444,8 @@ class FakeNarrativeRepository:
         self.enqueued_source_event_ids = []
         self.semantic_scans = []
         self.due_mentions_calls = []
+        self.due_admissions_for_semantics_calls = []
+        self.pending_semantics_count_calls = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
         return self.radar_rows[:limit]
@@ -1301,9 +1475,16 @@ class FakeNarrativeRepository:
         self.suppressed_frontiers.append(set(active_target_keys))
         return {"suppressed": 0}
 
-    def due_admissions_for_semantics(self, *, now_ms, limit):
+    def due_admissions_for_semantics(self, *, now_ms, limit, windows, scopes):
+        self.due_admissions_for_semantics_calls.append(
+            {"now_ms": now_ms, "limit": limit, "windows": tuple(windows), "scopes": tuple(scopes)}
+        )
         if self.due_admissions is not None:
-            return self.due_admissions[:limit]
+            return [
+                admission
+                for admission in self.due_admissions
+                if admission.get("window") in windows and admission.get("scope") in scopes
+            ][:limit]
         if not self.upserted_admissions:
             return []
         first = self.upserted_admissions[0]
@@ -1327,7 +1508,19 @@ class FakeNarrativeRepository:
             if str(row.get("event_id")) not in self.existing_semantic_event_ids
         ]
 
-    def pending_mention_semantics_count(self, *, target_type, target_id, schema_version, model_version=None):
+    def pending_mention_semantics_count(
+        self, *, target_type, target_id, schema_version, model_version=None, windows=("1h",), scopes=("all",)
+    ):
+        self.pending_semantics_count_calls.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "schema_version": schema_version,
+                "model_version": model_version,
+                "windows": tuple(windows),
+                "scopes": tuple(scopes),
+            }
+        )
         return int(self.pending_semantics.get((target_type, target_id), 0))
 
     def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms):
@@ -1348,8 +1541,16 @@ class FakeNarrativeRepository:
         )
         return {"updated": len(admission_ids)}
 
-    def due_mentions_for_labeling(self, *, now_ms, limit, max_per_target=None):
-        self.due_mentions_calls.append({"now_ms": now_ms, "limit": limit, "max_per_target": max_per_target})
+    def due_mentions_for_labeling(self, *, now_ms, limit, windows, scopes, max_per_target=None):
+        self.due_mentions_calls.append(
+            {
+                "now_ms": now_ms,
+                "limit": limit,
+                "max_per_target": max_per_target,
+                "windows": tuple(windows),
+                "scopes": tuple(scopes),
+            }
+        )
         if self.due_mentions is not None:
             return self.due_mentions[:limit]
         return [
@@ -1389,16 +1590,24 @@ class FakeDigestRepository:
         self.replaced_digests = []
         self.digest_scans = []
         self.digest_context_calls = []
+        self.due_digest_target_calls = []
 
-    def due_digest_targets(self, *, now_ms, limit):
+    def due_digest_targets(self, *, now_ms, limit, windows=("1h",), scopes=("all",)):
+        self.due_digest_target_calls.append(
+            {"now_ms": now_ms, "limit": limit, "windows": tuple(windows), "scopes": tuple(scopes)}
+        )
         if self.targets is not None:
-            return self.targets[:limit]
+            return [
+                target
+                for target in self.targets
+                if target.get("window") in windows and target.get("scope") in scopes
+            ][:limit]
         return [
             {
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             }
         ][:limit]

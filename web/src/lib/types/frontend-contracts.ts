@@ -699,6 +699,10 @@ export type TokenDiscussionDigest = {
   schema_version?: string | null;
   status: NarrativeStatus;
   currentness: NarrativeCurrentness;
+  analysis_window?: string | null;
+  source_window?: string | null;
+  surface_window?: string | null;
+  reuse_reason?: string | null;
   generated_at_ms?: number | null;
   computed_at_ms?: number | null;
   stale?: boolean | null;

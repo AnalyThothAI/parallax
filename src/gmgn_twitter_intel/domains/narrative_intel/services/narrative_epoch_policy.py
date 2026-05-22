@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 EPOCH_POLICY_VERSION = "token-narrative-epoch-v1"
-DIGEST_WINDOWS = frozenset({"1h", "4h", "24h"})
+DIGEST_WINDOWS = frozenset({"1h"})
 
 EpochDecisionReason = Literal[
     "unsupported_window",
@@ -38,8 +38,6 @@ class NarrativeEpochThreshold:
 
 DEFAULT_THRESHOLDS = {
     "1h": NarrativeEpochThreshold(min_new_sources=3, min_new_authors=2, max_epoch_age_ms=15 * 60 * 1000),
-    "4h": NarrativeEpochThreshold(min_new_sources=5, min_new_authors=2, max_epoch_age_ms=30 * 60 * 1000),
-    "24h": NarrativeEpochThreshold(min_new_sources=8, min_new_authors=3, max_epoch_age_ms=2 * 60 * 60 * 1000),
 }
 
 
@@ -79,11 +77,6 @@ class NarrativeEpochPolicy:
         next_due = int(now_ms) + threshold.max_epoch_age_ms
         source_count = _int_value(semantic_coverage.get("source_event_count"), admission.get("source_event_count"))
         authors = _author_count(admission)
-        pending = (
-            _int_value(semantic_coverage.get("missing_semantic_count"))
-            + _int_value(semantic_coverage.get("pending_semantic_count"))
-            + _int_value(semantic_coverage.get("retryable_semantic_count"))
-        )
 
         if last_ready_digest is None:
             if source_count <= 0 or authors <= 0:
@@ -92,13 +85,6 @@ class NarrativeEpochPolicy:
                     should_refresh=False,
                     should_write_status_digest=True,
                     next_due_at_ms=next_due,
-                )
-            if pending > 0:
-                return NarrativeEpochDecision(
-                    reason="semantic_pending",
-                    should_refresh=False,
-                    should_write_status_digest=True,
-                    next_due_at_ms=min(next_due, int(now_ms) + 60_000),
                 )
             return NarrativeEpochDecision(
                 reason="no_ready_digest",

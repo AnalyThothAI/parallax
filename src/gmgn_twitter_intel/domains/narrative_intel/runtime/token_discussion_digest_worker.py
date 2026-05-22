@@ -46,10 +46,14 @@ class TokenDiscussionDigestWorker(WorkerBase):
     ) -> None:
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.provider = provider
+        max_pending_semantic_rows_for_digest = getattr(settings, "max_pending_semantic_rows_for_digest", 5)
+        if max_pending_semantic_rows_for_digest is None:
+            max_pending_semantic_rows_for_digest = 5
         self.service = DiscussionDigestService(
             min_source_mentions=int(getattr(settings, "min_source_mentions", 3) or 3),
             min_independent_authors=int(getattr(settings, "min_independent_authors", 2) or 2),
             min_semantic_coverage=float(getattr(settings, "min_semantic_coverage", 0.35) or 0.35),
+            max_pending_semantic_rows_for_digest=int(max_pending_semantic_rows_for_digest),
             max_mentions_per_digest=int(
                 getattr(settings, "max_mentions_per_digest", DEFAULT_MAX_MENTIONS_PER_DIGEST)
                 or DEFAULT_MAX_MENTIONS_PER_DIGEST
@@ -134,8 +138,8 @@ class TokenDiscussionDigestWorker(WorkerBase):
 
             if epoch_decision.reason == "no_ready_digest":
                 status_decision = self.service.refresh_decision(context)
+                refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
                 if not status_decision.should_refresh:
-                    refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
                     digest = self.service.build_status_digest(
                         target_type=str(target["target_type"]),
                         target_id=str(target["target_id"]),
@@ -156,10 +160,15 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         self._mark_digest_scanned_sync,
                         target=target,
                         now_ms=resolved_now_ms,
-                        next_due_at_ms=epoch_decision.next_due_at_ms,
+                        next_due_at_ms=_next_due_after_no_ready_status_block(
+                            reason=status_decision.reason,
+                            epoch_next_due_at_ms=epoch_decision.next_due_at_ms,
+                            now_ms=resolved_now_ms,
+                        ),
                     )
                     counts[status_decision.status_if_not_refresh] += 1
                     continue
+                sealed_context = {**sealed_context, "refresh_reason": status_decision.reason}
 
             if llm_calls >= self._max_llm_calls_per_cycle():
                 await asyncio.to_thread(
@@ -391,7 +400,14 @@ class TokenDiscussionDigestWorker(WorkerBase):
 
     def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
-            return list(repos.narratives.due_digest_targets(now_ms=now_ms, limit=limit))
+            return list(
+                repos.narratives.due_digest_targets(
+                    now_ms=now_ms,
+                    limit=limit,
+                    windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
+                )
+            )
 
     def _digest_context_sync(self, *, target: dict[str, Any]) -> dict[str, Any]:
         with self._repository_session() as repos:
@@ -593,6 +609,20 @@ def _int_or_none(value: Any) -> int | None:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _next_due_after_no_ready_status_block(*, reason: str, epoch_next_due_at_ms: int, now_ms: int) -> int:
+    if reason == "semantic_labeling_pending":
+        return min(int(epoch_next_due_at_ms), int(now_ms) + 60_000)
+    return int(epoch_next_due_at_ms)
+
+
+def _settings_windows(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
+
+
+def _settings_scopes(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "scopes", ("all",)) or ("all",))
 
 
 def _is_agent_no_start_backpressure(exc: Exception) -> bool:

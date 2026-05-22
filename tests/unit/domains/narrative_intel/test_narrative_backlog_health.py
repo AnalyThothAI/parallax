@@ -4,7 +4,15 @@ from gmgn_twitter_intel.domains.narrative_intel.queries.narrative_backlog_health
 
 
 def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests():
-    query = NarrativeBacklogHealthQuery(FakeConn())
+    query = NarrativeBacklogHealthQuery(
+        FakeConn(),
+        realtime_windows=("1h",),
+        realtime_scopes=("all",),
+        semantics_rows_per_cycle=4,
+        semantics_interval_seconds=60,
+        digest_calls_per_cycle=2,
+        digest_interval_seconds=120,
+    )
 
     health = query.health(now_ms=10_000, since_hours=4, schema_version="narrative_intel_v1")
 
@@ -22,7 +30,11 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
         "suppressed_current_digest_count": 1,
         "stale_fingerprint_current_digest_count": 3,
         "oldest_due_age_ms": 4_000,
+        "estimated_semantic_drain_seconds": 180,
     }
+    assert health["realtime_windows"] == ["1h"]
+    assert health["realtime_scopes"] == ["all"]
+    assert health["estimated_digest_drain_seconds"] == 480
     assert health["recent_runs"]["mention_semantics"] == {"success": 4, "failure": 2, "timeout": 1}
     assert health["recent_runs"]["discussion_digest"] == {"success": 1, "failure": 1, "timeout": 1}
     assert health["admissions"] == {
@@ -45,25 +57,51 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
         "last_ready_p95_age_ms": 600_000,
         "delta_source_rows": 9,
         "delta_independent_authors": 3,
-        "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
+        "digest_refresh_due_by_window": {"1h": 2},
         "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
     }
     semantic_sql = next(statement for statement in query.conn.statements if "current_sources" in statement)
+    assert '"window" = ANY' in semantic_sql
+    assert "scope = ANY" in semantic_sql
     assert "jsonb_array_elements_text" in semantic_sql
     assert "EXISTS" in semantic_sql
     assert "text_fingerprint =" not in semantic_sql
     epoch_sql = next(statement for statement in query.conn.statements if "epoch_policy_version" in statement)
     assert "latest_ready" in epoch_sql
     assert "display_current_until_ms" in epoch_sql
+    assert "scope = ANY" in epoch_sql
+    assert query.conn.params_by_marker["admissions"] == ("narrative_intel_v1", ["1h"], ["all"])
+    assert query.conn.params_by_marker["semantic"] == (
+        "narrative_intel_v1",
+        ["1h"],
+        ["all"],
+        "narrative_intel_v1",
+        "narrative_intel_v1",
+        ["1h"],
+        ["all"],
+        10_000,
+        10_000,
+    )
+    assert query.conn.params_by_marker["runs"] == ("narrative_intel_v1", 0, ["1h"], ["all"])
+    assert query.conn.params_by_marker["pending_digest"] == ("narrative_intel_v1", ["1h"], ["all"])
+    assert query.conn.params_by_marker["epoch"][:5] == (
+        "narrative_intel_v1",
+        ["1h"],
+        ["all"],
+        "narrative_intel_v1",
+        ["1h"],
+    )
 
 
 class FakeConn:
     def __init__(self):
         self.statements = []
+        self.params_by_marker = {}
 
     def execute(self, sql, params=()):
         self.statements.append(sql)
         if "current_sources" in sql:
+            self.params_by_marker["semantic"] = params
             return FakeCursor(
                 [
                     {
@@ -82,6 +120,7 @@ class FakeConn:
                 ]
             )
         if "epoch_policy_version" in sql:
+            self.params_by_marker["epoch"] = params
             return FakeCursor(
                 [
                     {
@@ -95,12 +134,13 @@ class FakeConn:
                         "last_ready_p95_age_ms": 600_000,
                         "delta_source_rows": 9,
                         "delta_independent_authors": 3,
-                        "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
+                        "digest_refresh_due_by_window": {"1h": 2},
                         "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
                     }
                 ]
             )
         if "FROM narrative_admissions" in sql:
+            self.params_by_marker["admissions"] = params
             return FakeCursor(
                 [
                     {
@@ -112,6 +152,9 @@ class FakeConn:
                 ]
             )
         if "FROM narrative_model_runs" in sql:
+            assert 'stage <> \'discussion_digest\' OR ("window" = ANY(%s) AND scope = ANY(%s))' in sql
+            assert params == ("narrative_intel_v1", 0, ["1h"], ["all"])
+            self.params_by_marker["runs"] = params
             return FakeCursor(
                 [
                     {"stage": "mention_semantics", "success": 4, "failure": 2, "timeout": 1},
@@ -119,10 +162,13 @@ class FakeConn:
                 ]
             )
         if "GROUP BY status" in sql:
+            self.params_by_marker["status_counts"] = params
             return FakeCursor([{"status": "pending", "count": 7}, {"status": "ready", "count": 3}])
         if "jsonb_array_elements" in sql:
+            self.params_by_marker["reason_counts"] = params
             return FakeCursor([{"reason": "semantic_labeling_pending", "count": 7}])
         if "pending_digest_count" in sql:
+            self.params_by_marker["pending_digest"] = params
             return FakeCursor([{"pending_digest_count": 7}])
         raise AssertionError(f"unexpected SQL: {sql}")
 

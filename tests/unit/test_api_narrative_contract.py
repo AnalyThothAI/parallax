@@ -139,7 +139,13 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
             "targets": [
                 {
                     "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},
-                    "discussion_digest": _unsupported_digest(),
+                    "discussion_digest": {
+                        **_unsupported_digest(),
+                        "analysis_window": "1h",
+                        "source_window": "1h",
+                        "surface_window": "5m",
+                        "reuse_reason": "no_reusable_1h_digest",
+                    },
                 }
             ],
             "attention": [],
@@ -150,6 +156,10 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
     assert case.narrative_delta.delta_source_event_count == 3
     assert radar.targets[0].discussion_digest is not None
     assert radar.targets[0].discussion_digest.currentness.display_status == "unsupported_window"
+    assert radar.targets[0].discussion_digest.analysis_window == "1h"
+    assert radar.targets[0].discussion_digest.source_window == "1h"
+    assert radar.targets[0].discussion_digest.surface_window == "5m"
+    assert radar.targets[0].discussion_digest.reuse_reason == "no_reusable_1h_digest"
 
 
 def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
@@ -160,7 +170,7 @@ def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
     monkeypatch.setattr(
         routes_status,
         "NarrativeBacklogHealthQuery",
-        lambda conn: _NarrativeBacklogHealthQuery(conn=conn, calls=calls),
+        lambda conn, **kwargs: _NarrativeBacklogHealthQuery(conn=conn, calls=calls, kwargs=kwargs),
         raising=False,
     )
 
@@ -172,7 +182,21 @@ def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
     assert body["data"]["semantic_backlog"]["missing_semantic_rows"] == 4
     assert body["data"]["semantic_backlog"]["current_source_rows"] == 12
     assert body["data"]["pending_digest_count"] == 2
-    assert calls == [{"conn": runtime.conn, "now_ms": NOW_MS, "since_hours": 4}]
+    assert calls == [
+        {
+            "conn": runtime.conn,
+            "now_ms": NOW_MS,
+            "since_hours": 4,
+            "kwargs": {
+                "realtime_windows": ("1h",),
+                "realtime_scopes": ("all",),
+                "semantics_rows_per_cycle": 10,
+                "semantics_interval_seconds": 60,
+                "digest_calls_per_cycle": 3,
+                "digest_interval_seconds": 120,
+            },
+        }
+    ]
 
 
 def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
@@ -206,9 +230,11 @@ def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
                 "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
                 "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
             },
+            "realtime_scopes": ["all"],
         }
     )
 
+    assert data.realtime_scopes == ["all"]
     assert data.semantic_backlog.total_pending == 9
     assert data.semantic_backlog.missing_semantic_rows == 4
     assert data.semantic_backlog.current_source_rows == 12
@@ -307,9 +333,24 @@ def _runtime() -> SimpleNamespace:
         token_targets=object(),
         narratives=object(),
         pulse_read=object(),
+        cex_detail_snapshots=object(),
     )
     return SimpleNamespace(
         conn=conn,
+        settings=SimpleNamespace(
+            workers=SimpleNamespace(
+                mention_semantics=SimpleNamespace(
+                    batch_size=50,
+                    provider_batch_size=10,
+                    interval_seconds=60,
+                ),
+                token_discussion_digest=SimpleNamespace(
+                    windows=("1h",),
+                    max_llm_calls_per_cycle=3,
+                    interval_seconds=120,
+                ),
+            )
+        ),
         repositories=lambda: nullcontext(repos),
         providers=SimpleNamespace(asset_market=SimpleNamespace(cex_market=None, dex_candle_market=None)),
         workers={},
@@ -317,12 +358,13 @@ def _runtime() -> SimpleNamespace:
 
 
 class _NarrativeBacklogHealthQuery:
-    def __init__(self, *, conn: Any, calls: list[dict[str, Any]]) -> None:
+    def __init__(self, *, conn: Any, calls: list[dict[str, Any]], kwargs: dict[str, Any]) -> None:
         self.conn = conn
         self.calls = calls
+        self.kwargs = kwargs
 
     def health(self, *, now_ms: int, since_hours: int) -> dict[str, Any]:
-        self.calls.append({"conn": self.conn, "now_ms": now_ms, "since_hours": since_hours})
+        self.calls.append({"conn": self.conn, "now_ms": now_ms, "since_hours": since_hours, "kwargs": self.kwargs})
         return {
             "schema_version": "narrative_intel_v1",
             "now_ms": now_ms,

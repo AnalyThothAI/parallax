@@ -12,8 +12,13 @@ def test_rebuild_narrative_intel_reports_cleanup_and_final_health(monkeypatch) -
     settings = SimpleNamespace(
         workers=SimpleNamespace(
             narrative_admission=SimpleNamespace(),
-            mention_semantics=SimpleNamespace(),
-            token_discussion_digest=SimpleNamespace(),
+            mention_semantics=SimpleNamespace(batch_size=50, provider_batch_size=10, interval_seconds=60),
+            token_discussion_digest=SimpleNamespace(
+                windows=("1h",),
+                scopes=("all",),
+                max_llm_calls_per_cycle=3,
+                interval_seconds=120,
+            ),
         )
     )
     monkeypatch.setattr(ops.DBPoolBundle, "create", lambda *_args, **_kwargs: db)
@@ -74,6 +79,8 @@ def test_cleanup_narrative_backlog_prefers_hard_cut_repository_method() -> None:
             "window": "24h",
             "scope": "matched",
             "now_ms": 100,
+            "realtime_windows": ("1h",),
+            "realtime_scopes": ("all",),
         }
     ]
 
@@ -141,12 +148,14 @@ class _FakeNarratives:
 
 
 class _FakeHealthQuery:
-    def __init__(self, _conn: object) -> None:
-        pass
+    def __init__(self, _conn: object, **_kwargs: Any) -> None:
+        self.kwargs = _kwargs
 
     def health(self, *, now_ms: int, since_hours: int) -> dict[str, Any]:
         return {
             "now_ms": now_ms,
             "since_hours": since_hours,
             "semantic_backlog": {"missing_semantic_rows": 4},
+            "realtime_windows": list(self.kwargs.get("realtime_windows", ())),
+            "realtime_scopes": list(self.kwargs.get("realtime_scopes", ())),
         }

@@ -1,8 +1,8 @@
-# Token Radar Narrative 1h Throughput Root Fix Implementation Plan
+# Token Radar Narrative 1h Root Fix Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Hard-cut Narrative Intelligence to one realtime `1h` compute lane, let non-`1h` Token Radar surfaces reuse only explicit same-target `1h` overlays, and prove the lane drains under production-shaped throughput.
+**Goal:** Hard-cut Narrative Intelligence to one realtime `1h/all` compute lane, let non-`1h` Token Radar surfaces reuse only explicit same-target `1h` overlays, and verify the live lane through focused tests plus realtime data-flow checks.
 
 **Architecture:** Token Radar remains the scanner for `5m/1h/4h/24h`; Narrative becomes one bounded CQRS read-model lane keyed by `analysis_window = "1h"`. Runtime workers write only true `1h` admissions, semantics, and digests; API hydration may fan out a ready same-target `1h` digest to `5m/4h/24h` rows with explicit overlay metadata. No old-window compatibility path, no hidden repository fallback, and no HTTP-time LLM calls.
 
@@ -18,13 +18,14 @@
 
 ## Hard-Cut Rules
 
-- Runtime Narrative windows are exactly `("1h",)`.
+- Runtime Narrative lanes are exactly `("1h", "all")`.
 - Operator configs that still set `narrative_admission.windows` or `token_discussion_digest.windows` to `5m`, `4h`, or `24h` fail validation.
+- Operator configs that set `narrative_admission.scopes` or `token_discussion_digest.scopes` to anything except `all` fail validation.
 - `token_radar_projection.windows` remains `("5m", "1h", "4h", "24h")`.
 - `NarrativeRepository.current_narrative_snapshots_for_targets()` keeps exact `(target, window, scope)` semantics.
 - Token Radar hydration owns the only cross-window read-model fanout: non-`1h` surfaces may request `1h` snapshots and decorate them as overlays.
 - Non-`1h` surfaces without a ready compatible `1h` digest return `reason = "no_reusable_1h_digest"` and never surface `semantic_labeling_pending`.
-- Ops cleanup suppresses non-`1h` current admissions and stales non-`1h` current digests; old state is not kept live.
+- Ops cleanup suppresses non-`1h/all` current admissions and stales non-`1h/all` current digests; old state is not kept live.
 
 ## Pre-Flight
 
@@ -1429,231 +1430,7 @@
   git commit -m "fix: label reused 1h narrative overlays"
   ```
 
-## Task 7: Production-Shaped Throughput Test
-
-**Files:**
-- Add: `tests/integration/test_narrative_1h_throughput.py`
-- Modify: `tests/integration/test_narrative_repository.py` only if shared fixture helpers already live there and should be reused.
-
-- [ ] **Step 1: Write failing integration test**
-
-  Create `tests/integration/test_narrative_1h_throughput.py` with one deterministic test:
-
-  ```python
-  import asyncio
-  from types import SimpleNamespace
-
-  from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
-  from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
-  from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import TokenDiscussionDigestWorker
-
-
-  def test_1h_narrative_lane_drains_seeded_backlog(postgres_repositories, fake_narrative_provider):
-      repos = postgres_repositories
-      now_ms = 1_800_000
-      seed_current_1h_radar_frontier(repos, now_ms=now_ms, target_count=3, source_rows_per_target=8)
-      seed_non_1h_noise(repos, now_ms=now_ms, target_count=3, source_rows_per_target=20)
-
-      db = WorkerDBAdapter(repos)
-      settings = SimpleNamespace(
-          narrative_admission=SimpleNamespace(
-              enabled=True,
-              interval_seconds=60.0,
-              statement_timeout_seconds=30.0,
-              windows=("1h",),
-              scopes=("all",),
-              admission_limit=3,
-              source_limit=100,
-              hot_rank_limit=50,
-              min_rank_score=30,
-          ),
-          mention_semantics=SimpleNamespace(
-              enabled=True,
-              interval_seconds=60.0,
-              statement_timeout_seconds=30.0,
-              batch_size=24,
-              provider_batch_size=24,
-              max_attempts=3,
-              windows=("1h",),
-              scopes=("all",),
-              admission_limit=10,
-              source_limit=100,
-              max_semantic_rows_enqueued_per_cycle=24,
-              max_semantic_rows_enqueued_per_admission=8,
-              max_semantics_claimed_per_target_per_cycle=8,
-              partial_enqueue_retry_seconds=1,
-              max_pending_semantics_per_target=100,
-          ),
-          token_discussion_digest=SimpleNamespace(
-              enabled=True,
-              interval_seconds=120.0,
-              statement_timeout_seconds=30.0,
-              batch_size=10,
-              min_source_mentions=3,
-              min_independent_authors=2,
-              min_semantic_coverage=0.35,
-              max_pending_semantic_rows_for_digest=0,
-              max_mentions_per_digest=8,
-              max_llm_calls_per_cycle=10,
-              max_llm_failures_per_cycle=1,
-              provider_failure_backoff_seconds=60,
-              windows=("1h",),
-              scopes=("all",),
-              stance_mix_change_threshold=0.20,
-              attention_mix_change_threshold=0.20,
-              price_move_refresh_pct=12.0,
-          ),
-      )
-
-      admission = NarrativeAdmissionWorker(
-          name="narrative_admission",
-          settings=settings.narrative_admission,
-          db=db,
-          telemetry=SimpleNamespace(),
-      )
-      semantics = MentionSemanticsWorker(
-          name="mention_semantics",
-          settings=settings.mention_semantics,
-          db=db,
-          telemetry=SimpleNamespace(),
-          provider=fake_narrative_provider,
-      )
-      digest = TokenDiscussionDigestWorker(
-          name="token_discussion_digest",
-          settings=settings.token_discussion_digest,
-          db=db,
-          telemetry=SimpleNamespace(),
-          provider=fake_narrative_provider,
-      )
-
-      asyncio.run(admission.run_once(now_ms=now_ms))
-      for cycle in range(4):
-          asyncio.run(semantics.run_once(now_ms=now_ms + cycle + 1))
-          asyncio.run(digest.run_once(now_ms=now_ms + cycle + 1))
-
-      coverage = current_1h_semantic_coverage(repos)
-      ready_count = current_1h_ready_digest_count(repos)
-      non_1h_admissions = current_non_1h_admission_count(repos)
-
-      assert coverage["missing_semantic_rows"] == 0
-      assert ready_count == 3
-      assert non_1h_admissions == 0
-  ```
-
-  Define helpers in the same file. Use existing integration factory style from `tests/integration/test_narrative_repository.py`; do not add a new dependency.
-
-- [ ] **Step 2: Run test to verify it fails**
-
-  ```bash
-  uv run pytest tests/integration/test_narrative_1h_throughput.py -q
-  ```
-  Expected: FAIL until the worker, repository, and fake-provider fixtures are wired.
-
-- [ ] **Step 3: Implement minimal test helpers**
-
-  Add a `WorkerDBAdapter` in the test file:
-
-  ```python
-  class WorkerDBAdapter:
-      def __init__(self, repos):
-          self.repos = repos
-
-      def worker_session(self, name, statement_timeout_seconds=None):
-          return self.repos
-  ```
-
-  If the repository fixture is a context manager, wrap it with `contextlib.contextmanager`:
-
-  ```python
-  from contextlib import contextmanager
-
-
-  class WorkerDBAdapter:
-      def __init__(self, repos):
-          self.repos = repos
-
-      @contextmanager
-      def worker_session(self, name, statement_timeout_seconds=None):
-          yield self.repos
-  ```
-
-  Implement the fake provider with deterministic labels and digest:
-
-  ```python
-  class ThroughputNarrativeProvider:
-      provider = "fake"
-      model = "fake:narrative-throughput"
-      artifact_version_hash = "fake"
-
-      async def label_mentions(self, *, run_id, request):
-          labels = []
-          for mention in request.mentions:
-              labels.append(
-                  {
-                      "event_id": mention["event_id"],
-                      "target_type": mention["target_type"],
-                      "target_id": mention["target_id"],
-                      "trade_stance": "bullish",
-                      "attention_valence": "constructive",
-                      "narrative_cluster_key": "test-cluster",
-                      "claim_type": "price-action",
-                      "evidence_type": "opinion",
-                      "semantic_confidence": 0.9,
-                      "evidence_refs": [{"ref_id": f"event:{mention['event_id']}", "kind": "event"}],
-                  }
-              )
-          return MentionSemanticsBatchResult(
-              labels=labels,
-              failures=[],
-              schema_version="narrative_intel_v1",
-              prompt_version="mention_semantics_v1",
-              raw_response={},
-              agent_run_audit={},
-          )
-
-      async def summarize_discussion(self, *, run_id, request):
-          return DiscussionDigestResult(
-              digest=TokenDiscussionDigest(
-                  target_type=request.target_type,
-                  target_id=request.target_id,
-                  window=request.window,
-                  scope=request.scope,
-                  status="ready",
-                  dominant_narratives=[
-                      NarrativeCluster(
-                          cluster_key="test-cluster",
-                          label_zh="测试叙事",
-                          summary_zh="测试叙事已经生成。",
-                          stance_mix={"bullish": 1.0},
-                          attention_valence_mix={"constructive": 1.0},
-                          evidence_refs=[{"ref_id": request.allowed_refs[0].ref_id, "kind": request.allowed_refs[0].kind}],
-                      )
-                  ],
-                  evidence_refs=[{"ref_id": request.allowed_refs[0].ref_id, "kind": request.allowed_refs[0].kind}],
-              ),
-              prompt_version="discussion_digest_v1",
-              raw_response={},
-              agent_run_audit={},
-          )
-  ```
-
-  Import exact types from existing narrative type modules at the top of the test file.
-
-- [ ] **Step 4: Run throughput test**
-
-  ```bash
-  uv run pytest tests/integration/test_narrative_1h_throughput.py -q
-  ```
-  Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-  ```bash
-  git add tests/integration/test_narrative_1h_throughput.py tests/integration/test_narrative_repository.py
-  git commit -m "test: prove 1h narrative lane drains"
-  ```
-
-## Task 8: Full Verification and Operator Handoff
+## Task 7: Operator Handoff
 
 **Files:**
 - Modify: `docs/superpowers/plans/active/2026-05-22-token-radar-narrative-1h-throughput-root-fix-plan-cn.md`
@@ -1661,10 +1438,11 @@
 - Modify: `docs/WORKERS.md` only if the worker inventory still says narrative admission tracks all Radar windows.
 - Modify: `docs/TECH_DEBT.md` only for non-trivial follow-ups discovered during verification.
 
-- [ ] **Step 1: Run backend focused suite**
+- [ ] **Step 1: Run backend focused unit/contract suite**
 
   ```bash
-  uv run pytest tests/unit/test_worker_settings.py tests/unit/domains/narrative_intel tests/unit/test_api_narrative_contract.py tests/integration/test_narrative_repository.py tests/integration/test_narrative_1h_throughput.py -q
+  uv run pytest tests/unit/domains/narrative_intel tests/unit/test_api_narrative_contract.py tests/unit/test_cli_ops_contract.py -q
+  uv run pytest tests/unit/test_worker_settings.py::test_narrative_runtime_defaults_are_1h_only tests/unit/test_worker_settings.py::test_narrative_runtime_rejects_non_1h_windows tests/unit/test_worker_settings.py::test_narrative_realtime_workers_reject_matched_scope -q
   ```
   Expected: PASS.
 
@@ -1675,15 +1453,12 @@
   ```
   Expected: PASS.
 
-- [ ] **Step 3: Run project gates**
+- [ ] **Step 3: Build image**
 
   ```bash
-  uv run ruff check .
-  uv run pytest -q
-  npm --prefix web run lint
-  make check-all
+  docker compose build app
   ```
-  Expected: all commands exit 0.
+  Expected: image builds successfully. Do not run integration performance stress tests for this release.
 
 - [ ] **Step 4: Validate local config hard failure**
 
@@ -1731,8 +1506,8 @@
 
 ## Self-Review
 
-- **Spec coverage:** G1 is Task 1 and Task 2; G2 is Task 1; G3 is Task 4 and Task 6; G4 is preserved by the admission limits and verified in Task 7; G5 is Task 2; G6 is Task 3; G7 is Task 7; G8 is Task 5; G9 is Task 5; G10 is Task 6.
+- **Spec coverage:** G1 is Task 1 and Task 2; G2 is Task 1 and Task 5; G3 is Task 4 and Task 6; G4 is preserved by the admission limits and health counters; G5 is Task 2; G6 is Task 3; G7 is Task 5 and Task 7; G8 is Task 5; G9 is Task 5; G10 is Task 6.
 - **KISS check:** one realtime analysis window, one overlay policy, one pending-tail knob, one cleanup path. No feature flag, no dual writer, no repository-level cross-window lookup.
 - **Semantic safety:** `1h` digest may be displayed on `5m/4h/24h` only as `analysis_window/source_window = "1h"` and `surface_window = requested window`; non-`1h` source sets are never claimed as analyzed.
-- **Compatibility removal:** old non-`1h` Narrative configs fail validation; old non-`1h` admissions/digests are suppressed/staled by ops cleanup; worker queries filter to `1h`.
-- **Verification:** focused unit/integration/Vitest suites plus `make check-all`; live commands must redact secrets and confirm config paths only.
+- **Compatibility removal:** old non-`1h/all` Narrative configs fail validation; old non-`1h/all` admissions/digests are suppressed/staled by ops cleanup; worker queries filter to `1h/all`.
+- **Verification:** focused unit/contract/Vitest suites, image build, and live data-flow checks; live commands must redact secrets and confirm config paths only.

@@ -218,8 +218,8 @@ def build_parser() -> argparse.ArgumentParser:
         "rebuild-narrative-intel",
         help="rebuild and drain Narrative Intelligence read models",
     )
-    rebuild_narrative_intel.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    rebuild_narrative_intel.add_argument("--scope", choices=("all", "matched"), default="matched")
+    rebuild_narrative_intel.add_argument("--window", choices=("1h",), default="1h")
+    rebuild_narrative_intel.add_argument("--scope", choices=("all",), default="all")
     rebuild_narrative_intel.add_argument("--semantic-limit", type=int, default=50)
     rebuild_narrative_intel.add_argument("--digest-limit", type=int, default=25)
     rebuild_narrative_intel.add_argument("--cycles", type=int, default=1)

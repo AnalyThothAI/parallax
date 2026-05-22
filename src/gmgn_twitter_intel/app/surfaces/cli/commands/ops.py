@@ -734,6 +734,8 @@ def _run_narrative_intel_rebuild(
                 window=window,
                 scope=scope,
                 now_ms=cycle_now_ms,
+                realtime_windows=tuple(getattr(settings.workers.token_discussion_digest, "windows", ("1h",))),
+                realtime_scopes=tuple(getattr(settings.workers.token_discussion_digest, "scopes", ("all",))),
             )
             _merge_int_counts(cleanup_totals, cleanup)
             semantics_result = asyncio.run(semantics.run_once(now_ms=cycle_now_ms))
@@ -750,7 +752,12 @@ def _run_narrative_intel_rebuild(
                 break
             if admission_result.skipped and semantics_result.skipped and digest_result.skipped:
                 break
-        final_health = _narrative_backlog_health(db, now_ms=int(now_ms) + len(results), since_hours=4)
+        final_health = _narrative_backlog_health(
+            db,
+            now_ms=int(now_ms) + len(results),
+            since_hours=4,
+            worker_settings=settings.workers,
+        )
         return {
             "window": window,
             "scope": scope,
@@ -780,7 +787,15 @@ def _worker_result_payload(result: object) -> dict[str, Any]:
     }
 
 
-def _cleanup_narrative_backlog(db: object, *, window: str, scope: str, now_ms: int) -> dict[str, int]:
+def _cleanup_narrative_backlog(
+    db: object,
+    *,
+    window: str,
+    scope: str,
+    now_ms: int,
+    realtime_windows: tuple[str, ...] = ("1h",),
+    realtime_scopes: tuple[str, ...] = ("all",),
+) -> dict[str, int]:
     with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
         return dict(
             _call_with_supported_kwargs(
@@ -789,13 +804,26 @@ def _cleanup_narrative_backlog(db: object, *, window: str, scope: str, now_ms: i
                 window=window,
                 scope=scope,
                 now_ms=now_ms,
+                realtime_windows=realtime_windows,
+                realtime_scopes=realtime_scopes,
             )
         )
 
 
-def _narrative_backlog_health(db: object, *, now_ms: int, since_hours: int) -> dict[str, Any]:
+def _narrative_backlog_health(
+    db: object,
+    *,
+    now_ms: int,
+    since_hours: int,
+    worker_settings: object = None,
+) -> dict[str, Any]:
     with db.worker_session("rebuild_narrative_intel_final_health") as repos:
-        return dict(NarrativeBacklogHealthQuery(repos.conn).health(now_ms=now_ms, since_hours=since_hours))
+        return dict(
+            NarrativeBacklogHealthQuery(
+                repos.conn,
+                **_narrative_health_worker_kwargs(worker_settings),
+            ).health(now_ms=now_ms, since_hours=since_hours)
+        )
 
 
 def _merge_int_counts(total: dict[str, int], item: dict[str, Any]) -> None:
@@ -816,6 +844,39 @@ def _call_with_supported_kwargs(method: object, **kwargs: object) -> object:
         return method(**kwargs)  # type: ignore[misc]
     supported = {key: value for key, value in kwargs.items() if key in signature.parameters}
     return method(**supported)  # type: ignore[misc]
+
+
+def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
+    mention = getattr(workers, "mention_semantics", None)
+    digest = getattr(workers, "token_discussion_digest", None)
+    return {
+        "realtime_windows": tuple(getattr(digest, "windows", ("1h",)) or ("1h",)),
+        "realtime_scopes": tuple(getattr(digest, "scopes", ("all",)) or ("all",)),
+        "semantics_rows_per_cycle": min(
+            _positive_int(getattr(mention, "batch_size", 10), default=10),
+            _positive_int(getattr(mention, "provider_batch_size", 10), default=10),
+        ),
+        "semantics_interval_seconds": _nonnegative_int(getattr(mention, "interval_seconds", 60), default=60),
+        "digest_calls_per_cycle": max(
+            1,
+            _nonnegative_int(getattr(digest, "max_llm_calls_per_cycle", 3), default=3),
+        ),
+        "digest_interval_seconds": _nonnegative_int(getattr(digest, "interval_seconds", 120), default=120),
+    }
+
+
+def _positive_int(value: object, *, default: int) -> int:
+    try:
+        return max(1, int(value or default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _nonnegative_int(value: object, *, default: int) -> int:
+    try:
+        return max(0, int(value if value is not None else default))
+    except (TypeError, ValueError):
+        return default
 
 
 def _worker_settings_with_overrides(config: object, **overrides: object) -> SimpleNamespace:

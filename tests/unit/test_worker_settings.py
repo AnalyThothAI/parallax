@@ -5,7 +5,9 @@ from pydantic import ValidationError
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
 from gmgn_twitter_intel.platform.agent_execution import AgentRuntimePolicy
 from gmgn_twitter_intel.platform.config.settings import (
+    NarrativeAdmissionWorkerSettings,
     PulseCandidateWorkerSettings,
+    TokenDiscussionDigestWorkerSettings,
     WorkersSettings,
     default_workers_yaml,
 )
@@ -68,8 +70,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.narrative_admission.hard_timeout_seconds == 300
     assert settings.narrative_admission.advisory_lock_key == 2026051901
     assert settings.narrative_admission.wakes_on == ("token_radar_updated", "resolution_updated")
-    assert settings.narrative_admission.windows == ("5m", "1h", "4h", "24h")
-    assert settings.narrative_admission.scopes == ("all", "matched")
+    assert settings.narrative_admission.windows == ("1h",)
+    assert settings.narrative_admission.scopes == ("all",)
     assert settings.narrative_admission.hot_rank_limit == 50
     assert settings.narrative_admission.min_rank_score == 30
     assert settings.mention_semantics.interval_seconds == 60
@@ -94,14 +96,15 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
         "narrative_semantics_updated",
         "market_tick_written",
     )
-    assert settings.token_discussion_digest.windows == ("5m", "1h", "4h", "24h")
-    assert settings.token_discussion_digest.scopes == ("all", "matched")
+    assert settings.token_discussion_digest.windows == ("1h",)
+    assert settings.token_discussion_digest.scopes == ("all",)
     assert settings.token_discussion_digest.min_semantic_coverage == 0.35
     assert settings.token_discussion_digest.max_mentions_per_digest == 24
     assert settings.token_discussion_digest.max_llm_calls_per_cycle == 3
     assert settings.token_discussion_digest.max_llm_failures_per_cycle == 2
     assert settings.token_discussion_digest.provider_failure_backoff_seconds == 600
-    assert settings.token_discussion_digest.digest_ttl_by_window_seconds == {"1h": 900, "4h": 1800, "24h": 7200}
+    assert settings.token_discussion_digest.digest_ttl_by_window_seconds == {"1h": 900}
+    assert settings.token_discussion_digest.max_pending_semantic_rows_for_digest == 5
     assert settings.pulse_candidate.soft_timeout_seconds == 540
     assert settings.pulse_candidate.hard_timeout_seconds == 660
     assert settings.pulse_candidate.max_enqueues_per_cycle == 25
@@ -132,10 +135,17 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "investigator_max_tool_calls" not in text
     assert "fallback_agent_brief" not in text
     assert "narrative_fallback" not in text
-    payload = yaml.safe_load(text)
     worker_payload = {key: value for key, value in payload.items() if key not in {"defaults", "agent_runtime"}}
     assert "timeout_seconds" not in payload["defaults"]
     assert all("timeout_seconds" not in value for value in worker_payload.values())
+
+
+def test_narrative_realtime_workers_reject_matched_scope():
+    with pytest.raises(ValidationError, match=r"must contain only|must be exactly"):
+        NarrativeAdmissionWorkerSettings(scopes=("matched",))
+
+    with pytest.raises(ValidationError, match=r"must contain only|must be exactly"):
+        TokenDiscussionDigestWorkerSettings(scopes=("all", "matched"))
 
 
 def test_mention_semantics_hard_cuts_source_age_prune_setting() -> None:
@@ -166,7 +176,7 @@ def test_token_discussion_digest_hard_cuts_old_epoch_chasing_settings() -> None:
     assert "min_new_labeled_mentions" not in digest_payload
     assert "min_new_authors" not in digest_payload
     assert "5m" not in digest_payload["digest_ttl_by_window_seconds"]
-    assert digest_payload["digest_ttl_by_window_seconds"] == {"1h": 900, "4h": 1800, "24h": 7200}
+    assert digest_payload["digest_ttl_by_window_seconds"] == {"1h": 900}
 
     invalid_payload = yaml.safe_load(text)
     invalid_payload["token_discussion_digest"]["min_new_labeled_mentions"] = 3
@@ -181,6 +191,38 @@ def test_token_discussion_digest_rejects_obsolete_digest_ttl_window() -> None:
     payload["token_discussion_digest"]["digest_ttl_by_window_seconds"]["5m"] = 120
 
     with pytest.raises(ValidationError):
+        WorkersSettings(**payload)
+
+
+def test_narrative_runtime_defaults_are_1h_only() -> None:
+    settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+
+    assert settings.token_radar_projection.windows == ("5m", "1h", "4h", "24h")
+    assert settings.narrative_admission.windows == ("1h",)
+    assert settings.token_discussion_digest.windows == ("1h",)
+    assert settings.token_discussion_digest.digest_ttl_by_window_seconds == {"1h": 900}
+    assert settings.token_discussion_digest.max_pending_semantic_rows_for_digest == 5
+
+
+def test_narrative_runtime_rejects_non_1h_windows() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["narrative_admission"]["windows"] = ["1h", "4h"]
+
+    with pytest.raises(ValidationError, match=r"narrative_admission.windows"):
+        WorkersSettings(**payload)
+
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["token_discussion_digest"]["windows"] = ["24h"]
+
+    with pytest.raises(ValidationError, match=r"token_discussion_digest.windows"):
+        WorkersSettings(**payload)
+
+
+def test_token_discussion_digest_rejects_non_1h_ttl_keys() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+    payload["token_discussion_digest"]["digest_ttl_by_window_seconds"] = {"1h": 900, "4h": 1800}
+
+    with pytest.raises(ValidationError, match="digest_ttl_by_window_seconds"):
         WorkersSettings(**payload)
 
 
