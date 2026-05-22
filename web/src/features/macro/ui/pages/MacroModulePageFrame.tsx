@@ -52,6 +52,7 @@ export function MacroModulePageFrame({
     window: "60d",
   });
   const moduleLabel = pageLabel || macroRouteLabel(moduleId);
+  const currentReadSummary = macroReadSummary(module);
 
   return (
     <div className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
@@ -60,7 +61,7 @@ export function MacroModulePageFrame({
           <h3>当前解读</h3>
           <span>{formatMacroScalar(module.snapshot.status)}</span>
         </div>
-        <p className="macro-page-summary">{formatMacroScalar(module.current_read.summary)}</p>
+        <p className="macro-page-summary">{currentReadSummary}</p>
         <SemanticList record={module.current_read} excludeKeys={["summary"]} />
       </section>
 
@@ -214,7 +215,7 @@ function SemanticList({
   record: MacroSemanticRecord;
 }) {
   const entries = Object.entries(record)
-    .filter(([key]) => !excludeKeys.includes(key))
+    .filter(([key, value]) => !excludeKeys.includes(key) && hasMacroValue(value))
     .slice(0, 6);
   if (entries.length === 0) {
     return null;
@@ -229,6 +230,35 @@ function SemanticList({
       ))}
     </div>
   );
+}
+
+function macroReadSummary(module: MacroModuleView): string {
+  if (hasMacroValue(module.current_read.summary)) {
+    return formatMacroScalar(module.current_read.summary);
+  }
+  if (hasMacroValue(module.current_read.current_regime)) {
+    return formatMacroScalar(module.current_read.current_regime);
+  }
+  if (hasMacroValue(module.current_read.regime)) {
+    return formatMacroScalar(module.current_read.regime);
+  }
+  return formatMacroScalar(module.snapshot.status);
+}
+
+function hasMacroValue(value: unknown): boolean {
+  if (typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (value && typeof value === "object") {
+    return Object.keys(value).length > 0;
+  }
+  return false;
 }
 
 function PageState({ label }: { label: string }) {

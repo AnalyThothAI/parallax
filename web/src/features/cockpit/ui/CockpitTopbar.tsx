@@ -61,11 +61,6 @@ export function CockpitTopbar({
         {navigationTrigger ? (
           <span className="topbar-sidebar-trigger-slot">{navigationTrigger}</span>
         ) : null}
-        <div className="brand-mark" aria-hidden />
-        <div className="brand-copy">
-          <h1>gmgn.intel</h1>
-          <p>obsidian desk</p>
-        </div>
         <WsStatusBeacon
           lastMessageAt={status.lastSocketMessageAt}
           socketStatus={status.socketStatus}

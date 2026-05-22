@@ -7,16 +7,20 @@
     --cockpit-sidebar-hover-bg: rgba(241, 234, 214, 0.055);
   }
 
+  .cockpit-app-sidebar {
+    border-color: rgba(154, 159, 146, 0.1);
+  }
+
   .cockpit-app-sidebar [data-sidebar="sidebar"],
   [data-sidebar="sidebar"][data-mobile="true"] {
-    border-color: var(--sidebar-border);
+    border-color: rgba(154, 159, 146, 0.1);
     background:
       linear-gradient(180deg, rgba(241, 234, 214, 0.04), transparent 170px),
       linear-gradient(90deg, rgba(123, 181, 216, 0.045), transparent 42%), var(--sidebar);
   }
 
   .cockpit-app-sidebar-header {
-    border-bottom: 1px solid rgba(241, 234, 214, 0.075);
+    border-bottom: 1px solid rgba(154, 159, 146, 0.09);
   }
 
   .cockpit-app-sidebar-brand {
@@ -103,7 +107,7 @@
     right: 10px;
     left: 10px;
     height: 1px;
-    background: rgba(241, 234, 214, 0.065);
+    background: rgba(154, 159, 146, 0.08);
     content: "";
   }
 
@@ -209,7 +213,7 @@
   .cockpit-app-sidebar [data-sidebar="menu-sub"],
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"] {
     margin: 4px 0 3px 18px;
-    border-left-color: rgba(241, 234, 214, 0.1);
+    border-left-color: rgba(154, 159, 146, 0.12);
     padding: 2px 0 2px 9px;
   }
 
@@ -241,7 +245,7 @@
   }
 
   .cockpit-app-sidebar-footer {
-    border-top: 1px solid rgba(241, 234, 214, 0.075);
+    border-top: 1px solid rgba(154, 159, 146, 0.09);
     color: var(--dim);
   }
 

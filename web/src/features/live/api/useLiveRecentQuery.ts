@@ -4,10 +4,12 @@ import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 
 export function useLiveRecentQuery({
+  enabled = true,
   handles,
   scope,
   token,
 }: {
+  enabled?: boolean;
   handles: string;
   scope: ScopeKey;
   token: string;
@@ -19,7 +21,7 @@ export function useLiveRecentQuery({
         token,
         params: { limit: 80, scope, handles },
       }),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     refetchInterval: 15_000,
   });
 }

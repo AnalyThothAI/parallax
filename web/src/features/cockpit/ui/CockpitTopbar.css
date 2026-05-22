@@ -4,12 +4,12 @@
     z-index: 20;
     display: grid;
     grid-template-columns:
-      minmax(190px, auto) minmax(300px, 1fr) clamp(172px, 15vw, 240px)
+      minmax(32px, auto) minmax(300px, 1fr) clamp(172px, 15vw, 240px)
       32px 32px 32px;
     align-items: center;
     gap: 10px;
     min-height: var(--cockpit-topbar-height);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid rgba(154, 159, 146, 0.14);
     background: rgba(7, 9, 8, 0.92);
     padding: 0 12px;
   }
@@ -22,8 +22,8 @@
     gap: 9px;
     min-width: 0;
     height: var(--cockpit-topbar-height);
-    border-right: 1px solid var(--line);
-    padding: 0 10px 0 0;
+    border-right: 0;
+    padding: 0;
   }
 
   .topbar-sidebar-trigger-slot {
@@ -127,8 +127,8 @@
 
   .ws-status-beacon {
     position: absolute;
-    top: 6px;
-    left: 23px;
+    top: 5px;
+    left: 21px;
     z-index: 1;
     display: grid;
     width: 14px;

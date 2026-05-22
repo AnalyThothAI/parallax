@@ -165,6 +165,19 @@ describe("CSS architecture harness", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps legacy migration selector names out of production CSS", () => {
+    const offenders = collectFiles(srcRoot)
+      .filter(isCssFile)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+        return cssClassNames(css)
+          .filter((className) => /legacy/i.test(className))
+          .map((className) => `${relativeToSrc(path)} keeps .${className}`);
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps side-effect CSS imported only by local owner files", () => {
     const sourceFiles = collectFiles(srcRoot).filter((path) =>
       [".ts", ".tsx"].includes(extname(path)),

@@ -1,9 +1,7 @@
 export { MacroAssetCorrelationPage } from "./MacroAssetCorrelationPage";
-export { MacroPage } from "./MacroPage";
 export { MacroWorkbenchRoute } from "./MacroWorkbenchRoute";
 export { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
 export { useMacroModuleQuery } from "./api/useMacroModuleQuery";
-export { useMacroQuery } from "./api/useMacroQuery";
 export { useMacroSeriesQuery } from "./api/useMacroSeriesQuery";
 export {
   buildMacroHeatmapMatrix,

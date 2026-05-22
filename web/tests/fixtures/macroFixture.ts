@@ -1,6 +1,5 @@
 import type {
   MacroAssetCorrelationData,
-  MacroData,
   MacroModuleView,
   MacroSeriesData,
 } from "@lib/types";
@@ -76,29 +75,6 @@ export function macroModuleFixture(
     data_gaps: ["equity_breadth_missing"],
     related_routes: ["/macro/assets", "/macro/volatility"],
     ...overrides,
-  };
-}
-
-export function legacyMacroFixture(): MacroData {
-  return {
-    snapshot: {
-      snapshot_id: "macro-view:macro_regime_v3:1779000000000",
-      projection_version: "macro_regime_v3",
-      asof_date: "2026-05-20",
-      status: "partial",
-      regime: "funding_stress",
-      overall_score: 7.25,
-      computed_at_ms: 1_779_000_000_000,
-    },
-    panels: {},
-    indicators: {},
-    triggers: [],
-    data_gaps: [],
-    source_coverage: { observed_concept_count: 10, required_concept_count: 10, coverage_ratio: 1 },
-    features: {},
-    chain: {},
-    scenario: {},
-    scorecard: {},
   };
 }
 

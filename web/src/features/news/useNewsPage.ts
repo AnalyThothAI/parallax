@@ -7,16 +7,23 @@ export const NEWS_PAGE_SIZE = 100;
 export type NewsPageQueryParams = {
   cursor?: string | null;
   direction?: string | null;
+  enabled?: boolean;
   limit?: number;
   status?: string | null;
 };
 
 export const useNewsPageWithToken = (
   token: string,
-  { cursor = null, direction = null, limit = NEWS_PAGE_SIZE, status = null }: NewsPageQueryParams = {},
+  {
+    cursor = null,
+    direction = null,
+    enabled = true,
+    limit = NEWS_PAGE_SIZE,
+    status = null,
+  }: NewsPageQueryParams = {},
 ) =>
   useQuery({
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     placeholderData: (previousData) => previousData,
     queryKey: queryKeys.newsRows({ cursor, direction, limit, status }),
     queryFn: () => fetchNewsRows({ cursor, direction, limit, status, token }),

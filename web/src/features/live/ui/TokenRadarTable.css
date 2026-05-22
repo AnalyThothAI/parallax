@@ -39,6 +39,10 @@
 
     display: grid;
     min-width: 1060px;
+    overflow: hidden;
+    border: 1px solid rgba(154, 159, 146, 0.14);
+    border-radius: 6px;
+    background: rgba(8, 12, 10, 0.58);
   }
 
   .radar-data-table .token-radar-head,
@@ -52,13 +56,13 @@
 
   .radar-data-table .token-radar-head {
     position: sticky;
-    top: -12px;
+    top: 0;
     z-index: 2;
-    height: 27px;
-    margin: -2px 0 0;
-    border-bottom: 1px solid var(--line);
-    background: #0a0d0d;
-    padding: 0 10px;
+    height: 30px;
+    margin: 0;
+    border-bottom: 1px solid rgba(154, 159, 146, 0.14);
+    background: rgba(8, 12, 10, 0.98);
+    padding: 0 12px;
   }
 
   .radar-head-cell {
@@ -124,12 +128,16 @@
     min-height: 62px;
     margin: 0;
     border: 0;
-    border-bottom: 1px solid var(--line-soft);
+    border-bottom: 1px solid rgba(154, 159, 146, 0.1);
     border-radius: 0;
     color: var(--bone-2);
-    background: rgba(14, 18, 15, 0.72);
+    background: rgba(14, 18, 15, 0.46);
     cursor: pointer;
-    padding: 7px 10px;
+    padding: 9px 12px;
+  }
+
+  .radar-data-table .token-radar-row:last-child {
+    border-bottom: 0;
   }
 
   .radar-data-table .token-radar-row:hover,
@@ -137,7 +145,7 @@
   .radar-data-table .token-radar-row.selected {
     border-color: var(--line-soft);
     outline: 0;
-    background: rgba(26, 32, 28, 0.9);
+    background: rgba(26, 32, 28, 0.88);
     box-shadow: inset 3px 0 0 var(--opportunity);
   }
 

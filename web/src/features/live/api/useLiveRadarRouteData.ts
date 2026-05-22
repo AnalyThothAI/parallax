@@ -12,15 +12,17 @@ type RadarFrame = {
 };
 
 export function useLiveRadarRouteData({
+  enabled = true,
   scope,
   token,
   window,
 }: {
+  enabled?: boolean;
   scope: ScopeKey;
   token: string;
   window: WindowKey;
 }) {
-  const assetFlowQuery = useTokenRadarQuery({ token, window, scope, limit: 48 });
+  const assetFlowQuery = useTokenRadarQuery({ token, window, scope, limit: 48, enabled });
   const lastReadyFrames = useRef(new Map<string, RadarFrame>());
   const cacheKey = `${window}:${scope}`;
   const projectionStatus = assetFlowQuery.data?.data?.projection?.status ?? null;

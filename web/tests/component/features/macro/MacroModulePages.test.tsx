@@ -75,6 +75,28 @@ describe("Macro module pages", () => {
     );
   });
 
+  it("renders backend macro fields instead of empty placeholders", () => {
+    renderWithProviders(
+      <MacroOverviewPage
+        module={macroModuleFixture({
+          current_read: {
+            current_regime: "term_premium_pressure",
+            summary: "",
+            trade_map: {},
+          },
+        })}
+        moduleId="overview"
+        token="test-token"
+      />,
+      { route: "/macro" },
+    );
+
+    const currentRead = screen.getByRole("region", { name: "当前解读" });
+    expect(within(currentRead).getAllByText("term_premium_pressure").length).toBeGreaterThan(0);
+    expect(within(currentRead).queryByText("{}")).not.toBeInTheDocument();
+    expect(within(currentRead).queryByText("暂无")).not.toBeInTheDocument();
+  });
+
   it("renders asset-class normalized return page from backend payloads", async () => {
     renderWithProviders(
       <MacroAssetClassPage

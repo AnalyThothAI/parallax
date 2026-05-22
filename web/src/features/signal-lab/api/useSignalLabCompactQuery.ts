@@ -7,7 +7,13 @@ import { useMemo } from "react";
 const SIGNAL_LAB_COMPACT_WINDOW = "4h";
 const SIGNAL_LAB_COMPACT_SCOPE = "all";
 
-export function useSignalLabCompactQuery({ token }: { token: string }) {
+export function useSignalLabCompactQuery({
+  enabled = true,
+  token,
+}: {
+  enabled?: boolean;
+  token: string;
+}) {
   const overviewQuery = useQuery({
     queryKey: queryKeys.signalLabOverview(SIGNAL_LAB_COMPACT_WINDOW, SIGNAL_LAB_COMPACT_SCOPE),
     queryFn: () =>
@@ -19,7 +25,7 @@ export function useSignalLabCompactQuery({ token }: { token: string }) {
           limit: 1,
         },
       }),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     refetchInterval: 12_000,
   });
 
@@ -39,7 +45,7 @@ export function useSignalLabCompactQuery({ token }: { token: string }) {
           sort: "recent",
         },
       }),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     refetchInterval: 20_000,
   });
 
@@ -60,7 +66,7 @@ export function useSignalLabCompactQuery({ token }: { token: string }) {
           sort: "recent",
         },
       }),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     refetchInterval: 20_000,
   });
 

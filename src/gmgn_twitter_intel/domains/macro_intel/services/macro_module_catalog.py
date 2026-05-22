@@ -64,8 +64,12 @@ _MODULE_CONFIGS = {
         section="overview",
         required_concepts=(),
         optional_concepts=("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas"),
-        chart_specs=(MacroChartSpec("macro_regime", ()),),
-        table_specs=(MacroTableSpec("panel_scorecard", ()),),
+        chart_specs=(
+            MacroChartSpec("macro_regime", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),
+        ),
+        table_specs=(
+            MacroTableSpec("panel_scorecard", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),
+        ),
         gap_codes=(),
         related_routes=("/macro/assets", "/macro/rates", "/macro/liquidity", "/macro/volatility", "/macro/credit"),
     ),

@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import {
-  legacyMacroFixture,
   macroCorrelationFixture,
   macroModuleFixture,
   macroSeriesFixture,
@@ -44,7 +43,6 @@ describe("macro route", () => {
       mockLiveRadarRoute(mock);
       const baseGetApi = mock.getApiImpl;
       mock.getApiImpl = async (path, options) => {
-        if (path === "/api/macro") return ok(legacyMacroFixture());
         if (path === "/api/macro/modules/overview") {
           return ok(
             macroModuleFixture({
@@ -92,6 +90,32 @@ describe("macro route", () => {
     },
     10_000,
   );
+
+  it("keeps macro cold loads scoped to macro and lightweight shell data", async () => {
+    renderAppRoute("/macro");
+
+    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
+        token: "secret",
+      }),
+    );
+
+    const requestedPaths = apiMock.readApi.mock.calls.map(([path]) => path);
+    expect(requestedPaths).not.toContain("/api/recent");
+    expect(requestedPaths).not.toContain("/api/token-radar");
+    expect(requestedPaths).not.toContain("/api/stocks-radar");
+    expect(requestedPaths).not.toContain("/api/news");
+    expect(requestedPaths).not.toContain("/api/signal-lab/pulse");
+    expect(requestedPaths).not.toContain("/api/notifications");
+  });
+
+  it("exposes the desktop brand once in the shell", async () => {
+    renderAppRoute("/macro");
+
+    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+    expect(screen.getAllByText("gmgn.intel")).toHaveLength(1);
+  });
 
   it("opens a routed backend macro module", async () => {
     renderAppRoute("/macro/assets/equities");

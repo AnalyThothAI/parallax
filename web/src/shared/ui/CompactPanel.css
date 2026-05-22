@@ -1,7 +1,7 @@
 @layer app.primitives {
   .compact-panel {
     min-width: 0;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid rgba(154, 159, 146, 0.14);
   }
 
   .compact-panel:last-child {
@@ -13,9 +13,9 @@
     align-items: center;
     justify-content: space-between;
     min-height: 34px;
-    border-bottom: 1px solid var(--line);
-    background: #0a0d0d;
-    padding: 0 10px;
+    border-bottom: 1px solid rgba(154, 159, 146, 0.14);
+    background: rgba(8, 12, 10, 0.98);
+    padding: 0 12px;
   }
 
   .compact-panel > header div {

@@ -87,6 +87,19 @@ describe("data router architecture", () => {
       eagerShellSources.flatMap(importSpecifiers).filter((source) => source === "@features/search"),
     ).toEqual([]);
   });
+
+  it("keeps macro routing on the data-router module path without legacy prop wrappers", () => {
+    const macroFeatureRoot = join(srcRoot, "features/macro");
+    const legacyFiles = ["MacroPage.tsx", "api/useMacroQuery.ts"]
+      .map((path) => join(macroFeatureRoot, path))
+      .filter(existsSync)
+      .map((path) => relative(webRoot, path));
+    const macroBarrel = readSource("features/macro/index.ts");
+
+    expect(legacyFiles).toEqual([]);
+    expect(macroBarrel).not.toContain("MacroPage");
+    expect(macroBarrel).not.toContain("useMacroQuery");
+  });
 });
 
 function readSource(path: string): string {

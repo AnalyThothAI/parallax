@@ -3,9 +3,9 @@
     display: flex;
     gap: 4px;
     min-width: 0;
-    border: 1px solid var(--line);
+    border: 1px solid rgba(154, 159, 146, 0.14);
     border-radius: var(--radius);
-    background: rgba(3, 4, 3, 0.68);
+    background: rgba(3, 4, 3, 0.58);
     padding: 3px;
   }
 
@@ -32,7 +32,7 @@
 
   .radar-controls-item[data-state="on"] {
     color: #ffd184;
-    background: var(--opportunity-soft);
+    background: rgba(217, 154, 40, 0.16);
   }
 
   @media (max-width: 767px) {

@@ -23,6 +23,8 @@ const TITLE_BY_ID: Record<string, string> = {
   crypto_proxy_performance: "加密资产代理表现",
   equity_proxy_performance: "美股代理表现",
   equity_proxy_snapshot: "美股代理快照",
+  macro_regime: "宏观状态",
+  panel_scorecard: "宏观状态面板",
   source_metadata: "数据源元信息",
   yield_curve: "收益率曲线",
   yield_curve_snapshot: "收益率曲线快照",

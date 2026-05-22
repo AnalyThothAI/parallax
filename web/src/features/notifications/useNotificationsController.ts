@@ -15,14 +15,18 @@ import {
 } from "./api/notifications";
 
 type UseNotificationsControllerArgs = {
+  enabled?: boolean;
   fallbackSummary?: NotificationSummary | null;
+  prefetchList?: boolean;
   setMobileTask: (task: LiveMobileTask) => void;
   socketNotifications: NotificationLivePayload[];
   token: string;
 };
 
 export function useNotificationsController({
+  enabled = true,
   fallbackSummary,
+  prefetchList = false,
   setMobileTask,
   socketNotifications,
   token,
@@ -34,14 +38,14 @@ export function useNotificationsController({
   const summaryQuery = useQuery({
     queryKey: queryKeys.notificationSummary(),
     queryFn: () => getNotificationSummary(token),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     refetchInterval: 12_000,
   });
 
   const notificationsQuery = useQuery({
     queryKey: queryKeys.notifications(),
     queryFn: () => getNotifications(token),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled && (drawerOpen || prefetchList),
     refetchInterval: drawerOpen ? 8_000 : 20_000,
   });
 

@@ -26,6 +26,7 @@ import { useSocketSnapshot } from "@shared/socket/socketContext";
 import type { MarketTargetRef } from "@shared/socket/socketTypes";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef } from "react";
+import { useLocation } from "react-router-dom";
 
 const EMPTY_HANDLES: string[] = [];
 const EMPTY_LIVE_ITEMS: LivePayload[] = [];
@@ -71,26 +72,40 @@ export type ShellChromeData = {
 };
 
 export function useShellChromeData(session: AppSession): ShellChromeData {
+  const location = useLocation();
   const queryClient = useQueryClient();
   const liveRoute = useLiveRouteState();
+  const routeActivity = useMemo(
+    () => shellRouteActivity(location.pathname),
+    [location.pathname],
+  );
   const statusQuery = useCockpitStatusQuery({ token: session.token });
   const recentQuery = useLiveRecentQuery({
+    enabled: routeActivity.liveDeck,
     handles: liveRoute.handles,
     scope: liveRoute.scope,
     token: session.token,
   });
   const stocksRadarQuery = useStocksRadarQuery({
+    enabled: routeActivity.stocksBadge,
     scope: liveRoute.scope,
     token: session.token,
     window: liveRoute.window,
   });
-  const newsRowsQuery = useNewsPageWithToken(session.token, { limit: NEWS_PAGE_SIZE });
+  const newsRowsQuery = useNewsPageWithToken(session.token, {
+    enabled: routeActivity.newsBadge,
+    limit: NEWS_PAGE_SIZE,
+  });
   const liveRadar = useLiveRadarRouteData({
+    enabled: routeActivity.liveRadar,
     scope: liveRoute.scope,
     token: session.token,
     window: liveRoute.window,
   });
-  const signalLabCompact = useSignalLabCompactQuery({ token: session.token });
+  const signalLabCompact = useSignalLabCompactQuery({
+    enabled: routeActivity.signalLabCompact,
+    token: session.token,
+  });
   const socketSnapshot = useSocketSnapshot();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const bootstrapHandles = session.bootstrapHandles;
@@ -115,7 +130,9 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
   );
   const selection = useLiveSelection({ scope });
   const notificationsController = useNotificationsController({
+    enabled: routeActivity.notifications,
     fallbackSummary: null,
+    prefetchList: routeActivity.notificationList,
     setMobileTask: selection.setMobileTask,
     socketNotifications: socketSnapshot.notificationItems,
     token,
@@ -162,6 +179,9 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
       return;
     }
     if (isTyping) {
+      return;
+    }
+    if (!shouldHandleLiveWindowHotkey(location.pathname, event.key)) {
       return;
     }
     if (event.key === "1") liveRoute.updateWindow("5m");
@@ -234,6 +254,31 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
       },
     },
   };
+}
+
+function shellRouteActivity(pathname: string) {
+  const isLiveRoute = pathname === "/";
+  const isStocksRoute = pathname.startsWith("/stocks");
+  const isNewsRoute = pathname.startsWith("/news");
+  const isSignalLabRoute = pathname.startsWith("/signal-lab");
+
+  return {
+    liveDeck: isLiveRoute,
+    liveRadar: isLiveRoute,
+    newsBadge: isLiveRoute || isNewsRoute,
+    notificationList: isLiveRoute,
+    notifications: true,
+    signalLabCompact: isLiveRoute || isSignalLabRoute,
+    stocksBadge: isLiveRoute || isStocksRoute,
+  };
+}
+
+export function shouldHandleLiveWindowHotkey(pathname: string, key: string): boolean {
+  if (!["1", "2", "3", "4"].includes(key)) {
+    return false;
+  }
+  const path = pathname.split("?")[0] ?? pathname;
+  return path === "/" || path.startsWith("/stocks");
 }
 
 function mergeLiveItems(replayItems: LivePayload[], eventItems: LivePayload[]): LivePayload[] {

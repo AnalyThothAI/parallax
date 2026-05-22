@@ -91,7 +91,7 @@ def test_build_macro_module_view_returns_missing_status_when_snapshot_is_absent(
     assert view["provenance"]["degradation"]["reason_codes"] == ["macro_view_snapshot_missing"]
 
 
-def test_build_macro_module_view_marks_static_specs_without_concepts() -> None:
+def test_build_macro_module_view_projects_overview_concepts_into_chart_and_table() -> None:
     view = build_macro_module_view(
         "overview",
         snapshot=_snapshot(),
@@ -100,17 +100,33 @@ def test_build_macro_module_view_marks_static_specs_without_concepts() -> None:
     )
 
     assert view["charts"][0]["chart_id"] == "macro_regime"
-    assert view["charts"][0]["status"] == "static"
+    assert view["charts"][0]["status"] == "ok"
     assert view["charts"][0]["missing_concept_keys"] == []
+    assert [series["concept_key"] for series in view["charts"][0]["series"]] == [
+        "asset:spx",
+        "rates:dgs10",
+        "vol:vix",
+        "credit:hy_oas",
+    ]
     assert view["tables"][0]["table_id"] == "panel_scorecard"
-    assert view["tables"][0]["status"] == "static"
+    assert view["tables"][0]["status"] == "ok"
     assert view["tables"][0]["missing_concept_keys"] == []
+    assert [row["concept_key"] for row in view["tables"][0]["rows"]] == [
+        "asset:spx",
+        "rates:dgs10",
+        "vol:vix",
+        "credit:hy_oas",
+    ]
 
 
 def test_build_macro_module_view_marks_missing_specs_without_available_concepts() -> None:
+    snapshot = _snapshot()
+    snapshot["features_json"] = {
+        key: value for key, value in snapshot["features_json"].items() if key != "vol:vix"
+    }
     view = build_macro_module_view(
         "volatility",
-        snapshot=_snapshot(),
+        snapshot=snapshot,
         observations=[],
         latest_import_run=None,
     )
@@ -229,6 +245,21 @@ def _snapshot() -> dict[str, object]:
             },
             "rates:dgs10": {
                 "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                "freshness_days": 1,
+                "data_gaps": [],
+            },
+            "asset:spx": {
+                "latest": {"value": 5312.4, "observed_at": "2026-05-20", "unit": "index"},
+                "freshness_days": 1,
+                "data_gaps": [],
+            },
+            "vol:vix": {
+                "latest": {"value": 17.2, "observed_at": "2026-05-20", "unit": "index"},
+                "freshness_days": 1,
+                "data_gaps": [],
+            },
+            "credit:hy_oas": {
+                "latest": {"value": 2.8, "observed_at": "2026-05-20", "unit": "percent"},
                 "freshness_days": 1,
                 "data_gaps": [],
             },

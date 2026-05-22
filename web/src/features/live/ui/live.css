@@ -16,12 +16,12 @@
     grid-template-columns: minmax(380px, 0.95fr) minmax(400px, 1.05fr);
     height: clamp(360px, calc(48vh - 50px), 470px);
     min-height: 360px;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid rgba(154, 159, 146, 0.14);
   }
 
   .bottom-deck > *:nth-child(3) {
     grid-column: 1 / -1;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid rgba(154, 159, 146, 0.14);
   }
 
   .bottom-deck > * {
@@ -46,11 +46,11 @@
     gap: 8px;
     width: 100%;
     border: 0;
-    border-bottom: 1px solid var(--line-soft);
+    border-bottom: 1px solid rgba(154, 159, 146, 0.1);
     color: inherit;
     background: transparent;
     min-height: 58px;
-    padding: 8px 10px;
+    padding: 9px 12px;
     text-align: left;
   }
 
@@ -168,8 +168,8 @@
     justify-content: space-between;
     gap: 20px;
     min-height: 72px;
-    border-bottom: 1px solid var(--line);
-    padding: 16px;
+    border-bottom: 1px solid rgba(154, 159, 146, 0.14);
+    padding: 14px 16px;
   }
 
   .radar-toolbar h2 {
@@ -195,9 +195,9 @@
   .token-radar-venue-filter {
     display: flex;
     gap: 4px;
-    border: 1px solid var(--line);
+    border: 1px solid rgba(154, 159, 146, 0.14);
     border-radius: var(--radius);
-    background: rgba(3, 4, 3, 0.68);
+    background: rgba(3, 4, 3, 0.58);
     padding: 3px;
   }
 
@@ -215,7 +215,7 @@
 
   .token-radar-venue-filter button.active {
     color: #ffd184;
-    background: var(--opportunity-soft);
+    background: rgba(217, 154, 40, 0.16);
   }
 
   .token-radar-table {
@@ -223,7 +223,7 @@
     max-height: none;
     min-height: 0;
     overflow: auto;
-    padding: 12px;
+    padding: 10px 12px 12px;
   }
 
   @media (max-width: 767px) {
@@ -265,7 +265,7 @@
       z-index: 30;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      border-top: 1px solid var(--line);
+      border-top: 1px solid rgba(154, 159, 146, 0.14);
       background: rgba(9, 12, 12, 0.98);
       padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
       backdrop-filter: blur(14px);

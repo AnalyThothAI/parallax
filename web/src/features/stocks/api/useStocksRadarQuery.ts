@@ -4,13 +4,20 @@ import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 
 type StocksRadarArgs = {
+  enabled?: boolean;
   token: string;
   window: WindowKey;
   scope: ScopeKey;
   limit?: number;
 };
 
-export function useStocksRadarQuery({ token, window, scope, limit = 48 }: StocksRadarArgs) {
+export function useStocksRadarQuery({
+  enabled = true,
+  token,
+  window,
+  scope,
+  limit = 48,
+}: StocksRadarArgs) {
   return useQuery({
     queryKey: queryKeys.stocksRadar(window, scope, limit),
     queryFn: async () => {
@@ -20,7 +27,7 @@ export function useStocksRadarQuery({ token, window, scope, limit = 48 }: Stocks
       });
       return response.data;
     },
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
     refetchInterval: 15_000,
   });
 }
