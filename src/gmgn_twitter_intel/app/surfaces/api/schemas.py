@@ -152,6 +152,10 @@ class NarrativeCurrentnessData(ApiSchema):
 class TokenDiscussionDigestData(ApiSchema):
     status: Literal["ready", "pending", "insufficient", "semantic_unavailable", "stale"]
     currentness: NarrativeCurrentnessData
+    analysis_window: str | None = None
+    source_window: str | None = None
+    surface_window: str | None = None
+    reuse_reason: str | None = None
     data_gaps: list[Any] = Field(default_factory=list)
     coverage: JsonObject = Field(default_factory=dict)
 
