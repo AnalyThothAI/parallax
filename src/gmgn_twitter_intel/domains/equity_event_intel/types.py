@@ -52,6 +52,12 @@ class NormalizedEquityDocument:
     raw_payload_json: dict[str, Any]
     fetched_at_ms: int
     cik: str | None = None
+    document_type: str = "unknown"
+    form_type: str | None = None
+    accession_number: str | None = None
+    fiscal_period: str | None = None
+    event_time_ms: int | None = None
+    content_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

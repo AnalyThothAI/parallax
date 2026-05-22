@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from psycopg.types.json import Jsonb
+
+_DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 
 
 class EquityEventRepository:
@@ -74,6 +77,296 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def reconcile_sources(
+        self,
+        *,
+        sources: Sequence[Mapping[str, Any]],
+        universe_members: Sequence[Mapping[str, Any]] = (),
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        active_source_ids: list[str] = []
+        for source in sources:
+            active_source_ids.append(str(source["source_id"]))
+            rows.append(
+                self.upsert_source(
+                    source_id=str(source["source_id"]),
+                    provider_type=str(source["provider_type"]),
+                    company_id=str(source["company_id"]),
+                    ticker=str(source["ticker"]),
+                    cik=_optional_str(source.get("cik")),
+                    source_role=str(source["source_role"]),
+                    trust_tier=str(source.get("trust_tier") or "standard"),
+                    refresh_interval_seconds=int(source.get("refresh_interval_seconds") or 300),
+                    enabled=bool(source.get("enabled", True)),
+                    now_ms=now_ms,
+                    commit=False,
+                )
+            )
+            self._update_source_extra_json(
+                source_id=str(source["source_id"]),
+                extra_json=_json_dict(source.get("extra_json")),
+                now_ms=now_ms,
+                commit=False,
+            )
+        for member in universe_members:
+            self.upsert_universe_member(member, now_ms=now_ms, commit=False)
+        self.disable_unreconciled_sources(active_source_ids=active_source_ids, now_ms=now_ms, commit=False)
+        if commit:
+            self.conn.commit()
+        return rows
+
+    def upsert_universe_member(
+        self,
+        member: Mapping[str, Any],
+        *,
+        now_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO equity_event_universe_members (
+              company_id, ticker, company_name, cik, exchange, active, priority,
+              config_json, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (company_id) DO UPDATE SET
+              ticker = EXCLUDED.ticker,
+              company_name = EXCLUDED.company_name,
+              cik = EXCLUDED.cik,
+              exchange = EXCLUDED.exchange,
+              active = EXCLUDED.active,
+              priority = EXCLUDED.priority,
+              config_json = EXCLUDED.config_json,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING *
+            """,
+            (
+                str(member["company_id"]),
+                str(member["ticker"]).upper(),
+                str(member.get("company_name") or ""),
+                _optional_str(member.get("cik")),
+                _optional_str(member.get("exchange")),
+                bool(member.get("active", True)),
+                str(member.get("priority") or "P3"),
+                Jsonb(_json_dict(member.get("config_json"))),
+                int(now_ms),
+                int(now_ms),
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
+    def disable_unreconciled_sources(
+        self,
+        *,
+        active_source_ids: Sequence[str],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            UPDATE equity_event_sources
+               SET enabled = false,
+                   updated_at_ms = %s
+             WHERE enabled = true
+               AND provider_type = 'sec_submissions'
+               AND source_id LIKE %s
+               AND NOT (source_id = ANY(%s::text[]))
+            """,
+            (int(now_ms), "sec:%", [str(source_id) for source_id in active_source_ids]),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount or 0)
+
+    def reconcile_expected_events(
+        self,
+        *,
+        expected_events: Sequence[Mapping[str, Any]],
+        now_ms: int,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = [
+            self.upsert_expected_event(
+                expected_event_id=str(event["expected_event_id"]),
+                company_id=str(event["company_id"]),
+                ticker=str(event["ticker"]),
+                event_type=str(event["event_type"]),
+                fiscal_period=_optional_str(event.get("fiscal_period")),
+                expected_at_ms=int(event["expected_at_ms"]),
+                source_id=str(event["source_id"]),
+                source_role=str(event["source_role"]),
+                now_ms=now_ms,
+                commit=False,
+            )
+            for event in expected_events
+        ]
+        if commit:
+            self.conn.commit()
+        return rows
+
+    def claim_due_sources(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        claim_lease_ms: int = _DEFAULT_SOURCE_CLAIM_LEASE_MS,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT source_id
+                FROM equity_event_sources
+               WHERE enabled = true
+                 AND next_fetch_after_ms <= %s
+               ORDER BY next_fetch_after_ms ASC, source_id ASC
+               LIMIT %s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_sources AS sources
+               SET next_fetch_after_ms = %s,
+                   updated_at_ms = %s
+              FROM due
+             WHERE sources.source_id = due.source_id
+            RETURNING sources.*
+            """,
+            (
+                int(now_ms),
+                max(0, int(limit)),
+                int(now_ms) + max(1, int(claim_lease_ms)),
+                int(now_ms),
+            ),
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def start_fetch_run(self, *, source_id: str, started_at_ms: int, commit: bool = True) -> str:
+        fetch_run_id = f"equity-event-fetch-run-{uuid.uuid4().hex}"
+        self.conn.execute(
+            """
+            INSERT INTO equity_event_fetch_runs (fetch_run_id, source_id, started_at_ms, status)
+            VALUES (%s, %s, %s, 'running')
+            """,
+            (fetch_run_id, source_id, int(started_at_ms)),
+        )
+        self.conn.execute(
+            """
+            UPDATE equity_event_sources
+               SET last_fetch_at_ms = %s,
+                   updated_at_ms = %s
+             WHERE source_id = %s
+            """,
+            (int(started_at_ms), int(started_at_ms), source_id),
+        )
+        if commit:
+            self.conn.commit()
+        return fetch_run_id
+
+    def finish_fetch_run(
+        self,
+        *,
+        fetch_run_id: str,
+        source_id: str,
+        status: str,
+        finished_at_ms: int,
+        fetched_count: int = 0,
+        inserted_count: int = 0,
+        updated_count: int = 0,
+        duplicate_count: int = 0,
+        http_status: int | None = None,
+        error: str | None = None,
+        extra_json: Mapping[str, Any] | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            UPDATE equity_event_fetch_runs
+               SET finished_at_ms = %s,
+                   status = %s,
+                   fetched_count = %s,
+                   inserted_count = %s,
+                   updated_count = %s,
+                   duplicate_count = %s,
+                   http_status = %s,
+                   error = %s,
+                   extra_json = %s
+             WHERE fetch_run_id = %s
+            RETURNING *
+            """,
+            (
+                int(finished_at_ms),
+                str(status),
+                max(0, int(fetched_count)),
+                max(0, int(inserted_count)),
+                max(0, int(updated_count)),
+                max(0, int(duplicate_count)),
+                int(http_status) if http_status is not None else None,
+                _compact_error(error),
+                Jsonb(_json_dict(extra_json)),
+                fetch_run_id,
+            ),
+        ).fetchone()
+        if status == "success":
+            self.conn.execute(
+                """
+                UPDATE equity_event_sources
+                   SET last_success_at_ms = %s,
+                       next_fetch_after_ms = %s + refresh_interval_seconds * 1000,
+                       consecutive_failures = 0,
+                       last_error = NULL,
+                       updated_at_ms = %s
+                 WHERE source_id = %s
+                """,
+                (int(finished_at_ms), int(finished_at_ms), int(finished_at_ms), source_id),
+            )
+        else:
+            self.conn.execute(
+                """
+                UPDATE equity_event_sources
+                   SET consecutive_failures = consecutive_failures + 1,
+                       last_error = %s,
+                       next_fetch_after_ms = %s + refresh_interval_seconds * 1000,
+                       updated_at_ms = %s
+                 WHERE source_id = %s
+                """,
+                (_compact_error(error), int(finished_at_ms), int(finished_at_ms), source_id),
+            )
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
+    def update_source_http_cache(
+        self,
+        *,
+        source_id: str,
+        etag: str | None,
+        last_modified: str | None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_sources
+               SET etag = COALESCE(%s, etag),
+                   last_modified = COALESCE(%s, last_modified),
+                   updated_at_ms = %s
+             WHERE source_id = %s
+            """,
+            (
+                str(etag) if etag else None,
+                str(last_modified) if last_modified else None,
+                int(now_ms),
+                source_id,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
     def upsert_expected_event(
         self,
         *,
@@ -140,6 +433,24 @@ class EquityEventRepository:
         fetched_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
+        existing = self.conn.execute(
+            """
+            SELECT *
+              FROM equity_provider_documents
+             WHERE source_id = %s
+               AND provider_document_key = %s
+            """,
+            (source_id, provider_document_key),
+        ).fetchone()
+        status = "inserted"
+        if existing is not None:
+            status = "duplicate"
+            if (
+                existing["document_url"] != document_url
+                or existing["payload_hash"] != payload_hash
+                or dict(existing["raw_payload_json"]) != dict(raw_payload_json)
+            ):
+                status = "updated"
         row = self.conn.execute(
             """
             INSERT INTO equity_provider_documents (
@@ -174,7 +485,7 @@ class EquityEventRepository:
         ).fetchone()
         if commit:
             self.conn.commit()
-        return dict(row)
+        return {**dict(row), "status": status}
 
     def upsert_event_document(
         self,
@@ -197,6 +508,20 @@ class EquityEventRepository:
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
+        existing = self.conn.execute(
+            "SELECT * FROM equity_event_documents WHERE event_document_id = %s",
+            (event_document_id,),
+        ).fetchone()
+        status = "inserted"
+        if existing is not None:
+            status = "duplicate"
+            if (
+                existing["provider_document_id"] != provider_document_id
+                or existing["document_url"] != document_url
+                or existing["content_hash"] != content_hash
+                or existing["event_time_ms"] != int(event_time_ms)
+            ):
+                status = "updated"
         row = self.conn.execute(
             """
             INSERT INTO equity_event_documents (
@@ -250,7 +575,7 @@ class EquityEventRepository:
         ).fetchone()
         if commit:
             self.conn.commit()
-        return dict(row)
+        return {**dict(row), "status": status}
 
     def upsert_company_event(
         self,
@@ -392,6 +717,26 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def _update_source_extra_json(
+        self,
+        *,
+        source_id: str,
+        extra_json: Mapping[str, Any],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_sources
+               SET extra_json = %s,
+                   updated_at_ms = %s
+             WHERE source_id = %s
+            """,
+            (Jsonb(dict(extra_json)), int(now_ms), source_id),
+        )
+        if commit:
+            self.conn.commit()
+
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
@@ -414,3 +759,24 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "computed_at_ms": int(row["computed_at_ms"]),
         "projection_version": str(row["projection_version"]),
     }
+
+
+def _json_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _compact_error(error: str | None) -> str | None:
+    if not error:
+        return None
+    return str(error)[:2_000]

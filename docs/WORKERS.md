@@ -119,8 +119,8 @@ notification_delivery
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
 | `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
-| `equity_event_source_reconcile` (`EquityEventSourceReconcileWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py` | Task 2 registered; runtime worker lands in Task 3+ | Task 2 registered; runtime worker lands in Task 3+ | poll | `equity_event_sources_reconciled` | `interval_seconds` |
-| `equity_event_fetch` (`EquityEventFetchWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_fetch_worker.py` | Task 2 registered; runtime worker lands in Task 3+ | Task 2 registered; runtime worker lands in Task 3+ | `equity_event_sources_reconciled` | `equity_event_document_written` | `interval_seconds` |
+| `equity_event_source_reconcile` (`EquityEventSourceReconcileWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py` | configured `equity_event_intel.companies`, expected events, registry US equity identity | `equity_event_sources`, `equity_event_universe_members`, `equity_expected_events` | poll | `equity_event_sources_reconciled` | `interval_seconds` |
+| `equity_event_fetch` (`EquityEventFetchWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_fetch_worker.py` | due `equity_event_sources`, SEC submissions provider payloads | `equity_event_fetch_runs`, `equity_provider_documents`, `equity_event_documents` | `equity_event_sources_reconciled` | `equity_event_document_written` | `interval_seconds` |
 | `equity_event_process` (`EquityEventProcessWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_process_worker.py` | Task 2 registered; runtime worker lands in Task 3+ | Task 2 registered; runtime worker lands in Task 3+ | `equity_event_document_written` | `equity_event_processed` | `interval_seconds` |
 | `equity_event_story_projection` (`EquityEventStoryProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_story_projection_worker.py` | Task 2 registered; runtime worker lands in Task 3+ | Task 2 registered; runtime worker lands in Task 3+ | `equity_event_processed` | `equity_event_story_updated` | `interval_seconds` |
 | `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | Task 2 registered; runtime worker lands in Task 3+ | Task 2 registered; runtime worker lands in Task 3+ | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds` |
@@ -236,11 +236,11 @@ not a read model.
 | `news_item_processed` | `NewsItemProcessWorker` | `NewsStoryProjectionWorker`, `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_story_updated` | `NewsStoryProjectionWorker` | `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_item_brief_updated` | `NewsItemBriefWorker` | `NewsPageProjectionWorker` | `{count}` |
-| `equity_event_sources_reconciled` | `EquityEventSourceReconcileWorker` | `EquityEventFetchWorker` | Task 3+ payload |
-| `equity_event_document_written` | `EquityEventFetchWorker` | `EquityEventProcessWorker`, `EquityEventPageProjectionWorker` | Task 3+ payload |
-| `equity_event_processed` | `EquityEventProcessWorker` | `EquityEventStoryProjectionWorker`, `EquityEventPageProjectionWorker` | Task 3+ payload |
-| `equity_event_story_updated` | `EquityEventStoryProjectionWorker` | `EquityEventBriefWorker`, `EquityEventPageProjectionWorker` | Task 3+ payload |
-| `equity_event_brief_updated` | `EquityEventBriefWorker` | `EquityEventPageProjectionWorker` | Task 3+ payload |
+| `equity_event_sources_reconciled` | `EquityEventSourceReconcileWorker` | `EquityEventFetchWorker` | `{count}` |
+| `equity_event_document_written` | `EquityEventFetchWorker` | `EquityEventProcessWorker`, `EquityEventPageProjectionWorker` | `{source_id, count}` |
+| `equity_event_processed` | `EquityEventProcessWorker` | `EquityEventStoryProjectionWorker`, `EquityEventPageProjectionWorker` | `{count}` |
+| `equity_event_story_updated` | `EquityEventStoryProjectionWorker` | `EquityEventBriefWorker`, `EquityEventPageProjectionWorker` | `{count}` |
+| `equity_event_brief_updated` | `EquityEventBriefWorker` | `EquityEventPageProjectionWorker` | `{count}` |
 
 Wake payloads are hints only. Consumers re-read DB on wake and catch up
 on their configured cadence. `DBPoolBundle` owns wake emission and
