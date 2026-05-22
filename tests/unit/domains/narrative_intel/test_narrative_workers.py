@@ -170,7 +170,9 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
         assert result.notes["enqueue_semantic_inserted"] == 2
         assert result.notes["enqueue_semantic_suppressed_budget"] == 3
         assert result.notes["enqueue_semantic_pending_before"] == 1
-        assert repo.due_admissions_for_semantics_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
+        assert repo.due_admissions_for_semantics_calls == [
+            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        ]
         assert repo.pending_semantics_count_calls == [
             {
                 "target_type": "chain_token",
@@ -178,6 +180,7 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
                 "schema_version": "narrative_intel_v1",
                 "model_version": None,
                 "windows": ("1h",),
+                "scopes": ("matched",),
             }
         ]
         assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
@@ -562,7 +565,7 @@ def test_mention_semantics_claim_passes_per_target_cycle_cap():
 
     assert len(rows) == 1
     assert repo.due_mentions_calls == [
-        {"now_ms": 10_000, "limit": 10, "max_per_target": 3, "windows": ("1h",)}
+        {"now_ms": 10_000, "limit": 10, "max_per_target": 3, "windows": ("1h",), "scopes": ("matched",)}
     ]
 
 
@@ -630,7 +633,9 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
 
         assert result.processed == 0
         assert result.failed == 1
-        assert repo.due_digest_target_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
+        assert repo.due_digest_target_calls == [
+            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        ]
         assert result.notes["llm_calls"] == 1
         assert result.notes["llm_failures"] == 1
         assert repo.recorded_runs[0]["stage"] == "discussion_digest"
@@ -882,7 +887,9 @@ def test_token_discussion_digest_worker_does_not_claim_unsupported_5m_by_default
 
         assert result.skipped == 1
         assert result.notes == {"reason": "no_due_digest_targets", "claimed": 0}
-        assert repo.due_digest_target_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
+        assert repo.due_digest_target_calls == [
+            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        ]
         assert result.processed == 0
         assert result.failed == 0
         assert repo.replaced_digests == []
@@ -1390,6 +1397,8 @@ def fake_digest_settings(**overrides):
         max_llm_calls_per_cycle=3,
         max_llm_failures_per_cycle=2,
         provider_failure_backoff_seconds=600,
+        windows=("1h",),
+        scopes=("matched",),
     )
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -1466,10 +1475,16 @@ class FakeNarrativeRepository:
         self.suppressed_frontiers.append(set(active_target_keys))
         return {"suppressed": 0}
 
-    def due_admissions_for_semantics(self, *, now_ms, limit, windows):
-        self.due_admissions_for_semantics_calls.append({"now_ms": now_ms, "limit": limit, "windows": tuple(windows)})
+    def due_admissions_for_semantics(self, *, now_ms, limit, windows, scopes):
+        self.due_admissions_for_semantics_calls.append(
+            {"now_ms": now_ms, "limit": limit, "windows": tuple(windows), "scopes": tuple(scopes)}
+        )
         if self.due_admissions is not None:
-            return [admission for admission in self.due_admissions if admission.get("window") in windows][:limit]
+            return [
+                admission
+                for admission in self.due_admissions
+                if admission.get("window") in windows and admission.get("scope") in scopes
+            ][:limit]
         if not self.upserted_admissions:
             return []
         first = self.upserted_admissions[0]
@@ -1494,7 +1509,7 @@ class FakeNarrativeRepository:
         ]
 
     def pending_mention_semantics_count(
-        self, *, target_type, target_id, schema_version, model_version=None, windows=("1h",)
+        self, *, target_type, target_id, schema_version, model_version=None, windows=("1h",), scopes=("all",)
     ):
         self.pending_semantics_count_calls.append(
             {
@@ -1503,6 +1518,7 @@ class FakeNarrativeRepository:
                 "schema_version": schema_version,
                 "model_version": model_version,
                 "windows": tuple(windows),
+                "scopes": tuple(scopes),
             }
         )
         return int(self.pending_semantics.get((target_type, target_id), 0))
@@ -1525,9 +1541,15 @@ class FakeNarrativeRepository:
         )
         return {"updated": len(admission_ids)}
 
-    def due_mentions_for_labeling(self, *, now_ms, limit, windows, max_per_target=None):
+    def due_mentions_for_labeling(self, *, now_ms, limit, windows, scopes, max_per_target=None):
         self.due_mentions_calls.append(
-            {"now_ms": now_ms, "limit": limit, "max_per_target": max_per_target, "windows": tuple(windows)}
+            {
+                "now_ms": now_ms,
+                "limit": limit,
+                "max_per_target": max_per_target,
+                "windows": tuple(windows),
+                "scopes": tuple(scopes),
+            }
         )
         if self.due_mentions is not None:
             return self.due_mentions[:limit]
@@ -1570,10 +1592,16 @@ class FakeDigestRepository:
         self.digest_context_calls = []
         self.due_digest_target_calls = []
 
-    def due_digest_targets(self, *, now_ms, limit, windows=("1h",)):
-        self.due_digest_target_calls.append({"now_ms": now_ms, "limit": limit, "windows": tuple(windows)})
+    def due_digest_targets(self, *, now_ms, limit, windows=("1h",), scopes=("all",)):
+        self.due_digest_target_calls.append(
+            {"now_ms": now_ms, "limit": limit, "windows": tuple(windows), "scopes": tuple(scopes)}
+        )
         if self.targets is not None:
-            return [target for target in self.targets if target.get("window") in windows][:limit]
+            return [
+                target
+                for target in self.targets
+                if target.get("window") in windows and target.get("scope") in scopes
+            ][:limit]
         return [
             {
                 "admission_id": "admission-1",

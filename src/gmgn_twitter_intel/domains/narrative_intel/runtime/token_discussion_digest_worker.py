@@ -405,6 +405,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     now_ms=now_ms,
                     limit=limit,
                     windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
                 )
             )
 
@@ -618,6 +619,10 @@ def _next_due_after_no_ready_status_block(*, reason: str, epoch_next_due_at_ms: 
 
 def _settings_windows(settings: Any) -> tuple[str, ...]:
     return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
+
+
+def _settings_scopes(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "scopes", ("all",)) or ("all",))
 
 
 def _is_agent_no_start_backpressure(exc: Exception) -> bool:

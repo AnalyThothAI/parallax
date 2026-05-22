@@ -735,6 +735,7 @@ def _run_narrative_intel_rebuild(
                 scope=scope,
                 now_ms=cycle_now_ms,
                 realtime_windows=tuple(getattr(settings.workers.token_discussion_digest, "windows", ("1h",))),
+                realtime_scopes=tuple(getattr(settings.workers.token_discussion_digest, "scopes", ("all",))),
             )
             _merge_int_counts(cleanup_totals, cleanup)
             semantics_result = asyncio.run(semantics.run_once(now_ms=cycle_now_ms))
@@ -793,6 +794,7 @@ def _cleanup_narrative_backlog(
     scope: str,
     now_ms: int,
     realtime_windows: tuple[str, ...] = ("1h",),
+    realtime_scopes: tuple[str, ...] = ("all",),
 ) -> dict[str, int]:
     with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
         return dict(
@@ -803,6 +805,7 @@ def _cleanup_narrative_backlog(
                 scope=scope,
                 now_ms=now_ms,
                 realtime_windows=realtime_windows,
+                realtime_scopes=realtime_scopes,
             )
         )
 
@@ -848,6 +851,7 @@ def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
     digest = getattr(workers, "token_discussion_digest", None)
     return {
         "realtime_windows": tuple(getattr(digest, "windows", ("1h",)) or ("1h",)),
+        "realtime_scopes": tuple(getattr(digest, "scopes", ("all",)) or ("all",)),
         "semantics_rows_per_cycle": min(
             _positive_int(getattr(mention, "batch_size", 10), default=10),
             _positive_int(getattr(mention, "provider_batch_size", 10), default=10),

@@ -14,6 +14,7 @@ class NarrativeBacklogHealthQuery:
         conn: Any,
         *,
         realtime_windows: tuple[str, ...] = ("1h",),
+        realtime_scopes: tuple[str, ...] = ("all",),
         semantics_rows_per_cycle: int = 10,
         semantics_interval_seconds: int = 60,
         digest_calls_per_cycle: int = 3,
@@ -23,6 +24,7 @@ class NarrativeBacklogHealthQuery:
         self.realtime_windows = tuple(dict.fromkeys(str(window) for window in realtime_windows if str(window))) or (
             "1h",
         )
+        self.realtime_scopes = tuple(dict.fromkeys(str(scope) for scope in realtime_scopes if str(scope))) or ("all",)
         self.semantics_rows_per_cycle = max(1, int(semantics_rows_per_cycle or 1))
         self.semantics_interval_seconds = max(0, int(semantics_interval_seconds or 0))
         self.digest_calls_per_cycle = max(1, int(digest_calls_per_cycle or 1))
@@ -44,6 +46,7 @@ class NarrativeBacklogHealthQuery:
             "now_ms": int(now_ms),
             "since_hours": since_hours,
             "realtime_windows": list(self.realtime_windows),
+            "realtime_scopes": list(self.realtime_scopes),
             "admissions": self._admission_health(schema_version=schema_version),
             "semantic_backlog": backlog,
             "recent_runs": self._recent_runs(since_ms=since_ms, schema_version=schema_version),
@@ -71,8 +74,9 @@ class NarrativeBacklogHealthQuery:
             FROM narrative_admissions
             WHERE schema_version = %s
               AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             """,
-            (schema_version, list(self.realtime_windows)),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchone()
         data = _row(row)
         return {
@@ -99,6 +103,7 @@ class NarrativeBacklogHealthQuery:
               WHERE schema_version = %s
                 AND status = 'admitted'
                 AND "window" = ANY(%s)
+                AND scope = ANY(%s)
             ),
             current_sources AS (
               SELECT
@@ -152,6 +157,7 @@ class NarrativeBacklogHealthQuery:
               WHERE schema_version = %s
                 AND is_current = true
                 AND "window" = ANY(%s)
+                AND scope = ANY(%s)
             )
             SELECT
               (SELECT COUNT(*) FROM current_sources) AS current_source_rows,
@@ -236,9 +242,11 @@ class NarrativeBacklogHealthQuery:
             (
                 schema_version,
                 list(self.realtime_windows),
+                list(self.realtime_scopes),
                 schema_version,
                 schema_version,
                 list(self.realtime_windows),
+                list(self.realtime_scopes),
                 int(now_ms),
                 int(now_ms),
             ),
@@ -294,10 +302,10 @@ class NarrativeBacklogHealthQuery:
             FROM narrative_model_runs
             WHERE schema_version = %s
               AND finished_at_ms >= %s
-              AND (stage <> 'discussion_digest' OR "window" = ANY(%s))
+              AND (stage <> 'discussion_digest' OR ("window" = ANY(%s) AND scope = ANY(%s)))
             GROUP BY stage
             """,
-            (schema_version, int(since_ms), list(self.realtime_windows)),
+            (schema_version, int(since_ms), list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchall()
         result = {
             "mention_semantics": {"success": 0, "failure": 0, "timeout": 0},
@@ -324,8 +332,9 @@ class NarrativeBacklogHealthQuery:
               AND is_current = true
               AND status = 'pending'
               AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             """,
-            (schema_version, list(self.realtime_windows)),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchone()
         return _int(_row(row).get("pending_digest_count"))
 
@@ -337,9 +346,10 @@ class NarrativeBacklogHealthQuery:
             WHERE schema_version = %s
               AND is_current = true
               AND "window" = ANY(%s)
+              AND scope = ANY(%s)
             GROUP BY status
             """,
-            (schema_version, list(self.realtime_windows)),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchall()
         return {str(row["status"]): _int(row.get("count")) for row in rows}
 
@@ -352,12 +362,13 @@ class NarrativeBacklogHealthQuery:
             WHERE schema_version = %s
               AND is_current = true
               AND "window" = ANY(%s)
+              AND scope = ANY(%s)
               AND gap->>'reason' IS NOT NULL
             GROUP BY gap->>'reason'
             ORDER BY count DESC, reason ASC
             LIMIT 20
             """,
-            (schema_version, list(self.realtime_windows)),
+            (schema_version, list(self.realtime_windows), list(self.realtime_scopes)),
         ).fetchall()
         return {str(row["reason"]): _int(row.get("count")) for row in rows if row.get("reason")}
 
@@ -370,6 +381,7 @@ class NarrativeBacklogHealthQuery:
               WHERE schema_version = %s
                 AND status = 'admitted'
                 AND "window" = ANY(%s)
+                AND scope = ANY(%s)
             ),
             latest_ready AS (
               SELECT DISTINCT ON (
@@ -390,6 +402,7 @@ class NarrativeBacklogHealthQuery:
               WHERE schema_version = %s
                 AND status = 'ready'
                 AND "window" = ANY(%s)
+                AND scope = ANY(%s)
               ORDER BY target_type, target_id, "window", scope, schema_version, computed_at_ms DESC
             ),
             joined AS (
@@ -487,8 +500,10 @@ class NarrativeBacklogHealthQuery:
             (
                 schema_version,
                 list(self.realtime_windows),
+                list(self.realtime_scopes),
                 schema_version,
                 list(self.realtime_windows),
+                list(self.realtime_scopes),
                 EPOCH_POLICY_VERSION,
                 int(now_ms),
                 int(now_ms),

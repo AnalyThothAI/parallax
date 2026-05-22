@@ -104,6 +104,7 @@ class NarrativeBacklogHealthData(ApiSchema):
     now_ms: int | None = None
     since_hours: int = 4
     realtime_windows: list[str] = Field(default_factory=list)
+    realtime_scopes: list[str] = Field(default_factory=list)
     admissions: NarrativeAdmissionHealth = Field(default_factory=NarrativeAdmissionHealth)
     semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
     epoch: NarrativeEpochHealth = Field(default_factory=NarrativeEpochHealth)

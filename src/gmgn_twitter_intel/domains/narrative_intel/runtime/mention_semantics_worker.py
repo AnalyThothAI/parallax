@@ -297,6 +297,7 @@ class MentionSemanticsWorker(WorkerBase):
                 now_ms=now_ms,
                 limit=admission_limit,
                 windows=_settings_windows(self.settings),
+                scopes=_settings_scopes(self.settings),
             )
             stats["due_admissions"] = len(due_admissions)
             for admission in due_admissions:
@@ -313,6 +314,7 @@ class MentionSemanticsWorker(WorkerBase):
                     target_id=str(admission["target_id"]),
                     schema_version=NARRATIVE_SCHEMA_VERSION,
                     windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
                 )
                 stats["semantic_pending_before"] += pending_count
                 target_budget = max(0, max_pending_per_target - pending_count)
@@ -370,6 +372,7 @@ class MentionSemanticsWorker(WorkerBase):
                     limit=limit,
                     max_per_target=max_per_target,
                     windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
                 )
             )
 
@@ -525,6 +528,10 @@ def _attach_semantic_identity(items: list[dict[str, Any]], *, rows: list[dict[st
 
 def _settings_windows(settings: Any) -> tuple[str, ...]:
     return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
+
+
+def _settings_scopes(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "scopes", ("all",)) or ("all",))
 
 
 def _hash_json(payload: Any) -> str:

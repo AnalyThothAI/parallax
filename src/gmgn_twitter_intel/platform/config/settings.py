@@ -26,6 +26,8 @@ PULSE_CANDIDATE_WINDOW_SET = frozenset(PULSE_CANDIDATE_WINDOWS)
 PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS = {"1h": 3600, "4h": 14400}
 NARRATIVE_REALTIME_WINDOWS = ("1h",)
 NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
+NARRATIVE_REALTIME_SCOPES = ("all",)
+NARRATIVE_REALTIME_SCOPE_SET = frozenset(NARRATIVE_REALTIME_SCOPES)
 DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
     {
         "source_id": "coindesk",
@@ -931,6 +933,11 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         return _validate_narrative_realtime_windows("narrative_admission.windows", value)
 
+    @field_validator("scopes", mode="after")
+    @classmethod
+    def validate_scopes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return _validate_narrative_realtime_scopes("narrative_admission.scopes", value)
+
 
 class MentionSemanticsWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
@@ -987,6 +994,11 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     @classmethod
     def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         return _validate_narrative_realtime_windows("token_discussion_digest.windows", value)
+
+    @field_validator("scopes", mode="after")
+    @classmethod
+    def validate_scopes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return _validate_narrative_realtime_scopes("token_discussion_digest.scopes", value)
 
     @field_validator("digest_ttl_by_window_seconds")
     @classmethod
@@ -1913,6 +1925,18 @@ def _validate_narrative_realtime_windows(field_name: str, value: tuple[str, ...]
         raise ValueError(f"{field_name} must contain only 1h; got: {rejected}")
     if tuple(value) != NARRATIVE_REALTIME_WINDOWS:
         raise ValueError(f"{field_name} must be exactly ['1h']")
+    return value
+
+
+def _validate_narrative_realtime_scopes(field_name: str, value: tuple[str, ...]) -> tuple[str, ...]:
+    if not value:
+        raise ValueError(f"{field_name} must be exactly all")
+    invalid = tuple(scope for scope in value if scope not in NARRATIVE_REALTIME_SCOPE_SET)
+    if invalid:
+        rejected = ", ".join(invalid)
+        raise ValueError(f"{field_name} must contain only all; got: {rejected}")
+    if tuple(value) != NARRATIVE_REALTIME_SCOPES:
+        raise ValueError(f"{field_name} must be exactly ['all']")
     return value
 
 

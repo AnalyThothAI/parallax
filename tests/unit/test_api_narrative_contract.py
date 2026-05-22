@@ -189,6 +189,7 @@ def test_narrative_health_route_uses_domain_owned_query(monkeypatch) -> None:
             "since_hours": 4,
             "kwargs": {
                 "realtime_windows": ("1h",),
+                "realtime_scopes": ("all",),
                 "semantics_rows_per_cycle": 10,
                 "semantics_interval_seconds": 60,
                 "digest_calls_per_cycle": 3,
@@ -229,9 +230,11 @@ def test_narrative_health_schema_exposes_source_set_backlog_fields() -> None:
                 "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
                 "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
             },
+            "realtime_scopes": ["all"],
         }
     )
 
+    assert data.realtime_scopes == ["all"]
     assert data.semantic_backlog.total_pending == 9
     assert data.semantic_backlog.missing_semantic_rows == 4
     assert data.semantic_backlog.current_source_rows == 12

@@ -68,6 +68,7 @@ def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
     digest = getattr(workers, "token_discussion_digest", None)
     return {
         "realtime_windows": tuple(getattr(digest, "windows", ("1h",)) or ("1h",)),
+        "realtime_scopes": tuple(getattr(digest, "scopes", ("all",)) or ("all",)),
         "semantics_rows_per_cycle": min(
             _positive_int(getattr(mention, "batch_size", 10), default=10),
             _positive_int(getattr(mention, "provider_batch_size", 10), default=10),

@@ -5,7 +5,9 @@ from pydantic import ValidationError
 from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
 from gmgn_twitter_intel.platform.agent_execution import AgentRuntimePolicy
 from gmgn_twitter_intel.platform.config.settings import (
+    NarrativeAdmissionWorkerSettings,
     PulseCandidateWorkerSettings,
+    TokenDiscussionDigestWorkerSettings,
     WorkersSettings,
     default_workers_yaml,
 )
@@ -133,10 +135,17 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "investigator_max_tool_calls" not in text
     assert "fallback_agent_brief" not in text
     assert "narrative_fallback" not in text
-    payload = yaml.safe_load(text)
     worker_payload = {key: value for key, value in payload.items() if key not in {"defaults", "agent_runtime"}}
     assert "timeout_seconds" not in payload["defaults"]
     assert all("timeout_seconds" not in value for value in worker_payload.values())
+
+
+def test_narrative_realtime_workers_reject_matched_scope():
+    with pytest.raises(ValidationError, match=r"must contain only|must be exactly"):
+        NarrativeAdmissionWorkerSettings(scopes=("matched",))
+
+    with pytest.raises(ValidationError, match=r"must contain only|must be exactly"):
+        TokenDiscussionDigestWorkerSettings(scopes=("all", "matched"))
 
 
 def test_mention_semantics_hard_cuts_source_age_prune_setting() -> None:
@@ -199,13 +208,13 @@ def test_narrative_runtime_rejects_non_1h_windows() -> None:
     payload = yaml.safe_load(default_workers_yaml())
     payload["narrative_admission"]["windows"] = ["1h", "4h"]
 
-    with pytest.raises(ValidationError, match="narrative_admission.windows"):
+    with pytest.raises(ValidationError, match=r"narrative_admission.windows"):
         WorkersSettings(**payload)
 
     payload = yaml.safe_load(default_workers_yaml())
     payload["token_discussion_digest"]["windows"] = ["24h"]
 
-    with pytest.raises(ValidationError, match="token_discussion_digest.windows"):
+    with pytest.raises(ValidationError, match=r"token_discussion_digest.windows"):
         WorkersSettings(**payload)
 
 
