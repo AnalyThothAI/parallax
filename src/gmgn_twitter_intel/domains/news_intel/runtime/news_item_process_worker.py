@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -62,6 +63,8 @@ class NewsItemProcessWorker(WorkerBase):
                 candidates = build_fact_candidates(
                     news_item_id=news_item_id,
                     source_role=_text(item_payload, "source_role") or "observed_source",
+                    source_domain=_text(item_payload, "source_domain"),
+                    authority_scope=_json_dict(item_payload.get("authority_scope_json")),
                     title=_text(item_payload, "title"),
                     summary=_text(item_payload, "summary"),
                     body_text=_text(item_payload, "body_text"),
@@ -112,6 +115,19 @@ def _required_text(item: Mapping[str, Any], key: str) -> str:
 
 def _text(item: Mapping[str, Any], key: str) -> str:
     return str(item.get(key) or "").strip()
+
+
+def _json_dict(value: object) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    return {}
 
 
 def _now_ms() -> int:

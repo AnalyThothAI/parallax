@@ -750,7 +750,29 @@ class NewsRepository:
                WHERE items.news_item_id = picked.news_item_id
               RETURNING items.*
             )
-            SELECT claimed.*, sources.source_role, sources.trust_tier, sources.source_name
+            SELECT claimed.news_item_id,
+                   claimed.provider_item_id,
+                   claimed.source_id,
+                   sources.source_domain AS source_domain,
+                   claimed.canonical_url,
+                   claimed.title,
+                   claimed.summary,
+                   claimed.body_text,
+                   claimed.language,
+                   claimed.published_at_ms,
+                   claimed.fetched_at_ms,
+                   claimed.content_hash,
+                   claimed.title_fingerprint,
+                   claimed.lifecycle_status,
+                   claimed.processing_attempts,
+                   claimed.processing_error,
+                   claimed.processed_at_ms,
+                   claimed.created_at_ms,
+                   claimed.updated_at_ms,
+                   sources.source_role,
+                   sources.trust_tier,
+                   sources.source_name,
+                   sources.authority_scope_json
               FROM claimed
               JOIN news_sources AS sources ON sources.source_id = claimed.source_id
             """,

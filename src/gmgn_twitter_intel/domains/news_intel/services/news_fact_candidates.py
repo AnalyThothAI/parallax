@@ -2,26 +2,28 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_FACT_POLICY_VERSION
 from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import NewsTokenMention
+from gmgn_twitter_intel.domains.news_intel.services.source_authority import validate_source_authority
 
 _EVENT_PATTERNS = (
-    ("listing", re.compile(r"\b(?:lists?|listing|goes live|launches trading)\b", re.IGNORECASE)),
-    ("delisting", re.compile(r"\b(?:delists?|delisting|suspend trading)\b", re.IGNORECASE)),
-    ("hack", re.compile(r"\b(?:hack|hacked|exploit|exploited|drained)\b", re.IGNORECASE)),
+    ("exchange_listing", re.compile(r"\b(?:lists?|listing|goes live|launches trading)\b", re.IGNORECASE)),
+    ("exchange_delisting", re.compile(r"\b(?:delists?|delisting|suspend trading)\b", re.IGNORECASE)),
+    ("security_incident", re.compile(r"\b(?:hack|hacked|exploit|exploited|drained)\b", re.IGNORECASE)),
     (
-        "regulatory",
+        "etf_fund_flow",
+        re.compile(r"\bETF\b|\bexchange-traded fund\b|\b(?:inflow|outflow|net flow)\b", re.IGNORECASE),
+    ),
+    (
+        "regulatory_action",
         re.compile(r"\b(?:sec|cftc|regulator|court|lawsuit|settlement|approval|approved)\b", re.IGNORECASE),
     ),
-    ("etf", re.compile(r"\bETF\b|\bexchange-traded fund\b", re.IGNORECASE)),
-    ("fund_flow", re.compile(r"\b(?:inflow|outflow|net flow|whale|accumulat)\b", re.IGNORECASE)),
-    ("unlock", re.compile(r"\bunlock\b", re.IGNORECASE)),
+    ("governance_tokenomics", re.compile(r"\b(?:unlock|governance|proposal)\b", re.IGNORECASE)),
     ("protocol_upgrade", re.compile(r"\b(?:upgrade|mainnet|hard fork)\b", re.IGNORECASE)),
-)
-_ACCEPTING_SOURCE_ROLES = frozenset(
-    {"official_exchange", "official_regulator", "official_protocol", "official_issuer"}
 )
 _PRODUCTION_TARGET_TYPES = frozenset({"Asset", "CexToken"})
 _PRODUCTION_RESOLUTION_STATUSES = frozenset({"exact_address", "known_symbol", "unique_by_context"})
@@ -52,6 +54,8 @@ def build_fact_candidates(
     *,
     news_item_id: str,
     source_role: str,
+    source_domain: str = "",
+    authority_scope: Mapping[str, Any] | None = None,
     title: str,
     summary: str,
     body_text: str,
@@ -68,12 +72,19 @@ def build_fact_candidates(
         if match is None:
             continue
         targets = _affected_targets(token_mentions)
+        realis = _realis_for_match(text, event_type=event_type)
         required_slots = _required_slots(event_type=event_type, targets=targets, text=text)
-        rejection_reasons = _rejection_reasons(
-            targets=targets,
-            required_slots=required_slots,
-            realis="reported_claim",
+        authority = validate_source_authority(
             source_role=source_role,
+            authority_scope=authority_scope or {},
+            event_type=event_type,
+            source_domain=source_domain,
+            affected_targets=targets,
+            realis=realis,
+        )
+        rejection_reasons = _rejection_reasons(
+            required_slots=required_slots,
+            authority_reasons=authority.rejection_reasons,
         )
         candidates.append(
             NewsFactCandidate(
@@ -81,7 +92,7 @@ def build_fact_candidates(
                 news_item_id=news_item_id,
                 event_type=event_type,
                 claim=(title or text)[:240],
-                realis="reported_claim",
+                realis=realis,
                 evidence_quote=_evidence_quote(text, start=match.start(), end=match.end()),
                 evidence_span_start=max(0, match.start() - 80),
                 evidence_span_end=min(len(text), match.end() + 160),
@@ -96,7 +107,7 @@ def build_fact_candidates(
                 updated_at_ms=int(now_ms),
             )
         )
-    return candidates[:3]
+    return _suppress_redundant_attention_candidates(candidates)[:3]
 
 
 def _affected_targets(mentions: list[NewsTokenMention]) -> list[dict[str, object]]:
@@ -115,14 +126,14 @@ def _affected_targets(mentions: list[NewsTokenMention]) -> list[dict[str, object
 
 def _required_slots(*, event_type: str, targets: list[dict[str, object]], text: str) -> dict[str, bool]:
     has_production_target = any(bool(target.get("production_eligible")) for target in targets)
-    if event_type in {"listing", "delisting"}:
+    if event_type in {"exchange_listing", "exchange_delisting"}:
         return {
             "asset": has_production_target,
             "venue": bool(re.search(r"\b(?:coinbase|binance|kraken|okx|bybit)\b", text, re.IGNORECASE)),
         }
-    if event_type == "hack":
+    if event_type == "security_incident":
         return {"asset_or_protocol": has_production_target, "incident": True}
-    if event_type == "regulatory":
+    if event_type == "regulatory_action":
         return {
             "actor": bool(re.search(r"\b(?:sec|cftc|court|regulator|treasury)\b", text, re.IGNORECASE)),
             "action": True,
@@ -132,22 +143,45 @@ def _required_slots(*, event_type: str, targets: list[dict[str, object]], text: 
 
 def _rejection_reasons(
     *,
-    targets: list[dict[str, object]],
     required_slots: dict[str, bool],
-    realis: str,
-    source_role: str,
+    authority_reasons: list[str],
 ) -> list[str]:
     reasons: list[str] = []
-    if not any(bool(target.get("production_eligible")) for target in targets):
-        reasons.append("target_identity_not_production_eligible")
     for slot, present in required_slots.items():
         if not present:
             reasons.append(f"missing_slot:{slot}")
-    if realis not in {"actual", "scheduled", "official_proposed", "reported_claim"}:
-        reasons.append("non_actionable_realis")
-    if source_role not in _ACCEPTING_SOURCE_ROLES:
-        reasons.append("source_not_authoritative_for_acceptance")
+    for reason in authority_reasons:
+        if reason not in reasons:
+            reasons.append(reason)
     return reasons
+
+
+def _suppress_redundant_attention_candidates(candidates: list[NewsFactCandidate]) -> list[NewsFactCandidate]:
+    accepted_event_types = {
+        candidate.event_type for candidate in candidates if candidate.validation_status == "accepted"
+    }
+    if not accepted_event_types:
+        return candidates
+    suppressed_attention_types: set[str] = set()
+    if "etf_fund_flow" in accepted_event_types:
+        suppressed_attention_types.add("regulatory_action")
+    if "regulatory_action" in accepted_event_types:
+        suppressed_attention_types.add("etf_fund_flow")
+    if not suppressed_attention_types:
+        return candidates
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.validation_status != "attention" or candidate.event_type not in suppressed_attention_types
+    ]
+
+
+def _realis_for_match(text: str, *, event_type: str) -> str:
+    if event_type == "governance_tokenomics" and re.search(r"\b(?:proposal|proposes?|vote)\b", text, re.IGNORECASE):
+        return "official_proposed"
+    if re.search(r"\b(?:scheduled|will|starts?|begins?|launch(?:es)? on|effective)\b", text, re.IGNORECASE):
+        return "scheduled"
+    return "actual"
 
 
 def _is_production_eligible_mention(mention: NewsTokenMention) -> bool:

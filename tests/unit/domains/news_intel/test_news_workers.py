@@ -329,6 +329,12 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     item = {
         "news_item_id": "news-1",
         "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {
+            "event_types": ["exchange_listing"],
+            "domains": ["coinbase.com"],
+            "targets": [{"target_type": "CexToken", "target_id": "cex:BTC"}],
+        },
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
@@ -356,6 +362,35 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert db.repo.processed_items == [{"news_item_id": "news-1", "processed_at_ms": NOW_MS}]
     assert db.repo.failed_items == []
     assert wake_bus.notifications == [{"count": 1}]
+
+
+def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {"event_types": ["exchange_delisting"], "domains": ["coinbase.com"]},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    candidate = db.repo.fact_candidates["news-1"][0]
+    assert candidate.event_type == "exchange_listing"
+    assert candidate.validation_status == "attention"
+    assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
 def test_news_story_projection_worker_assigns_items_in_worker_session_and_notifies() -> None:

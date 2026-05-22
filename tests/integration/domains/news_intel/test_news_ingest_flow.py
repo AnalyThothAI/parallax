@@ -37,6 +37,11 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
             "source_name": "Binance Announcements",
             "source_role": "official_exchange",
             "trust_tier": "high",
+            "authority_scope": {
+                "event_types": ["exchange_listing"],
+                "domains": ["binance.com"],
+                "targets": [{"target_type": "CexToken", "target_id": "cex:BTC"}],
+            },
             "refresh_interval_seconds": 300,
         }
         db = _SingleConnectionWorkerDB(conn)
@@ -140,7 +145,7 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert row["source_json"]["source_role"] == "official_exchange"
     assert row["token_lanes_json"][0]["resolution_status"] == "known_symbol"
     assert row["token_lanes_json"][0]["target_type"] == "CexToken"
-    assert row["fact_lanes_json"][0]["event_type"] == "listing"
+    assert row["fact_lanes_json"][0]["event_type"] == "exchange_listing"
     assert row["fact_lanes_json"][0]["status"] == "accepted"
     assert item_detail is not None
     assert item_detail["source"]["source_role"] == "official_exchange"
@@ -149,7 +154,7 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert item_detail["story_members"][0]["story_id"] == row["story_id"]
     assert story_detail is not None
     assert story_detail["token_mentions"][0]["target_type"] == "CexToken"
-    assert story_detail["fact_candidates"][0]["event_type"] == "listing"
+    assert story_detail["fact_candidates"][0]["event_type"] == "exchange_listing"
 
 
 def _worker_settings(*, batch_size: int) -> SimpleNamespace:
