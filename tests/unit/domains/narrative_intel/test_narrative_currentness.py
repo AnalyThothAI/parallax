@@ -27,7 +27,7 @@ def test_currentness_exact_ready_digest_is_current() -> None:
             "independent_author_count": 2,
             "next_digest_due_at_ms": NOW_MS + 60_000,
         },
-        window="24h",
+        window="1h",
         now_ms=NOW_MS,
     )
 
@@ -56,7 +56,7 @@ def test_currentness_last_ready_with_delta_is_updating() -> None:
             "source_event_count": 3,
             "independent_author_count": 2,
         },
-        window="24h",
+        window="1h",
         now_ms=NOW_MS,
     )
 
@@ -86,7 +86,7 @@ def test_currentness_last_ready_past_display_until_is_stale() -> None:
             "source_event_ids_json": ["event-a"],
             "source_event_count": 1,
         },
-        window="24h",
+        window="1h",
         now_ms=NOW_MS,
     )
 
@@ -105,7 +105,7 @@ def test_currentness_no_ready_with_admission_is_not_ready() -> None:
             "source_event_count": 1,
             "independent_author_count": 1,
         },
-        window="24h",
+        window="1h",
         now_ms=NOW_MS,
     )
 
@@ -141,6 +141,23 @@ def test_currentness_unsupported_5m_is_unsupported_window() -> None:
     assert sentinel["data_gaps_json"] == [{"reason": "narrative_not_supported_for_window"}]
 
 
+def test_currentness_unsupported_24h_is_unsupported_window() -> None:
+    currentness = public_currentness(
+        digest=None,
+        admission={
+            "status": "admitted",
+            "source_fingerprint": "source-current",
+            "source_event_ids_json": ["event-a"],
+            "source_event_count": 1,
+        },
+        window="24h",
+        now_ms=NOW_MS,
+    )
+
+    assert currentness["display_status"] == "unsupported_window"
+    assert currentness["reason"] == "unsupported_window"
+
+
 def test_currentness_out_of_frontier_is_not_current() -> None:
     currentness = public_currentness(
         digest={
@@ -150,7 +167,7 @@ def test_currentness_out_of_frontier_is_not_current() -> None:
             "computed_at_ms": NOW_MS - 90_000,
         },
         admission=None,
-        window="24h",
+        window="1h",
         now_ms=NOW_MS,
     )
 

@@ -11,7 +11,7 @@ def test_digest_request_uses_compact_agent_payload():
         run_id="run-1",
         target_type="Asset",
         target_id="asset:solana:token:So111",
-        window="24h",
+        window="1h",
         scope="all",
         context={
             "mentions": [
@@ -112,7 +112,7 @@ def test_digest_request_default_prompt_budget_stays_small_for_realtime_latency()
         run_id="run-1",
         target_type="Asset",
         target_id="asset:solana:token:So111",
-        window="24h",
+        window="1h",
         scope="all",
         context={
             "mentions": mentions,
@@ -140,19 +140,80 @@ def test_refresh_decision_waits_for_pending_semantics_instead_of_insufficient():
     decision = service.refresh_decision(
         {
             "source_event_count": 10,
-            "semantic_row_count": 4,
+            "semantic_row_count": 10,
             "missing_semantic_count": 0,
-            "pending_semantic_count": 1,
-            "retryable_semantic_count": 1,
+            "pending_semantic_count": 3,
+            "retryable_semantic_count": 3,
             "terminal_unavailable_count": 0,
-            "labeled_event_count": 2,
+            "labeled_event_count": 4,
             "independent_author_count": 5,
             "semantic_rows": [
                 {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
                 {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
-                {"event_id": "event-3", "author_handle": "c", "status": "queued"},
-                {"event_id": "event-4", "author_handle": "d", "status": "retryable_error"},
+                {"event_id": "event-3", "author_handle": "c", "status": "labeled"},
+                {"event_id": "event-4", "author_handle": "d", "status": "labeled"},
+                {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                {"event_id": "event-6", "author_handle": "f", "status": "queued"},
+                {"event_id": "event-7", "author_handle": "g", "status": "queued"},
+                {"event_id": "event-8", "author_handle": "h", "status": "retryable_error"},
+                {"event_id": "event-9", "author_handle": "i", "status": "retryable_error"},
+                {"event_id": "event-10", "author_handle": "j", "status": "retryable_error"},
             ],
+        }
+    )
+
+    assert decision.should_refresh is False
+    assert decision.reason == "semantic_labeling_pending"
+    assert decision.status_if_not_refresh == "pending"
+
+
+def test_refresh_decision_allows_bounded_pending_tail_when_coverage_passes() -> None:
+    service = DiscussionDigestService(
+        min_source_mentions=3,
+        min_independent_authors=2,
+        min_semantic_coverage=0.35,
+        max_pending_semantic_rows_for_digest=2,
+    )
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 10,
+            "semantic_row_count": 10,
+            "missing_semantic_count": 1,
+            "pending_semantic_count": 1,
+            "retryable_semantic_count": 0,
+            "terminal_unavailable_count": 0,
+            "labeled_event_count": 8,
+            "independent_author_count": 5,
+            "semantic_rows": [{"status": "labeled"} for _ in range(8)]
+            + [{"status": "queued"}, {"status": "stale"}],
+        }
+    )
+
+    assert decision.should_refresh is True
+    assert decision.reason == "thresholds_met"
+
+
+def test_refresh_decision_blocks_pending_tail_above_tolerance() -> None:
+    service = DiscussionDigestService(
+        min_source_mentions=3,
+        min_independent_authors=2,
+        min_semantic_coverage=0.35,
+        max_pending_semantic_rows_for_digest=2,
+    )
+
+    decision = service.refresh_decision(
+        {
+            "source_event_count": 10,
+            "semantic_row_count": 10,
+            "missing_semantic_count": 1,
+            "pending_semantic_count": 1,
+            "retryable_semantic_count": 1,
+            "terminal_unavailable_count": 0,
+            "labeled_event_count": 7,
+            "independent_author_count": 5,
+            "semantic_rows": [{"status": "labeled"} for _ in range(7)]
+            + [{"status": "queued"}, {"status": "retryable_error"}, {"status": "stale"}],
         }
     )
 
@@ -286,7 +347,7 @@ def test_digest_request_sends_only_labeled_mentions():
         run_id="run-1",
         target_type="Asset",
         target_id="asset:solana:token:So111",
-        window="24h",
+        window="1h",
         scope="all",
         context={
             "mentions": [
@@ -345,7 +406,7 @@ def test_status_digest_carries_source_fingerprint_from_context() -> None:
     digest = service.build_status_digest(
         target_type="chain_token",
         target_id="solana:So111",
-        window="24h",
+        window="1h",
         scope="all",
         context={
             "source_event_count": 3,
@@ -384,7 +445,7 @@ def test_ready_digest_carries_source_fingerprint_from_context() -> None:
         {
             "target_type": "chain_token",
             "target_id": "solana:So111",
-            "window": "24h",
+            "window": "1h",
             "scope": "all",
             "schema_version": "narrative_intel_v1",
             "model_version": "gpt-test",

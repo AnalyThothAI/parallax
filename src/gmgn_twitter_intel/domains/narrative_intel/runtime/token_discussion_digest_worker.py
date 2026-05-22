@@ -46,10 +46,14 @@ class TokenDiscussionDigestWorker(WorkerBase):
     ) -> None:
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.provider = provider
+        max_pending_semantic_rows_for_digest = getattr(settings, "max_pending_semantic_rows_for_digest", 5)
+        if max_pending_semantic_rows_for_digest is None:
+            max_pending_semantic_rows_for_digest = 5
         self.service = DiscussionDigestService(
             min_source_mentions=int(getattr(settings, "min_source_mentions", 3) or 3),
             min_independent_authors=int(getattr(settings, "min_independent_authors", 2) or 2),
             min_semantic_coverage=float(getattr(settings, "min_semantic_coverage", 0.35) or 0.35),
+            max_pending_semantic_rows_for_digest=int(max_pending_semantic_rows_for_digest),
             max_mentions_per_digest=int(
                 getattr(settings, "max_mentions_per_digest", DEFAULT_MAX_MENTIONS_PER_DIGEST)
                 or DEFAULT_MAX_MENTIONS_PER_DIGEST

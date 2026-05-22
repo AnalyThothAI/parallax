@@ -134,7 +134,7 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
                     "admission_id": "admission-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
                 }
@@ -184,7 +184,7 @@ def test_mention_semantics_enqueue_budget_counts_only_missing_rows():
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
             }
@@ -440,7 +440,7 @@ def test_mention_semantics_partial_enqueue_uses_short_retry_and_exposes_missing_
                     "admission_id": "admission-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
                 }
@@ -613,14 +613,14 @@ def test_token_discussion_digest_worker_defers_threshold_targets_after_llm_cycle
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
             {
                 "admission_id": "admission-2",
                 "target_type": "chain_token",
                 "target_id": "solana:Bonk",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
         ]
@@ -660,14 +660,14 @@ def test_token_discussion_digest_worker_defers_after_provider_failure_budget():
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
             {
                 "admission_id": "admission-2",
                 "target_type": "chain_token",
                 "target_id": "solana:Bonk",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             },
         ]
@@ -733,26 +733,40 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
-                    {"event_id": "event-2", "author_handle": "b", "status": "queued"},
-                    {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "labeled"},
+                    {"event_id": "event-4", "author_handle": "d", "status": "labeled"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                    {"event_id": "event-6", "author_handle": "f", "status": "queued"},
+                    {"event_id": "event-7", "author_handle": "g", "status": "queued"},
+                    {"event_id": "event-8", "author_handle": "h", "status": "retryable_error"},
+                    {"event_id": "event-9", "author_handle": "i", "status": "retryable_error"},
+                    {"event_id": "event-10", "author_handle": "j", "status": "retryable_error"},
                 ],
                 "semantic_rows": [
                     {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
-                    {"event_id": "event-2", "author_handle": "b", "status": "queued"},
-                    {"event_id": "event-3", "author_handle": "c", "status": "retryable_error"},
+                    {"event_id": "event-2", "author_handle": "b", "status": "labeled"},
+                    {"event_id": "event-3", "author_handle": "c", "status": "labeled"},
+                    {"event_id": "event-4", "author_handle": "d", "status": "labeled"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                    {"event_id": "event-6", "author_handle": "f", "status": "queued"},
+                    {"event_id": "event-7", "author_handle": "g", "status": "queued"},
+                    {"event_id": "event-8", "author_handle": "h", "status": "retryable_error"},
+                    {"event_id": "event-9", "author_handle": "i", "status": "retryable_error"},
+                    {"event_id": "event-10", "author_handle": "j", "status": "retryable_error"},
                 ],
-                "source_event_count": 3,
-                "semantic_row_count": 3,
+                "source_event_count": 10,
+                "semantic_row_count": 10,
                 "missing_semantic_count": 0,
-                "pending_semantic_count": 1,
-                "retryable_semantic_count": 1,
+                "pending_semantic_count": 3,
+                "retryable_semantic_count": 3,
                 "terminal_unavailable_count": 0,
-                "labeled_event_count": 1,
-                "independent_author_count": 3,
+                "labeled_event_count": 4,
+                "independent_author_count": 10,
                 "allowed_refs": [],
             }
         )
@@ -771,7 +785,7 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
         assert result.notes["insufficient"] == 0
         assert repo.replaced_digests[0]["status"] == "pending"
         assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 70_000, "now_ms": 10_000}]
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 910_000, "now_ms": 10_000}]
 
     asyncio.run(scenario())
 
@@ -931,9 +945,9 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
-                "source_event_ids": ["event-1", "event-2", "event-3"],
+                "source_event_ids": [f"event-{index}" for index in range(1, 8)],
                 "source_fingerprint": "source-current",
                 "mentions": [
                     {"event_id": "event-1", "author_handle": "a", "status": "labeled"},
@@ -941,9 +955,9 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
                     {"event_id": "event-3", "author_handle": "c", "status": "queued"},
                 ],
                 "semantic_rows": [{"event_id": "event-1", "author_handle": "a", "status": "labeled"}],
-                "source_event_count": 3,
+                "source_event_count": 7,
                 "semantic_row_count": 1,
-                "missing_semantic_count": 2,
+                "missing_semantic_count": 6,
                 "pending_semantic_count": 0,
                 "retryable_semantic_count": 0,
                 "terminal_unavailable_count": 0,
@@ -968,8 +982,8 @@ def test_token_discussion_digest_worker_writes_status_digest_without_ready_snaps
         assert digest["status"] == "pending"
         assert digest["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
         assert digest["epoch_policy_version"] == "token-narrative-epoch-v1"
-        assert digest["source_event_ids"] == ["event-1", "event-2", "event-3"]
-        assert digest["refresh_reason"] == "semantic_pending"
+        assert digest["source_event_ids"] == [f"event-{index}" for index in range(1, 8)]
+        assert digest["refresh_reason"] == "initial_ready"
 
     asyncio.run(scenario())
 
@@ -980,7 +994,7 @@ def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {"event_id": "event-1", "author_handle": "a", "status": "semantic_unavailable"},
@@ -1020,7 +1034,7 @@ def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
         assert result.notes["refresh_reasons"]["semantic_provider_unavailable"] == 1
         assert repo.replaced_digests[0]["status"] == "semantic_unavailable"
         assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_provider_unavailable"}]
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 7_210_000, "now_ms": 10_000}]
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 910_000, "now_ms": 10_000}]
 
     asyncio.run(scenario())
 
@@ -1031,7 +1045,7 @@ def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {
@@ -1096,7 +1110,7 @@ def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
         assert repo.replaced_digests[0]["source_event_ids"] == ["event-1", "event-2", "event-3"]
         assert repo.replaced_digests[0]["source_window_start_ms"] == 1_000
         assert repo.replaced_digests[0]["source_window_end_ms"] == 9_000
-        assert repo.replaced_digests[0]["display_current_until_ms"] == 7_210_000
+        assert repo.replaced_digests[0]["display_current_until_ms"] == 910_000
         assert repo.replaced_digests[0]["refresh_reason"] == "initial_ready"
         assert repo.recorded_runs[0]["status"] == "done"
 
@@ -1109,7 +1123,7 @@ def test_token_discussion_digest_worker_repairs_sparse_provider_digest_as_ready(
             context={
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "mentions": [
                     {
@@ -1181,7 +1195,7 @@ def fake_settings(**overrides):
         timeout_seconds=0.0,
         statement_timeout_seconds=9.0,
         batch_size=10,
-        windows=("24h",),
+        windows=("1h",),
         scopes=("matched",),
         admission_limit=10,
         source_limit=100,
@@ -1202,7 +1216,7 @@ def fake_admission_settings(**overrides):
         interval_seconds=1.0,
         timeout_seconds=0.0,
         statement_timeout_seconds=9.0,
-        windows=("24h",),
+        windows=("1h",),
         scopes=("matched",),
         admission_limit=10,
         source_limit=100,
@@ -1398,7 +1412,7 @@ class FakeDigestRepository:
                 "admission_id": "admission-1",
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
             }
         ][:limit]
