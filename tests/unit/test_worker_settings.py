@@ -29,7 +29,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.defaults.hard_timeout_seconds == 180
     assert settings.defaults.backoff.kind == "exponential"
     assert settings.agent_runtime.defaults.model == "qwen3.6"
-    assert settings.agent_runtime.lanes["pulse.signal_analyst"].model is None
+    assert settings.agent_runtime.lanes["pulse.signal_analyst"].model == "qwen3.6"
     assert settings.collector.mode == "continuous"
     assert settings.collector.soft_timeout_seconds == 0
     assert settings.collector.hard_timeout_seconds == 0
@@ -301,7 +301,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
     assert lane.timeout_seconds == 90
     assert lane.circuit_breaker.failure_threshold == 3
     assert settings.agent_runtime.lanes["pulse.pipeline"].timeout_seconds == 240
-    assert settings.agent_runtime.lanes["pulse.pipeline"].model is None
+    assert settings.agent_runtime.lanes["pulse.pipeline"].model == "qwen3.6"
     assert settings.agent_runtime.lanes["narrative.mention_semantics"].priority == "bulk"
     assert settings.agent_runtime.lanes["watchlist.handle_summary"].priority == "low"
     assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
@@ -404,6 +404,16 @@ def test_news_workers_have_defaults():
         "news_story_updated",
         "news_item_brief_updated",
     )
+    assert settings.news_source_quality_projection.interval_seconds == 60
+    assert settings.news_source_quality_projection.batch_size == 100
+    assert settings.news_source_quality_projection.advisory_lock_key == 2026052201
+    assert settings.news_source_quality_projection.wakes_on == (
+        "news_item_written",
+        "news_item_processed",
+        "news_story_updated",
+        "news_item_brief_updated",
+    )
+    assert settings.news_source_quality_projection.windows == ("24h", "7d")
 
 
 def test_default_worker_advisory_lock_keys_are_unique():
@@ -432,10 +442,10 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
 
     profile = policy.capability_for_lane("pulse.signal_analyst")
 
-    assert profile.provider_family == "deepseek"
-    assert profile.output_strategy == "json_object"
-    assert profile.schema_enforcement == "client_validate"
-    assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
+    assert profile.provider_family == "openai_compatible"
+    assert profile.output_strategy == "json_schema"
+    assert profile.schema_enforcement == "provider"
+    assert profile.request_options.extra_body == {}
 
 
 def test_agent_runtime_lane_accepts_capability_overrides() -> None:

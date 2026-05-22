@@ -25,6 +25,9 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import News
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
+    NewsSourceQualityProjectionWorker,
+)
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
@@ -212,6 +215,14 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
         "news_item_brief_updated",
     )
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
+    assert isinstance(workers["news_source_quality_projection"], NewsSourceQualityProjectionWorker)
+    assert workers["news_source_quality_projection"].wake_waiter.channels == (
+        "news_item_written",
+        "news_item_processed",
+        "news_story_updated",
+        "news_item_brief_updated",
+    )
+    assert workers["news_source_quality_projection"].settings.advisory_lock_key == 2026052201
     assert isinstance(workers["macro_view_projection"], MacroViewProjectionWorker)
     assert workers["macro_view_projection"].settings.advisory_lock_key == 2026052109
     assert workers["macro_view_projection"].settings.batch_size == 250

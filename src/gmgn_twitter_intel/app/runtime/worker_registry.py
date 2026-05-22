@@ -46,6 +46,10 @@ CANONICAL_WORKER_CLASSES = {
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
+    "news_source_quality_projection": (
+        "gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker."
+        "NewsSourceQualityProjectionWorker"
+    ),
     "cex_oi_radar_board": (
         "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
     ),
@@ -83,6 +87,7 @@ WORKER_START_PRIORITY = {
     "news_story_projection": 92,
     "news_item_brief": 94,
     "news_page_projection": 95,
+    "news_source_quality_projection": 95,
     "cex_oi_radar_board": 95,
     "macro_view_projection": 95,
     "pulse_candidate": 96,

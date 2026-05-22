@@ -1587,6 +1587,220 @@ class NewsRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def list_source_quality_inputs(
+        self,
+        *,
+        window_ms: int,
+        now_ms: int,
+    ) -> list[dict[str, Any]]:
+        window_start_ms = int(now_ms) - max(1, int(window_ms))
+        rows = self.conn.execute(
+            """
+            WITH source_rows AS (
+              SELECT source_id
+                FROM news_sources
+               ORDER BY enabled DESC, source_id ASC
+            ),
+            window_items AS (
+              SELECT items.*
+                FROM source_rows AS sources
+                JOIN news_items AS items ON items.source_id = sources.source_id
+               WHERE items.published_at_ms >= %s
+                 AND items.published_at_ms <= %s
+            ),
+            fetch_agg AS (
+              SELECT fetch_runs.source_id,
+                     COUNT(*)::int AS fetch_run_count,
+                     COUNT(*) FILTER (WHERE fetch_runs.status = 'success')::int AS fetch_success_count,
+                     COALESCE(SUM(fetch_runs.fetched_count), 0)::int AS items_fetched,
+                     COALESCE(SUM(fetch_runs.inserted_count), 0)::int AS items_inserted,
+                     COALESCE(SUM(fetch_runs.duplicate_count), 0)::int AS items_duplicate
+                FROM source_rows AS sources
+                JOIN news_fetch_runs AS fetch_runs ON fetch_runs.source_id = sources.source_id
+               WHERE fetch_runs.started_at_ms >= %s
+                 AND fetch_runs.started_at_ms <= %s
+               GROUP BY fetch_runs.source_id
+            ),
+            item_agg AS (
+              SELECT source_id,
+                     COUNT(*)::int AS item_count,
+                     COUNT(*) FILTER (WHERE lifecycle_status = 'processed')::int AS processed_item_count,
+                     MAX(published_at_ms)::bigint AS latest_item_published_at_ms,
+                     ROUND(
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (
+                         ORDER BY GREATEST(0, fetched_at_ms - published_at_ms)
+                       )
+                     )::bigint AS median_lag_ms
+                FROM window_items
+               GROUP BY source_id
+            ),
+            mention_agg AS (
+              SELECT items.source_id,
+                     COUNT(mentions.mention_id)::int AS mention_count,
+                     COUNT(mentions.mention_id) FILTER (
+                       WHERE mentions.resolution_status IN (
+                         'exact_address',
+                         'known_symbol',
+                         'unique_by_context'
+                       )
+                     )::int AS resolved_mention_count
+                FROM window_items AS items
+                JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
+               GROUP BY items.source_id
+            ),
+            fact_agg AS (
+              SELECT items.source_id,
+                     COUNT(facts.fact_candidate_id)::int AS fact_count,
+                     COUNT(facts.fact_candidate_id) FILTER (
+                       WHERE facts.validation_status = 'attention'
+                     )::int AS attention_fact_count,
+                     COUNT(facts.fact_candidate_id) FILTER (
+                       WHERE facts.validation_status = 'accepted'
+                     )::int AS accepted_fact_count
+                FROM window_items AS items
+                JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
+               GROUP BY items.source_id
+            ),
+            brief_agg AS (
+              SELECT items.source_id,
+                     COUNT(DISTINCT briefs.news_item_id) FILTER (
+                       WHERE briefs.status = 'ready'
+                     )::int AS ready_brief_count
+                FROM window_items AS items
+                JOIN news_item_agent_briefs AS briefs ON briefs.news_item_id = items.news_item_id
+               GROUP BY items.source_id
+            ),
+            context_agg AS (
+              SELECT context_items.source_id,
+                     COUNT(*)::int AS context_item_count,
+                     COUNT(DISTINCT parent_news_item_id) FILTER (
+                       WHERE parent_news_item_id IS NOT NULL
+                     )::int AS context_parent_item_count
+                FROM source_rows AS sources
+                JOIN news_context_items AS context_items
+                  ON context_items.source_id = sources.source_id
+               WHERE COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s
+                 AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s
+               GROUP BY context_items.source_id
+            ),
+            useful_item_agg AS (
+              SELECT useful_items.source_id,
+                     COUNT(DISTINCT useful_items.news_item_id)::int AS useful_item_count
+                FROM (
+                  SELECT items.source_id,
+                         items.news_item_id
+                    FROM window_items AS items
+                    JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
+                   WHERE facts.validation_status IN ('accepted', 'attention')
+                  UNION
+                  SELECT items.source_id,
+                         items.news_item_id
+                    FROM window_items AS items
+                    JOIN news_context_items AS context_items
+                      ON context_items.parent_news_item_id = items.news_item_id
+                   WHERE COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s
+                     AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s
+                ) AS useful_items
+               GROUP BY useful_items.source_id
+            )
+            SELECT sources.source_id,
+                   COALESCE(fetch_agg.fetch_run_count, 0)::int AS fetch_run_count,
+                   COALESCE(fetch_agg.fetch_success_count, 0)::int AS fetch_success_count,
+                   COALESCE(fetch_agg.items_fetched, 0)::int AS items_fetched,
+                   COALESCE(fetch_agg.items_inserted, 0)::int AS items_inserted,
+                   COALESCE(fetch_agg.items_duplicate, 0)::int AS items_duplicate,
+                   COALESCE(item_agg.item_count, 0)::int AS item_count,
+                   COALESCE(item_agg.processed_item_count, 0)::int AS processed_item_count,
+                   COALESCE(mention_agg.mention_count, 0)::int AS mention_count,
+                   COALESCE(mention_agg.resolved_mention_count, 0)::int AS resolved_mention_count,
+                   COALESCE(fact_agg.fact_count, 0)::int AS fact_count,
+                   COALESCE(fact_agg.attention_fact_count, 0)::int AS attention_fact_count,
+                   COALESCE(fact_agg.accepted_fact_count, 0)::int AS accepted_fact_count,
+                   COALESCE(brief_agg.ready_brief_count, 0)::int AS ready_brief_count,
+                   COALESCE(context_agg.context_item_count, 0)::int AS context_item_count,
+                   COALESCE(context_agg.context_parent_item_count, 0)::int AS context_parent_item_count,
+                   COALESCE(useful_item_agg.useful_item_count, 0)::int AS useful_item_count,
+                   item_agg.latest_item_published_at_ms,
+                   item_agg.median_lag_ms
+              FROM source_rows AS sources
+              LEFT JOIN fetch_agg ON fetch_agg.source_id = sources.source_id
+              LEFT JOIN item_agg ON item_agg.source_id = sources.source_id
+              LEFT JOIN mention_agg ON mention_agg.source_id = sources.source_id
+              LEFT JOIN fact_agg ON fact_agg.source_id = sources.source_id
+              LEFT JOIN brief_agg ON brief_agg.source_id = sources.source_id
+              LEFT JOIN context_agg ON context_agg.source_id = sources.source_id
+              LEFT JOIN useful_item_agg ON useful_item_agg.source_id = sources.source_id
+             ORDER BY sources.source_id ASC
+            """,
+            (
+                window_start_ms,
+                int(now_ms),
+                window_start_ms,
+                int(now_ms),
+                window_start_ms,
+                int(now_ms),
+                window_start_ms,
+                int(now_ms),
+            ),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def replace_source_quality_rows(
+        self,
+        *,
+        rows: Sequence[Mapping[str, Any]],
+        status_window: str | None = None,
+        commit: bool = True,
+    ) -> None:
+        normalized_status_window = str(status_window).strip().lower() if status_window else None
+        for row in rows:
+            payload = _source_quality_payload(row)
+            self.conn.execute(
+                """
+                INSERT INTO news_source_quality_rows (
+                  row_id, source_id, window, computed_at_ms, fetch_success_rate,
+                  items_fetched, items_inserted, duplicate_rate, process_success_rate,
+                  resolved_token_rate, attention_rate, accepted_fact_rate, brief_ready_rate,
+                  median_lag_ms, quality_score, diagnostics_json, projection_version
+                )
+                VALUES (
+                  %(row_id)s, %(source_id)s, %(window)s, %(computed_at_ms)s, %(fetch_success_rate)s,
+                  %(items_fetched)s, %(items_inserted)s, %(duplicate_rate)s, %(process_success_rate)s,
+                  %(resolved_token_rate)s, %(attention_rate)s, %(accepted_fact_rate)s, %(brief_ready_rate)s,
+                  %(median_lag_ms)s, %(quality_score)s, %(diagnostics_json)s, %(projection_version)s
+                )
+                ON CONFLICT (source_id, window) DO UPDATE SET
+                  row_id = EXCLUDED.row_id,
+                  computed_at_ms = EXCLUDED.computed_at_ms,
+                  fetch_success_rate = EXCLUDED.fetch_success_rate,
+                  items_fetched = EXCLUDED.items_fetched,
+                  items_inserted = EXCLUDED.items_inserted,
+                  duplicate_rate = EXCLUDED.duplicate_rate,
+                  process_success_rate = EXCLUDED.process_success_rate,
+                  resolved_token_rate = EXCLUDED.resolved_token_rate,
+                  attention_rate = EXCLUDED.attention_rate,
+                  accepted_fact_rate = EXCLUDED.accepted_fact_rate,
+                  brief_ready_rate = EXCLUDED.brief_ready_rate,
+                  median_lag_ms = EXCLUDED.median_lag_ms,
+                  quality_score = EXCLUDED.quality_score,
+                  diagnostics_json = EXCLUDED.diagnostics_json,
+                  projection_version = EXCLUDED.projection_version
+                """,
+                payload,
+            )
+            if normalized_status_window and payload["window"] == normalized_status_window:
+                status = _json_dict(row.get("diagnostics_json")).get("status")
+                self.conn.execute(
+                    """
+                    UPDATE news_sources
+                       SET source_quality_status = %s
+                     WHERE source_id = %s
+                    """,
+                    (str(status or "unknown"), payload["source_id"]),
+                )
+        if commit:
+            self.conn.commit()
+
     def list_source_status(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -1869,6 +2083,28 @@ def _agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _source_quality_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": str(row["row_id"]),
+        "source_id": str(row["source_id"]),
+        "window": str(row["window"]),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "fetch_success_rate": _optional_float(row.get("fetch_success_rate")),
+        "items_fetched": int(row.get("items_fetched") or 0),
+        "items_inserted": int(row.get("items_inserted") or 0),
+        "duplicate_rate": _optional_float(row.get("duplicate_rate")),
+        "process_success_rate": _optional_float(row.get("process_success_rate")),
+        "resolved_token_rate": _optional_float(row.get("resolved_token_rate")),
+        "attention_rate": _optional_float(row.get("attention_rate")),
+        "accepted_fact_rate": _optional_float(row.get("accepted_fact_rate")),
+        "brief_ready_rate": _optional_float(row.get("brief_ready_rate")),
+        "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
+        "quality_score": _optional_float(row.get("quality_score")),
+        "diagnostics_json": _json(row.get("diagnostics_json") or {}),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
 def _object_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
@@ -1903,6 +2139,12 @@ def _first_int(*values: int | None) -> int:
         if value is not None:
             return max(0, int(value))
     return 0
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
 
 
 def _json(value: Any) -> Jsonb:

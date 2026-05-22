@@ -55,6 +55,8 @@ NEWS_SOURCE_ROLES = (
     "developer_signal",
     "observed_source",
 )
+NEWS_SOURCE_QUALITY_WINDOWS = ("1h", "4h", "24h", "7d")
+NEWS_SOURCE_QUALITY_WINDOW_SET = frozenset(NEWS_SOURCE_QUALITY_WINDOWS)
 SettingsNewsProviderType = Literal[
     "rss",
     "atom",
@@ -1181,6 +1183,38 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
+class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    advisory_lock_key: int = 2026052201
+    wakes_on: tuple[str, ...] = (
+        "news_item_written",
+        "news_item_processed",
+        "news_story_updated",
+        "news_item_brief_updated",
+    )
+    windows: tuple[str, ...] = ("24h", "7d")
+
+    @field_validator("wakes_on", "windows", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+    @field_validator("windows", mode="after")
+    @classmethod
+    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("news_source_quality_projection.windows must not be empty")
+        invalid = tuple(window for window in value if window not in NEWS_SOURCE_QUALITY_WINDOW_SET)
+        if invalid:
+            allowed = ", ".join(NEWS_SOURCE_QUALITY_WINDOWS)
+            rejected = ", ".join(invalid)
+            raise ValueError(
+                f"news_source_quality_projection.windows must contain only {allowed}; got: {rejected}"
+            )
+        return value
+
+
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1218,6 +1252,9 @@ class WorkersSettings(BaseModel):
     news_story_projection: NewsStoryProjectionWorkerSettings = Field(default_factory=NewsStoryProjectionWorkerSettings)
     news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
+    news_source_quality_projection: NewsSourceQualityProjectionWorkerSettings = Field(
+        default_factory=NewsSourceQualityProjectionWorkerSettings
+    )
 
     @model_validator(mode="after")
     def reject_zero_hard_timeout_for_non_continuous_workers(self) -> WorkersSettings:
@@ -1912,6 +1949,13 @@ news_page_projection:
   enabled: true
   advisory_lock_key: 2026051904
   wakes_on: ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"]
+news_source_quality_projection:
+  enabled: true
+  interval_seconds: 60.0
+  batch_size: 100
+  advisory_lock_key: 2026052201
+  wakes_on: ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"]
+  windows: ["24h", "7d"]
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0

@@ -9,6 +9,9 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import News
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
+from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
+    NewsSourceQualityProjectionWorker,
+)
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
 from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import (
@@ -18,7 +21,14 @@ from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolve
 )
 
 WORKER_KEYS = frozenset(
-    {"news_fetch", "news_item_process", "news_story_projection", "news_item_brief", "news_page_projection"}
+    {
+        "news_fetch",
+        "news_item_process",
+        "news_story_projection",
+        "news_item_brief",
+        "news_page_projection",
+        "news_source_quality_projection",
+    }
 )
 
 
@@ -89,6 +99,16 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             telemetry=ctx.telemetry,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_page_projection.wakes_on),
+        )
+
+    if workers.news_source_quality_projection.enabled:
+        worker_name = "news_source_quality_projection"
+        constructed["news_source_quality_projection"] = NewsSourceQualityProjectionWorker(
+            name=worker_name,
+            settings=workers.news_source_quality_projection,
+            db=ctx.db,
+            telemetry=ctx.telemetry,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_source_quality_projection.wakes_on),
         )
     return constructed
 
