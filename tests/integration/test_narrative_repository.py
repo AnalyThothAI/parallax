@@ -508,6 +508,72 @@ def test_due_mentions_for_labeling_filters_to_current_admitted_1h_sources(tmp_pa
     assert [row["event_id"] for row in due] == ["event-1"]
 
 
+def test_pending_mention_semantics_count_filters_to_current_admitted_1h_sources(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        assert evidence.insert_event(make_event("event-1"), is_watched=True) is True
+        assert evidence.insert_event(make_event("event-24h"), is_watched=True) is True
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-1"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "24h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-24h"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+            ],
+            now_ms=2_000,
+        )
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "1h source",
+                    "source_received_at_ms": 2_000,
+                },
+                {
+                    "event_id": "event-24h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "legacy source",
+                    "source_received_at_ms": 2_000,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_000,
+        )
+
+        count = repo.pending_mention_semantics_count(
+            target_type="chain_token",
+            target_id="solana:So111",
+            schema_version="narrative_intel_v1",
+            windows=("1h",),
+        )
+    finally:
+        conn.close()
+
+    assert count == 1
+
+
 def test_digest_context_counts_missing_semantics_outside_prompt_limit(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     event_ids = [f"event-context-{index:02d}" for index in range(30)]

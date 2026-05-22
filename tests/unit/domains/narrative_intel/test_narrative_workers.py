@@ -171,6 +171,15 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
         assert result.notes["enqueue_semantic_suppressed_budget"] == 3
         assert result.notes["enqueue_semantic_pending_before"] == 1
         assert repo.due_admissions_for_semantics_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
+        assert repo.pending_semantics_count_calls == [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "schema_version": "narrative_intel_v1",
+                "model_version": None,
+                "windows": ("1h",),
+            }
+        ]
         assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
         assert result.processed == 1
 
@@ -1290,6 +1299,7 @@ class FakeNarrativeRepository:
         self.semantic_scans = []
         self.due_mentions_calls = []
         self.due_admissions_for_semantics_calls = []
+        self.pending_semantics_count_calls = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
         return self.radar_rows[:limit]
@@ -1346,7 +1356,18 @@ class FakeNarrativeRepository:
             if str(row.get("event_id")) not in self.existing_semantic_event_ids
         ]
 
-    def pending_mention_semantics_count(self, *, target_type, target_id, schema_version, model_version=None):
+    def pending_mention_semantics_count(
+        self, *, target_type, target_id, schema_version, model_version=None, windows=("1h",)
+    ):
+        self.pending_semantics_count_calls.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "schema_version": schema_version,
+                "model_version": model_version,
+                "windows": tuple(windows),
+            }
+        )
         return int(self.pending_semantics.get((target_type, target_id), 0))
 
     def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms):

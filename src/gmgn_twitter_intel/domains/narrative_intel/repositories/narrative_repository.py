@@ -576,9 +576,10 @@ class NarrativeRepository:
         target_id: str,
         schema_version: str,
         model_version: str | None = None,
+        windows: tuple[str, ...] = ("1h",),
     ) -> int:
         model_clause = "AND model_version = %s" if model_version else ""
-        params: list[Any] = [target_type, target_id, schema_version]
+        params: list[Any] = [target_type, target_id, schema_version, list(windows)]
         if model_version:
             params.append(model_version)
         row = self.conn.execute(
@@ -588,6 +589,16 @@ class NarrativeRepository:
             WHERE target_type = %s
               AND target_id = %s
               AND schema_version = %s
+              AND EXISTS (
+                SELECT 1
+                FROM narrative_admissions AS admissions
+                WHERE admissions.status = 'admitted'
+                  AND admissions.schema_version = token_mention_semantics.schema_version
+                  AND admissions.target_type = token_mention_semantics.target_type
+                  AND admissions.target_id = token_mention_semantics.target_id
+                  AND admissions."window" = ANY(%s)
+                  AND admissions.source_event_ids_json ? token_mention_semantics.event_id
+              )
               {model_clause}
               AND status IN ('queued', 'retryable_error', 'stale')
             """,

@@ -313,6 +313,7 @@ class MentionSemanticsWorker(WorkerBase):
                     target_type=str(admission["target_type"]),
                     target_id=str(admission["target_id"]),
                     schema_version=NARRATIVE_SCHEMA_VERSION,
+                    windows=_settings_windows(self.settings),
                 )
                 stats["semantic_pending_before"] += pending_count
                 target_budget = max(0, max_pending_per_target - pending_count)
