@@ -43,7 +43,7 @@ class EquityEventProcessWorker(WorkerBase):
         for document in documents:
             event_document_id = str(document["event_document_id"])
             try:
-                validate_company_identity(document)
+                identity = validate_company_identity(document)
                 event = classify_equity_event(document)
                 text = document_text(document)
                 spans = build_source_spans(
@@ -59,6 +59,10 @@ class EquityEventProcessWorker(WorkerBase):
                         company_event_id=event.company_event_id,
                         event_document_id=event_document_id,
                         source_span_id=source_span_id,
+                        company_id=event.company_id,
+                        ticker=event.ticker,
+                        event_type=event.event_type,
+                        period=event.fiscal_period,
                         source_role=event.source_role,
                         title=event.summary,
                         body_text=text,
@@ -68,6 +72,12 @@ class EquityEventProcessWorker(WorkerBase):
                     else []
                 )
                 with self._repository_session() as repos:
+                    repos.equity_events.clear_story_members_for_document(
+                        event_document_id=event_document_id,
+                        active_company_event_id=event.company_event_id,
+                        now_ms=now,
+                        commit=False,
+                    )
                     repos.equity_events.upsert_company_event(
                         company_event_id=event.company_event_id,
                         company_id=event.company_id,
@@ -80,7 +90,7 @@ class EquityEventProcessWorker(WorkerBase):
                         event_time_ms=event.event_time_ms,
                         discovered_at_ms=event.discovered_at_ms,
                         lifecycle_status=event.lifecycle_status,
-                        validation_status=event.validation_status,
+                        validation_status=identity.validation_status,
                         summary=event.summary,
                         now_ms=now,
                         commit=False,

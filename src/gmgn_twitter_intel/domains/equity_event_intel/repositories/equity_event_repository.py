@@ -727,7 +727,8 @@ class EquityEventRepository:
               FROM equity_event_documents AS documents
               JOIN equity_provider_documents AS provider
                 ON provider.provider_document_id = documents.provider_document_id
-             WHERE documents.lifecycle_status = 'raw'
+             WHERE documents.lifecycle_status IN ('raw', 'process_failed')
+               AND documents.processing_attempts < 3
              ORDER BY documents.event_time_ms ASC, documents.event_document_id ASC
              LIMIT %s
              FOR UPDATE SKIP LOCKED
@@ -792,13 +793,18 @@ class EquityEventRepository:
             self.conn.execute(
                 """
                 INSERT INTO equity_event_fact_candidates (
-                  fact_candidate_id, company_event_id, event_document_id, source_span_id, fact_type,
-                  claim, evidence_quote, source_role, validation_status, rejection_reasons_json,
+                  fact_candidate_id, company_event_id, event_document_id, source_span_id, company_id,
+                  ticker, event_type, fact_type, metric_name, value_numeric, value_unit, period,
+                  direction, required_slots_json, claim, evidence_quote, evidence_span_start,
+                  evidence_span_end, source_role, validation_status, rejection_reasons_json,
                   extraction_method, policy_version, created_at_ms, updated_at_ms
                 )
                 VALUES (
                   %(fact_candidate_id)s, %(company_event_id)s, %(event_document_id)s,
-                  %(source_span_id)s, %(fact_type)s, %(claim)s, %(evidence_quote)s,
+                  %(source_span_id)s, %(company_id)s, %(ticker)s, %(event_type)s,
+                  %(fact_type)s, %(metric_name)s, %(value_numeric)s, %(value_unit)s,
+                  %(period)s, %(direction)s, %(required_slots_json)s, %(claim)s,
+                  %(evidence_quote)s, %(evidence_span_start)s, %(evidence_span_end)s,
                   %(source_role)s, %(validation_status)s, %(rejection_reasons_json)s,
                   %(extraction_method)s, %(policy_version)s, %(created_at_ms)s, %(updated_at_ms)s
                 )
@@ -807,6 +813,65 @@ class EquityEventRepository:
             )
         if commit:
             self.conn.commit()
+
+    def clear_story_members_for_document(
+        self,
+        *,
+        event_document_id: str,
+        active_company_event_id: str | None = None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        rows = self.conn.execute(
+            """
+            WITH affected_stories AS (
+              DELETE FROM equity_event_story_members AS members
+               USING equity_company_events AS events
+               WHERE events.company_event_id = members.company_event_id
+                 AND events.primary_document_id = %s
+              RETURNING members.story_id
+            ),
+            story_counts AS (
+              SELECT stories.story_id,
+                     COUNT(members.company_event_id)::integer AS event_count,
+                     COALESCE(MAX(events.event_time_ms), stories.latest_seen_at_ms) AS latest_seen_at_ms
+                FROM equity_event_story_groups AS stories
+                LEFT JOIN equity_event_story_members AS members
+                  ON members.story_id = stories.story_id
+                LEFT JOIN equity_company_events AS events
+                  ON events.company_event_id = members.company_event_id
+               WHERE stories.story_id IN (SELECT story_id FROM affected_stories)
+               GROUP BY stories.story_id
+            )
+            UPDATE equity_event_story_groups AS stories
+               SET event_count = story_counts.event_count,
+                   latest_seen_at_ms = story_counts.latest_seen_at_ms,
+                   updated_at_ms = %s
+              FROM story_counts
+             WHERE stories.story_id = story_counts.story_id
+            RETURNING stories.story_id
+            """,
+            (event_document_id, int(now_ms)),
+        ).fetchall()
+        if active_company_event_id is not None:
+            self.conn.execute(
+                """
+                UPDATE equity_company_events
+                   SET lifecycle_status = 'process_failed',
+                       validation_status = 'rejected',
+                       summary = CASE
+                         WHEN summary = '' THEN 'superseded by document reprocessing'
+                         ELSE summary
+                       END,
+                       updated_at_ms = %s
+                 WHERE primary_document_id = %s
+                   AND company_event_id <> %s
+                """,
+                (int(now_ms), event_document_id, active_company_event_id),
+            )
+        if commit:
+            self.conn.commit()
+        return len(rows)
 
     def mark_event_document_processed(
         self,
@@ -862,6 +927,7 @@ class EquityEventRepository:
               LEFT JOIN equity_event_story_members AS members
                 ON members.company_event_id = events.company_event_id
              WHERE members.company_event_id IS NULL
+               AND events.validation_status <> 'rejected'
              ORDER BY events.event_time_ms ASC, events.company_event_id ASC
              LIMIT %s
              FOR UPDATE OF events SKIP LOCKED
@@ -885,9 +951,9 @@ class EquityEventRepository:
                    events.event_time_ms,
                    documents.accession_number
               FROM equity_event_story_groups AS stories
-              JOIN equity_event_story_members AS members
+              LEFT JOIN equity_event_story_members AS members
                 ON members.story_id = stories.story_id
-              JOIN equity_company_events AS events
+              LEFT JOIN equity_company_events AS events
                 ON events.company_event_id = members.company_event_id
               LEFT JOIN equity_event_documents AS documents
                 ON documents.event_document_id = events.primary_document_id
@@ -1156,9 +1222,20 @@ def _fact_candidate_payload(candidate: Any) -> dict[str, Any]:
         "company_event_id": _field(candidate, "company_event_id"),
         "event_document_id": _field(candidate, "event_document_id"),
         "source_span_id": _field(candidate, "source_span_id"),
+        "company_id": _field(candidate, "company_id"),
+        "ticker": _field(candidate, "ticker"),
+        "event_type": _field(candidate, "event_type"),
         "fact_type": _field(candidate, "fact_type"),
+        "metric_name": _field(candidate, "metric_name"),
+        "value_numeric": _field(candidate, "value_numeric"),
+        "value_unit": _field(candidate, "value_unit"),
+        "period": _field(candidate, "period"),
+        "direction": _field(candidate, "direction"),
+        "required_slots_json": Jsonb(dict(_field(candidate, "required_slots_json") or {})),
         "claim": str(_field(candidate, "claim") or ""),
         "evidence_quote": str(_field(candidate, "evidence_quote") or ""),
+        "evidence_span_start": int(_field(candidate, "evidence_span_start") or 0),
+        "evidence_span_end": int(_field(candidate, "evidence_span_end") or 0),
         "source_role": _field(candidate, "source_role"),
         "validation_status": _field(candidate, "validation_status"),
         "rejection_reasons_json": Jsonb(list(_field(candidate, "rejection_reasons_json") or [])),

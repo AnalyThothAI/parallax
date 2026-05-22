@@ -89,6 +89,10 @@ TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
 EQUITY_EVENT_INTEL_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_equity_event_intel.py"
 )
+EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260522_0082_equity_event_fact_candidate_shape.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -432,6 +436,18 @@ def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
         "CREATE TABLE IF NOT EXISTS equity_company_events",
         "CREATE TABLE IF NOT EXISTS equity_event_source_spans",
         "CREATE TABLE IF NOT EXISTS equity_event_fact_candidates",
+        "source_span_id TEXT REFERENCES equity_event_source_spans(span_id) ON DELETE SET NULL",
+        "company_id TEXT",
+        "ticker TEXT",
+        "event_type TEXT",
+        "metric_name TEXT",
+        "value_numeric DOUBLE PRECISION",
+        "value_unit TEXT",
+        "period TEXT",
+        "direction TEXT",
+        "required_slots_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "evidence_span_start INTEGER NOT NULL DEFAULT 0",
+        "evidence_span_end INTEGER NOT NULL DEFAULT 0",
         "CREATE TABLE IF NOT EXISTS equity_event_story_groups",
         "CREATE TABLE IF NOT EXISTS equity_event_story_members",
         "CREATE TABLE IF NOT EXISTS equity_event_agent_runs",
@@ -462,6 +478,29 @@ def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
     assert "'transcript'" in text
     assert "'specialist_media'" in text
     assert "'observed_source'" in text
+
+
+def test_equity_event_fact_candidate_shape_migration_backfills_feature_branch_schema() -> None:
+    text = EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260522_0082"',
+        'down_revision = "20260522_0081"',
+        "ALTER TABLE equity_event_fact_candidates",
+        "ADD COLUMN IF NOT EXISTS source_span_id TEXT",
+        "ADD COLUMN IF NOT EXISTS company_id TEXT",
+        "ADD COLUMN IF NOT EXISTS ticker TEXT",
+        "ADD COLUMN IF NOT EXISTS event_type TEXT",
+        "ADD COLUMN IF NOT EXISTS metric_name TEXT",
+        "ADD COLUMN IF NOT EXISTS value_numeric DOUBLE PRECISION",
+        "ADD COLUMN IF NOT EXISTS value_unit TEXT",
+        "ADD COLUMN IF NOT EXISTS period TEXT",
+        "ADD COLUMN IF NOT EXISTS direction TEXT",
+        "ADD COLUMN IF NOT EXISTS required_slots_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ADD COLUMN IF NOT EXISTS evidence_span_start INTEGER NOT NULL DEFAULT 0",
+        "ADD COLUMN IF NOT EXISTS evidence_span_end INTEGER NOT NULL DEFAULT 0",
+    ):
+        assert statement in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

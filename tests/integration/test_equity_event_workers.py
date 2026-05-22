@@ -164,6 +164,12 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
     assert len(source_spans) == 1
     assert {candidate["fact_type"] for candidate in fact_candidates} == {"revenue_actual", "eps_actual"}
     assert {candidate["source_span_id"] for candidate in fact_candidates} == {source_spans[0]["span_id"]}
+    revenue_candidate = next(candidate for candidate in fact_candidates if candidate["fact_type"] == "revenue_actual")
+    assert revenue_candidate["metric_name"] == "revenue"
+    assert revenue_candidate["value_numeric"] == 62.0
+    assert revenue_candidate["value_unit"] == "USD_billion"
+    assert revenue_candidate["period"] == "2026Q1"
+    assert revenue_candidate["evidence_span_end"] > revenue_candidate["evidence_span_start"]
     assert wake_bus.events_processed == [1]
     assert story_result.processed == 1
     assert story_group["event_count"] == 1
@@ -425,6 +431,147 @@ def test_fetch_worker_records_structured_provider_failure(postgres_conn) -> None
     assert fetch_run["extra_json"]["provider_document"]["status"] == "failed"
 
 
+def test_process_worker_marks_identity_mismatch_event_attention(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        company_id="not-a-market-instrument",
+        ticker="MSFT",
+        event_document_id="event-doc-identity",
+        provider_document_id="provider-doc-identity",
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    event = postgres_conn.execute("SELECT * FROM equity_company_events").fetchone()
+    assert result.processed == 1
+    assert event["validation_status"] == "attention"
+
+
+def test_process_worker_retries_process_failed_documents(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-retry",
+        provider_document_id="provider-doc-retry",
+    )
+    postgres_conn.execute(
+        """
+        UPDATE equity_event_documents
+           SET lifecycle_status = 'process_failed',
+               processing_attempts = 1,
+               processing_error = 'transient'
+         WHERE event_document_id = %s
+        """,
+        ("event-doc-retry",),
+    )
+    postgres_conn.commit()
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    assert result.processed == 1
+    assert document["lifecycle_status"] == "processed"
+    assert document["processing_error"] is None
+
+
+def test_reprocessing_updated_document_clears_stale_story_membership(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    repos = repositories_for_connection(postgres_conn)
+    provider = _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-update",
+        provider_document_id="provider-doc-update",
+        provider_document_key="0000789019-26-000777:10-Q",
+        accession_number="0000789019-26-000777",
+        form_type="10-Q",
+        raw_payload_json={"title": "Quarterly report", "body_text": "Revenue was $62.0 billion."},
+        content_hash="content-original",
+    )
+
+    _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+    _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
+    old_member = postgres_conn.execute("SELECT * FROM equity_event_story_members").fetchone()
+    old_event_id = old_member["company_event_id"]
+
+    repos.equity_events.upsert_provider_document(
+        provider_document_id=provider["provider_document_id"],
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key="0000789019-26-000777:10-Q",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000777/msft.htm",
+        payload_hash="hash-updated",
+        raw_payload_json={
+            "title": "Results of Operations and Financial Condition",
+            "body_text": "Revenue was $63.0 billion.",
+        },
+        fetched_at_ms=NOW_MS + 3_000,
+    )
+    repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-update",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="8-K",
+        accession_number="0000789019-26-000777",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000777/msft.htm",
+        event_time_ms=NOW_MS + 3_000,
+        discovered_at_ms=NOW_MS + 3_000,
+        content_hash="content-updated",
+        now_ms=NOW_MS + 3_000,
+    )
+
+    _process_worker(db, now_ms=NOW_MS + 4_000).run_once_sync()
+    _story_worker(db, now_ms=NOW_MS + 5_000).run_once_sync()
+
+    members = postgres_conn.execute("SELECT * FROM equity_event_story_members").fetchall()
+    assert old_event_id not in {member["company_event_id"] for member in members}
+    assert len(members) == 1
+
+
+def test_story_projection_rebuilds_members_after_partial_truncation(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-story-1",
+        provider_document_id="provider-doc-story-1",
+        provider_document_key="0000789019-26-000101:10-Q",
+        accession_number="0000789019-26-000101",
+    )
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-story-2",
+        provider_document_id="provider-doc-story-2",
+        provider_document_key="0000789019-26-000102:8-K",
+        accession_number="0000789019-26-000102",
+        form_type="8-K",
+        raw_payload_json={
+            "title": "Results of Operations and Financial Condition",
+            "body_text": "Revenue was $62.0 billion.",
+        },
+    )
+
+    _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+    _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
+    postgres_conn.execute("DELETE FROM equity_event_story_members")
+    postgres_conn.commit()
+
+    result = _story_worker(db, now_ms=NOW_MS + 3_000).run_once_sync()
+
+    members = postgres_conn.execute("SELECT * FROM equity_event_story_members").fetchall()
+    assert result.processed == 2
+    assert len(members) == 2
+    assert len({member["story_id"] for member in members}) == 1
+
+
 class _WorkerDb:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -522,6 +669,87 @@ class _FailingEquityDocumentProvider:
                 }
             ],
         )
+
+
+def _process_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventProcessWorker:
+    return EquityEventProcessWorker(
+        name="equity_event_process",
+        settings=Settings().workers.equity_event_process,
+        db=db,
+        telemetry=SimpleNamespace(),
+        wake_bus=None,
+        clock_ms=lambda: now_ms,
+    )
+
+
+def _story_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventStoryProjectionWorker:
+    return EquityEventStoryProjectionWorker(
+        name="equity_event_story_projection",
+        settings=Settings().workers.equity_event_story_projection,
+        db=db,
+        telemetry=SimpleNamespace(),
+        wake_bus=None,
+        clock_ms=lambda: now_ms,
+    )
+
+
+def _seed_processable_document(
+    conn: Any,
+    *,
+    event_document_id: str,
+    provider_document_id: str,
+    provider_document_key: str = "0000789019-26-000001:10-Q",
+    accession_number: str = "0000789019-26-000001",
+    company_id: str = "market_instrument:us_equity:MSFT",
+    ticker: str = "MSFT",
+    form_type: str = "10-Q",
+    fiscal_period: str = "2026Q1",
+    raw_payload_json: dict[str, Any] | None = None,
+    content_hash: str = "content-1",
+) -> dict[str, Any]:
+    repos = repositories_for_connection(conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        now_ms=NOW_MS,
+    )
+    provider = repos.equity_events.upsert_provider_document(
+        provider_document_id=provider_document_id,
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key=provider_document_key,
+        company_id=company_id,
+        ticker=ticker,
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        payload_hash=content_hash,
+        raw_payload_json=raw_payload_json
+        or {"title": "Quarterly report", "body_text": "Revenue was $62.0 billion. EPS was $2.94."},
+        fetched_at_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_event_document(
+        event_document_id=event_document_id,
+        provider_document_id=provider["provider_document_id"],
+        company_id=company_id,
+        ticker=ticker,
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type=form_type,
+        accession_number=accession_number,
+        fiscal_period=fiscal_period,
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash=content_hash,
+        now_ms=NOW_MS,
+    )
+    return provider
 
 
 def _source_payload(symbol: str) -> dict[str, Any]:

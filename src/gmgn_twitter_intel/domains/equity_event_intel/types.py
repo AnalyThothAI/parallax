@@ -88,6 +88,17 @@ class EquityFactCandidate:
     policy_version: str
     created_at_ms: int
     updated_at_ms: int
+    company_id: str = ""
+    ticker: str = ""
+    event_type: str = ""
+    metric_name: str = ""
+    value_numeric: float | None = None
+    value_unit: str = ""
+    period: str | None = None
+    direction: str = ""
+    required_slots_json: dict[str, bool] | None = None
+    evidence_span_start: int = 0
+    evidence_span_end: int = 0
     event_document_id: str | None = None
     source_span_id: str | None = None
     rejection_reasons_json: list[str] | None = None
