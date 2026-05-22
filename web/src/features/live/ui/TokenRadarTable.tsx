@@ -30,11 +30,7 @@ import {
 } from "lucide-react";
 import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
 
-import {
-  openTokenRadarDetailInNewTab,
-  tokenRadarDetailHref,
-  tokenRadarDetailLinkProps,
-} from "../model/tokenRadarDetailLink";
+import { tokenRadarDetailHref } from "../model/tokenRadarDetailLink";
 import "./TokenRadarTable.css";
 
 type TokenRadarTableProps = {
@@ -59,6 +55,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     isLoading,
     isRefreshing = false,
     error,
+    onSelect,
     onScopeChange,
     onWindowChange,
   } = props;
@@ -81,8 +78,8 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
         }`
       : "no live cases";
   const columns = useMemo<ColumnDef<TokenFlowItem>[]>(
-    () => tokenRadarColumns({ scope, selectedKey }),
-    [scope, selectedKey],
+    () => tokenRadarColumns({ onSelect, scope, selectedKey }),
+    [onSelect, scope, selectedKey],
   );
   const [sorting, setSorting] = useState<SortingState>([{ id: "score", desc: true }]);
   const table = useReactTable({
@@ -152,7 +149,6 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
                 {table.getRowModel().rows.map((row) => {
                   const key = tokenKey(row.original);
                   const tokenCase = buildTokenRadarCompactCase(row.original);
-                  const detailHref = tokenRadarDetailHref(row.original, scope);
                   return (
                     <Fragment key={row.id}>
                       {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
@@ -160,8 +156,8 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
                         aria-label={`Token Radar item ${tokenCase.label}`}
                         className={clsx("token-radar-row", selectedKey === key && "selected")}
                         tabIndex={0}
-                        onClick={() => openTokenRadarDetailInNewTab(detailHref)}
-                        onKeyDown={(event) => handleRowKeyDown(event, detailHref)}
+                        onClick={() => onSelect?.(row.original)}
+                        onKeyDown={(event) => handleRowKeyDown(event, row.original, onSelect)}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <div className={`token-radar-cell ${cell.column.id}`} key={cell.id}>
@@ -183,6 +179,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
 }
 
 type TokenRadarColumnDeps = {
+  onSelect: TokenRadarTableProps["onSelect"];
   scope: ScopeKey;
   selectedKey: string | null;
 };
@@ -212,6 +209,7 @@ function VenueFilter({
 }
 
 function tokenRadarColumns({
+  onSelect,
   scope,
   selectedKey,
 }: TokenRadarColumnDeps): ColumnDef<TokenFlowItem>[] {
@@ -224,6 +222,7 @@ function tokenRadarColumns({
         <TokenCaseCell
           detailHref={tokenRadarDetailHref(row.original, scope)}
           item={row.original}
+          onSelect={onSelect}
           selected={selectedKey === tokenKey(row.original)}
         />
       ),
@@ -268,21 +267,27 @@ function tokenRadarColumns({
   ];
 }
 
-function handleRowKeyDown(event: KeyboardEvent<HTMLElement>, detailHref: string) {
+function handleRowKeyDown(
+  event: KeyboardEvent<HTMLElement>,
+  item: TokenFlowItem,
+  onSelect: TokenRadarTableProps["onSelect"],
+) {
   if (event.key !== "Enter" && event.key !== " ") {
     return;
   }
   event.preventDefault();
-  openTokenRadarDetailInNewTab(detailHref);
+  onSelect?.(item);
 }
 
 function TokenCaseCell({
   detailHref,
   item,
+  onSelect,
   selected,
 }: {
   detailHref: string;
   item: TokenFlowItem;
+  onSelect: TokenRadarTableProps["onSelect"];
   selected: boolean;
 }) {
   const tokenCase = buildTokenRadarCompactCase(item);
@@ -304,10 +309,10 @@ function TokenCaseCell({
             aria-label={`Open token item ${tokenCase.label}`}
             className={clsx("radar-case-button", selected && "selected")}
             href={detailHref}
-            rel={tokenRadarDetailLinkProps.rel}
-            target={tokenRadarDetailLinkProps.target}
             onClick={(event) => {
+              event.preventDefault();
               event.stopPropagation();
+              onSelect?.(item);
             }}
           >
             <strong>{tokenCase.label}</strong>

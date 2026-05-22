@@ -11,16 +11,24 @@ test.beforeEach(({}, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("mobile-"), "mobile-only layout contract");
 });
 
-test("mobile shell exposes task nav without desktop rail or route reloads", async ({ page }) => {
+test("mobile shell exposes sidebar route nav and task nav without route reloads", async ({
+  page,
+}) => {
   await installMockApi(page);
   await page.goto("/");
 
-  await expect(page.locator(".desktop-side-rail")).toBeHidden();
+  const sidebarTrigger = page.getByRole("button", { name: "Toggle Sidebar" });
+  await expect(sidebarTrigger).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
 
-  const mobileRouteNav = page.locator(".mobile-route-nav");
-  await expect(mobileRouteNav).toBeVisible();
-  await expect(mobileRouteNav.getByRole("link", { name: "Stocks" })).toBeVisible();
-  await expect(mobileRouteNav.getByRole("link", { name: "Search" })).toBeVisible();
+  await sidebarTrigger.click();
+  const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
+  await expect(primaryNavigation).toBeVisible();
+  await expect(primaryNavigation.getByRole("link", { name: "Token Radar" })).toBeVisible();
+  await expect(primaryNavigation.getByRole("link", { name: "Stocks" })).toBeVisible();
+  await expect(primaryNavigation.getByRole("link", { name: "Macro" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(primaryNavigation).toBeHidden();
 
   const liveTaskNav = page.locator(".live-task-nav");
   await expect(liveTaskNav).toBeVisible();
@@ -32,7 +40,7 @@ test("mobile shell exposes task nav without desktop rail or route reloads", asyn
   await expect(labButton).toBeVisible();
 
   await expectNoDocumentHorizontalOverflow(page);
-  await expectNoNestedHorizontalOverflow(page, [".mobile-route-nav"]);
+  await expectNoNestedHorizontalOverflow(page, [".topbar", ".live-task-nav"]);
   await expectActiveMobileTask(page, "radar");
 
   await page.evaluate(() => {
@@ -63,8 +71,8 @@ test("mobile radar list remains reachable above the task nav without overlap", a
   await installMockApi(page);
   await page.goto("/?window=24h&scope=matched");
 
-  await expect(page.locator(".desktop-side-rail")).toBeHidden();
-  await expect(page.locator(".mobile-route-nav")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Toggle Sidebar" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
   await expect(page.locator(".live-task-nav")).toBeVisible();
   await expect(page.locator(".token-radar-row")).toHaveCount(8);
 
@@ -101,7 +109,7 @@ test("mobile radar list remains reachable above the task nav without overlap", a
     ".token-radar-row:last-of-type",
   );
   await expectNoDocumentHorizontalOverflow(page);
-  await expectNoNestedHorizontalOverflow(page, [".mobile-route-nav", ".token-radar-row"]);
+  await expectNoNestedHorizontalOverflow(page, [".topbar", ".token-radar-row"]);
   await expectNoUnhandledApiRequests(page);
 });
 

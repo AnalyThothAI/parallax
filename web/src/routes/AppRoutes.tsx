@@ -11,11 +11,6 @@ import { NEWS_PAGE_SIZE, useNewsPageWithToken } from "@features/news";
 import { useNotificationsController } from "@features/notifications";
 import { useSignalLabCompactQuery } from "@features/signal-lab";
 import { useStocksRadarQuery } from "@features/stocks";
-import {
-  buildWatchlistRows,
-  emptyWatchlistHandleRow,
-  useWatchlistHandlesOverviewQuery,
-} from "@features/watchlist";
 import type { LivePayload } from "@lib/types";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import type { MarketTargetRef } from "@shared/socket/socketTypes";
@@ -54,7 +49,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
     window: liveRoute.window,
   });
   const newsRowsQuery = useNewsPageWithToken(session.token ?? "", { limit: NEWS_PAGE_SIZE });
-  const watchlistHandlesOverviewQuery = useWatchlistHandlesOverviewQuery({ token: session.token });
   const liveRadar = useLiveRadarRouteData({
     scope: liveRoute.scope,
     token: session.token,
@@ -64,8 +58,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
   const socketSnapshot = useSocketSnapshot();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const bootstrapHandles = session.bootstrapHandles;
-  const decisionCounts = liveRadar.decisionCounts;
-  const handles = liveRoute.handles;
   const isAssetFlowLoading = liveRadar.isAssetFlowLoading;
   const isAssetFlowRefreshing = liveRadar.isAssetFlowRefreshing;
   const isRecentLoading = recentQuery.isPending;
@@ -107,21 +99,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
     token,
   });
   const configuredWatchlistHandles = statusHandles.length ? statusHandles : bootstrapHandles;
-  const watchlistHandleRows = useMemo(
-    () =>
-      watchlistHandlesOverviewQuery.data?.data.items ??
-      configuredWatchlistHandles.map((handle) => emptyWatchlistHandleRow(handle)),
-    [configuredWatchlistHandles, watchlistHandlesOverviewQuery.data?.data.items],
-  );
-  const watchlistRows = useMemo(
-    () =>
-      buildWatchlistRows({
-        accountUnreadCounts: notificationsController.notificationSummary?.account_unread_counts,
-        rows: watchlistHandleRows,
-      }),
-    [watchlistHandleRows, notificationsController.notificationSummary?.account_unread_counts],
-  );
-
   const handleHotkey = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement;
     const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
@@ -177,29 +154,28 @@ export function AppRoutes({ session }: { session: AppSession }) {
     onOpenNotification: notificationsController.openNotification,
     socketNotifications: socketSnapshot.notificationItems,
   };
-  const sideRailProps = {
-    tokenItemsCount: tokenItems.length,
-    stockItemsCount,
-    newsItemsCount: newsRows.length,
-    newsItemsHasMore,
-    scope,
-    onScopeChange: liveRoute.updateScope,
-    handles,
-    onHandlesChange: liveRoute.updateHandles,
-    onWindowChange: liveRoute.updateWindow,
-    decisionCounts,
-    watchlistRows,
+  const sidebarProps = {
+    badges: {
+      news: newsItemsHasMore ? `${newsRows.length}+` : newsRows.length,
+      stocks: stockItemsCount,
+      token: tokenItems.length,
+    },
   };
   const cockpitShellElement = (
     <CockpitShell
       notifications={notificationProps}
-      sideRail={sideRailProps}
+      sidebar={sidebarProps}
       topbar={topbarProps}
       onHotkey={handleHotkey}
     />
   );
   const searchShellElement = (
-    <SearchShell notifications={notificationProps} topbar={topbarProps} onHotkey={handleHotkey} />
+    <SearchShell
+      notifications={notificationProps}
+      sidebar={sidebarProps}
+      topbar={topbarProps}
+      onHotkey={handleHotkey}
+    />
   );
 
   const livePageElement = (children?: ReactNode) => (

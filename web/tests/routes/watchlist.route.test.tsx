@@ -35,8 +35,8 @@ beforeEach(() => {
   server.use(...apiHandlers(apiMock));
 });
 
-describe("watchlist sidebar", () => {
-  it("renders each handle as a Link to /watchlist?handle=...", async () => {
+describe("watchlist navigation", () => {
+  it("renders Watchlist as a primary sidebar route without handle rows in the shell", async () => {
     apiMock.getBootstrapImpl = async () =>
       ok({ ws_token: "test-token", handles: ["toly"], replay_limit: 25 });
     apiMock.readApiImpl = async (path: string) => {
@@ -94,9 +94,9 @@ describe("watchlist sidebar", () => {
       </QueryClientProvider>,
     );
 
-    const link = await waitFor(() => screen.getByRole("link", { name: /toly/i }));
-    expect(link.getAttribute("href")).toBe("/watchlist?handle=toly");
-    expect(link).toHaveClass("watchlist-row");
+    const link = await waitFor(() => screen.getByRole("link", { name: /Watchlist/i }));
+    expect(link.getAttribute("href")).toBe("/watchlist");
+    expect(screen.queryByRole("link", { name: /toly/i })).not.toBeInTheDocument();
   });
 
   it("renders selected watchlist facts from persisted overview when live replay is empty", async () => {

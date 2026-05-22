@@ -29,7 +29,9 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
   await expect(page.getByRole("button", { name: /sort by market/i })).toBeVisible();
   await expect(page.getByText("$UPEG watched account evidence")).toBeVisible();
   await expect(page.getByRole("button", { name: "1h" })).toHaveClass(/active/);
-  await expect(page.getByRole("button", { name: "all stream" })).toHaveClass(/active/);
+  await expect(
+    page.locator(".radar-controls-scope").getByRole("button", { name: "all" }),
+  ).toHaveClass(/active/);
   await expect(page).toHaveURL(/\/$/);
 
   const shellBox = await page.locator(".cockpit-shell").boundingBox();

@@ -33,7 +33,7 @@ describe("live radar route", () => {
     expect(labels.slice(6, 10)).toEqual(["5m", "1h", "4h", "24h"]);
   });
 
-  it("shows counts for every view rail destination", async () => {
+  it("shows sidebar badges for primary market destinations", async () => {
     setupAppRouteTest((apiMock) => {
       mockLiveRadarRoute(apiMock);
       const baseGetApi = apiMock.getApiImpl;
@@ -68,16 +68,14 @@ describe("live radar route", () => {
     });
     renderAppRoute("/");
 
-    const markets = await screen.findByRole("heading", { name: "markets" });
-    const viewButtons = within(markets.closest("section") as HTMLElement).getAllByRole("button");
+    const navigation = await screen.findByRole("navigation", { name: "Primary navigation" });
 
     await waitFor(() => {
-      expect(viewButtons.map((button) => button.textContent)).toEqual([
-        "1Radar0",
-        "2Stocks2",
-        "3News2+",
-        "MMacro",
-      ]);
+      expect(within(navigation).getByRole("link", { name: /Token Radar/i })).toBeInTheDocument();
+      expect(within(navigation).getByRole("link", { name: /Stocks/i })).toBeInTheDocument();
+      expect(within(navigation).getByText("2")).toBeInTheDocument();
+      expect(within(navigation).getByRole("link", { name: /News/i })).toBeInTheDocument();
+      expect(within(navigation).getByText("2+")).toBeInTheDocument();
     });
   });
 

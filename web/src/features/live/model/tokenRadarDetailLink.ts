@@ -5,8 +5,6 @@ import { tokenTargetPath } from "@shared/routing/paths";
 import { targetRefFromTokenItem } from "../../../domain/tokenTarget";
 
 const TOKEN_RADAR_DETAIL_WINDOW: WindowKey = "24h";
-const TOKEN_RADAR_DETAIL_TARGET = "_blank";
-const TOKEN_RADAR_DETAIL_FEATURES = "noopener,noreferrer";
 
 export function tokenRadarDetailHref(item: TokenFlowItem, scope: ScopeKey): string {
   const target = targetRefFromTokenItem(item);
@@ -20,12 +18,3 @@ export function tokenRadarDetailHref(item: TokenFlowItem, scope: ScopeKey): stri
     window: TOKEN_RADAR_DETAIL_WINDOW,
   });
 }
-
-export function openTokenRadarDetailInNewTab(href: string): void {
-  window.open(href, TOKEN_RADAR_DETAIL_TARGET, TOKEN_RADAR_DETAIL_FEATURES);
-}
-
-export const tokenRadarDetailLinkProps = {
-  rel: "noopener noreferrer",
-  target: TOKEN_RADAR_DETAIL_TARGET,
-} as const;

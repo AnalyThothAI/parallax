@@ -11,11 +11,11 @@ const cockpitUiRoot = join(srcRoot, "features/cockpit/ui");
 
 const shellSelectors = [
   ".cockpit-shell",
-  ".cockpit-grid",
+  ".cockpit-main",
   ".center-column",
   ".topbar",
-  ".desktop-side-rail",
-  ".mobile-route-nav",
+  ".topbar-sidebar-trigger",
+  ".cockpit-app-sidebar",
 ] as const;
 
 const oversizedSideEffectCss = new Set<string>();
@@ -112,21 +112,19 @@ describe("responsive CSS contract", () => {
     ).toBe(true);
   });
 
-  it("keeps desktop-side-rail hidden in the mobile shell contract", () => {
+  it("keeps the shadcn sidebar trigger in the shell contract", () => {
     const matches = cockpitShellCssUnits().flatMap((path) => {
       const css = readFileSync(path, "utf8");
 
-      return findMobileMediaBlocks(css).flatMap((block) =>
-        findRules(block.body)
-          .filter((rule) => selectorContains(rule.selector, ".desktop-side-rail"))
-          .filter((rule) => declarationValue(rule.body, "display") === "none")
-          .map(() => relativeToWeb(path)),
-      );
+      return findRules(css)
+        .filter((rule) => selectorContains(rule.selector, ".topbar-sidebar-trigger"))
+        .filter((rule) => declarationValue(rule.body, "display") === "inline-grid")
+        .map(() => relativeToWeb(path));
     });
 
     expect(
       matches,
-      ".desktop-side-rail must declare display:none inside a max-width: 767px mobile rule",
+      ".topbar-sidebar-trigger must be visible so mobile and collapsed desktop users can open navigation",
     ).not.toEqual([]);
   });
 
@@ -180,25 +178,22 @@ describe("responsive CSS contract", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps final shell visibility breakpoints in the cockpit shell contract file only", () => {
-    const allowedPath = "src/features/cockpit/ui/cockpitShellContract.css";
-    const contractOwnedFragments = [".desktop-side-rail", ".mobile-route-nav"];
-    const offenders = cockpitShellCssUnits()
-      .filter((path) => relativeToWeb(path) !== allowedPath)
-      .flatMap((path) => {
-        const css = readFileSync(path, "utf8");
+  it("does not keep retired rail/mobile-route-nav selectors in cockpit shell CSS", () => {
+    const retiredFragments = [".desktop-side-rail", ".mobile-route-nav", ".cockpit-grid"];
+    const offenders = cockpitShellCssUnits().flatMap((path) => {
+      const css = readFileSync(path, "utf8");
 
-        return findRules(css).flatMap((rule) =>
-          contractOwnedFragments
-            .filter((fragment) => rule.selector.includes(fragment))
-            .map(
-              (fragment) =>
-                `${relativeToWeb(path)}:${lineNumber(css, rule.start)} owns ${fragment} via ${compactSelector(
-                  rule.selector,
-                )}`,
-            ),
-        );
-      });
+      return findRules(css).flatMap((rule) =>
+        retiredFragments
+          .filter((fragment) => rule.selector.includes(fragment))
+          .map(
+            (fragment) =>
+              `${relativeToWeb(path)}:${lineNumber(css, rule.start)} still owns retired ${fragment} via ${compactSelector(
+                rule.selector,
+              )}`,
+          ),
+      );
+    });
 
     expect(offenders).toEqual([]);
   });

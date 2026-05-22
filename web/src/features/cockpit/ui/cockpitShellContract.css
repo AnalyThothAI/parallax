@@ -1,116 +1,79 @@
 @layer app.shell {
-.mobile-route-nav {
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--line);
-  background: rgba(8, 10, 10, 0.96);
-  padding: 7px 8px;
-  scrollbar-width: none;
-}
-
-.mobile-route-nav::-webkit-scrollbar {
-  display: none;
-}
-
-.mobile-route-nav a {
-  display: inline-grid;
-  grid-template-columns: 14px auto;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--ash);
-  background: rgba(18, 23, 19, 0.72);
-  padding: 0 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  text-decoration: none;
-}
-
-.mobile-route-nav svg {
-  width: 13px;
-  height: 13px;
-}
-
-.mobile-route-nav a.active {
-  color: var(--opportunity);
-  border-color: var(--opportunity-line);
-  background: var(--opportunity-soft);
-}
-
-.mobile-route-nav {
-  display: none;
-}
-
-@media (min-width: 1280px) {
-  .cockpit-shell {
-    grid-template-rows: var(--cockpit-topbar-height) minmax(0, 1fr);
+  .topbar-sidebar-trigger {
+    display: inline-grid;
   }
 
-  .cockpit-grid {
-    grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
+  @media (min-width: 1280px) {
+    .cockpit-shell {
+      height: 100dvh;
+    }
+
+    .cockpit-main {
+      height: 100dvh;
+    }
   }
 
-  .desktop-side-rail {
-    display: grid;
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .cockpit-shell {
+      height: 100dvh;
+    }
+
+    .cockpit-main {
+      height: 100dvh;
+    }
   }
 
-  .mobile-route-nav {
-    display: none;
-  }
-}
+  @media (max-width: 767px) {
+    .cockpit-shell {
+      height: 100dvh;
+      padding-bottom: 0;
+    }
 
-@media (min-width: 768px) and (max-width: 1279px) {
-  .cockpit-shell {
-    grid-template-rows: var(--cockpit-topbar-height) auto minmax(0, 1fr);
-  }
+    .cockpit-main {
+      height: 100dvh;
+    }
 
-  .cockpit-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+    .topbar {
+      grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
+      gap: 8px;
+      padding: 8px;
+    }
 
-  .desktop-side-rail {
-    display: none;
-  }
+    .brand {
+      display: flex;
+      grid-column: 1;
+      grid-row: 1;
+      height: 32px;
+      border-right: 0;
+      padding: 0;
+    }
 
-  .mobile-route-nav {
-    display: flex;
-  }
-}
+    .brand-mark,
+    .brand-copy,
+    .ws-status-beacon,
+    .main-route-button,
+    .top-stats {
+      display: none;
+    }
 
-@media (max-width: 767px) {
-  .cockpit-shell {
-    grid-template-rows: auto auto minmax(0, 1fr);
-    padding-bottom: 0;
-  }
+    .searchbar {
+      grid-column: 2;
+      grid-row: 1;
+    }
 
-  .cockpit-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+    .topbar-ops-button {
+      grid-column: 3;
+      grid-row: 1;
+    }
 
-  .desktop-side-rail {
-    display: none;
-  }
+    .topbar-notification-slot {
+      display: grid;
+      grid-column: 4;
+      grid-row: 1;
+    }
 
-  .mobile-route-nav {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    overflow: visible;
+    .topbar-refresh-button {
+      display: none;
+    }
   }
-
-  .mobile-route-nav a {
-    grid-template-columns: 14px minmax(0, 1fr);
-    min-width: 0;
-    padding: 0 7px;
-  }
-
-  .mobile-route-nav a span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-}
 }

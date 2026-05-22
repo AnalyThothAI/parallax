@@ -5,12 +5,13 @@ import { opsPath } from "@shared/routing/paths";
 import { IconButton } from "@shared/ui/IconButton";
 import clsx from "clsx";
 import { Clock3, Home, RefreshCw, Search, ServerCog, Wifi, Zap } from "lucide-react";
-import { useState, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
 import "./CockpitTopbar.css";
 
 export type CockpitTopbarProps = {
+  navigationTrigger?: ReactNode;
   search: {
     inputRef: RefObject<HTMLInputElement | null>;
     onSubmitQuery: (query: string) => void;
@@ -40,6 +41,7 @@ export type CockpitTopbarProps = {
 };
 
 export function CockpitTopbar({
+  navigationTrigger,
   search,
   status,
   stats,
@@ -56,6 +58,9 @@ export function CockpitTopbar({
   return (
     <header className="topbar">
       <div className="brand">
+        {navigationTrigger ? (
+          <span className="topbar-sidebar-trigger-slot">{navigationTrigger}</span>
+        ) : null}
         <div className="brand-mark" aria-hidden />
         <div className="brand-copy">
           <h1>gmgn.intel</h1>
