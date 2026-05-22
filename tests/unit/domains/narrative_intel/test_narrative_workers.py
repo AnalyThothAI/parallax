@@ -1180,8 +1180,10 @@ def test_token_discussion_digest_worker_refreshes_no_ready_digest_with_bounded_p
         result = await worker.run_once(now_ms=10_000)
 
         assert result.notes["ready"] == 1
+        assert result.notes["refresh_reasons"]["thresholds_met_partial_semantic_tail"] == 1
         assert repo.replaced_digests[0]["status"] == "ready"
         assert repo.replaced_digests[0]["source_fingerprint"] == "source-current-with-tail"
+        assert repo.replaced_digests[0]["refresh_reason"] == "thresholds_met_partial_semantic_tail"
 
     asyncio.run(scenario())
 
@@ -1258,7 +1260,7 @@ def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
         assert repo.replaced_digests[0]["source_window_start_ms"] == 1_000
         assert repo.replaced_digests[0]["source_window_end_ms"] == 9_000
         assert repo.replaced_digests[0]["display_current_until_ms"] == 910_000
-        assert repo.replaced_digests[0]["refresh_reason"] == "initial_ready"
+        assert repo.replaced_digests[0]["refresh_reason"] == "thresholds_met"
         assert repo.recorded_runs[0]["status"] == "done"
 
     asyncio.run(scenario())

@@ -138,8 +138,8 @@ class TokenDiscussionDigestWorker(WorkerBase):
 
             if epoch_decision.reason == "no_ready_digest":
                 status_decision = self.service.refresh_decision(context)
+                refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
                 if not status_decision.should_refresh:
-                    refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
                     digest = self.service.build_status_digest(
                         target_type=str(target["target_type"]),
                         target_id=str(target["target_id"]),
@@ -168,6 +168,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     )
                     counts[status_decision.status_if_not_refresh] += 1
                     continue
+                sealed_context = {**sealed_context, "refresh_reason": status_decision.reason}
 
             if llm_calls >= self._max_llm_calls_per_cycle():
                 await asyncio.to_thread(
