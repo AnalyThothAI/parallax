@@ -1,0 +1,78 @@
+@layer app.features {
+  .macro-data-table-wrap {
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .macro-data-table,
+  .macro-source-table {
+    width: 100%;
+    min-width: 420px;
+    border-collapse: collapse;
+    color: var(--text-secondary, #cbd5e1);
+  }
+
+  .macro-data-table caption,
+  .macro-source-table caption {
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.86rem;
+    font-weight: 700;
+    padding-bottom: 8px;
+    text-align: left;
+  }
+
+  .macro-data-table th,
+  .macro-data-table td,
+  .macro-source-table th,
+  .macro-source-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .macro-data-table th,
+  .macro-source-table th {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .macro-data-table td,
+  .macro-source-table td {
+    color: var(--text-primary, #f8fafc);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .macro-data-table th button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 28px;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    padding: 0;
+    text-align: left;
+  }
+
+  .macro-data-table th button:hover,
+  .macro-data-table th button:focus-visible {
+    color: var(--text-primary, #f8fafc);
+  }
+
+  .macro-table-sort-indicator {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.7rem;
+  }
+
+  .macro-table-state-panel {
+    display: grid;
+    min-height: 180px;
+    place-items: center;
+    border: 1px dashed var(--border-subtle, rgba(148, 163, 184, 0.24));
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.78rem;
+  }
+}

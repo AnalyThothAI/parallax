@@ -168,8 +168,8 @@ const routeCases: RouteCase[] = [
     name: "macro",
     path: "/macro",
     primary: async (page) => {
-      await expect(page.getByRole("region", { name: "Macro" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Macro" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "宏观" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "宏观" })).toBeVisible();
     },
     specific: async (page) => {
       await expect(page.getByText("funding_stress").first()).toBeVisible();

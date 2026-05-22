@@ -28,7 +28,7 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   await expect(primaryNavigation).toBeVisible();
   await expect(primaryNavigation.getByRole("link", { name: "Token Radar" })).toBeVisible();
   await expect(primaryNavigation.getByRole("link", { name: "Stocks" })).toBeVisible();
-  await expect(primaryNavigation.getByRole("link", { name: "Macro" })).toBeVisible();
+  await expect(primaryNavigation.getByRole("link", { name: "宏观" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(primaryNavigation).toBeHidden();
 

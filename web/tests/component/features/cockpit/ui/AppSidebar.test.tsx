@@ -29,12 +29,12 @@ describe("AppSidebar", () => {
   it("keeps nested Macro active while only marking the Correlation leaf as current", () => {
     renderSidebar({ route: "/macro/assets/correlation" });
 
-    const macroLink = screen.getByRole("link", { name: /Macro/i });
+    const macroLink = screen.getByRole("link", { name: "宏观" });
     expect(macroLink).toHaveAttribute("href", "/macro");
     expect(macroLink).toHaveAttribute("data-active", "true");
     expect(macroLink).not.toHaveAttribute("aria-current");
 
-    const correlationLink = screen.getByRole("link", { name: /Correlation/i });
+    const correlationLink = screen.getByRole("link", { name: "相关性" });
     expect(correlationLink).toHaveAttribute("aria-current", "page");
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });

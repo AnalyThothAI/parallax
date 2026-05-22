@@ -324,7 +324,7 @@
     padding: 12px;
   }
 
-  .macro-map-panel.wide {
+  .macro-map-panel.macro-map-panel-wide {
     grid-column: 1 / -1;
   }
 

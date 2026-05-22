@@ -290,6 +290,30 @@ Macro contract:
   exposed as `asset:spy`, `asset:qqq`, `asset:iwm`, `asset:tlt`, `asset:hyg`,
   `asset:lqd`, `asset:gld`, `asset:uso`, `fx:dxy`, `crypto:btc`, and
   `crypto:eth`; clients must not look up raw provider symbols.
+- `/api/macro/modules/{module_id}` is authenticated and read-only. It returns a
+  first-class page view for the macro workbench module catalog, including
+  `snapshot`, `tiles`, `charts`, `tables`, `current_read`, `signals`,
+  `provenance`, `data_gaps`, and `related_routes`. Supported module ids include
+  `overview`, `assets`, asset subpages (`assets/equities`, `assets/bonds`,
+  `assets/commodities`, `assets/fx`, `assets/crypto`,
+  `assets/crypto-derivatives`), `rates`, rates subpages
+  (`rates/yield-curve`, `rates/real-rates`), `fed`, `liquidity`,
+  `liquidity/transmission-chain`, `volatility`, and `credit`. Unsupported ids
+  return `400 {"error":"unsupported_macro_module","field":"module_id"}`.
+- The `assets/crypto-derivatives` module may attach a `cex_perp_board` table
+  sourced from the persisted `cex_oi_radar_board` read model. Rows are compact
+  public market facts only: rank/symbol/market, open interest, persisted
+  open-interest deltas, volume, funding, mark price, score, timestamps, and
+  degraded reasons. Optional richer derivatives facts are exposed only when
+  persisted read models add them; internal audit and join fields such as
+  `row_id`, `run_id`, `target_id`, `pricefeed_id`, and
+  `score_components_json` are not part of the macro module contract.
+- `/api/macro/series` is authenticated and read-only. It accepts
+  `concept_keys=<comma-separated canonical macro concepts>` and
+  `window=20d|60d|120d|1y|3y` and returns grouped observation points for chart
+  hydration. Query-token auth uses the shared `token` parameter. Provider-native
+  series keys such as `fred:DGS10` or `yahoo:SPY` are rejected; frontend clients
+  must request canonical concept keys only.
 
 Watchlist handle intel contract:
 

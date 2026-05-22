@@ -5484,6 +5484,150 @@
         ]
       }
     },
+    "/api/macro": {
+      "get": {
+        "operationId": "macro_api_macro_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Macro",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/macro/assets/correlation": {
+      "get": {
+        "operationId": "macro_asset_correlation_api_macro_assets_correlation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Macro Asset Correlation",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/macro/modules/{module_id}": {
+      "get": {
+        "operationId": "macro_module_api_macro_modules__module_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "module_id",
+            "required": true,
+            "schema": {
+              "title": "Module Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Macro Module",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/macro/series": {
+      "get": {
+        "operationId": "macro_series_api_macro_series_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "concept_keys",
+            "required": true,
+            "schema": {
+              "title": "Concept Keys",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "60d",
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Macro Series",
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/news": {
       "get": {
         "operationId": "list_news_api_news_get",
