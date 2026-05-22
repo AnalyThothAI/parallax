@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.domains.equity_event_intel._constants import EQUITY_EVENT_BRIEF_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseAgentRuntimeContract, PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import (
     PulseDecisionRuntimeService,
@@ -19,9 +20,11 @@ from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_clien
     OpenAIAgentsWatchlistSummaryClient,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
+    RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentRuntimePolicy,
 )
+from gmgn_twitter_intel.platform.agent_hashing import artifact_hash_for, json_sha256
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 
@@ -143,6 +146,34 @@ class OpenAIPulseDecisionProvider:
         await self._client.aclose()
 
 
+class OpenAIEquityEventBriefProvider:
+    provider = "openai"
+
+    def __init__(self, *, agent_gateway: AgentExecutionGateway, lane: str) -> None:
+        self._agent_gateway = agent_gateway
+        self._lane = str(lane or "equity_event.brief")
+
+    @property
+    def model(self) -> str:
+        return self._agent_gateway.model_for_lane(self._lane)
+
+    @property
+    def artifact_version_hash(self) -> str:
+        return artifact_hash_for(
+            model=self.model,
+            prompt_version="equity_event_brief_prompt_v1",
+            schema_version=EQUITY_EVENT_BRIEF_SCHEMA_VERSION,
+            runtime_version=RUNTIME_VERSION,
+            output_schema_hash=json_sha256({}),
+        )
+
+    def try_reserve_execution(self, lane: str | None = None) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(str(lane or self._lane))
+
+    async def aclose(self) -> None:
+        return None
+
+
 def openai_social_event_provider(
     settings: Settings,
     *,
@@ -202,6 +233,17 @@ def openai_news_item_brief_provider(
     )
 
 
+def openai_equity_event_brief_provider(
+    settings: Settings,
+    *,
+    agent_gateway: AgentExecutionGateway,
+) -> OpenAIEquityEventBriefProvider:
+    return OpenAIEquityEventBriefProvider(
+        agent_gateway=agent_gateway,
+        lane=settings.equity_event_intel.agent.lane,
+    )
+
+
 def build_agent_execution_gateway(
     settings: Settings,
     *,
@@ -253,9 +295,11 @@ def _require_llm_gateway(llm_gateway: object | None) -> object:
 
 
 __all__ = [
+    "OpenAIEquityEventBriefProvider",
     "OpenAINarrativeIntelProvider",
     "OpenAIPulseDecisionProvider",
     "build_agent_execution_gateway",
+    "openai_equity_event_brief_provider",
     "openai_narrative_intel_provider",
     "openai_news_item_brief_provider",
     "openai_pulse_decision_provider",

@@ -7,6 +7,7 @@ from gmgn_twitter_intel.platform.agent_execution import AgentRuntimePolicy
 from gmgn_twitter_intel.platform.config.settings import (
     NarrativeAdmissionWorkerSettings,
     PulseCandidateWorkerSettings,
+    Settings,
     TokenDiscussionDigestWorkerSettings,
     WorkersSettings,
     default_workers_yaml,
@@ -120,6 +121,28 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.handle_summary.reconcile_limit == 20
     assert settings.handle_summary.window_days == 3
     assert settings.notification_delivery.max_attempts == 5
+
+
+def test_equity_event_intel_defaults_are_configured() -> None:
+    settings = Settings(ws_token="secret")
+
+    assert settings.equity_event_intel.enabled is False
+    assert settings.equity_event_intel.default_universe == "nasdaq_tech"
+    assert settings.workers.equity_event_fetch.interval_seconds == 60.0
+    assert settings.workers.equity_event_page_projection.wakes_on == (
+        "equity_event_document_written",
+        "equity_event_processed",
+        "equity_event_story_updated",
+        "equity_event_brief_updated",
+    )
+
+
+def test_default_workers_yaml_contains_equity_event_workers_and_agent_lane() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+
+    assert "equity_event_fetch" in payload
+    assert "equity_event_page_projection" in payload
+    assert "equity_event.brief" in payload["agent_runtime"]["lanes"]
 
 
 def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():

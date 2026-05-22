@@ -547,6 +547,48 @@ class NewsIntelSettings(BaseModel):
         raise ValueError("news_intel.sources must be a list")
 
 
+class EquityEventCompanySettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    cik: str | None = None
+    company_name: str | None = None
+    exchange: str | None = None
+    universe: str = "nasdaq_tech"
+    enabled: bool = True
+
+
+class EquityExpectedEventSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_event_id: str
+    symbol: str
+    event_type: str = "earnings_release"
+    fiscal_period: str | None = None
+    expected_at_ms: int
+    session: str | None = None
+    source_id: str = "config:earnings"
+    enabled: bool = True
+
+
+class EquityEventAgentSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    lane: str = "equity_event.brief"
+
+
+class EquityEventIntelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    default_universe: str = "nasdaq_tech"
+    sec_user_agent: str | None = None
+    companies: tuple[EquityEventCompanySettings, ...] = ()
+    expected_events: tuple[EquityExpectedEventSettings, ...] = ()
+    agent: EquityEventAgentSettings = Field(default_factory=EquityEventAgentSettings)
+
+
 class BackoffPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -631,6 +673,7 @@ def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
         "watchlist.handle_summary": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
         "news.fact_candidate": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
         "news.item_brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
+        "equity_event.brief": AgentLaneSettings(priority="low", max_concurrency=1, timeout_seconds=180.0),
     }
 
 
@@ -1099,6 +1142,54 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
+class EquityEventSourceReconcileWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=300.0, ge=0)
+    advisory_lock_key: int = 2026052201
+
+
+class EquityEventFetchWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    batch_size: int = Field(default=20, ge=1)
+    advisory_lock_key: int = 2026052202
+    wakes_on: tuple[str, ...] = ("equity_event_sources_reconciled",)
+
+
+class EquityEventProcessWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    advisory_lock_key: int = 2026052203
+    wakes_on: tuple[str, ...] = ("equity_event_document_written",)
+
+
+class EquityEventStoryProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    advisory_lock_key: int = 2026052204
+    wakes_on: tuple[str, ...] = ("equity_event_processed",)
+
+
+class EquityEventBriefWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=60.0, ge=0)
+    soft_timeout_seconds: float = Field(default=180.0, ge=0)
+    hard_timeout_seconds: float = Field(default=240.0, ge=0)
+    batch_size: int = Field(default=5, ge=1)
+    advisory_lock_key: int = 2026052205
+    backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
+    wakes_on: tuple[str, ...] = ("equity_event_story_updated",)
+
+
+class EquityEventPageProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=15.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    advisory_lock_key: int = 2026052206
+    wakes_on: tuple[str, ...] = (
+        "equity_event_document_written",
+        "equity_event_processed",
+        "equity_event_story_updated",
+        "equity_event_brief_updated",
+    )
+
+
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1136,6 +1227,18 @@ class WorkersSettings(BaseModel):
     news_story_projection: NewsStoryProjectionWorkerSettings = Field(default_factory=NewsStoryProjectionWorkerSettings)
     news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
+    equity_event_source_reconcile: EquityEventSourceReconcileWorkerSettings = Field(
+        default_factory=EquityEventSourceReconcileWorkerSettings
+    )
+    equity_event_fetch: EquityEventFetchWorkerSettings = Field(default_factory=EquityEventFetchWorkerSettings)
+    equity_event_process: EquityEventProcessWorkerSettings = Field(default_factory=EquityEventProcessWorkerSettings)
+    equity_event_story_projection: EquityEventStoryProjectionWorkerSettings = Field(
+        default_factory=EquityEventStoryProjectionWorkerSettings
+    )
+    equity_event_brief: EquityEventBriefWorkerSettings = Field(default_factory=EquityEventBriefWorkerSettings)
+    equity_event_page_projection: EquityEventPageProjectionWorkerSettings = Field(
+        default_factory=EquityEventPageProjectionWorkerSettings
+    )
 
     @model_validator(mode="after")
     def reject_zero_hard_timeout_for_non_continuous_workers(self) -> WorkersSettings:
@@ -1161,6 +1264,7 @@ class Settings(BaseModel):
     gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     news_intel: NewsIntelSettings = Field(default_factory=NewsIntelSettings)
+    equity_event_intel: EquityEventIntelSettings = Field(default_factory=EquityEventIntelSettings)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     workers: WorkersSettings = Field(default_factory=WorkersSettings)
@@ -1264,6 +1368,10 @@ class Settings(BaseModel):
     @property
     def news_item_brief_configured(self) -> bool:
         return bool(self.llm_api_key and self.agent_runtime_default_model)
+
+    @property
+    def equity_event_brief_configured(self) -> bool:
+        return bool(self.llm_api_key and self.agent_runtime_model_for_lane(self.equity_event_intel.agent.lane))
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -1537,6 +1645,16 @@ providers:
 
 {_default_news_intel_yaml()}
 
+equity_event_intel:
+  enabled: false
+  default_universe: "nasdaq_tech"
+  sec_user_agent:
+  companies: []
+  expected_events: []
+  agent:
+    enabled: true
+    lane: "equity_event.brief"
+
 upstream:
   chains: ["sol", "eth", "base", "bsc"]
   channels: ["twitter_monitor_basic", "twitter_monitor_token"]
@@ -1658,6 +1776,10 @@ agent_runtime:
       max_concurrency: 1
       timeout_seconds: 180.0
     news.item_brief:
+      priority: "low"
+      max_concurrency: 1
+      timeout_seconds: 180.0
+    equity_event.brief:
       priority: "low"
       max_concurrency: 1
       timeout_seconds: 180.0
@@ -1830,6 +1952,47 @@ news_page_projection:
   enabled: true
   advisory_lock_key: 2026051904
   wakes_on: ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"]
+equity_event_source_reconcile:
+  enabled: true
+  interval_seconds: 300.0
+  advisory_lock_key: 2026052201
+equity_event_fetch:
+  enabled: true
+  interval_seconds: 60.0
+  batch_size: 20
+  advisory_lock_key: 2026052202
+  wakes_on: ["equity_event_sources_reconciled"]
+equity_event_process:
+  enabled: true
+  interval_seconds: 30.0
+  batch_size: 100
+  advisory_lock_key: 2026052203
+  wakes_on: ["equity_event_document_written"]
+equity_event_story_projection:
+  enabled: true
+  interval_seconds: 30.0
+  batch_size: 100
+  advisory_lock_key: 2026052204
+  wakes_on: ["equity_event_processed"]
+equity_event_brief:
+  enabled: true
+  interval_seconds: 60.0
+  soft_timeout_seconds: 180.0
+  hard_timeout_seconds: 240.0
+  batch_size: 5
+  advisory_lock_key: 2026052205
+  backpressure_cooldown_ms: 60000
+  wakes_on: ["equity_event_story_updated"]
+equity_event_page_projection:
+  enabled: true
+  interval_seconds: 15.0
+  batch_size: 100
+  advisory_lock_key: 2026052206
+  wakes_on:
+    - "equity_event_document_written"
+    - "equity_event_processed"
+    - "equity_event_story_updated"
+    - "equity_event_brief_updated"
 pulse_candidate:
   enabled: true
   interval_seconds: 60.0
