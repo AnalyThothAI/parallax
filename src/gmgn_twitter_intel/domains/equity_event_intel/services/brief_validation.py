@@ -10,7 +10,9 @@ from gmgn_twitter_intel.domains.equity_event_intel.types import EquityEventBrief
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
 
 _FORBIDDEN_EXECUTION_RE = re.compile(
-    r"买入|卖出|开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|配仓|"
+    r"(?:建议|可以|应当|直接|立即).{0,6}(?:买入|卖出)|"
+    r"(?:买入|卖出).{0,8}(?:股票|证券|合约|期权|期货|仓位|头寸)|"
+    r"开仓|做多|做空|仓位|杠杆|目标价|止损|止盈|配仓|"
     r"\b(?:buy|sell|leverage|order\s+instructions?|position\s+(?:size|sizing)|"
     r"execution\s+permission|portfolio\s+(?:advice|allocation)|"
     r"stop[-\s]+loss|take[-\s]+profit|target\s+prices?)\b|"

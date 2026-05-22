@@ -1658,17 +1658,26 @@ class EquityEventRepository:
               LEFT JOIN LATERAL (
                 SELECT GREATEST(
                          events.updated_at_ms,
-                         COALESCE(MAX(documents.updated_at_ms), 0),
-                         COALESCE(MAX(facts.updated_at_ms), 0),
+                         COALESCE((
+                           SELECT MAX(documents.updated_at_ms)
+                             FROM equity_event_documents AS documents
+                            WHERE documents.event_document_id = events.primary_document_id
+                         ), 0),
+                         COALESCE((
+                           SELECT MAX(facts.updated_at_ms)
+                             FROM equity_event_fact_candidates AS facts
+                            WHERE facts.company_event_id = events.company_event_id
+                         ), 0),
                          COALESCE(stories.updated_at_ms, 0)
                        ) AS source_updated_at_ms
-                  FROM equity_event_documents AS documents
-                  LEFT JOIN equity_event_fact_candidates AS facts
-                    ON facts.company_event_id = events.company_event_id
-                 WHERE documents.event_document_id = events.primary_document_id
               ) AS source_state ON true
               LEFT JOIN LATERAL (
-                SELECT COUNT(*) FILTER (WHERE runs.status = 'failed')::integer AS failed_attempts,
+                SELECT COUNT(*) FILTER (
+                         WHERE runs.status = 'failed'
+                           AND runs.execution_started = true
+                           AND runs.artifact_version_hash = %s
+                           AND runs.finished_at_ms >= COALESCE(source_state.source_updated_at_ms, events.updated_at_ms)
+                       )::integer AS failed_attempts,
                        (ARRAY_AGG(runs.status ORDER BY runs.finished_at_ms DESC, runs.run_id DESC))[1] AS latest_status,
                        MAX(runs.finished_at_ms) AS latest_finished_at_ms
                   FROM equity_event_agent_runs AS runs
@@ -1699,6 +1708,7 @@ class EquityEventRepository:
              FOR UPDATE OF events SKIP LOCKED
             """,
             (
+                str(artifact_version_hash),
                 max(1, int(max_attempts)),
                 int(now_ms) - max(1, int(backpressure_cooldown_ms)),
                 str(artifact_version_hash),
@@ -1724,6 +1734,37 @@ class EquityEventRepository:
                 }
             )
         return payloads
+
+    def get_event_brief_source_updated_at(self, *, company_event_id: str) -> int:
+        row = self.conn.execute(
+            """
+            SELECT GREATEST(
+                     events.updated_at_ms,
+                     COALESCE((
+                       SELECT MAX(documents.updated_at_ms)
+                         FROM equity_event_documents AS documents
+                        WHERE documents.event_document_id = events.primary_document_id
+                     ), 0),
+                     COALESCE((
+                       SELECT MAX(facts.updated_at_ms)
+                         FROM equity_event_fact_candidates AS facts
+                        WHERE facts.company_event_id = events.company_event_id
+                     ), 0),
+                     COALESCE(stories.updated_at_ms, 0)
+                   ) AS source_updated_at_ms
+              FROM equity_company_events AS events
+              LEFT JOIN equity_event_story_members AS members
+                ON members.company_event_id = events.company_event_id
+              LEFT JOIN equity_event_story_groups AS stories
+                ON stories.story_id = members.story_id
+             WHERE events.company_event_id = %s
+             LIMIT 1
+            """,
+            (str(company_event_id),),
+        ).fetchone()
+        if row is None:
+            return 0
+        return int(row["source_updated_at_ms"] or 0)
 
     def insert_equity_event_agent_run(
         self,

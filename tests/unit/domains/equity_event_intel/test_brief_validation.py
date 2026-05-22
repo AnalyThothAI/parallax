@@ -175,7 +175,10 @@ def test_validation_rejects_unexpected_tool_or_handoff_audit() -> None:
     assert {"code": "unexpected_agent_action", "message": "handoffs"} in result.errors
 
 
-@pytest.mark.parametrize("phrase", ["开仓做多 MSFT", "Use a 5% position size", "Set a stop loss at 3%"])
+@pytest.mark.parametrize(
+    "phrase",
+    ["开仓做多 MSFT", "建议买入 MSFT 股票", "Use a 5% position size", "Set a stop loss at 3%"],
+)
 def test_validation_rejects_trade_execution_instructions(phrase: str) -> None:
     packet = _packet()
 
@@ -188,6 +191,23 @@ def test_validation_rejects_trade_execution_instructions(phrase: str) -> None:
     assert result.publishable is False
     assert result.status == "failed"
     assert any(error["code"] == "forbidden_execution_language" for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["公司计划卖出非核心资产。", "公司公告买入云业务少数股权。", "回购计划包含买入公司股份。"],
+)
+def test_validation_allows_corporate_action_buy_sell_phrasing(phrase: str) -> None:
+    packet = _packet()
+
+    result = validate_equity_event_brief_output(
+        payload=_ready_payload(event_read_zh=phrase),
+        packet=packet,
+        audit={},
+    )
+
+    assert result.publishable is True
+    assert result.errors == []
 
 
 def test_ready_requires_useful_summary_and_evidence_while_insufficient_uses_data_gaps() -> None:

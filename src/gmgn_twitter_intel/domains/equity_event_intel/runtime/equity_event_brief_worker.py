@@ -85,14 +85,22 @@ class EquityEventBriefWorker(WorkerBase):
                 skipped += 1
                 continue
             if not _has_official_evidence(packet):
+                outcome = self._record_no_official_evidence(
+                    packet=packet,
+                    agent_config=agent_config,
+                    source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
+                )
+                for key, value in outcome.notes.items():
+                    notes[key] = int(notes.get(key, 0)) + int(value)
+                current_updates += outcome.current_updates
                 notes["no_official_evidence"] += 1
-                skipped += 1
                 continue
 
             outcome = await self._process_candidate(
                 packet=packet,
                 agent_config=agent_config,
                 now_ms=now,
+                source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
             )
             for key, value in outcome.notes.items():
                 notes[key] = int(notes.get(key, 0)) + int(value)
@@ -114,6 +122,7 @@ class EquityEventBriefWorker(WorkerBase):
         packet: EquityEventBriefInputPacket,
         agent_config: EquityEventBriefAgentConfig,
         now_ms: int,
+        source_updated_at_ms: int,
     ) -> _CandidateOutcome:
         del now_ms
         run_id = self.run_id_factory()
@@ -199,6 +208,44 @@ class EquityEventBriefWorker(WorkerBase):
         audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None) or request_audit
         validation = validate_equity_event_brief_output(payload=payload, packet=packet, audit=audit)
         finished_at_ms = self.clock_ms()
+        current_source_updated_at_ms = self._current_source_updated_at_ms(
+            company_event_id=packet.current_event.company_event_id
+        )
+        if current_source_updated_at_ms > int(source_updated_at_ms):
+            errors = [
+                {
+                    "code": "source_changed_before_publish",
+                    "message": (
+                        "equity event source evidence changed after the brief input packet was built; "
+                        "discarding stale agent output"
+                    ),
+                }
+            ]
+            self._insert_run(
+                run_id=run_id,
+                packet=packet,
+                agent_config=agent_config,
+                audit=audit,
+                started_at_ms=started_at_ms,
+                finished_at_ms=finished_at_ms,
+                status="failed",
+                outcome="failed",
+                error_class="source_changed_before_publish",
+                error=errors[0]["message"],
+                request_json=_request_json(packet=packet, audit=request_audit),
+                response_json=payload if isinstance(payload, Mapping) else {"payload": payload},
+                validation_errors=errors,
+                execution_started=True,
+                output_hash=validation.output_hash or _output_hash(payload),
+            )
+            self._upsert_failed_current(
+                run_id=run_id,
+                packet=packet,
+                agent_config=agent_config,
+                errors=errors,
+                computed_at_ms=int(source_updated_at_ms),
+            )
+            return _CandidateOutcome(notes={"failed": 1, "source_changed_before_publish": 1}, current_updates=1)
         if not validation.publishable:
             self._insert_run(
                 run_id=run_id,
@@ -254,6 +301,53 @@ class EquityEventBriefWorker(WorkerBase):
         )
         status = str(validation.status)
         return _CandidateOutcome(notes={status: 1}, current_updates=1)
+
+    def _record_no_official_evidence(
+        self,
+        *,
+        packet: EquityEventBriefInputPacket,
+        agent_config: EquityEventBriefAgentConfig,
+        source_updated_at_ms: int,
+    ) -> _CandidateOutcome:
+        provider = self.provider
+        if provider is None:
+            raise RuntimeError("equity event brief provider is required")
+        run_id = self.run_id_factory()
+        started_at_ms = self.clock_ms()
+        finished_at_ms = started_at_ms
+        request_audit = _fallback_request_audit(
+            run_id=run_id,
+            packet=packet,
+            agent_config=agent_config,
+            provider=provider,
+        )
+        payload = _insufficient_no_official_evidence_brief(packet)
+        self._insert_run(
+            run_id=run_id,
+            packet=packet,
+            agent_config=agent_config,
+            audit=request_audit,
+            started_at_ms=started_at_ms,
+            finished_at_ms=finished_at_ms,
+            status="completed",
+            outcome="insufficient",
+            error_class=None,
+            error=None,
+            request_json=_request_json(packet=packet, audit=request_audit),
+            response_json=payload,
+            validation_errors=[],
+            execution_started=False,
+            output_hash=json_sha256(payload),
+        )
+        self._upsert_current(
+            run_id=run_id,
+            packet=packet,
+            agent_config=agent_config,
+            payload=payload,
+            validation_status="attention",
+            computed_at_ms=int(source_updated_at_ms),
+        )
+        return _CandidateOutcome(notes={"insufficient": 1}, current_updates=1)
 
     def _record_provider_failure(
         self,
@@ -443,6 +537,12 @@ class EquityEventBriefWorker(WorkerBase):
     def _backpressure_cooldown_ms(self) -> int:
         return max(1, int(getattr(self.settings, "backpressure_cooldown_ms", 60_000)))
 
+    def _current_source_updated_at_ms(self, *, company_event_id: str) -> int:
+        with self._repository_session() as repos:
+            return int(
+                repos.equity_events.get_event_brief_source_updated_at(company_event_id=company_event_id)
+            )
+
 
 class _CandidateOutcome:
     def __init__(self, *, notes: Mapping[str, int], current_updates: int) -> None:
@@ -558,6 +658,31 @@ def _failed_brief(errors: list[dict[str, str]]) -> dict[str, Any]:
         "invalidation_conditions": [],
         "data_gaps": [{"description_zh": f"公司事件智能简报暂不可发布，{suffix}", "severity": "high"}],
         "evidence_refs": [],
+    }
+
+
+def _insufficient_no_official_evidence_brief(packet: EquityEventBriefInputPacket) -> dict[str, Any]:
+    return {
+        "status": "insufficient",
+        "direction": "neutral",
+        "decision_class": "watch",
+        "summary_zh": "",
+        "event_read_zh": "",
+        "bull_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
+        "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
+        "company_impacts": [],
+        "watch_triggers": [],
+        "invalidation_conditions": [],
+        "data_gaps": [
+            {
+                "description_zh": (
+                    f"{packet.current_event.ticker} 事件缺少监管文件或发行人官方证据，"
+                    "暂不生成可发布智能简报。"
+                ),
+                "severity": "high",
+            }
+        ],
+        "evidence_refs": ["event:summary"] if "event:summary" in packet.evidence_refs else [],
     }
 
 

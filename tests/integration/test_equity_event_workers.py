@@ -766,6 +766,163 @@ def test_brief_worker_writes_cited_agent_run_current_brief_and_notifies(postgres
     assert wake_bus.briefs_updated == [1]
 
 
+def test_brief_worker_rejects_stale_packet_when_source_changes_during_provider_execution(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+    company_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+
+    def update_source(packet: Any) -> None:
+        postgres_conn.execute(
+            """
+            UPDATE equity_event_fact_candidates
+               SET claim = claim || ' Updated after packet build.',
+                   updated_at_ms = %s
+             WHERE company_event_id = %s
+            """,
+            (NOW_MS + 9_000, packet.current_event.company_event_id),
+        )
+        postgres_conn.commit()
+
+    provider = _FakeEquityBriefProvider(db, on_brief=update_source)
+    worker = _brief_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 4_000,
+        run_id_factory=lambda: "equity-agent-run-stale",
+    )
+
+    result = worker.run_once_sync()
+
+    run = postgres_conn.execute("SELECT * FROM equity_event_agent_runs").fetchone()
+    brief = postgres_conn.execute("SELECT * FROM equity_event_agent_briefs").fetchone()
+    assert result.failed == 1
+    assert run["company_event_id"] == company_event_id
+    assert run["status"] == "failed"
+    assert run["error_class"] == "source_changed_before_publish"
+    assert brief["status"] == "failed"
+    assert brief["validation_status"] == "rejected"
+    assert brief["input_hash"] == run["input_hash"]
+    assert brief["brief_json"]["status"] != "ready"
+    assert wake_bus.briefs_updated == [1]
+
+
+def test_brief_worker_retry_budget_allows_new_source_generation_after_old_failures(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_page_projection_source(postgres_conn)
+    company_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+    repos = repositories_for_connection(postgres_conn)
+    for index in range(3):
+        repos.equity_events.insert_equity_event_agent_run(
+            run_id=f"old-failed-run-{index}",
+            company_event_id=company_event_id,
+            provider="openai",
+            model="gpt-equity",
+            backend="openai_agents_sdk",
+            sdk_trace_id=None,
+            workflow_name="gmgn-twitter-intel.equity_event_brief",
+            agent_name="EquityEventBriefAgent",
+            lane=EQUITY_EVENT_BRIEF_LANE,
+            artifact_version_hash="old-artifact",
+            prompt_version="old-prompt",
+            schema_version="old-schema",
+            validator_version="old-validator",
+            guardrail_version="old-guardrail",
+            input_hash="old-input",
+            output_hash=None,
+            execution_started=True,
+            status="failed",
+            outcome="failed",
+            error_class="provider_error",
+            error="old failure",
+            request_json={"packet": {"old": True}},
+            response_json=None,
+            validation_errors_json=[],
+            trace_metadata_json={},
+            usage_json={},
+            latency_ms=0,
+            started_at_ms=NOW_MS + 1_000,
+            finished_at_ms=NOW_MS + 1_000,
+            created_at_ms=NOW_MS + 1_000,
+            commit=False,
+        )
+    postgres_conn.execute(
+        """
+        UPDATE equity_event_fact_candidates
+           SET claim = claim || ' Fresh source generation.',
+               updated_at_ms = %s
+         WHERE company_event_id = %s
+        """,
+        (NOW_MS + 8_000, company_event_id),
+    )
+    postgres_conn.commit()
+
+    provider = _FakeEquityBriefProvider(db)
+    worker = _brief_worker(
+        db,
+        provider=provider,
+        wake_bus=_RecordingWakeBus(),
+        now_ms=NOW_MS + 9_000,
+        max_attempts=3,
+        run_id_factory=lambda: "new-generation-run",
+    )
+
+    result = worker.run_once_sync()
+
+    run = postgres_conn.execute(
+        "SELECT * FROM equity_event_agent_runs WHERE run_id = %s",
+        ("new-generation-run",),
+    ).fetchone()
+    assert result.processed == 1
+    assert run is not None
+    assert run["status"] == "completed"
+    assert run["outcome"] == "ready"
+
+
+def test_brief_worker_persists_insufficient_for_no_official_evidence_and_does_not_churn(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    event = _seed_non_official_event(postgres_conn)
+    provider = _FakeEquityBriefProvider(db)
+    worker = _brief_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 2_000,
+        run_id_factory=lambda: "no-evidence-run",
+    )
+
+    first = worker.run_once_sync()
+    second = _brief_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 3_000,
+        run_id_factory=lambda: "no-evidence-run-second",
+    ).run_once_sync()
+
+    runs = postgres_conn.execute("SELECT * FROM equity_event_agent_runs ORDER BY run_id").fetchall()
+    brief = postgres_conn.execute(
+        "SELECT * FROM equity_event_agent_briefs WHERE company_event_id = %s",
+        (event,),
+    ).fetchone()
+    assert first.processed == 1
+    assert first.notes["no_official_evidence"] == 1
+    assert provider.called_while_db_session_active is None
+    assert len(runs) == 1
+    assert runs[0]["run_id"] == "no-evidence-run"
+    assert runs[0]["status"] == "completed"
+    assert runs[0]["outcome"] == "insufficient"
+    assert runs[0]["execution_started"] is False
+    assert brief["status"] == "insufficient"
+    assert brief["validation_status"] == "attention"
+    assert brief["brief_json"]["data_gaps"]
+    assert second.skipped == 1
+    assert second.notes["reason"] == "no_events_for_brief"
+    assert wake_bus.briefs_updated == [1]
+
+
 class _WorkerDb:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -878,8 +1035,9 @@ class _FakeEquityBriefProvider:
     model = "gpt-equity"
     artifact_version_hash = "artifact-equity-v1"
 
-    def __init__(self, db: _WorkerDb) -> None:
+    def __init__(self, db: _WorkerDb, *, on_brief=None) -> None:
         self.db = db
+        self.on_brief = on_brief
         self.called_while_db_session_active: bool | None = None
         self.packet_evidence_refs: list[str] = []
 
@@ -927,6 +1085,8 @@ class _FakeEquityBriefProvider:
         self.called_while_db_session_active = self.db.session_active
         assert not self.db.session_active
         self.packet_evidence_refs = list(packet.evidence_refs)
+        if self.on_brief is not None:
+            self.on_brief(packet)
         return {
             "payload": {
                 "status": "ready",
@@ -960,6 +1120,28 @@ class _FakeEquityBriefProvider:
             },
             "agent_run_audit": self.request_audit(run_id="ignored", packet=packet),
         }
+
+
+def _brief_worker(
+    db: _WorkerDb,
+    *,
+    provider: Any,
+    wake_bus: Any | None,
+    now_ms: int,
+    run_id_factory,
+    max_attempts: int = 3,
+) -> EquityEventBriefWorker:
+    settings = Settings(workers={"equity_event_brief": {"batch_size": 10, "max_attempts": max_attempts}})
+    return EquityEventBriefWorker(
+        name="equity_event_brief",
+        settings=settings.workers.equity_event_brief,
+        db=db,
+        telemetry=SimpleNamespace(),
+        provider=provider,
+        wake_bus=wake_bus,
+        clock_ms=lambda: now_ms,
+        run_id_factory=run_id_factory,
+    )
 
 
 def _process_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventProcessWorker:
@@ -1125,6 +1307,41 @@ def _seed_processable_document(
         now_ms=NOW_MS,
     )
     return provider
+
+
+def _seed_non_official_event(conn: Any) -> str:
+    repos = repositories_for_connection(conn)
+    company_event_id = "event:no-official:1"
+    repos.equity_events.upsert_universe_member(
+        {
+            "company_id": "market_instrument:us_equity:MSFT",
+            "ticker": "MSFT",
+            "company_name": "Microsoft Corporation",
+            "active": True,
+            "priority": "P0",
+        },
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    repos.equity_events.upsert_company_event(
+        company_event_id=company_event_id,
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="specialist_note",
+        priority="P2",
+        source_role="specialist_media",
+        fiscal_period=None,
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        validation_status="accepted",
+        summary="Specialist media reported an unverified event.",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    conn.commit()
+    return company_event_id
 
 
 def _source_payload(symbol: str) -> dict[str, Any]:
