@@ -69,12 +69,12 @@ describe("macro route", () => {
     });
   });
 
-  it("renders Macro inside the cockpit shell and marks the rail item active", async () => {
+  it("renders Macro inside the cockpit shell and marks the sidebar item active", async () => {
     renderAppRoute("/macro");
 
     expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Macro/i })).toHaveClass("active");
+    expect(screen.getByRole("link", { name: "Macro" })).toHaveAttribute("aria-current", "page");
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
         token: "secret",

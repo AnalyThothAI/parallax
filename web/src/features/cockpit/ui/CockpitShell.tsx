@@ -1,11 +1,11 @@
 import { NotificationDrawer, NotificationToastBridge } from "@features/notifications";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@shared/ui/sidebar";
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
-import { CockpitSideRail, type CockpitSideRailProps } from "./CockpitSideRail";
+import { AppSidebar, type AppSidebarBadges } from "./AppSidebar";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
-import { MobileRouteNav } from "./MobileRouteNav";
 import "./cockpitShell.css";
 import "./cockpitShellContract.css";
 
@@ -23,26 +23,28 @@ export type ShellNotificationProps = {
 
 export type CockpitShellProps = {
   topbar: CockpitTopbarProps;
-  sideRail: CockpitSideRailProps;
+  sidebar: { badges: AppSidebarBadges };
   notifications: ShellNotificationProps;
   onHotkey: (event: KeyboardEvent) => void;
 };
 
-export function CockpitShell({ topbar, sideRail, notifications, onHotkey }: CockpitShellProps) {
+export function CockpitShell({ topbar, sidebar, notifications, onHotkey }: CockpitShellProps) {
   useShellHotkeys(onHotkey);
 
   return (
-    <div className="cockpit-shell">
-      <CockpitTopbar {...topbar} />
-      <MobileRouteNav />
-      <div className="cockpit-grid">
-        <CockpitSideRail {...sideRail} />
+    <SidebarProvider className="cockpit-shell">
+      <AppSidebar badges={sidebar.badges} />
+      <SidebarInset className="cockpit-main">
+        <CockpitTopbar
+          {...topbar}
+          navigationTrigger={<SidebarTrigger className="topbar-sidebar-trigger" />}
+        />
         <section className="center-column">
           <Outlet />
         </section>
-      </div>
+      </SidebarInset>
       <NotificationLayer {...notifications} />
-    </div>
+    </SidebarProvider>
   );
 }
 

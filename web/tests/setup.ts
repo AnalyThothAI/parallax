@@ -9,6 +9,23 @@ expect.extend(toHaveNoViolations);
 
 configure({ asyncUtilTimeout: 5_000 });
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeAll(() => {
+  if (!window.matchMedia) {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        addEventListener: () => undefined,
+        addListener: () => undefined,
+        dispatchEvent: () => false,
+        matches: false,
+        media: query,
+        onchange: null,
+        removeEventListener: () => undefined,
+        removeListener: () => undefined,
+      }),
+    });
+  }
+  server.listen({ onUnhandledRequest: "error" });
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

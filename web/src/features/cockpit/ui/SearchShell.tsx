@@ -1,32 +1,38 @@
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@shared/ui/sidebar";
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
+import { AppSidebar, type AppSidebarBadges } from "./AppSidebar";
 import { NotificationLayer, type ShellNotificationProps } from "./CockpitShell";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
-import { MobileRouteNav } from "./MobileRouteNav";
 
 export type SearchShellProps = {
   topbar: CockpitTopbarProps;
+  sidebar: { badges: AppSidebarBadges };
   notifications: ShellNotificationProps;
   onHotkey: (event: KeyboardEvent) => void;
 };
 
-export function SearchShell({ topbar, notifications, onHotkey }: SearchShellProps) {
+export function SearchShell({ topbar, sidebar, notifications, onHotkey }: SearchShellProps) {
   useEffect(() => {
     document.addEventListener("keydown", onHotkey);
     return () => document.removeEventListener("keydown", onHotkey);
   }, [onHotkey]);
 
   return (
-    <div className="cockpit-shell search-shell">
-      <CockpitTopbar {...topbar} search={{ ...topbar.search, showMainRouteButton: true }} />
-      <MobileRouteNav />
-      <div className="cockpit-grid search-focus-mode">
+    <SidebarProvider className="cockpit-shell search-shell">
+      <AppSidebar badges={sidebar.badges} />
+      <SidebarInset className="cockpit-main search-focus-mode">
+        <CockpitTopbar
+          {...topbar}
+          navigationTrigger={<SidebarTrigger className="topbar-sidebar-trigger" />}
+          search={{ ...topbar.search, showMainRouteButton: true }}
+        />
         <section className="center-column">
           <Outlet />
         </section>
-      </div>
+      </SidebarInset>
       <NotificationLayer {...notifications} />
-    </div>
+    </SidebarProvider>
   );
 }

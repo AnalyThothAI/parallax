@@ -5,8 +5,7 @@
   }
 
   .cockpit-shell {
-    display: grid;
-    grid-template-rows: var(--cockpit-topbar-height) minmax(0, 1fr);
+    display: flex;
     width: 100vw;
     height: 100dvh;
     min-height: 0;
@@ -19,22 +18,16 @@
     outline: 0;
   }
 
-  .cockpit-grid {
-    display: grid;
-    grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
+  .cockpit-main {
+    height: 100dvh;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
-  }
-
-  .cockpit-grid.search-focus-mode {
-    grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
-  }
-
-  .search-shell .cockpit-grid.search-focus-mode {
-    grid-template-columns: minmax(0, 1fr);
+    background: var(--obsidian);
   }
 
   .center-column {
+    flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
     overflow: auto;

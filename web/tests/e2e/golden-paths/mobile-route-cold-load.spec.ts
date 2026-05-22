@@ -203,14 +203,14 @@ for (const routeCase of routeCases) {
     await page.goto(routeCase.path);
 
     await routeCase.primary(page);
-    await expect(page.locator(".desktop-side-rail")).toBeHidden();
-    await expect(page.locator(".mobile-route-nav")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Toggle Sidebar" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
     await expect(page.locator(".live-task-nav")).toBeHidden();
 
     await routeCase.specific(page);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalOverflow(page, [
-      ".mobile-route-nav",
+      ".topbar",
       ...(routeCase.nestedOverflowSelectors ?? []),
     ]);
     await expectScrollableToLastMeaningfulElement(

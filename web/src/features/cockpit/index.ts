@@ -1,5 +1,5 @@
 export { useCockpitStatusQuery } from "./api/useCockpitStatusQuery";
+export { AppSidebar } from "./ui/AppSidebar";
 export { CockpitShell } from "./ui/CockpitShell";
-export { CockpitSideRail } from "./ui/CockpitSideRail";
 export { CockpitTopbar } from "./ui/CockpitTopbar";
 export { SearchShell } from "./ui/SearchShell";

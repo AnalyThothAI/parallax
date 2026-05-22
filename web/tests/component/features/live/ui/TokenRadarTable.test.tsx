@@ -2,6 +2,7 @@ import { TokenRadarTable } from "@features/live/ui/TokenRadarTable";
 import type { TokenFlowItem } from "@lib/types";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const TOKEN_IMAGE_URL = "/api/token-images/troll-local";
@@ -42,10 +43,7 @@ describe("TokenRadarTable rows", () => {
       "href",
       "https://gmgn.ai/eth/token/0x1111111111111111111111111111111111111111",
     );
-    expect(row.querySelector(".radar-token-logo")).toHaveAttribute(
-      "src",
-      TOKEN_IMAGE_URL,
-    );
+    expect(row.querySelector(".radar-token-logo")).toHaveAttribute("src", TOKEN_IMAGE_URL);
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
     expect(within(row).getByText("ETH · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
@@ -263,23 +261,11 @@ describe("TokenRadarTable rows", () => {
     expect(screen.getByText("Token Radar 暂不可用 · boom")).toBeInTheDocument();
   });
 
-  it("opens token detail in a new tab from the compact action and whole row", () => {
+  it("routes token detail in the same tab from the compact action and whole row", () => {
     const item = mixedFreshnessToken();
     const onSelect = vi.fn();
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    render(
-      <TokenRadarTable
-        error={null}
-        isLoading={false}
-        items={[item]}
-        scope="all"
-        selectedKey={null}
-        windowKey="1h"
-        onScopeChange={vi.fn()}
-        onSelect={onSelect}
-        onWindowChange={vi.fn()}
-      />,
-    );
+    renderTokenRadarTable([item], { onSelect });
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const expectedHref =
@@ -289,14 +275,17 @@ describe("TokenRadarTable rows", () => {
       expectedHref,
     );
     expect(within(row).getByRole("link", { name: "Open token item $TROLL" })).toHaveAttribute(
+      "href",
+      expectedHref,
+    );
+    expect(within(row).getByRole("link", { name: "Open token item $TROLL" })).not.toHaveAttribute(
       "target",
-      "_blank",
     );
 
     fireEvent.click(row);
 
-    expect(onSelect).not.toHaveBeenCalled();
-    expect(openSpy).toHaveBeenCalledWith(expectedHref, "_blank", "noopener,noreferrer");
+    expect(onSelect).toHaveBeenCalledWith(item);
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   it("does not fall back to token price for DEX rows without market cap", () => {
@@ -488,7 +477,10 @@ describe("TokenRadarTable rows", () => {
   });
 });
 
-function renderTokenRadarTable(items: TokenFlowItem[]) {
+function renderTokenRadarTable(
+  items: TokenFlowItem[],
+  overrides: Partial<Pick<ComponentProps<typeof TokenRadarTable>, "onSelect">> = {},
+) {
   return render(
     <TokenRadarTable
       error={null}
@@ -498,7 +490,7 @@ function renderTokenRadarTable(items: TokenFlowItem[]) {
       selectedKey={null}
       windowKey="1h"
       onScopeChange={vi.fn()}
-      onSelect={vi.fn()}
+      onSelect={overrides.onSelect ?? vi.fn()}
       onWindowChange={vi.fn()}
     />,
   );
