@@ -123,7 +123,7 @@ notification_delivery
 | `equity_event_fetch` (`EquityEventFetchWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_fetch_worker.py` | due `equity_event_sources`, SEC submissions provider payloads | `equity_event_fetch_runs`, `equity_provider_documents`, `equity_event_documents` | `equity_event_sources_reconciled` | `equity_event_document_written` | `interval_seconds` |
 | `equity_event_process` (`EquityEventProcessWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_process_worker.py` | unprocessed `equity_event_documents`, source company identity | `equity_company_events`, `equity_event_source_spans`, `equity_event_fact_candidates`, document lifecycle status | `equity_event_document_written` | `equity_event_processed` | `interval_seconds` |
 | `equity_event_story_projection` (`EquityEventStoryProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_story_projection_worker.py` | `equity_company_events`, existing story candidates | `equity_event_story_groups`, `equity_event_story_members` | `equity_event_processed` | `equity_event_story_updated` | `interval_seconds` |
-| `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | deferred runtime; future story brief inputs | deferred until runtime worker lands | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds` |
+| `equity_event_brief` (`EquityEventBriefWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_brief_worker.py` | `equity_company_events`, `equity_event_story_groups`, `equity_event_story_members`, official `equity_event_documents`, `equity_event_source_spans`, accepted/attention `equity_event_fact_candidates`, current brief state | `equity_event_agent_runs`, `equity_event_agent_briefs`, event brief lifecycle status | `equity_event_story_updated` | `equity_event_brief_updated` | `interval_seconds` |
 | `equity_event_page_projection` (`EquityEventPageProjectionWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_page_projection_worker.py` | `equity_company_events`, `equity_expected_events`, `equity_event_story_groups`, `equity_event_fact_candidates`, `equity_event_documents`, current brief state | `equity_event_page_rows`, `equity_event_calendar_rows`, `equity_event_alert_candidates`, `equity_company_timeline_rows` | `equity_event_document_written`, `equity_event_processed`, `equity_event_story_updated`, `equity_event_brief_updated` | `equity_event_page_updated` | `interval_seconds` |
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_runs`, `cex_oi_radar_rows`, `cex_detail_snapshots` | poll | none | `interval_seconds` |
 | `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | `macro_observations` history | `macro_view_snapshots` | poll | none | `interval_seconds` |
@@ -362,6 +362,11 @@ agent_runtime:
 - `news_item_brief` selects a processed news item, writes no-start
   backpressure as `execution_started=false`, and executes the single-item
   brief only through `AgentExecutionGateway` lane `news.item_brief`.
+- `equity_event_brief` builds a bounded official-evidence packet for each due
+  company event, validates cited output against packet evidence refs, writes
+  `equity_event_agent_runs` audit rows, and publishes current
+  `equity_event_agent_briefs` only through `AgentExecutionGateway` lane
+  `equity_event.brief`.
 
 If reservation is denied, the worker records
 `agent_backpressure_capacity_denied` in its iteration notes and does not

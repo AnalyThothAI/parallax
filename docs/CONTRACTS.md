@@ -189,6 +189,8 @@ Equity Event Intel contract:
   filters.
 - `/api/equity-events/{event_id}` returns the current read-model detail for a
   company event. Missing rows return `404` with `equity_event_not_found`.
+  Current brief payloads come only from persisted `equity_event_agent_briefs`;
+  handlers must not execute the brief agent or synthesize missing analysis.
 - `/api/equity-events/stories/{story_id}` returns the persisted story group and
   its projected event rows. Missing stories return `404` with
   `equity_event_story_not_found`.

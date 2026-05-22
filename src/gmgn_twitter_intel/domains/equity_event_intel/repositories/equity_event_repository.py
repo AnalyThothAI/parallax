@@ -1614,6 +1614,282 @@ class EquityEventRepository:
             )
         return payloads
 
+    def list_events_for_brief(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        backpressure_cooldown_ms: int,
+        artifact_version_hash: str,
+        max_attempts: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT events.*,
+                   universe.company_name,
+                   stories.story_id,
+                   stories.event_count,
+                   stories.representative_headline,
+                   stories.updated_at_ms AS story_updated_at_ms,
+                   briefs.agent_run_id,
+                   briefs.status AS brief_status,
+                   briefs.validation_status AS brief_validation_status,
+                   briefs.brief_json,
+                   briefs.input_hash,
+                   briefs.artifact_version_hash,
+                   briefs.prompt_version,
+                   briefs.schema_version,
+                   briefs.validator_version,
+                   briefs.computed_at_ms AS brief_computed_at_ms,
+                   briefs.updated_at_ms AS brief_updated_at_ms,
+                   COALESCE(source_state.source_updated_at_ms, events.updated_at_ms) AS source_updated_at_ms,
+                   COALESCE(run_state.failed_attempts, 0) AS failed_attempts,
+                   run_state.latest_status AS latest_run_status,
+                   run_state.latest_finished_at_ms AS latest_run_finished_at_ms
+              FROM equity_company_events AS events
+              LEFT JOIN equity_event_universe_members AS universe
+                ON universe.company_id = events.company_id
+              LEFT JOIN equity_event_story_members AS members
+                ON members.company_event_id = events.company_event_id
+              LEFT JOIN equity_event_story_groups AS stories
+                ON stories.story_id = members.story_id
+              LEFT JOIN equity_event_agent_briefs AS briefs
+                ON briefs.company_event_id = events.company_event_id
+              LEFT JOIN LATERAL (
+                SELECT GREATEST(
+                         events.updated_at_ms,
+                         COALESCE(MAX(documents.updated_at_ms), 0),
+                         COALESCE(MAX(facts.updated_at_ms), 0),
+                         COALESCE(stories.updated_at_ms, 0)
+                       ) AS source_updated_at_ms
+                  FROM equity_event_documents AS documents
+                  LEFT JOIN equity_event_fact_candidates AS facts
+                    ON facts.company_event_id = events.company_event_id
+                 WHERE documents.event_document_id = events.primary_document_id
+              ) AS source_state ON true
+              LEFT JOIN LATERAL (
+                SELECT COUNT(*) FILTER (WHERE runs.status = 'failed')::integer AS failed_attempts,
+                       (ARRAY_AGG(runs.status ORDER BY runs.finished_at_ms DESC, runs.run_id DESC))[1] AS latest_status,
+                       MAX(runs.finished_at_ms) AS latest_finished_at_ms
+                  FROM equity_event_agent_runs AS runs
+                 WHERE runs.company_event_id = events.company_event_id
+              ) AS run_state ON true
+             WHERE events.validation_status <> 'rejected'
+               AND events.lifecycle_status IN ('raw', 'processed', 'brief_ready', 'brief_stale')
+               AND COALESCE(run_state.failed_attempts, 0) < %s
+               AND (
+                 run_state.latest_status IS DISTINCT FROM 'backpressure'
+                 OR COALESCE(run_state.latest_finished_at_ms, 0) <= %s
+               )
+               AND (
+                 briefs.company_event_id IS NULL
+                 OR briefs.status = 'failed'
+                 OR briefs.artifact_version_hash <> %s
+                 OR briefs.computed_at_ms < COALESCE(source_state.source_updated_at_ms, events.updated_at_ms)
+               )
+             ORDER BY CASE
+                        WHEN briefs.company_event_id IS NULL THEN 0
+                        WHEN briefs.artifact_version_hash <> %s THEN 1
+                        WHEN briefs.status = 'failed' THEN 2
+                        ELSE 3
+                      END ASC,
+                      events.event_time_ms DESC,
+                      events.company_event_id ASC
+             LIMIT %s
+             FOR UPDATE OF events SKIP LOCKED
+            """,
+            (
+                max(1, int(max_attempts)),
+                int(now_ms) - max(1, int(backpressure_cooldown_ms)),
+                str(artifact_version_hash),
+                str(artifact_version_hash),
+                max(0, int(limit)),
+            ),
+        ).fetchall()
+        payloads: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            company_event_id = str(item["company_event_id"])
+            story_id = _optional_str(item.get("story_id"))
+            payloads.append(
+                {
+                    "event": item,
+                    "story": _brief_story_payload(item),
+                    "story_members": self._list_brief_story_members(story_id),
+                    "source_documents": self._list_event_documents(_optional_str(item.get("primary_document_id"))),
+                    "source_spans": self._list_event_source_spans(company_event_id),
+                    "fact_candidates": self._list_event_facts(company_event_id),
+                    "current_brief": _brief_payload(item),
+                    "source_updated_at_ms": int(item.get("source_updated_at_ms") or item.get("updated_at_ms") or 0),
+                }
+            )
+        return payloads
+
+    def insert_equity_event_agent_run(
+        self,
+        *,
+        run_id: str,
+        company_event_id: str,
+        provider: str,
+        model: str,
+        backend: str,
+        sdk_trace_id: str | None,
+        workflow_name: str,
+        agent_name: str,
+        lane: str,
+        artifact_version_hash: str,
+        prompt_version: str,
+        schema_version: str,
+        validator_version: str,
+        guardrail_version: str,
+        input_hash: str,
+        output_hash: str | None,
+        execution_started: bool,
+        status: str,
+        outcome: str,
+        error_class: str | None,
+        error: str | None,
+        request_json: Mapping[str, Any],
+        response_json: Any | None,
+        validation_errors_json: Sequence[Mapping[str, Any]],
+        trace_metadata_json: Mapping[str, Any],
+        usage_json: Mapping[str, Any],
+        latency_ms: int,
+        started_at_ms: int,
+        finished_at_ms: int,
+        created_at_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO equity_event_agent_runs (
+              run_id, company_event_id, provider, model, backend, sdk_trace_id,
+              workflow_name, agent_name, lane, artifact_version_hash, prompt_version,
+              schema_version, validator_version, guardrail_version, input_hash, output_hash,
+              execution_started, status, outcome, error_class, error, request_json,
+              response_json, validation_errors_json, trace_metadata_json, usage_json,
+              latency_ms, started_at_ms, finished_at_ms, created_at_ms
+            )
+            VALUES (
+              %(run_id)s, %(company_event_id)s, %(provider)s, %(model)s, %(backend)s,
+              %(sdk_trace_id)s, %(workflow_name)s, %(agent_name)s, %(lane)s,
+              %(artifact_version_hash)s, %(prompt_version)s, %(schema_version)s,
+              %(validator_version)s, %(guardrail_version)s, %(input_hash)s,
+              %(output_hash)s, %(execution_started)s, %(status)s, %(outcome)s,
+              %(error_class)s, %(error)s, %(request_json)s, %(response_json)s,
+              %(validation_errors_json)s, %(trace_metadata_json)s, %(usage_json)s,
+              %(latency_ms)s, %(started_at_ms)s, %(finished_at_ms)s, %(created_at_ms)s
+            )
+            """,
+            {
+                "run_id": run_id,
+                "company_event_id": company_event_id,
+                "provider": provider,
+                "model": model,
+                "backend": backend,
+                "sdk_trace_id": sdk_trace_id,
+                "workflow_name": workflow_name,
+                "agent_name": agent_name,
+                "lane": lane,
+                "artifact_version_hash": artifact_version_hash,
+                "prompt_version": prompt_version,
+                "schema_version": schema_version,
+                "validator_version": validator_version,
+                "guardrail_version": guardrail_version,
+                "input_hash": input_hash,
+                "output_hash": output_hash,
+                "execution_started": bool(execution_started),
+                "status": status,
+                "outcome": outcome,
+                "error_class": error_class,
+                "error": _compact_error(error),
+                "request_json": Jsonb(dict(request_json)),
+                "response_json": Jsonb(response_json) if response_json is not None else None,
+                "validation_errors_json": Jsonb([dict(row) for row in validation_errors_json]),
+                "trace_metadata_json": Jsonb(dict(trace_metadata_json)),
+                "usage_json": Jsonb(dict(usage_json)),
+                "latency_ms": int(latency_ms),
+                "started_at_ms": int(started_at_ms),
+                "finished_at_ms": int(finished_at_ms),
+                "created_at_ms": int(created_at_ms),
+            },
+        )
+        if commit:
+            self.conn.commit()
+
+    def upsert_equity_event_agent_brief(
+        self,
+        *,
+        company_event_id: str,
+        agent_run_id: str,
+        status: str,
+        validation_status: str,
+        brief_json: Mapping[str, Any],
+        input_hash: str,
+        artifact_version_hash: str,
+        prompt_version: str,
+        schema_version: str,
+        validator_version: str,
+        computed_at_ms: int,
+        created_at_ms: int,
+        updated_at_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO equity_event_agent_briefs (
+              company_event_id, agent_run_id, status, validation_status, brief_json,
+              input_hash, artifact_version_hash, prompt_version, schema_version,
+              validator_version, computed_at_ms, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %(company_event_id)s, %(agent_run_id)s, %(status)s, %(validation_status)s,
+              %(brief_json)s, %(input_hash)s, %(artifact_version_hash)s,
+              %(prompt_version)s, %(schema_version)s, %(validator_version)s,
+              %(computed_at_ms)s, %(created_at_ms)s, %(updated_at_ms)s
+            )
+            ON CONFLICT (company_event_id) DO UPDATE SET
+              agent_run_id = EXCLUDED.agent_run_id,
+              status = EXCLUDED.status,
+              validation_status = EXCLUDED.validation_status,
+              brief_json = EXCLUDED.brief_json,
+              input_hash = EXCLUDED.input_hash,
+              artifact_version_hash = EXCLUDED.artifact_version_hash,
+              prompt_version = EXCLUDED.prompt_version,
+              schema_version = EXCLUDED.schema_version,
+              validator_version = EXCLUDED.validator_version,
+              computed_at_ms = EXCLUDED.computed_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            """,
+            {
+                "company_event_id": company_event_id,
+                "agent_run_id": agent_run_id,
+                "status": status,
+                "validation_status": validation_status,
+                "brief_json": Jsonb(dict(brief_json)),
+                "input_hash": input_hash,
+                "artifact_version_hash": artifact_version_hash,
+                "prompt_version": prompt_version,
+                "schema_version": schema_version,
+                "validator_version": validator_version,
+                "computed_at_ms": int(computed_at_ms),
+                "created_at_ms": int(created_at_ms),
+                "updated_at_ms": int(updated_at_ms),
+            },
+        )
+        lifecycle_status = "brief_ready" if status in {"ready", "insufficient"} else "brief_stale"
+        self.conn.execute(
+            """
+            UPDATE equity_company_events
+               SET lifecycle_status = %s,
+                   updated_at_ms = GREATEST(updated_at_ms, %s)
+             WHERE company_event_id = %s
+            """,
+            (lifecycle_status, int(updated_at_ms), company_event_id),
+        )
+        if commit:
+            self.conn.commit()
+
     def list_expected_events_for_calendar_projection(self, *, limit: int) -> list[dict[str, Any]]:
         earnings_family = ["earnings_release", "quarterly_report"]
         rows = self.conn.execute(
@@ -1898,15 +2174,50 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def _list_event_source_spans(self, company_event_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+              FROM equity_event_source_spans
+             WHERE company_event_id = %s
+             ORDER BY event_document_id ASC, span_start ASC, span_id ASC
+            """,
+            (company_event_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _list_brief_story_members(self, story_id: str | None) -> list[dict[str, Any]]:
+        if story_id is None:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT events.company_event_id,
+                   events.ticker,
+                   events.event_type,
+                   events.event_time_ms,
+                   events.summary AS headline
+              FROM equity_event_story_members AS members
+              JOIN equity_company_events AS events
+                ON events.company_event_id = members.company_event_id
+             WHERE members.story_id = %s
+             ORDER BY events.event_time_ms DESC, events.company_event_id ASC
+            """,
+            (story_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def _list_event_documents(self, primary_document_id: str | None) -> list[dict[str, Any]]:
         if primary_document_id is None:
             return []
         rows = self.conn.execute(
             """
-            SELECT *
-              FROM equity_event_documents
-             WHERE event_document_id = %s
-             ORDER BY event_time_ms DESC, event_document_id ASC
+            SELECT documents.*,
+                   provider.raw_payload_json
+              FROM equity_event_documents AS documents
+              LEFT JOIN equity_provider_documents AS provider
+                ON provider.provider_document_id = documents.provider_document_id
+             WHERE documents.event_document_id = %s
+             ORDER BY documents.event_time_ms DESC, documents.event_document_id ASC
             """,
             (primary_document_id,),
         ).fetchall()
@@ -2021,6 +2332,17 @@ def _story_payload(row: Mapping[str, Any]) -> dict[str, Any] | None:
         "story_id": row.get("story_id"),
         "representative_headline": row.get("representative_headline"),
         "latest_seen_at_ms": row.get("story_latest_seen_at_ms"),
+        "updated_at_ms": row.get("story_updated_at_ms"),
+    }
+
+
+def _brief_story_payload(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    if not row.get("story_id"):
+        return None
+    return {
+        "story_id": row.get("story_id"),
+        "event_count": row.get("event_count"),
+        "representative_headline": row.get("representative_headline"),
         "updated_at_ms": row.get("story_updated_at_ms"),
     }
 

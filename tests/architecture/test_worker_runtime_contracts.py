@@ -271,6 +271,16 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
     },
+    "equity_event_agent_runs": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+    },
+    "equity_event_agent_briefs": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+    },
     "cex_oi_radar_runs": {
         SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",
         SRC / "domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py",
@@ -327,9 +337,7 @@ EXPECTED_WORKER_FACTORY_FILES = {
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
     "gmgn_twitter_intel.domains.ingestion.runtime.collector_service",
 }
-STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS = (
-    ".equity_event_intel.runtime.equity_event_brief_worker.",
-)
+STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS: tuple[str, ...] = ()
 
 
 @pytest.mark.architecture

@@ -12,7 +12,10 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenQuoteProvider,
     ProviderHealth,
 )
-from gmgn_twitter_intel.domains.equity_event_intel.providers import EquityEventDocumentProvider
+from gmgn_twitter_intel.domains.equity_event_intel.providers import (
+    EquityEventBriefProvider,
+    EquityEventDocumentProvider,
+)
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
 from gmgn_twitter_intel.domains.news_intel.providers import NewsFeedProvider, NewsItemBriefProvider
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
@@ -80,7 +83,7 @@ class MacrodataProviders:
 @dataclass(frozen=True, slots=True)
 class EquityEventIntelProviders:
     document_provider: EquityEventDocumentProvider | None = None
-    brief_provider: object | None = None
+    brief_provider: EquityEventBriefProvider | None = None
 
 
 @dataclass(frozen=True, slots=True)

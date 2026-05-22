@@ -99,6 +99,13 @@ are wrong too.
    `NewsItemBriefWorker`; `news_page_rows` is written only by
    `NewsPageProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
    and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`;
+   `equity_event_story_groups` and `equity_event_story_members` are written
+   only by `EquityEventStoryProjectionWorker`;
+   `equity_event_agent_runs` and `equity_event_agent_briefs` are written only
+   by `EquityEventBriefWorker`;
+   `equity_event_page_rows`, `equity_event_calendar_rows`,
+   `equity_event_alert_candidates`, and `equity_company_timeline_rows` are
+   written only by `EquityEventPageProjectionWorker`;
    `macro_view_snapshots` is written only by
    `MacroViewProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels

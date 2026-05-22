@@ -9,6 +9,7 @@ import pytest
 
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
     EquityEventPageProjectionWorker,
@@ -20,6 +21,8 @@ from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_source_r
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_story_projection_worker import (
     EquityEventStoryProjectionWorker,
 )
+from gmgn_twitter_intel.domains.equity_event_intel.types import EQUITY_EVENT_BRIEF_LANE
+from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
 
@@ -721,6 +724,48 @@ def test_page_projection_worker_removes_calendar_row_for_stale_expected_event(po
     assert wake_bus.pages_updated == [2, 1]
 
 
+def test_brief_worker_writes_cited_agent_run_current_brief_and_notifies(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+    company_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+    provider = _FakeEquityBriefProvider(db)
+    settings = Settings(workers={"equity_event_brief": {"batch_size": 10}})
+    worker = EquityEventBriefWorker(
+        name="equity_event_brief",
+        settings=settings.workers.equity_event_brief,
+        db=db,
+        telemetry=SimpleNamespace(),
+        provider=provider,
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS + 4_000,
+        run_id_factory=lambda: "equity-agent-run-1",
+    )
+
+    result = worker.run_once_sync()
+
+    run = postgres_conn.execute("SELECT * FROM equity_event_agent_runs").fetchone()
+    brief = postgres_conn.execute("SELECT * FROM equity_event_agent_briefs").fetchone()
+    assert result.processed == 1
+    assert provider.called_while_db_session_active is False
+    assert provider.packet_evidence_refs[:2] == ["event:summary", "doc:event-doc-page-msft"]
+    assert any(ref.startswith("span:") for ref in provider.packet_evidence_refs)
+    assert any(ref.startswith("fact:") for ref in provider.packet_evidence_refs)
+    assert run["run_id"] == "equity-agent-run-1"
+    assert run["company_event_id"] == company_event_id
+    assert run["lane"] == EQUITY_EVENT_BRIEF_LANE
+    assert run["status"] == "completed"
+    assert run["outcome"] == "ready"
+    assert run["request_json"]["packet"]["current_event"]["company_event_id"] == company_event_id
+    assert run["response_json"]["status"] == "ready"
+    assert brief["company_event_id"] == company_event_id
+    assert brief["status"] == "ready"
+    assert brief["validation_status"] == "accepted"
+    assert brief["brief_json"]["evidence_refs"] == provider.packet_evidence_refs
+    assert brief["input_hash"] == run["input_hash"]
+    assert wake_bus.briefs_updated == [1]
+
+
 class _WorkerDb:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -745,6 +790,7 @@ class _RecordingWakeBus:
         self.documents_written: list[tuple[str, int]] = []
         self.events_processed: list[int] = []
         self.stories_updated: list[int] = []
+        self.briefs_updated: list[int] = []
         self.pages_updated: list[int] = []
 
     def notify_equity_event_sources_reconciled(self, *, count: int) -> None:
@@ -758,6 +804,9 @@ class _RecordingWakeBus:
 
     def notify_equity_event_story_updated(self, *, count: int) -> None:
         self.stories_updated.append(count)
+
+    def notify_equity_event_brief_updated(self, *, count: int) -> None:
+        self.briefs_updated.append(count)
 
     def notify_equity_event_page_updated(self, *, count: int) -> None:
         self.pages_updated.append(count)
@@ -822,6 +871,95 @@ class _FailingEquityDocumentProvider:
                 }
             ],
         )
+
+
+class _FakeEquityBriefProvider:
+    provider = "openai"
+    model = "gpt-equity"
+    artifact_version_hash = "artifact-equity-v1"
+
+    def __init__(self, db: _WorkerDb) -> None:
+        self.db = db
+        self.called_while_db_session_active: bool | None = None
+        self.packet_evidence_refs: list[str] = []
+
+    def try_reserve_execution(self, lane: str) -> AgentCapacityReservation:
+        assert lane == EQUITY_EVENT_BRIEF_LANE
+        return AgentCapacityReservation(lane=lane, acquired=True)
+
+    def request_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "backend": "openai_agents_sdk",
+            "model": self.model,
+            "lane": EQUITY_EVENT_BRIEF_LANE,
+            "stage": "equity_event_brief",
+            "workflow_name": "gmgn-twitter-intel.equity_event_brief",
+            "agent_name": "EquityEventBriefAgent",
+            "sdk_trace_id": "trace-equity-1",
+            "group_id": (
+                f"equity_event:"
+                f"{packet.story_context.story_id if packet.story_context else packet.current_event.company_event_id}"
+            ),
+            "prompt_version": packet.prompt_version,
+            "schema_version": packet.schema_version,
+            "runtime_version": "agent-execution-plane-v1",
+            "artifact_version_hash": self.artifact_version_hash,
+            "input_hash": packet.input_hash,
+            "output_hash": None,
+            "latency_ms": None,
+            "usage": {},
+            "trace_metadata": {"run_id": run_id},
+            "execution_started": False,
+            "status": "planned",
+            "error_class": None,
+            "error_message": None,
+        }
+
+    async def brief_event(
+        self,
+        *,
+        run_id: str,
+        packet: Any,
+        reservation: AgentCapacityReservation | None = None,
+    ) -> dict[str, Any]:
+        del run_id, reservation
+        self.called_while_db_session_active = self.db.session_active
+        assert not self.db.session_active
+        self.packet_evidence_refs = list(packet.evidence_refs)
+        return {
+            "payload": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "summary_zh": "微软季度收入和 EPS 均来自官方文件证据。",
+                "event_read_zh": "该事件提供了可审计的基本面事实，但不包含交易执行建议。",
+                "bull_view": {
+                    "strength": "moderate",
+                    "thesis_zh": "收入和 EPS 事实支持基本面关注度。",
+                    "evidence_refs": packet.evidence_refs,
+                },
+                "bear_view": {
+                    "strength": "weak",
+                    "thesis_zh": "输入没有提供管理层指引证据。",
+                    "evidence_refs": ["event:summary"],
+                },
+                "company_impacts": [
+                    {
+                        "ticker": packet.current_event.ticker,
+                        "company_name": packet.current_event.company_name,
+                        "impact_direction": "bullish",
+                        "reason_zh": "官方文件包含收入和 EPS 事实。",
+                        "evidence_refs": packet.evidence_refs,
+                    }
+                ],
+                "watch_triggers": ["后续管理层指引"],
+                "invalidation_conditions": ["官方文件更正关键指标"],
+                "data_gaps": [],
+                "evidence_refs": packet.evidence_refs,
+            },
+            "agent_run_audit": self.request_audit(run_id="ignored", packet=packet),
+        }
 
 
 def _process_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventProcessWorker:

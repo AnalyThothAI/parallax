@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
     EquityEventPageProjectionWorker,
@@ -74,6 +75,18 @@ def construct_equity_event_intel_workers(ctx: WorkerFactoryContext) -> dict[str,
             telemetry=ctx.telemetry,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_story_projection.wakes_on),
+        )
+    brief_provider = getattr(equity_providers, "brief_provider", None)
+    if workers.equity_event_brief.enabled and ctx.settings.equity_event_brief_configured and brief_provider is not None:
+        worker_name = "equity_event_brief"
+        constructed[worker_name] = EquityEventBriefWorker(
+            name=worker_name,
+            settings=workers.equity_event_brief,
+            db=ctx.db,
+            telemetry=ctx.telemetry,
+            provider=brief_provider,
+            wake_bus=ctx.wake_bus,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_brief.wakes_on),
         )
     if workers.equity_event_page_projection.enabled:
         worker_name = "equity_event_page_projection"
