@@ -191,7 +191,8 @@ def test_refresh_decision_allows_bounded_pending_tail_when_coverage_passes() -> 
     )
 
     assert decision.should_refresh is True
-    assert decision.reason == "thresholds_met"
+    assert decision.reason == "thresholds_met_partial_semantic_tail"
+    assert decision.status_if_not_refresh == "pending"
 
 
 def test_refresh_decision_blocks_pending_tail_above_tolerance() -> None:

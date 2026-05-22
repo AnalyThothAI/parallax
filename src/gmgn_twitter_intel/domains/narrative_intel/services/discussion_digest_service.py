@@ -90,7 +90,8 @@ class DiscussionDigestService:
                 reason="low_semantic_coverage",
                 status_if_not_refresh="insufficient",
             )
-        return DigestRefreshDecision(should_refresh=True, reason="thresholds_met", status_if_not_refresh="pending")
+        reason = "thresholds_met_partial_semantic_tail" if pending_tail > 0 else "thresholds_met"
+        return DigestRefreshDecision(should_refresh=True, reason=reason, status_if_not_refresh="pending")
 
     def build_insufficient_digest(
         self,

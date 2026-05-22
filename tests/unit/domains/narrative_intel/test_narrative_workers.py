@@ -1104,6 +1104,88 @@ def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
     asyncio.run(scenario())
 
 
+def test_token_discussion_digest_worker_refreshes_no_ready_digest_with_bounded_pending_tail():
+    async def scenario():
+        pending_tail = 2
+        repo = FakeDigestRepository(
+            context={
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "1h",
+                "scope": "matched",
+                "mentions": [
+                    {
+                        "event_id": "event-1",
+                        "semantic_id": "semantic-1",
+                        "author_handle": "a",
+                        "status": "labeled",
+                        "evidence_refs_json": [{"ref_id": "event:event-1", "kind": "event", "source_table": "events"}],
+                    },
+                    {
+                        "event_id": "event-2",
+                        "semantic_id": "semantic-2",
+                        "author_handle": "b",
+                        "status": "labeled",
+                        "evidence_refs_json": [{"ref_id": "event:event-2", "kind": "event", "source_table": "events"}],
+                    },
+                    {
+                        "event_id": "event-3",
+                        "semantic_id": "semantic-3",
+                        "author_handle": "c",
+                        "status": "labeled",
+                        "evidence_refs_json": [{"ref_id": "event:event-3", "kind": "event", "source_table": "events"}],
+                    },
+                    {"event_id": "event-4", "author_handle": "d", "status": "queued"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                ],
+                "semantic_rows": [
+                    {"event_id": "event-1", "semantic_id": "semantic-1", "author_handle": "a", "status": "labeled"},
+                    {"event_id": "event-2", "semantic_id": "semantic-2", "author_handle": "b", "status": "labeled"},
+                    {"event_id": "event-3", "semantic_id": "semantic-3", "author_handle": "c", "status": "labeled"},
+                    {"event_id": "event-4", "author_handle": "d", "status": "queued"},
+                    {"event_id": "event-5", "author_handle": "e", "status": "queued"},
+                ],
+                "source_event_ids": ["event-1", "event-2", "event-3", "event-4", "event-5"],
+                "source_fingerprint": "source-current-with-tail",
+                "source_window_start_ms": 1_000,
+                "source_window_end_ms": 9_000,
+                "source_event_count": 5,
+                "semantic_row_count": 5,
+                "missing_semantic_count": 0,
+                "pending_semantic_count": pending_tail,
+                "retryable_semantic_count": 0,
+                "terminal_unavailable_count": 0,
+                "labeled_event_count": 3,
+                "independent_author_count": 5,
+                "allowed_refs": [
+                    {"ref_id": "event:event-1", "kind": "event", "source_table": "events"},
+                    {"ref_id": "event:event-2", "kind": "event", "source_table": "events"},
+                    {"ref_id": "event:event-3", "kind": "event", "source_table": "events"},
+                    {"ref_id": "semantic:semantic-1", "kind": "semantic", "source_table": "token_mention_semantics"},
+                    {"ref_id": "semantic:semantic-2", "kind": "semantic", "source_table": "token_mention_semantics"},
+                    {"ref_id": "semantic:semantic-3", "kind": "semantic", "source_table": "token_mention_semantics"},
+                ],
+            },
+            last_ready_digest=None,
+        )
+        db = FakeDB(repo)
+        worker = TokenDiscussionDigestWorker(
+            name="token_discussion_digest",
+            settings=fake_digest_settings(max_pending_semantic_rows_for_digest=pending_tail),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=StaleButValidDigestProvider(),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["ready"] == 1
+        assert repo.replaced_digests[0]["status"] == "ready"
+        assert repo.replaced_digests[0]["source_fingerprint"] == "source-current-with-tail"
+
+    asyncio.run(scenario())
+
+
 def test_token_discussion_digest_worker_publishes_successful_refresh_as_ready():
     async def scenario():
         repo = FakeDigestRepository(
