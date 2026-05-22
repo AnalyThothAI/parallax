@@ -7,7 +7,8 @@ import type {
   SignalPulseStatusFilter,
   SignalPulseVisibilityFilter,
 } from "@lib/types";
-import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
+import { Button } from "@shared/ui/button";
 import * as Tabs from "@shared/ui/tabs";
 import clsx from "clsx";
 import { useId } from "react";
@@ -261,7 +262,7 @@ function AccountEventList({
   onSelect: (item: LivePayload) => void;
 }) {
   if (isLoading && !items.length) {
-    return <SkeletonRows count={5} label="loading watched account events" />;
+    return <PageState.TableSkeleton rows={5} label="loading watched account events" />;
   }
   return (
     <div className="signal-chain-list signal-account-event-list">
@@ -318,13 +319,13 @@ function SignalLabEmptyState({
   onClearFilters: () => void;
 }) {
   return (
-    <RemoteState.Empty
+    <PageState.Empty
       title={hasActiveFilters ? "没有匹配的 Signal Pulse 候选" : "当前窗口没有 Signal Pulse 候选"}
       action={
         hasActiveFilters ? (
-          <button type="button" onClick={onClearFilters}>
+          <Button size="sm" type="button" variant="outline" onClick={onClearFilters}>
             清除筛选
-          </button>
+          </Button>
         ) : null
       }
     />

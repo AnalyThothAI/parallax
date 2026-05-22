@@ -105,7 +105,7 @@ describe("notification center components", () => {
 
     const loading = screen.getByRole("status", { name: "loading notifications" });
     expect(loading).toHaveClass("page-state-loading", "page-state-layout-inline");
-    expect(container.querySelector(".remote-state-loading")).not.toBeInTheDocument();
+    expect(container.querySelector(".page-state-table-skeleton")).toBeInTheDocument();
   });
 
   it("renders PageState empty state when the notification drawer is clear", () => {
@@ -123,7 +123,7 @@ describe("notification center components", () => {
     );
 
     expect(screen.getByText("clear").closest(".page-state-empty")).toBeInTheDocument();
-    expect(container.querySelector(".remote-state-empty")).not.toBeInTheDocument();
+    expect(container.querySelector(".page-state-empty")).toBeInTheDocument();
   });
 
   it("only shows watchlist dot when the account has unread notifications", () => {

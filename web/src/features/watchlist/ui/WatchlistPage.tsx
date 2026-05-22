@@ -1,5 +1,5 @@
 import type { WatchlistHandleOverviewData, WatchlistTimelineScope } from "@lib/types";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { useEffect, useMemo } from "react";
 
 import { useHandleOverviewQuery } from "../api/useHandleOverviewQuery";
@@ -62,7 +62,7 @@ export function WatchlistPage({
   if (!selectedHandle) {
     return (
       <section className="watchlist-page" aria-label="Watchlist">
-        <RemoteState.Empty title="No watchlist handles configured." />
+        <PageState.Empty title="No watchlist handles configured." />
       </section>
     );
   }
@@ -79,7 +79,7 @@ export function WatchlistPage({
           unreadCount={selectedUnreadCount}
         />
         {overviewQuery.isError ? (
-          <RemoteState.Error error={overviewQuery.error} onRetry={() => overviewQuery.refetch()} />
+          <PageState.Error error={overviewQuery.error} onRetry={() => overviewQuery.refetch()} />
         ) : null}
         <HandleTopicSummary query={summaryQuery} />
         <div className="watchlist-monitor-grid">

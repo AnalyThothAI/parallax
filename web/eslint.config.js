@@ -74,7 +74,7 @@ export default [
       "react/jsx-key": "error",
       "react-refresh/only-export-components": [
         "error",
-        { allowConstantExport: true, allowExportNames: ["RemoteState", "useSidebar"] },
+        { allowConstantExport: true, allowExportNames: ["useSidebar"] },
       ],
       // React hooks
       "react-hooks/rules-of-hooks": "error",

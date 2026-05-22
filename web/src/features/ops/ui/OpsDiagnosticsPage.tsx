@@ -1,5 +1,5 @@
 import { formatRelativeTime } from "@lib/format";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import clsx from "clsx";
 import {
   Activity,
@@ -59,13 +59,13 @@ export function OpsDiagnosticsPage({
   onSelectQueue,
 }: OpsDiagnosticsPageProps) {
   if (loading) {
-    return <RemoteState.Loading label="加载运维诊断" layout="route" rows={6} />;
+    return <PageState.Loading label="加载运维诊断" layout="route" rows={6} />;
   }
   if (error) {
-    return <RemoteState.Error error={error} onRetry={onRefresh} />;
+    return <PageState.Error error={error} onRetry={onRefresh} />;
   }
   if (!diagnostics) {
-    return <RemoteState.Empty title="暂无诊断数据" hint="运行时诊断暂不可用。" />;
+    return <PageState.Empty title="暂无诊断数据" hint="运行时诊断暂不可用。" />;
   }
 
   const incidents = incidentRows(diagnostics);
@@ -365,7 +365,7 @@ function QueueDetail({
     );
   }
   if (loading) {
-    return <RemoteState.Loading label="加载队列" layout="inline" rows={3} />;
+    return <PageState.Loading label="加载队列" layout="inline" rows={3} />;
   }
   if (!queue) {
     return (

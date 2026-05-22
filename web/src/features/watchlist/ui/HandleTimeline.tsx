@@ -1,5 +1,5 @@
 import type { WatchlistHandleTimelineData, WatchlistTimelineScope } from "@lib/types";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { ChevronDown } from "lucide-react";
 
 import { HandleTimelineItem } from "./HandleTimelineItem";
@@ -26,15 +26,15 @@ export function HandleTimeline({
   scope: WatchlistTimelineScope;
 }) {
   if (query.isPending) {
-    return <RemoteState.Loading label="Loading handle timeline" layout="panel" rows={6} />;
+    return <PageState.Loading label="Loading handle timeline" layout="panel" rows={6} />;
   }
   if (query.isError) {
-    return <RemoteState.Error error={query.error} onRetry={() => query.refetch()} />;
+    return <PageState.Error error={query.error} onRetry={() => query.refetch()} />;
   }
   const pages = query.data?.pages ?? [];
   const items = pages.flatMap((page) => page.data.items);
   return (
-    <RemoteState.Stale updating={query.isFetching}>
+    <PageState.Stale updating={query.isFetching}>
       <div className="watchlist-scope-tabs" role="tablist" aria-label="Timeline scope">
         <button
           aria-selected={scope === "signal"}
@@ -62,7 +62,7 @@ export function HandleTimeline({
           ))}
         </ol>
       ) : (
-        <RemoteState.Empty
+        <PageState.Empty
           action={
             scope === "signal" ? (
               <button
@@ -90,6 +90,6 @@ export function HandleTimeline({
           </button>
         </div>
       ) : null}
-    </RemoteState.Stale>
+    </PageState.Stale>
   );
 }

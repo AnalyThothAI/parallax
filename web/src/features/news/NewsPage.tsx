@@ -11,7 +11,7 @@ import type {
 } from "@shared/model/newsIntel";
 import { newsLifecycleLabel } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import * as Tabs from "@shared/ui/tabs";
 import {
   ArrowLeft,
@@ -101,17 +101,17 @@ function NewsQueueRoute({ token }: { token: string }) {
           />
         </div>
         {showLoading ? (
-          <RemoteState.Loading layout="panel" rows={8} label="loading news table" />
+          <PageState.Loading layout="panel" rows={8} label="loading news table" />
         ) : null}
-        {query.isError ? <RemoteState.Error error={query.error ?? "News unavailable"} /> : null}
+        {query.isError ? <PageState.Error error={query.error ?? "News unavailable"} /> : null}
         {showEmpty ? (
-          <RemoteState.Empty
+          <PageState.Empty
             title="No news rows"
             hint="The API returned no paged items for the current queue."
           />
         ) : null}
         {!showLoading && !query.isError && rows.length ? (
-          <RemoteState.Stale updating={query.isFetching && !query.isLoading}>
+          <PageState.Stale updating={query.isFetching && !query.isLoading}>
             <div className="news-desk">
               <NewsQueueSummary resultLabel={resultLabel} summary={summary} />
               <div className="news-feed-head" aria-hidden="true">
@@ -131,7 +131,7 @@ function NewsQueueRoute({ token }: { token: string }) {
                 ))}
               </div>
             </div>
-          </RemoteState.Stale>
+          </PageState.Stale>
         ) : null}
       </div>
     </section>
@@ -229,16 +229,16 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
       </header>
 
       {showLoading ? (
-        <RemoteState.Loading layout="panel" rows={8} label="loading news item" />
+        <PageState.Loading layout="panel" rows={8} label="loading news item" />
       ) : null}
-      {query.isError ? <RemoteState.Error error={query.error ?? "News item unavailable"} /> : null}
+      {query.isError ? <PageState.Error error={query.error ?? "News item unavailable"} /> : null}
       {!showLoading && !query.isError && !item ? (
-        <RemoteState.Empty title="News item not found" />
+        <PageState.Empty title="News item not found" />
       ) : null}
       {item ? (
-        <RemoteState.Stale updating={query.isFetching}>
+        <PageState.Stale updating={query.isFetching}>
           <NewsItemDetailView item={item} />
-        </RemoteState.Stale>
+        </PageState.Stale>
       ) : null}
     </section>
   );

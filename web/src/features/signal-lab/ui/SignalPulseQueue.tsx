@@ -1,6 +1,6 @@
 import type { SignalPulseItem } from "@lib/types";
 import { signalPulseVenueActions } from "@lib/venue";
-import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { ExternalLink } from "lucide-react";
 
 import { buildSignalPulseQueueItem } from "../model/signalPulseQueue";
@@ -23,10 +23,16 @@ export function SignalPulseQueue({
   onSelect,
 }: Props) {
   if (isLoading) {
-    return <SkeletonRows compact={compact} count={compact ? 4 : 5} label="loading signal pulse" />;
+    return (
+      <PageState.TableSkeleton
+        compact={compact}
+        rows={compact ? 4 : 5}
+        label="loading signal pulse"
+      />
+    );
   }
   if (!items.length) {
-    return <RemoteState.Empty title="No pulse candidates in this window" />;
+    return <PageState.Empty title="No pulse candidates in this window" />;
   }
   return (
     <div className={styles.queue} data-density={compact ? "compact" : "full"}>

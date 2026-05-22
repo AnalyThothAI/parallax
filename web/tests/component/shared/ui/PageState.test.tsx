@@ -22,8 +22,7 @@ describe("PageState shared UI", () => {
       "page-state-table-skeleton-compact",
     );
     expect(container.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(15);
-    expect(container.querySelector(".remote-state-loading")).not.toBeInTheDocument();
-    expect(container.querySelector(".skeleton-rows")).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".page-state-table-row")).toHaveLength(5);
     expect(await axe(container)).toHaveNoViolations();
   });
 

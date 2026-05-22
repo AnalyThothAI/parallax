@@ -2,7 +2,7 @@ import { getAuthToken } from "@lib/api/client";
 import type { LivePayload, SignalPulseData, SignalPulseItem } from "@lib/types";
 import { signalPulseVenueActions } from "@lib/venue";
 import { searchPath } from "@shared/routing/paths";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import clsx from "clsx";
 import { Link } from "react-router-dom";
 
@@ -80,7 +80,7 @@ export function SignalLabPage({
             sourceEvents={sourceEvents.data ?? []}
           />
         ) : (
-          <RemoteState.Empty title="No selected Signal Pulse case." />
+          <PageState.Empty title="No selected Signal Pulse case." />
         )}
       </aside>
     </section>

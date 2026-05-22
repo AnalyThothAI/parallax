@@ -9,7 +9,7 @@ import type {
   MacroSnapshotSummary,
   MacroTrigger,
 } from "@lib/types";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import * as Tabs from "@shared/ui/tabs";
 import clsx from "clsx";
 import {
@@ -510,8 +510,8 @@ export function MacroPage({
         snapshot={snapshot}
       />
 
-      {query.isLoading ? <RemoteState.Loading layout="route" label="loading macro" /> : null}
-      {query.isError ? <RemoteState.Error error={query.error} /> : null}
+      {query.isLoading ? <PageState.Loading layout="route" label="loading macro" /> : null}
+      {query.isError ? <PageState.Error error={query.error} /> : null}
       {!query.isLoading && !query.isError && !snapshot ? (
         <div className="macro-empty-state">
           <AlertTriangle aria-hidden />
