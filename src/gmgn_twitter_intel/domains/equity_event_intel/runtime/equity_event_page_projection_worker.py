@@ -40,6 +40,7 @@ class EquityEventPageProjectionWorker(WorkerBase):
         company_event_ids: list[str] = []
         expected_event_ids: list[str] = []
         expected_only_ids: list[str] = []
+        inactive_expected_event_ids: list[str] = []
 
         with self._repository_session() as repos:
             for payload in repos.equity_events.list_events_for_page_projection(limit=self._batch_size()):
@@ -79,6 +80,9 @@ class EquityEventPageProjectionWorker(WorkerBase):
                 expected_event_ids.append(str(expected_event["expected_event_id"]))
                 if observed_event is None:
                     expected_only_ids.append(str(expected_event["expected_event_id"]))
+            inactive_expected_event_ids = repos.equity_events.list_inactive_expected_event_ids_for_calendar_projection(
+                limit=self._batch_size()
+            )
 
             if company_event_ids:
                 repos.equity_events.replace_page_rows(company_event_ids=company_event_ids, rows=page_rows, commit=False)
@@ -98,9 +102,15 @@ class EquityEventPageProjectionWorker(WorkerBase):
                     rows=calendar_rows,
                     commit=False,
                 )
+            if inactive_expected_event_ids:
+                repos.equity_events.replace_calendar_rows(
+                    expected_event_ids=inactive_expected_event_ids,
+                    rows=[],
+                    commit=False,
+                )
             repos.conn.commit()
 
-        processed = len(set(company_event_ids)) + len(expected_only_ids)
+        processed = len(set(company_event_ids)) + len(expected_only_ids) + len(inactive_expected_event_ids)
         if processed and self.wake_bus is not None:
             self.wake_bus.notify_equity_event_page_updated(count=processed)
         return WorkerResult(

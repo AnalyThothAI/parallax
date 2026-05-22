@@ -608,6 +608,19 @@ def test_page_projection_worker_rebuilds_read_models_after_page_truncation(postg
     assert wake_bus.pages_updated == [1, 1]
 
 
+def test_page_projection_worker_is_idle_when_read_models_are_current(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+
+    first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
+    idle_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000, batch_size=10).run_once_sync()
+
+    assert first_result.processed == 1
+    assert idle_result.processed == 0
+    assert wake_bus.pages_updated == [1]
+
+
 def test_page_projection_worker_rebuilds_missing_alert_candidate_for_older_current_page_row(postgres_conn) -> None:
     db = _WorkerDb(postgres_conn)
     wake_bus = _RecordingWakeBus()
@@ -654,6 +667,34 @@ def test_page_projection_worker_rebuilds_missing_timeline_row_for_older_current_
     assert result.processed == 1
     assert rebuilt_timeline is not None
     assert rebuilt_timeline["ticker"] == "MSFT"
+
+
+def test_page_projection_worker_removes_calendar_row_for_stale_expected_event(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+    _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
+
+    postgres_conn.execute(
+        """
+        UPDATE equity_expected_events
+           SET status = 'stale',
+               updated_at_ms = %s
+         WHERE expected_event_id = %s
+        """,
+        (NOW_MS + 4_000, "expected:MSFT:2026Q1"),
+    )
+    postgres_conn.commit()
+
+    result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 5_000, batch_size=10).run_once_sync()
+
+    calendar_row = postgres_conn.execute(
+        "SELECT * FROM equity_event_calendar_rows WHERE expected_event_id = %s",
+        ("expected:MSFT:2026Q1",),
+    ).fetchone()
+    assert result.processed == 1
+    assert calendar_row is None
+    assert wake_bus.pages_updated == [1, 1]
 
 
 class _WorkerDb:

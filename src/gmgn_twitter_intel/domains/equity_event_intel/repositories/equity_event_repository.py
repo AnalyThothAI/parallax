@@ -1254,6 +1254,50 @@ class EquityEventRepository:
                  WHERE facts.company_event_id = events.company_event_id
               ) AS fact_state ON true
              WHERE events.validation_status <> 'rejected'
+               AND (
+                 page_rows.row_id IS NULL
+                 OR page_rows.projection_version <> %s
+                 OR page_rows.computed_at_ms < GREATEST(
+                   events.updated_at_ms,
+                   COALESCE(stories.updated_at_ms, 0),
+                   COALESCE(briefs.updated_at_ms, 0),
+                   COALESCE(documents.updated_at_ms, 0),
+                   COALESCE(fact_state.facts_updated_at_ms, 0)
+                 )
+                 OR timeline_rows.row_id IS NULL
+                 OR timeline_rows.projection_version <> %s
+                 OR timeline_rows.computed_at_ms < GREATEST(
+                   events.updated_at_ms,
+                   COALESCE(stories.updated_at_ms, 0),
+                   COALESCE(briefs.updated_at_ms, 0),
+                   COALESCE(documents.updated_at_ms, 0),
+                   COALESCE(fact_state.facts_updated_at_ms, 0)
+                 )
+                 OR (
+                   events.priority = 'P0'
+                   AND events.source_role = ANY(%s::text[])
+                   AND COALESCE(fact_state.actionable_fact_count, 0) > 0
+                   AND (
+                     alerts.alert_candidate_id IS NULL
+                     OR alerts.projection_version <> %s
+                     OR alerts.computed_at_ms < GREATEST(
+                       events.updated_at_ms,
+                       COALESCE(stories.updated_at_ms, 0),
+                       COALESCE(briefs.updated_at_ms, 0),
+                       COALESCE(documents.updated_at_ms, 0),
+                       COALESCE(fact_state.facts_updated_at_ms, 0)
+                     )
+                   )
+                 )
+                 OR (
+                   NOT (
+                     events.priority = 'P0'
+                     AND events.source_role = ANY(%s::text[])
+                     AND COALESCE(fact_state.actionable_fact_count, 0) > 0
+                   )
+                   AND alerts.alert_candidate_id IS NOT NULL
+                 )
+               )
              ORDER BY CASE
                         WHEN page_rows.row_id IS NULL THEN 0
                         WHEN page_rows.projection_version <> %s THEN 0
@@ -1302,6 +1346,11 @@ class EquityEventRepository:
             """,
             (
                 list(_ALERT_FACT_STATUSES),
+                EQUITY_EVENT_PAGE_PROJECTION_VERSION,
+                EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
+                list(_ALERT_SOURCE_ROLES),
+                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
+                list(_ALERT_SOURCE_ROLES),
                 EQUITY_EVENT_PAGE_PROJECTION_VERSION,
                 EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
                 list(_ALERT_SOURCE_ROLES),
@@ -1384,6 +1433,14 @@ class EquityEventRepository:
               LEFT JOIN equity_event_calendar_rows AS calendar_rows
                 ON calendar_rows.expected_event_id = expected.expected_event_id
              WHERE expected.status IN ('expected', 'observed')
+               AND (
+                 calendar_rows.row_id IS NULL
+                 OR calendar_rows.projection_version <> %s
+                 OR calendar_rows.computed_at_ms < GREATEST(
+                   expected.updated_at_ms,
+                   COALESCE(observed.updated_at_ms, 0)
+                 )
+               )
              ORDER BY CASE
                         WHEN calendar_rows.row_id IS NULL THEN 0
                         WHEN calendar_rows.projection_version <> %s THEN 0
@@ -1401,10 +1458,26 @@ class EquityEventRepository:
                 earnings_family,
                 earnings_family,
                 EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
+                EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
                 max(0, int(limit)),
             ),
         ).fetchall()
         return [_calendar_projection_payload(dict(row)) for row in rows]
+
+    def list_inactive_expected_event_ids_for_calendar_projection(self, *, limit: int) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT expected.expected_event_id
+              FROM equity_expected_events AS expected
+              JOIN equity_event_calendar_rows AS calendar_rows
+                ON calendar_rows.expected_event_id = expected.expected_event_id
+             WHERE expected.status NOT IN ('expected', 'observed')
+             ORDER BY expected.updated_at_ms ASC, expected.expected_event_id ASC
+             LIMIT %s
+            """,
+            (max(0, int(limit)),),
+        ).fetchall()
+        return [str(row["expected_event_id"]) for row in rows]
 
     def replace_calendar_rows(
         self,
