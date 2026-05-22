@@ -11,7 +11,7 @@ import { useSignalLabPage } from "../useSignalLabPage";
 
 import { PulseDetailView } from "./PulseDetail";
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
-import "./signalLab.css";
+import "./SignalLabLayout.css";
 
 type SignalLabPageProps = {
   selectedAccountEventId?: string | null;

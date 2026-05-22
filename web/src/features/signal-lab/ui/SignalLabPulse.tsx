@@ -1,11 +1,12 @@
 import { compactNumber } from "@lib/format";
 import type { SignalPulseData, SignalPulseItem, SignalPulseVisibilityFilter } from "@lib/types";
 import * as Tabs from "@radix-ui/react-tabs";
+import { CompactPanel } from "@shared/ui/CompactPanel";
 import { FlaskConical } from "lucide-react";
 import { useState } from "react";
 
 import { SignalPulseQueue } from "./SignalPulseQueue";
-import "./signalLab.css";
+import "./SignalLabPulse.css";
 
 type SignalLabPulseProps = {
   data?: SignalPulseData;
@@ -33,7 +34,7 @@ export function SignalLabPulse({
   const publicCount = publicPulseCount(data);
   const hiddenCount = hiddenPulseCount(data, hiddenData);
   return (
-    <section className="compact-panel signal-lab-pulse" data-mobile-task-panel={mobileTaskPanel}>
+    <CompactPanel className="signal-lab-pulse" mobileTaskPanel={mobileTaskPanel}>
       <header>
         <div>
           <FlaskConical aria-hidden />
@@ -53,7 +54,7 @@ export function SignalLabPulse({
         selectedItemId={selectedItemId}
         onSelect={onSelect}
       />
-    </section>
+    </CompactPanel>
   );
 }
 

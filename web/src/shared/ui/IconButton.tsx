@@ -1,6 +1,8 @@
 import clsx from "clsx";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
+import "./IconButton.css";
+
 type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> & {
   "aria-label": string;
   children: ReactNode;

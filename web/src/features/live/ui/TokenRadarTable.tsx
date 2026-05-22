@@ -35,6 +35,7 @@ import {
   tokenRadarDetailHref,
   tokenRadarDetailLinkProps,
 } from "../model/tokenRadarDetailLink";
+import "./TokenRadarTable.css";
 
 type TokenRadarTableProps = {
   items: TokenFlowItem[];
@@ -291,7 +292,11 @@ function TokenCaseCell({
       {tokenCase.logoUrl ? (
         <img alt="" className="radar-token-logo" src={tokenCase.logoUrl} />
       ) : (
-        <ObsidianTokenMark label={tokenCase.label} tone={tokenCase.markTone} />
+        <ObsidianTokenMark
+          className="radar-case-mark"
+          label={tokenCase.label}
+          tone={tokenCase.markTone}
+        />
       )}
       <span className="radar-case-copy">
         <span className="radar-case-symbol-row">

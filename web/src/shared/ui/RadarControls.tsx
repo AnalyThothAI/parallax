@@ -1,8 +1,7 @@
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type { ScopeKey, WindowKey } from "@lib/types";
-import { UserRound } from "lucide-react";
-import { useId } from "react";
 
+import { HandleFilter } from "./HandleFilter";
 import "./RadarControls.css";
 
 type RadarControlsProps = {
@@ -24,7 +23,6 @@ export function RadarControls({
   onScopeChange,
   onHandlesChange,
 }: RadarControlsProps) {
-  const handlesInputId = useId();
   return (
     <>
       <div className="radar-controls-group radar-controls-window" aria-label="radar window">
@@ -56,16 +54,12 @@ export function RadarControls({
         </button>
       </div>
       {onHandlesChange ? (
-        <label className="handle-filter compact" htmlFor={handlesInputId}>
-          <UserRound aria-hidden />
-          <input
-            aria-label="radar handles"
-            id={handlesInputId}
-            value={handles ?? ""}
-            onChange={(event) => onHandlesChange(event.target.value)}
-            placeholder={handlePlaceholder}
-          />
-        </label>
+        <HandleFilter
+          ariaLabel="radar handles"
+          placeholder={handlePlaceholder}
+          value={handles ?? ""}
+          onChange={onHandlesChange}
+        />
       ) : null}
     </>
   );

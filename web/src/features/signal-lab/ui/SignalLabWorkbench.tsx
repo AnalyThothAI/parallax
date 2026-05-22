@@ -13,6 +13,8 @@ import clsx from "clsx";
 import { useId } from "react";
 
 import { SignalPulseQueue } from "./SignalPulseQueue";
+import "./SignalLabChainList.css";
+import "./SignalLabWorkbench.css";
 
 const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; description: string }> = [
   {

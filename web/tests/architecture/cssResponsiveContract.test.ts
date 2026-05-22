@@ -18,22 +18,9 @@ const shellSelectors = [
   ".mobile-route-nav",
 ] as const;
 
-const oversizedSideEffectCss = new Set([
-  "features/live/ui/live.css",
-  "shared/ui/shared.css",
-  "features/signal-lab/ui/signalLab.css",
-  "features/cockpit/ui/cockpit.css",
-  "features/news/news.css",
-  "features/macro/macro.css",
-  "features/search/ui/search.css",
-  "features/ops/ui/ops.css",
-  "shared/ui/obsidian.css",
-  "features/watchlist/ui/watchlist.css",
-]);
+const oversizedSideEffectCss = new Set<string>();
 
-const unlayeredSideEffectCss = new Set([
-  "styles/tailwind.css",
-]);
+const unlayeredSideEffectCss = new Set(["styles/tailwind.css"]);
 
 describe("responsive CSS contract", () => {
   it("keeps live task navigation out of cockpit shell CSS", () => {
@@ -195,10 +182,7 @@ describe("responsive CSS contract", () => {
 
   it("keeps final shell visibility breakpoints in the cockpit shell contract file only", () => {
     const allowedPath = "src/features/cockpit/ui/cockpitShellContract.css";
-    const contractOwnedFragments = [
-      ".desktop-side-rail",
-      ".mobile-route-nav",
-    ];
+    const contractOwnedFragments = [".desktop-side-rail", ".mobile-route-nav"];
     const offenders = cockpitShellCssUnits()
       .filter((path) => relativeToWeb(path) !== allowedPath)
       .flatMap((path) => {
@@ -323,6 +307,102 @@ describe("responsive CSS contract", () => {
     expect(radarControlsSource).not.toContain("segmented");
     expect(radarControlsCss).toContain("@layer app.primitives");
     expect(featureCssOffenders).toEqual([]);
+  });
+
+  it("keeps shared primitive selectors out of feature CSS buckets", () => {
+    const primitiveSelectors = [
+      ".compact-panel",
+      ".decision-tag",
+      ".handle-filter",
+      ".icon-button",
+      ".remote-state-empty",
+      ".remote-state-error",
+      ".remote-state-loading",
+      ".route-state-panel",
+      ".skeleton-row",
+      ".skeleton-rows",
+      ".token-profile-card",
+      ".radar-controls-group",
+      ".radar-controls-window",
+      ".radar-controls-scope",
+    ];
+    const offenders = collectFiles(join(srcRoot, "features"))
+      .filter(isCssFile)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css).flatMap((rule) =>
+          primitiveSelectors
+            .filter((selector) => selectorContains(rule.selector, selector))
+            .map(
+              (selector) =>
+                `${relativeToSrc(path)}:${lineNumber(css, rule.start)} owns shared primitive ${selector} via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(
+      offenders,
+      "Feature CSS may lay out feature containers, but shared primitive internals belong under shared/ui.",
+    ).toEqual([]);
+  });
+
+  it("keeps notification selectors owned by the notifications feature", () => {
+    const notificationSelectors = [
+      ".notification-bell",
+      ".notification-drawer",
+      ".notification-list",
+      ".notification-row",
+      ".notification-row-main",
+      ".notification-row-actions",
+      ".watchlist-notification-dot",
+    ];
+    const offenders = collectFiles(srcRoot)
+      .filter(isCssFile)
+      .filter((path) => !relativeToSrc(path).startsWith("features/notifications/"))
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css).flatMap((rule) =>
+          notificationSelectors
+            .filter((selector) => selectorContains(rule.selector, selector))
+            .map(
+              (selector) =>
+                `${relativeToSrc(path)}:${lineNumber(css, rule.start)} owns notification selector ${selector} via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(
+      offenders,
+      "Cockpit may place notification slots, but notification component internals belong to features/notifications.",
+    ).toEqual([]);
+  });
+
+  it("keeps Obsidian shared UI selectors out of feature CSS buckets", () => {
+    const offenders = collectFiles(join(srcRoot, "features"))
+      .filter(isCssFile)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return findRules(css)
+          .filter((rule) => rule.selector.includes(".ods-"))
+          .map(
+            (rule) =>
+              `${relativeToSrc(path)}:${lineNumber(css, rule.start)} reaches into Obsidian UI via ${compactSelector(
+                rule.selector,
+              )}`,
+          );
+      });
+
+    expect(
+      offenders,
+      "Feature CSS may attach feature-local classes to shared Obsidian components, but must not restyle .ods-* internals.",
+    ).toEqual([]);
   });
 
   it("reports side-effect CSS files above the 700-line budget", () => {

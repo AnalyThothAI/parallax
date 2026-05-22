@@ -1,0 +1,184 @@
+@layer app.features {
+  .macro-correlation-page {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .macro-correlation-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: end;
+    justify-content: space-between;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: rgba(18, 23, 19, 0.72);
+    padding: 12px;
+  }
+
+  .macro-correlation-head > div:first-child {
+    display: grid;
+    gap: 6px;
+    min-width: min(100%, 320px);
+  }
+
+  .macro-correlation-head h2 {
+    margin: 0;
+    color: var(--bone);
+    font-size: 30px;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .macro-icon-action {
+    display: inline-flex;
+    gap: 7px;
+    align-items: center;
+    justify-self: start;
+  }
+
+  .macro-icon-action svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .macro-correlation-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .macro-correlation-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+    gap: 12px;
+    align-items: start;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .macro-correlation-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .macro-correlation-meta > span {
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .macro-correlation-table-wrap {
+    min-width: 0;
+    overflow: auto;
+  }
+
+  .macro-correlation-table {
+    width: 100%;
+    min-width: 720px;
+    border-spacing: 0;
+    border-collapse: separate;
+  }
+
+  .macro-correlation-table th,
+  .macro-correlation-table td {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 8px;
+    color: var(--bone-2);
+    background: rgba(7, 9, 8, 0.42);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 900;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .macro-correlation-table th:first-child,
+  .macro-correlation-table td:first-child {
+    border-left: 1px solid var(--line);
+  }
+
+  .macro-correlation-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    color: var(--bone);
+    background: rgba(18, 23, 19, 0.96);
+  }
+
+  .macro-correlation-table tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    color: var(--bone);
+    background: rgba(18, 23, 19, 0.96);
+    text-align: left;
+  }
+
+  .macro-correlation-table td.constructive,
+  .macro-correlation-pair strong.constructive {
+    color: var(--health-ink);
+  }
+
+  .macro-correlation-table td.stress,
+  .macro-correlation-pair strong.stress {
+    color: var(--risk-ink);
+  }
+
+  .macro-correlation-table td.neutral,
+  .macro-correlation-pair strong.neutral {
+    color: var(--info-ink);
+  }
+
+  .macro-correlation-pairs {
+    display: grid;
+    gap: 8px;
+  }
+
+  .macro-correlation-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(7, 9, 8, 0.45);
+    padding: 9px;
+  }
+
+  .macro-correlation-pair span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .macro-correlation-pair b {
+    color: var(--bone);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .macro-correlation-pair small {
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .macro-correlation-pair strong {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  @media (max-width: 1280px) {
+    .macro-correlation-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+}

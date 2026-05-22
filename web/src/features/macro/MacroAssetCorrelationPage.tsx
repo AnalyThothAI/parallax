@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 
 import { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
 import "./macro.css";
+import "./MacroAssetCorrelation.css";
 
 const WINDOWS: MacroAssetCorrelationWindow[] = ["20d", "60d", "120d"];
 
@@ -60,9 +61,7 @@ export function MacroAssetCorrelationPage({
         </div>
       </header>
 
-      {query.isLoading ? (
-        <RemoteState.Loading layout="route" label="loading correlations" />
-      ) : null}
+      {query.isLoading ? <RemoteState.Loading layout="route" label="loading correlations" /> : null}
       {query.isError ? <RemoteState.Error error={query.error} /> : null}
 
       {data ? (
@@ -246,9 +245,7 @@ function strongestPairs(
 }
 
 function assetTitleByKey(data: MacroAssetCorrelationData | null): Record<string, string> {
-  return Object.fromEntries(
-    (data?.assets ?? []).map((asset) => [asset.concept_key, asset.title]),
-  );
+  return Object.fromEntries((data?.assets ?? []).map((asset) => [asset.concept_key, asset.title]));
 }
 
 function gapLabel(
@@ -256,8 +253,8 @@ function gapLabel(
   titleByKey: Record<string, string>,
 ): string {
   if (gap.left || gap.right) {
-    return `${gap.code}: ${gap.left ? titleByKey[gap.left] ?? gap.left : "-"} / ${
-      gap.right ? titleByKey[gap.right] ?? gap.right : "-"
+    return `${gap.code}: ${gap.left ? (titleByKey[gap.left] ?? gap.left) : "-"} / ${
+      gap.right ? (titleByKey[gap.right] ?? gap.right) : "-"
     }`;
   }
   if (gap.concept_key) {

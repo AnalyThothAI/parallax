@@ -92,13 +92,19 @@ export function ObsidianPill({
 }
 
 export function ObsidianTokenMark({
+  className,
   label,
   tone = "opportunity",
 }: {
+  className?: string;
   label: string;
   tone?: ObsidianTone;
 }) {
-  return <span className={clsx("ods-token-mark", tone)}>{label.slice(0, 1).toUpperCase()}</span>;
+  return (
+    <span className={clsx("ods-token-mark", tone, className)}>
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
 }
 
 export function ObsidianMetric({

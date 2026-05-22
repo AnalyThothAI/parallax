@@ -5,6 +5,8 @@ import { RemoteState } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
 
+import "./NotificationDrawer.css";
+
 type Props = {
   loading: boolean;
   notifications: NotificationItem[];

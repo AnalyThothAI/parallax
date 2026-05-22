@@ -8,6 +8,8 @@ import { Clock3, Home, RefreshCw, Search, ServerCog, Wifi, Zap } from "lucide-re
 import { useState, type RefObject } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
+import "./CockpitTopbar.css";
+
 export type CockpitTopbarProps = {
   search: {
     inputRef: RefObject<HTMLInputElement | null>;
@@ -131,11 +133,13 @@ export function CockpitTopbar({
         <ServerCog aria-hidden />
       </button>
 
-      <NotificationBell
-        open={notifications.drawerOpen}
-        summary={notifications.summary}
-        onClick={notifications.onToggleDrawer}
-      />
+      <div className="topbar-notification-slot">
+        <NotificationBell
+          open={notifications.drawerOpen}
+          summary={notifications.summary}
+          onClick={notifications.onToggleDrawer}
+        />
+      </div>
 
       <IconButton
         aria-label="刷新"

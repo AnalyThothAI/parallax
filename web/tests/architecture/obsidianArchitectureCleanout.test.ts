@@ -90,7 +90,7 @@ describe("Obsidian Desk architecture cleanout", () => {
   });
 
   it("keeps cockpit shell geometry centralized and route content scrollable", () => {
-    const cockpitCss = readSource("features/cockpit/ui/cockpit.css");
+    const cockpitCss = readSource("features/cockpit/ui/cockpitShell.css");
 
     expect(cockpitCss).toContain("--cockpit-rail-width");
     expect(cockpitCss).toContain("--cockpit-topbar-height");

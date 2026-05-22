@@ -6,7 +6,7 @@ import { Outlet } from "react-router-dom";
 import { CockpitSideRail, type CockpitSideRailProps } from "./CockpitSideRail";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
 import { MobileRouteNav } from "./MobileRouteNav";
-import "./cockpit.css";
+import "./cockpitShell.css";
 import "./cockpitShellContract.css";
 
 export type ShellNotificationProps = {
@@ -28,12 +28,7 @@ export type CockpitShellProps = {
   onHotkey: (event: KeyboardEvent) => void;
 };
 
-export function CockpitShell({
-  topbar,
-  sideRail,
-  notifications,
-  onHotkey,
-}: CockpitShellProps) {
+export function CockpitShell({ topbar, sideRail, notifications, onHotkey }: CockpitShellProps) {
   useShellHotkeys(onHotkey);
 
   return (

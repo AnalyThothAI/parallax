@@ -1,0 +1,91 @@
+@layer app.features {
+  .signal-lab-pulse {
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .signal-lab-pulse > header {
+    gap: 12px;
+  }
+
+  .signal-lab-pulse > header > div:first-child {
+    flex: 0 0 auto;
+  }
+
+  .signal-attention-summary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    border-bottom: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .signal-lab-pulse .signal-attention-summary span {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .signal-lab-pulse .signal-attention-summary b {
+    color: var(--opportunity);
+    font-weight: 800;
+  }
+
+  .signal-compact-visibility-tabs {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  .signal-compact-tab-list {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-height: 24px;
+    padding: 2px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(7, 10, 10, 0.82);
+  }
+
+  .signal-compact-tab-list button {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 58px;
+    min-height: 20px;
+    justify-content: center;
+    border-radius: 4px;
+    padding: 0 6px;
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .signal-compact-tab-list button[data-state="active"] {
+    color: var(--bone);
+    background: var(--opportunity-soft);
+  }
+
+  .signal-compact-tab-list button b {
+    color: var(--opportunity);
+  }
+
+  @media (min-width: 768px) {
+    .signal-lab-pulse {
+      display: grid;
+    }
+  }
+}

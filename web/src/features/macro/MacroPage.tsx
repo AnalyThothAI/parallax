@@ -42,6 +42,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useMacroQuery } from "./api/useMacroQuery";
 import "./macro.css";
+import "./MacroWorkbenchPanels.css";
 
 type MacroModuleId =
   | "overview"
@@ -262,7 +263,13 @@ const MODULES: MacroModule[] = [
         label: "走廊",
         title: "Policy Corridor",
         description: "目标区间、EFFR、IORB、SOFR 的相对位置决定政策传导是否顺畅。",
-        featureKeys: ["fed:target_lower", "fed:target_upper", "fed:effr", "fed:iorb", "liquidity:sofr"],
+        featureKeys: [
+          "fed:target_lower",
+          "fed:target_upper",
+          "fed:effr",
+          "fed:iorb",
+          "liquidity:sofr",
+        ],
         indicatorKeys: ["sofr_iorb_spread_bps"],
       },
       {
@@ -323,7 +330,12 @@ const MODULES: MacroModule[] = [
     chainKeys: ["rates", "cross_asset"],
     panelKeys: ["rates", "cross_asset"],
     indicatorKeys: ["ust_10y_yield_pct"],
-    featureKeys: ["inflation:10y_breakeven", "inflation:5y5y_forward", "commodity:wti", "fx:broad_dollar"],
+    featureKeys: [
+      "inflation:10y_breakeven",
+      "inflation:5y5y_forward",
+      "commodity:wti",
+      "fx:broad_dollar",
+    ],
     triggerKeywords: ["inflation", "yield", "oil"],
     missingTopics: ["CPI / PCE", "NFP / Unemployment", "ISM / PMI", "Retail sales"],
     secondaries: [
@@ -387,13 +399,7 @@ const MODULES: MacroModule[] = [
     chainKeys: ["credit", "liquidity", "volatility", "cross_asset"],
     panelKeys: ["credit", "liquidity", "volatility"],
     indicatorKeys: ["hy_oas_pct", "ig_oas_pct", "vix"],
-    featureKeys: [
-      "credit:hy_oas",
-      "credit:ig_oas",
-      "asset:hyg",
-      "asset:lqd",
-      "vol:vix",
-    ],
+    featureKeys: ["credit:hy_oas", "credit:ig_oas", "asset:hyg", "asset:lqd", "vol:vix"],
     triggerKeywords: ["hy", "ig", "credit", "oas"],
     missingTopics: ["CDX IG/HY", "single-name CDS", "bank CDS", "private credit proxy"],
     secondaries: [
@@ -1634,7 +1640,10 @@ function regimeTone(regime: string): ModuleTone {
 
 function coverageLabel(scorecard: MacroScorecard): string {
   if (scorecard.observed_concept_count !== null && scorecard.observed_concept_count !== undefined) {
-    if (scorecard.required_concept_count !== null && scorecard.required_concept_count !== undefined) {
+    if (
+      scorecard.required_concept_count !== null &&
+      scorecard.required_concept_count !== undefined
+    ) {
       return `${scorecard.observed_concept_count}/${scorecard.required_concept_count}`;
     }
     return String(scorecard.observed_concept_count);

@@ -1,0 +1,33 @@
+@layer app.features {
+  .notification-bell {
+    position: relative;
+  }
+
+  .notification-bell.open {
+    color: var(--opportunity);
+    border-color: var(--opportunity-line);
+  }
+
+  .notification-bell span {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    display: grid;
+    min-width: 15px;
+    height: 15px;
+    place-items: center;
+    border: 1px solid rgba(7, 9, 9, 0.9);
+    border-radius: 999px;
+    color: #170f03;
+    background: var(--opportunity);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .notification-bell.has-high span {
+    color: #fff4f4;
+    background: var(--risk);
+  }
+}

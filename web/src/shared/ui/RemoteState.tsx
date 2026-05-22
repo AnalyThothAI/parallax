@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 
-import "./shared.css";
+import "./RemoteState.css";
 
 type SkeletonRowsProps = {
   count?: number;
@@ -87,7 +87,7 @@ function Loading({ layout, rows = 5, label }: RemoteStateLoadingProps) {
 
 function Empty({ title, hint, action }: RemoteStateEmptyProps) {
   return (
-    <div className="remote-state-empty empty-state">
+    <div className="remote-state-empty">
       <b>{title}</b>
       {hint ? <span>{hint}</span> : null}
       {action}
@@ -97,7 +97,7 @@ function Empty({ title, hint, action }: RemoteStateEmptyProps) {
 
 function ErrorState({ error, onRetry }: RemoteStateErrorProps) {
   return (
-    <div className="remote-state-error empty-state" role="alert">
+    <div className="remote-state-error" role="alert">
       <b>请求失败</b>
       <span>{errorMessage(error)}</span>
       {onRetry ? (

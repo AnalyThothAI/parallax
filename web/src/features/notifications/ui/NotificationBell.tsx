@@ -3,6 +3,8 @@ import { IconButton } from "@shared/ui/IconButton";
 import clsx from "clsx";
 import { Bell } from "lucide-react";
 
+import "./NotificationBell.css";
+
 type Props = {
   summary?: NotificationSummary | null;
   open: boolean;

@@ -6,6 +6,7 @@ import {
   formatScore,
   tokenLabel,
 } from "@lib/format";
+import { CompactPanel } from "@shared/ui/CompactPanel";
 import { RemoteState } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 
@@ -33,7 +34,7 @@ export function LiveSignalTape({
 }: LiveSignalTapeProps) {
   const visible = items.slice(0, maxRows);
   return (
-    <section className="compact-panel live-signal-tape" data-mobile-task-panel={mobileTaskPanel}>
+    <CompactPanel className="live-signal-tape" mobileTaskPanel={mobileTaskPanel}>
       <header>
         <div>
           <h2>实时信号 Tape</h2>
@@ -70,7 +71,7 @@ export function LiveSignalTape({
           );
         })}
       </div>
-    </section>
+    </CompactPanel>
   );
 }
 

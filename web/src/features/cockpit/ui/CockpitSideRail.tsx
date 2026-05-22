@@ -3,10 +3,13 @@ import type { WatchlistRow } from "@features/watchlist";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
 import { macroPath, newsPath, stocksPath, watchlistPath } from "@shared/routing/paths";
+import { DecisionTag } from "@shared/ui/DecisionTag";
+import { HandleFilter } from "@shared/ui/HandleFilter";
 import clsx from "clsx";
-import { UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useMatch, useNavigate, useSearchParams } from "react-router-dom";
+
+import "./CockpitSideRail.css";
 
 type DecisionCounts = Record<Decision, number>;
 
@@ -95,16 +98,13 @@ export function CockpitSideRail({
             all stream
           </button>
         </div>
-        <label className="handle-filter" htmlFor="cockpit-handle-filter">
-          <UserRound aria-hidden />
-          <input
-            aria-label="watchlist handles"
-            id="cockpit-handle-filter"
-            placeholder="toly, ansem"
-            value={handles}
-            onChange={(event) => onHandlesChange(event.target.value)}
-          />
-        </label>
+        <HandleFilter
+          ariaLabel="watchlist handles"
+          id="cockpit-handle-filter"
+          placeholder="toly, ansem"
+          value={handles}
+          onChange={onHandlesChange}
+        />
       </RailSection>
 
       <RailSection label="decisions">
@@ -188,7 +188,7 @@ function RailButton({
 function DecisionCount({ decision, count }: { decision: Decision; count: number }) {
   return (
     <span className={clsx("decision-count", decision)}>
-      <span className={clsx("decision-tag", decision)}>{decision}</span>
+      <DecisionTag decision={decision} />
       <b>{compactNumber(count)}</b>
     </span>
   );

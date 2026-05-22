@@ -1,0 +1,62 @@
+@layer app.primitives {
+  .decision-tag {
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    max-width: 100%;
+    min-height: 20px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .decision-tag.driver,
+  .decision-tag[data-tone="opportunity"] {
+    color: var(--opportunity);
+    border-color: var(--opportunity-line);
+    background: var(--opportunity-soft);
+  }
+
+  .decision-tag.watch {
+    color: var(--info);
+    border-color: rgba(99, 199, 221, 0.34);
+    background: rgba(99, 199, 221, 0.08);
+  }
+
+  .decision-tag.investigate {
+    color: var(--danger);
+    border-color: rgba(255, 92, 122, 0.34);
+    background: rgba(255, 92, 122, 0.08);
+  }
+
+  .decision-tag.discard {
+    color: var(--ash);
+    background: rgba(255, 255, 255, 0.03);
+    text-decoration: line-through;
+  }
+
+  .risk-pill {
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    max-width: 100%;
+    min-height: 20px;
+    border: 1px solid var(--opportunity-line);
+    border-radius: 999px;
+    color: var(--opportunity);
+    background: var(--opportunity-soft);
+    padding: 2px 7px;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+
+  .risk-pill[data-tone="risk"] {
+    color: var(--opportunity);
+    border-color: var(--opportunity-line);
+    background: var(--opportunity-soft);
+  }
+}

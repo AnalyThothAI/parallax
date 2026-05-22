@@ -1,3 +1,5 @@
+import "./WatchlistNotificationDot.css";
+
 type Props = {
   count?: number;
 };

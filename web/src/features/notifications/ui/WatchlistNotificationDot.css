@@ -1,0 +1,15 @@
+@layer app.features {
+  .watchlist-notification-dot {
+    display: grid;
+    min-width: 16px;
+    height: 16px;
+    place-items: center;
+    border-radius: 999px;
+    color: #fff4f4;
+    background: var(--risk);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+  }
+}

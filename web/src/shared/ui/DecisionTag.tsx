@@ -2,6 +2,8 @@ import { formatDecision } from "@lib/format";
 import type { Decision } from "@lib/types";
 import clsx from "clsx";
 
+import "./DecisionTag.css";
+
 const DECISION_TONES: Record<Decision, "opportunity" | "info" | "risk" | "neutral"> = {
   discard: "risk",
   driver: "opportunity",
