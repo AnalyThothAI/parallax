@@ -112,6 +112,11 @@ class EquityEventRepository:
             )
         for member in universe_members:
             self.upsert_universe_member(member, now_ms=now_ms, commit=False)
+        self.deactivate_unreconciled_universe_members(
+            active_company_ids=[str(member["company_id"]) for member in universe_members],
+            now_ms=now_ms,
+            commit=False,
+        )
         self.disable_unreconciled_sources(active_source_ids=active_source_ids, now_ms=now_ms, commit=False)
         if commit:
             self.conn.commit()
@@ -182,13 +187,48 @@ class EquityEventRepository:
             self.conn.commit()
         return int(cursor.rowcount or 0)
 
+    def deactivate_unreconciled_universe_members(
+        self,
+        *,
+        active_company_ids: Sequence[str],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            UPDATE equity_event_universe_members
+               SET active = false,
+                   updated_at_ms = %s
+             WHERE active = true
+               AND NOT (company_id = ANY(%s::text[]))
+            """,
+            (int(now_ms), [str(company_id) for company_id in active_company_ids]),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount or 0)
+
     def reconcile_expected_events(
         self,
         *,
         expected_events: Sequence[Mapping[str, Any]],
+        scoped_source_ids: Sequence[str] | None = None,
         now_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
+        active_expected_event_ids = [str(event["expected_event_id"]) for event in expected_events]
+        effective_source_ids = (
+            [str(source_id) for source_id in scoped_source_ids]
+            if scoped_source_ids is not None
+            else sorted({str(event["source_id"]) for event in expected_events})
+        )
+        if effective_source_ids:
+            self.mark_unreconciled_expected_events_stale(
+                active_expected_event_ids=active_expected_event_ids,
+                scoped_source_ids=effective_source_ids,
+                now_ms=now_ms,
+                commit=False,
+            )
         rows = [
             self.upsert_expected_event(
                 expected_event_id=str(event["expected_event_id"]),
@@ -208,12 +248,40 @@ class EquityEventRepository:
             self.conn.commit()
         return rows
 
+    def mark_unreconciled_expected_events_stale(
+        self,
+        *,
+        active_expected_event_ids: Sequence[str],
+        scoped_source_ids: Sequence[str],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            UPDATE equity_expected_events
+               SET status = 'stale',
+                   updated_at_ms = %s
+             WHERE status IN ('expected', 'stale')
+               AND source_id = ANY(%s::text[])
+               AND NOT (expected_event_id = ANY(%s::text[]))
+            """,
+            (
+                int(now_ms),
+                [str(source_id) for source_id in scoped_source_ids],
+                [str(expected_event_id) for expected_event_id in active_expected_event_ids],
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount or 0)
+
     def claim_due_sources(
         self,
         *,
         now_ms: int,
         limit: int,
         claim_lease_ms: int = _DEFAULT_SOURCE_CLAIM_LEASE_MS,
+        supported_provider_types: Sequence[str] = ("sec_submissions",),
         commit: bool = True,
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -222,6 +290,7 @@ class EquityEventRepository:
               SELECT source_id
                 FROM equity_event_sources
                WHERE enabled = true
+                 AND provider_type = ANY(%s::text[])
                  AND next_fetch_after_ms <= %s
                ORDER BY next_fetch_after_ms ASC, source_id ASC
                LIMIT %s
@@ -235,6 +304,7 @@ class EquityEventRepository:
             RETURNING sources.*
             """,
             (
+                [str(provider_type) for provider_type in supported_provider_types],
                 int(now_ms),
                 max(0, int(limit)),
                 int(now_ms) + max(1, int(claim_lease_ms)),
@@ -396,7 +466,10 @@ class EquityEventRepository:
               expected_at_ms = EXCLUDED.expected_at_ms,
               source_id = EXCLUDED.source_id,
               source_role = EXCLUDED.source_role,
-              status = 'expected',
+              status = CASE
+                WHEN equity_expected_events.status IN ('expected', 'stale') THEN 'expected'
+                ELSE equity_expected_events.status
+              END,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING *
             """,
@@ -543,7 +616,11 @@ class EquityEventRepository:
               fiscal_period = EXCLUDED.fiscal_period,
               document_url = EXCLUDED.document_url,
               event_time_ms = EXCLUDED.event_time_ms,
-              discovered_at_ms = EXCLUDED.discovered_at_ms,
+              discovered_at_ms = CASE
+                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
+                THEN equity_event_documents.discovered_at_ms
+                ELSE EXCLUDED.discovered_at_ms
+              END,
               content_hash = EXCLUDED.content_hash,
               lifecycle_status = CASE
                 WHEN equity_event_documents.content_hash = EXCLUDED.content_hash

@@ -69,9 +69,23 @@ class EquityEventFetchWorker(WorkerBase):
                 raise ValueError(f"unsupported_provider_type:{source.get('provider_type')}")
 
             fetch_result = self.document_provider.fetch_source(source)
-            failed_reason = _failed_fetch_reason(fetch_result.documents)
-            if failed_reason is not None:
-                raise ValueError(failed_reason)
+            failed_document = _failed_fetch_document(fetch_result.documents)
+            if failed_document is not None:
+                reason = _failed_fetch_reason(failed_document)
+                with self._repository_session() as repos:
+                    repos.equity_events.finish_fetch_run(
+                        fetch_run_id=fetch_run_id,
+                        source_id=source_id,
+                        status="failed",
+                        finished_at_ms=now_ms,
+                        http_status=fetch_result.status_code,
+                        error=reason,
+                        extra_json={
+                            "error_code": reason,
+                            "provider_document": dict(failed_document),
+                        },
+                    )
+                return WorkerResult(failed=1, notes={"source_id": source_id, "error": reason})
 
             with self._repository_session() as repos:
                 if fetch_result.not_modified:
@@ -219,11 +233,15 @@ def _normalize_envelope(
     return []
 
 
-def _failed_fetch_reason(documents: list[dict[str, Any]]) -> str | None:
+def _failed_fetch_document(documents: list[dict[str, Any]]) -> dict[str, Any] | None:
     for document in documents:
         if str(document.get("status") or "") == "failed":
-            return str(document.get("error_code") or document.get("error") or "provider_failed")
+            return document
     return None
+
+
+def _failed_fetch_reason(document: Mapping[str, Any]) -> str:
+    return str(document.get("error_code") or document.get("error") or "provider_failed")
 
 
 def _stable_id(prefix: str, source_id: Any, document: NormalizedEquityDocument) -> str:

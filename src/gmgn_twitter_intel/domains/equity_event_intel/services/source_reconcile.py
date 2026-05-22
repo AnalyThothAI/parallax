@@ -10,6 +10,7 @@ class SourceReconcilePayloads:
     sources: list[dict[str, Any]]
     universe_members: list[dict[str, Any]]
     expected_events: list[dict[str, Any]]
+    expected_event_source_ids: list[str]
 
 
 def build_source_reconcile_payloads(
@@ -73,6 +74,13 @@ def build_source_reconcile_payloads(
             )
 
     expected_events: list[dict[str, Any]] = []
+    expected_event_source_ids = sorted(
+        {
+            str(_field(event, "source_id"))
+            for event in _field(settings, "expected_events", ()) or ()
+            if _field(event, "source_id") is not None
+        }
+    )
     for event in _field(settings, "expected_events", ()) or ():
         if not bool(_field(event, "enabled", True)):
             continue
@@ -95,6 +103,7 @@ def build_source_reconcile_payloads(
         sources=sources,
         universe_members=universe_members,
         expected_events=expected_events,
+        expected_event_source_ids=expected_event_source_ids,
     )
 
 

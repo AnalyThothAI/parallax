@@ -45,6 +45,7 @@ class EquityEventSourceReconcileWorker(WorkerBase):
             )
             expected_events = repos.equity_events.reconcile_expected_events(
                 expected_events=payloads.expected_events,
+                scoped_source_ids=payloads.expected_event_source_ids,
                 now_ms=now,
                 commit=False,
             )

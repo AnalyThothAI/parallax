@@ -48,13 +48,18 @@ def normalize_sec_submission_documents(
             continue
 
         filing_date = _optional_string(_value_at(recent, "filingDate", index))
+        acceptance_datetime = _optional_string(_value_at(recent, "acceptanceDateTime", index))
         report_date = _optional_string(_value_at(recent, "reportDate", index))
         primary_document = _optional_string(_value_at(recent, "primaryDocument", index))
+        document_url = _sec_document_url(cik=cik, accession_number=accession, primary_document=primary_document)
+        if not document_url:
+            continue
         raw_payload = {
             "company_cik": cik,
             "company_name": _optional_string(payload.get("name")),
             "accession_number": accession,
             "form_type": normalized_form,
+            "acceptance_datetime": acceptance_datetime,
             "filing_date": filing_date,
             "report_date": report_date,
             "primary_document": primary_document,
@@ -66,7 +71,7 @@ def normalize_sec_submission_documents(
                 company_id=str(source["company_id"]),
                 ticker=str(source["ticker"]).upper(),
                 cik=cik,
-                document_url=_sec_document_url(cik=cik, accession_number=accession, primary_document=primary_document),
+                document_url=document_url,
                 payload_hash=payload_hash,
                 raw_payload_json=raw_payload,
                 fetched_at_ms=int(fetched_at_ms),
@@ -74,7 +79,7 @@ def normalize_sec_submission_documents(
                 form_type=normalized_form,
                 accession_number=accession,
                 fiscal_period=_fiscal_period(report_date),
-                event_time_ms=_date_to_ms(filing_date) or int(fetched_at_ms),
+                event_time_ms=_datetime_to_ms(acceptance_datetime) or _date_to_ms(filing_date) or int(fetched_at_ms),
                 content_hash=payload_hash,
             )
         )
@@ -108,7 +113,10 @@ def _value_at(payload: Mapping[str, Any], key: str, index: int) -> Any:
 def _sec_document_url(*, cik: str | None, accession_number: str, primary_document: str | None) -> str:
     if cik is None or primary_document is None:
         return ""
-    cik_path = str(int(_digits(cik)))
+    cik_digits = _digits(cik)
+    if not cik_digits:
+        return ""
+    cik_path = str(int(cik_digits))
     accession_path = accession_number.replace("-", "")
     return f"https://www.sec.gov/Archives/edgar/data/{cik_path}/{accession_path}/{primary_document}"
 
@@ -126,6 +134,19 @@ def _date_to_ms(value: str | None) -> int | None:
     if parsed is None:
         return None
     return int(datetime(parsed.year, parsed.month, parsed.day, tzinfo=UTC).timestamp() * 1000)
+
+
+def _datetime_to_ms(value: str | None) -> int | None:
+    if not value:
+        return None
+    normalized = value.removesuffix("Z") + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return int(parsed.timestamp() * 1000)
 
 
 def _parse_date(value: str | None) -> date | None:

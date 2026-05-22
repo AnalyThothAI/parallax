@@ -127,6 +127,219 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 
+def test_expected_event_reconcile_preserves_observed_and_stales_removed_config(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    observed_id = "expected:MSFT:2026Q1"
+    removed_id = "expected:MSFT:2026Q2"
+    for expected_event_id, period in ((observed_id, "2026Q1"), (removed_id, "2026Q2")):
+        repos.equity_events.upsert_expected_event(
+            expected_event_id=expected_event_id,
+            company_id="market_instrument:us_equity:MSFT",
+            ticker="MSFT",
+            event_type="earnings_release",
+            fiscal_period=period,
+            expected_at_ms=NOW_MS,
+            source_id="config:earnings",
+            source_role="calendar",
+            now_ms=NOW_MS,
+        )
+    postgres_conn.execute(
+        "UPDATE equity_expected_events SET status = 'observed' WHERE expected_event_id = %s",
+        (observed_id,),
+    )
+    postgres_conn.commit()
+
+    repos.equity_events.reconcile_expected_events(
+        expected_events=[
+            {
+                "expected_event_id": observed_id,
+                "company_id": "market_instrument:us_equity:MSFT",
+                "ticker": "MSFT",
+                "event_type": "earnings_release",
+                "fiscal_period": "2026Q1",
+                "expected_at_ms": NOW_MS + 1_000,
+                "source_id": "config:earnings",
+                "source_role": "calendar",
+            }
+        ],
+        now_ms=NOW_MS + 2_000,
+    )
+
+    rows = {
+        row["expected_event_id"]: row
+        for row in postgres_conn.execute("SELECT * FROM equity_expected_events").fetchall()
+    }
+    assert rows[observed_id]["status"] == "observed"
+    assert rows[observed_id]["expected_at_ms"] == NOW_MS + 1_000
+    assert rows[removed_id]["status"] == "stale"
+
+
+def test_reconcile_sources_deactivates_removed_universe_members(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.reconcile_sources(
+        sources=[
+            _source_payload("MSFT"),
+            _source_payload("AAPL"),
+        ],
+        universe_members=[
+            _universe_payload("MSFT", active=True),
+            _universe_payload("AAPL", active=True),
+        ],
+        now_ms=NOW_MS,
+    )
+
+    repos.equity_events.reconcile_sources(
+        sources=[_source_payload("MSFT")],
+        universe_members=[_universe_payload("MSFT", active=True)],
+        now_ms=NOW_MS + 1_000,
+    )
+
+    rows = {
+        row["ticker"]: row
+        for row in postgres_conn.execute("SELECT * FROM equity_event_universe_members").fetchall()
+    }
+    assert rows["MSFT"]["active"] is True
+    assert rows["AAPL"]["active"] is False
+
+
+def test_claim_due_sources_skips_unsupported_provider_types(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    repos.equity_events.upsert_source(
+        source_id="ir:MSFT",
+        provider_type="company_ir_rss",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_issuer",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    postgres_conn.commit()
+
+    claimed = repos.equity_events.claim_due_sources(now_ms=NOW_MS, limit=10)
+
+    assert [row["source_id"] for row in claimed] == ["sec:MSFT"]
+
+
+def test_duplicate_event_document_keeps_original_discovered_at_ms(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        now_ms=NOW_MS,
+    )
+    provider = repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-1",
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key="0000789019-26-000001:10-Q",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        payload_hash="hash-1",
+        raw_payload_json={"form": "10-Q"},
+        fetched_at_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-1",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash="content-1",
+        now_ms=NOW_MS,
+    )
+
+    repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-1",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 60_000,
+        content_hash="content-1",
+        now_ms=NOW_MS + 60_000,
+    )
+
+    row = postgres_conn.execute(
+        """
+        SELECT discovered_at_ms, updated_at_ms, lifecycle_status
+          FROM equity_event_documents
+         WHERE event_document_id = %s
+        """,
+        ("event-doc-1",),
+    ).fetchone()
+    assert row["discovered_at_ms"] == NOW_MS
+    assert row["updated_at_ms"] == NOW_MS + 60_000
+    assert row["lifecycle_status"] == "raw"
+
+
+def test_fetch_worker_records_structured_provider_failure(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    provider = _FailingEquityDocumentProvider()
+    with db.worker_session("seed") as repos:
+        repos.equity_events.upsert_source(
+            source_id="sec:MSFT",
+            provider_type="sec_submissions",
+            company_id="market_instrument:us_equity:MSFT",
+            ticker="MSFT",
+            cik="0000789019",
+            source_role="official_regulator",
+            now_ms=NOW_MS,
+        )
+    worker = EquityEventFetchWorker(
+        name="equity_event_fetch",
+        settings=Settings().workers.equity_event_fetch,
+        db=db,
+        telemetry=SimpleNamespace(),
+        document_provider=provider,
+        wake_bus=None,
+        clock_ms=lambda: NOW_MS + 1_000,
+    )
+
+    result = worker.run_once_sync()
+
+    fetch_run = postgres_conn.execute("SELECT * FROM equity_event_fetch_runs").fetchone()
+    assert result.failed == 1
+    assert fetch_run["status"] == "failed"
+    assert fetch_run["http_status"] == 503
+    assert fetch_run["error"] == "missing_sec_user_agent"
+    assert fetch_run["extra_json"]["error_code"] == "missing_sec_user_agent"
+    assert fetch_run["extra_json"]["provider_document"]["status"] == "failed"
+
+
 class _WorkerDb:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -193,3 +406,42 @@ class _FakeEquityDocumentProvider:
             last_modified="Sat, 25 Apr 2026 00:00:00 GMT",
             not_modified=False,
         )
+
+
+class _FailingEquityDocumentProvider:
+    def fetch_source(self, source: dict[str, Any]) -> EquityDocumentProviderFetchResult:
+        return EquityDocumentProviderFetchResult(
+            status_code=503,
+            documents=[
+                {
+                    "status": "failed",
+                    "error_code": "missing_sec_user_agent",
+                    "provider_type": source["provider_type"],
+                    "source_id": source["source_id"],
+                }
+            ],
+        )
+
+
+def _source_payload(symbol: str) -> dict[str, Any]:
+    return {
+        "source_id": f"sec:{symbol}",
+        "provider_type": "sec_submissions",
+        "company_id": f"market_instrument:us_equity:{symbol}",
+        "ticker": symbol,
+        "cik": "0000789019",
+        "source_role": "official_regulator",
+        "trust_tier": "official",
+        "enabled": True,
+    }
+
+
+def _universe_payload(symbol: str, *, active: bool) -> dict[str, Any]:
+    return {
+        "company_id": f"market_instrument:us_equity:{symbol}",
+        "ticker": symbol,
+        "company_name": symbol,
+        "active": active,
+        "priority": "P3",
+        "config_json": {"identity_status": "confirmed"},
+    }
