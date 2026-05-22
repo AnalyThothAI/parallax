@@ -437,19 +437,31 @@
     color: var(--dim);
   }
 
-  .stress {
+  .macro-module-tab[data-tone="stress"],
+  .macro-module-status[data-tone="stress"],
+  .macro-chain-step[data-tone="stress"],
+  .macro-status-row[data-tone="stress"] {
     border-color: var(--risk-line);
   }
 
-  .constructive {
+  .macro-module-tab[data-tone="constructive"],
+  .macro-module-status[data-tone="constructive"],
+  .macro-chain-step[data-tone="constructive"],
+  .macro-status-row[data-tone="constructive"] {
     border-color: var(--health-line);
   }
 
-  .neutral {
+  .macro-module-tab[data-tone="neutral"],
+  .macro-module-status[data-tone="neutral"],
+  .macro-chain-step[data-tone="neutral"],
+  .macro-status-row[data-tone="neutral"] {
     border-color: var(--info-line);
   }
 
-  .gap {
+  .macro-module-tab[data-tone="gap"],
+  .macro-module-status[data-tone="gap"],
+  .macro-chain-step[data-tone="gap"],
+  .macro-status-row[data-tone="gap"] {
     border-color: var(--line);
     opacity: 0.88;
   }

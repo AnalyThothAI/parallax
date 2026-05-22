@@ -8,10 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "test": "vitest run",
+    "test:architecture": "vitest run --run tests/architecture",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --max-warnings=0 src tests vite.config.ts playwright.config.ts",
+    "lint": "npm run lint:eslint && npm run test:architecture",
+    "lint:eslint": "eslint --max-warnings=0 src tests vite.config.ts playwright.config.ts",
     "format:check": "prettier --check '{src,tests}/**/*.{ts,tsx,css,json}' '*.config.ts'",
     "format": "prettier --write '{src,tests}/**/*.{ts,tsx,css,json}' '*.config.ts'",
     "generate:types": "openapi-typescript ../docs/generated/openapi.json -o src/lib/types/openapi.ts"

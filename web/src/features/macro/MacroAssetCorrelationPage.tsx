@@ -138,7 +138,7 @@ function CorrelationMatrix({
               {data.assets.map((asset) => {
                 const value = row.correlations[asset.concept_key];
                 return (
-                  <td className={correlationTone(value)} key={asset.concept_key}>
+                  <td data-tone={correlationTone(value)} key={asset.concept_key}>
                     {matrixCorrelationLabel(value)}
                   </td>
                 );
@@ -173,7 +173,7 @@ function PairList({
               n={pair.sample_size} · {pair.start_date ?? "-"} to {pair.end_date ?? "-"}
             </small>
           </span>
-          <strong className={correlationTone(pair.correlation)}>
+          <strong data-tone={correlationTone(pair.correlation)}>
             {signedCorrelationLabel(pair.correlation)}
           </strong>
         </article>

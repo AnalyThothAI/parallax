@@ -119,18 +119,18 @@
     text-align: left;
   }
 
-  .macro-correlation-table td.constructive,
-  .macro-correlation-pair strong.constructive {
+  .macro-correlation-table td[data-tone="constructive"],
+  .macro-correlation-pair strong[data-tone="constructive"] {
     color: var(--health-ink);
   }
 
-  .macro-correlation-table td.stress,
-  .macro-correlation-pair strong.stress {
+  .macro-correlation-table td[data-tone="stress"],
+  .macro-correlation-pair strong[data-tone="stress"] {
     color: var(--risk-ink);
   }
 
-  .macro-correlation-table td.neutral,
-  .macro-correlation-pair strong.neutral {
+  .macro-correlation-table td[data-tone="neutral"],
+  .macro-correlation-pair strong[data-tone="neutral"] {
     color: var(--info-ink);
   }
 

@@ -20,6 +20,11 @@
 - Component and hook tests use Vitest + Testing Library; place them in `web/tests/component/` or `web/tests/unit/` per the layout in `docs/FRONTEND.md`.
 - Pure model and helper units under `web/src/features/<name>/model/` and `web/src/shared/` should have unit tests independent of React, placed in `web/tests/unit/` mirroring the source path.
 - Feature API hooks under `web/src/features/<name>/api/` and the typed client under `web/src/lib/api/` should have contract tests asserting the shapes documented in `CONTRACTS.md`.
+- Frontend architecture harness tests live under `web/tests/architecture/`.
+  `npm run lint` runs both ESLint and this harness. CSS and responsive work
+  must keep these gates green: side-effect CSS must be locally imported by its
+  owner, feature class names must stay in their namespace, shared UI selectors
+  cannot be redefined by features, and retired global CSS buckets cannot return.
 
 ## Completion verification
 

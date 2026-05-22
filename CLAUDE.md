@@ -26,6 +26,17 @@ data, run `uv run gmgn-twitter-intel config` and confirm the reported
 Never print or copy secret values; report only redacted booleans, paths, and
 diagnostic command results.
 
+## Frontend guardrails
+
+Frontend CSS is harness-constrained, not convention-only. Before changing
+`web/src` UI code, read `docs/FRONTEND.md`. Do not recreate retired CSS buckets
+such as `cockpit.css`, `signalLab.css`, or `shared.css`; owner CSS must live
+beside the component or route that imports it. Feature CSS must use the owning
+feature namespace and must not restyle shared UI internals, notification
+internals, or Obsidian `.ods-*` selectors. `npm run lint` runs ESLint plus the
+frontend architecture harness; do not bypass it after CSS, responsive, route
+shell, or shared UI changes.
+
 ## Where to read what
 
 | Need | File |

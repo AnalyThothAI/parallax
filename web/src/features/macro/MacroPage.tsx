@@ -531,7 +531,8 @@ export function MacroPage({
             <Tabs.List className="macro-module-list">
               {moduleCards.map(({ module, score, regime, tone }) => (
                 <Tabs.Trigger
-                  className={clsx("macro-module-tab", tone)}
+                  className="macro-module-tab"
+                  data-tone={tone}
                   key={module.id}
                   value={module.id}
                 >
@@ -748,7 +749,7 @@ function ModuleHeader({
           <p>{module.subtitle}</p>
         </div>
       </div>
-      <div className={clsx("macro-module-status", tone)}>
+      <div className="macro-module-status" data-tone={tone}>
         <MetricTile label="regime" value={regime} />
         <MetricTile label="score" value={scoreLabel(score)} />
         <MetricTile label="coverage" value={coverage} />
@@ -1061,7 +1062,7 @@ function ChainStep({
   const evidence = node.evidence ?? [];
   const gaps = node.data_gaps ?? [];
   return (
-    <article className={clsx("macro-chain-step", regimeTone(regime))}>
+    <article className="macro-chain-step" data-tone={regimeTone(regime)}>
       <div className="macro-chain-index">{String(index).padStart(2, "0")}</div>
       <div>
         <span>{nodeTitle(nodeKey)}</span>
@@ -1283,7 +1284,7 @@ function StatusRow({
   status: string;
 }) {
   return (
-    <article className={clsx("macro-status-row", regimeTone(status))}>
+    <article className="macro-status-row" data-tone={regimeTone(status)}>
       <span>
         <b>{label}</b>
         <small>{detail}</small>
