@@ -1,7 +1,10 @@
 import {
   MACRO_MODULE_ROUTES,
   buildMacroBreadcrumbs,
+  macroActiveSection,
   macroModuleHref,
+  macroPrimaryTabRoutes,
+  macroSecondaryTabRoutes,
   parseMacroRouteTail,
 } from "@features/macro/model/macroRoutes";
 import { describe, expect, it } from "vitest";
@@ -62,5 +65,36 @@ describe("macroRoutes", () => {
       { label: "大类资产", href: "/macro/assets" },
       { label: "加密衍生品", href: "/macro/assets/crypto-derivatives" },
     ]);
+  });
+
+  it("groups macro routes into primary and secondary tabs", () => {
+    expect(macroPrimaryTabRoutes().map((route) => route.moduleId)).toEqual([
+      "overview",
+      "assets",
+      "rates",
+      "fed",
+      "liquidity",
+      "volatility",
+      "credit",
+    ]);
+    expect(macroSecondaryTabRoutes("assets").map((route) => route.href)).toEqual([
+      "/macro/assets",
+      "/macro/assets/equities",
+      "/macro/assets/bonds",
+      "/macro/assets/commodities",
+      "/macro/assets/fx",
+      "/macro/assets/crypto",
+      "/macro/assets/crypto-derivatives",
+      "/macro/assets/correlation",
+    ]);
+    expect(macroSecondaryTabRoutes("rates").map((route) => route.href)).toEqual([
+      "/macro/rates",
+      "/macro/rates/yield-curve",
+      "/macro/rates/real-rates",
+    ]);
+    expect(macroSecondaryTabRoutes("overview")).toEqual([]);
+    expect(macroActiveSection("assets/crypto")).toBe("assets");
+    expect(macroActiveSection("liquidity/transmission-chain")).toBe("liquidity");
+    expect(macroActiveSection("fed")).toBe("fed");
   });
 });

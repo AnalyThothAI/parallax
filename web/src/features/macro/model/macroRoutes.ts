@@ -32,6 +32,13 @@ export type MacroModuleRoute = {
   href: string;
 };
 
+export type MacroNavigationRoute = {
+  href: string;
+  label: string;
+  moduleId: MacroModuleId | "assets/correlation";
+  section: MacroRouteSection;
+};
+
 export type MacroRouteResolution =
   | {
       routeKind: "module";
@@ -106,6 +113,23 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] = [
 
 const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId, route]));
 
+const PRIMARY_ROUTE_IDS: MacroModuleId[] = [
+  "overview",
+  "assets",
+  "rates",
+  "fed",
+  "liquidity",
+  "volatility",
+  "credit",
+];
+
+const ASSET_CORRELATION_ROUTE: MacroNavigationRoute = {
+  href: "/macro/assets/correlation",
+  label: "相关性",
+  moduleId: "assets/correlation",
+  section: "assets",
+};
+
 export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteResolution {
   const normalized = normalizeRouteTail(routeTail);
   if (normalized === "assets/correlation") {
@@ -145,6 +169,34 @@ export function macroModuleHref(moduleId: MacroModuleId): string {
 
 export function macroRouteLabel(moduleId: MacroModuleId): string {
   return ROUTES_BY_ID.get(moduleId)?.label ?? "总览";
+}
+
+export function macroActiveSection(
+  moduleId: MacroModuleId | "assets/correlation",
+): MacroRouteSection {
+  if (moduleId === "overview") {
+    return "overview";
+  }
+  return moduleId.split("/")[0] as MacroRouteSection;
+}
+
+export function macroPrimaryTabRoutes(): MacroModuleRoute[] {
+  return PRIMARY_ROUTE_IDS.map((moduleId) => ROUTES_BY_ID.get(moduleId)).filter(
+    (route): route is MacroModuleRoute => Boolean(route),
+  );
+}
+
+export function macroSecondaryTabRoutes(section: MacroRouteSection): MacroNavigationRoute[] {
+  if (section === "overview") {
+    return [];
+  }
+  const routes = MACRO_MODULE_ROUTES.filter((route) => route.section === section).map(
+    (route): MacroNavigationRoute => route,
+  );
+  if (section === "assets") {
+    return [...routes, ASSET_CORRELATION_ROUTE];
+  }
+  return routes.length > 1 ? routes : [];
 }
 
 export function buildMacroBreadcrumbs(moduleId: MacroModuleId): MacroBreadcrumb[] {

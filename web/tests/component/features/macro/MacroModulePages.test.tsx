@@ -67,6 +67,7 @@ describe("Macro module pages", () => {
     expect(screen.getByRole("region", { name: "支撑表格" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "证据板" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据源" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "相关页面" })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/series", {
         params: { concept_keys: "asset:spx", window: "60d" },
