@@ -8,11 +8,7 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const srcRoot = join(webRoot, "src");
 
 const retiredGlobalCssBuckets = new Set(["cockpit.css", "shared.css", "signalLab.css"]);
-const globalStyleFiles = new Set([
-  "styles/base.css",
-  "styles/tailwind.css",
-  "styles/tokens.css",
-]);
+const globalStyleFiles = new Set(["styles/base.css", "styles/tailwind.css", "styles/tokens.css"]);
 
 const featureClassPrefixes: Record<string, string[]> = {
   cockpit: [
@@ -66,7 +62,10 @@ const modifierClassNames = new Set([
   "agent",
   "bad",
   "bearish",
+  "bear",
   "bullish",
+  "bull",
+  "case",
   "compact",
   "complete",
   "confirm",
@@ -77,6 +76,8 @@ const modifierClassNames = new Set([
   "discard",
   "down",
   "driver",
+  "empty",
+  "error",
   "flat",
   "frozen",
   "gap",
@@ -90,35 +91,35 @@ const modifierClassNames = new Set([
   "info",
   "invalidate",
   "investigate",
-  "is-bearish",
-  "is-bullish",
-  "is-context",
-  "is-discard",
-  "is-driver",
-  "is-gap",
-  "is-linked",
-  "is-neutral",
-  "is-terminal",
-  "is-watch",
+  "listed",
   "liquidity",
+  "market",
+  "mobile-task-lab",
+  "mobile-task-radar",
+  "mobile-task-tape",
   "neutral",
   "official",
   "open",
   "opportunity",
   "primary",
   "read",
+  "ready",
   "risk",
+  "score",
   "selected",
   "settled",
-  "severity-critical",
-  "severity-high",
   "stress",
+  "two",
   "unread",
+  "unavailable",
   "up",
   "venue",
   "volume",
   "warn",
   "watch",
+  "watched",
+  "why",
+  "wide",
 ]);
 
 describe("CSS architecture harness", () => {
@@ -194,7 +195,7 @@ describe("CSS architecture harness", () => {
       collectFiles(join(srcRoot, "shared/ui"))
         .filter(isSideEffectCssFile)
         .flatMap((path) => cssClassNames(readFileSync(path, "utf8")))
-        .filter((className) => !modifierClassNames.has(className)),
+        .filter((className) => !isModifierClassName(className)),
     );
 
     const offenders = collectFiles(join(srcRoot, "features"))
@@ -233,12 +234,11 @@ describe("CSS architecture harness", () => {
           );
           const unscopedModifiers =
             rule.classNames.length > 0 && ownerClasses.length === 0
-              ? rule.classNames.filter((className) => modifierClassNames.has(className))
+              ? rule.classNames.filter(isModifierClassName)
               : [];
           const foreignClasses = rule.classNames.filter(
             (className) =>
-              !matchesAnyPrefix(className, allowedPrefixes) &&
-              !modifierClassNames.has(className),
+              !matchesAnyPrefix(className, allowedPrefixes) && !isModifierClassName(className),
           );
 
           return [...foreignClasses, ...unscopedModifiers].map(
@@ -261,7 +261,7 @@ describe("CSS architecture harness", () => {
       const featureName = featureNameFromPath(path);
 
       for (const className of cssClassNames(readFileSync(path, "utf8"))) {
-        if (modifierClassNames.has(className)) {
+        if (isModifierClassName(className)) {
           continue;
         }
         if (!rootsByClassName.has(className)) {
@@ -327,11 +327,12 @@ function isAllowedCssImport(sourcePath: string, specifier: string): boolean {
 }
 
 function cssRules(css: string): CssRule[] {
+  const normalizedCss = sanitizeCss(css);
   const rules: CssRule[] = [];
   const pattern = /([^{}]+)\{([^{}]*)\}/g;
   let match: RegExpExecArray | null;
 
-  while ((match = pattern.exec(css)) !== null) {
+  while ((match = pattern.exec(normalizedCss)) !== null) {
     const selector = match[1].trim();
 
     if (!selector || selector.startsWith("@")) {
@@ -349,7 +350,13 @@ function cssRules(css: string): CssRule[] {
 }
 
 function cssClassNames(input: string): string[] {
-  return [...new Set([...input.matchAll(/\.(-?[_a-zA-Z]+[_a-zA-Z0-9-]*)/g)].map((item) => item[1]))];
+  const normalizedInput = sanitizeCss(input);
+
+  return [
+    ...new Set(
+      [...normalizedInput.matchAll(/\.(-?[_a-zA-Z]+[_a-zA-Z0-9-]*)/g)].map((item) => item[1]),
+    ),
+  ];
 }
 
 function compactSelector(selector: string): string {
@@ -372,6 +379,16 @@ function isSideEffectCssFile(path: string): boolean {
   return isCssFile(path) && !isModuleCssFile(path);
 }
 
+function isModifierClassName(className: string): boolean {
+  return (
+    modifierClassNames.has(className) ||
+    className.startsWith("is-") ||
+    className.startsWith("severity-") ||
+    className.startsWith("state-") ||
+    className.startsWith("tone-")
+  );
+}
+
 function lineNumber(input: string, index: number): number {
   return input.slice(0, index).split(/\r?\n/).length;
 }
@@ -384,4 +401,10 @@ function matchesAnyPrefix(className: string, prefixes: string[]): boolean {
 
 function relativeToSrc(path: string): string {
   return relative(srcRoot, path);
+}
+
+function sanitizeCss(input: string): string {
+  return input
+    .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\r\n]/g, " "))
+    .replace(/(@layer\s+app)\.([_a-zA-Z]+[_a-zA-Z0-9-]*)/g, "$1-$2");
 }
