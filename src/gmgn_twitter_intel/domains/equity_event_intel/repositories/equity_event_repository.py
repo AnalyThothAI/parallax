@@ -6,6 +6,11 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.equity_event_intel._constants import (
+    EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
+    EQUITY_EVENT_PAGE_PROJECTION_VERSION,
+)
+
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 
 
@@ -1171,6 +1176,366 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_events_for_page_projection(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT events.*,
+                   universe.company_name,
+                   universe.priority AS company_priority,
+                   stories.story_id,
+                   stories.representative_headline,
+                   stories.latest_seen_at_ms AS story_latest_seen_at_ms,
+                   stories.updated_at_ms AS story_updated_at_ms,
+                   briefs.agent_run_id,
+                   briefs.status AS brief_status,
+                   briefs.validation_status AS brief_validation_status,
+                   briefs.brief_json,
+                   briefs.input_hash,
+                   briefs.artifact_version_hash,
+                   briefs.prompt_version,
+                   briefs.schema_version,
+                   briefs.validator_version,
+                   briefs.computed_at_ms AS brief_computed_at_ms,
+                   briefs.updated_at_ms AS brief_updated_at_ms,
+                   page_rows.row_id AS page_row_id,
+                   page_rows.computed_at_ms AS page_computed_at_ms,
+                   COALESCE((
+                     SELECT MAX(facts.updated_at_ms)
+                       FROM equity_event_fact_candidates AS facts
+                      WHERE facts.company_event_id = events.company_event_id
+                   ), 0) AS facts_updated_at_ms,
+                   COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms
+              FROM equity_company_events AS events
+              LEFT JOIN equity_event_universe_members AS universe
+                ON universe.company_id = events.company_id
+              LEFT JOIN equity_event_story_members AS members
+                ON members.company_event_id = events.company_event_id
+              LEFT JOIN equity_event_story_groups AS stories
+                ON stories.story_id = members.story_id
+              LEFT JOIN equity_event_agent_briefs AS briefs
+                ON briefs.company_event_id = events.company_event_id
+              LEFT JOIN equity_event_documents AS documents
+                ON documents.event_document_id = events.primary_document_id
+              LEFT JOIN equity_event_page_rows AS page_rows
+                ON page_rows.company_event_id = events.company_event_id
+             WHERE events.validation_status <> 'rejected'
+             ORDER BY CASE
+                        WHEN page_rows.row_id IS NULL THEN 0
+                        WHEN page_rows.projection_version <> %s THEN 0
+                        WHEN page_rows.computed_at_ms < GREATEST(
+                          events.updated_at_ms,
+                          COALESCE(stories.updated_at_ms, 0),
+                          COALESCE(briefs.updated_at_ms, 0),
+                          COALESCE(documents.updated_at_ms, 0),
+                          COALESCE((
+                            SELECT MAX(facts.updated_at_ms)
+                              FROM equity_event_fact_candidates AS facts
+                             WHERE facts.company_event_id = events.company_event_id
+                          ), 0)
+                        ) THEN 0
+                        ELSE 1
+                      END ASC,
+                      events.event_time_ms DESC,
+                      events.company_event_id ASC
+             LIMIT %s
+             FOR UPDATE OF events SKIP LOCKED
+            """,
+            (EQUITY_EVENT_PAGE_PROJECTION_VERSION, max(0, int(limit))),
+        ).fetchall()
+        payloads: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            payloads.append(
+                {
+                    "event": item,
+                    "company": {
+                        "company_id": item["company_id"],
+                        "ticker": item["ticker"],
+                        "company_name": item.get("company_name") or "",
+                        "priority": item.get("company_priority") or item.get("priority") or "P3",
+                    },
+                    "story": _story_payload(item),
+                    "facts": self._list_event_facts(str(item["company_event_id"])),
+                    "documents": self._list_event_documents(_optional_str(item.get("primary_document_id"))),
+                    "brief": _brief_payload(item),
+                }
+            )
+        return payloads
+
+    def list_expected_events_for_calendar_projection(self, *, limit: int) -> list[dict[str, Any]]:
+        earnings_family = ["earnings_release", "quarterly_report"]
+        rows = self.conn.execute(
+            """
+            SELECT expected.*,
+                   universe.company_name,
+                   universe.priority AS company_priority,
+                   observed.company_event_id AS observed_company_event_id,
+                   observed.company_id AS observed_company_id,
+                   observed.ticker AS observed_ticker,
+                   observed.event_type AS observed_event_type,
+                   observed.priority AS observed_priority,
+                   observed.source_role AS observed_source_role,
+                   observed.fiscal_period AS observed_fiscal_period,
+                   observed.event_time_ms AS observed_event_time_ms,
+                   observed.discovered_at_ms AS observed_discovered_at_ms,
+                   observed.lifecycle_status AS observed_lifecycle_status,
+                   observed.validation_status AS observed_validation_status,
+                   observed.summary AS observed_summary,
+                   observed.updated_at_ms AS observed_updated_at_ms,
+                   calendar_rows.row_id AS calendar_row_id,
+                   calendar_rows.computed_at_ms AS calendar_computed_at_ms
+              FROM equity_expected_events AS expected
+              LEFT JOIN equity_event_universe_members AS universe
+                ON universe.company_id = expected.company_id
+              LEFT JOIN LATERAL (
+                SELECT events.*
+                  FROM equity_company_events AS events
+                 WHERE events.validation_status <> 'rejected'
+                   AND events.ticker = expected.ticker
+                   AND (
+                     events.company_id = expected.company_id
+                     OR expected.company_id = ''
+                   )
+                   AND (
+                     expected.fiscal_period IS NULL
+                     OR events.fiscal_period IS NULL
+                     OR events.fiscal_period = expected.fiscal_period
+                   )
+                   AND (
+                     events.event_type = expected.event_type
+                     OR (
+                       expected.event_type = ANY(%s::text[])
+                       AND events.event_type = ANY(%s::text[])
+                     )
+                   )
+                 ORDER BY ABS(events.event_time_ms - expected.expected_at_ms) ASC,
+                          events.event_time_ms DESC,
+                          events.company_event_id ASC
+                 LIMIT 1
+              ) AS observed ON true
+              LEFT JOIN equity_event_calendar_rows AS calendar_rows
+                ON calendar_rows.expected_event_id = expected.expected_event_id
+             WHERE expected.status IN ('expected', 'observed')
+             ORDER BY CASE
+                        WHEN calendar_rows.row_id IS NULL THEN 0
+                        WHEN calendar_rows.projection_version <> %s THEN 0
+                        WHEN calendar_rows.computed_at_ms < GREATEST(
+                          expected.updated_at_ms,
+                          COALESCE(observed.updated_at_ms, 0)
+                        ) THEN 0
+                        ELSE 1
+                      END ASC,
+                      expected.expected_at_ms ASC,
+                      expected.expected_event_id ASC
+             LIMIT %s
+            """,
+            (
+                earnings_family,
+                earnings_family,
+                EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
+                max(0, int(limit)),
+            ),
+        ).fetchall()
+        return [_calendar_projection_payload(dict(row)) for row in rows]
+
+    def replace_calendar_rows(
+        self,
+        *,
+        expected_event_ids: Sequence[str],
+        rows: Sequence[Mapping[str, Any]],
+        commit: bool = True,
+    ) -> None:
+        payloads = [_calendar_row_payload(row) for row in rows]
+        scoped_expected_event_ids = [str(expected_event_id) for expected_event_id in expected_event_ids]
+        scoped_row_ids = [payload["row_id"] for payload in payloads]
+        if not scoped_expected_event_ids and not scoped_row_ids:
+            if commit:
+                self.conn.commit()
+            return
+        self.conn.execute(
+            """
+            DELETE FROM equity_event_calendar_rows
+             WHERE row_id = ANY(%s::text[])
+                OR expected_event_id = ANY(%s::text[])
+            """,
+            (scoped_row_ids, scoped_expected_event_ids),
+        )
+        for payload in payloads:
+            self.conn.execute(
+                """
+                INSERT INTO equity_event_calendar_rows (
+                  row_id, expected_event_id, company_id, ticker, company_name, event_type,
+                  priority, source_role, fiscal_period, expected_at_ms, status, headline,
+                  calendar_json, computed_at_ms, projection_version
+                )
+                VALUES (
+                  %(row_id)s, %(expected_event_id)s, %(company_id)s, %(ticker)s,
+                  %(company_name)s, %(event_type)s, %(priority)s, %(source_role)s,
+                  %(fiscal_period)s, %(expected_at_ms)s, %(status)s, %(headline)s,
+                  %(calendar_json)s, %(computed_at_ms)s, %(projection_version)s
+                )
+                ON CONFLICT (row_id) DO UPDATE SET
+                  expected_event_id = EXCLUDED.expected_event_id,
+                  company_id = EXCLUDED.company_id,
+                  ticker = EXCLUDED.ticker,
+                  company_name = EXCLUDED.company_name,
+                  event_type = EXCLUDED.event_type,
+                  priority = EXCLUDED.priority,
+                  source_role = EXCLUDED.source_role,
+                  fiscal_period = EXCLUDED.fiscal_period,
+                  expected_at_ms = EXCLUDED.expected_at_ms,
+                  status = EXCLUDED.status,
+                  headline = EXCLUDED.headline,
+                  calendar_json = EXCLUDED.calendar_json,
+                  computed_at_ms = EXCLUDED.computed_at_ms,
+                  projection_version = EXCLUDED.projection_version
+                """,
+                payload,
+            )
+        if commit:
+            self.conn.commit()
+
+    def replace_alert_candidates(
+        self,
+        *,
+        company_event_ids: Sequence[str],
+        rows: Sequence[Mapping[str, Any]],
+        commit: bool = True,
+    ) -> None:
+        payloads = [_alert_candidate_payload(row) for row in rows]
+        scoped_company_event_ids = [str(company_event_id) for company_event_id in company_event_ids]
+        scoped_alert_ids = [payload["alert_candidate_id"] for payload in payloads]
+        if not scoped_company_event_ids and not scoped_alert_ids:
+            if commit:
+                self.conn.commit()
+            return
+        self.conn.execute(
+            """
+            DELETE FROM equity_event_alert_candidates
+             WHERE alert_candidate_id = ANY(%s::text[])
+                OR company_event_id = ANY(%s::text[])
+            """,
+            (scoped_alert_ids, scoped_company_event_ids),
+        )
+        for payload in payloads:
+            self.conn.execute(
+                """
+                INSERT INTO equity_event_alert_candidates (
+                  alert_candidate_id, company_event_id, company_id, ticker, event_type, priority,
+                  lifecycle_status, validation_status, alert_status, reason_codes_json,
+                  payload_json, computed_at_ms, projection_version
+                )
+                VALUES (
+                  %(alert_candidate_id)s, %(company_event_id)s, %(company_id)s, %(ticker)s,
+                  %(event_type)s, %(priority)s, %(lifecycle_status)s, %(validation_status)s,
+                  %(alert_status)s, %(reason_codes_json)s, %(payload_json)s,
+                  %(computed_at_ms)s, %(projection_version)s
+                )
+                ON CONFLICT (alert_candidate_id) DO UPDATE SET
+                  company_event_id = EXCLUDED.company_event_id,
+                  company_id = EXCLUDED.company_id,
+                  ticker = EXCLUDED.ticker,
+                  event_type = EXCLUDED.event_type,
+                  priority = EXCLUDED.priority,
+                  lifecycle_status = EXCLUDED.lifecycle_status,
+                  validation_status = EXCLUDED.validation_status,
+                  alert_status = EXCLUDED.alert_status,
+                  reason_codes_json = EXCLUDED.reason_codes_json,
+                  payload_json = EXCLUDED.payload_json,
+                  computed_at_ms = EXCLUDED.computed_at_ms,
+                  projection_version = EXCLUDED.projection_version
+                """,
+                payload,
+            )
+        if commit:
+            self.conn.commit()
+
+    def replace_company_timeline_rows(
+        self,
+        *,
+        rows: Sequence[Mapping[str, Any]],
+        company_ids: Sequence[str] = (),
+        company_event_ids: Sequence[str] = (),
+        commit: bool = True,
+    ) -> None:
+        payloads = [_company_timeline_row_payload(row) for row in rows]
+        scoped_company_ids = [str(company_id) for company_id in company_ids]
+        scoped_company_event_ids = [str(company_event_id) for company_event_id in company_event_ids]
+        scoped_row_ids = [payload["row_id"] for payload in payloads]
+        if not scoped_company_ids and not scoped_company_event_ids and not scoped_row_ids:
+            if commit:
+                self.conn.commit()
+            return
+        self.conn.execute(
+            """
+            DELETE FROM equity_company_timeline_rows
+             WHERE row_id = ANY(%s::text[])
+                OR company_id = ANY(%s::text[])
+                OR company_event_id = ANY(%s::text[])
+            """,
+            (scoped_row_ids, scoped_company_ids, scoped_company_event_ids),
+        )
+        for payload in payloads:
+            self.conn.execute(
+                """
+                INSERT INTO equity_company_timeline_rows (
+                  row_id, company_id, ticker, company_event_id, story_id, event_type, priority,
+                  source_role, event_time_ms, lifecycle_status, headline, summary, payload_json,
+                  computed_at_ms, projection_version
+                )
+                VALUES (
+                  %(row_id)s, %(company_id)s, %(ticker)s, %(company_event_id)s, %(story_id)s,
+                  %(event_type)s, %(priority)s, %(source_role)s, %(event_time_ms)s,
+                  %(lifecycle_status)s, %(headline)s, %(summary)s, %(payload_json)s,
+                  %(computed_at_ms)s, %(projection_version)s
+                )
+                ON CONFLICT (row_id) DO UPDATE SET
+                  company_id = EXCLUDED.company_id,
+                  ticker = EXCLUDED.ticker,
+                  company_event_id = EXCLUDED.company_event_id,
+                  story_id = EXCLUDED.story_id,
+                  event_type = EXCLUDED.event_type,
+                  priority = EXCLUDED.priority,
+                  source_role = EXCLUDED.source_role,
+                  event_time_ms = EXCLUDED.event_time_ms,
+                  lifecycle_status = EXCLUDED.lifecycle_status,
+                  headline = EXCLUDED.headline,
+                  summary = EXCLUDED.summary,
+                  payload_json = EXCLUDED.payload_json,
+                  computed_at_ms = EXCLUDED.computed_at_ms,
+                  projection_version = EXCLUDED.projection_version
+                """,
+                payload,
+            )
+        if commit:
+            self.conn.commit()
+
+    def _list_event_facts(self, company_event_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+              FROM equity_event_fact_candidates
+             WHERE company_event_id = %s
+             ORDER BY created_at_ms ASC, fact_candidate_id ASC
+            """,
+            (company_event_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _list_event_documents(self, primary_document_id: str | None) -> list[dict[str, Any]]:
+        if primary_document_id is None:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT *
+              FROM equity_event_documents
+             WHERE event_document_id = %s
+             ORDER BY event_time_ms DESC, event_document_id ASC
+            """,
+            (primary_document_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def _update_source_extra_json(
         self,
         *,
@@ -1212,6 +1577,123 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "brief_json": Jsonb(dict(row.get("brief_json") or {"status": "pending"})),
         "computed_at_ms": int(row["computed_at_ms"]),
         "projection_version": str(row["projection_version"]),
+    }
+
+
+def _calendar_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": str(row["row_id"]),
+        "expected_event_id": row.get("expected_event_id"),
+        "company_id": str(row["company_id"]),
+        "ticker": str(row["ticker"]),
+        "company_name": str(row.get("company_name") or ""),
+        "event_type": str(row["event_type"]),
+        "priority": str(row.get("priority") or "P2"),
+        "source_role": str(row["source_role"]),
+        "fiscal_period": row.get("fiscal_period"),
+        "expected_at_ms": int(row["expected_at_ms"]),
+        "status": str(row["status"]),
+        "headline": str(row.get("headline") or ""),
+        "calendar_json": Jsonb(dict(row.get("calendar_json") or {})),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
+def _alert_candidate_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "alert_candidate_id": str(row["alert_candidate_id"]),
+        "company_event_id": str(row["company_event_id"]),
+        "company_id": str(row["company_id"]),
+        "ticker": str(row["ticker"]),
+        "event_type": str(row["event_type"]),
+        "priority": str(row["priority"]),
+        "lifecycle_status": str(row["lifecycle_status"]),
+        "validation_status": str(row.get("validation_status") or "pending"),
+        "alert_status": str(row.get("alert_status") or "pending"),
+        "reason_codes_json": Jsonb(list(row.get("reason_codes_json") or [])),
+        "payload_json": Jsonb(dict(row.get("payload_json") or {})),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
+def _company_timeline_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": str(row["row_id"]),
+        "company_id": str(row["company_id"]),
+        "ticker": str(row["ticker"]),
+        "company_event_id": row.get("company_event_id"),
+        "story_id": row.get("story_id"),
+        "event_type": str(row["event_type"]),
+        "priority": str(row["priority"]),
+        "source_role": str(row["source_role"]),
+        "event_time_ms": int(row["event_time_ms"]),
+        "lifecycle_status": str(row["lifecycle_status"]),
+        "headline": str(row["headline"]),
+        "summary": str(row.get("summary") or ""),
+        "payload_json": Jsonb(dict(row.get("payload_json") or {})),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
+def _story_payload(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    if not row.get("story_id"):
+        return None
+    return {
+        "story_id": row.get("story_id"),
+        "representative_headline": row.get("representative_headline"),
+        "latest_seen_at_ms": row.get("story_latest_seen_at_ms"),
+        "updated_at_ms": row.get("story_updated_at_ms"),
+    }
+
+
+def _brief_payload(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    if not row.get("agent_run_id"):
+        return None
+    return {
+        "agent_run_id": row.get("agent_run_id"),
+        "status": row.get("brief_status"),
+        "validation_status": row.get("brief_validation_status"),
+        "brief_json": row.get("brief_json"),
+        "input_hash": row.get("input_hash"),
+        "artifact_version_hash": row.get("artifact_version_hash"),
+        "prompt_version": row.get("prompt_version"),
+        "schema_version": row.get("schema_version"),
+        "validator_version": row.get("validator_version"),
+        "computed_at_ms": row.get("brief_computed_at_ms"),
+        "updated_at_ms": row.get("brief_updated_at_ms"),
+    }
+
+
+def _calendar_projection_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    observed_event = None
+    if row.get("observed_company_event_id"):
+        observed_event = {
+            "company_event_id": row.get("observed_company_event_id"),
+            "company_id": row.get("observed_company_id"),
+            "ticker": row.get("observed_ticker"),
+            "event_type": row.get("observed_event_type"),
+            "priority": row.get("observed_priority"),
+            "source_role": row.get("observed_source_role"),
+            "fiscal_period": row.get("observed_fiscal_period"),
+            "event_time_ms": row.get("observed_event_time_ms"),
+            "discovered_at_ms": row.get("observed_discovered_at_ms"),
+            "lifecycle_status": row.get("observed_lifecycle_status"),
+            "validation_status": row.get("observed_validation_status"),
+            "summary": row.get("observed_summary"),
+            "updated_at_ms": row.get("observed_updated_at_ms"),
+        }
+    return {
+        "expected_event": dict(row),
+        "company": {
+            "company_id": row.get("company_id"),
+            "ticker": row.get("ticker"),
+            "company_name": row.get("company_name") or "",
+            "priority": row.get("company_priority") or "P2",
+        },
+        "observed_event": observed_event,
     }
 
 

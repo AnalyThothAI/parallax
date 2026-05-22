@@ -3,6 +3,9 @@ from __future__ import annotations
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
+    EquityEventPageProjectionWorker,
+)
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker import EquityEventProcessWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_source_reconcile_worker import (
     EquityEventSourceReconcileWorker,
@@ -71,5 +74,15 @@ def construct_equity_event_intel_workers(ctx: WorkerFactoryContext) -> dict[str,
             telemetry=ctx.telemetry,
             wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_story_projection.wakes_on),
+        )
+    if workers.equity_event_page_projection.enabled:
+        worker_name = "equity_event_page_projection"
+        constructed[worker_name] = EquityEventPageProjectionWorker(
+            name=worker_name,
+            settings=workers.equity_event_page_projection,
+            db=ctx.db,
+            telemetry=ctx.telemetry,
+            wake_bus=ctx.wake_bus,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.equity_event_page_projection.wakes_on),
         )
     return constructed

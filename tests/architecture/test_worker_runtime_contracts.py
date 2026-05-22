@@ -276,6 +276,26 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/macro_intel/runtime/macro_view_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260521_0076_macro_views.py",
     },
+    "equity_event_page_rows": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+    },
+    "equity_event_calendar_rows": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+    },
+    "equity_event_alert_candidates": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+    },
+    "equity_company_timeline_rows": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+    },
 }
 
 LEGACY_ASSET_TABLES = ("assets", "asset_aliases", "asset_venues", "asset_market_snapshots")
@@ -299,7 +319,6 @@ BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
 }
 STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS = (
     ".equity_event_intel.runtime.equity_event_brief_worker.",
-    ".equity_event_intel.runtime.equity_event_page_projection_worker.",
 )
 
 

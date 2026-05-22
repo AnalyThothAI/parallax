@@ -10,6 +10,9 @@ import pytest
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
+    EquityEventPageProjectionWorker,
+)
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker import EquityEventProcessWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_source_reconcile_worker import (
     EquityEventSourceReconcileWorker,
@@ -572,6 +575,67 @@ def test_story_projection_rebuilds_members_after_partial_truncation(postgres_con
     assert len({member["story_id"] for member in members}) == 1
 
 
+def test_page_projection_worker_rebuilds_read_models_after_page_truncation(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_universe_member(
+        {
+            "company_id": "market_instrument:us_equity:MSFT",
+            "ticker": "MSFT",
+            "company_name": "Microsoft Corporation",
+            "active": True,
+            "priority": "P0",
+        },
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_expected_event(
+        expected_event_id="expected:MSFT:2026Q1",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        event_type="earnings_release",
+        fiscal_period="2026Q1",
+        expected_at_ms=NOW_MS - 1_000,
+        source_id="config:earnings",
+        source_role="calendar",
+        now_ms=NOW_MS,
+    )
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-page",
+        provider_document_id="provider-doc-page",
+    )
+    _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+    _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
+
+    first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000).run_once_sync()
+
+    page_rows = postgres_conn.execute("SELECT * FROM equity_event_page_rows").fetchall()
+    calendar_rows = postgres_conn.execute("SELECT * FROM equity_event_calendar_rows").fetchall()
+    alert_rows = postgres_conn.execute("SELECT * FROM equity_event_alert_candidates").fetchall()
+    timeline_rows = postgres_conn.execute("SELECT * FROM equity_company_timeline_rows").fetchall()
+    assert first_result.processed == 1
+    assert len(page_rows) == 1
+    assert page_rows[0]["headline"] == "MSFT 2026Q1 quarterly report"
+    assert len(calendar_rows) == 1
+    assert calendar_rows[0]["status"] == "matched"
+    assert len(alert_rows) == 1
+    assert alert_rows[0]["ticker"] == "MSFT"
+    assert len(timeline_rows) == 1
+    assert timeline_rows[0]["company_event_id"] == page_rows[0]["company_event_id"]
+
+    postgres_conn.execute("DELETE FROM equity_event_page_rows")
+    postgres_conn.commit()
+
+    rebuild_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000).run_once_sync()
+
+    rebuilt_rows = postgres_conn.execute("SELECT * FROM equity_event_page_rows").fetchall()
+    assert rebuild_result.processed == 1
+    assert len(rebuilt_rows) == 1
+    assert rebuilt_rows[0]["company_event_id"] == page_rows[0]["company_event_id"]
+    assert wake_bus.pages_updated == [1, 1]
+
+
 class _WorkerDb:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -596,6 +660,7 @@ class _RecordingWakeBus:
         self.documents_written: list[tuple[str, int]] = []
         self.events_processed: list[int] = []
         self.stories_updated: list[int] = []
+        self.pages_updated: list[int] = []
 
     def notify_equity_event_sources_reconciled(self, *, count: int) -> None:
         self.sources_reconciled.append(count)
@@ -608,6 +673,9 @@ class _RecordingWakeBus:
 
     def notify_equity_event_story_updated(self, *, count: int) -> None:
         self.stories_updated.append(count)
+
+    def notify_equity_event_page_updated(self, *, count: int) -> None:
+        self.pages_updated.append(count)
 
 
 class _FakeEquityDocumentProvider:
@@ -689,6 +757,17 @@ def _story_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventStoryProjectionWo
         db=db,
         telemetry=SimpleNamespace(),
         wake_bus=None,
+        clock_ms=lambda: now_ms,
+    )
+
+
+def _page_worker(db: _WorkerDb, *, wake_bus: Any | None, now_ms: int) -> EquityEventPageProjectionWorker:
+    return EquityEventPageProjectionWorker(
+        name="equity_event_page_projection",
+        settings=Settings().workers.equity_event_page_projection,
+        db=db,
+        telemetry=SimpleNamespace(),
+        wake_bus=wake_bus,
         clock_ms=lambda: now_ms,
     )
 
