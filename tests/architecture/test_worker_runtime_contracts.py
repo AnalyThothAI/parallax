@@ -78,6 +78,27 @@ EXPECTED_WORKERS = {
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
+    "equity_event_source_reconcile": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+        "equity_event_source_reconcile_worker.EquityEventSourceReconcileWorker"
+    ),
+    "equity_event_fetch": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker.EquityEventFetchWorker"
+    ),
+    "equity_event_process": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker.EquityEventProcessWorker"
+    ),
+    "equity_event_story_projection": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+        "equity_event_story_projection_worker.EquityEventStoryProjectionWorker"
+    ),
+    "equity_event_brief": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker.EquityEventBriefWorker"
+    ),
+    "equity_event_page_projection": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+        "equity_event_page_projection_worker.EquityEventPageProjectionWorker"
+    ),
     "cex_oi_radar_board": (
         "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
     ),
@@ -113,6 +134,12 @@ OLD_READYZ_WORKER_KEYS = {
     "news_story_projection",
     "news_item_brief",
     "news_page_projection",
+    "equity_event_source_reconcile",
+    "equity_event_fetch",
+    "equity_event_process",
+    "equity_event_story_projection",
+    "equity_event_brief",
+    "equity_event_page_projection",
     "pulse_candidate",
     "enrichment",
     "handle_summary",
@@ -257,6 +284,7 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "asset_market.py",
     "cex_market_intel.py",
     "enrichment.py",
+    "equity_event_intel.py",
     "ingestion.py",
     "macro_intel.py",
     "narrative_intel.py",
@@ -269,6 +297,7 @@ EXPECTED_WORKER_FACTORY_FILES = {
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
     "gmgn_twitter_intel.domains.ingestion.runtime.collector_service",
 }
+STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS = (".equity_event_intel.",)
 
 
 @pytest.mark.architecture
@@ -279,6 +308,8 @@ def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified
     except ModuleNotFoundError as exc:
         if ".narrative_intel." in qualified_name:
             pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
+        if _is_stubbed_task_worker(qualified_name):
+            pytest.skip(f"{worker_key} runtime lands in equity-event Task 3+: {exc.name}")
         raise
 
     assert issubclass(worker_class, WorkerBase), f"{worker_key} must inherit WorkerBase"
@@ -296,6 +327,8 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
         except ModuleNotFoundError as exc:
             if ".narrative_intel." in qualified_name:
                 pytest.skip(f"{worker_key} runtime is owned by agent A: {exc.name}")
+            if _is_stubbed_task_worker(qualified_name):
+                pytest.skip(f"{worker_key} runtime lands in equity-event Task 3+: {exc.name}")
             raise
         if worker_key in allowlist:
             continue
@@ -358,7 +391,9 @@ def test_worker_construction_is_split_into_domain_factories() -> None:
         node.name for node in ast.walk(bootstrap_tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     expected_worker_modules = {
-        qualified_name.rpartition(".")[0] for key, qualified_name in EXPECTED_WORKERS.items() if key != "collector"
+        qualified_name.rpartition(".")[0]
+        for key, qualified_name in EXPECTED_WORKERS.items()
+        if key != "collector" and not _is_stubbed_task_worker(qualified_name)
     }
     bootstrap_runtime_worker_imports = sorted(
         module
@@ -666,9 +701,13 @@ def _worker_runtime_paths() -> list[Path]:
         try:
             paths.append(Path(_module_file(qualified_name)))
         except ModuleNotFoundError:
-            if ".narrative_intel." not in qualified_name:
+            if ".narrative_intel." not in qualified_name and not _is_stubbed_task_worker(qualified_name):
                 raise
     return sorted(paths)
+
+
+def _is_stubbed_task_worker(qualified_name: str) -> bool:
+    return any(fragment in qualified_name for fragment in STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS)
 
 
 def _runtime_provider_openai_paths() -> list[Path]:
