@@ -22,12 +22,33 @@ test("tablet shell keeps top-level route navigation in the sidebar drawer", asyn
   await sidebarTrigger.click();
   const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(primaryNavigation).toBeVisible();
-  await expect(primaryNavigation.getByRole("link", { name: "Token Radar" })).toBeVisible();
+  for (const routeName of [
+    "Token Radar",
+    "Stocks",
+    "News",
+    "Macro",
+    "Watchlist",
+    "Signal Lab",
+    "Ops",
+  ]) {
+    await expect(primaryNavigation.getByRole("link", { name: routeName })).toBeVisible();
+  }
 
   await primaryNavigation.getByRole("link", { name: "Stocks" }).click();
   await expect(page).toHaveURL(/\/stocks(?:\?|$)/);
   await expect(primaryNavigation).toBeHidden();
   await expect(page.getByRole("region", { name: "US stocks radar" })).toBeVisible();
+
+  await expect(sidebarTrigger).toBeVisible();
+  await sidebarTrigger.click();
+  await expect(primaryNavigation).toBeVisible();
+  await primaryNavigation.getByRole("link", { name: "News" }).click();
+  await expect(page).toHaveURL(/\/news(?:\?|$)/);
+  await expect(primaryNavigation).toBeHidden();
+
+  await page.getByLabel("global search").fill("tablet-token");
+  await page.getByRole("button", { name: "检索" }).click();
+  await expect(page).toHaveURL(/\/search\?q=tablet-token/);
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoUnhandledApiRequests(page);
 });

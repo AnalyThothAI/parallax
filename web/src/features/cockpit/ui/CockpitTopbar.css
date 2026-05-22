@@ -368,14 +368,6 @@
   }
 
   @media (max-width: 767px) {
-    .topbar {
-      grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
-      align-items: center;
-      gap: 8px;
-      min-height: 0;
-      padding: 8px;
-    }
-
     .brand {
       grid-column: 1;
       grid-row: 1;

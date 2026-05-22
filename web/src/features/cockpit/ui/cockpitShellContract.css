@@ -1,4 +1,8 @@
 @layer app.shell {
+  :root {
+    --cockpit-mobile-topbar-height: 48px;
+  }
+
   .topbar-sidebar-trigger {
     display: inline-grid;
   }
@@ -36,6 +40,8 @@
     .topbar {
       grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
       gap: 8px;
+      height: var(--cockpit-mobile-topbar-height);
+      min-height: var(--cockpit-mobile-topbar-height);
       padding: 8px;
     }
 
