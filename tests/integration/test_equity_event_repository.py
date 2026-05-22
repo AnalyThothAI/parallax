@@ -285,6 +285,123 @@ def test_equity_event_repository_provider_documents_are_idempotent_by_source_key
     assert second["raw_payload_json"]["version"] == 2
 
 
+def test_changed_event_document_content_resets_failed_processing_attempts_for_retry(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    provider = repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-retry",
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key="0000789019-26-000001:10-Q",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        payload_hash="hash-1",
+        raw_payload_json={"form": "10-Q"},
+        fetched_at_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-retry",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash="content-1",
+        now_ms=NOW_MS,
+    )
+    postgres_conn.execute(
+        """
+        UPDATE equity_event_documents
+           SET lifecycle_status = 'process_failed',
+               processing_attempts = 3,
+               processing_error = 'exhausted',
+               processed_at_ms = %s
+         WHERE event_document_id = %s
+        """,
+        (NOW_MS + 1_000, "event-doc-retry"),
+    )
+    postgres_conn.commit()
+
+    repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-retry",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 2_000,
+        content_hash="content-1",
+        now_ms=NOW_MS + 2_000,
+    )
+    unchanged = postgres_conn.execute(
+        "SELECT * FROM equity_event_documents WHERE event_document_id = %s",
+        ("event-doc-retry",),
+    ).fetchone()
+    assert unchanged["lifecycle_status"] == "process_failed"
+    assert unchanged["processing_attempts"] == 3
+    assert unchanged["processing_error"] == "exhausted"
+    assert unchanged["processed_at_ms"] == NOW_MS + 1_000
+    assert repos.equity_events.list_unprocessed_event_documents(limit=10) == []
+
+    repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-retry",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 3_000,
+        content_hash="content-2",
+        now_ms=NOW_MS + 3_000,
+    )
+
+    changed = postgres_conn.execute(
+        "SELECT * FROM equity_event_documents WHERE event_document_id = %s",
+        ("event-doc-retry",),
+    ).fetchone()
+    claimable = repos.equity_events.list_unprocessed_event_documents(limit=10)
+    assert changed["lifecycle_status"] == "raw"
+    assert changed["processing_attempts"] == 0
+    assert changed["processing_error"] is None
+    assert changed["processed_at_ms"] is None
+    assert [row["event_document_id"] for row in claimable] == ["event-doc-retry"]
+
+
 def _page_row(row_id: str, company_event_id: str, ticker: str, latest_event_at_ms: int) -> dict[str, object]:
     return {
         "row_id": row_id,

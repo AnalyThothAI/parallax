@@ -627,6 +627,21 @@ class EquityEventRepository:
                 THEN equity_event_documents.lifecycle_status
                 ELSE 'raw'
               END,
+              processing_attempts = CASE
+                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
+                THEN equity_event_documents.processing_attempts
+                ELSE 0
+              END,
+              processing_error = CASE
+                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
+                THEN equity_event_documents.processing_error
+                ELSE NULL
+              END,
+              processed_at_ms = CASE
+                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
+                THEN equity_event_documents.processed_at_ms
+                ELSE NULL
+              END,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING *
             """,
