@@ -66,7 +66,6 @@
 
   .macro-page-kpi,
   .macro-page-signal,
-  .macro-page-related-route,
   .macro-page-state {
     min-width: 0;
     border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
@@ -84,7 +83,6 @@
 
   .macro-page-kpi span,
   .macro-page-signal,
-  .macro-page-related-route,
   .macro-page-semantic-row {
     display: grid;
     gap: 4px;
@@ -93,8 +91,7 @@
 
   .macro-page-kpi small,
   .macro-page-semantic-row span,
-  .macro-page-signal span,
-  .macro-page-related-route b {
+  .macro-page-signal span {
     color: var(--text-muted, #94a3b8);
     font-size: 0.74rem;
     overflow-wrap: anywhere;
@@ -102,8 +99,7 @@
 
   .macro-page-kpi b,
   .macro-page-semantic-row b,
-  .macro-page-signal b,
-  .macro-page-related-route span {
+  .macro-page-signal b {
     color: var(--text-primary, #f8fafc);
     font-size: 0.84rem;
     overflow-wrap: anywhere;
@@ -124,8 +120,7 @@
   }
 
   .macro-page-semantic-list,
-  .macro-page-signal-list,
-  .macro-page-related-list {
+  .macro-page-signal-list {
     display: grid;
     gap: 8px;
     min-width: 0;
@@ -137,8 +132,7 @@
     border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.14));
   }
 
-  .macro-page-signal,
-  .macro-page-related-route {
+  .macro-page-signal {
     padding: 9px;
     text-decoration: none;
   }

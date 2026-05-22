@@ -173,6 +173,8 @@ const routeCases: RouteCase[] = [
     },
     specific: async (page) => {
       await expect(page.getByRole("region", { name: "宏观工作台" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "宏观主模块" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "宏观模块" })).toBeHidden();
       await expect(page.getByText("Backend says equity leadership is constructive.")).toBeVisible();
       await expect(page.getByRole("region", { name: "关键指标" })).toContainText("asset:spx");
       await expect(page.getByRole("region", { name: "核心图表" })).toBeVisible();
@@ -182,7 +184,7 @@ const routeCases: RouteCase[] = [
       );
     },
     nestedOverflowSelectors: [".macro-module-route", ".macro-shell", ".macro-page-layout"],
-    lastMeaningfulSelector: "[aria-label='相关页面']",
+    lastMeaningfulSelector: ".macro-page-layout > .macro-page-panel:last-of-type",
   },
   {
     name: "ops",

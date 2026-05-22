@@ -1,11 +1,126 @@
 import { WatchlistPage } from "@features/watchlist";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@tests/render/renderWithProviders";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("WatchlistPage", () => {
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("renders the full source navigator and keeps timeline scope when switching handles", async () => {
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      requests.push(`${url.pathname}?${url.searchParams.toString()}`);
+      if (url.pathname === "/api/watchlist/handles/overview") {
+        return jsonResponse({
+          ok: true,
+          data: {
+            window: "7d",
+            items: [
+              {
+                handle: "toly",
+                last_source_event_at_ms: 1_700_000_000_000,
+                recent_source_event_count: 3,
+                recent_signal_event_count: 2,
+                total_signal_event_count: 12,
+                summary_status: "ready",
+                summary_is_stale: false,
+              },
+              {
+                handle: "marionawfal",
+                last_source_event_at_ms: 1_700_000_060_000,
+                recent_source_event_count: 42,
+                recent_signal_event_count: 12,
+                total_signal_event_count: 42,
+                summary_status: "ready",
+                summary_is_stale: true,
+              },
+              {
+                handle: "gdb",
+                last_source_event_at_ms: null,
+                recent_source_event_count: 0,
+                recent_signal_event_count: 0,
+                total_signal_event_count: 0,
+                summary_status: "not_ready",
+                summary_is_stale: false,
+              },
+            ],
+          },
+        });
+      }
+      if (url.pathname.endsWith("/summary")) {
+        const handle = handleFromWatchlistPath(url.pathname);
+        return jsonResponse({
+          ok: true,
+          data: {
+            handle,
+            status: "ready",
+            generated_at_ms: 1_700_000_000_000,
+            staleness_ms: 0,
+            is_stale: handle === "marionawfal",
+            pending_recompute: false,
+            signal_count: handle === "marionawfal" ? 12 : 2,
+            input_event_count: handle === "marionawfal" ? 42 : 3,
+            signal_count_at_generation: handle === "marionawfal" ? 12 : 2,
+            model: "test-model",
+            summary_zh: `${handle} summary`,
+            topics: [],
+          },
+        });
+      }
+      if (url.pathname.endsWith("/overview")) {
+        const handle = handleFromWatchlistPath(url.pathname);
+        return jsonResponse({
+          ok: true,
+          data: handleOverviewResponse(handle, url.searchParams.get("scope") ?? "signal"),
+        });
+      }
+      const handle = handleFromWatchlistPath(url.pathname);
+      return jsonResponse({
+        ok: true,
+        data: {
+          query: { handle, scope: url.searchParams.get("scope"), limit: 30 },
+          items: [timelineItem(`${handle}-event`, `${handle} timeline`)],
+          has_more: false,
+          next_cursor: null,
+        },
+      });
+    });
+
+    renderWithProviders(
+      <WatchlistPage
+        accountUnreadCounts={{ marionawfal: 4 }}
+        handles={["toly", "marionawfal", "gdb"]}
+        token="secret"
+      />,
+      {
+        route: "/watchlist?handle=toly&timeline_scope=all",
+      },
+    );
+
+    const sourceList = await screen.findByRole("navigation", { name: "Twitter source list" });
+    expect(sourceList).toHaveTextContent("@marionawfal");
+    await waitFor(() => expect(sourceList).toHaveTextContent("12 signals"));
+    expect(sourceList).toHaveTextContent("@toly");
+    expect(sourceList).toHaveTextContent("@gdb");
+    expect(screen.getByRole("link", { name: /@marionawfal/i })).toHaveAttribute(
+      "href",
+      "/watchlist?handle=marionawfal&timeline_scope=all",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /@marionawfal/i }));
+
+    await waitFor(() =>
+      expect(
+        requests.some((request) =>
+          request.includes("/api/watchlist/handle/marionawfal/overview?scope=all"),
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByText("marionawfal summary")).toBeInTheDocument();
   });
 
   it("appends cursor pages and resets the stream when scope changes", async () => {
@@ -275,6 +390,29 @@ describe("WatchlistPage", () => {
     await waitFor(() => expect(screen.getByText("so much to build")).toBeVisible());
   });
 });
+
+function handleOverviewResponse(handle: string, scope: string) {
+  return {
+    query: { handle, scope, window: "7d" },
+    metrics: {
+      source_event_count: handle === "marionawfal" ? 42 : 2,
+      signal_event_count: handle === "marionawfal" ? 12 : 2,
+      resolved_token_count: 1,
+      candidate_mention_count: handle === "marionawfal" ? 3 : 1,
+      narrative_count: 0,
+      last_source_event_at_ms: 1_700_000_000_000,
+    },
+    resolved_token_clusters: [],
+    candidate_mention_clusters: [],
+    narrative_clusters: [],
+    risk_notes: [],
+  };
+}
+
+function handleFromWatchlistPath(pathname: string): string {
+  const match = pathname.match(/\/api\/watchlist\/handle\/([^/]+)\//);
+  return match ? decodeURIComponent(match[1]) : "toly";
+}
 
 function timelineItem(eventId: string, summary: string) {
   return {

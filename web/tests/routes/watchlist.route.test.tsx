@@ -167,6 +167,9 @@ describe("watchlist navigation", () => {
 
     renderAppRoute("/watchlist?handle=marionawfal&timeline_scope=signal");
 
+    expect(
+      await screen.findByRole("navigation", { name: "Twitter source list" }),
+    ).toHaveTextContent("@marionawfal");
     expect((await screen.findAllByText("Candidate mentions")).length).toBeGreaterThan(0);
     expect(await screen.findByText("$ALOY")).toBeInTheDocument();
     expect(screen.getAllByText("Resolved targets").length).toBeGreaterThan(0);

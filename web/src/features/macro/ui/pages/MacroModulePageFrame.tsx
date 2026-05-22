@@ -4,7 +4,6 @@ import type {
   MacroModuleView,
   MacroSemanticRecord,
 } from "@lib/types";
-import { Link } from "react-router-dom";
 
 import { useMacroSeriesQuery } from "../../api/useMacroSeriesQuery";
 import {
@@ -14,11 +13,7 @@ import {
   tableCaption,
 } from "../../model/macroModulePageModel";
 import { formatMacroScalar, macroFieldLabel } from "../../model/macroPageViewModel";
-import {
-  macroModuleRouteFromHref,
-  macroRouteLabel,
-  type MacroModuleId,
-} from "../../model/macroRoutes";
+import { macroRouteLabel, type MacroModuleId } from "../../model/macroRoutes";
 import { MacroNormalizedReturnChart } from "../charts/MacroNormalizedReturnChart";
 import { MacroTimeSeriesChart } from "../charts/MacroTimeSeriesChart";
 import { MacroYieldCurveChart } from "../charts/MacroYieldCurveChart";
@@ -132,28 +127,6 @@ export function MacroModulePageFrame({
           </div>
         ) : (
           <PageState label="module_data_gaps_clear" />
-        )}
-      </section>
-
-      <section className="macro-page-panel" aria-label="相关页面">
-        <div className="macro-page-section-head">
-          <h3>相关页面</h3>
-          <span>{String(module.related_routes.length)}</span>
-        </div>
-        {module.related_routes.length > 0 ? (
-          <div className="macro-page-related-list">
-            {module.related_routes.map((href) => {
-              const route = macroModuleRouteFromHref(href);
-              return (
-                <Link className="macro-page-related-route" to={href} key={href}>
-                  <span>{route?.label ?? href}</span>
-                  <b>{href}</b>
-                </Link>
-              );
-            })}
-          </div>
-        ) : (
-          <PageState label="related_routes_missing" />
         )}
       </section>
     </div>
