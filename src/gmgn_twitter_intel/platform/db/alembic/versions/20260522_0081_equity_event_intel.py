@@ -357,6 +357,12 @@ def upgrade() -> None:
     )
     op.execute(
         """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_equity_event_story_members_event
+          ON equity_event_story_members(company_event_id)
+        """
+    )
+    op.execute(
+        """
         CREATE TABLE IF NOT EXISTS equity_event_agent_runs (
           run_id TEXT PRIMARY KEY,
           company_event_id TEXT NOT NULL REFERENCES equity_company_events(company_event_id) ON DELETE CASCADE,
@@ -570,6 +576,7 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS equity_event_page_rows")
     op.execute("DROP TABLE IF EXISTS equity_event_agent_briefs")
     op.execute("DROP TABLE IF EXISTS equity_event_agent_runs")
+    op.execute("DROP INDEX IF EXISTS idx_equity_event_story_members_event")
     op.execute("DROP TABLE IF EXISTS equity_event_story_members")
     op.execute("DROP TABLE IF EXISTS equity_event_story_groups")
     op.execute("DROP INDEX IF EXISTS idx_equity_event_fact_candidates_event")

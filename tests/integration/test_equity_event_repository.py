@@ -139,3 +139,125 @@ def test_equity_event_repository_writes_raw_document_event_and_page_row(postgres
     rows = repos.equity_events.list_event_page_rows(limit=10)
     assert rows[0]["ticker"] == "MSFT"
     assert rows[0]["lifecycle_status"] == "raw"
+
+
+def test_equity_event_repository_replace_page_rows_preserves_unrelated_rows(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-preserve-1",
+        company_id="market_instrument:us_equity:AAPL",
+        ticker="AAPL",
+        primary_document_id=None,
+        event_type="earnings_release",
+        priority="P1",
+        source_role="calendar",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-preserve-2",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS + 1_000,
+        discovered_at_ms=NOW_MS + 1_000,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.replace_page_rows(
+        rows=[
+            _page_row("row-preserve-1", "event-preserve-1", "AAPL", NOW_MS),
+            _page_row("row-preserve-2", "event-preserve-2", "MSFT", NOW_MS + 1_000),
+        ]
+    )
+
+    repos.equity_events.replace_page_rows(
+        rows=[
+            {
+                **_page_row("row-preserve-1", "event-preserve-1", "AAPL", NOW_MS + 2_000),
+                "headline": "AAPL event updated",
+            }
+        ]
+    )
+
+    rows_by_id = {row["row_id"]: row for row in repos.equity_events.list_event_page_rows(limit=10)}
+    assert set(rows_by_id) == {"row-preserve-1", "row-preserve-2"}
+    assert rows_by_id["row-preserve-1"]["headline"] == "AAPL event updated"
+    assert rows_by_id["row-preserve-2"]["ticker"] == "MSFT"
+
+
+def test_equity_event_repository_provider_documents_are_idempotent_by_source_key(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:NVDA",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:NVDA",
+        ticker="NVDA",
+        cik="0001045810",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    first = repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-original",
+        source_id="sec:NVDA",
+        fetch_run_id=None,
+        provider_document_key="0001045810-26-000001:10-Q",
+        company_id="market_instrument:us_equity:NVDA",
+        ticker="NVDA",
+        cik="0001045810",
+        document_url="https://www.sec.gov/Archives/edgar/data/1045810/000104581026000001/nvda-20260331.htm",
+        payload_hash="hash-original",
+        raw_payload_json={"form": "10-Q", "version": 1},
+        fetched_at_ms=NOW_MS,
+    )
+
+    second = repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-duplicate-caller-id",
+        source_id="sec:NVDA",
+        fetch_run_id=None,
+        provider_document_key="0001045810-26-000001:10-Q",
+        company_id="market_instrument:us_equity:NVDA",
+        ticker="NVDA",
+        cik="0001045810",
+        document_url="https://www.sec.gov/Archives/edgar/data/1045810/000104581026000001/nvda-20260331.htm",
+        payload_hash="hash-updated",
+        raw_payload_json={"form": "10-Q", "version": 2},
+        fetched_at_ms=NOW_MS + 1_000,
+    )
+
+    assert second["provider_document_id"] == first["provider_document_id"]
+    assert second["payload_hash"] == "hash-updated"
+    assert second["raw_payload_json"]["version"] == 2
+
+
+def _page_row(row_id: str, company_event_id: str, ticker: str, latest_event_at_ms: int) -> dict[str, object]:
+    return {
+        "row_id": row_id,
+        "company_event_id": company_event_id,
+        "story_id": None,
+        "company_id": f"market_instrument:us_equity:{ticker}",
+        "ticker": ticker,
+        "company_name": f"{ticker} Inc.",
+        "event_type": "quarterly_report",
+        "priority": "P1",
+        "source_role": "official_regulator",
+        "latest_event_at_ms": latest_event_at_ms,
+        "lifecycle_status": "raw",
+        "headline": f"{ticker} event",
+        "summary": "",
+        "facts_json": [],
+        "documents_json": [],
+        "brief_json": {"status": "pending"},
+        "computed_at_ms": latest_event_at_ms,
+        "projection_version": "equity_event_page_rows_v1",
+    }

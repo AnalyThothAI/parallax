@@ -147,10 +147,8 @@ class EquityEventRepository:
               company_id, ticker, cik, document_url, payload_hash, raw_payload_json, fetched_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (provider_document_id) DO UPDATE SET
-              source_id = EXCLUDED.source_id,
+            ON CONFLICT (source_id, provider_document_key) DO UPDATE SET
               fetch_run_id = EXCLUDED.fetch_run_id,
-              provider_document_key = EXCLUDED.provider_document_key,
               company_id = EXCLUDED.company_id,
               ticker = EXCLUDED.ticker,
               cik = EXCLUDED.cik,
@@ -319,8 +317,24 @@ class EquityEventRepository:
         rows: Sequence[Mapping[str, Any]],
         commit: bool = True,
     ) -> None:
-        self.conn.execute("DELETE FROM equity_event_page_rows")
-        for row in rows:
+        payloads = [_page_row_payload(row) for row in rows]
+        if not payloads:
+            if commit:
+                self.conn.commit()
+            return
+
+        self.conn.execute(
+            """
+            DELETE FROM equity_event_page_rows
+             WHERE row_id = ANY(%s::text[])
+                OR company_event_id = ANY(%s::text[])
+            """,
+            (
+                [payload["row_id"] for payload in payloads],
+                [payload["company_event_id"] for payload in payloads],
+            ),
+        )
+        for payload in payloads:
             self.conn.execute(
                 """
                 INSERT INTO equity_event_page_rows (
@@ -354,7 +368,7 @@ class EquityEventRepository:
                   computed_at_ms = EXCLUDED.computed_at_ms,
                   projection_version = EXCLUDED.projection_version
                 """,
-                _page_row_payload(row),
+                payload,
             )
         if commit:
             self.conn.commit()

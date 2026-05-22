@@ -450,6 +450,7 @@ def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
         "idx_equity_event_documents_company_time",
         "idx_equity_company_events_latest",
         "idx_equity_event_fact_candidates_event",
+        "idx_equity_event_story_members_event",
         "idx_equity_event_page_rows_latest",
         "idx_equity_event_calendar_rows_time",
     ):
