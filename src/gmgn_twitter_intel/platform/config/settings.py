@@ -557,6 +557,28 @@ class EquityEventCompanySettings(BaseModel):
     universe: str = "nasdaq_tech"
     enabled: bool = True
 
+    @field_validator("symbol", mode="before")
+    @classmethod
+    def parse_symbol(cls, value: Any) -> str:
+        return _parse_required_string(value, field_name="equity_event_intel.companies.symbol").upper()
+
+    @field_validator("cik", mode="before")
+    @classmethod
+    def parse_optional_cik(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _parse_optional_cik(value)
+
+    @field_validator("company_name", "exchange", mode="before")
+    @classmethod
+    def parse_optional_string(cls, value: Any) -> str | None:
+        return _parse_optional_string(value)
+
+    @field_validator("universe", mode="before")
+    @classmethod
+    def parse_universe(cls, value: Any) -> str:
+        return _parse_required_string(value, field_name="equity_event_intel.companies.universe")
+
 
 class EquityExpectedEventSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -565,10 +587,25 @@ class EquityExpectedEventSettings(BaseModel):
     symbol: str
     event_type: str = "earnings_release"
     fiscal_period: str | None = None
-    expected_at_ms: int
+    expected_at_ms: int = Field(ge=0)
     session: str | None = None
     source_id: str = "config:earnings"
     enabled: bool = True
+
+    @field_validator("expected_event_id", "event_type", "source_id", mode="before")
+    @classmethod
+    def parse_required_string(cls, value: Any) -> str:
+        return _parse_required_string(value, field_name="equity_event_intel.expected_events field")
+
+    @field_validator("symbol", mode="before")
+    @classmethod
+    def parse_symbol(cls, value: Any) -> str:
+        return _parse_required_string(value, field_name="equity_event_intel.expected_events.symbol").upper()
+
+    @field_validator("fiscal_period", "session", mode="before")
+    @classmethod
+    def parse_optional_string(cls, value: Any) -> str | None:
+        return _parse_optional_string(value)
 
 
 class EquityEventAgentSettings(BaseModel):
@@ -576,6 +613,11 @@ class EquityEventAgentSettings(BaseModel):
 
     enabled: bool = True
     lane: str = "equity_event.brief"
+
+    @field_validator("lane", mode="before")
+    @classmethod
+    def parse_lane(cls, value: Any) -> str:
+        return _parse_required_string(value, field_name="equity_event_intel.agent.lane")
 
 
 class EquityEventIntelSettings(BaseModel):
@@ -587,6 +629,27 @@ class EquityEventIntelSettings(BaseModel):
     companies: tuple[EquityEventCompanySettings, ...] = ()
     expected_events: tuple[EquityExpectedEventSettings, ...] = ()
     agent: EquityEventAgentSettings = Field(default_factory=EquityEventAgentSettings)
+
+    @field_validator("default_universe", mode="before")
+    @classmethod
+    def parse_default_universe(cls, value: Any) -> str:
+        return _parse_required_string(value, field_name="equity_event_intel.default_universe")
+
+    @field_validator("sec_user_agent", mode="before")
+    @classmethod
+    def parse_optional_sec_user_agent(cls, value: Any) -> str | None:
+        return _parse_optional_string(value)
+
+    @field_validator("companies", "expected_events", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[Any, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, tuple):
+            return value
+        if isinstance(value, list):
+            return tuple(value)
+        raise ValueError("equity_event_intel companies and expected_events must be lists")
 
 
 class BackoffPolicy(BaseModel):
@@ -2077,6 +2140,31 @@ def _split_values(value: Any) -> list[str]:
     if isinstance(value, list | tuple | set):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
+
+
+def _parse_required_string(value: Any, *, field_name: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must not be empty")
+    return normalized
+
+
+def _parse_optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _parse_optional_cik(value: Any) -> str | None:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError("equity_event_intel.companies.cik must not be empty when set")
+    if normalized.lower().startswith("cik"):
+        normalized = normalized[3:].strip()
+    if not normalized.isdigit():
+        raise ValueError("equity_event_intel.companies.cik must be numeric or CIK-prefixed numeric")
+    return normalized
 
 
 def _validate_narrative_realtime_windows(field_name: str, value: tuple[str, ...]) -> tuple[str, ...]:

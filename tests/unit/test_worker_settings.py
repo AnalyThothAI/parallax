@@ -145,6 +145,70 @@ def test_default_workers_yaml_contains_equity_event_workers_and_agent_lane() -> 
     assert "equity_event.brief" in payload["agent_runtime"]["lanes"]
 
 
+def test_equity_event_intel_settings_normalize_config_inputs() -> None:
+    settings = Settings(
+        ws_token="secret",
+        equity_event_intel={
+            "enabled": True,
+            "default_universe": " nasdaq_tech ",
+            "sec_user_agent": " gmgn-test contact@example.com ",
+            "agent": {"lane": " equity_event.brief "},
+            "companies": [
+                {
+                    "symbol": " aapl ",
+                    "cik": " CIK0000320193 ",
+                    "company_name": " Apple Inc. ",
+                    "exchange": " nasdaq ",
+                    "universe": " mega_cap ",
+                }
+            ],
+            "expected_events": [
+                {
+                    "expected_event_id": " earnings:AAPL:2026Q2 ",
+                    "symbol": " aapl ",
+                    "event_type": " earnings_release ",
+                    "source_id": " config:earnings ",
+                    "expected_at_ms": 0,
+                }
+            ],
+        },
+    )
+
+    company = settings.equity_event_intel.companies[0]
+    expected_event = settings.equity_event_intel.expected_events[0]
+    assert settings.equity_event_intel.default_universe == "nasdaq_tech"
+    assert settings.equity_event_intel.sec_user_agent == "gmgn-test contact@example.com"
+    assert settings.equity_event_intel.agent.lane == "equity_event.brief"
+    assert company.symbol == "AAPL"
+    assert company.cik == "0000320193"
+    assert company.company_name == "Apple Inc."
+    assert company.exchange == "nasdaq"
+    assert company.universe == "mega_cap"
+    assert expected_event.expected_event_id == "earnings:AAPL:2026Q2"
+    assert expected_event.symbol == "AAPL"
+    assert expected_event.event_type == "earnings_release"
+    assert expected_event.source_id == "config:earnings"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"companies": [{"symbol": "   "}]},
+        {"companies": [{"symbol": "AAPL", "cik": "CIK-not-a-number"}]},
+        {"companies": [{"symbol": "AAPL", "universe": "   "}]},
+        {"expected_events": [{"expected_event_id": "", "symbol": "AAPL", "expected_at_ms": 1}]},
+        {"expected_events": [{"expected_event_id": "e1", "symbol": " ", "expected_at_ms": 1}]},
+        {"expected_events": [{"expected_event_id": "e1", "symbol": "AAPL", "expected_at_ms": -1}]},
+        {"expected_events": [{"expected_event_id": "e1", "symbol": "AAPL", "event_type": "", "expected_at_ms": 1}]},
+        {"expected_events": [{"expected_event_id": "e1", "symbol": "AAPL", "source_id": "", "expected_at_ms": 1}]},
+        {"agent": {"lane": " "}},
+    ],
+)
+def test_equity_event_intel_settings_reject_invalid_config_inputs(payload: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        Settings(ws_token="secret", equity_event_intel=payload)
+
+
 def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     text = default_workers_yaml()
     payload = yaml.safe_load(text)

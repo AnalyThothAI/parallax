@@ -3,8 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import EquityEventIntelProviders
-from gmgn_twitter_intel.integrations.equity_events.sec_edgar_client import SecEdgarClient
+from gmgn_twitter_intel.integrations.equity_events.sec_edgar_client import (
+    SecEdgarClient,
+    SecEdgarInvalidCikError,
+    SecEdgarInvalidJsonError,
+)
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 
@@ -32,11 +38,25 @@ class CompositeEquityEventDocumentProvider:
         if not cik:
             return _failed_fetch(source=source, reason="missing_cik")
 
-        result = self._sec_client.fetch_company_submissions(
-            str(cik),
-            etag=_optional_string(source.get("etag")),
-            last_modified=_optional_string(source.get("last_modified")),
-        )
+        try:
+            result = self._sec_client.fetch_company_submissions(
+                str(cik),
+                etag=_optional_string(source.get("etag")),
+                last_modified=_optional_string(source.get("last_modified")),
+            )
+        except SecEdgarInvalidCikError:
+            return _failed_fetch(source=source, reason="invalid_cik")
+        except SecEdgarInvalidJsonError:
+            return _failed_fetch(source=source, reason="sec_invalid_json")
+        except httpx.TimeoutException:
+            return _failed_fetch(source=source, reason="sec_timeout")
+        except httpx.HTTPStatusError as exc:
+            return _failed_fetch(
+                source=source,
+                reason=f"sec_http_{exc.response.status_code}",
+            )
+        except httpx.TransportError:
+            return _failed_fetch(source=source, reason="sec_transport_error")
         if result.not_modified:
             return EquityDocumentProviderFetchResult(
                 status_code=result.status_code,
