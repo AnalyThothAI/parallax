@@ -24,6 +24,8 @@ NOTIFICATION_RULE_IDS = (
 PULSE_CANDIDATE_WINDOWS = ("1h", "4h")
 PULSE_CANDIDATE_WINDOW_SET = frozenset(PULSE_CANDIDATE_WINDOWS)
 PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS = {"1h": 3600, "4h": 14400}
+NARRATIVE_REALTIME_WINDOWS = ("1h",)
+NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
 DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
     {
         "source_id": "coindesk",
@@ -912,8 +914,8 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     hard_timeout_seconds: float = Field(default=300.0, ge=0)
     advisory_lock_key: int = 2026051901
     wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
-    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
-    scopes: tuple[str, ...] = ("all", "matched")
+    windows: tuple[str, ...] = NARRATIVE_REALTIME_WINDOWS
+    scopes: tuple[str, ...] = ("all",)
     admission_limit: int = Field(default=200, ge=1)
     source_limit: int = Field(default=2000, ge=1)
     min_rank_score: int = Field(default=30, ge=0)
@@ -923,6 +925,11 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
+
+    @field_validator("windows", mode="after")
+    @classmethod
+    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return _validate_narrative_realtime_windows("narrative_admission.windows", value)
 
 
 class MentionSemanticsWorkerSettings(PerWorkerSettings):
@@ -956,11 +963,12 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026051802
     wakes_on: tuple[str, ...] = ("token_radar_updated", "narrative_semantics_updated", "market_tick_written")
-    windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
-    scopes: tuple[str, ...] = ("all", "matched")
+    windows: tuple[str, ...] = NARRATIVE_REALTIME_WINDOWS
+    scopes: tuple[str, ...] = ("all",)
     min_source_mentions: int = Field(default=3, ge=1)
     min_independent_authors: int = Field(default=2, ge=1)
     min_semantic_coverage: float = Field(default=0.35, ge=0, le=1)
+    max_pending_semantic_rows_for_digest: int = Field(default=5, ge=0)
     max_mentions_per_digest: int = Field(default=24, ge=1)
     max_llm_calls_per_cycle: int = Field(default=3, ge=0)
     max_llm_failures_per_cycle: int = Field(default=2, ge=0)
@@ -968,21 +976,25 @@ class TokenDiscussionDigestWorkerSettings(PerWorkerSettings):
     stance_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     attention_mix_change_threshold: float = Field(default=0.20, ge=0, le=1)
     price_move_refresh_pct: float = Field(default=12.0, ge=0)
-    digest_ttl_by_window_seconds: dict[str, int] = Field(default_factory=lambda: {"1h": 900, "4h": 1800, "24h": 7200})
+    digest_ttl_by_window_seconds: dict[str, int] = Field(default_factory=lambda: {"1h": 900})
 
     @field_validator("wakes_on", "windows", "scopes", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
 
+    @field_validator("windows", mode="after")
+    @classmethod
+    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return _validate_narrative_realtime_windows("token_discussion_digest.windows", value)
+
     @field_validator("digest_ttl_by_window_seconds")
     @classmethod
     def validate_digest_ttl_windows(cls, value: dict[str, int]) -> dict[str, int]:
-        allowed_windows = {"1h", "4h", "24h"}
-        unsupported_windows = set(value) - allowed_windows
+        unsupported_windows = set(value) - NARRATIVE_REALTIME_WINDOW_SET
         if unsupported_windows:
             unsupported = ", ".join(sorted(unsupported_windows))
-            raise ValueError(f"unsupported digest TTL window(s): {unsupported}")
+            raise ValueError(f"digest_ttl_by_window_seconds keys must contain only 1h; got: {unsupported}")
         return value
 
 
@@ -1733,8 +1745,8 @@ narrative_admission:
   hard_timeout_seconds: 300.0
   advisory_lock_key: 2026051901
   wakes_on: ["token_radar_updated", "resolution_updated"]
-  windows: ["5m", "1h", "4h", "24h"]
-  scopes: ["all", "matched"]
+  windows: ["1h"]
+  scopes: ["all"]
   admission_limit: 200
   source_limit: 2000
   min_rank_score: 30
@@ -1765,11 +1777,12 @@ token_discussion_digest:
   max_attempts: 3
   advisory_lock_key: 2026051802
   wakes_on: ["token_radar_updated", "narrative_semantics_updated", "market_tick_written"]
-  windows: ["5m", "1h", "4h", "24h"]
-  scopes: ["all", "matched"]
+  windows: ["1h"]
+  scopes: ["all"]
   min_source_mentions: 3
   min_independent_authors: 2
   min_semantic_coverage: 0.35
+  max_pending_semantic_rows_for_digest: 5
   max_mentions_per_digest: 24
   max_llm_calls_per_cycle: 3
   max_llm_failures_per_cycle: 2
@@ -1779,8 +1792,6 @@ token_discussion_digest:
   price_move_refresh_pct: 12.0
   digest_ttl_by_window_seconds:
     1h: 900
-    4h: 1800
-    24h: 7200
 news_fetch:
   enabled: true
   interval_seconds: 60.0
@@ -1891,6 +1902,18 @@ def _split_values(value: Any) -> list[str]:
     if isinstance(value, list | tuple | set):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
+
+
+def _validate_narrative_realtime_windows(field_name: str, value: tuple[str, ...]) -> tuple[str, ...]:
+    if not value:
+        raise ValueError(f"{field_name} must be exactly 1h")
+    invalid = tuple(window for window in value if window not in NARRATIVE_REALTIME_WINDOW_SET)
+    if invalid:
+        rejected = ", ".join(invalid)
+        raise ValueError(f"{field_name} must contain only 1h; got: {rejected}")
+    if tuple(value) != NARRATIVE_REALTIME_WINDOWS:
+        raise ValueError(f"{field_name} must be exactly ['1h']")
+    return value
 
 
 def _clamp_int(value: Any, *, low: int, high: int) -> int:

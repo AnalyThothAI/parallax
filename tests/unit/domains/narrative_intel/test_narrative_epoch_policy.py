@@ -1,4 +1,6 @@
 from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
+    DEFAULT_THRESHOLDS,
+    DIGEST_WINDOWS,
     EPOCH_POLICY_VERSION,
     NarrativeEpochPolicy,
 )
@@ -135,7 +137,7 @@ def test_expired_display_current_until_returns_ttl_refresh_due() -> None:
     assert decision.refresh_reason == "ttl_refresh_due"
 
 
-def test_missing_or_pending_semantics_without_ready_digest_returns_semantic_pending() -> None:
+def test_missing_or_pending_semantics_without_ready_digest_returns_initial_ready() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(),
         last_ready_digest=None,
@@ -144,10 +146,10 @@ def test_missing_or_pending_semantics_without_ready_digest_returns_semantic_pend
         now_ms=NOW_MS,
     )
 
-    assert decision.reason == "semantic_pending"
-    assert decision.should_refresh is False
-    assert decision.should_write_status_digest is True
-    assert decision.next_due_at_ms == NOW_MS + 60_000
+    assert decision.reason == "no_ready_digest"
+    assert decision.should_refresh is True
+    assert decision.should_write_status_digest is False
+    assert decision.refresh_reason == "initial_ready"
 
 
 def test_missing_or_pending_semantics_with_ready_digest_does_not_write_status_digest() -> None:
@@ -219,3 +221,20 @@ def test_source_event_id_json_strings_are_parsed_for_delta_detection() -> None:
 
     assert decision.reason == "material_delta_due"
     assert decision.should_refresh is True
+
+
+def test_epoch_policy_hard_cuts_digest_windows_to_1h() -> None:
+    assert DIGEST_WINDOWS == frozenset({"1h"})
+    assert set(DEFAULT_THRESHOLDS) == {"1h"}
+
+    decision = NarrativeEpochPolicy().evaluate(
+        admission={"window": "4h", "source_event_count": 10, "independent_author_count": 4},
+        last_ready_digest=None,
+        semantic_coverage={"source_event_count": 10, "missing_semantic_count": 0},
+        market_context={},
+        now_ms=10_000,
+    )
+
+    assert decision.reason == "unsupported_window"
+    assert decision.should_refresh is False
+    assert decision.should_write_status_digest is False
