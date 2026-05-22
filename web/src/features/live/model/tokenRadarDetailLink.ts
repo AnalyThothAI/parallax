@@ -1,6 +1,6 @@
-import { tokenSearchPath } from "@features/search";
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
 import { tokenTargetPath } from "@shared/routing/paths";
+import { tokenSearchPath } from "@shared/routing/tokenSearch";
 
 import { targetRefFromTokenItem } from "../../../domain/tokenTarget";
 

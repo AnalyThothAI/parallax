@@ -16,15 +16,17 @@ import "./SignalLabLayout.css";
 type SignalLabPageProps = {
   selectedAccountEventId?: string | null;
   overviewData?: SignalPulseData;
+  token?: string;
   onSelectAccountEvent?: (item: LivePayload) => void;
 };
 
 export function SignalLabPage({
   selectedAccountEventId = null,
   overviewData,
+  token: tokenProp,
   onSelectAccountEvent,
 }: SignalLabPageProps) {
-  const signalLab = useSignalLabPage({ onSelectAccountEvent });
+  const signalLab = useSignalLabPage({ onSelectAccountEvent, token: tokenProp });
   const inlinePulseItem =
     signalLab.signalPulseData?.items.find(
       (item) => item.candidate_id === signalLab.selectedPulseItemId,
@@ -32,7 +34,7 @@ export function SignalLabPage({
     signalLab.signalPulseData?.items[0] ??
     null;
   const shouldShowDetail = true;
-  const token = getAuthToken() ?? "";
+  const token = tokenProp ?? getAuthToken() ?? "";
   const sourceEvents = useSourceEvents({ token, ids: inlinePulseItem?.source_event_ids ?? [] });
 
   return (

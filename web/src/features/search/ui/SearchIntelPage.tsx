@@ -16,11 +16,11 @@ import { SearchTokenIntelPage } from "./SearchTokenIntelPage";
 import { SearchTopicCase } from "./SearchTopicCase";
 import "./search.css";
 
-export function SearchIntelPage() {
+export function SearchIntelPage({ token }: { token?: string }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const routeState = parseSearchRouteState(searchParams);
-  const query = useSearchInspectQuery(routeState);
+  const query = useSearchInspectQuery({ ...routeState, token });
   const data = query.data?.data ?? null;
   const marketTargets = useMemo(() => searchMarketTargets(data), [data]);
   useMarketSubscription(marketTargets);

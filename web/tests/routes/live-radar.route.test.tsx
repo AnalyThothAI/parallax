@@ -18,6 +18,7 @@ describe("live radar route", () => {
   it("renders Token Radar as the default route", async () => {
     renderAppRoute("/");
 
+    await screen.findByLabelText("token radar scan controls");
     expect(await screen.findByRole("heading", { name: "Token Radar" })).toBeInTheDocument();
   });
 
@@ -116,6 +117,7 @@ describe("live radar route", () => {
     });
     renderAppRoute("/");
 
+    await screen.findByLabelText("token radar scan controls");
     expect(await screen.findByLabelText("loading token radar")).toBeInTheDocument();
     expect(screen.queryByText("当前窗口暂无可交易 token 热度")).not.toBeInTheDocument();
   });

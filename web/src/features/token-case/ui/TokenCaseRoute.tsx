@@ -14,12 +14,12 @@ import {
   type TokenCaseRouteState,
 } from "../state/tokenCaseRouteState";
 
-export function TokenCaseRoute() {
+export function TokenCaseRoute({ token: tokenProp }: { token?: string } = {}) {
   const { targetType, targetId } = useParams<{ targetType: string; targetId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const routeState = parseTokenCaseRouteState(searchParams);
   const target = useMemo(() => parseTarget(targetType, targetId), [targetId, targetType]);
-  const token = getAuthToken() ?? "";
+  const token = tokenProp ?? getAuthToken() ?? "";
   const dossierQuery = useTokenCase({
     token,
     target,

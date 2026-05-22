@@ -1,6 +1,6 @@
-import { tittyPulseFixture } from "@features/signal-lab/test/fixtures";
 import { SignalPulseQueue } from "@features/signal-lab/ui/SignalPulseQueue";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { tittyPulseFixture } from "@tests/fixtures/signal-lab";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {

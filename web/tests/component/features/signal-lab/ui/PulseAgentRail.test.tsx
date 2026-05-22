@@ -1,12 +1,12 @@
 import { buildPulseDetailView } from "@features/signal-lab/model/pulseDetail";
+import { PulseAgentRail } from "@features/signal-lab/ui/PulseDetail/PulseAgentRail";
+import type { SignalPulseItem } from "@lib/types";
+import { cleanup, render, screen } from "@testing-library/react";
 import {
   tittyPulseFixture,
   tittySourceEventsFixture,
   TITTY_NOW_MS,
-} from "@features/signal-lab/test/fixtures";
-import { PulseAgentRail } from "@features/signal-lab/ui/PulseDetail/PulseAgentRail";
-import type { SignalPulseItem } from "@lib/types";
-import { cleanup, render, screen } from "@testing-library/react";
+} from "@tests/fixtures/signal-lab";
 import { afterEach, describe, expect, it } from "vitest";
 
 describe("PulseAgentRail", () => {

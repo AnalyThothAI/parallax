@@ -11,9 +11,16 @@ export type SearchShellProps = {
   sidebar: { badges: AppSidebarBadges };
   notifications: ShellNotificationProps;
   onHotkey: (event: KeyboardEvent) => void;
+  outletContext?: unknown;
 };
 
-export function SearchShell({ topbar, sidebar, notifications, onHotkey }: SearchShellProps) {
+export function SearchShell({
+  topbar,
+  sidebar,
+  notifications,
+  onHotkey,
+  outletContext,
+}: SearchShellProps) {
   useEffect(() => {
     document.addEventListener("keydown", onHotkey);
     return () => document.removeEventListener("keydown", onHotkey);
@@ -26,10 +33,9 @@ export function SearchShell({ topbar, sidebar, notifications, onHotkey }: Search
         <CockpitTopbar
           {...topbar}
           navigationTrigger={<SidebarTrigger className="topbar-sidebar-trigger" />}
-          search={{ ...topbar.search, showMainRouteButton: true }}
         />
         <section className="center-column">
-          <Outlet />
+          <Outlet context={outletContext} />
         </section>
       </SidebarInset>
       <NotificationLayer {...notifications} />

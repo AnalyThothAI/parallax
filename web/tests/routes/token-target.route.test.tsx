@@ -1,5 +1,5 @@
 import type { TokenCaseDossier } from "@lib/types";
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
@@ -10,7 +10,7 @@ import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
 describe("token target route", () => {
   afterEach(() => {
-    document.body.replaceChildren();
+    cleanup();
   });
 
   beforeEach(() => {

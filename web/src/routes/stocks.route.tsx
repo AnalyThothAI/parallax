@@ -1,8 +1,17 @@
 import { StocksRadarPage } from "@features/stocks";
-import type { ComponentProps } from "react";
 
-export type StocksRouteProps = ComponentProps<typeof StocksRadarPage>;
+import { useShellRouteContext } from "./shellRouteContext";
 
-export function StocksRoute(props: StocksRouteProps) {
-  return <StocksRadarPage {...props} />;
+export function Component() {
+  const context = useShellRouteContext();
+
+  return (
+    <StocksRadarPage
+      scope={context.scope}
+      token={context.token}
+      windowKey={context.windowKey}
+      onScopeChange={context.updateScope}
+      onWindowChange={context.updateWindow}
+    />
+  );
 }

@@ -1,9 +1,8 @@
 import { ErrorBoundary } from "@shared/ui/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { BrowserRouter } from "react-router-dom";
 
-import { AppRoutes } from "./AppRoutes";
+import { CockpitApp } from "./CockpitApp";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,9 +19,7 @@ export function AppRoot() {
     <React.StrictMode>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
+          <CockpitApp />
         </QueryClientProvider>
       </ErrorBoundary>
     </React.StrictMode>

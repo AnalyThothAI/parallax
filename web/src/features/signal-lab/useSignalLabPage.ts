@@ -17,10 +17,11 @@ import {
 
 type UseSignalLabPageArgs = {
   onSelectAccountEvent?: (item: LivePayload) => void;
+  token?: string;
 };
 
-export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs = {}) {
-  const token = getAuthToken() ?? "";
+export function useSignalLabPage({ onSelectAccountEvent, token: tokenProp }: UseSignalLabPageArgs = {}) {
+  const token = tokenProp ?? getAuthToken() ?? "";
   const [searchParams, replaceUrlSearch] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();

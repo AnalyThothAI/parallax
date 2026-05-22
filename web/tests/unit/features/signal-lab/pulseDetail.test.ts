@@ -2,12 +2,12 @@ import {
   buildPulseDetailView,
   GATE_AGENT_MISMATCH_CONFIDENCE,
 } from "@features/signal-lab/model/pulseDetail";
+import type { SignalPulseItem } from "@lib/types";
 import {
   tittyPulseFixture,
   tittySourceEventsFixture,
   TITTY_NOW_MS,
-} from "@features/signal-lab/test/fixtures";
-import type { SignalPulseItem } from "@lib/types";
+} from "@tests/fixtures/signal-lab";
 import { describe, expect, it } from "vitest";
 
 describe("buildPulseDetailView", () => {

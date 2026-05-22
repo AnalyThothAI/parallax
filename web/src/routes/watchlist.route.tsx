@@ -1,8 +1,16 @@
 import { WatchlistPage } from "@features/watchlist";
-import type { ComponentProps } from "react";
 
-export type WatchlistRouteProps = ComponentProps<typeof WatchlistPage>;
+import { useShellRouteContext } from "./shellRouteContext";
 
-export function WatchlistRoute(props: WatchlistRouteProps) {
-  return <WatchlistPage {...props} />;
+export function Component() {
+  const context = useShellRouteContext();
+
+  return (
+    <WatchlistPage
+      accountUnreadCounts={context.accountUnreadCounts}
+      handles={context.configuredWatchlistHandles}
+      token={context.token}
+      onMarkHandleRead={context.onMarkHandleRead}
+    />
+  );
 }

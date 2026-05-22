@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { mockNotificationRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { setupAppRouteTest } from "./routeTestSetup";
 
 describe("notifications route shell", () => {
   afterEach(() => {
-    document.body.replaceChildren();
+    cleanup();
   });
 
   beforeEach(() => {

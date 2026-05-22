@@ -1,4 +1,5 @@
 import { setAuthToken } from "@lib/api/client";
+import { cleanup } from "@testing-library/react";
 import { createApiMock, resetApiMock, type ApiMock } from "@tests/msw/fixtures";
 import { apiHandlers } from "@tests/msw/handlers";
 import { mockBootstrap, mockLiveRadarRoute } from "@tests/msw/scenarios";
@@ -31,6 +32,7 @@ vi.mock("@shared/socket/useMarketSubscription", () => ({
 }));
 
 export function setupAppRouteTest(configure: (mock: ApiMock) => void = mockLiveRadarRoute) {
+  cleanup();
   setAuthToken(null);
   resetApiMock(apiMock);
   resetSocketScenario();

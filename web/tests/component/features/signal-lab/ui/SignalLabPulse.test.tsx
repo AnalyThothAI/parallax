@@ -1,6 +1,6 @@
 import { SignalLabPulse } from "@features/signal-lab";
-import { tittyPulseFixture } from "@features/signal-lab/test/fixtures";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { tittyPulseFixture } from "@tests/fixtures/signal-lab";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

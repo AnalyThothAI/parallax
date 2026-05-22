@@ -1,5 +1,5 @@
 import type { SearchInspectData } from "@lib/types";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
@@ -10,7 +10,7 @@ import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
 describe("search route", () => {
   afterEach(() => {
-    document.body.replaceChildren();
+    cleanup();
   });
 
   beforeEach(() => {

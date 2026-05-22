@@ -1,7 +1,7 @@
-import { tokenSearchPath } from "@features/search";
 import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
 import { livePath, searchPath, signalLabPulsePath, tokenTargetPath } from "@shared/routing/paths";
 import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
+import { tokenSearchPath } from "@shared/routing/tokenSearch";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 

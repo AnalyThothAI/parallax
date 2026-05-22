@@ -10,11 +10,11 @@ import { parseSignalPulseVisibility } from "../state/signalLabRouteState";
 
 import { PulseDetailView } from "./PulseDetail";
 
-export function PulseDetailRoutePage() {
+export function PulseDetailRoutePage({ token: tokenProp }: { token?: string } = {}) {
   const { candidateId } = useParams<{ candidateId: string }>();
   const [searchParams] = useSearchParams();
   const visibility = parseSignalPulseVisibility(searchParams.get("visibility"));
-  const token = getAuthToken() ?? "";
+  const token = tokenProp ?? getAuthToken() ?? "";
   const pulse = useSignalPulseCandidate({ token, candidateId: candidateId ?? null, visibility });
   const item = pulse.data?.data ?? null;
   const sourceEvents = useSourceEvents({ token, ids: item?.source_event_ids ?? [] });
