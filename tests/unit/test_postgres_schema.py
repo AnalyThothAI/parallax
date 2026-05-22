@@ -86,6 +86,9 @@ TOKEN_IMAGE_ASSETS_MIGRATION = Path(
 TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
+EQUITY_EVENT_INTEL_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_equity_event_intel.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -410,6 +413,54 @@ def test_token_profile_local_logo_migration_removes_remote_public_logos() -> Non
         assert statement in text
 
     assert "quality_flags_json || '[\"logo_mirror_pending\"]'::jsonb" in normalized_text
+
+
+def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
+    text = EQUITY_EVENT_INTEL_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260522_0081"',
+        'down_revision = "20260521_0080"',
+        "CREATE TABLE IF NOT EXISTS equity_event_sources",
+        "CREATE TABLE IF NOT EXISTS equity_event_fetch_runs",
+        "CREATE TABLE IF NOT EXISTS equity_event_universe_members",
+        "CREATE TABLE IF NOT EXISTS equity_expected_events",
+        "CREATE TABLE IF NOT EXISTS equity_provider_documents",
+        "CREATE TABLE IF NOT EXISTS equity_event_documents",
+        "CREATE TABLE IF NOT EXISTS equity_document_revisions",
+        "CREATE TABLE IF NOT EXISTS equity_section_diffs",
+        "CREATE TABLE IF NOT EXISTS equity_company_events",
+        "CREATE TABLE IF NOT EXISTS equity_event_source_spans",
+        "CREATE TABLE IF NOT EXISTS equity_event_fact_candidates",
+        "CREATE TABLE IF NOT EXISTS equity_event_story_groups",
+        "CREATE TABLE IF NOT EXISTS equity_event_story_members",
+        "CREATE TABLE IF NOT EXISTS equity_event_agent_runs",
+        "CREATE TABLE IF NOT EXISTS equity_event_agent_briefs",
+        "CREATE TABLE IF NOT EXISTS equity_event_page_rows",
+        "CREATE TABLE IF NOT EXISTS equity_event_calendar_rows",
+        "CREATE TABLE IF NOT EXISTS equity_event_alert_candidates",
+        "CREATE TABLE IF NOT EXISTS equity_company_timeline_rows",
+        "CHECK (provider_type IN ('sec_submissions', 'company_ir_rss', 'company_ir_atom', 'configured_calendar'))",
+        "CHECK (trust_tier IN ('official', 'high', 'standard', 'low'))",
+        "CHECK (priority IN ('P0', 'P1', 'P2', 'P3'))",
+        "CHECK (lifecycle_status IN ('raw', 'processed', 'process_failed', 'brief_ready', 'brief_stale'))",
+        "CHECK (validation_status IN ('accepted', 'attention', 'rejected', 'pending'))",
+        "idx_equity_event_sources_due",
+        "idx_equity_expected_events_due",
+        "idx_equity_event_documents_company_time",
+        "idx_equity_company_events_latest",
+        "idx_equity_event_fact_candidates_event",
+        "idx_equity_event_page_rows_latest",
+        "idx_equity_event_calendar_rows_time",
+    ):
+        assert statement in text
+
+    assert "'official_regulator'" in text
+    assert "'official_issuer'" in text
+    assert "'calendar'" in text
+    assert "'transcript'" in text
+    assert "'specialist_media'" in text
+    assert "'observed_source'" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+
+import pytest
+
+from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
+
+NOW_MS = 1_765_900_000_000
+
+
+@pytest.fixture
+def postgres_conn(tmp_path) -> Iterator[object]:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        reset_postgres_schema(conn)
+        yield conn
+    finally:
+        conn.close()
+
+
+def test_equity_event_repository_reconciles_source_and_expected_event(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+
+    source = repos.equity_events.upsert_source(
+        source_id="sec:AAPL",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:AAPL",
+        ticker="AAPL",
+        cik="0000320193",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    expected = repos.equity_events.upsert_expected_event(
+        expected_event_id="expected:AAPL:2026Q1",
+        company_id="market_instrument:us_equity:AAPL",
+        ticker="AAPL",
+        event_type="earnings_release",
+        fiscal_period="2026Q1",
+        expected_at_ms=NOW_MS + 86_400_000,
+        source_id="config:earnings",
+        source_role="calendar",
+        now_ms=NOW_MS,
+    )
+
+    assert source["source_id"] == "sec:AAPL"
+    assert expected["status"] == "expected"
+    assert repos.equity_events.list_source_status()[0]["source_id"] == "sec:AAPL"
+
+
+def test_equity_event_repository_writes_raw_document_event_and_page_row(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    provider = repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-1",
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key="0000789019-26-000001:10-Q",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-20260331.htm",
+        payload_hash="hash-1",
+        raw_payload_json={"form": "10-Q"},
+        fetched_at_ms=NOW_MS,
+    )
+    document = repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-1",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-20260331.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash="content-1",
+        now_ms=NOW_MS,
+    )
+    event = repos.equity_events.upsert_company_event(
+        company_event_id="event-1",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=document["event_document_id"],
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.replace_page_rows(
+        rows=[
+            {
+                "row_id": "row-1",
+                "company_event_id": event["company_event_id"],
+                "story_id": None,
+                "company_id": "market_instrument:us_equity:MSFT",
+                "ticker": "MSFT",
+                "company_name": "Microsoft Corporation",
+                "event_type": "quarterly_report",
+                "priority": "P0",
+                "source_role": "official_regulator",
+                "latest_event_at_ms": NOW_MS,
+                "lifecycle_status": "raw",
+                "headline": "MSFT filed 10-Q for 2026Q1",
+                "summary": "",
+                "facts_json": [],
+                "documents_json": [],
+                "brief_json": {"status": "pending"},
+                "computed_at_ms": NOW_MS,
+                "projection_version": "equity_event_page_rows_v1",
+            }
+        ]
+    )
+
+    rows = repos.equity_events.list_event_page_rows(limit=10)
+    assert rows[0]["ticker"] == "MSFT"
+    assert rows[0]["lifecycle_status"] == "raw"
