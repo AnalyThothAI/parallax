@@ -596,5 +596,5 @@ function isViewportSpecAllowed(path: string, contents: string): boolean {
 }
 
 function hasAppLayerDeclaration(css: string): boolean {
-  return /@layer\s+app\.(base|primitives|shell|features|overrides)\b/.test(css);
+  return /@layer\s+(?:[^;{]*,\s*)?app\.(base|primitives|shell|features|overrides)\b/.test(css);
 }

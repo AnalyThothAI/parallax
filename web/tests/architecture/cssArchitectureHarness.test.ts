@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const srcRoot = join(webRoot, "src");
+const appLayerOrder =
+  "@layer properties, theme, base, components, utilities, app.base, app.primitives, app.shell, app.features, app.overrides;";
 
 const retiredGlobalCssBuckets = new Set(["cockpit.css", "shared.css", "signalLab.css"]);
 const globalStyleFiles = new Set(["styles/base.css", "styles/tailwind.css", "styles/tokens.css"]);
@@ -121,6 +123,15 @@ const modifierClassNames = new Set([
 ]);
 
 describe("CSS architecture harness", () => {
+  it("declares app cascade layers before split CSS chunks can load", () => {
+    const indexHtml = readFileSync(join(webRoot, "index.html"), "utf8");
+    const tokensCss = readFileSync(join(srcRoot, "styles/tokens.css"), "utf8");
+
+    expect(tokensCss.trimStart().startsWith(appLayerOrder)).toBe(true);
+    expect(indexHtml).toContain(appLayerOrder);
+    expect(indexHtml.indexOf(appLayerOrder)).toBeLessThan(indexHtml.indexOf('<link rel="icon"'));
+  });
+
   it("does not recreate retired side-effect CSS buckets", () => {
     const cssFiles = collectFiles(srcRoot).filter(isCssFile);
     const retiredFiles = cssFiles
