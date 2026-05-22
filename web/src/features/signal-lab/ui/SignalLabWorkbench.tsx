@@ -7,8 +7,8 @@ import type {
   SignalPulseStatusFilter,
   SignalPulseVisibilityFilter,
 } from "@lib/types";
-import * as Tabs from "@radix-ui/react-tabs";
 import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
+import * as Tabs from "@shared/ui/tabs";
 import clsx from "clsx";
 import { useId } from "react";
 

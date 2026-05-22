@@ -1,7 +1,7 @@
 import { compactNumber } from "@lib/format";
 import type { SignalPulseData, SignalPulseItem, SignalPulseVisibilityFilter } from "@lib/types";
-import * as Tabs from "@radix-ui/react-tabs";
 import { CompactPanel } from "@shared/ui/CompactPanel";
+import * as Tabs from "@shared/ui/tabs";
 import { FlaskConical } from "lucide-react";
 import { useState } from "react";
 

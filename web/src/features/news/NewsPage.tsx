@@ -1,5 +1,4 @@
 import { formatRelativeTime } from "@lib/format";
-import * as Tabs from "@radix-ui/react-tabs";
 import type {
   NewsAgentBrief,
   NewsAgentBriefView,
@@ -13,6 +12,7 @@ import type {
 import { newsLifecycleLabel } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import { RemoteState } from "@shared/ui/RemoteState";
+import * as Tabs from "@shared/ui/tabs";
 import {
   ArrowLeft,
   Bot,
