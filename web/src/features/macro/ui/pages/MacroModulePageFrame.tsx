@@ -13,8 +13,12 @@ import {
   emptyTable,
   tableCaption,
 } from "../../model/macroModulePageModel";
-import { formatMacroScalar } from "../../model/macroPageViewModel";
-import { macroModuleRouteFromHref, type MacroModuleId } from "../../model/macroRoutes";
+import { formatMacroScalar, macroFieldLabel } from "../../model/macroPageViewModel";
+import {
+  macroModuleRouteFromHref,
+  macroRouteLabel,
+  type MacroModuleId,
+} from "../../model/macroRoutes";
 import { MacroNormalizedReturnChart } from "../charts/MacroNormalizedReturnChart";
 import { MacroTimeSeriesChart } from "../charts/MacroTimeSeriesChart";
 import { MacroYieldCurveChart } from "../charts/MacroYieldCurveChart";
@@ -47,19 +51,20 @@ export function MacroModulePageFrame({
     token,
     window: "60d",
   });
+  const moduleLabel = pageLabel || macroRouteLabel(moduleId);
 
   return (
-    <div className="macro-page-layout" aria-label={`${pageLabel} module page`}>
-      <section className="macro-page-panel macro-page-panel-current" aria-label="Current read">
+    <div className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
+      <section className="macro-page-panel macro-page-panel-current" aria-label="当前解读">
         <div className="macro-page-section-head">
-          <h3>Current read</h3>
+          <h3>当前解读</h3>
           <span>{formatMacroScalar(module.snapshot.status)}</span>
         </div>
         <p className="macro-page-summary">{formatMacroScalar(module.current_read.summary)}</p>
         <SemanticList record={module.current_read} excludeKeys={["summary"]} />
       </section>
 
-      <section className="macro-page-kpi-strip" aria-label="KPI strip">
+      <section className="macro-page-kpi-strip" aria-label="关键指标">
         {module.tiles.length > 0 ? (
           module.tiles.map((tile, index) => (
             <KpiTile tile={tile} key={tile.concept_key ?? tile.label ?? index} />
@@ -69,9 +74,9 @@ export function MacroModulePageFrame({
         )}
       </section>
 
-      <section className="macro-page-panel macro-page-panel-primary" aria-label="Primary chart">
+      <section className="macro-page-panel macro-page-panel-primary" aria-label="核心图表">
         <div className="macro-page-section-head">
-          <h3>Primary chart</h3>
+          <h3>核心图表</h3>
           <span>{formatMacroScalar(primaryChart.status ?? primaryChart.chart_id)}</span>
         </div>
         <PrimaryChart
@@ -83,14 +88,14 @@ export function MacroModulePageFrame({
       </section>
 
       {showSupportingTable ? (
-        <section className="macro-page-panel" aria-label="Supporting table">
+        <section className="macro-page-panel" aria-label="支撑表格">
           <MacroDataTable caption={tableCaption(supportingTable)} table={supportingTable} />
         </section>
       ) : null}
 
-      <section className="macro-page-panel" aria-label="Evidence board">
+      <section className="macro-page-panel" aria-label="证据板">
         <div className="macro-page-section-head">
-          <h3>Evidence</h3>
+          <h3>证据板</h3>
           <span>{String(module.signals.length)}</span>
         </div>
         {module.signals.length > 0 ? (
@@ -107,13 +112,13 @@ export function MacroModulePageFrame({
         )}
       </section>
 
-      <section className="macro-page-panel" aria-label="Provenance">
-        <MacroSourceTable caption="Provenance" source={module.provenance} />
+      <section className="macro-page-panel" aria-label="数据源">
+        <MacroSourceTable caption="数据源" source={module.provenance} />
       </section>
 
-      <section className="macro-page-panel" aria-label="Data gaps">
+      <section className="macro-page-panel" aria-label="数据缺口">
         <div className="macro-page-section-head">
-          <h3>Data gaps</h3>
+          <h3>数据缺口</h3>
           <span>{String(module.data_gaps.length)}</span>
         </div>
         {module.data_gaps.length > 0 ? (
@@ -129,9 +134,9 @@ export function MacroModulePageFrame({
         )}
       </section>
 
-      <section className="macro-page-panel" aria-label="Related routes">
+      <section className="macro-page-panel" aria-label="相关页面">
         <div className="macro-page-section-head">
-          <h3>Related routes</h3>
+          <h3>相关页面</h3>
           <span>{String(module.related_routes.length)}</span>
         </div>
         {module.related_routes.length > 0 ? (
@@ -171,12 +176,8 @@ function PrimaryChart({
   }
   if (seriesLoading) {
     return (
-      <div
-        aria-label={`${title} loading state`}
-        className="macro-page-chart-loading"
-        role="status"
-      >
-        chart_series_loading
+      <div aria-label={`${title}加载状态`} className="macro-page-chart-loading" role="status">
+        图表序列加载中
       </div>
     );
   }
@@ -212,7 +213,9 @@ function SemanticList({
   excludeKeys?: string[];
   record: MacroSemanticRecord;
 }) {
-  const entries = Object.entries(record).filter(([key]) => !excludeKeys.includes(key)).slice(0, 6);
+  const entries = Object.entries(record)
+    .filter(([key]) => !excludeKeys.includes(key))
+    .slice(0, 6);
   if (entries.length === 0) {
     return null;
   }
@@ -220,7 +223,7 @@ function SemanticList({
     <div className="macro-page-semantic-list">
       {entries.map(([key, value]) => (
         <div className="macro-page-semantic-row" key={key}>
-          <span>{key}</span>
+          <span>{macroFieldLabel(key)}</span>
           <b>{formatMacroScalar(value)}</b>
         </div>
       ))}
@@ -231,7 +234,14 @@ function SemanticList({
 function PageState({ label }: { label: string }) {
   return (
     <div className="macro-page-state" role="status">
-      {label}
+      {PAGE_STATE_LABELS[label] ?? label}
     </div>
   );
 }
+
+const PAGE_STATE_LABELS: Record<string, string> = {
+  module_data_gaps_clear: "暂无数据缺口",
+  module_signals_missing: "暂无证据信号",
+  module_tiles_missing: "暂无关键指标",
+  related_routes_missing: "暂无相关页面",
+};

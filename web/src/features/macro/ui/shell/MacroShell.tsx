@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 
 import type { MacroModuleId } from "../../model/macroRoutes";
 
-import { MacroLocalNav } from "./MacroLocalNav";
 import { MacroPageHeader } from "./MacroPageHeader";
 
 import "./macroShell.css";
@@ -18,8 +17,7 @@ export function MacroShell({
   moduleId: MacroModuleId;
 }) {
   return (
-    <section className="macro-shell" aria-label="Macro workbench">
-      <MacroLocalNav moduleId={moduleId} />
+    <section className="macro-shell" aria-label="宏观工作台">
       <div className="macro-shell-main">
         <MacroPageHeader module={module} moduleId={moduleId} />
         <div className="macro-shell-content">{children}</div>

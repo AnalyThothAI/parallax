@@ -20,10 +20,7 @@ describe("AppSidebar", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /News/i })).toBeInTheDocument();
     expect(screen.getByText("8+")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Macro/i })).toHaveAttribute("href", "/macro");
-    expect(screen.getByRole("link", { name: /Correlation/i })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("href", "/macro");
+    expect(screen.getByRole("link", { name: "相关性" })).toHaveAttribute("aria-current", "page");
   });
 });

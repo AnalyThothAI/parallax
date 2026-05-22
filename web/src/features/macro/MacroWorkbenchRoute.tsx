@@ -24,9 +24,9 @@ export function MacroWorkbenchRoute({
   const module = query.data ?? null;
 
   return (
-    <section className="macro-module-route" aria-label="Macro">
-      <h1>Macro</h1>
-      {query.isLoading ? <RemoteState.Loading layout="route" label="loading macro module" /> : null}
+    <section className="macro-module-route" aria-label="宏观">
+      <h1>宏观</h1>
+      {query.isLoading ? <RemoteState.Loading layout="route" label="加载宏观模块" /> : null}
       {query.isError ? <RemoteState.Error error={query.error} /> : null}
       {module ? (
         <RemoteState.Stale updating={query.isFetching && !query.isLoading}>

@@ -10,9 +10,9 @@ describe("Macro table primitives", () => {
   });
 
   it("renders backend table rows with formatted numeric display", () => {
-    render(<MacroDataTable table={tableFixture()} caption="CEX perp board" />);
+    render(<MacroDataTable table={tableFixture()} caption="CEX 永续看板" />);
 
-    const table = screen.getByRole("table", { name: "CEX perp board" });
+    const table = screen.getByRole("table", { name: "CEX 永续看板" });
     expect(within(table).getByText("12,500,000,000")).toBeInTheDocument();
     expect(within(table).getByText("0.0001")).toBeInTheDocument();
   });
@@ -27,15 +27,15 @@ describe("Macro table primitives", () => {
             { symbol: "SOL", open_interest_usd: null, funding_rate: null },
           ],
         }}
-        caption="Sortable macro table"
+        caption="可排序宏观表格"
       />,
     );
 
-    const sortButton = screen.getByRole("button", { name: "Sort by Open Interest Usd" });
+    const sortButton = screen.getByRole("button", { name: "按未平仓量(美元)排序" });
     fireEvent.click(sortButton);
 
-    const table = screen.getByRole("table", { name: "Sortable macro table" });
-    expect(within(table).getByRole("columnheader", { name: /Open Interest Usd/ })).toHaveAttribute(
+    const table = screen.getByRole("table", { name: "可排序宏观表格" });
+    expect(within(table).getByRole("columnheader", { name: /未平仓量/ })).toHaveAttribute(
       "aria-sort",
       "ascending",
     );
@@ -46,7 +46,7 @@ describe("Macro table primitives", () => {
 
     fireEvent.click(sortButton);
 
-    expect(within(table).getByRole("columnheader", { name: /Open Interest Usd/ })).toHaveAttribute(
+    expect(within(table).getByRole("columnheader", { name: /未平仓量/ })).toHaveAttribute(
       "aria-sort",
       "descending",
     );
@@ -58,24 +58,28 @@ describe("Macro table primitives", () => {
 
   it("renders stable loading and empty states with accessible status labels", () => {
     const { rerender } = render(
-      <MacroDataTable table={{ table_id: "rates_snapshot", rows: [] }} caption="Rates snapshot" state="loading" />,
+      <MacroDataTable
+        table={{ table_id: "rates_snapshot", rows: [] }}
+        caption="利率快照"
+        state="loading"
+      />,
     );
 
-    expect(screen.getByRole("status", { name: "Rates snapshot loading state" })).toHaveTextContent(
-      "table_loading",
+    expect(screen.getByRole("status", { name: "利率快照加载状态" })).toHaveTextContent(
+      "表格加载中",
     );
 
-    rerender(<MacroDataTable table={{ table_id: "rates_snapshot", rows: [] }} caption="Rates snapshot" />);
-
-    expect(screen.getByRole("status", { name: "Rates snapshot empty state" })).toHaveTextContent(
-      "table_rows_missing",
+    rerender(
+      <MacroDataTable table={{ table_id: "rates_snapshot", rows: [] }} caption="利率快照" />,
     );
+
+    expect(screen.getByRole("status", { name: "利率快照空状态" })).toHaveTextContent("暂无表格行");
   });
 
   it("renders source metadata tables without local provider inference", () => {
     render(
       <MacroSourceTable
-        caption="CEX source"
+        caption="CEX 数据源"
         source={{
           name: "cex_market_intel",
           status: "degraded",
@@ -85,7 +89,7 @@ describe("Macro table primitives", () => {
       />,
     );
 
-    const table = screen.getByRole("table", { name: "CEX source" });
+    const table = screen.getByRole("table", { name: "CEX 数据源" });
     expect(within(table).getByText("cex_market_intel")).toBeInTheDocument();
     expect(within(table).getByText("coinglass_partial")).toBeInTheDocument();
   });

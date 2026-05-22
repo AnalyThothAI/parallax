@@ -58,9 +58,9 @@ describe("macroRoutes", () => {
     );
 
     expect(buildMacroBreadcrumbs("assets/crypto-derivatives")).toEqual([
-      { label: "Macro", href: "/macro" },
-      { label: "Assets", href: "/macro/assets" },
-      { label: "Crypto Derivatives", href: "/macro/assets/crypto-derivatives" },
+      { label: "宏观", href: "/macro" },
+      { label: "大类资产", href: "/macro/assets" },
+      { label: "加密衍生品", href: "/macro/assets/crypto-derivatives" },
     ]);
   });
 });

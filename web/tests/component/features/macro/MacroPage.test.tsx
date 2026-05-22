@@ -70,8 +70,8 @@ describe("MacroPage compatibility wrapper", () => {
   it("renders the backend overview module through the new module API", async () => {
     renderWithProviders(<MacroPage token="test-token" />, { route: "/macro" });
 
-    expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
         token: "test-token",
@@ -84,7 +84,7 @@ describe("MacroPage compatibility wrapper", () => {
       route: "/macro/assets/equities",
     });
 
-    expect(await screen.findByRole("heading", { name: "Equities" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "美股" })).toBeInTheDocument();
     expect(screen.getByText("Backend says equity leadership is constructive.")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
@@ -105,7 +105,7 @@ describe("MacroPage compatibility wrapper", () => {
       { route: "/macro/assets/correlation" },
     );
 
-    expect(await screen.findByRole("heading", { name: "Asset Correlation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {

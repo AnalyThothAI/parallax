@@ -4,6 +4,7 @@ import type {
   MacroAssetCorrelationWindow,
 } from "@lib/types";
 import { RemoteState } from "@shared/ui/RemoteState";
+import { Button } from "@shared/ui/button";
 import clsx from "clsx";
 import {
   ArrowLeft,
@@ -37,60 +38,69 @@ export function MacroAssetCorrelationPage({
   const negativePairs = useMemo(() => strongestPairs(data, "negative"), [data]);
 
   return (
-    <section className="macro-workbench macro-correlation-page" aria-label="Asset Correlation">
+    <section className="macro-workbench macro-correlation-page" aria-label="资产相关性">
       <header className="macro-correlation-head">
         <div>
-          <button className="macro-icon-action" type="button" onClick={onBack}>
+          <Button
+            className="macro-icon-action"
+            size="sm"
+            type="button"
+            variant="ghost"
+            onClick={onBack}
+          >
             <ArrowLeft aria-hidden />
-            <span>Macro assets</span>
-          </button>
-          <span className="macro-eyebrow">Backend rolling returns</span>
-          <h2>Asset Correlation</h2>
+            <span>大类资产</span>
+          </Button>
+          <span className="macro-eyebrow">后端滚动收益</span>
+          <h2>资产相关性</h2>
         </div>
-        <div className="macro-correlation-controls" aria-label="Correlation window">
+        <div className="macro-correlation-controls" aria-label="相关性窗口">
           {WINDOWS.map((windowOption) => (
-            <button
+            <Button
+              aria-pressed={windowOption === window}
               className={clsx(windowOption === window && "active")}
               key={windowOption}
+              size="xs"
               type="button"
+              variant={windowOption === window ? "secondary" : "ghost"}
               onClick={() => setWindow(windowOption)}
             >
               {windowOption}
-            </button>
+            </Button>
           ))}
         </div>
       </header>
 
-      {query.isLoading ? <RemoteState.Loading layout="route" label="loading correlations" /> : null}
+      {query.isLoading ? <RemoteState.Loading layout="route" label="加载相关性" /> : null}
       {query.isError ? <RemoteState.Error error={query.error} /> : null}
 
       {data ? (
         <div className="macro-correlation-layout">
           <section className="macro-map-panel macro-map-panel-wide">
             <div className="macro-correlation-meta">
-              <SectionLabel icon={Grid3X3} title={`${data.window} matrix`} />
-              <span>{data.asof_date ?? "asof pending"}</span>
+              <SectionLabel icon={Grid3X3} title={`${data.window} 矩阵`} />
+              <span>{data.asof_date ? `截至 ${data.asof_date}` : "暂无日期"}</span>
             </div>
             <CorrelationMatrix data={data} titleByKey={titleByKey} />
           </section>
 
           <section className="macro-map-panel">
-            <SectionLabel icon={TrendingUp} title="Strongest positive" />
+            <SectionLabel icon={TrendingUp} title="最强正相关" />
             <PairList pairs={positivePairs} titleByKey={titleByKey} />
           </section>
 
           <section className="macro-map-panel">
-            <SectionLabel icon={TrendingDown} title="Strongest negative" />
+            <SectionLabel icon={TrendingDown} title="最强负相关" />
             <PairList pairs={negativePairs} titleByKey={titleByKey} />
           </section>
 
           <section className="macro-map-panel">
-            <SectionLabel icon={Database} title="Coverage" />
+            <SectionLabel icon={Database} title="覆盖度" />
             <AssetCoverage data={data} />
           </section>
 
           <section className="macro-map-panel">
-            <SectionLabel icon={LinkIcon} title="Data gaps" />
+            <SectionLabel icon={LinkIcon} title="数据缺口" />
             <CorrelationGaps data={data} titleByKey={titleByKey} />
           </section>
         </div>
@@ -116,14 +126,14 @@ function CorrelationMatrix({
   titleByKey: Record<string, string>;
 }) {
   if (data.assets.length === 0) {
-    return <span className="macro-muted">no assets available</span>;
+    return <span className="macro-muted">暂无可用资产</span>;
   }
   return (
     <div className="macro-correlation-table-wrap">
       <table className="macro-correlation-table">
         <thead>
           <tr>
-            <th scope="col">asset</th>
+            <th scope="col">资产</th>
             {data.assets.map((asset) => (
               <th key={asset.concept_key} scope="col">
                 {asset.title}
@@ -159,7 +169,7 @@ function PairList({
   titleByKey: Record<string, string>;
 }) {
   if (pairs.length === 0) {
-    return <span className="macro-muted">no available pairs</span>;
+    return <span className="macro-muted">暂无可用配对</span>;
   }
   return (
     <div className="macro-correlation-pairs">
@@ -170,7 +180,7 @@ function PairList({
               {titleByKey[pair.left] ?? pair.left} / {titleByKey[pair.right] ?? pair.right}
             </b>
             <small>
-              n={pair.sample_size} · {pair.start_date ?? "-"} to {pair.end_date ?? "-"}
+              样本={pair.sample_size} · {pair.start_date ?? "-"} 至 {pair.end_date ?? "-"}
             </small>
           </span>
           <strong data-tone={correlationTone(pair.correlation)}>
@@ -195,7 +205,7 @@ function AssetCoverage({ data }: { data: MacroAssetCorrelationData }) {
           <span className="macro-feature-deltas">
             <small>{asset.start_date ?? "-"}</small>
             <small>{asset.latest_observed_at ?? "-"}</small>
-            <small>{asset.sources.join(" / ") || "source pending"}</small>
+            <small>{asset.sources.join(" / ") || "暂无数据源"}</small>
           </span>
         </article>
       ))}
@@ -211,7 +221,7 @@ function CorrelationGaps({
   titleByKey: Record<string, string>;
 }) {
   if (data.data_gaps.length === 0) {
-    return <span className="macro-muted">coverage complete</span>;
+    return <span className="macro-muted">覆盖完整</span>;
   }
   return (
     <div className="macro-chip-list">

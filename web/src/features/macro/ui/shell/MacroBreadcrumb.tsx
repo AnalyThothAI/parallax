@@ -5,7 +5,7 @@ import { buildMacroBreadcrumbs, type MacroModuleId } from "../../model/macroRout
 export function MacroBreadcrumb({ moduleId }: { moduleId: MacroModuleId }) {
   const breadcrumbs = buildMacroBreadcrumbs(moduleId);
   return (
-    <nav aria-label="Macro breadcrumb" className="macro-shell-breadcrumb">
+    <nav aria-label="宏观面包屑" className="macro-shell-breadcrumb">
       {breadcrumbs.map((crumb, index) => (
         <span key={crumb.href}>
           {index > 0 ? <span aria-hidden="true">/</span> : null}

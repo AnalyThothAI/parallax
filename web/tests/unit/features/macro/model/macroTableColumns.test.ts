@@ -49,7 +49,10 @@ describe("macroTableColumns", () => {
 
     const sorted = sortMacroTableRows(model.rows, "latest", "asc");
 
-    expect(sorted.map((row) => row.cells.concept_key?.displayValue)).toEqual(["rates:dgs2", "rates:dgs10"]);
+    expect(sorted.map((row) => row.cells.concept_key?.displayValue)).toEqual([
+      "rates:dgs2",
+      "rates:dgs10",
+    ]);
   });
 
   it("keeps missing values last for both ascending and descending helper sorts", () => {
@@ -62,23 +65,23 @@ describe("macroTableColumns", () => {
       ],
     });
 
-    expect(sortMacroTableRows(model.rows, "latest", "asc").map((row) => row.cells.concept_key?.displayValue)).toEqual([
-      "rates:dgs5",
-      "rates:dgs10",
-      "rates:dgs2",
-    ]);
-    expect(sortMacroTableRows(model.rows, "latest", "desc").map((row) => row.cells.concept_key?.displayValue)).toEqual([
-      "rates:dgs10",
-      "rates:dgs5",
-      "rates:dgs2",
-    ]);
+    expect(
+      sortMacroTableRows(model.rows, "latest", "asc").map(
+        (row) => row.cells.concept_key?.displayValue,
+      ),
+    ).toEqual(["rates:dgs5", "rates:dgs10", "rates:dgs2"]);
+    expect(
+      sortMacroTableRows(model.rows, "latest", "desc").map(
+        (row) => row.cells.concept_key?.displayValue,
+      ),
+    ).toEqual(["rates:dgs10", "rates:dgs5", "rates:dgs2"]);
   });
 
   it("formats arrays and empty values without changing raw sort semantics", () => {
     expect(formatMacroTableValue(["missing:rates:dgs5", "move_index_missing"])).toBe(
       "missing:rates:dgs5, move_index_missing",
     );
-    expect(formatMacroTableValue(null)).toBe("n/a");
+    expect(formatMacroTableValue(null)).toBe("暂无");
     expect(compareMacroTableSortValues(2, 10)).toBeLessThan(0);
     expect(compareMacroTableSortValues("asset:qqq", "asset:spy")).toBeLessThan(0);
   });

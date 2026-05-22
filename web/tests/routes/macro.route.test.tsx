@@ -69,12 +69,12 @@ describe("macro route", () => {
     });
   });
 
-  it("renders Macro inside the cockpit shell and marks the sidebar item active", async () => {
+  it("renders macro inside the cockpit shell and marks the sidebar item active", async () => {
     renderAppRoute("/macro");
 
-    expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Macro" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("aria-current", "page");
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
         token: "secret",
@@ -85,8 +85,8 @@ describe("macro route", () => {
   it("opens a routed backend macro module", async () => {
     renderAppRoute("/macro/assets/equities");
 
-    expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Equities" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "美股" })).toBeInTheDocument();
     expect(screen.getByText("Backend says equity leadership is constructive.")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
@@ -98,7 +98,7 @@ describe("macro route", () => {
   it("normalizes unknown module routes back to the macro overview", async () => {
     renderAppRoute("/macro/assets/unknown");
 
-    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
         token: "secret",
@@ -109,7 +109,7 @@ describe("macro route", () => {
   it("opens the macro asset correlation detail route", async () => {
     renderAppRoute("/macro/assets/correlation");
 
-    expect(await screen.findByRole("heading", { name: "Asset Correlation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {

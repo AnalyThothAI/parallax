@@ -1,6 +1,7 @@
 import type { MacroModuleTable, MacroSemanticRecord } from "@lib/types";
 
 import { emptyTable, tableCaption } from "../../model/macroModulePageModel";
+import { macroRouteLabel } from "../../model/macroRoutes";
 import { MacroDataTable } from "../tables/MacroDataTable";
 import { MacroSourceTable } from "../tables/MacroSourceTable";
 
@@ -19,14 +20,14 @@ export function MacroCryptoDerivativesPage(props: MacroModulePageProps) {
       <MacroModulePageFrame
         {...props}
         module={frameModule}
-        pageLabel="Crypto Derivatives"
+        pageLabel={macroRouteLabel(props.moduleId)}
         showSupportingTable={false}
       />
-      <section className="macro-page-panel macro-page-panel-derivatives" aria-label="CEX perp board">
+      <section className="macro-page-panel macro-page-panel-derivatives" aria-label="CEX 永续看板">
         <MacroDataTable caption={tableCaption(cexTable)} table={cexTable} />
       </section>
-      <section className="macro-page-panel" aria-label="CEX source">
-        <MacroSourceTable caption="CEX source" source={tableSource(cexTable)} />
+      <section className="macro-page-panel" aria-label="CEX 数据源">
+        <MacroSourceTable caption="CEX 数据源" source={tableSource(cexTable)} />
       </section>
     </div>
   );

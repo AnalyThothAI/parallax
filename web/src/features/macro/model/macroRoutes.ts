@@ -51,67 +51,57 @@ export type MacroBreadcrumb = {
 };
 
 export const MACRO_MODULE_ROUTES: MacroModuleRoute[] = [
-  { moduleId: "overview", label: "Overview", section: "overview", href: "/macro" },
-  { moduleId: "assets", label: "Assets", section: "assets", href: "/macro/assets" },
+  { moduleId: "overview", label: "总览", section: "overview", href: "/macro" },
+  { moduleId: "assets", label: "大类资产", section: "assets", href: "/macro/assets" },
   {
     moduleId: "assets/equities",
-    label: "Equities",
+    label: "美股",
     section: "assets",
     href: "/macro/assets/equities",
   },
-  { moduleId: "assets/bonds", label: "Bonds", section: "assets", href: "/macro/assets/bonds" },
+  { moduleId: "assets/bonds", label: "债券", section: "assets", href: "/macro/assets/bonds" },
   {
     moduleId: "assets/commodities",
-    label: "Commodities",
+    label: "商品",
     section: "assets",
     href: "/macro/assets/commodities",
   },
-  { moduleId: "assets/fx", label: "FX", section: "assets", href: "/macro/assets/fx" },
-  { moduleId: "assets/crypto", label: "Crypto", section: "assets", href: "/macro/assets/crypto" },
+  { moduleId: "assets/fx", label: "外汇", section: "assets", href: "/macro/assets/fx" },
+  { moduleId: "assets/crypto", label: "加密资产", section: "assets", href: "/macro/assets/crypto" },
   {
     moduleId: "assets/crypto-derivatives",
-    label: "Crypto Derivatives",
+    label: "加密衍生品",
     section: "assets",
     href: "/macro/assets/crypto-derivatives",
   },
-  { moduleId: "rates", label: "Rates", section: "rates", href: "/macro/rates" },
+  { moduleId: "rates", label: "利率", section: "rates", href: "/macro/rates" },
   {
     moduleId: "rates/yield-curve",
-    label: "Yield Curve",
+    label: "收益率曲线",
     section: "rates",
     href: "/macro/rates/yield-curve",
   },
   {
     moduleId: "rates/real-rates",
-    label: "Real Rates",
+    label: "实际利率",
     section: "rates",
     href: "/macro/rates/real-rates",
   },
-  { moduleId: "fed", label: "Fed", section: "fed", href: "/macro/fed" },
-  { moduleId: "liquidity", label: "Liquidity", section: "liquidity", href: "/macro/liquidity" },
+  { moduleId: "fed", label: "美联储", section: "fed", href: "/macro/fed" },
+  { moduleId: "liquidity", label: "流动性", section: "liquidity", href: "/macro/liquidity" },
   {
     moduleId: "liquidity/transmission-chain",
-    label: "Transmission Chain",
+    label: "传导链",
     section: "liquidity",
     href: "/macro/liquidity/transmission-chain",
   },
   {
     moduleId: "volatility",
-    label: "Volatility",
+    label: "波动率",
     section: "volatility",
     href: "/macro/volatility",
   },
-  { moduleId: "credit", label: "Credit", section: "credit", href: "/macro/credit" },
-];
-
-export const MACRO_ROUTE_GROUPS: Array<{ section: MacroRouteSection; label: string }> = [
-  { section: "overview", label: "Overview" },
-  { section: "assets", label: "Assets" },
-  { section: "rates", label: "Rates" },
-  { section: "fed", label: "Fed" },
-  { section: "liquidity", label: "Liquidity" },
-  { section: "volatility", label: "Volatility" },
-  { section: "credit", label: "Credit" },
+  { moduleId: "credit", label: "信用", section: "credit", href: "/macro/credit" },
 ];
 
 const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId, route]));
@@ -154,15 +144,15 @@ export function macroModuleHref(moduleId: MacroModuleId): string {
 }
 
 export function macroRouteLabel(moduleId: MacroModuleId): string {
-  return ROUTES_BY_ID.get(moduleId)?.label ?? "Overview";
+  return ROUTES_BY_ID.get(moduleId)?.label ?? "总览";
 }
 
 export function buildMacroBreadcrumbs(moduleId: MacroModuleId): MacroBreadcrumb[] {
   if (moduleId === "overview") {
-    return [{ label: "Macro", href: "/macro" }];
+    return [{ label: "宏观", href: "/macro" }];
   }
   const [section] = moduleId.split("/");
-  const breadcrumbs: MacroBreadcrumb[] = [{ label: "Macro", href: "/macro" }];
+  const breadcrumbs: MacroBreadcrumb[] = [{ label: "宏观", href: "/macro" }];
   if (isMacroModuleId(section) && section !== moduleId) {
     breadcrumbs.push({ label: macroRouteLabel(section), href: macroModuleHref(section) });
   }

@@ -58,12 +58,12 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
       },
       {
         children: [
-          { end: true, label: "Overview", to: "/macro" },
-          { end: true, label: "Assets", to: "/macro/assets" },
-          { end: true, label: "Correlation", to: "/macro/assets/correlation" },
+          { end: true, label: "总览", to: "/macro" },
+          { end: true, label: "资产", to: "/macro/assets" },
+          { end: true, label: "相关性", to: "/macro/assets/correlation" },
         ],
         icon: BriefcaseBusiness,
-        label: "Macro",
+        label: "宏观",
         matchPath: "/macro/*",
         to: "/macro",
       },

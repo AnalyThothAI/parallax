@@ -76,7 +76,7 @@ export function compareMacroTableSortValues(left: unknown, right: unknown): numb
 
 export function formatMacroTableValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "n/a";
+    return "暂无";
   }
   if (Array.isArray(value)) {
     return value.map(formatMacroTableValue).join(", ");
@@ -85,10 +85,10 @@ export function formatMacroTableValue(value: unknown): string {
     return formatNumber(value);
   }
   if (typeof value === "boolean") {
-    return value ? "true" : "false";
+    return value ? "是" : "否";
   }
   if (typeof value === "string") {
-    return value;
+    return VALUE_LABELS[value] ?? value;
   }
   return JSON.stringify(value);
 }
@@ -134,12 +134,72 @@ function rowId(row: MacroSemanticRecord, rowIndex: number): string {
 }
 
 function labelFromKey(key: string): string {
+  if (COLUMN_LABELS[key]) {
+    return COLUMN_LABELS[key];
+  }
   return key
     .split("_")
     .filter(Boolean)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .map((part) => WORD_LABELS[part] ?? part)
     .join(" ");
 }
+
+const COLUMN_LABELS: Record<string, string> = {
+  basis: "基差",
+  code: "代码",
+  concept_key: "指标",
+  degraded_reasons: "降级原因",
+  field: "字段",
+  funding_rate: "资金费率",
+  id: "ID",
+  label: "名称",
+  latest: "最新值",
+  open_interest_usd: "未平仓量(美元)",
+  reason: "原因",
+  status: "状态",
+  symbol: "标的",
+  unit: "单位",
+  value: "值",
+};
+
+const WORD_LABELS: Record<string, string> = {
+  asset: "资产",
+  assets: "资产",
+  chain: "链路",
+  coinglass: "Coinglass",
+  count: "数量",
+  credit: "信用",
+  curve: "曲线",
+  days: "天数",
+  fed: "美联储",
+  flow: "流量",
+  flows: "资金流",
+  fx: "外汇",
+  liquidity: "流动性",
+  observed: "观测",
+  percent: "百分比",
+  rate: "利率",
+  rates: "利率",
+  real: "实际",
+  return: "回报",
+  returns: "回报",
+  score: "分数",
+  source: "数据源",
+  sources: "数据源",
+  transmission: "传导",
+  usd: "美元",
+  volatility: "波动率",
+  yield: "收益率",
+};
+
+const VALUE_LABELS: Record<string, string> = {
+  degraded: "降级",
+  missing: "缺失",
+  ok: "正常",
+  partial: "部分可用",
+  unavailable: "不可用",
+  unknown: "未知",
+};
 
 function numericValue(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -169,7 +229,7 @@ function stringValue(value: unknown): string | null {
 
 function formatNumber(value: number): string {
   const maximumFractionDigits = Math.abs(value) > 0 && Math.abs(value) < 1 ? 6 : 2;
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("zh-CN", {
     maximumFractionDigits,
     minimumFractionDigits: 0,
   }).format(value);

@@ -33,7 +33,7 @@ export function MacroDataTable({
       model.columns.map((column) => ({
         id: column.id,
         accessorFn: (row) => row.cells[column.id]?.sortValue ?? undefined,
-        cell: ({ row }) => row.original.cells[column.id]?.displayValue ?? "n/a",
+        cell: ({ row }) => row.original.cells[column.id]?.displayValue ?? "暂无",
         enableSorting: true,
         header: column.label,
         sortDescFirst: false,
@@ -53,10 +53,10 @@ export function MacroDataTable({
   });
 
   if (state === "loading") {
-    return <TableState caption={caption} label="table_loading" stateName="loading" />;
+    return <TableState caption={caption} label="表格加载中" stateName="加载" />;
   }
   if (model.rows.length === 0) {
-    return <TableState caption={caption} label="table_rows_missing" stateName="empty" />;
+    return <TableState caption={caption} label="暂无表格行" stateName="空" />;
   }
 
   return (
@@ -73,7 +73,7 @@ export function MacroDataTable({
                   scope="col"
                 >
                   <button
-                    aria-label={`Sort by ${String(header.column.columnDef.header)}`}
+                    aria-label={`按${String(header.column.columnDef.header)}排序`}
                     type="button"
                     onClick={header.column.getToggleSortingHandler()}
                   >
@@ -138,7 +138,7 @@ function TableState({
 }) {
   return (
     <div
-      aria-label={`${caption} ${stateName} state`}
+      aria-label={`${caption}${stateName}状态`}
       className="macro-table-state-panel"
       role="status"
     >

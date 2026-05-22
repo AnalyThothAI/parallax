@@ -26,7 +26,7 @@ describe("MacroAssetCorrelationPage", () => {
   it("renders backend-fed matrix, strongest pairs, and data gaps", async () => {
     renderWithProviders(<MacroAssetCorrelationPage token="test-token" />);
 
-    expect(await screen.findByRole("heading", { name: "Asset Correlation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
     expect(await screen.findByRole("columnheader", { name: "SPY" })).toBeInTheDocument();
     expect(await screen.findByRole("rowheader", { name: "QQQ" })).toBeInTheDocument();
     expect(screen.getByText("SPY / QQQ")).toBeInTheDocument();
