@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
+from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 
@@ -30,6 +31,12 @@ class NewsRepository:
         managed_by_config: bool = True,
         enabled: bool = True,
         refresh_interval_seconds: int = 300,
+        coverage_tags: object = (),
+        asset_universe: object = (),
+        authority_scope: Mapping[str, Any] | None = None,
+        fetch_policy: Mapping[str, Any] | None = None,
+        context_policy: Mapping[str, Any] | None = None,
+        cost_policy: Mapping[str, Any] | None = None,
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
@@ -37,9 +44,11 @@ class NewsRepository:
             """
             INSERT INTO news_sources (
               source_id, provider_type, feed_url, source_domain, source_name, source_role,
-              trust_tier, managed_by_config, enabled, refresh_interval_seconds, created_at_ms, updated_at_ms
+              trust_tier, managed_by_config, enabled, refresh_interval_seconds,
+              coverage_tags_json, asset_universe_json, authority_scope_json, fetch_policy_json,
+              context_policy_json, cost_policy_json, created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (source_id) DO UPDATE SET
               provider_type = EXCLUDED.provider_type,
               feed_url = EXCLUDED.feed_url,
@@ -50,6 +59,12 @@ class NewsRepository:
               managed_by_config = EXCLUDED.managed_by_config,
               enabled = EXCLUDED.enabled,
               refresh_interval_seconds = EXCLUDED.refresh_interval_seconds,
+              coverage_tags_json = EXCLUDED.coverage_tags_json,
+              asset_universe_json = EXCLUDED.asset_universe_json,
+              authority_scope_json = EXCLUDED.authority_scope_json,
+              fetch_policy_json = EXCLUDED.fetch_policy_json,
+              context_policy_json = EXCLUDED.context_policy_json,
+              cost_policy_json = EXCLUDED.cost_policy_json,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING *
             """,
@@ -64,6 +79,12 @@ class NewsRepository:
                 bool(managed_by_config),
                 bool(enabled),
                 max(1, int(refresh_interval_seconds)),
+                _json(list(normalize_string_tuple(coverage_tags))),
+                _json(list(normalize_string_tuple(asset_universe))),
+                _json(_json_dict(authority_scope)),
+                _json(_json_dict(fetch_policy)),
+                _json(_json_dict(context_policy)),
+                _json(_json_dict(cost_policy)),
                 int(now_ms),
                 int(now_ms),
             ),
@@ -1544,8 +1565,21 @@ def _source_payload(source: NewsSourceConfig | Mapping[str, Any]) -> dict[str, A
             "managed_by_config": source.managed_by_config,
             "enabled": source.enabled,
             "refresh_interval_seconds": source.refresh_interval_seconds,
+            "coverage_tags": source.coverage_tags,
+            "asset_universe": source.asset_universe,
+            "authority_scope": source.authority_scope or {},
+            "fetch_policy": source.fetch_policy or {},
+            "context_policy": source.context_policy or {},
+            "cost_policy": source.cost_policy or {},
         }
-    return dict(source)
+    payload = dict(source)
+    payload["coverage_tags"] = normalize_string_tuple(payload.get("coverage_tags"))
+    payload["asset_universe"] = normalize_string_tuple(payload.get("asset_universe"))
+    payload["authority_scope"] = _json_dict(payload.get("authority_scope"))
+    payload["fetch_policy"] = _json_dict(payload.get("fetch_policy"))
+    payload["context_policy"] = _json_dict(payload.get("context_policy"))
+    payload["cost_policy"] = _json_dict(payload.get("cost_policy"))
+    return payload
 
 
 def news_page_cursor(row: Mapping[str, Any]) -> str:

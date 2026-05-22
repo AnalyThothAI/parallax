@@ -1,12 +1,19 @@
 from pathlib import Path
+from typing import get_args
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
+from gmgn_twitter_intel.domains.news_intel.types.source_classification import PROVIDER_TYPES, SOURCE_ROLES
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import RUNNING_TIMEOUT_MS
 from gmgn_twitter_intel.platform.config.settings import (
+    NEWS_PROVIDER_TYPES,
+    NEWS_SOURCE_ROLES,
+    NewsSourceSettings,
     Settings,
+    SettingsNewsProviderType,
+    SettingsNewsSourceRole,
     WorkersSettings,
     default_config_yaml,
     default_workers_yaml,
@@ -147,6 +154,52 @@ def test_news_intel_defaults_enable_core_crypto_and_us_market_sources() -> None:
     assert cryptopanic.provider_type == "cryptopanic"
     assert cryptopanic.feed_url.startswith("cryptopanic://posts?")
     assert cryptopanic.source_role == "aggregator"
+
+
+def test_news_source_settings_accepts_classification_fields_and_normalizes_tuples() -> None:
+    source = NewsSourceSettings(
+        source_id="github-eth",
+        provider_type="github",
+        feed_url="https://api.github.com/repos/ethereum/go-ethereum/releases",
+        source_domain="github.com",
+        source_name="go-ethereum releases",
+        source_role="developer_signal",
+        coverage_tags="ethereum, protocol , releases",
+        asset_universe=[" eth ", "ethereum", ""],
+        authority_scope={"project": "ethereum"},
+        fetch_policy={"interval": "release"},
+        context_policy={"include_threads": True},
+        cost_policy={"tier": "free"},
+    )
+
+    assert source.coverage_tags == ("ethereum", "protocol", "releases")
+    assert source.asset_universe == ("eth", "ethereum")
+    assert source.authority_scope == {"project": "ethereum"}
+    assert source.fetch_policy == {"interval": "release"}
+    assert source.context_policy == {"include_threads": True}
+    assert source.cost_policy == {"tier": "free"}
+
+
+def test_news_source_settings_rejects_unknown_provider_type_and_source_role() -> None:
+    base = {
+        "source_id": "bad-source",
+        "feed_url": "https://example.com/feed",
+        "source_domain": "example.com",
+        "source_name": "Bad Source",
+    }
+
+    with pytest.raises(ValidationError):
+        NewsSourceSettings(**base, provider_type="newsletter")
+
+    with pytest.raises(ValidationError):
+        NewsSourceSettings(**base, source_role="rumor_mill")
+
+
+def test_news_source_settings_taxonomy_matches_domain_taxonomy() -> None:
+    assert NEWS_PROVIDER_TYPES == PROVIDER_TYPES
+    assert NEWS_SOURCE_ROLES == SOURCE_ROLES
+    assert get_args(SettingsNewsProviderType) == NEWS_PROVIDER_TYPES
+    assert get_args(SettingsNewsSourceRole) == NEWS_SOURCE_ROLES
 
 
 def test_default_config_yaml_contains_explicit_news_intel_block() -> None:

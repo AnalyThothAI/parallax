@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -28,6 +28,60 @@ NARRATIVE_REALTIME_WINDOWS = ("1h",)
 NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
 NARRATIVE_REALTIME_SCOPES = ("all",)
 NARRATIVE_REALTIME_SCOPE_SET = frozenset(NARRATIVE_REALTIME_SCOPES)
+NEWS_PROVIDER_TYPES = (
+    "rss",
+    "atom",
+    "json_feed",
+    "cryptopanic",
+    "openbb",
+    "telegram_public",
+    "twitter_profile",
+    "twitter_thread_context",
+    "reddit",
+    "hackernews",
+    "github",
+    "ossinsight",
+    "manual_api",
+)
+NEWS_SOURCE_ROLES = (
+    "official_exchange",
+    "official_regulator",
+    "official_protocol",
+    "official_issuer",
+    "specialist_media",
+    "aggregator",
+    "social",
+    "community",
+    "developer_signal",
+    "observed_source",
+)
+SettingsNewsProviderType = Literal[
+    "rss",
+    "atom",
+    "json_feed",
+    "cryptopanic",
+    "openbb",
+    "telegram_public",
+    "twitter_profile",
+    "twitter_thread_context",
+    "reddit",
+    "hackernews",
+    "github",
+    "ossinsight",
+    "manual_api",
+]
+SettingsNewsSourceRole = Literal[
+    "official_exchange",
+    "official_regulator",
+    "official_protocol",
+    "official_issuer",
+    "specialist_media",
+    "aggregator",
+    "social",
+    "community",
+    "developer_signal",
+    "observed_source",
+]
 DEFAULT_NEWS_SOURCE_CONFIGS: tuple[dict[str, object], ...] = (
     {
         "source_id": "coindesk",
@@ -489,24 +543,21 @@ class NewsSourceSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_id: str
-    provider_type: Literal["rss", "atom", "json_feed", "cryptopanic"] = "rss"
+    provider_type: SettingsNewsProviderType = "rss"
     feed_url: str
     source_domain: str
     source_name: str
-    source_role: Literal[
-        "official_exchange",
-        "official_regulator",
-        "official_protocol",
-        "official_issuer",
-        "specialist_media",
-        "aggregator",
-        "social",
-        "observed_source",
-    ] = "observed_source"
+    source_role: SettingsNewsSourceRole = "observed_source"
     trust_tier: Literal["official", "high", "standard", "low"] = "standard"
     managed_by_config: bool = True
     enabled: bool = True
     refresh_interval_seconds: int = Field(default=300, ge=1)
+    coverage_tags: tuple[str, ...] = ()
+    asset_universe: tuple[str, ...] = ()
+    authority_scope: dict[str, Any] = Field(default_factory=dict)
+    fetch_policy: dict[str, Any] = Field(default_factory=dict)
+    context_policy: dict[str, Any] = Field(default_factory=dict)
+    cost_policy: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("source_id", "feed_url", "source_domain", "source_name", mode="before")
     @classmethod
@@ -524,9 +575,40 @@ class NewsSourceSettings(BaseModel):
             raise ValueError("news source field must not be empty")
         return normalized
 
+    @field_validator("coverage_tags", "asset_universe", mode="before")
+    @classmethod
+    def parse_string_tuple(cls, value: Any) -> tuple[str, ...]:
+        return _normalize_news_string_tuple(value)
+
 
 def _default_news_source_settings() -> tuple[NewsSourceSettings, ...]:
     return tuple(NewsSourceSettings(**source) for source in DEFAULT_NEWS_SOURCE_CONFIGS)
+
+
+def _normalize_news_string_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return _normalize_news_string_parts(value.split(","))
+    if isinstance(value, bytes | bytearray):
+        try:
+            return _normalize_news_string_tuple(bytes(value).decode("utf-8"))
+        except UnicodeDecodeError:
+            return _normalize_news_string_parts((str(value).strip(),))
+    if isinstance(value, Mapping):
+        raise TypeError("mappings are not valid string tuples")
+    if isinstance(value, Iterable):
+        return _normalize_news_string_parts(value)
+    return _normalize_news_string_parts((value,))
+
+
+def _normalize_news_string_parts(parts: Iterable[object]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for part in parts:
+        item = str(part or "").strip()
+        if item:
+            normalized.append(item)
+    return tuple(normalized)
 
 
 class NewsIntelSettings(BaseModel):
