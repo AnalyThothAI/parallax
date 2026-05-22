@@ -160,7 +160,11 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         self._mark_digest_scanned_sync,
                         target=target,
                         now_ms=resolved_now_ms,
-                        next_due_at_ms=epoch_decision.next_due_at_ms,
+                        next_due_at_ms=_next_due_after_no_ready_status_block(
+                            reason=status_decision.reason,
+                            epoch_next_due_at_ms=epoch_decision.next_due_at_ms,
+                            now_ms=resolved_now_ms,
+                        ),
                     )
                     counts[status_decision.status_if_not_refresh] += 1
                     continue
@@ -597,6 +601,12 @@ def _int_or_none(value: Any) -> int | None:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _next_due_after_no_ready_status_block(*, reason: str, epoch_next_due_at_ms: int, now_ms: int) -> int:
+    if reason == "semantic_labeling_pending":
+        return min(int(epoch_next_due_at_ms), int(now_ms) + 60_000)
+    return int(epoch_next_due_at_ms)
 
 
 def _is_agent_no_start_backpressure(exc: Exception) -> bool:

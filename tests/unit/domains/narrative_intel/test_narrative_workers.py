@@ -785,7 +785,7 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
         assert result.notes["insufficient"] == 0
         assert repo.replaced_digests[0]["status"] == "pending"
         assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 910_000, "now_ms": 10_000}]
+        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 70_000, "now_ms": 10_000}]
 
     asyncio.run(scenario())
 
