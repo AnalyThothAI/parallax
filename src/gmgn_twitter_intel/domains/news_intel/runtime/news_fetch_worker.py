@@ -10,9 +10,13 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.news_intel.providers import NewsFeedProvider
-from gmgn_twitter_intel.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
+from gmgn_twitter_intel.domains.news_intel.providers import NewsSourceProvider
 from gmgn_twitter_intel.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
+from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+    NewsProviderObservation,
+    NewsSourceHttpCache,
+    NewsSourceSnapshot,
+)
 
 
 class NewsFetchWorker(WorkerBase):
@@ -21,7 +25,7 @@ class NewsFetchWorker(WorkerBase):
         *,
         news_settings: Any,
         wake_bus: Any | None,
-        feed_client: NewsFeedProvider,
+        feed_client: NewsSourceProvider,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
@@ -72,14 +76,18 @@ class NewsFetchWorker(WorkerBase):
             with self._repository_session() as repos:
                 fetch_run_id = repos.news.start_fetch_run(source_id=source_id, started_at_ms=now_ms)
 
-            feed_kwargs: dict[str, Any] = {
-                "etag": _optional_str(source.get("etag")),
-                "last_modified": _optional_str(source.get("last_modified")),
-            }
-            if str(source.get("provider_type") or "") == "cryptopanic":
-                feed_kwargs["provider_type"] = "cryptopanic"
-                feed_kwargs["source"] = source
-            feed_result = self.feed_client.fetch(str(source["feed_url"]), **feed_kwargs)
+            snapshot = NewsSourceSnapshot.from_row(source, now_ms=now_ms)
+            cache = NewsSourceHttpCache(
+                etag=_optional_str(source.get("etag")),
+                last_modified=_optional_str(source.get("last_modified")),
+            )
+            feed_result = self.feed_client.fetch(
+                snapshot,
+                since_ms=None,
+                cursor={},
+                cache=cache,
+                limit=self._batch_size(),
+            )
 
             with self._repository_session() as repos:
                 if feed_result.not_modified:
@@ -107,7 +115,7 @@ class NewsFetchWorker(WorkerBase):
                     repos.news,
                     source=source,
                     fetch_run_id=fetch_run_id,
-                    entries=feed_result.entries,
+                    observations=feed_result.observations,
                     fetched_at_ms=now_ms,
                 )
                 repos.news.update_source_http_cache(
@@ -142,24 +150,21 @@ class NewsFetchWorker(WorkerBase):
         *,
         source: Mapping[str, Any],
         fetch_run_id: str,
-        entries: list[dict[str, Any]],
+        observations: list[NewsProviderObservation],
         fetched_at_ms: int,
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
         source_id = str(source["source_id"])
         source_domain = str(source["source_domain"])
-        for entry in entries:
-            normalized = normalize_feed_entry(source_domain, entry, fetched_at_ms=fetched_at_ms)
-            if normalized is None:
-                continue
+        for observation in observations:
             counts["fetched"] += 1
             provider = repository.upsert_provider_item(
                 source_id=source_id,
                 fetch_run_id=fetch_run_id,
-                source_item_key=normalized.source_item_key,
-                canonical_url=normalized.canonical_url,
-                payload_hash=_payload_hash(normalized.raw_payload),
-                raw_payload=normalized.raw_payload,
+                source_item_key=observation.source_item_key,
+                canonical_url=observation.canonical_url,
+                payload_hash=_payload_hash(observation.raw_payload),
+                raw_payload=observation.raw_payload,
                 fetched_at_ms=fetched_at_ms,
                 commit=False,
             )
@@ -167,20 +172,20 @@ class NewsFetchWorker(WorkerBase):
                 provider_item_id=provider["provider_item_id"],
                 source_id=source_id,
                 source_domain=source_domain,
-                canonical_url=normalized.canonical_url,
-                title=normalized.title,
-                summary=normalized.summary,
-                body_text=normalized.body_text,
-                language=normalized.language,
-                published_at_ms=normalized.published_at_ms,
+                canonical_url=observation.canonical_url,
+                title=observation.title,
+                summary=observation.summary,
+                body_text=observation.body_text,
+                language=observation.language,
+                published_at_ms=observation.published_at_ms,
                 fetched_at_ms=fetched_at_ms,
                 content_hash=content_hash(
-                    normalized.title,
-                    normalized.summary,
-                    normalized.canonical_url,
-                    body_text=normalized.body_text,
+                    observation.title,
+                    observation.summary,
+                    observation.canonical_url,
+                    body_text=observation.body_text,
                 ),
-                title_fingerprint=title_fingerprint(normalized.title),
+                title_fingerprint=title_fingerprint(observation.title),
                 now_ms=fetched_at_ms,
                 commit=False,
             )

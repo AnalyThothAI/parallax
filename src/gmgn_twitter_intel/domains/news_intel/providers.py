@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol
 
 from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import NewsItemBriefInputPacket
+from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+    NewsProviderFetchResult,
+    NewsSourceHttpCache,
+    NewsSourceSnapshot,
+)
 from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
 
@@ -24,6 +30,23 @@ class NewsFeedProvider(Protocol):
         provider_type: str | None = None,
         source: dict[str, Any] | None = None,
     ) -> NewsFeedFetchResult: ...
+
+    def close(self) -> None: ...
+
+
+class NewsSourceProvider(Protocol):
+    @property
+    def provider_type(self) -> str: ...
+
+    def fetch(
+        self,
+        source: NewsSourceSnapshot,
+        *,
+        since_ms: int | None = None,
+        cursor: Mapping[str, Any] | None = None,
+        cache: NewsSourceHttpCache | None = None,
+        limit: int | None = None,
+    ) -> NewsProviderFetchResult: ...
 
     def close(self) -> None: ...
 
@@ -53,4 +76,4 @@ class NewsItemBriefProvider(Protocol):
     async def aclose(self) -> None: ...
 
 
-__all__ = ["NewsFeedFetchResult", "NewsFeedProvider", "NewsItemBriefProvider"]
+__all__ = ["NewsFeedFetchResult", "NewsFeedProvider", "NewsItemBriefProvider", "NewsSourceProvider"]

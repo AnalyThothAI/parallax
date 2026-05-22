@@ -7,8 +7,13 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import News
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
+from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+    NewsProviderFetchResult,
+    NewsProviderObservation,
+    NewsSourceHttpCache,
+    NewsSourceSnapshot,
+)
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
-from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResult
 
 NOW_MS = 1_779_000_000_000
 
@@ -24,19 +29,29 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
         "last_modified": "old-modified",
     }
     db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeFeedClient(
+    feed = FakeNewsSourceProvider(
         db,
-        FeedFetchResult(
+        NewsProviderFetchResult(
             status_code=200,
             etag="new-etag",
             last_modified="new-modified",
-            entries=[
-                {
-                    "id": "guid-1",
-                    "link": "https://example.com/story?utm_source=rss",
-                    "title": "SOL ETF approved",
-                    "summary": "Issuer confirms launch.",
-                }
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="guid-1",
+                    canonical_url="https://example.com/story",
+                    title="SOL ETF approved",
+                    summary="Issuer confirms launch.",
+                    body_text="Issuer confirms launch.",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={
+                        "id": "guid-1",
+                        "link": "https://example.com/story?utm_source=rss",
+                        "title": "SOL ETF approved",
+                        "summary": "Issuer confirms launch.",
+                        "source_domain": "example.com",
+                    },
+                )
             ],
         ),
     )
@@ -50,9 +65,11 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
     assert db.max_open_sessions == 1
     assert feed.calls == [
         {
-            "url": "https://example.com/rss.xml",
-            "etag": "old-etag",
-            "last_modified": "old-modified",
+            "source_id": "example-rss",
+            "provider_type": "rss",
+            "feed_url": "https://example.com/rss.xml",
+            "cache": NewsSourceHttpCache(etag="old-etag", last_modified="old-modified"),
+            "limit": 10,
         }
     ]
     assert db.repo.reconciled_sources == [source]
@@ -83,7 +100,7 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
         "source_name": "Example",
     }
     db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeFeedClient(db, FeedFetchResult(status_code=304, not_modified=True))
+    feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, not_modified=True, observations=[]))
     wake_bus = FakeWakeBus()
     worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
 
@@ -107,17 +124,27 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
         "source_name": "CryptoPanic",
     }
     db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeFeedClient(
+    feed = FakeNewsSourceProvider(
         db,
-        FeedFetchResult(
+        NewsProviderFetchResult(
             status_code=200,
-            entries=[
-                {
-                    "id": "cryptopanic:32675220",
-                    "link": "https://coincu.com/mastercard-acquires-bvnk/",
-                    "title": "Mastercard Acquires BVNK",
-                    "summary": "Crypto payments deal explained.",
-                }
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="cryptopanic:32675220",
+                    canonical_url="https://coincu.com/mastercard-acquires-bvnk/",
+                    title="Mastercard Acquires BVNK",
+                    summary="Crypto payments deal explained.",
+                    body_text="Crypto payments deal explained.",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={
+                        "id": "cryptopanic:32675220",
+                        "link": "https://coincu.com/mastercard-acquires-bvnk/",
+                        "title": "Mastercard Acquires BVNK",
+                        "summary": "Crypto payments deal explained.",
+                        "source_domain": "cryptopanic.com",
+                    },
+                )
             ],
         ),
     )
@@ -128,11 +155,11 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
     assert result.processed == 1
     assert feed.calls == [
         {
-            "url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
-            "etag": None,
-            "last_modified": None,
-            "provider_type": "cryptopanic",
             "source_id": "cryptopanic-en",
+            "provider_type": "cryptopanic",
+            "feed_url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
+            "cache": NewsSourceHttpCache(etag=None, last_modified=None),
+            "limit": 10,
         }
     ]
     assert db.repo.provider_items[0]["source_item_key"] == "cryptopanic:32675220"
@@ -221,7 +248,7 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
 def _worker(
     *,
     db: FakeDB,
-    feed_client: FakeFeedClient,
+    feed_client: FakeNewsSourceProvider,
     wake_bus: FakeWakeBus,
     sources: list[dict[str, object]],
 ) -> NewsFetchWorker:
@@ -288,28 +315,35 @@ class FakeProjectionDB:
         yield SimpleNamespace(news=self.repo)
 
 
-class FakeFeedClient:
-    def __init__(self, db: FakeDB, result: FeedFetchResult) -> None:
+class FakeNewsSourceProvider:
+    provider_type = "fake"
+
+    def __init__(self, db: FakeDB, result: NewsProviderFetchResult) -> None:
         self.db = db
         self.result = result
         self.calls: list[dict[str, object]] = []
 
     def fetch(
         self,
-        url: str,
+        source: NewsSourceSnapshot,
         *,
-        etag: str | None = None,
-        last_modified: str | None = None,
-        provider_type: str | None = None,
-        source: dict[str, object] | None = None,
-    ) -> FeedFetchResult:
+        since_ms: int | None = None,
+        cursor: dict[str, object] | None = None,
+        cache: NewsSourceHttpCache | None = None,
+        limit: int | None = None,
+    ) -> NewsProviderFetchResult:
         assert self.db.open_sessions == 0
-        call: dict[str, object] = {"url": url, "etag": etag, "last_modified": last_modified}
-        if provider_type is not None:
-            call["provider_type"] = provider_type
-        if source is not None:
-            call["source_id"] = source.get("source_id")
-        self.calls.append(call)
+        assert since_ms is None
+        assert cursor == {}
+        self.calls.append(
+            {
+                "source_id": source.source_id,
+                "provider_type": source.provider_type,
+                "feed_url": source.feed_url,
+                "cache": cache,
+                "limit": limit,
+            }
+        )
         return self.result
 
 
