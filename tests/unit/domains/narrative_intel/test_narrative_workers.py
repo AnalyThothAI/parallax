@@ -186,6 +186,59 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
     asyncio.run(scenario())
 
 
+def test_mention_semantics_enqueues_missing_rows_even_when_due_rows_exist():
+    async def scenario():
+        repo = FakeNarrativeRepository(
+            due_mentions=[
+                {
+                    "semantic_id": "semantic-ready",
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "ready row",
+                    "text_fingerprint": "fp-ready",
+                }
+            ],
+            due_admissions=[
+                {
+                    "admission_id": "admission-1h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "all",
+                    "source_event_ids_json": ["event-new"],
+                }
+            ],
+            source_rows=[
+                {
+                    "event_id": "event-new",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "new row",
+                    "text_fingerprint": "fp-new",
+                    "source_received_at_ms": 9_900,
+                }
+            ],
+        )
+        db = FakeDB(repo)
+        worker = MentionSemanticsWorker(
+            name="mention_semantics",
+            settings=fake_settings(windows=("1h",), scopes=("all",)),
+            db=db,
+            telemetry=SimpleNamespace(),
+            provider=BarrierNarrativeProvider(db),
+        )
+
+        result = await worker.run_once(now_ms=10_000)
+
+        assert result.notes["enqueue_semantic_inserted"] == 1
+        assert repo.enqueued_source_event_ids == ["event-new"]
+        assert result.notes["claimed"] == 1
+        assert result.processed == 1
+
+    asyncio.run(scenario())
+
+
 def test_mention_semantics_enqueue_budget_counts_only_missing_rows():
     repo = FakeNarrativeRepository(
         due_mentions=[],
