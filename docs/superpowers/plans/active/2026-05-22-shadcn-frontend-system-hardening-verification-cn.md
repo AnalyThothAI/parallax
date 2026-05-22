@@ -6,7 +6,7 @@ Worktree: `.worktrees/shadcn-frontend-system-hardening`
 
 ## Summary
 
-- Status: frontend implementation verified; repository/Docker readiness has unrelated backend blockers recorded below.
+- Status: frontend implementation verified after merging current `main`; repository/Docker readiness has unrelated backend blockers recorded below.
 - Scope: frontend shell/sidebar, shadcn primitives, unified page state, lazy route architecture, CSS/fixture cleanup, Docker smoke.
 - Deviations: `make check-all` and `/readyz` are not green because of pre-existing backend/harness blockers outside the frontend scope. Both are tracked in `docs/TECH_DEBT.md`.
 
@@ -15,8 +15,8 @@ Worktree: `.worktrees/shadcn-frontend-system-hardening`
 - `cd web && npm run lint`: PASS. ESLint clean; architecture tests included.
 - `cd web && npm run test:architecture`: PASS. 10 files, 55 tests.
 - `cd web && npm run typecheck`: PASS.
-- `cd web && npm test -- --run`: PASS. 77 files, 297 tests.
-- `cd web && npm run build`: PASS. Largest JS chunk: `index-DwQsnV1L.js` 373.97 kB gzip 115.83 kB. No Vite `> 500 kB` chunk warning.
+- `cd web && npm test -- --run`: PASS. 84 files, 325 tests.
+- `cd web && npm run build`: PASS. Largest JS chunk: `index-BcYh8N0-.js` 374.67 kB gzip 116.12 kB. No Vite `> 500 kB` chunk warning.
 - `cd web && npm run test:e2e`: PASS. 58 passed, 52 skipped.
 
 ## Coverage
@@ -54,6 +54,7 @@ Would reformat: src/gmgn_twitter_intel/app/runtime/provider_wiring/__init__.py
 Would reformat: src/gmgn_twitter_intel/domains/asset_market/repositories/cex_binance_hard_cut_cleanup_repository.py
 Would reformat: src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py
 Would reformat: src/gmgn_twitter_intel/domains/macro_intel/services/macro_asset_correlation.py
+Would reformat: src/gmgn_twitter_intel/domains/macro_intel/services/macro_module_views.py
 Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/__init__.py
 Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/_constants.py
 Would reformat: src/gmgn_twitter_intel/domains/narrative_intel/prompts/__init__.py
@@ -93,6 +94,7 @@ Would reformat: tests/unit/domains/pulse_lab/test_agent_decision_v2_schema.py
 Would reformat: tests/unit/domains/pulse_lab/test_agent_output_normalization.py
 Would reformat: tests/unit/domains/pulse_lab/test_pulse_policy_evaluator.py
 Would reformat: tests/unit/integrations/openai_agents/test_structured_output_strategy.py
+Would reformat: tests/unit/test_api_macro_contract.py
 Would reformat: tests/unit/test_api_ops_contract.py
 Would reformat: tests/unit/test_cex_binance_hard_cut_cleanup.py
 Would reformat: tests/unit/test_cli_ops_contract.py
@@ -103,12 +105,12 @@ Would reformat: tests/unit/test_provider_capabilities.py
 Would reformat: tests/unit/test_pulse_display_status.py
 Would reformat: tests/unit/test_token_case_service.py
 Would reformat: tests/unit/test_token_image_mirror_worker.py
-55 files would be reformatted, 763 files already formatted
+57 files would be reformatted, 767 files already formatted
 make[1]: *** [check] Error 1
 make: *** [check-all] Error 2
 ```
 
-Additional isolation note: applying `uv run ruff format` temporarily allowed the gate to pass formatting, then `mypy src` reported 101 errors in 34 unchanged backend/worker files. The mechanical format was reverted to avoid unrelated churn in this frontend branch.
+Additional isolation note: applying `uv run ruff format` temporarily reformatted 57 files and allowed the gate to pass formatting, then `uv run mypy src` reported 101 errors in 34 unchanged backend/worker files. The mechanical format was reverted to avoid unrelated churn in this frontend branch.
 
 ## Docker Smoke
 
@@ -146,6 +148,7 @@ worker:market_tick_stream:errored:WorkerRunSoftTimeout: worker:market_tick_strea
 
 - `git diff --check`: PASS before Task 6 amend.
 - `git diff --check HEAD~1..HEAD`: PASS for Task 6 commit.
+- `git diff --check`: PASS before post-main e2e alignment commit.
 - `find web/src -path '*/test/*' -o -path '*/tests/*' -o -path '*/fixtures/*' -o -path '*/__fixtures__/*'`: no production test/fixture folders.
 - `rg -n "desktop-side-rail|mobile-route-nav|side-rail|route-nav" web/src web/tests/architecture`: retired fragments appear only in architecture tests.
 
