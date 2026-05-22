@@ -179,6 +179,7 @@ def test_equity_event_repository_replace_page_rows_preserves_unrelated_rows(post
     )
 
     repos.equity_events.replace_page_rows(
+        company_event_ids=("event-preserve-1",),
         rows=[
             {
                 **_page_row("row-preserve-1", "event-preserve-1", "AAPL", NOW_MS + 2_000),
@@ -191,6 +192,50 @@ def test_equity_event_repository_replace_page_rows_preserves_unrelated_rows(post
     assert set(rows_by_id) == {"row-preserve-1", "row-preserve-2"}
     assert rows_by_id["row-preserve-1"]["headline"] == "AAPL event updated"
     assert rows_by_id["row-preserve-2"]["ticker"] == "MSFT"
+
+
+def test_equity_event_repository_replace_page_rows_deletes_empty_scoped_results(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-empty-1",
+        company_id="market_instrument:us_equity:AAPL",
+        ticker="AAPL",
+        primary_document_id=None,
+        event_type="earnings_release",
+        priority="P1",
+        source_role="calendar",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-empty-2",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS + 1_000,
+        discovered_at_ms=NOW_MS + 1_000,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.replace_page_rows(
+        rows=[
+            _page_row("row-empty-1", "event-empty-1", "AAPL", NOW_MS),
+            _page_row("row-empty-2", "event-empty-2", "MSFT", NOW_MS + 1_000),
+        ]
+    )
+
+    repos.equity_events.replace_page_rows(rows=[], company_event_ids=("event-empty-1",))
+
+    rows_by_id = {row["row_id"]: row for row in repos.equity_events.list_event_page_rows(limit=10)}
+    assert set(rows_by_id) == {"row-empty-2"}
+    assert rows_by_id["row-empty-2"]["company_event_id"] == "event-empty-2"
 
 
 def test_equity_event_repository_provider_documents_are_idempotent_by_source_key(postgres_conn) -> None:

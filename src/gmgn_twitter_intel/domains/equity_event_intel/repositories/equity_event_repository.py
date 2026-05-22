@@ -315,10 +315,17 @@ class EquityEventRepository:
         self,
         *,
         rows: Sequence[Mapping[str, Any]],
+        company_event_ids: Sequence[str] | None = None,
         commit: bool = True,
     ) -> None:
         payloads = [_page_row_payload(row) for row in rows]
-        if not payloads:
+        scoped_company_event_ids = (
+            [str(company_event_id) for company_event_id in company_event_ids]
+            if company_event_ids is not None
+            else [payload["company_event_id"] for payload in payloads]
+        )
+        scoped_row_ids = [payload["row_id"] for payload in payloads]
+        if not scoped_company_event_ids and not scoped_row_ids:
             if commit:
                 self.conn.commit()
             return
@@ -330,8 +337,8 @@ class EquityEventRepository:
                 OR company_event_id = ANY(%s::text[])
             """,
             (
-                [payload["row_id"] for payload in payloads],
-                [payload["company_event_id"] for payload in payloads],
+                scoped_row_ids,
+                scoped_company_event_ids,
             ),
         )
         for payload in payloads:
