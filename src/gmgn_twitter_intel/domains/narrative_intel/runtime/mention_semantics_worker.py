@@ -294,7 +294,11 @@ class MentionSemanticsWorker(WorkerBase):
         }
         remaining_cycle_budget = cycle_enqueue_budget
         with self._repository_session() as repos:
-            due_admissions = repos.narratives.due_admissions_for_semantics(now_ms=now_ms, limit=admission_limit)
+            due_admissions = repos.narratives.due_admissions_for_semantics(
+                now_ms=now_ms,
+                limit=admission_limit,
+                windows=_settings_windows(self.settings),
+            )
             stats["due_admissions"] = len(due_admissions)
             for admission in due_admissions:
                 source_rows = repos.narratives.source_rows_for_admission(admission, limit=source_limit)
@@ -516,6 +520,10 @@ def _attach_semantic_identity(items: list[dict[str, Any]], *, rows: list[dict[st
             next_item.setdefault("text_fingerprint", row.get("text_fingerprint"))
         enriched.append(next_item)
     return enriched
+
+
+def _settings_windows(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
 
 
 def _hash_json(payload: Any) -> str:

@@ -170,6 +170,7 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
         assert result.notes["enqueue_semantic_inserted"] == 2
         assert result.notes["enqueue_semantic_suppressed_budget"] == 3
         assert result.notes["enqueue_semantic_pending_before"] == 1
+        assert repo.due_admissions_for_semantics_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
         assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
         assert result.processed == 1
 
@@ -565,6 +566,7 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
 
         assert result.processed == 0
         assert result.failed == 1
+        assert repo.due_digest_target_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
         assert result.notes["llm_calls"] == 1
         assert result.notes["llm_failures"] == 1
         assert repo.recorded_runs[0]["stage"] == "discussion_digest"
@@ -790,7 +792,7 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
     asyncio.run(scenario())
 
 
-def test_token_discussion_digest_worker_skips_unsupported_5m_without_digest_write():
+def test_token_discussion_digest_worker_does_not_claim_unsupported_5m_by_default():
     async def scenario():
         repo = FakeDigestRepository(
             targets=[
@@ -814,14 +816,13 @@ def test_token_discussion_digest_worker_skips_unsupported_5m_without_digest_writ
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.processed == 1
+        assert result.skipped == 1
+        assert result.notes == {"reason": "no_due_digest_targets", "claimed": 0}
+        assert repo.due_digest_target_calls == [{"now_ms": 10_000, "limit": 10, "windows": ("1h",)}]
+        assert result.processed == 0
         assert result.failed == 0
-        assert result.notes["deferred_epoch_policy"] == 1
-        assert result.notes["refresh_reasons"]["unsupported_window"] == 1
         assert repo.replaced_digests == []
-        assert repo.digest_scans == [
-            {"admission_ids": ["admission-5m"], "next_due_at_ms": 86_410_000, "now_ms": 10_000}
-        ]
+        assert repo.digest_scans == []
 
     asyncio.run(scenario())
 
@@ -1286,6 +1287,7 @@ class FakeNarrativeRepository:
         self.enqueued_source_event_ids = []
         self.semantic_scans = []
         self.due_mentions_calls = []
+        self.due_admissions_for_semantics_calls = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
         return self.radar_rows[:limit]
@@ -1315,9 +1317,10 @@ class FakeNarrativeRepository:
         self.suppressed_frontiers.append(set(active_target_keys))
         return {"suppressed": 0}
 
-    def due_admissions_for_semantics(self, *, now_ms, limit):
+    def due_admissions_for_semantics(self, *, now_ms, limit, windows):
+        self.due_admissions_for_semantics_calls.append({"now_ms": now_ms, "limit": limit, "windows": tuple(windows)})
         if self.due_admissions is not None:
-            return self.due_admissions[:limit]
+            return [admission for admission in self.due_admissions if admission.get("window") in windows][:limit]
         if not self.upserted_admissions:
             return []
         first = self.upserted_admissions[0]
@@ -1403,10 +1406,12 @@ class FakeDigestRepository:
         self.replaced_digests = []
         self.digest_scans = []
         self.digest_context_calls = []
+        self.due_digest_target_calls = []
 
-    def due_digest_targets(self, *, now_ms, limit):
+    def due_digest_targets(self, *, now_ms, limit, windows=("1h",)):
+        self.due_digest_target_calls.append({"now_ms": now_ms, "limit": limit, "windows": tuple(windows)})
         if self.targets is not None:
-            return self.targets[:limit]
+            return [target for target in self.targets if target.get("window") in windows][:limit]
         return [
             {
                 "admission_id": "admission-1",

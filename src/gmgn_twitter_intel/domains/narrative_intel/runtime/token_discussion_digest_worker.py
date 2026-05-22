@@ -399,7 +399,13 @@ class TokenDiscussionDigestWorker(WorkerBase):
 
     def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
-            return list(repos.narratives.due_digest_targets(now_ms=now_ms, limit=limit))
+            return list(
+                repos.narratives.due_digest_targets(
+                    now_ms=now_ms,
+                    limit=limit,
+                    windows=_settings_windows(self.settings),
+                )
+            )
 
     def _digest_context_sync(self, *, target: dict[str, Any]) -> dict[str, Any]:
         with self._repository_session() as repos:
@@ -607,6 +613,10 @@ def _next_due_after_no_ready_status_block(*, reason: str, epoch_next_due_at_ms: 
     if reason == "semantic_labeling_pending":
         return min(int(epoch_next_due_at_ms), int(now_ms) + 60_000)
     return int(epoch_next_due_at_ms)
+
+
+def _settings_windows(settings: Any) -> tuple[str, ...]:
+    return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
 
 
 def _is_agent_no_start_backpressure(exc: Exception) -> bool:

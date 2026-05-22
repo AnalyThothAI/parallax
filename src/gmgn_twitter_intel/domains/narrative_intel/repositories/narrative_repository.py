@@ -280,16 +280,20 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"suppressed": int(getattr(cursor, "rowcount", 0) or 0)}
 
-    def due_admissions_for_semantics(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    def due_admissions_for_semantics(
+        self, *, now_ms: int, limit: int, windows: tuple[str, ...] = ("1h",)
+    ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT *
             FROM narrative_admissions
-            WHERE status = 'admitted' AND next_semantics_due_at_ms <= %s
+            WHERE status = 'admitted'
+              AND next_semantics_due_at_ms <= %s
+              AND "window" = ANY(%s)
             ORDER BY priority DESC, last_seen_at_ms DESC
             LIMIT %s
             """,
-            (int(now_ms), int(limit)),
+            (int(now_ms), list(windows), int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
 
@@ -988,16 +992,20 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"labeled": labeled, "semantic_unavailable": unavailable, "failed": failed}
 
-    def due_digest_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    def due_digest_targets(
+        self, *, now_ms: int, limit: int, windows: tuple[str, ...] = ("1h",)
+    ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT *
             FROM narrative_admissions
-            WHERE status = 'admitted' AND next_digest_due_at_ms <= %s
+            WHERE status = 'admitted'
+              AND next_digest_due_at_ms <= %s
+              AND "window" = ANY(%s)
             ORDER BY priority DESC, last_seen_at_ms DESC
             LIMIT %s
             """,
-            (int(now_ms), int(limit)),
+            (int(now_ms), list(windows), int(limit)),
         ).fetchall()
         return [_row(row) for row in rows]
 

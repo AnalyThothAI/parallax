@@ -500,6 +500,47 @@ def test_digest_context_counts_missing_semantics_outside_prompt_limit(tmp_path):
     assert len(context["mentions"]) == 10
 
 
+def test_due_digest_targets_filters_legacy_windows(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
+    try:
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:OneHour",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-1h"],
+                    "source_max_received_at_ms": 9_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:Legacy",
+                    "window": "24h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-24h"],
+                    "source_max_received_at_ms": 9_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+            ],
+            now_ms=9_000,
+        )
+        conn.execute("UPDATE narrative_admissions SET next_digest_due_at_ms = 9_000")
+        conn.commit()
+
+        rows = repo.due_digest_targets(now_ms=10_000, limit=10, windows=("1h",))
+    finally:
+        conn.close()
+
+    assert [row["window"] for row in rows] == ["1h"]
+    assert [row["target_id"] for row in rows] == ["solana:OneHour"]
+
+
 def test_digest_context_full_source_counts_ignore_digest_now_window_filter(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     old_ms = 1_000
