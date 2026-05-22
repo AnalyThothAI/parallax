@@ -294,9 +294,10 @@ class NarrativeBacklogHealthQuery:
             FROM narrative_model_runs
             WHERE schema_version = %s
               AND finished_at_ms >= %s
+              AND (stage <> 'discussion_digest' OR "window" = ANY(%s))
             GROUP BY stage
             """,
-            (schema_version, int(since_ms)),
+            (schema_version, int(since_ms), list(self.realtime_windows)),
         ).fetchall()
         result = {
             "mention_semantics": {"success": 0, "failure": 0, "timeout": 0},

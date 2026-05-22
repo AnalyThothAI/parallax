@@ -55,7 +55,7 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
         "last_ready_p95_age_ms": 600_000,
         "delta_source_rows": 9,
         "delta_independent_authors": 3,
-        "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
+        "digest_refresh_due_by_window": {"1h": 2},
         "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
     }
     semantic_sql = next(statement for statement in query.conn.statements if "current_sources" in statement)
@@ -106,7 +106,7 @@ class FakeConn:
                         "last_ready_p95_age_ms": 600_000,
                         "delta_source_rows": 9,
                         "delta_independent_authors": 3,
-                        "digest_refresh_due_by_window": {"1h": 2, "24h": 2},
+                        "digest_refresh_due_by_window": {"1h": 2},
                         "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
                     }
                 ]
@@ -123,6 +123,8 @@ class FakeConn:
                 ]
             )
         if "FROM narrative_model_runs" in sql:
+            assert 'stage <> \'discussion_digest\' OR "window" = ANY(%s)' in sql
+            assert params == ("narrative_intel_v1", 0, ["1h"])
             return FakeCursor(
                 [
                     {"stage": "mention_semantics", "success": 4, "failure": 2, "timeout": 1},
