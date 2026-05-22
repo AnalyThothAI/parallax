@@ -9,7 +9,13 @@ const srcRoot = join(webRoot, "src");
 const appLayerOrder =
   "@layer properties, theme, base, components, utilities, app.base, app.primitives, app.shell, app.features, app.overrides;";
 
-const retiredGlobalCssBuckets = new Set(["cockpit.css", "shared.css", "signalLab.css"]);
+const retiredGlobalCssBuckets = new Set([
+  "cockpit.css",
+  "macro.css",
+  "macroResponsive.css",
+  "shared.css",
+  "signalLab.css",
+]);
 const globalStyleFiles = new Set(["styles/base.css", "styles/tailwind.css", "styles/tokens.css"]);
 
 const featureClassPrefixes: Record<string, string[]> = {
@@ -184,6 +190,20 @@ describe("CSS architecture harness", () => {
         return cssClassNames(css)
           .filter((className) => /legacy/i.test(className))
           .map((className) => `${relativeToSrc(path)} keeps .${className}`);
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps global custom property definitions in the token stylesheet", () => {
+    const offenders = collectFiles(srcRoot)
+      .filter(isSideEffectCssFile)
+      .filter((path) => relativeToSrc(path) !== "styles/tokens.css")
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+        return cssRules(css)
+          .filter((rule) => rule.selector.split(",").some((selector) => selector.trim() === ":root"))
+          .map((rule) => `${relativeToSrc(path)}:${lineNumber(css, rule.start)} defines :root`);
       });
 
     expect(offenders).toEqual([]);

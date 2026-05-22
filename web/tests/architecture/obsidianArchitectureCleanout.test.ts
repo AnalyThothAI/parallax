@@ -91,9 +91,13 @@ describe("Obsidian Desk architecture cleanout", () => {
 
   it("keeps cockpit shell geometry centralized and route content scrollable", () => {
     const cockpitCss = readSource("features/cockpit/ui/cockpitShell.css");
+    const shellContractCss = readSource("features/cockpit/ui/cockpitShellContract.css");
+    const tokensCss = readSource("styles/tokens.css");
 
-    expect(cockpitCss).toContain("--cockpit-rail-width");
-    expect(cockpitCss).toContain("--cockpit-topbar-height");
+    expect(tokensCss).toContain("--cockpit-topbar-height");
+    expect(tokensCss).toContain("--cockpit-mobile-topbar-height");
+    expect(cockpitCss).not.toContain(":root");
+    expect(shellContractCss).not.toContain(":root");
     expect(cockpitCss).not.toContain("grid-template-columns: 220px");
     expect(cockpitCss).toMatch(/\.center-column\s*{[^}]*overflow:\s*auto;/s);
   });

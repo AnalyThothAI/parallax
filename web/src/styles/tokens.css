@@ -65,6 +65,8 @@
   --risk-line-strong: #7a2c3b;
   --agent-ink: #d9c7ff;
   --shadow-elevated: 0 22px 70px rgba(0, 0, 0, 0.28);
+  --cockpit-topbar-height: 53px;
+  --cockpit-mobile-topbar-height: 48px;
   --radius: 7px;
   --mono: "Berkeley Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
   --sans: "Aptos", "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;

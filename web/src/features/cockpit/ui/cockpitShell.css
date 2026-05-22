@@ -1,9 +1,4 @@
 @layer app.shell {
-  :root {
-    --cockpit-rail-width: 196px;
-    --cockpit-topbar-height: 53px;
-  }
-
   .cockpit-shell {
     display: flex;
     width: 100vw;

@@ -5,7 +5,6 @@ import type {
 } from "@lib/types";
 import * as PageState from "@shared/ui/PageState";
 import { Button } from "@shared/ui/button";
-import clsx from "clsx";
 import {
   ArrowLeft,
   Database,
@@ -18,8 +17,6 @@ import {
 import { useMemo, useState } from "react";
 
 import { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
-import "./macro.css";
-import "./macroResponsive.css";
 import "./MacroAssetCorrelation.css";
 
 const WINDOWS: MacroAssetCorrelationWindow[] = ["20d", "60d", "120d"];
@@ -39,11 +36,11 @@ export function MacroAssetCorrelationPage({
   const negativePairs = useMemo(() => strongestPairs(data, "negative"), [data]);
 
   return (
-    <section className="macro-workbench macro-correlation-page" aria-label="资产相关性">
+    <section className="macro-correlation-page" aria-label="资产相关性">
       <header className="macro-correlation-head">
         <div>
           <Button
-            className="macro-icon-action"
+            className="macro-correlation-action"
             size="sm"
             type="button"
             variant="ghost"
@@ -52,14 +49,14 @@ export function MacroAssetCorrelationPage({
             <ArrowLeft aria-hidden />
             <span>大类资产</span>
           </Button>
-          <span className="macro-eyebrow">后端滚动收益</span>
+          <span className="macro-correlation-eyebrow">后端滚动收益</span>
           <h2>资产相关性</h2>
         </div>
         <div className="macro-correlation-controls" aria-label="相关性窗口">
           {WINDOWS.map((windowOption) => (
             <Button
               aria-pressed={windowOption === window}
-              className={clsx(windowOption === window && "active")}
+              data-state={windowOption === window ? "active" : undefined}
               key={windowOption}
               size="xs"
               type="button"
@@ -77,7 +74,7 @@ export function MacroAssetCorrelationPage({
 
       {data ? (
         <div className="macro-correlation-layout">
-          <section className="macro-map-panel macro-map-panel-wide">
+          <section className="macro-correlation-panel macro-correlation-panel-wide">
             <div className="macro-correlation-meta">
               <SectionLabel icon={Grid3X3} title={`${data.window} 矩阵`} />
               <span>{data.asof_date ? `截至 ${data.asof_date}` : "暂无日期"}</span>
@@ -85,22 +82,22 @@ export function MacroAssetCorrelationPage({
             <CorrelationMatrix data={data} titleByKey={titleByKey} />
           </section>
 
-          <section className="macro-map-panel">
+          <section className="macro-correlation-panel">
             <SectionLabel icon={TrendingUp} title="最强正相关" />
             <PairList pairs={positivePairs} titleByKey={titleByKey} />
           </section>
 
-          <section className="macro-map-panel">
+          <section className="macro-correlation-panel">
             <SectionLabel icon={TrendingDown} title="最强负相关" />
             <PairList pairs={negativePairs} titleByKey={titleByKey} />
           </section>
 
-          <section className="macro-map-panel">
+          <section className="macro-correlation-panel">
             <SectionLabel icon={Database} title="覆盖度" />
             <AssetCoverage data={data} />
           </section>
 
-          <section className="macro-map-panel">
+          <section className="macro-correlation-panel">
             <SectionLabel icon={LinkIcon} title="数据缺口" />
             <CorrelationGaps data={data} titleByKey={titleByKey} />
           </section>
@@ -112,7 +109,7 @@ export function MacroAssetCorrelationPage({
 
 function SectionLabel({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
   return (
-    <div className="macro-section-head">
+    <div className="macro-correlation-section-head">
       <Icon aria-hidden />
       <h4>{title}</h4>
     </div>
@@ -127,7 +124,7 @@ function CorrelationMatrix({
   titleByKey: Record<string, string>;
 }) {
   if (data.assets.length === 0) {
-    return <span className="macro-muted">暂无可用资产</span>;
+    return <span className="macro-correlation-muted">暂无可用资产</span>;
   }
   return (
     <div className="macro-correlation-table-wrap">
@@ -170,7 +167,7 @@ function PairList({
   titleByKey: Record<string, string>;
 }) {
   if (pairs.length === 0) {
-    return <span className="macro-muted">暂无可用配对</span>;
+    return <span className="macro-correlation-muted">暂无可用配对</span>;
   }
   return (
     <div className="macro-correlation-pairs">
@@ -195,15 +192,15 @@ function PairList({
 
 function AssetCoverage({ data }: { data: MacroAssetCorrelationData }) {
   return (
-    <div className="macro-feature-table">
+    <div className="macro-correlation-feature-table">
       {data.assets.map((asset) => (
-        <article className="macro-feature-row" key={asset.concept_key}>
+        <article className="macro-correlation-feature-row" key={asset.concept_key}>
           <span>
             <b>{asset.title}</b>
             <small>{asset.concept_key}</small>
           </span>
           <strong>{asset.return_count}</strong>
-          <span className="macro-feature-deltas">
+          <span className="macro-correlation-feature-deltas">
             <small>{asset.start_date ?? "-"}</small>
             <small>{asset.latest_observed_at ?? "-"}</small>
             <small>{asset.sources.join(" / ") || "暂无数据源"}</small>
@@ -222,12 +219,12 @@ function CorrelationGaps({
   titleByKey: Record<string, string>;
 }) {
   if (data.data_gaps.length === 0) {
-    return <span className="macro-muted">覆盖完整</span>;
+    return <span className="macro-correlation-muted">覆盖完整</span>;
   }
   return (
-    <div className="macro-chip-list">
+    <div className="macro-correlation-chip-list">
       {data.data_gaps.slice(0, 20).map((gap, index) => (
-        <span className="macro-chip gap" key={`${gap.code}:${index}`}>
+        <span className="macro-correlation-chip" data-tone="gap" key={`${gap.code}:${index}`}>
           {gapLabel(gap, titleByKey)}
         </span>
       ))}

@@ -1,8 +1,4 @@
 @layer app.shell {
-  :root {
-    --cockpit-mobile-topbar-height: 48px;
-  }
-
   .topbar-sidebar-trigger {
     display: inline-grid;
   }
