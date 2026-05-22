@@ -168,17 +168,21 @@ const routeCases: RouteCase[] = [
     name: "macro",
     path: "/macro",
     primary: async (page) => {
-      await expect(page.getByRole("region", { name: "宏观" })).toBeVisible();
+      await expect(page.getByRole("region", { exact: true, name: "宏观" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "宏观" })).toBeVisible();
     },
     specific: async (page) => {
-      await expect(page.getByText("funding_stress").first()).toBeVisible();
-      await expect(page.getByText("宏观传导链")).toBeVisible();
-      await expect(page.getByText("核心指标趋势")).toBeVisible();
-      await expect(page.getByText("数据覆盖")).toBeVisible();
+      await expect(page.getByRole("region", { name: "宏观工作台" })).toBeVisible();
+      await expect(page.getByText("Backend says equity leadership is constructive.")).toBeVisible();
+      await expect(page.getByRole("region", { name: "关键指标" })).toContainText("asset:spx");
+      await expect(page.getByRole("region", { name: "核心图表" })).toBeVisible();
+      await expect(page.getByRole("table", { name: "美股代理快照" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "数据缺口" })).toContainText(
+        "equity_breadth_missing",
+      );
     },
-    nestedOverflowSelectors: [".macro-workbench", ".macro-shell", ".macro-overview-grid"],
-    lastMeaningfulSelector: ".macro-map-panel.wide",
+    nestedOverflowSelectors: [".macro-module-route", ".macro-shell", ".macro-page-layout"],
+    lastMeaningfulSelector: "[aria-label='相关页面']",
   },
   {
     name: "ops",

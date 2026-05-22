@@ -26,7 +26,7 @@ test("tablet shell keeps top-level route navigation in the sidebar drawer", asyn
     "Token Radar",
     "Stocks",
     "News",
-    "Macro",
+    "宏观",
     "Watchlist",
     "Signal Lab",
     "Ops",

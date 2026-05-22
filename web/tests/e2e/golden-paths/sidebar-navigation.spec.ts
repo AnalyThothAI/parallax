@@ -21,7 +21,7 @@ test.describe("desktop sidebar navigation", () => {
       "Token Radar",
       "Stocks",
       "News",
-      "Macro",
+      "宏观",
       "Watchlist",
       "Signal Lab",
       "Ops",
