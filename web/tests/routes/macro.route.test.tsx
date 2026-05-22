@@ -1,5 +1,5 @@
 import type { MacroData } from "@lib/types";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
@@ -28,7 +28,14 @@ describe("macro route", () => {
     renderAppRoute("/macro");
 
     expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Macro/i })).toHaveAttribute("aria-current", "page");
+    const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
+    const macroLink = within(navigation).getByRole("link", { name: "Macro" });
+    expect(macroLink).toHaveAttribute("data-active", "true");
+    expect(macroLink).not.toHaveAttribute("aria-current");
+    expect(within(navigation).getByRole("link", { name: "Overview" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro", {
         token: "secret",
