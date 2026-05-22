@@ -66,7 +66,7 @@ export function MacroAssetCorrelationPage({
 
       {data ? (
         <div className="macro-correlation-layout">
-          <section className="macro-map-panel wide">
+          <section className="macro-map-panel macro-map-panel-wide">
             <div className="macro-correlation-meta">
               <SectionLabel icon={Grid3X3} title={`${data.window} matrix`} />
               <span>{data.asof_date ?? "asof pending"}</span>

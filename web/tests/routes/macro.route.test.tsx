@@ -1,11 +1,38 @@
-import type { MacroData } from "@lib/types";
 import { screen, waitFor } from "@testing-library/react";
+import {
+  legacyMacroFixture,
+  macroCorrelationFixture,
+  macroModuleFixture,
+  macroSeriesFixture,
+} from "@tests/fixtures/macroFixture";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiMock, setupAppRouteTest } from "./routeTestSetup";
+
+const chartMocks = vi.hoisted(() => {
+  const lineSeries = { setData: vi.fn() };
+  const chartApi = {
+    addSeries: vi.fn(() => lineSeries),
+    applyOptions: vi.fn(),
+    remove: vi.fn(),
+    resize: vi.fn(),
+    timeScale: vi.fn(() => ({ fitContent: vi.fn() })),
+  };
+  return {
+    chartApi,
+    createChart: vi.fn(() => chartApi),
+    lineSeries,
+  };
+});
+
+vi.mock("lightweight-charts", () => ({
+  ColorType: { Solid: "solid" },
+  LineSeries: "LineSeries",
+  createChart: chartMocks.createChart,
+}));
 
 describe("macro route", () => {
   afterEach(() => {
@@ -17,8 +44,26 @@ describe("macro route", () => {
       mockLiveRadarRoute(mock);
       const baseGetApi = mock.getApiImpl;
       mock.getApiImpl = async (path, options) => {
-        if (path === "/api/macro") return ok(macroFixture());
-        if (path === "/api/macro/assets/correlation") return ok(correlationFixture());
+        if (path === "/api/macro") return ok(legacyMacroFixture());
+        if (path === "/api/macro/modules/overview") {
+          return ok(
+            macroModuleFixture({
+              snapshot: {
+                ...macroModuleFixture().snapshot,
+                module_id: "overview",
+                route_path: "/macro",
+                title: "Overview",
+                section: "overview",
+              },
+            }),
+          );
+        }
+        if (path === "/api/macro/modules/assets/equities") return ok(macroModuleFixture());
+        if (path === "/api/macro/series") {
+          const conceptKeys = String(options?.params?.concept_keys ?? "asset:spx").split(",");
+          return ok(macroSeriesFixture(conceptKeys));
+        }
+        if (path === "/api/macro/assets/correlation") return ok(macroCorrelationFixture());
         return baseGetApi(path, options);
       };
     });
@@ -28,24 +73,36 @@ describe("macro route", () => {
     renderAppRoute("/macro");
 
     expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Macro/i })).toHaveClass("active");
     await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro", {
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
         token: "secret",
       }),
     );
   });
 
-  it("opens a routed macro module and secondary page", async () => {
-    renderAppRoute("/macro/assets/macro-beta");
+  it("opens a routed backend macro module", async () => {
+    renderAppRoute("/macro/assets/equities");
 
     expect(await screen.findByRole("heading", { name: "Macro" })).toBeInTheDocument();
-    expect(
-      await screen.findByRole("heading", { name: "Inflation And Dollar Beta" }),
-    ).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "商品/美元" })).toHaveAttribute(
-      "data-state",
-      "active",
+    expect(await screen.findByRole("heading", { name: "Equities" })).toBeInTheDocument();
+    expect(screen.getByText("Backend says equity leadership is constructive.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
+        token: "secret",
+      }),
+    );
+  });
+
+  it("normalizes unknown module routes back to the macro overview", async () => {
+    renderAppRoute("/macro/assets/unknown");
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
+        token: "secret",
+      }),
     );
   });
 
@@ -62,106 +119,3 @@ describe("macro route", () => {
     );
   });
 });
-
-function macroFixture(): MacroData {
-  return {
-    snapshot: {
-      snapshot_id: "macro-view:macro_regime_v3:1779000000000",
-      projection_version: "macro_regime_v3",
-      asof_date: "2026-05-20",
-      status: "partial",
-      regime: "funding_stress",
-      overall_score: 7.25,
-      computed_at_ms: 1_779_000_000_000,
-    },
-    panels: {
-      liquidity: {
-        score: 9,
-        regime: "funding_stress",
-        evidence: ["sofr_iorb_spread_bps=15.0"],
-        data_gaps: [],
-      },
-    },
-    indicators: {},
-    triggers: [],
-    data_gaps: [],
-    source_coverage: { observed_concept_count: 10, required_concept_count: 10, coverage_ratio: 1 },
-    features: {},
-    chain: {
-      liquidity: {
-        score: 8,
-        regime: "funding_stress",
-        evidence: ["sofr_iorb_spread_bps=15.0"],
-        data_gaps: [],
-      },
-    },
-    scenario: {
-      current_regime: "funding_stress",
-      confidence: 0.72,
-      time_window: "1w",
-      confirmations: [],
-      contradictions: [],
-      watch_triggers: [],
-      invalidations: [],
-      trade_map: [],
-    },
-    scorecard: {
-      projection_version: "macro_regime_v3",
-      observed_concept_count: 10,
-      required_concept_count: 10,
-      coverage_ratio: 1,
-    },
-  };
-}
-
-function correlationFixture() {
-  return {
-    window: "60d",
-    asof_date: "2026-05-20",
-    assets: [
-      {
-        concept_key: "asset:spy",
-        title: "SPY",
-        observations_count: 64,
-        return_count: 60,
-        start_date: "2026-02-21",
-        end_date: "2026-05-20",
-        latest_observed_at: "2026-05-20",
-        sources: ["yahoo"],
-      },
-      {
-        concept_key: "asset:qqq",
-        title: "QQQ",
-        observations_count: 64,
-        return_count: 60,
-        start_date: "2026-02-21",
-        end_date: "2026-05-20",
-        latest_observed_at: "2026-05-20",
-        sources: ["yahoo"],
-      },
-    ],
-    matrix: [
-      {
-        concept_key: "asset:spy",
-        correlations: { "asset:spy": 1, "asset:qqq": 0.92 },
-      },
-      {
-        concept_key: "asset:qqq",
-        correlations: { "asset:spy": 0.92, "asset:qqq": 1 },
-      },
-    ],
-    pairs: [
-      {
-        left: "asset:spy",
-        right: "asset:qqq",
-        correlation: 0.92,
-        sample_size: 58,
-        start_date: "2026-02-24",
-        end_date: "2026-05-20",
-        available: true,
-        reason: null,
-      },
-    ],
-    data_gaps: [],
-  };
-}

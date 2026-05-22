@@ -49,6 +49,9 @@ export const queryKeys = {
   stocksRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
     ["stocks-radar", window, scope, limit] as const,
   macro: () => ["macro"] as const,
+  macroModule: (moduleId: string) => ["macro", "module", moduleId] as const,
+  macroSeries: (conceptKeys: string[], window: string) =>
+    ["macro", "series", [...conceptKeys].sort(), window] as const,
   newsRows: ({
     limit,
     cursor,

@@ -189,17 +189,235 @@ def test_macro_asset_correlation_api_rejects_provider_series_keys() -> None:
     assert response.json() == {"ok": False, "error": "unsupported_asset", "field": "assets"}
 
 
+def test_macro_module_api_returns_backend_module_view() -> None:
+    repo = FakeMacroIntelRepository(
+        snapshot={
+            "snapshot_id": "snapshot-1",
+            "projection_version": "macro_regime_v3",
+            "asof_date": "2026-05-20",
+            "status": "partial",
+            "regime": "tightening",
+            "computed_at_ms": 1_779_000_000_000,
+            "features_json": {
+                "rates:dgs2": {
+                    "latest": {"value": 3.9, "observed_at": "2026-05-20", "unit": "percent"},
+                    "freshness_days": 1,
+                    "data_gaps": [],
+                },
+                "rates:dgs10": {
+                    "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                    "freshness_days": 1,
+                    "data_gaps": [],
+                },
+            },
+            "chain_json": {"rates": {"regime": "tightening"}},
+            "scenario_json": {"current_regime": "tightening", "watch_triggers": [{"code": "higher_real_rates"}]},
+            "source_coverage_json": {"coverage_ratio": 0.5},
+            "data_gaps_json": [],
+        },
+        observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
+        import_run={"run_id": "macro-import-1", "status": "partial", "reason_codes_json": ["fred_key_missing"]},
+    )
+    app = _app(repo)
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro/modules/rates", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert repo.calls == [("latest_snapshot", "macro_regime_v3"), ("latest_import_run", None)]
+    assert repo.latest_observations_call == {
+        "concept_keys": (
+            "rates:dgs2",
+            "rates:dgs10",
+            "rates:dgs5",
+            "rates:dgs30",
+            "rates:10y2y",
+            "rates:10y3m",
+        ),
+        "limit": 250,
+    }
+    assert repo.observations_for_concepts_call is None
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["snapshot"]["module_id"] == "rates"
+    assert payload["data"]["charts"][0]["status"] == "partial"
+    assert payload["data"]["provenance"]["latest_import_run"]["run_id"] == "macro-import-1"
+
+
+def test_macro_module_api_rejects_unsupported_module() -> None:
+    app = _app(FakeMacroIntelRepository(snapshot=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro/modules/not-real", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_macro_module", "field": "module_id"}
+
+
+def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
+    repo = FakeMacroIntelRepository(
+        snapshot={
+            "snapshot_id": "snapshot-1",
+            "projection_version": "macro_regime_v3",
+            "asof_date": "2026-05-20",
+            "status": "partial",
+            "regime": "tightening",
+            "computed_at_ms": 1_779_000_000_000,
+            "features_json": {
+                "crypto:btc": {
+                    "latest": {"value": 110_000, "observed_at": "2026-05-20", "unit": "usd"},
+                    "freshness_days": 1,
+                    "data_gaps": [],
+                },
+            },
+            "chain_json": {"assets": {"regime": "risk_on"}},
+            "scenario_json": {"current_regime": "risk_on", "watch_triggers": []},
+            "source_coverage_json": {"coverage_ratio": 0.5},
+            "data_gaps_json": [],
+        },
+        observations=[],
+        import_run=None,
+    )
+    cex_repo = FakeCexOiRadarRepository(
+        board={
+            "run": {
+                "run_id": "cex-run-1",
+                "status": "partial",
+                "finished_at_ms": 1_779_000_200_000,
+                "notes_json": {"degraded_reasons": ["coinglass_partial"]},
+            },
+            "rows": [
+                {
+                    "row_id": "cex-row-internal",
+                    "run_id": "cex-run-1",
+                    "rank": 1,
+                    "target_id": "cex-token:btc",
+                    "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                    "native_market_id": "BTCUSDT",
+                    "base_symbol": "BTC",
+                    "quote_symbol": "USDT",
+                    "open_interest_usd": 12_500_000_000,
+                    "funding_rate": 0.0001,
+                    "volume_24h_usd": 31_000_000_000,
+                    "mark_price": 110_100.0,
+                    "score": 91.2,
+                    "score_components_json": {"oi": 50},
+                    "observed_at_ms": 1_779_000_100_000,
+                    "computed_at_ms": 1_779_000_150_000,
+                }
+            ],
+        }
+    )
+    app = _app(repo, cex_oi_radar=cex_repo)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/modules/assets/crypto-derivatives",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert cex_repo.latest_board_call == {"limit": 20}
+    cex_table = next(
+        table for table in response.json()["data"]["tables"] if table["table_id"] == "cex_perp_board"
+    )
+    row = cex_table["rows"][0]
+    assert row == {
+        "rank": 1,
+        "symbol": "BTC",
+        "native_market_id": "BTCUSDT",
+        "quote_symbol": "USDT",
+        "open_interest_usd": 12_500_000_000,
+        "funding_rate": 0.0001,
+        "volume_24h_usd": 31_000_000_000,
+        "mark_price": 110_100.0,
+        "score": 91.2,
+        "observed_at_ms": 1_779_000_100_000,
+        "computed_at_ms": 1_779_000_150_000,
+        "degraded_reasons": ["coinglass_partial"],
+    }
+    assert "row_id" not in row
+    assert "run_id" not in row
+    assert "target_id" not in row
+    assert "pricefeed_id" not in row
+    assert "score_components_json" not in row
+
+
+def test_macro_series_api_returns_bounded_concept_series() -> None:
+    repo = FakeMacroIntelRepository(
+        snapshot=None,
+        observations=[
+            _macro_observation("rates:dgs10", "2026-05-19", 4.6),
+            _macro_observation("rates:dgs10", "2026-05-20", 4.7),
+        ],
+    )
+    app = _app(repo)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/series?concept_keys=rates:dgs10&window=60d",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert repo.observations_for_concepts_call == {
+        "concept_keys": ("rates:dgs10",),
+        "lookback_days": 90,
+        "limit_per_series": 90,
+    }
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["series"]["rates:dgs10"]["points"] == [
+        {"observed_at": "2026-05-19", "value": 4.6, "source_name": "yahoo", "data_quality": "ok"},
+        {"observed_at": "2026-05-20", "value": 4.7, "source_name": "yahoo", "data_quality": "ok"},
+    ]
+
+
+def test_macro_series_api_accepts_query_token_auth() -> None:
+    repo = FakeMacroIntelRepository(
+        snapshot=None,
+        observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
+    )
+    app = _app(repo)
+
+    with TestClient(app) as client:
+        response = client.get("/api/macro/series?concept_keys=rates:dgs10&window=60d&token=secret")
+
+    assert response.status_code == 200
+    assert repo.observations_for_concepts_call == {
+        "concept_keys": ("rates:dgs10",),
+        "lookback_days": 90,
+        "limit_per_series": 90,
+    }
+
+
+def test_macro_series_api_rejects_provider_series_keys() -> None:
+    app = _app(FakeMacroIntelRepository(snapshot=None))
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/series?concept_keys=fred:DGS10&window=60d",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_macro_concept", "field": "concept_keys"}
+
+
 class FakeMacroIntelRepository:
     def __init__(
         self,
         *,
         snapshot: dict[str, object] | None,
         observations: list[dict[str, object]] | None = None,
+        import_run: dict[str, object] | None = None,
     ) -> None:
         self.snapshot = snapshot
         self.observations = observations or []
+        self.import_run = import_run
         self.calls: list[tuple[str, str | None]] = []
         self.observations_for_concepts_call: dict[str, object] | None = None
+        self.latest_observations_call: dict[str, object] | None = None
 
     def latest_snapshot(self, *, projection_version: str | None = None):
         self.calls.append(("latest_snapshot", projection_version))
@@ -219,10 +437,36 @@ class FakeMacroIntelRepository:
         }
         return self.observations
 
+    def latest_observations(self, *, limit: int = 250, concept_keys: tuple[str, ...] | None = None):
+        self.latest_observations_call = {
+            "concept_keys": concept_keys,
+            "limit": limit,
+        }
+        return self.observations
+
+    def latest_import_run(self):
+        self.calls.append(("latest_import_run", None))
+        return self.import_run
+
+
+class FakeCexOiRadarRepository:
+    def __init__(self, *, board: dict[str, object]) -> None:
+        self.board = board
+        self.latest_board_call: dict[str, object] | None = None
+
+    def latest_board(self, *, limit: int):
+        self.latest_board_call = {"limit": limit}
+        return self.board
+
 
 class FakeRepositoryContext:
-    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
+    def __init__(
+        self,
+        macro_intel: FakeMacroIntelRepository,
+        cex_oi_radar: FakeCexOiRadarRepository | None = None,
+    ) -> None:
         self.macro_intel = macro_intel
+        self.cex_oi_radar = cex_oi_radar
 
     def __enter__(self):
         return self
@@ -232,20 +476,29 @@ class FakeRepositoryContext:
 
 
 class FakeRuntime:
-    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
+    def __init__(
+        self,
+        macro_intel: FakeMacroIntelRepository,
+        cex_oi_radar: FakeCexOiRadarRepository | None = None,
+    ) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.macro_intel = macro_intel
+        self.cex_oi_radar = cex_oi_radar
 
     def repositories(self):
-        return FakeRepositoryContext(self.macro_intel)
+        return FakeRepositoryContext(self.macro_intel, cex_oi_radar=self.cex_oi_radar)
 
 
-def _app(macro_intel: FakeMacroIntelRepository) -> FastAPI:
+def _app(
+    macro_intel: FakeMacroIntelRepository,
+    *,
+    cex_oi_radar: FakeCexOiRadarRepository | None = None,
+) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(macro_intel)
+    app.state.service = FakeRuntime(macro_intel, cex_oi_radar=cex_oi_radar)
     return app
 
 

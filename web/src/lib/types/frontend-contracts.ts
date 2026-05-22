@@ -136,6 +136,92 @@ export type MacroData = {
   scorecard: MacroScorecard;
 };
 
+export type MacroSemanticRecord = Record<string, unknown>;
+
+export type MacroModuleSnapshot = {
+  module_id: string;
+  route_path: string;
+  title: string;
+  section?: string | null;
+  projection_version?: string | null;
+  status?: string | null;
+  asof_date?: string | null;
+  source_snapshot_id?: string | null;
+  source_projection_version?: string | null;
+  computed_at_ms?: number | null;
+  [key: string]: unknown;
+};
+
+export type MacroModuleTile = {
+  concept_key?: string | null;
+  label?: string | null;
+  latest?: number | string | null;
+  unit?: string | null;
+  freshness_days?: number | null;
+  data_gaps?: unknown[];
+  [key: string]: unknown;
+};
+
+export type MacroModuleChart = {
+  chart_id: string;
+  status?: string | null;
+  missing_concept_keys?: string[];
+  series?: MacroSemanticRecord[];
+  [key: string]: unknown;
+};
+
+export type MacroModuleTable = {
+  table_id: string;
+  status?: string | null;
+  missing_concept_keys?: string[];
+  rows?: MacroSemanticRecord[];
+  [key: string]: unknown;
+};
+
+export type MacroModuleSignal = {
+  code?: string | null;
+  description?: string | null;
+  [key: string]: unknown;
+};
+
+export type MacroModuleView = {
+  snapshot: MacroModuleSnapshot;
+  tiles: MacroModuleTile[];
+  charts: MacroModuleChart[];
+  tables: MacroModuleTable[];
+  current_read: MacroSemanticRecord;
+  signals: MacroModuleSignal[];
+  provenance: MacroSemanticRecord;
+  data_gaps: unknown[];
+  related_routes: string[];
+  [key: string]: unknown;
+};
+
+export type MacroSeriesPoint = {
+  observed_at?: string | null;
+  value?: number | string | null;
+  source_name?: string | null;
+  data_quality?: string | null;
+  [key: string]: unknown;
+};
+
+export type MacroSeriesPayload = {
+  concept_key: string;
+  unit?: string | null;
+  sources?: string[];
+  latest_observed_at?: string | null;
+  data_quality?: string | null;
+  points?: MacroSeriesPoint[];
+  data_gaps?: unknown[];
+  [key: string]: unknown;
+};
+
+export type MacroSeriesData = {
+  window: string;
+  series: Record<string, MacroSeriesPayload>;
+  data_gaps: unknown[];
+};
+
 export type MacroAssetCorrelationAsset = {
   concept_key: string;
   title: string;

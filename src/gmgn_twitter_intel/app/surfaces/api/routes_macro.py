@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime
 from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS, MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CORE_CONCEPTS,
+    MACRO_VIEW_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macro_asset_correlation import (
     ASSET_CORRELATION_WINDOWS,
     DEFAULT_ASSET_CORRELATION_CONCEPTS,
@@ -16,6 +19,19 @@ from gmgn_twitter_intel.domains.macro_intel.services.macro_asset_correlation imp
     SUPPORTED_ASSET_CORRELATION_CONCEPTS,
     build_macro_asset_correlation,
     correlation_query_bounds,
+)
+from gmgn_twitter_intel.domains.macro_intel.services.macro_module_catalog import (
+    UnsupportedMacroModuleError,
+    get_macro_module_config,
+)
+from gmgn_twitter_intel.domains.macro_intel.services.macro_module_views import build_macro_module_view
+from gmgn_twitter_intel.domains.macro_intel.services.macro_series_view import (
+    UnsupportedMacroConceptError,
+    UnsupportedMacroSeriesWindowError,
+    build_macro_series_view,
+    macro_series_query_bounds,
+    validate_macro_series_concepts,
+    validate_macro_series_window,
 )
 
 router = APIRouter()
@@ -50,6 +66,62 @@ def macro_asset_correlation(request: Request) -> JSONResponse:
                 assets=assets,
                 optional_assets=optional_assets,
                 window=window,
+            ),
+        }
+    )
+
+
+@router.get("/macro/series")
+def macro_series(
+    request: Request,
+    concept_keys: Annotated[str, Query()],
+    window: Annotated[str, Query()] = "60d",
+    _token: Annotated[str | None, Query(alias="token")] = None,
+) -> JSONResponse:
+    runtime = _authenticated_runtime(request)
+    _validate_series_query_params(request)
+    resolved_window = _series_window(window)
+    resolved_concept_keys = _series_concept_keys(concept_keys)
+    bounds = macro_series_query_bounds(resolved_window)
+    with runtime.repositories() as repos:
+        observations = repos.macro_intel.observations_for_concepts(
+            concept_keys=resolved_concept_keys,
+            lookback_days=bounds["lookback_days"],
+            limit_per_series=bounds["limit_per_series"],
+        )
+    return _json(
+        {
+            "ok": True,
+            "data": build_macro_series_view(
+                concept_keys=resolved_concept_keys,
+                observations=observations,
+                window=resolved_window,
+            ),
+        }
+    )
+
+
+@router.get("/macro/modules/{module_id:path}")
+def macro_module(request: Request, module_id: str) -> JSONResponse:
+    runtime = _authenticated_runtime(request)
+    try:
+        config = get_macro_module_config(module_id)
+    except UnsupportedMacroModuleError as exc:
+        raise ApiBadRequest(exc.code, field="module_id") from exc
+    with runtime.repositories() as repos:
+        snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
+        observations = repos.macro_intel.latest_observations(limit=250, concept_keys=_module_concepts(config))
+        latest_import_run = repos.macro_intel.latest_import_run()
+        cex_board = _cex_board(repos, module_id)
+    return _json(
+        {
+            "ok": True,
+            "data": build_macro_module_view(
+                module_id,
+                snapshot=snapshot,
+                observations=observations,
+                latest_import_run=latest_import_run,
+                cex_board=cex_board,
             ),
         }
     )
@@ -123,6 +195,54 @@ def _correlation_assets(request: Request) -> tuple[tuple[str, ...], tuple[str, .
     if any(asset not in supported for asset in assets):
         raise ApiBadRequest("unsupported_asset", field="assets")
     return assets, ()
+
+
+def _validate_series_query_params(request: Request) -> None:
+    supported = {"concept_keys", "token", "window"}
+    for name in request.query_params:
+        if name not in supported:
+            raise ApiBadRequest("unsupported_query_param", field=name)
+
+
+def _series_concept_keys(concept_keys: str) -> tuple[str, ...]:
+    raw_concepts = str(concept_keys or "").strip()
+    if not raw_concepts:
+        raise ApiBadRequest("missing_concept_keys", field="concept_keys")
+    concept_keys = tuple(dict.fromkeys(part.strip() for part in raw_concepts.split(",") if part.strip()))
+    try:
+        return validate_macro_series_concepts(concept_keys)
+    except UnsupportedMacroConceptError as exc:
+        raise ApiBadRequest(exc.code, field="concept_keys") from exc
+
+
+def _series_window(window: str) -> str:
+    window = str(window or "60d").strip()
+    try:
+        return validate_macro_series_window(window)
+    except UnsupportedMacroSeriesWindowError as exc:
+        raise ApiBadRequest(exc.code, field="window") from exc
+
+
+def _module_concepts(config: Any) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*config.required_concepts, *config.optional_concepts)))
+
+
+def _cex_board(repos: Any, module_id: str) -> dict[str, Any] | None:
+    if module_id != "assets/crypto-derivatives":
+        return None
+    board_repo = getattr(repos, "cex_oi_radar", None)
+    if board_repo is None:
+        return None
+    board = board_repo.latest_board(limit=20)
+    run = board.get("run") if isinstance(board, dict) else None
+    rows = board.get("rows") if isinstance(board, dict) else []
+    notes = (run or {}).get("notes_json") if isinstance(run, dict) else None
+    return {
+        "status": (run or {}).get("status") if isinstance(run, dict) else "missing",
+        "degraded_reasons": notes.get("degraded_reasons", []) if isinstance(notes, dict) else [],
+        "observed_at_ms": (run or {}).get("finished_at_ms") if isinstance(run, dict) else None,
+        "rows": rows if isinstance(rows, list) else [],
+    }
 
 
 __all__ = ["router"]
