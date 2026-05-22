@@ -89,6 +89,43 @@ describe("notification center components", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  it("renders PageState inline loading in the notification drawer", () => {
+    const { container } = render(
+      <NotificationDrawer
+        loading
+        notifications={[]}
+        open
+        summary={summary}
+        onClose={vi.fn()}
+        onMarkAllRead={vi.fn()}
+        onMarkRead={vi.fn()}
+        onOpenNotification={vi.fn()}
+      />,
+    );
+
+    const loading = screen.getByRole("status", { name: "loading notifications" });
+    expect(loading).toHaveClass("page-state-loading", "page-state-layout-inline");
+    expect(container.querySelector(".remote-state-loading")).not.toBeInTheDocument();
+  });
+
+  it("renders PageState empty state when the notification drawer is clear", () => {
+    const { container } = render(
+      <NotificationDrawer
+        loading={false}
+        notifications={[]}
+        open
+        summary={{ ...summary, unread_count: 0 }}
+        onClose={vi.fn()}
+        onMarkAllRead={vi.fn()}
+        onMarkRead={vi.fn()}
+        onOpenNotification={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("clear").closest(".page-state-empty")).toBeInTheDocument();
+    expect(container.querySelector(".remote-state-empty")).not.toBeInTheDocument();
+  });
+
   it("only shows watchlist dot when the account has unread notifications", () => {
     const { rerender } = render(<WatchlistNotificationDot count={2} />);
 

@@ -6,8 +6,8 @@ import {
   formatTokenPriceUsd,
 } from "@lib/format";
 import type { ScopeKey, StockRadarRow, WindowKey } from "@lib/types";
+import * as PageState from "@shared/ui/PageState";
 import { RadarControls } from "@shared/ui/RadarControls";
-import { RemoteState } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
@@ -72,12 +72,12 @@ export function StocksRadarPage({
           <span>Move</span>
           <span>Quote</span>
         </div>
-        {query.isLoading ? <StocksSkeleton /> : null}
+        {query.isLoading ? <PageState.TableSkeleton rows={8} label="loading stocks radar" /> : null}
         {!query.isLoading && rows.length === 0 ? (
           query.isError ? (
-            <RemoteState.Error error={query.error ?? "Stocks radar unavailable"} />
+            <PageState.Error error={query.error ?? "Stocks radar unavailable"} />
           ) : (
-            <RemoteState.Empty title="No stock flow" />
+            <PageState.Empty title="No stock flow" />
           )
         ) : null}
         {rows.map((row) => (
@@ -151,16 +151,6 @@ function StockRow({ row }: { row: StockRadarRow }) {
         <small>{row.quote.latency_class || row.quote.freshness_class || row.quote.status}</small>
       </span>
     </article>
-  );
-}
-
-function StocksSkeleton() {
-  return (
-    <div className="stocks-radar-skeleton" aria-label="loading stocks radar">
-      {Array.from({ length: 8 }, (_, index) => (
-        <span key={index} />
-      ))}
-    </div>
   );
 }
 
