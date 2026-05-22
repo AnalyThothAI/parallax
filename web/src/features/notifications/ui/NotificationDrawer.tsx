@@ -1,7 +1,7 @@
 import { formatRelativeTime } from "@lib/format";
 import type { NotificationItem, NotificationSummary } from "@lib/types";
 import { IconButton } from "@shared/ui/IconButton";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import clsx from "clsx";
 import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
 
@@ -52,9 +52,9 @@ export function NotificationDrawer({
 
       <div className="notification-list">
         {loading ? (
-          <RemoteState.Loading layout="inline" rows={3} label="loading notifications" />
+          <PageState.Loading layout="inline" rows={3} label="loading notifications" />
         ) : null}
-        {!loading && notifications.length === 0 ? <RemoteState.Empty title="clear" /> : null}
+        {!loading && notifications.length === 0 ? <PageState.Empty title="clear" /> : null}
         {notifications.map((item) => (
           <article
             className={clsx(

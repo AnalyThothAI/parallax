@@ -1,11 +1,11 @@
 import { StocksRadarPage } from "@features/stocks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createApiMock, ok, resetApiMock } from "@tests/msw/fixtures";
 import { apiHandlers } from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
 import { axe } from "jest-axe";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = createApiMock();
 
@@ -13,6 +13,8 @@ beforeEach(() => {
   resetApiMock(apiMock);
   server.use(...apiHandlers(apiMock));
 });
+
+afterEach(() => cleanup());
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -35,6 +37,26 @@ function renderPage() {
 }
 
 describe("StocksRadarPage", () => {
+  it("renders PageState table skeleton while stocks radar is loading", async () => {
+    let resolveRequest!: () => void;
+    const pendingRequest = new Promise<void>((resolve) => {
+      resolveRequest = resolve;
+    });
+    apiMock.readApiImpl = async () => {
+      await pendingRequest;
+      return ok(emptyStocksRadarResponse());
+    };
+
+    const { container } = renderPage();
+
+    const loading = screen.getByRole("status", { name: "loading stocks radar" });
+    expect(loading).toHaveClass("page-state-table-skeleton");
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument();
+    expect(container.querySelector(".stocks-radar-skeleton")).not.toBeInTheDocument();
+    resolveRequest();
+    await waitFor(() => expect(screen.getByText("No stock flow")).toBeInTheDocument());
+  });
+
   it("loads stocks radar rows and renders partial quote state", async () => {
     apiMock.readApiImpl = async () =>
       ok({
@@ -137,9 +159,20 @@ describe("StocksRadarPage", () => {
     expect(screen.getByLabelText("stock RKLB")).toBeInTheDocument();
     expect(screen.getByText("$291.87")).toBeInTheDocument();
     expect(screen.getByText("RuntimeError")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "24h" }));
+    const controls = screen.getByLabelText("stocks radar controls");
+    const windowGroup = within(controls).getByLabelText("radar window");
+    const scopeGroup = within(controls).getByLabelText("token flow scope");
+    expect(within(windowGroup).getByRole("radio", { name: "1h" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    expect(within(scopeGroup).getByRole("radio", { name: "all" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    fireEvent.click(within(windowGroup).getByRole("radio", { name: "24h" }));
     expect(onWindowChange).toHaveBeenCalledWith("24h");
-    fireEvent.click(screen.getByRole("button", { name: "watched" }));
+    fireEvent.click(within(scopeGroup).getByRole("radio", { name: "watched" }));
     expect(onScopeChange).toHaveBeenCalledWith("matched");
 
     await waitFor(() => {
@@ -154,3 +187,23 @@ describe("StocksRadarPage", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+function emptyStocksRadarResponse() {
+  return {
+    window: "1h",
+    scope: "all",
+    query: {
+      window: "1h",
+      scope: "all",
+      limit: 48,
+      window_start_ms: 1,
+      window_end_ms: 2,
+    },
+    rows: [],
+    health: {
+      returned_count: 0,
+      quote_ready_count: 0,
+      quote_unavailable_count: 0,
+    },
+  } as any;
+}

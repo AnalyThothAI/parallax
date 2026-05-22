@@ -85,28 +85,31 @@
     font-size: 10px;
   }
 
-  .search-segmented {
+  .search-segmented[data-slot="toggle-group"] {
     display: grid;
+    width: 100%;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;
   }
 
-  .search-segmented.two {
+  .search-segmented.two[data-slot="toggle-group"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .search-segmented button {
+  .search-segmented-item {
     min-width: 0;
     min-height: 28px;
+    height: 28px;
     color: var(--ash);
     border: 1px solid var(--line);
     border-radius: 3px;
     background: rgba(7, 10, 10, 0.9);
+    padding: 0 8px;
     font-family: var(--mono);
     font-size: 10px;
   }
 
-  .search-segmented button.active {
+  .search-segmented-item[data-state="on"] {
     color: var(--bone);
     border-color: var(--opportunity-line);
     background: rgba(231, 169, 39, 0.12);
@@ -323,283 +326,4 @@
     text-decoration: none;
   }
 
-  .search-topic-bars {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(18px, 1fr));
-    gap: 5px;
-    align-items: end;
-    min-height: 180px;
-    padding: 10px;
-  }
-
-  .search-topic-bars > div {
-    display: grid;
-    align-items: end;
-    gap: 5px;
-    min-height: 150px;
-  }
-
-  .search-topic-bars i {
-    min-height: 8px;
-    background: rgba(85, 199, 174, 0.66);
-    border: 1px solid rgba(85, 199, 174, 0.25);
-  }
-
-  .search-topic-bars span {
-    color: var(--dim);
-    font-family: var(--mono);
-    font-size: 10px;
-    text-align: center;
-  }
-
-  .search-candidate-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    gap: 8px;
-    padding: 10px;
-  }
-
-  .search-candidate-grid article {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    padding: 9px;
-    border: 1px solid var(--line);
-    background: rgba(7, 10, 10, 0.9);
-  }
-
-  .search-candidate-grid b,
-  .search-candidate-grid code,
-  .search-candidate-grid small,
-  .search-candidate-grid p {
-    min-width: 0;
-    overflow: hidden;
-    font-family: var(--mono);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .search-candidate-grid b {
-    color: var(--bone);
-  }
-
-  .search-candidate-grid code,
-  .search-candidate-grid small,
-  .search-candidate-grid p {
-    color: var(--dim);
-    font-size: 10px;
-  }
-
-  .search-score-summary,
-  .search-score-families {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    padding: 10px;
-  }
-
-  .search-score-families {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding-top: 0;
-  }
-
-  .search-score-summary > div,
-  .search-score-families > div {
-    min-width: 0;
-    padding: 8px;
-    border: 1px solid var(--line);
-    background: rgba(7, 10, 10, 0.9);
-  }
-
-  .search-score-summary span,
-  .search-score-families span,
-  .search-score-summary b,
-  .search-score-families b {
-    display: block;
-    overflow: hidden;
-    font-family: var(--mono);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .search-score-summary span,
-  .search-score-families span {
-    color: var(--dim);
-    font-size: 10px;
-  }
-
-  .search-score-summary b,
-  .search-score-families b {
-    margin-top: 4px;
-    color: var(--bone);
-  }
-
-  .search-data-health {
-    padding: 0 10px 10px;
-  }
-
-  .search-empty-state {
-    display: grid;
-    gap: 4px;
-    padding: 24px;
-    color: var(--ash);
-    border: 1px solid var(--line);
-    background: rgba(13, 17, 17, 0.96);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .search-empty-state.compact {
-    margin: 10px;
-    padding: 12px;
-  }
-
-  .search-empty-state.error {
-    border-color: rgba(239, 107, 105, 0.4);
-  }
-
-  .search-empty-state b {
-    color: var(--bone);
-  }
-
-  .search-empty-state span {
-    color: var(--risk);
-  }
-
-  .search-agent-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 10px;
-  }
-
-  .search-agent-card {
-    min-width: 0;
-    padding: 9px;
-    border: 1px solid var(--line);
-    background: rgba(8, 11, 11, 0.95);
-  }
-
-  .search-agent-card.wide {
-    grid-column: 1 / -1;
-  }
-
-  .search-agent-card.bull {
-    border-color: rgba(116, 212, 127, 0.35);
-    background: rgba(116, 212, 127, 0.055);
-  }
-
-  .search-agent-card.bear {
-    border-color: rgba(239, 107, 105, 0.35);
-    background: rgba(239, 107, 105, 0.055);
-  }
-
-  .search-agent-card h4 {
-    margin: 0 0 7px;
-    color: var(--bone);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .search-agent-card b,
-  .search-agent-card strong {
-    color: var(--bone);
-    font-family: var(--mono);
-  }
-
-  .search-agent-card p,
-  .search-agent-card li {
-    color: var(--bone-2);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .search-agent-card p {
-    margin: 0 0 8px;
-  }
-
-  .search-agent-card ul {
-    margin: 8px 0 0;
-    padding-left: 16px;
-  }
-
-  .search-agent-phase-list {
-    display: grid;
-    gap: 6px;
-  }
-
-  .search-agent-phase-list > div {
-    padding: 7px;
-    border: 1px solid var(--line);
-    background: rgba(7, 9, 9, 0.9);
-  }
-
-  .search-agent-phase-list span,
-  .search-agent-phase-list em {
-    display: block;
-    color: var(--dim);
-    font-family: var(--mono);
-    font-size: 10px;
-    font-style: normal;
-  }
-
-  @media (max-width: 1180px) {
-    .search-result-grid,
-    .search-agent-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .search-metric-strip {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .search-evidence-toolbar {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-
-  @media (max-width: 767px) {
-    .search-intel-topbar,
-    .search-case-header,
-    .search-panel header,
-    .search-agent-brief > header {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .search-intel-topbar,
-    .search-case-header {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .search-intel-titleline {
-      flex-wrap: wrap;
-    }
-
-    .search-route-meta,
-    .search-case-meta {
-      justify-content: flex-start;
-    }
-
-    .search-result-grid,
-    .search-intel-controls,
-    .search-agent-grid,
-    .search-score-summary,
-    .search-score-families {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .search-metric-strip {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .search-evidence-toolbar,
-    .search-evidence-list article {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .search-evidence-list a {
-      justify-self: start;
-    }
-  }
 }

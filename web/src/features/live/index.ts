@@ -5,6 +5,7 @@ export { useLiveRouteState } from "./state/liveRouteState";
 export { useLiveSelection, type SelectedSignal } from "./useLiveSelection";
 export type { LiveMobileTask } from "./model/liveMobileTask";
 export { buildLiveSignalTapeItems } from "./liveTapeModel";
+export type { LiveSignalTapeItem } from "./liveTapeModel";
 export { LivePage } from "./ui/LivePage";
 export { LiveRadar } from "./ui/LiveRadar";
 export { LiveTaskNav } from "./ui/LiveTaskNav";

@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { macroModuleFixture, macroSeriesFixture } from "@tests/fixtures/macroFixture";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
 import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
 
@@ -52,6 +53,8 @@ export async function installMockApi(page: Page) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
     }
     if (path === "/api/macro") return fulfill(route, macroData());
+    if (path.startsWith("/api/macro/modules/")) return fulfill(route, macroModuleData(path));
+    if (path === "/api/macro/series") return fulfill(route, macroSeriesData(url));
     if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsData());
     if (path.startsWith("/api/ops/queues/")) return fulfill(route, opsQueueData(path));
 
@@ -1338,6 +1341,28 @@ function macroData() {
       },
     },
   };
+}
+
+function macroModuleData(path: string) {
+  const moduleId = decodeURIComponent(path.replace("/api/macro/modules/", "")) || "overview";
+  const base = macroModuleFixture();
+  return macroModuleFixture({
+    snapshot: {
+      ...base.snapshot,
+      module_id: moduleId,
+      route_path: moduleId === "overview" ? "/macro" : `/macro/${moduleId}`,
+      section: moduleId.split("/")[0] || "overview",
+      title: moduleId === "overview" ? "Overview" : base.snapshot.title,
+    },
+  });
+}
+
+function macroSeriesData(url: URL) {
+  const conceptKeys = (url.searchParams.get("concept_keys") ?? "asset:spx")
+    .split(",")
+    .map((conceptKey) => conceptKey.trim())
+    .filter(Boolean);
+  return macroSeriesFixture(conceptKeys.length > 0 ? conceptKeys : ["asset:spx"]);
 }
 
 function opsDiagnosticsData() {

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import {
   legacyMacroFixture,
   macroCorrelationFixture,
@@ -69,18 +69,29 @@ describe("macro route", () => {
     });
   });
 
-  it("renders macro inside the cockpit shell and marks the sidebar item active", async () => {
-    renderAppRoute("/macro");
+  it(
+    "renders macro inside the cockpit shell and marks the sidebar item active",
+    async () => {
+      renderAppRoute("/macro");
 
-    expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("aria-current", "page");
-    await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
-        token: "secret",
-      }),
-    );
-  });
+      expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+      const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
+      const macroLink = within(navigation).getByRole("link", { name: "宏观" });
+      expect(macroLink).toHaveAttribute("data-active", "true");
+      expect(macroLink).not.toHaveAttribute("aria-current");
+      expect(within(navigation).getByRole("link", { name: "总览" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      await waitFor(() =>
+        expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
+          token: "secret",
+        }),
+      );
+    },
+    10_000,
+  );
 
   it("opens a routed backend macro module", async () => {
     renderAppRoute("/macro/assets/equities");

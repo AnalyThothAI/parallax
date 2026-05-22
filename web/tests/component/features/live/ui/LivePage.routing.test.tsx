@@ -1,6 +1,6 @@
 import { LivePage } from "@features/live";
-import { tittyPulseFixture } from "@features/signal-lab/test/fixtures";
 import { render, screen } from "@testing-library/react";
+import { tittyPulseFixture } from "@tests/fixtures/signal-lab";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 

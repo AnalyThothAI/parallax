@@ -374,8 +374,16 @@ describe("TokenRadarTable rows", () => {
 
     expect(screen.getByRole("heading", { name: "Token Radar" })).toBeInTheDocument();
     expect(screen.getByText("1 live case")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "5m" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "watched" })).toHaveClass("active");
+    const windowGroup = screen.getByLabelText("radar window");
+    const scopeGroup = screen.getByLabelText("token flow scope");
+    expect(within(windowGroup).getByRole("radio", { name: "5m" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    expect(within(scopeGroup).getByRole("radio", { name: "watched" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
 
     for (const label of ["Attention", "Proof", "Reach", "Entry"]) {
       expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();

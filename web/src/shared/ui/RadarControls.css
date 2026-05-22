@@ -1,5 +1,5 @@
 @layer app.primitives {
-  .radar-controls-group {
+  .radar-controls-group[data-slot="toggle-group"] {
     display: flex;
     gap: 4px;
     min-width: 0;
@@ -9,16 +9,16 @@
     padding: 3px;
   }
 
-  .radar-controls-window {
+  .radar-controls-window[data-slot="toggle-group"] {
     flex-wrap: nowrap;
   }
 
-  .radar-controls-scope {
+  .radar-controls-scope[data-slot="toggle-group"] {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 58px));
   }
 
-  .radar-controls-group button {
+  .radar-controls-item {
     min-width: 44px;
     height: 27px;
     border: 0;
@@ -30,27 +30,27 @@
     font-size: 11px;
   }
 
-  .radar-controls-group button.active {
+  .radar-controls-item[data-state="on"] {
     color: #ffd184;
     background: var(--opportunity-soft);
   }
 
   @media (max-width: 767px) {
-    .radar-controls-group {
+    .radar-controls-group[data-slot="toggle-group"] {
       width: 100%;
       min-width: 0;
     }
 
-    .radar-controls-window {
+    .radar-controls-window[data-slot="toggle-group"] {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
-    .radar-controls-scope {
+    .radar-controls-scope[data-slot="toggle-group"] {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .radar-controls-group button {
+    .radar-controls-item {
       min-width: 0;
       padding: 0 6px;
     }

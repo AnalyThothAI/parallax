@@ -7,8 +7,8 @@ import {
   type TokenRadarVenueFilter,
 } from "@lib/venue";
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
+import * as PageState from "@shared/ui/PageState";
 import { RadarControls } from "@shared/ui/RadarControls";
-import { RemoteState } from "@shared/ui/RemoteState";
 import { ObsidianTokenMark } from "@shared/ui/case-file";
 import {
   flexRender,
@@ -113,12 +113,12 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
 
       <div className="token-radar-table">
         {showLoading ? (
-          <RemoteState.Loading layout="panel" rows={8} label="loading token radar" />
+          <PageState.Loading layout="panel" rows={8} label="loading token radar" />
         ) : null}
-        {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
-        {showEmpty ? <RemoteState.Empty title="当前窗口暂无可交易 token 热度" /> : null}
+        {error ? <PageState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
+        {showEmpty ? <PageState.Empty title="当前窗口暂无可交易 token 热度" /> : null}
         {!showLoading && !error && filteredItems.length ? (
-          <RemoteState.Stale updating={isRefreshing}>
+          <PageState.Stale updating={isRefreshing}>
             <div className="radar-data-table">
               <div>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -171,7 +171,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
                 })}
               </div>
             </div>
-          </RemoteState.Stale>
+          </PageState.Stale>
         ) : null}
       </div>
     </section>

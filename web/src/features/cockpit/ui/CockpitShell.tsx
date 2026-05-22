@@ -26,9 +26,16 @@ export type CockpitShellProps = {
   sidebar: { badges: AppSidebarBadges };
   notifications: ShellNotificationProps;
   onHotkey: (event: KeyboardEvent) => void;
+  outletContext?: unknown;
 };
 
-export function CockpitShell({ topbar, sidebar, notifications, onHotkey }: CockpitShellProps) {
+export function CockpitShell({
+  topbar,
+  sidebar,
+  notifications,
+  onHotkey,
+  outletContext,
+}: CockpitShellProps) {
   useShellHotkeys(onHotkey);
 
   return (
@@ -40,7 +47,7 @@ export function CockpitShell({ topbar, sidebar, notifications, onHotkey }: Cockp
           navigationTrigger={<SidebarTrigger className="topbar-sidebar-trigger" />}
         />
         <section className="center-column">
-          <Outlet />
+          <Outlet context={outletContext} />
         </section>
       </SidebarInset>
       <NotificationLayer {...notifications} />

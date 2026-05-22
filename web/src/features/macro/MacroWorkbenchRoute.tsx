@@ -1,4 +1,4 @@
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 
 import { useMacroModuleQuery } from "./api/useMacroModuleQuery";
 import type { MacroModuleId } from "./model/macroRoutes";
@@ -26,14 +26,14 @@ export function MacroWorkbenchRoute({
   return (
     <section className="macro-module-route" aria-label="宏观">
       <h1>宏观</h1>
-      {query.isLoading ? <RemoteState.Loading layout="route" label="加载宏观模块" /> : null}
-      {query.isError ? <RemoteState.Error error={query.error} /> : null}
+      {query.isLoading ? <PageState.Loading layout="route" label="加载宏观模块" /> : null}
+      {query.isError ? <PageState.Error error={query.error} /> : null}
       {module ? (
-        <RemoteState.Stale updating={query.isFetching && !query.isLoading}>
+        <PageState.Stale updating={query.isFetching && !query.isLoading}>
           <MacroShell module={module} moduleId={moduleId}>
             <MacroModuleContent module={module} moduleId={moduleId} token={token} />
           </MacroShell>
-        </RemoteState.Stale>
+        </PageState.Stale>
       ) : null}
     </section>
   );

@@ -1,6 +1,6 @@
 import type { WatchlistOverviewCluster } from "@lib/types";
 import { searchPath, tokenTargetPath } from "@shared/routing/paths";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { Link } from "react-router-dom";
 
 export function WatchlistInsightRail({
@@ -69,7 +69,7 @@ function ClusterList({
   items: WatchlistOverviewCluster[];
 }) {
   if (!items.length) {
-    return <RemoteState.Empty title={emptyLabel} />;
+    return <PageState.Empty title={emptyLabel} />;
   }
 
   return (
@@ -109,7 +109,7 @@ function RiskPanel({ notes }: { notes: string[] }) {
           ))}
         </ul>
       ) : (
-        <RemoteState.Empty title="No account-level risk notes in this window." />
+        <PageState.Empty title="No account-level risk notes in this window." />
       )}
     </section>
   );

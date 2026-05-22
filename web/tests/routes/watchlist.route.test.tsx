@@ -1,38 +1,13 @@
-import { AppRoutes as App } from "@app/AppRoutes";
-import { setAuthToken } from "@lib/api/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { appStatusFixture } from "@tests/fixtures/appRouteFixtures";
-import { createApiMock, ok, resetApiMock } from "@tests/msw/fixtures";
-import { apiHandlers } from "@tests/msw/handlers";
-import { server } from "@tests/msw/server";
-import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ok } from "@tests/msw/fixtures";
+import { renderAppRoute } from "@tests/render/renderRoute";
+import { beforeEach, describe, expect, it } from "vitest";
 
-const apiMock = createApiMock();
-
-vi.mock("@shared/socket/IntelSocketProvider", () => ({
-  IntelSocketProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
-vi.mock("@shared/socket/socketContext", () => ({
-  useSocketSnapshot: () => ({
-    status: "connected",
-    eventItems: [],
-    notificationItems: [],
-    lastMessageAt: null,
-  }),
-}));
-
-vi.mock("@shared/socket/useMarketSubscription", () => ({
-  useMarketSubscription: () => undefined,
-}));
+import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
 beforeEach(() => {
-  setAuthToken("test-token");
-  resetApiMock(apiMock);
-  server.use(...apiHandlers(apiMock));
+  setupAppRouteTest();
 });
 
 describe("watchlist navigation", () => {
@@ -85,14 +60,7 @@ describe("watchlist navigation", () => {
       return ok({});
     };
 
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderAppRoute("/");
 
     const link = await waitFor(() => screen.getByRole("link", { name: /Watchlist/i }));
     expect(link.getAttribute("href")).toBe("/watchlist");
@@ -197,14 +165,7 @@ describe("watchlist navigation", () => {
       return ok({});
     };
 
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/watchlist?handle=marionawfal&timeline_scope=signal"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderAppRoute("/watchlist?handle=marionawfal&timeline_scope=signal");
 
     expect((await screen.findAllByText("Candidate mentions")).length).toBeGreaterThan(0);
     expect(await screen.findByText("$ALOY")).toBeInTheDocument();

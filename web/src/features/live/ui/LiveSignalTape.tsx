@@ -7,7 +7,7 @@ import {
   tokenLabel,
 } from "@lib/format";
 import { CompactPanel } from "@shared/ui/CompactPanel";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import clsx from "clsx";
 
 import type { LiveSignalTapeItem } from "../liveTapeModel";
@@ -43,10 +43,10 @@ export function LiveSignalTape({
       </header>
       <div className="tape-list">
         {isLoading ? (
-          <RemoteState.Loading layout="inline" rows={3} label="loading replay tape" />
+          <PageState.Loading layout="inline" rows={3} label="loading replay tape" />
         ) : null}
         {!isLoading && visible.length === 0 ? (
-          <RemoteState.Empty title="等待 replay 或 live event" />
+          <PageState.Empty title="等待 replay 或 live event" />
         ) : null}
         {visible.map((item) => {
           const id = tapeItemId(item);

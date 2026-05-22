@@ -545,4 +545,3 @@ curl -sS http://127.0.0.1:8765/readyz | jq '{ok, reasons, db: .db.ok}'
 - The data-router lazy split is the largest behavioral change because route tests and route-level providers may assume `<BrowserRouter>`. Keep this as its own PR.
 - Some CSS files are already large and old; splitting too aggressively can create churn. Split only touched ownership boundaries and let architecture tests prevent new bloat.
 - `/readyz` currently can fail for backend worker timeouts unrelated to frontend. Treat this as a final release blocker only if the branch causes it; otherwise record it as a separate backend plan.
-

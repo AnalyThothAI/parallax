@@ -1,10 +1,19 @@
-import { AppRoutes } from "@routes/AppRoutes";
+import { AppRouteSessionProvider } from "@routes/AppRouteSessionProvider";
+import { createAppBrowserRouter, type AppRouterFactory } from "@routes/router";
 import { IntelSocketProvider } from "@shared/socket/IntelSocketProvider";
+import { RouteFallback } from "@shared/ui/RouteFallback";
+import { useMemo } from "react";
+import { RouterProvider } from "react-router-dom";
 
 import { useAppSession } from "./useAppSession";
 
-export function CockpitApp() {
+export function CockpitApp({
+  createRouter = createAppBrowserRouter,
+}: {
+  createRouter?: AppRouterFactory;
+}) {
   const session = useAppSession();
+  const router = useMemo(() => createRouter(), [createRouter]);
 
   return (
     <IntelSocketProvider
@@ -13,7 +22,9 @@ export function CockpitApp() {
       replay={session.replayLimit}
       notifications
     >
-      <AppRoutes session={session} />
+      <AppRouteSessionProvider session={session}>
+        <RouterProvider router={router} fallbackElement={<RouteFallback />} />
+      </AppRouteSessionProvider>
     </IntelSocketProvider>
   );
 }

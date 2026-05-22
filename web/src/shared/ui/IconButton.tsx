@@ -1,9 +1,12 @@
-import clsx from "clsx";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { cn } from "@lib/utils";
+import type { ComponentProps, ReactNode } from "react";
 
-import "./IconButton.css";
+import { Button } from "./button";
 
-type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> & {
+type IconButtonProps = Omit<
+  ComponentProps<typeof Button>,
+  "aria-label" | "asChild" | "size" | "variant"
+> & {
   "aria-label": string;
   children: ReactNode;
 };
@@ -15,8 +18,14 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   return (
-    <button className={clsx("icon-button", className)} type={type} {...props}>
+    <Button
+      className={cn("size-7 p-0", className)}
+      size="icon-sm"
+      type={type}
+      variant="outline"
+      {...props}
+    >
       {children}
-    </button>
+    </Button>
   );
 }

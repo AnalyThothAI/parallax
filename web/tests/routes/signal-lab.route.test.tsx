@@ -1,6 +1,6 @@
-import { tittyPulseFixture } from "@features/signal-lab/test/fixtures";
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { appStatusFixture } from "@tests/fixtures/appRouteFixtures";
+import { tittyPulseFixture } from "@tests/fixtures/signal-lab";
 import { ok } from "@tests/msw/fixtures";
 import { renderAppRoute } from "@tests/render/renderRoute";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
 describe("signal lab route", () => {
   afterEach(() => {
-    document.body.replaceChildren();
+    cleanup();
   });
 
   beforeEach(() => {

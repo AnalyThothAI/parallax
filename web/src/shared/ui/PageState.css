@@ -1,6 +1,6 @@
 @layer app.primitives {
-  .remote-state-empty,
-  .remote-state-error {
+  .page-state-empty,
+  .page-state-error {
     display: grid;
     min-height: 74px;
     place-items: center;
@@ -11,40 +11,36 @@
     text-align: center;
   }
 
-  .remote-state-empty b,
-  .remote-state-error b {
+  .page-state-empty b,
+  .page-state-error [data-slot="alert-title"] {
     color: var(--bone);
     font-size: 12px;
   }
 
-  .remote-state-empty span,
-  .remote-state-error span {
+  .page-state-empty span,
+  .page-state-error [data-slot="alert-description"] {
     max-width: 48ch;
     line-height: 1.45;
   }
 
-  .remote-state-error {
+  .page-state-error {
     color: var(--opportunity);
   }
 
-  .remote-state-error button,
-  .remote-state-empty button {
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    color: var(--opportunity);
-    background: var(--opportunity-soft);
-    padding: 5px 10px;
+  .page-state-empty-action,
+  .page-state-error [data-slot="button"] {
+    margin-top: 2px;
   }
 
-  .remote-state-loading.route {
+  .page-state-loading.page-state-layout-route {
     margin: 10px 12px;
   }
 
-  .remote-state-stale {
+  .page-state-stale {
     min-width: 0;
   }
 
-  .skeleton-rows {
+  .page-state-table-skeleton {
     display: grid;
     align-content: start;
     gap: 0;
@@ -55,12 +51,12 @@
     background: #080c0c;
   }
 
-  .skeleton-rows.compact {
+  .page-state-table-skeleton-compact {
     border: 0;
     border-radius: 0;
   }
 
-  .skeleton-row {
+  .page-state-table-row {
     display: grid;
     grid-template-columns: 70px minmax(0, 1fr) 54px;
     align-items: center;
@@ -70,21 +66,18 @@
     padding: 8px 10px;
   }
 
-  .skeleton-row:last-child {
+  .page-state-table-row:last-child {
     border-bottom: 0;
   }
 
-  .skeleton-rows.compact .skeleton-row {
+  .page-state-table-skeleton-compact .page-state-table-row {
     grid-template-columns: 56px minmax(0, 1fr) 42px;
     gap: 7px;
     min-height: 54px;
     padding: 6px 8px;
   }
 
-  .skeleton-row i,
-  .skeleton-row b,
-  .skeleton-row em {
-    display: block;
+  .page-state-table-block {
     min-width: 0;
     border-radius: 3px;
     background: linear-gradient(
@@ -95,35 +88,15 @@
     );
   }
 
-  .skeleton-row i {
+  .page-state-table-block-leading {
     height: 20px;
   }
 
-  .skeleton-row b {
+  .page-state-table-block-body {
     height: 34px;
   }
 
-  .skeleton-row em {
+  .page-state-table-block-trailing {
     height: 18px;
-  }
-
-  .route-state-panel {
-    display: grid;
-    align-content: center;
-    gap: 10px;
-    min-height: 180px;
-    padding: 16px;
-    color: var(--dim);
-    font-family: var(--mono);
-  }
-
-  .route-state-panel > b {
-    color: var(--bone);
-    font-size: 12px;
-  }
-
-  .route-state-panel > p {
-    margin: 0;
-    line-height: 1.5;
   }
 }

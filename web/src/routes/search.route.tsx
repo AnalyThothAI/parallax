@@ -1,5 +1,9 @@
 import { SearchIntelPage } from "@features/search";
 
-export function SearchRoute() {
-  return <SearchIntelPage />;
+import { useShellRouteContext } from "./shellRouteContext";
+
+export function Component() {
+  const { token } = useShellRouteContext();
+
+  return <SearchIntelPage token={token} />;
 }

@@ -1,4 +1,5 @@
 import type { ScopeKey, WindowKey } from "@lib/types";
+import { ToggleGroup, ToggleGroupItem } from "@shared/ui/toggle-group";
 
 import type { SearchRouteState } from "../state/searchRouteState";
 
@@ -11,40 +12,60 @@ type SearchIntelControlsProps = {
 };
 
 export function SearchIntelControls({ routeState, onRouteChange }: SearchIntelControlsProps) {
+  const handleWindowChange = (nextWindow: string) => {
+    if (!nextWindow) {
+      return;
+    }
+    if (!WINDOW_OPTIONS.includes(nextWindow as WindowKey)) {
+      return;
+    }
+    onRouteChange({ window: nextWindow as WindowKey });
+  };
+
+  const handleScopeChange = (nextScope: string) => {
+    if (!nextScope) {
+      return;
+    }
+    if (!SCOPE_OPTIONS.includes(nextScope as ScopeKey)) {
+      return;
+    }
+    onRouteChange({ scope: nextScope as ScopeKey });
+  };
+
   return (
     <div className="search-intel-controls" aria-label="Search Intel controls">
       <section>
         <span>window</span>
-        <div className="search-segmented" role="group" aria-label="search window">
+        <ToggleGroup
+          aria-label="search window"
+          className="search-segmented"
+          onValueChange={handleWindowChange}
+          type="single"
+          value={routeState.window}
+        >
           {WINDOW_OPTIONS.map((window) => (
-            <button
-              aria-pressed={routeState.window === window}
-              className={routeState.window === window ? "active" : ""}
-              key={window}
-              onClick={() => onRouteChange({ window })}
-              type="button"
-            >
+            <ToggleGroupItem className="search-segmented-item" key={window} value={window}>
               {window}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </section>
 
       <section>
         <span>scope</span>
-        <div className="search-segmented two" role="group" aria-label="search scope">
+        <ToggleGroup
+          aria-label="search scope"
+          className="search-segmented two"
+          onValueChange={handleScopeChange}
+          type="single"
+          value={routeState.scope}
+        >
           {SCOPE_OPTIONS.map((scope) => (
-            <button
-              aria-pressed={routeState.scope === scope}
-              className={routeState.scope === scope ? "active" : ""}
-              key={scope}
-              onClick={() => onRouteChange({ scope })}
-              type="button"
-            >
+            <ToggleGroupItem className="search-segmented-item" key={scope} value={scope}>
               {scope}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </section>
     </div>
   );

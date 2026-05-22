@@ -3,18 +3,12 @@ import {
   useOpsDiagnosticsQuery,
   useOpsQueueQuery,
 } from "@features/ops";
-import type { ScopeKey, WindowKey } from "@lib/types";
 import { useState } from "react";
 
-export function OpsRoute({
-  scope,
-  token,
-  windowKey,
-}: {
-  scope: ScopeKey;
-  token: string;
-  windowKey: WindowKey;
-}) {
+import { useShellRouteContext } from "./shellRouteContext";
+
+export function Component() {
+  const { scope, token, windowKey } = useShellRouteContext();
   const [selectedQueueName, setSelectedQueueName] = useState<string | null>(null);
   const diagnosticsQuery = useOpsDiagnosticsQuery({
     scope,

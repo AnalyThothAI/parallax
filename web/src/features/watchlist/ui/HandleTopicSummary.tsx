@@ -1,6 +1,6 @@
 import { formatRelativeTime } from "@lib/format";
 import type { WatchlistHandleSummaryData } from "@lib/types";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { Clock3, Sparkles, TextSearch } from "lucide-react";
 
 type SummaryQueryResult<T> = {
@@ -18,14 +18,14 @@ export function HandleTopicSummary({
   query: SummaryQueryResult<WatchlistHandleSummaryData>;
 }) {
   if (query.isPending) {
-    return <RemoteState.Loading label="Loading watchlist summary" layout="panel" rows={3} />;
+    return <PageState.Loading label="Loading watchlist summary" layout="panel" rows={3} />;
   }
   if (query.isError) {
-    return <RemoteState.Error error={query.error} onRetry={() => query.refetch()} />;
+    return <PageState.Error error={query.error} onRetry={() => query.refetch()} />;
   }
   const summary = query.data?.data;
   if (!summary) {
-    return <RemoteState.Empty title="No account topic summary." />;
+    return <PageState.Empty title="No account topic summary." />;
   }
   const generatedAt = summary.generated_at_ms ? formatRelativeTime(summary.generated_at_ms) : null;
   const statusLabel =

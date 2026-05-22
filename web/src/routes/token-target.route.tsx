@@ -1,5 +1,9 @@
 import { TokenCaseRoute } from "@features/token-case";
 
-export function TokenTargetRoute() {
-  return <TokenCaseRoute />;
+import { useShellRouteContext } from "./shellRouteContext";
+
+export function Component() {
+  const { token } = useShellRouteContext();
+
+  return <TokenCaseRoute token={token} />;
 }

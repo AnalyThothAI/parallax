@@ -1,6 +1,6 @@
 import { getAuthToken } from "@lib/api/client";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { TokenCasePanel } from "@shared/ui/case-file";
 import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -14,12 +14,12 @@ import {
   type TokenCaseRouteState,
 } from "../state/tokenCaseRouteState";
 
-export function TokenCaseRoute() {
+export function TokenCaseRoute({ token: tokenProp }: { token?: string } = {}) {
   const { targetType, targetId } = useParams<{ targetType: string; targetId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const routeState = parseTokenCaseRouteState(searchParams);
   const target = useMemo(() => parseTarget(targetType, targetId), [targetId, targetType]);
-  const token = getAuthToken() ?? "";
+  const token = tokenProp ?? getAuthToken() ?? "";
   const dossierQuery = useTokenCase({
     token,
     target,
@@ -48,23 +48,23 @@ export function TokenCaseRoute() {
 
   if (!target) {
     return (
-      <RemoteState.Empty
+      <PageState.Empty
         title="Token case target missing"
         hint="Asset and CexToken routes are supported."
       />
     );
   }
   if (!token) {
-    return <RemoteState.Loading layout="route" rows={4} label="loading token case session" />;
+    return <PageState.Loading layout="route" rows={4} label="loading token case session" />;
   }
   if (dossierQuery.isError) {
-    return <RemoteState.Error error={dossierQuery.error} />;
+    return <PageState.Error error={dossierQuery.error} />;
   }
   if (dossierQuery.isPending) {
-    return <RemoteState.Loading layout="route" rows={5} label="loading token case" />;
+    return <PageState.Loading layout="route" rows={5} label="loading token case" />;
   }
   if (!dossier) {
-    return <RemoteState.Empty title="Token case unavailable" />;
+    return <PageState.Empty title="Token case unavailable" />;
   }
 
   const vm = buildTokenCaseViewModel({

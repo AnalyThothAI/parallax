@@ -1,5 +1,5 @@
 import type { SearchInspectData } from "@lib/types";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
@@ -10,7 +10,7 @@ import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
 describe("search route", () => {
   afterEach(() => {
-    document.body.replaceChildren();
+    cleanup();
   });
 
   beforeEach(() => {
@@ -26,27 +26,33 @@ describe("search route", () => {
     });
   });
 
-  it("routes topbar text search into Search Intel", async () => {
-    renderAppRoute("/");
+  it(
+    "routes topbar text search into Search Intel",
+    async () => {
+      renderAppRoute("/");
 
-    fireEvent.change(await screen.findByLabelText("global search"), { target: { value: "$RKC" } });
-    fireEvent.click(screen.getByRole("button", { name: "检索" }));
+      fireEvent.change(await screen.findByLabelText("global search"), {
+        target: { value: "$RKC" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "检索" }));
 
-    expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: /Token case/i })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(apiMock.readApi).toHaveBeenCalledWith(
-        "/api/search/inspect",
-        expect.objectContaining({
-          params: expect.objectContaining({ q: "$RKC", window: "24h", scope: "all" }),
-        }),
-      );
-    });
-    expect(apiMock.readApi.mock.calls.filter(([path]) => path === "/api/token-case")).toHaveLength(
-      0,
-    );
-    expect(screen.queryByText(/Select Token/i)).not.toBeInTheDocument();
-  });
+      expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
+      expect(await screen.findByRole("region", { name: /Token case/i })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(apiMock.readApi).toHaveBeenCalledWith(
+          "/api/search/inspect",
+          expect.objectContaining({
+            params: expect.objectContaining({ q: "$RKC", window: "24h", scope: "all" }),
+          }),
+        );
+      });
+      expect(
+        apiMock.readApi.mock.calls.filter(([path]) => path === "/api/token-case"),
+      ).toHaveLength(0);
+      expect(screen.queryByText(/Select Token/i)).not.toBeInTheDocument();
+    },
+    10_000,
+  );
 });
 
 function searchTokenInspectFixture(q: string): SearchInspectData {

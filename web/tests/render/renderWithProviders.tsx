@@ -17,12 +17,13 @@ export function renderWithProviders(
   {
     queryClient = createTestQueryClient(),
     route = "/",
+    withRouter = true,
     ...options
-  }: RenderOptions & { queryClient?: QueryClient; route?: string } = {},
+  }: RenderOptions & { queryClient?: QueryClient; route?: string; withRouter?: boolean } = {},
 ) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+      {withRouter ? <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter> : children}
     </QueryClientProvider>
   );
 

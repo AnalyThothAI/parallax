@@ -3,7 +3,7 @@ import type {
   MacroAssetCorrelationPair,
   MacroAssetCorrelationWindow,
 } from "@lib/types";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { Button } from "@shared/ui/button";
 import clsx from "clsx";
 import {
@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 
 import { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
 import "./macro.css";
+import "./macroResponsive.css";
 import "./MacroAssetCorrelation.css";
 
 const WINDOWS: MacroAssetCorrelationWindow[] = ["20d", "60d", "120d"];
@@ -71,8 +72,8 @@ export function MacroAssetCorrelationPage({
         </div>
       </header>
 
-      {query.isLoading ? <RemoteState.Loading layout="route" label="加载相关性" /> : null}
-      {query.isError ? <RemoteState.Error error={query.error} /> : null}
+      {query.isLoading ? <PageState.Loading layout="route" label="加载相关性" /> : null}
+      {query.isError ? <PageState.Error error={query.error} /> : null}
 
       {data ? (
         <div className="macro-correlation-layout">

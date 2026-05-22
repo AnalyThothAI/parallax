@@ -14,9 +14,10 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarRail,
   useSidebar,
 } from "@shared/ui/sidebar";
-import { NavLink, useMatch } from "react-router-dom";
+import { Link, NavLink, useMatch } from "react-router-dom";
 
 import {
   APP_NAVIGATION_GROUPS,
@@ -48,7 +49,9 @@ export function AppSidebar({ badges = {} }: { badges?: AppSidebarBadges }) {
         <nav aria-label="Primary navigation" className="cockpit-app-sidebar-nav">
           {APP_NAVIGATION_GROUPS.map((group) => (
             <SidebarGroup key={group.label}>
-              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupLabel asChild>
+                <h2 className="cockpit-app-sidebar-group-heading">{group.label}</h2>
+              </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {group.items.map((item) => (
@@ -61,8 +64,15 @@ export function AppSidebar({ badges = {} }: { badges?: AppSidebarBadges }) {
         </nav>
       </SidebarContent>
       <SidebarFooter className="cockpit-app-sidebar-footer">
-        <span>Cmd+B sidebar / search</span>
+        <div aria-label="Desk status" className="cockpit-app-sidebar-status" role="status">
+          <span className="cockpit-app-sidebar-status-dot" aria-hidden />
+          <span className="cockpit-app-sidebar-status-copy">
+            <strong>Live desk</strong>
+            <small>facts online</small>
+          </span>
+        </div>
       </SidebarFooter>
+      <SidebarRail className="cockpit-app-sidebar-rail" />
     </Sidebar>
   );
 }
@@ -75,12 +85,19 @@ function AppSidebarItem({ badge, item }: { badge?: string; item: AppNavigationIt
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
-        <NavLink end={item.end} onClick={closeSidebarOnNavigate} to={item.to}>
-          {Icon ? <Icon aria-hidden /> : null}
-          <span>{item.label}</span>
-        </NavLink>
+        {item.children?.length ? (
+          <Link onClick={closeSidebarOnNavigate} to={item.to}>
+            {Icon ? <Icon aria-hidden /> : null}
+            <span>{item.label}</span>
+          </Link>
+        ) : (
+          <NavLink end={item.end} onClick={closeSidebarOnNavigate} to={item.to}>
+            {Icon ? <Icon aria-hidden /> : null}
+            <span>{item.label}</span>
+          </NavLink>
+        )}
       </SidebarMenuButton>
-      {badge ? <SidebarMenuBadge>{badge}</SidebarMenuBadge> : null}
+      {badge !== undefined ? <SidebarMenuBadge>{badge}</SidebarMenuBadge> : null}
       {item.children?.length ? (
         <SidebarMenuSub>
           {item.children.map((child) => (

@@ -17,6 +17,20 @@ describe("frontend test placement", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps production src free of frontend test and fixture folders", () => {
+    const offenders = collectDirectories(srcRoot)
+      .filter((path) => {
+        const name = path.split(/[\\/]/).at(-1);
+
+        return (
+          name === "test" || name === "tests" || name === "fixtures" || name === "__fixtures__"
+        );
+      })
+      .map((path) => relative(webRoot, path));
+
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps route integration tests under tests/routes", () => {
     const offenders = collectFiles(testsRoot)
       .filter((path) => /\.test\.tsx$/.test(path))
@@ -37,5 +51,17 @@ function collectFiles(root: string): string[] {
   return readdirSync(root).flatMap((entry) => {
     const path = join(root, entry);
     return statSync(path).isDirectory() ? collectFiles(path) : [path];
+  });
+}
+
+function collectDirectories(root: string): string[] {
+  return readdirSync(root).flatMap((entry) => {
+    const path = join(root, entry);
+
+    if (!statSync(path).isDirectory()) {
+      return [];
+    }
+
+    return [path, ...collectDirectories(path)];
   });
 }

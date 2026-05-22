@@ -1,8 +1,16 @@
 import { SignalLabPage } from "@features/signal-lab";
-import type { ComponentProps } from "react";
 
-export type SignalLabRouteProps = ComponentProps<typeof SignalLabPage>;
+import { useShellRouteContext } from "./shellRouteContext";
 
-export function SignalLabRoute(props: SignalLabRouteProps) {
-  return <SignalLabPage {...props} />;
+export function Component() {
+  const context = useShellRouteContext();
+
+  return (
+    <SignalLabPage
+      overviewData={context.signalLabOverviewData}
+      selectedAccountEventId={context.selectedAccountEventId}
+      token={context.token}
+      onSelectAccountEvent={context.selectAccountEvent}
+    />
+  );
 }

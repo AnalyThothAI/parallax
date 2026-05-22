@@ -2,7 +2,7 @@ import { getAuthToken } from "@lib/api/client";
 import type { LivePayload, SignalPulseData, SignalPulseItem } from "@lib/types";
 import { signalPulseVenueActions } from "@lib/venue";
 import { searchPath } from "@shared/routing/paths";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import clsx from "clsx";
 import { Link } from "react-router-dom";
 
@@ -16,15 +16,17 @@ import "./SignalLabLayout.css";
 type SignalLabPageProps = {
   selectedAccountEventId?: string | null;
   overviewData?: SignalPulseData;
+  token?: string;
   onSelectAccountEvent?: (item: LivePayload) => void;
 };
 
 export function SignalLabPage({
   selectedAccountEventId = null,
   overviewData,
+  token: tokenProp,
   onSelectAccountEvent,
 }: SignalLabPageProps) {
-  const signalLab = useSignalLabPage({ onSelectAccountEvent });
+  const signalLab = useSignalLabPage({ onSelectAccountEvent, token: tokenProp });
   const inlinePulseItem =
     signalLab.signalPulseData?.items.find(
       (item) => item.candidate_id === signalLab.selectedPulseItemId,
@@ -32,7 +34,7 @@ export function SignalLabPage({
     signalLab.signalPulseData?.items[0] ??
     null;
   const shouldShowDetail = true;
-  const token = getAuthToken() ?? "";
+  const token = tokenProp ?? getAuthToken() ?? "";
   const sourceEvents = useSourceEvents({ token, ids: inlinePulseItem?.source_event_ids ?? [] });
 
   return (
@@ -80,7 +82,7 @@ export function SignalLabPage({
             sourceEvents={sourceEvents.data ?? []}
           />
         ) : (
-          <RemoteState.Empty title="No selected Signal Pulse case." />
+          <PageState.Empty title="No selected Signal Pulse case." />
         )}
       </aside>
     </section>

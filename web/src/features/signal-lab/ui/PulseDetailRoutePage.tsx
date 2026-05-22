@@ -2,7 +2,7 @@ import { getAuthToken } from "@lib/api/client";
 import type { SignalPulseItem } from "@lib/types";
 import { signalPulseVenueActions } from "@lib/venue";
 import { searchPath } from "@shared/routing/paths";
-import { PanelSkeleton, RouteStatePanel } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { useSignalPulseCandidate, useSourceEvents } from "../api/useSignalPulseQueries";
@@ -10,23 +10,24 @@ import { parseSignalPulseVisibility } from "../state/signalLabRouteState";
 
 import { PulseDetailView } from "./PulseDetail";
 
-export function PulseDetailRoutePage() {
+export function PulseDetailRoutePage({ token: tokenProp }: { token?: string } = {}) {
   const { candidateId } = useParams<{ candidateId: string }>();
   const [searchParams] = useSearchParams();
   const visibility = parseSignalPulseVisibility(searchParams.get("visibility"));
-  const token = getAuthToken() ?? "";
+  const token = tokenProp ?? getAuthToken() ?? "";
   const pulse = useSignalPulseCandidate({ token, candidateId: candidateId ?? null, visibility });
   const item = pulse.data?.data ?? null;
   const sourceEvents = useSourceEvents({ token, ids: item?.source_event_ids ?? [] });
 
   if (pulse.isLoading) {
-    return <PanelSkeleton label="loading pulse detail" />;
+    return <PageState.Loading layout="panel" rows={4} label="loading pulse detail" />;
   }
   if (pulse.isError || !item) {
     return (
-      <RouteStatePanel title="Pulse 不存在或已被屏蔽">
-        检查链接，或回到 Signal Pulse 列表选择其他候选。
-      </RouteStatePanel>
+      <PageState.Empty
+        title="Pulse 不存在或已被屏蔽"
+        hint="检查链接，或回到 Signal Pulse 列表选择其他候选。"
+      />
     );
   }
 

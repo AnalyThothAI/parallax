@@ -5,7 +5,10 @@ import {
 } from "@features/macro";
 import { useNavigate, useParams } from "react-router-dom";
 
-export function MacroRoute({ token }: { token: string }) {
+import { useShellRouteContext } from "./shellRouteContext";
+
+export function Component() {
+  const { token } = useShellRouteContext();
   const navigate = useNavigate();
   const { "*": routeTail } = useParams();
   const resolution = parseMacroRouteTail(routeTail);

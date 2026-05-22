@@ -1,5 +1,5 @@
 import { buildSignalPulseQueueItem } from "@features/signal-lab/model/signalPulseQueue";
-import { tittyPulseFixture } from "@features/signal-lab/test/fixtures";
+import { tittyPulseFixture } from "@tests/fixtures/signal-lab";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {

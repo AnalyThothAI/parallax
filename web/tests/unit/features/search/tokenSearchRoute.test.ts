@@ -1,5 +1,5 @@
-import { tokenSearchQuery } from "@features/search";
 import type { TokenFlowItem } from "@lib/types";
+import { tokenSearchQuery } from "@shared/routing/tokenSearch";
 import { describe, expect, it } from "vitest";
 
 describe("tokenSearchQuery", () => {

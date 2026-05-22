@@ -1,6 +1,6 @@
 import type { SearchInspectData } from "@lib/types";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
-import { RemoteState } from "@shared/ui/RemoteState";
+import * as PageState from "@shared/ui/PageState";
 import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -15,12 +15,13 @@ import { SearchAmbiguousCase } from "./SearchAmbiguousCase";
 import { SearchTokenIntelPage } from "./SearchTokenIntelPage";
 import { SearchTopicCase } from "./SearchTopicCase";
 import "./search.css";
+import "./searchDetails.css";
 
-export function SearchIntelPage() {
+export function SearchIntelPage({ token }: { token?: string }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const routeState = parseSearchRouteState(searchParams);
-  const query = useSearchInspectQuery(routeState);
+  const query = useSearchInspectQuery({ ...routeState, token });
   const data = query.data?.data ?? null;
   const marketTargets = useMemo(() => searchMarketTargets(data), [data]);
   useMarketSubscription(marketTargets);
@@ -35,11 +36,11 @@ export function SearchIntelPage() {
       <SearchTopBar data={data} routeState={routeState} />
 
       {!routeState.q ? (
-        <RemoteState.Empty title="输入 token、CA、@handle 或关键词后手动检索。" />
+        <PageState.Empty title="输入 token、CA、@handle 或关键词后手动检索。" />
       ) : query.error ? (
-        <RemoteState.Error error={query.error} />
+        <PageState.Error error={query.error} />
       ) : query.isPending || !data ? (
-        <RemoteState.Loading layout="route" rows={5} label="loading search results" />
+        <PageState.Loading layout="route" rows={5} label="loading search results" />
       ) : (
         <SearchResultBody data={data} routeState={routeState} onRouteChange={updateRoute} />
       )}
@@ -104,5 +105,5 @@ function SearchResultBody({
   if (data.query.result_kind === "topic_result" && data.topic_result) {
     return <SearchTopicCase data={data} result={data.topic_result} />;
   }
-  return <RemoteState.Empty title="没有可展示的 search 结果。" />;
+  return <PageState.Empty title="没有可展示的 search 结果。" />;
 }
