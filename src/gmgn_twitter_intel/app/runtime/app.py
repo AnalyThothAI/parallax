@@ -26,6 +26,17 @@ from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 
+FRONTEND_CACHE_CONTROL = "no-cache, max-age=0, must-revalidate"
+
+
+class FrontendStaticFiles(StaticFiles):
+    """Serve rebuilt Vite assets without letting the local browser pin stale chunks."""
+
+    def file_response(self, full_path: Any, stat_result: Any, scope: Any, status_code: int = 200) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers.setdefault("Cache-Control", FRONTEND_CACHE_CONTROL)
+        return response
+
 
 def create_app(
     settings: Settings | None = None,
@@ -90,17 +101,23 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
 
     assets = dist / "assets"
     if assets.exists():
-        app.mount("/assets", StaticFiles(directory=assets), name="frontend-assets")
+        app.mount("/assets", FrontendStaticFiles(directory=assets), name="frontend-assets")
 
     if (dist / "favicon.svg").exists():
 
         async def frontend_favicon() -> FileResponse:
-            return FileResponse(dist / "favicon.svg")
+            return FileResponse(
+                dist / "favicon.svg",
+                headers={"Cache-Control": FRONTEND_CACHE_CONTROL},
+            )
 
         app.add_api_route("/favicon.svg", frontend_favicon, include_in_schema=False)
 
     async def frontend_index() -> FileResponse:
-        return FileResponse(dist / "index.html")
+        return FileResponse(
+            dist / "index.html",
+            headers={"Cache-Control": FRONTEND_CACHE_CONTROL},
+        )
 
     app.add_api_route("/", frontend_index, include_in_schema=False)
     app.add_api_route("/app", frontend_index, include_in_schema=False)

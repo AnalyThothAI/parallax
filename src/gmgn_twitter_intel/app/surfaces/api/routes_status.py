@@ -53,7 +53,7 @@ def create_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]
     @status_router.get("/status", response_model=api_schemas.ApiEnvelope[api_schemas.StatusData])
     def status(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        payload, status_code = readiness_payload(runtime)
-        return _json({"ok": payload.get("ok", status_code < 500), "data": payload}, status_code=status_code)
+        payload, _status_code = readiness_payload(runtime)
+        return _json({"ok": True, "data": payload})
 
     return status_router

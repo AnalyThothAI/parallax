@@ -1724,6 +1724,20 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert enrichment["running"] is False
 
 
+def test_api_status_remains_queryable_when_readiness_is_degraded(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        client.app.state.service.db.api_pool.close()
+        response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ok"] is True
+    assert body["data"]["ok"] is False
+    assert "database_unhealthy" in body["data"]["reasons"]
+
+
 def test_api_rejects_removed_narrative_product_surfaces(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
