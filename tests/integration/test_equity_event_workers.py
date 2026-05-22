@@ -578,37 +578,9 @@ def test_story_projection_rebuilds_members_after_partial_truncation(postgres_con
 def test_page_projection_worker_rebuilds_read_models_after_page_truncation(postgres_conn) -> None:
     db = _WorkerDb(postgres_conn)
     wake_bus = _RecordingWakeBus()
-    repos = repositories_for_connection(postgres_conn)
-    repos.equity_events.upsert_universe_member(
-        {
-            "company_id": "market_instrument:us_equity:MSFT",
-            "ticker": "MSFT",
-            "company_name": "Microsoft Corporation",
-            "active": True,
-            "priority": "P0",
-        },
-        now_ms=NOW_MS,
-    )
-    repos.equity_events.upsert_expected_event(
-        expected_event_id="expected:MSFT:2026Q1",
-        company_id="market_instrument:us_equity:MSFT",
-        ticker="MSFT",
-        event_type="earnings_release",
-        fiscal_period="2026Q1",
-        expected_at_ms=NOW_MS - 1_000,
-        source_id="config:earnings",
-        source_role="calendar",
-        now_ms=NOW_MS,
-    )
-    _seed_processable_document(
-        postgres_conn,
-        event_document_id="event-doc-page",
-        provider_document_id="provider-doc-page",
-    )
-    _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
-    _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
+    _seed_page_projection_source(postgres_conn)
 
-    first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000).run_once_sync()
+    first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
 
     page_rows = postgres_conn.execute("SELECT * FROM equity_event_page_rows").fetchall()
     calendar_rows = postgres_conn.execute("SELECT * FROM equity_event_calendar_rows").fetchall()
@@ -634,6 +606,54 @@ def test_page_projection_worker_rebuilds_read_models_after_page_truncation(postg
     assert len(rebuilt_rows) == 1
     assert rebuilt_rows[0]["company_event_id"] == page_rows[0]["company_event_id"]
     assert wake_bus.pages_updated == [1, 1]
+
+
+def test_page_projection_worker_rebuilds_missing_alert_candidate_for_older_current_page_row(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn, include_newer_event=True)
+    _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
+    older_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+
+    postgres_conn.execute(
+        "DELETE FROM equity_event_alert_candidates WHERE company_event_id = %s",
+        (older_event_id,),
+    )
+    postgres_conn.commit()
+
+    result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000, batch_size=1).run_once_sync()
+
+    rebuilt_alert = postgres_conn.execute(
+        "SELECT * FROM equity_event_alert_candidates WHERE company_event_id = %s",
+        (older_event_id,),
+    ).fetchone()
+    assert result.processed == 1
+    assert rebuilt_alert is not None
+    assert rebuilt_alert["ticker"] == "MSFT"
+
+
+def test_page_projection_worker_rebuilds_missing_timeline_row_for_older_current_page_row(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn, include_newer_event=True)
+    _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
+    older_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+
+    postgres_conn.execute(
+        "DELETE FROM equity_company_timeline_rows WHERE company_event_id = %s",
+        (older_event_id,),
+    )
+    postgres_conn.commit()
+
+    result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000, batch_size=1).run_once_sync()
+
+    rebuilt_timeline = postgres_conn.execute(
+        "SELECT * FROM equity_company_timeline_rows WHERE company_event_id = %s",
+        (older_event_id,),
+    ).fetchone()
+    assert result.processed == 1
+    assert rebuilt_timeline is not None
+    assert rebuilt_timeline["ticker"] == "MSFT"
 
 
 class _WorkerDb:
@@ -761,15 +781,86 @@ def _story_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventStoryProjectionWo
     )
 
 
-def _page_worker(db: _WorkerDb, *, wake_bus: Any | None, now_ms: int) -> EquityEventPageProjectionWorker:
+def _page_worker(
+    db: _WorkerDb,
+    *,
+    wake_bus: Any | None,
+    now_ms: int,
+    batch_size: int = 100,
+) -> EquityEventPageProjectionWorker:
+    settings = Settings(workers={"equity_event_page_projection": {"batch_size": batch_size}})
     return EquityEventPageProjectionWorker(
         name="equity_event_page_projection",
-        settings=Settings().workers.equity_event_page_projection,
+        settings=settings.workers.equity_event_page_projection,
         db=db,
         telemetry=SimpleNamespace(),
         wake_bus=wake_bus,
         clock_ms=lambda: now_ms,
     )
+
+
+def _seed_page_projection_source(conn: Any, *, include_newer_event: bool = False) -> None:
+    db = _WorkerDb(conn)
+    repos = repositories_for_connection(conn)
+    repos.equity_events.upsert_universe_member(
+        {
+            "company_id": "market_instrument:us_equity:MSFT",
+            "ticker": "MSFT",
+            "company_name": "Microsoft Corporation",
+            "active": True,
+            "priority": "P0",
+        },
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_expected_event(
+        expected_event_id="expected:MSFT:2026Q1",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        event_type="earnings_release",
+        fiscal_period="2026Q1",
+        expected_at_ms=NOW_MS - 1_000,
+        source_id="config:earnings",
+        source_role="calendar",
+        now_ms=NOW_MS,
+    )
+    _seed_processable_document(
+        conn,
+        event_document_id="event-doc-page-msft",
+        provider_document_id="provider-doc-page-msft",
+    )
+    if include_newer_event:
+        repos.equity_events.upsert_universe_member(
+            {
+                "company_id": "market_instrument:us_equity:AAPL",
+                "ticker": "AAPL",
+                "company_name": "Apple Inc.",
+                "active": True,
+                "priority": "P0",
+            },
+            now_ms=NOW_MS,
+        )
+        _seed_processable_document(
+            conn,
+            event_document_id="event-doc-page-aapl",
+            provider_document_id="provider-doc-page-aapl",
+            provider_document_key="0000320193-26-000001:10-Q",
+            accession_number="0000320193-26-000001",
+            company_id="market_instrument:us_equity:AAPL",
+            ticker="AAPL",
+            content_hash="content-aapl",
+            event_time_ms=NOW_MS + 60_000,
+        )
+    _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+    _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
+
+
+def _company_event_id_for_document(conn: Any, event_document_id: str) -> str:
+    row = conn.execute(
+        "SELECT company_event_id FROM equity_company_events WHERE primary_document_id = %s",
+        (event_document_id,),
+    ).fetchone()
+    assert row is not None
+    return str(row["company_event_id"])
 
 
 def _seed_processable_document(
@@ -785,20 +876,22 @@ def _seed_processable_document(
     fiscal_period: str = "2026Q1",
     raw_payload_json: dict[str, Any] | None = None,
     content_hash: str = "content-1",
+    event_time_ms: int = NOW_MS,
 ) -> dict[str, Any]:
     repos = repositories_for_connection(conn)
+    source_id = f"sec:{ticker}"
     repos.equity_events.upsert_source(
-        source_id="sec:MSFT",
+        source_id=source_id,
         provider_type="sec_submissions",
-        company_id="market_instrument:us_equity:MSFT",
-        ticker="MSFT",
+        company_id=company_id,
+        ticker=ticker,
         cik="0000789019",
         source_role="official_regulator",
         now_ms=NOW_MS,
     )
     provider = repos.equity_events.upsert_provider_document(
         provider_document_id=provider_document_id,
-        source_id="sec:MSFT",
+        source_id=source_id,
         fetch_run_id=None,
         provider_document_key=provider_document_key,
         company_id=company_id,
@@ -816,14 +909,14 @@ def _seed_processable_document(
         company_id=company_id,
         ticker=ticker,
         cik="0000789019",
-        source_id="sec:MSFT",
+        source_id=source_id,
         source_role="official_regulator",
         document_type="sec_filing",
         form_type=form_type,
         accession_number=accession_number,
         fiscal_period=fiscal_period,
         document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
-        event_time_ms=NOW_MS,
+        event_time_ms=event_time_ms,
         discovered_at_ms=NOW_MS,
         content_hash=content_hash,
         now_ms=NOW_MS,

@@ -7,11 +7,15 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.equity_event_intel._constants import (
+    EQUITY_EVENT_ALERT_PROJECTION_VERSION,
     EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
     EQUITY_EVENT_PAGE_PROJECTION_VERSION,
+    EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
 )
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
+_ALERT_SOURCE_ROLES = ("official_regulator", "official_issuer")
+_ALERT_FACT_STATUSES = ("accepted", "attention")
 
 
 class EquityEventRepository:
@@ -1199,11 +1203,15 @@ class EquityEventRepository:
                    briefs.updated_at_ms AS brief_updated_at_ms,
                    page_rows.row_id AS page_row_id,
                    page_rows.computed_at_ms AS page_computed_at_ms,
-                   COALESCE((
-                     SELECT MAX(facts.updated_at_ms)
-                       FROM equity_event_fact_candidates AS facts
-                      WHERE facts.company_event_id = events.company_event_id
-                   ), 0) AS facts_updated_at_ms,
+                   page_rows.projection_version AS page_projection_version,
+                   alerts.alert_candidate_id,
+                   alerts.computed_at_ms AS alert_computed_at_ms,
+                   alerts.projection_version AS alert_projection_version,
+                   timeline_rows.row_id AS timeline_row_id,
+                   timeline_rows.computed_at_ms AS timeline_computed_at_ms,
+                   timeline_rows.projection_version AS timeline_projection_version,
+                   COALESCE(fact_state.facts_updated_at_ms, 0) AS facts_updated_at_ms,
+                   COALESCE(fact_state.actionable_fact_count, 0) AS actionable_fact_count,
                    COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms
               FROM equity_company_events AS events
               LEFT JOIN equity_event_universe_members AS universe
@@ -1216,8 +1224,35 @@ class EquityEventRepository:
                 ON briefs.company_event_id = events.company_event_id
               LEFT JOIN equity_event_documents AS documents
                 ON documents.event_document_id = events.primary_document_id
-              LEFT JOIN equity_event_page_rows AS page_rows
-                ON page_rows.company_event_id = events.company_event_id
+              LEFT JOIN LATERAL (
+                SELECT rows.*
+                  FROM equity_event_page_rows AS rows
+                 WHERE rows.company_event_id = events.company_event_id
+                 ORDER BY rows.computed_at_ms DESC, rows.row_id ASC
+                 LIMIT 1
+              ) AS page_rows ON true
+              LEFT JOIN LATERAL (
+                SELECT candidates.*
+                  FROM equity_event_alert_candidates AS candidates
+                 WHERE candidates.company_event_id = events.company_event_id
+                 ORDER BY candidates.computed_at_ms DESC, candidates.alert_candidate_id ASC
+                 LIMIT 1
+              ) AS alerts ON true
+              LEFT JOIN LATERAL (
+                SELECT rows.*
+                  FROM equity_company_timeline_rows AS rows
+                 WHERE rows.company_event_id = events.company_event_id
+                 ORDER BY rows.computed_at_ms DESC, rows.row_id ASC
+                 LIMIT 1
+              ) AS timeline_rows ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(facts.updated_at_ms) AS facts_updated_at_ms,
+                       COUNT(*) FILTER (
+                         WHERE facts.validation_status = ANY(%s::text[])
+                       )::integer AS actionable_fact_count
+                  FROM equity_event_fact_candidates AS facts
+                 WHERE facts.company_event_id = events.company_event_id
+              ) AS fact_state ON true
              WHERE events.validation_status <> 'rejected'
              ORDER BY CASE
                         WHEN page_rows.row_id IS NULL THEN 0
@@ -1227,12 +1262,37 @@ class EquityEventRepository:
                           COALESCE(stories.updated_at_ms, 0),
                           COALESCE(briefs.updated_at_ms, 0),
                           COALESCE(documents.updated_at_ms, 0),
-                          COALESCE((
-                            SELECT MAX(facts.updated_at_ms)
-                              FROM equity_event_fact_candidates AS facts
-                             WHERE facts.company_event_id = events.company_event_id
-                          ), 0)
+                          COALESCE(fact_state.facts_updated_at_ms, 0)
                         ) THEN 0
+                        WHEN timeline_rows.row_id IS NULL THEN 0
+                        WHEN timeline_rows.projection_version <> %s THEN 0
+                        WHEN timeline_rows.computed_at_ms < GREATEST(
+                          events.updated_at_ms,
+                          COALESCE(stories.updated_at_ms, 0),
+                          COALESCE(briefs.updated_at_ms, 0),
+                          COALESCE(documents.updated_at_ms, 0),
+                          COALESCE(fact_state.facts_updated_at_ms, 0)
+                        ) THEN 0
+                        WHEN events.priority = 'P0'
+                          AND events.source_role = ANY(%s::text[])
+                          AND COALESCE(fact_state.actionable_fact_count, 0) > 0
+                          AND (
+                            alerts.alert_candidate_id IS NULL
+                            OR alerts.projection_version <> %s
+                            OR alerts.computed_at_ms < GREATEST(
+                              events.updated_at_ms,
+                              COALESCE(stories.updated_at_ms, 0),
+                              COALESCE(briefs.updated_at_ms, 0),
+                              COALESCE(documents.updated_at_ms, 0),
+                              COALESCE(fact_state.facts_updated_at_ms, 0)
+                            )
+                          ) THEN 0
+                        WHEN NOT (
+                          events.priority = 'P0'
+                          AND events.source_role = ANY(%s::text[])
+                          AND COALESCE(fact_state.actionable_fact_count, 0) > 0
+                        )
+                          AND alerts.alert_candidate_id IS NOT NULL THEN 0
                         ELSE 1
                       END ASC,
                       events.event_time_ms DESC,
@@ -1240,7 +1300,15 @@ class EquityEventRepository:
              LIMIT %s
              FOR UPDATE OF events SKIP LOCKED
             """,
-            (EQUITY_EVENT_PAGE_PROJECTION_VERSION, max(0, int(limit))),
+            (
+                list(_ALERT_FACT_STATUSES),
+                EQUITY_EVENT_PAGE_PROJECTION_VERSION,
+                EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
+                list(_ALERT_SOURCE_ROLES),
+                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
+                list(_ALERT_SOURCE_ROLES),
+                max(0, int(limit)),
+            ),
         ).fetchall()
         payloads: list[dict[str, Any]] = []
         for row in rows:
