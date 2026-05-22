@@ -1168,17 +1168,252 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
 
-    def list_event_page_rows(self, *, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
+    def list_event_page_rows(
+        self,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        window: str | None = None,
+        universe: str | None = None,
+        ticker: str | None = None,
+        event_type: str | None = None,
+        priority: str | None = None,
+        source_role: str | None = None,
+        lifecycle_status: str | None = None,
+        brief_status: str | None = None,
+        q: str | None = None,
+    ) -> list[dict[str, Any]]:
+        cursor_time, cursor_id = _decode_cursor(cursor)
+        filters: list[str] = []
+        filter_params: list[Any] = []
+        window_ms = _window_ms(window)
+        if window_ms is not None:
+            filters.append("latest_event_at_ms >= ((EXTRACT(EPOCH FROM now()) * 1000)::bigint - %s)")
+            filter_params.append(window_ms)
+        if universe:
+            filters.append(
+                """
+                EXISTS (
+                  SELECT 1
+                    FROM equity_event_universe_members AS universe
+                   WHERE universe.company_id = equity_event_page_rows.company_id
+                     AND universe.config_json ->> 'universe' = %s
+                )
+                """
+            )
+            filter_params.append(str(universe))
+        if ticker:
+            filters.append("ticker = %s")
+            filter_params.append(str(ticker).upper())
+        if event_type:
+            filters.append("event_type = %s")
+            filter_params.append(str(event_type))
+        if priority:
+            filters.append("priority = %s")
+            filter_params.append(str(priority))
+        if source_role:
+            filters.append("source_role = %s")
+            filter_params.append(str(source_role))
+        if lifecycle_status:
+            filters.append("lifecycle_status = %s")
+            filter_params.append(str(lifecycle_status))
+        if brief_status:
+            filters.append("LOWER(COALESCE(brief_json ->> 'status', 'pending')) = %s")
+            filter_params.append(str(brief_status).strip().lower())
+        if q:
+            needle = f"%{str(q).strip()}%"
+            filters.append("(headline ILIKE %s OR summary ILIKE %s OR company_name ILIKE %s OR ticker ILIKE %s)")
+            filter_params.extend([needle, needle, needle, needle])
+        cursor_filter = ""
+        cursor_params: list[Any] = []
+        if cursor_time is not None and cursor_id is not None:
+            cursor_filter = """
+              AND (
+                latest_event_at_ms < %s
+                OR (latest_event_at_ms = %s AND company_event_id > %s)
+              )
             """
+            cursor_params.extend([cursor_time, cursor_time, cursor_id])
+        elif cursor_id is not None:
+            cursor_filter = " AND company_event_id > %s"
+            cursor_params.append(cursor_id)
+        filter_sql = " AND " + " AND ".join(filters) if filters else ""
+        rows = self.conn.execute(
+            f"""
             SELECT *
               FROM equity_event_page_rows
+             WHERE true
+             {cursor_filter}
+             {filter_sql}
              ORDER BY latest_event_at_ms DESC, company_event_id ASC
              LIMIT %s
             """,
-            (max(0, int(limit)),),
+            (*cursor_params, *filter_params, max(0, int(limit))),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_event_detail(self, *, company_event_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT rows.*,
+                   CASE WHEN events.company_event_id IS NULL THEN NULL ELSE to_jsonb(events.*) END AS event_json,
+                   CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story_json
+              FROM equity_event_page_rows AS rows
+              LEFT JOIN equity_company_events AS events
+                ON events.company_event_id = rows.company_event_id
+              LEFT JOIN equity_event_story_groups AS stories
+                ON stories.story_id = rows.story_id
+             WHERE rows.company_event_id = %s
+             LIMIT 1
+            """,
+            (str(company_event_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = dict(row)
+        payload["event"] = payload.pop("event_json", None)
+        payload["story"] = payload.pop("story_json", None)
+        return payload
+
+    def get_story_detail(self, *, story_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT stories.*,
+                   COALESCE(
+                     jsonb_agg(to_jsonb(rows.*) ORDER BY rows.latest_event_at_ms DESC, rows.company_event_id ASC)
+                       FILTER (WHERE rows.row_id IS NOT NULL),
+                     '[]'::jsonb
+                   ) AS events
+              FROM equity_event_story_groups AS stories
+              LEFT JOIN equity_event_page_rows AS rows
+                ON rows.story_id = stories.story_id
+             WHERE stories.story_id = %s
+             GROUP BY stories.story_id
+             LIMIT 1
+            """,
+            (str(story_id),),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def list_calendar_rows(
+        self,
+        *,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+        universe: str | None = None,
+        ticker: str | None = None,
+        status: str | None = None,
+        session: str | None = None,
+    ) -> list[dict[str, Any]]:
+        filters: list[str] = []
+        filter_params: list[Any] = []
+        if from_ms is not None:
+            filters.append("expected_at_ms >= %s")
+            filter_params.append(int(from_ms))
+        if to_ms is not None:
+            filters.append("expected_at_ms <= %s")
+            filter_params.append(int(to_ms))
+        if universe:
+            filters.append(
+                """
+                EXISTS (
+                  SELECT 1
+                    FROM equity_event_universe_members AS universe
+                   WHERE universe.company_id = equity_event_calendar_rows.company_id
+                     AND universe.config_json ->> 'universe' = %s
+                )
+                """
+            )
+            filter_params.append(str(universe))
+        if ticker:
+            filters.append("ticker = %s")
+            filter_params.append(str(ticker).upper())
+        if status:
+            filters.append("status = %s")
+            filter_params.append(str(status))
+        if session:
+            filters.append("LOWER(COALESCE(calendar_json ->> 'session', '')) = %s")
+            filter_params.append(str(session).strip().lower())
+        filter_sql = " AND " + " AND ".join(filters) if filters else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+              FROM equity_event_calendar_rows
+             WHERE true
+             {filter_sql}
+             ORDER BY expected_at_ms ASC, ticker ASC, row_id ASC
+            """,
+            tuple(filter_params),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_company_timeline_rows(
+        self,
+        *,
+        ticker: str,
+        limit: int,
+        cursor: str | None = None,
+    ) -> list[dict[str, Any]]:
+        cursor_time, cursor_id = _decode_cursor(cursor)
+        cursor_filter = ""
+        cursor_params: list[Any] = []
+        if cursor_time is not None and cursor_id is not None:
+            cursor_filter = """
+              AND (
+                event_time_ms < %s
+                OR (event_time_ms = %s AND row_id > %s)
+              )
+            """
+            cursor_params.extend([cursor_time, cursor_time, cursor_id])
+        elif cursor_id is not None:
+            cursor_filter = " AND row_id > %s"
+            cursor_params.append(cursor_id)
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+              FROM equity_company_timeline_rows
+             WHERE ticker = %s
+             {cursor_filter}
+             ORDER BY event_time_ms DESC, row_id ASC
+             LIMIT %s
+            """,
+            (str(ticker).upper(), *cursor_params, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def summary(self) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT
+              COUNT(*) FILTER (
+                WHERE priority = 'P0'
+                  AND lifecycle_status IN ('raw', 'processed', 'process_failed', 'brief_stale')
+              )::integer AS p0_open_count,
+              COUNT(*) FILTER (
+                WHERE latest_event_at_ms >= (
+                  EXTRACT(EPOCH FROM date_trunc('day', now())) * 1000
+                )::bigint
+              )::integer AS today_count,
+              COUNT(*) FILTER (
+                WHERE LOWER(COALESCE(brief_json ->> 'status', 'pending')) = 'pending'
+              )::integer AS brief_pending_count,
+              MAX(latest_event_at_ms) AS latest_event_at_ms
+              FROM equity_event_page_rows
+            """
+        ).fetchone()
+        if row is None:
+            return {
+                "p0_open_count": 0,
+                "today_count": 0,
+                "brief_pending_count": 0,
+                "latest_event_at_ms": None,
+            }
+        return {
+            "p0_open_count": int(row["p0_open_count"] or 0),
+            "today_count": int(row["today_count"] or 0),
+            "brief_pending_count": int(row["brief_pending_count"] or 0),
+            "latest_event_at_ms": row["latest_event_at_ms"],
+        }
 
     def list_events_for_page_projection(self, *, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -1888,6 +2123,55 @@ def _field(value: Any, key: str) -> Any:
     if isinstance(value, Mapping):
         return value.get(key)
     return getattr(value, key, None)
+
+
+def equity_event_page_cursor(row: Mapping[str, Any]) -> str:
+    return f"{int(row['latest_event_at_ms'])}:{row['company_event_id']}"
+
+
+def equity_event_timeline_cursor(row: Mapping[str, Any]) -> str:
+    return f"{int(row['event_time_ms'])}:{row['row_id']}"
+
+
+def _decode_cursor(cursor: str | None) -> tuple[int | None, str | None]:
+    if not cursor:
+        return None, None
+    raw_time, separator, row_id = str(cursor).partition(":")
+    if not separator:
+        return None, str(cursor)
+    try:
+        cursor_time = int(raw_time)
+    except ValueError:
+        return None, str(cursor)
+    return cursor_time, row_id
+
+
+def _window_ms(window: str | None) -> int | None:
+    if not window:
+        return None
+    raw = str(window).strip().lower()
+    if raw.endswith("ms"):
+        return _positive_int(raw[:-2])
+    if raw.endswith("m"):
+        minutes = _positive_int(raw[:-1])
+        return None if minutes is None else minutes * 60_000
+    if raw.endswith("h"):
+        hours = _positive_int(raw[:-1])
+        return None if hours is None else hours * 3_600_000
+    if raw.endswith("d"):
+        days = _positive_int(raw[:-1])
+        return None if days is None else days * 86_400_000
+    return _positive_int(raw)
+
+
+def _positive_int(value: str) -> int | None:
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
 
 
 def _headline_for_event(event: Mapping[str, Any]) -> str:

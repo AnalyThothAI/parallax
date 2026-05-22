@@ -217,6 +217,35 @@ class NewsSourceStatusData(ApiSchema):
     sources: list[JsonObject] = Field(default_factory=list)
 
 
+class EquityEventsData(ApiSchema):
+    items: list[JsonObject] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
+class EquityEventObjectData(ApiSchema):
+    pass
+
+
+class EquityEventCalendarData(ApiSchema):
+    items: list[JsonObject] = Field(default_factory=list)
+
+
+class EquityEventTimelineData(ApiSchema):
+    items: list[JsonObject] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
+class EquityEventSourceStatusData(ApiSchema):
+    sources: list[JsonObject] = Field(default_factory=list)
+
+
+class EquityEventSummaryData(ApiSchema):
+    p0_open_count: int = 0
+    today_count: int = 0
+    brief_pending_count: int = 0
+    latest_event_at_ms: int | None = None
+
+
 class LiveMarketData(ApiSchema):
     target_type: str
     target_id: str
