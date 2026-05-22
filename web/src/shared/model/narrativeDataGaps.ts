@@ -46,8 +46,11 @@ const REASON_LABELS: Record<string, string> = {
   material_delta_due: "叙事刷新排队中",
   narrative_not_supported_for_window: "5m 实时信号",
   no_ready_digest: "叙事待生成",
+  no_reusable_1h_digest: "1h 叙事待生成",
   out_of_frontier: "不在当前雷达前沿",
   not_in_current_frontier: "不在当前雷达前沿",
   semantic_labeling_pending: "叙事分析中",
+  target_current_1h_narrative: "1h 叙事已读",
+  thresholds_met_partial_semantic_tail: "1h 叙事已读",
   unsupported_window: "5m 实时信号",
 };

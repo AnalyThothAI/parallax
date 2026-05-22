@@ -9,6 +9,11 @@ describe("narrativeDataGaps", () => {
 
   it("labels hard-cut currentness reasons", () => {
     expect(narrativeGapLabel({ reason: "no_ready_digest" })).toBe("叙事待生成");
+    expect(narrativeGapLabel({ reason: "no_reusable_1h_digest" })).toBe("1h 叙事待生成");
+    expect(narrativeGapLabel({ reason: "target_current_1h_narrative" })).toBe("1h 叙事已读");
+    expect(narrativeGapLabel({ reason: "thresholds_met_partial_semantic_tail" })).toBe(
+      "1h 叙事已读",
+    );
     expect(narrativeGapLabel({ reason: "digest_updating" })).toBe("叙事更新中");
     expect(narrativeGapLabel({ reason: "material_delta_due" })).toBe("叙事刷新排队中");
     expect(narrativeGapLabel({ reason: "unsupported_window" })).toBe("5m 实时信号");
