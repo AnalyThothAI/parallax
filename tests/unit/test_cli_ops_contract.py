@@ -49,9 +49,10 @@ def test_rebuild_narrative_intel_reports_cleanup_and_final_health(monkeypatch) -
     )
 
     assert data["cleanup"] == {
-        "deleted_obsolete_pending_semantics": 2,
-        "stale_suppressed_digests": 1,
-        "stale_fingerprint_mismatch_digests": 3,
+        "deleted_old_admissions": 4,
+        "deleted_old_digests": 1,
+        "deleted_old_semantics": 2,
+        "deleted_old_model_runs": 3,
     }
     assert data["results"][0]["cleanup"] == data["cleanup"]
     assert data["final_health"]["semantic_backlog"]["missing_semantic_rows"] == 4
@@ -68,9 +69,10 @@ def test_cleanup_narrative_backlog_prefers_hard_cut_repository_method() -> None:
     cleanup = ops._cleanup_narrative_backlog(db, window="24h", scope="matched", now_ms=100)
 
     assert cleanup == {
-        "deleted_obsolete_pending_semantics": 2,
-        "stale_suppressed_digests": 1,
-        "stale_fingerprint_mismatch_digests": 3,
+        "deleted_old_admissions": 4,
+        "deleted_old_digests": 1,
+        "deleted_old_semantics": 2,
+        "deleted_old_model_runs": 3,
     }
     assert db.repos.narratives.calls == [
         {
@@ -141,9 +143,10 @@ class _FakeNarratives:
         self.db.cleanup_called_while_locks = list(self.db.locked)
         self.calls.append({"method": "cleanup_narrative_current_hard_cut", **kwargs})
         return {
-            "deleted_obsolete_pending_semantics": 2,
-            "stale_suppressed_digests": 1,
-            "stale_fingerprint_mismatch_digests": 3,
+            "deleted_old_admissions": 4,
+            "deleted_old_digests": 1,
+            "deleted_old_semantics": 2,
+            "deleted_old_model_runs": 3,
         }
 
 

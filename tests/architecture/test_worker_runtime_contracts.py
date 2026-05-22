@@ -593,20 +593,18 @@ def test_no_exact_fingerprint_only_public_narrative_hydration() -> None:
 
 
 @pytest.mark.architecture
-def test_narrative_cleanup_preserves_fingerprint_mismatch_ready_digests() -> None:
+def test_narrative_cleanup_deletes_non_current_digest_state() -> None:
     text = NARRATIVE_REPOSITORY.read_text()
     method = text.split("def cleanup_narrative_current_hard_cut", 1)[1].split(
         "def record_narrative_model_run",
         1,
     )[0]
 
-    assert "fingerprint_mismatch_digests_preserved" in method
-    assert "stale_fingerprint_mismatch_digests" not in method
-    mismatch_clause_index = method.find("COALESCE(digest.source_fingerprint, '') <>")
-    assert mismatch_clause_index >= 0
-    mismatch_block = method[mismatch_clause_index - 300 : mismatch_clause_index + 300]
-    assert "UPDATE token_discussion_digests" not in mismatch_block
-    assert "SET status = 'stale'" not in mismatch_block
+    assert "DELETE FROM token_discussion_digests" in method
+    assert "deleted_old_digests" in method
+    assert "fingerprint_mismatch_digests_preserved" not in method
+    assert "UPDATE token_discussion_digests" not in method
+    assert "SET status = 'stale'" not in method
 
 
 @pytest.mark.architecture

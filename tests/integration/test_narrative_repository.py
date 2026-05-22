@@ -1580,18 +1580,13 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
         conn.close()
 
     assert result == {
-        "suppressed_non_realtime_admissions": 0,
-        "staled_non_realtime_digests": 0,
-        "deleted_obsolete_pending_semantics": 1,
-        "stale_suppressed_digests": 1,
-        "fingerprint_mismatch_digests_preserved": 1,
+        "deleted_old_admissions": 1,
+        "deleted_old_digests": 2,
+        "deleted_old_semantics": 2,
+        "deleted_old_model_runs": 0,
     }
-    assert semantics == {"event-current": "queued", "event-labeled": "labeled"}
-    assert digest_rows["solana:Suppressed"]["status"] == "stale"
-    assert digest_rows["solana:Suppressed"]["is_current"] is False
-    assert digest_rows["solana:Suppressed"]["superseded_at_ms"] == 4_000
-    assert digest_rows["solana:Current"]["status"] == "ready"
-    assert digest_rows["solana:Current"]["is_current"] is True
+    assert semantics == {"event-current": "queued"}
+    assert digest_rows == {}
 
 
 def test_cleanup_narrative_current_hard_cut_suppresses_non_realtime_state(tmp_path):
@@ -1744,24 +1739,15 @@ def test_cleanup_narrative_current_hard_cut_suppresses_non_realtime_state(tmp_pa
         conn.close()
 
     assert result == {
-        "suppressed_non_realtime_admissions": 2,
-        "staled_non_realtime_digests": 2,
-        "deleted_obsolete_pending_semantics": 3,
-        "stale_suppressed_digests": 0,
-        "fingerprint_mismatch_digests_preserved": 0,
+        "deleted_old_admissions": 2,
+        "deleted_old_digests": 2,
+        "deleted_old_semantics": 3,
+        "deleted_old_model_runs": 0,
     }
     assert admissions["solana:OneHour"]["status"] == "admitted"
-    assert admissions["solana:LegacyDay"]["status"] == "suppressed"
-    assert admissions["solana:LegacyDay"]["reason"] == "non_realtime_narrative_window"
-    assert admissions["solana:LegacyMatched"]["status"] == "suppressed"
-    assert admissions["solana:LegacyMatched"]["reason"] == "non_realtime_narrative_window"
+    assert set(admissions) == {"solana:OneHour"}
     assert semantics == {"event-1h": "queued"}
-    assert digests["solana:LegacyDay"]["status"] == "stale"
-    assert digests["solana:LegacyDay"]["is_current"] is False
-    assert digests["solana:LegacyDay"]["superseded_at_ms"] == 4_000
-    assert digests["solana:LegacyMatched"]["status"] == "stale"
-    assert digests["solana:LegacyMatched"]["is_current"] is False
-    assert digests["solana:LegacyMatched"]["superseded_at_ms"] == 4_000
+    assert digests == {}
 
 
 def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:

@@ -242,7 +242,7 @@ class NarrativeRepository:
         ).fetchall()
         return [_row(row) for row in rows]
 
-    def suppress_admissions_outside_frontier(
+    def delete_admissions_outside_frontier(
         self,
         *,
         window: str,
@@ -252,33 +252,34 @@ class NarrativeRepository:
         now_ms: int,
     ) -> dict[str, int]:
         keys = {(str(target_type), str(target_id)) for target_type, target_id in active_target_keys}
-        existing = self.admissions_for_window_scope(
-            window=window,
-            scope=scope,
-            schema_version=schema_version,
-            limit=10_000,
-        )
-        suppress_ids = [
-            row["admission_id"]
-            for row in existing
-            if str(row.get("status") or "") == "admitted"
-            and (str(row.get("target_type") or ""), str(row.get("target_id") or "")) not in keys
-        ]
-        if not suppress_ids:
-            return {"suppressed": 0}
-        cursor = self.conn.execute(
+        active_keys = [f"{target_type}\t{target_id}" for target_type, target_id in sorted(keys)]
+        stale_digests = self.conn.execute(
             """
-            UPDATE narrative_admissions
-            SET status = 'suppressed',
-                reason = 'not_in_current_frontier',
-                suppressed_at_ms = %s,
-                updated_at_ms = %s
-            WHERE admission_id = ANY(%s)
+            DELETE FROM token_discussion_digests AS digest
+            WHERE digest.schema_version = %s
+              AND digest."window" = %s
+              AND digest.scope = %s
+              AND NOT ((digest.target_type || E'\t' || digest.target_id) = ANY(%s::text[]))
             """,
-            (int(now_ms), int(now_ms), suppress_ids),
+            (schema_version, window, scope, active_keys),
         )
+        admissions = self.conn.execute(
+            """
+            DELETE FROM narrative_admissions AS admissions
+            WHERE admissions.schema_version = %s
+              AND admissions."window" = %s
+              AND admissions.scope = %s
+              AND NOT ((admissions.target_type || E'\t' || admissions.target_id) = ANY(%s::text[]))
+            """,
+            (schema_version, window, scope, active_keys),
+        )
+        obsolete_semantics = self._delete_semantics_outside_current_admissions(schema_version=schema_version)
         _commit_if_available(self.conn)
-        return {"suppressed": int(getattr(cursor, "rowcount", 0) or 0)}
+        return {
+            "deleted_admissions": int(getattr(admissions, "rowcount", 0) or 0),
+            "deleted_digests": int(getattr(stale_digests, "rowcount", 0) or 0),
+            "deleted_obsolete_semantics": int(obsolete_semantics),
+        }
 
     def due_admissions_for_semantics(
         self, *, now_ms: int, limit: int, windows: tuple[str, ...] = ("1h",), scopes: tuple[str, ...] = ("all",)
@@ -698,32 +699,37 @@ class NarrativeRepository:
         scopes = tuple(dict.fromkeys(str(scope) for scope in realtime_scopes if str(scope)))
         if not scopes:
             scopes = ("all",)
-        suppressed_non_realtime = self.conn.execute(
+        deleted_digests = self.conn.execute(
             """
-            UPDATE narrative_admissions
-            SET status = 'suppressed',
-                reason = 'non_realtime_narrative_window',
-                suppressed_at_ms = %s,
-                updated_at_ms = %s
-            WHERE schema_version = %s
-              AND status = 'admitted'
-              AND NOT ("window" = ANY(%s) AND scope = ANY(%s))
+            WITH active_admissions AS (
+              SELECT
+                admissions.target_type,
+                admissions.target_id,
+                admissions.source_fingerprint
+              FROM narrative_admissions AS admissions
+              WHERE admissions.status = 'admitted'
+                AND admissions.schema_version = %s
+                AND admissions."window" = ANY(%s)
+                AND admissions.scope = ANY(%s)
+            )
+            DELETE FROM token_discussion_digests AS digest
+            WHERE NOT (
+              digest.schema_version = %s
+              AND digest."window" = ANY(%s)
+              AND digest.scope = ANY(%s)
+              AND digest.is_current = true
+              AND EXISTS (
+                SELECT 1
+                FROM active_admissions
+                WHERE active_admissions.target_type = digest.target_type
+                  AND active_admissions.target_id = digest.target_id
+                  AND COALESCE(active_admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')
+              )
+            )
             """,
-            (int(now_ms), int(now_ms), schema_version, list(windows), list(scopes)),
+            (schema_version, list(windows), list(scopes), schema_version, list(windows), list(scopes)),
         )
-        staled_non_realtime = self.conn.execute(
-            """
-            UPDATE token_discussion_digests
-            SET status = 'stale',
-                is_current = false,
-                superseded_at_ms = %s
-            WHERE schema_version = %s
-              AND is_current = true
-              AND NOT ("window" = ANY(%s) AND scope = ANY(%s))
-            """,
-            (int(now_ms), schema_version, list(windows), list(scopes)),
-        )
-        obsolete = self.conn.execute(
+        deleted_semantics = self.conn.execute(
             """
             WITH current_sources AS (
               SELECT
@@ -737,66 +743,100 @@ class NarrativeRepository:
                 AND admissions.scope = ANY(%s)
             )
             DELETE FROM token_mention_semantics AS semantics
-            WHERE semantics.schema_version = %s
-              AND semantics.status IN ('queued', 'retryable_error', 'stale')
-              AND NOT EXISTS (
+            WHERE NOT (
+              semantics.schema_version = %s
+              AND EXISTS (
                 SELECT 1
                 FROM current_sources
                 WHERE current_sources.event_id = semantics.event_id
                   AND current_sources.target_type = semantics.target_type
                   AND current_sources.target_id = semantics.target_id
               )
+            )
             """,
             (schema_version, list(windows), list(scopes), schema_version),
         )
-        stale_suppressed = self.conn.execute(
+        deleted_admissions = self.conn.execute(
             """
-            UPDATE token_discussion_digests AS digest
-            SET status = 'stale',
-                is_current = false,
-                superseded_at_ms = %s
-            FROM narrative_admissions AS admissions
-            WHERE admissions.status = 'suppressed'
+            DELETE FROM narrative_admissions AS admissions
+            WHERE NOT (
+              admissions.status = 'admitted'
               AND admissions.schema_version = %s
-              AND digest.target_type = admissions.target_type
-              AND digest.target_id = admissions.target_id
-              AND digest."window" = admissions."window"
-              AND digest.scope = admissions.scope
-              AND digest.schema_version = admissions.schema_version
-              AND digest.is_current = true
-              AND digest."window" = ANY(%s)
-              AND digest.scope = ANY(%s)
-            """,
-            (int(now_ms), schema_version, list(windows), list(scopes)),
-        )
-        mismatch_preserved = self.conn.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM token_discussion_digests AS digest
-            JOIN narrative_admissions AS admissions
-              ON admissions.target_type = digest.target_type
-             AND admissions.target_id = digest.target_id
-             AND admissions."window" = digest."window"
-             AND admissions.scope = digest.scope
-             AND admissions.schema_version = digest.schema_version
-             AND admissions.status = 'admitted'
-             AND admissions.schema_version = %s
-             AND admissions."window" = ANY(%s)
-             AND admissions.scope = ANY(%s)
-            WHERE digest.is_current = true
-              AND digest.status = 'ready'
-              AND COALESCE(digest.source_fingerprint, '') <> COALESCE(admissions.source_fingerprint, '')
+              AND admissions."window" = ANY(%s)
+              AND admissions.scope = ANY(%s)
+            )
             """,
             (schema_version, list(windows), list(scopes)),
-        ).fetchone()
+        )
+        deleted_model_runs = self.conn.execute(
+            """
+            WITH current_sources AS (
+              SELECT
+                admissions.target_type,
+                admissions.target_id,
+                jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
+              FROM narrative_admissions AS admissions
+              WHERE admissions.status = 'admitted'
+                AND admissions.schema_version = %s
+                AND admissions."window" = ANY(%s)
+                AND admissions.scope = ANY(%s)
+            )
+            DELETE FROM narrative_model_runs AS runs
+            WHERE runs.schema_version <> %s
+               OR (runs.stage = 'discussion_digest' AND NOT (runs."window" = ANY(%s) AND runs.scope = ANY(%s)))
+               OR (
+                    runs.stage = 'mention_semantics'
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM token_mention_semantics AS semantics
+                      WHERE semantics.model_run_id = runs.run_id
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM current_sources
+                      WHERE runs.evidence_event_ids_json ? current_sources.event_id
+                    )
+               )
+            """,
+            (schema_version, list(windows), list(scopes), schema_version, list(windows), list(scopes)),
+        )
         _commit_if_available(self.conn)
         return {
-            "suppressed_non_realtime_admissions": int(getattr(suppressed_non_realtime, "rowcount", 0) or 0),
-            "staled_non_realtime_digests": int(getattr(staled_non_realtime, "rowcount", 0) or 0),
-            "deleted_obsolete_pending_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
-            "stale_suppressed_digests": int(getattr(stale_suppressed, "rowcount", 0) or 0),
-            "fingerprint_mismatch_digests_preserved": int(mismatch_preserved["count"] if mismatch_preserved else 0),
+            "deleted_old_admissions": int(getattr(deleted_admissions, "rowcount", 0) or 0),
+            "deleted_old_digests": int(getattr(deleted_digests, "rowcount", 0) or 0),
+            "deleted_old_semantics": int(getattr(deleted_semantics, "rowcount", 0) or 0),
+            "deleted_old_model_runs": int(getattr(deleted_model_runs, "rowcount", 0) or 0),
         }
+
+    def _delete_semantics_outside_current_admissions(self, *, schema_version: str) -> int:
+        cursor = self.conn.execute(
+            """
+            WITH current_sources AS (
+              SELECT
+                admissions.target_type,
+                admissions.target_id,
+                jsonb_array_elements_text(admissions.source_event_ids_json) AS event_id
+              FROM narrative_admissions AS admissions
+              WHERE admissions.status = 'admitted'
+                AND admissions.schema_version = %s
+                AND admissions."window" = '1h'
+                AND admissions.scope = 'all'
+            )
+            DELETE FROM token_mention_semantics AS semantics
+            WHERE NOT (
+              semantics.schema_version = %s
+              AND EXISTS (
+                SELECT 1
+                FROM current_sources
+                WHERE current_sources.event_id = semantics.event_id
+                  AND current_sources.target_type = semantics.target_type
+                  AND current_sources.target_id = semantics.target_id
+              )
+            )
+            """,
+            (schema_version, schema_version),
+        )
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def record_narrative_model_run(self, run: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
         payload = dict(run)
@@ -1237,18 +1277,14 @@ class NarrativeRepository:
         payload = _digest_payload(digest, now_ms=now_ms)
         self.conn.execute(
             """
-            UPDATE token_discussion_digests
-            SET is_current = false,
-                superseded_at_ms = %s
+            DELETE FROM token_discussion_digests
             WHERE target_type = %s
               AND target_id = %s
               AND "window" = %s
               AND scope = %s
               AND schema_version = %s
-              AND is_current = true
             """,
             (
-                now_ms,
                 payload["target_type"],
                 payload["target_id"],
                 payload["window"],

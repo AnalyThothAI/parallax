@@ -77,24 +77,6 @@ class NarrativeAdmissionService:
                 projection_computed_at_ms=_int(row.get("computed_at_ms")),
             )
 
-        seen = set(decisions)
-        for admission in existing_admissions:
-            target_type = _clean(admission.get("target_type"))
-            target_id = _clean(admission.get("target_id"))
-            if not target_type or not target_id or (target_type, target_id) in seen:
-                continue
-            if str(admission.get("status") or "") != "admitted":
-                continue
-            decisions[(target_type, target_id)] = NarrativeAdmissionDecision(
-                target_type=target_type,
-                target_id=target_id,
-                window=window,
-                scope=scope,
-                schema_version=schema_version,
-                status="suppressed",
-                reason="not_in_current_frontier",
-                priority=0,
-            )
         return sorted(decisions.values(), key=lambda item: (-item.priority, item.target_type, item.target_id))
 
 

@@ -39,7 +39,7 @@ class NarrativeAdmissionWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         stats = self._rebuild_admissions_sync(now_ms=resolved_now_ms)
-        processed = int(stats.get("admissions_upserted") or 0) + int(stats.get("admissions_suppressed") or 0)
+        processed = int(stats.get("admissions_upserted") or 0) + int(stats.get("admissions_deleted") or 0)
         if processed <= 0:
             return WorkerResult(skipped=1, notes={"reason": "no_frontier_changes", **stats})
         return WorkerResult(processed=processed, notes=stats)
@@ -53,7 +53,9 @@ class NarrativeAdmissionWorker(WorkerBase):
             "frontier_rows": 0,
             "source_events": 0,
             "admissions_upserted": 0,
-            "admissions_suppressed": 0,
+            "admissions_deleted": 0,
+            "digests_deleted": 0,
+            "semantics_deleted": 0,
             "coverage_missing": 0,
         }
         with self._repository_session() as repos:
@@ -70,14 +72,16 @@ class NarrativeAdmissionWorker(WorkerBase):
                     ]
                     if not radar_rows:
                         stats["coverage_missing"] += 1
-                        suppressed = repos.narratives.suppress_admissions_outside_frontier(
+                        deleted = repos.narratives.delete_admissions_outside_frontier(
                             window=str(window),
                             scope=str(scope),
                             schema_version=NARRATIVE_SCHEMA_VERSION,
                             active_target_keys=[],
                             now_ms=now_ms,
                         )
-                        stats["admissions_suppressed"] += int(suppressed.get("suppressed") or 0)
+                        stats["admissions_deleted"] += int(deleted.get("deleted_admissions") or 0)
+                        stats["digests_deleted"] += int(deleted.get("deleted_digests") or 0)
+                        stats["semantics_deleted"] += int(deleted.get("deleted_obsolete_semantics") or 0)
                         continue
                     existing = repos.narratives.admissions_for_window_scope(
                         window=str(window),
@@ -118,7 +122,7 @@ class NarrativeAdmissionWorker(WorkerBase):
                             stats["source_events"] += int(source_set.get("source_event_count") or 0)
                         upsert_rows.append(payload)
                     upserted = repos.narratives.upsert_admissions(upsert_rows, now_ms=now_ms, limit=admission_limit)
-                    suppressed = repos.narratives.suppress_admissions_outside_frontier(
+                    deleted = repos.narratives.delete_admissions_outside_frontier(
                         window=str(window),
                         scope=str(scope),
                         schema_version=NARRATIVE_SCHEMA_VERSION,
@@ -127,7 +131,9 @@ class NarrativeAdmissionWorker(WorkerBase):
                     )
                     stats["frontier_rows"] += len(radar_rows)
                     stats["admissions_upserted"] += int(upserted.get("upserted") or 0)
-                    stats["admissions_suppressed"] += int(suppressed.get("suppressed") or 0)
+                    stats["admissions_deleted"] += int(deleted.get("deleted_admissions") or 0)
+                    stats["digests_deleted"] += int(deleted.get("deleted_digests") or 0)
+                    stats["semantics_deleted"] += int(deleted.get("deleted_obsolete_semantics") or 0)
         return stats
 
     @contextmanager

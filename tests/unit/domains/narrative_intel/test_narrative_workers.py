@@ -1439,7 +1439,7 @@ class FakeNarrativeRepository:
         self.recorded_run_commits = []
         self.completed_batches = []
         self.upserted_admissions = []
-        self.suppressed_frontiers = []
+        self.deleted_frontiers = []
         self.scanned_admission_ids = []
         self.enqueued_source_event_ids = []
         self.semantic_scans = []
@@ -1471,9 +1471,9 @@ class FakeNarrativeRepository:
         self.upserted_admissions.extend(selected)
         return {"upserted": len(selected), "seen": len(selected)}
 
-    def suppress_admissions_outside_frontier(self, *, window, scope, schema_version, active_target_keys, now_ms):
-        self.suppressed_frontiers.append(set(active_target_keys))
-        return {"suppressed": 0}
+    def delete_admissions_outside_frontier(self, *, window, scope, schema_version, active_target_keys, now_ms):
+        self.deleted_frontiers.append(set(active_target_keys))
+        return {"deleted_admissions": 0, "deleted_digests": 0, "deleted_obsolete_semantics": 0}
 
     def due_admissions_for_semantics(self, *, now_ms, limit, windows, scopes):
         self.due_admissions_for_semantics_calls.append(
