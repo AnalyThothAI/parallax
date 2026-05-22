@@ -56,6 +56,7 @@ class WorkerStatusData(ApiSchema):
 
 class NarrativeSemanticBacklog(ApiSchema):
     total_pending: int = 0
+    estimated_semantic_drain_seconds: int = 0
     current_source_rows: int = 0
     semantic_rows_for_current_sources: int = 0
     missing_semantic_rows: int = 0
@@ -102,6 +103,7 @@ class NarrativeBacklogHealthData(ApiSchema):
     schema_version: str | None = None
     now_ms: int | None = None
     since_hours: int = 4
+    realtime_windows: list[str] = Field(default_factory=list)
     admissions: NarrativeAdmissionHealth = Field(default_factory=NarrativeAdmissionHealth)
     semantic_backlog: NarrativeSemanticBacklog = Field(default_factory=NarrativeSemanticBacklog)
     epoch: NarrativeEpochHealth = Field(default_factory=NarrativeEpochHealth)
@@ -109,6 +111,7 @@ class NarrativeBacklogHealthData(ApiSchema):
     digest_status_counts: dict[str, int] = Field(default_factory=dict)
     digest_reason_counts: dict[str, int] = Field(default_factory=dict)
     pending_digest_count: int = 0
+    estimated_digest_drain_seconds: int = 0
 
 
 class RecentData(ApiSchema):

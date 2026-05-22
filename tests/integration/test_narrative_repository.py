@@ -1456,7 +1456,7 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:Current",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "source_event_ids": ["event-current"],
@@ -1466,7 +1466,7 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:Suppressed",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "status": "suppressed",
@@ -1510,7 +1510,7 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
             {
                 "target_type": "chain_token",
                 "target_id": "solana:Current",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -1528,7 +1528,7 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
             {
                 "target_type": "chain_token",
                 "target_id": "solana:Suppressed",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -1562,6 +1562,8 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
         conn.close()
 
     assert result == {
+        "suppressed_non_realtime_admissions": 0,
+        "staled_non_realtime_digests": 0,
         "deleted_obsolete_pending_semantics": 1,
         "stale_suppressed_digests": 1,
         "fingerprint_mismatch_digests_preserved": 1,
@@ -1572,6 +1574,131 @@ def test_cleanup_narrative_current_hard_cut_reports_exact_counts(tmp_path):
     assert digest_rows["solana:Suppressed"]["superseded_at_ms"] == 4_000
     assert digest_rows["solana:Current"]["status"] == "ready"
     assert digest_rows["solana:Current"]["is_current"] is True
+
+
+def test_cleanup_narrative_current_hard_cut_suppresses_non_realtime_state(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-1h", "event-24h", "event-obsolete"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:OneHour",
+                    "window": "1h",
+                    "scope": "all",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-1h"],
+                    "source_max_received_at_ms": 3_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:LegacyDay",
+                    "window": "24h",
+                    "scope": "all",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-24h"],
+                    "source_max_received_at_ms": 3_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+            ],
+            now_ms=3_000,
+        )
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-1h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:OneHour",
+                    "text_clean": "current 1h source",
+                    "source_received_at_ms": 3_000,
+                },
+                {
+                    "event_id": "event-24h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:LegacyDay",
+                    "text_clean": "legacy 24h source",
+                    "source_received_at_ms": 3_000,
+                },
+                {
+                    "event_id": "event-obsolete",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Obsolete",
+                    "text_clean": "obsolete queued source",
+                    "source_received_at_ms": 2_000,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=3_100,
+        )
+        repo.replace_current_digest(
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:LegacyDay",
+                "window": "24h",
+                "scope": "all",
+                "schema_version": "narrative_intel_v1",
+                "model_version": "deterministic",
+                "status": "ready",
+                "source_fingerprint": "legacy-day-source",
+                "label_fingerprint": "legacy-day-labels",
+                "semantic_coverage": 1.0,
+                "source_event_count": 1,
+                "labeled_event_count": 1,
+                "independent_author_count": 1,
+            },
+            now_ms=3_200,
+        )
+        conn.commit()
+
+        result = repo.cleanup_narrative_current_hard_cut(
+            schema_version="narrative_intel_v1",
+            now_ms=4_000,
+            realtime_windows=("1h",),
+        )
+        admissions = {
+            row["target_id"]: row
+            for row in conn.execute(
+                """
+                SELECT target_id, status, reason
+                FROM narrative_admissions
+                ORDER BY target_id
+                """
+            ).fetchall()
+        }
+        semantics = {
+            row["event_id"]: row["status"]
+            for row in conn.execute("SELECT event_id, status FROM token_mention_semantics ORDER BY event_id").fetchall()
+        }
+        digest = conn.execute(
+            """
+            SELECT status, is_current, superseded_at_ms
+            FROM token_discussion_digests
+            WHERE target_id = 'solana:LegacyDay'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert result == {
+        "suppressed_non_realtime_admissions": 1,
+        "staled_non_realtime_digests": 1,
+        "deleted_obsolete_pending_semantics": 2,
+        "stale_suppressed_digests": 0,
+        "fingerprint_mismatch_digests_preserved": 0,
+    }
+    assert admissions["solana:OneHour"]["status"] == "admitted"
+    assert admissions["solana:LegacyDay"]["status"] == "suppressed"
+    assert admissions["solana:LegacyDay"]["reason"] == "non_realtime_narrative_window"
+    assert semantics == {"event-1h": "queued"}
+    assert digest["status"] == "stale"
+    assert digest["is_current"] is False
+    assert digest["superseded_at_ms"] == 4_000
 
 
 def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:

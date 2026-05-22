@@ -679,7 +679,41 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"updated": int(getattr(cursor, "rowcount", 0) or 0)}
 
-    def cleanup_narrative_current_hard_cut(self, *, schema_version: str, now_ms: int) -> dict[str, int]:
+    def cleanup_narrative_current_hard_cut(
+        self,
+        *,
+        schema_version: str,
+        now_ms: int,
+        realtime_windows: Sequence[str] = ("1h",),
+    ) -> dict[str, int]:
+        windows = tuple(dict.fromkeys(str(window) for window in realtime_windows if str(window)))
+        if not windows:
+            windows = ("1h",)
+        suppressed_non_realtime = self.conn.execute(
+            """
+            UPDATE narrative_admissions
+            SET status = 'suppressed',
+                reason = 'non_realtime_narrative_window',
+                suppressed_at_ms = %s,
+                updated_at_ms = %s
+            WHERE schema_version = %s
+              AND status = 'admitted'
+              AND NOT ("window" = ANY(%s))
+            """,
+            (int(now_ms), int(now_ms), schema_version, list(windows)),
+        )
+        staled_non_realtime = self.conn.execute(
+            """
+            UPDATE token_discussion_digests
+            SET status = 'stale',
+                is_current = false,
+                superseded_at_ms = %s
+            WHERE schema_version = %s
+              AND is_current = true
+              AND NOT ("window" = ANY(%s))
+            """,
+            (int(now_ms), schema_version, list(windows)),
+        )
         obsolete = self.conn.execute(
             """
             WITH current_sources AS (
@@ -690,6 +724,7 @@ class NarrativeRepository:
               FROM narrative_admissions AS admissions
               WHERE admissions.status = 'admitted'
                 AND admissions.schema_version = %s
+                AND admissions."window" = ANY(%s)
             )
             DELETE FROM token_mention_semantics AS semantics
             WHERE semantics.schema_version = %s
@@ -702,7 +737,7 @@ class NarrativeRepository:
                   AND current_sources.target_id = semantics.target_id
               )
             """,
-            (schema_version, schema_version),
+            (schema_version, list(windows), schema_version),
         )
         stale_suppressed = self.conn.execute(
             """
@@ -719,8 +754,9 @@ class NarrativeRepository:
               AND digest.scope = admissions.scope
               AND digest.schema_version = admissions.schema_version
               AND digest.is_current = true
+              AND digest."window" = ANY(%s)
             """,
-            (int(now_ms), schema_version),
+            (int(now_ms), schema_version, list(windows)),
         )
         mismatch_preserved = self.conn.execute(
             """
@@ -734,14 +770,17 @@ class NarrativeRepository:
              AND admissions.schema_version = digest.schema_version
              AND admissions.status = 'admitted'
              AND admissions.schema_version = %s
+             AND admissions."window" = ANY(%s)
             WHERE digest.is_current = true
               AND digest.status = 'ready'
               AND COALESCE(digest.source_fingerprint, '') <> COALESCE(admissions.source_fingerprint, '')
             """,
-            (schema_version,),
+            (schema_version, list(windows)),
         ).fetchone()
         _commit_if_available(self.conn)
         return {
+            "suppressed_non_realtime_admissions": int(getattr(suppressed_non_realtime, "rowcount", 0) or 0),
+            "staled_non_realtime_digests": int(getattr(staled_non_realtime, "rowcount", 0) or 0),
             "deleted_obsolete_pending_semantics": int(getattr(obsolete, "rowcount", 0) or 0),
             "stale_suppressed_digests": int(getattr(stale_suppressed, "rowcount", 0) or 0),
             "fingerprint_mismatch_digests_preserved": int(mismatch_preserved["count"] if mismatch_preserved else 0),

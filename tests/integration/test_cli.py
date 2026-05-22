@@ -157,9 +157,9 @@ class CliTests(unittest.TestCase):
                 "ops",
                 "rebuild-narrative-intel",
                 "--window",
-                "24h",
+                "1h",
                 "--scope",
-                "matched",
+                "all",
                 "--semantic-limit",
                 "5",
                 "--digest-limit",
@@ -221,6 +221,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[17].ops_command, "rebuild-token-radar")
         self.assertEqual(parsed[18].ops_command, "audit-token-radar")
         self.assertEqual(parsed[19].ops_command, "rebuild-narrative-intel")
+        self.assertEqual(parsed[19].window, "1h")
+        self.assertEqual(parsed[19].scope, "all")
         self.assertEqual(parsed[19].semantic_limit, 5)
         self.assertEqual(parsed[19].digest_limit, 5)
         self.assertTrue(parsed[19].drain)

@@ -4,7 +4,14 @@ from gmgn_twitter_intel.domains.narrative_intel.queries.narrative_backlog_health
 
 
 def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests():
-    query = NarrativeBacklogHealthQuery(FakeConn())
+    query = NarrativeBacklogHealthQuery(
+        FakeConn(),
+        realtime_windows=("1h",),
+        semantics_rows_per_cycle=4,
+        semantics_interval_seconds=60,
+        digest_calls_per_cycle=2,
+        digest_interval_seconds=120,
+    )
 
     health = query.health(now_ms=10_000, since_hours=4, schema_version="narrative_intel_v1")
 
@@ -22,7 +29,10 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
         "suppressed_current_digest_count": 1,
         "stale_fingerprint_current_digest_count": 3,
         "oldest_due_age_ms": 4_000,
+        "estimated_semantic_drain_seconds": 180,
     }
+    assert health["realtime_windows"] == ["1h"]
+    assert health["estimated_digest_drain_seconds"] == 480
     assert health["recent_runs"]["mention_semantics"] == {"success": 4, "failure": 2, "timeout": 1}
     assert health["recent_runs"]["discussion_digest"] == {"success": 1, "failure": 1, "timeout": 1}
     assert health["admissions"] == {
@@ -49,6 +59,7 @@ def test_narrative_backlog_health_aggregates_semantic_runs_and_pending_digests()
         "digest_refresh_deferred_by_epoch_policy": {"no_material_delta": 6},
     }
     semantic_sql = next(statement for statement in query.conn.statements if "current_sources" in statement)
+    assert '"window" = ANY' in semantic_sql
     assert "jsonb_array_elements_text" in semantic_sql
     assert "EXISTS" in semantic_sql
     assert "text_fingerprint =" not in semantic_sql
