@@ -16,8 +16,12 @@ FORBIDDEN_TABLE_REFERENCES = (
 )
 
 FORBIDDEN_ROUTE_TOKENS = (
+    "EquityEventSourceReconcileWorker",
     "EquityEventFetchWorker",
     "EquityEventProcessWorker",
+    "EquityEventStoryProjectionWorker",
+    "EquityEventPageProjectionWorker",
+    "EquityEventBriefWorker",
     "httpx",
     "feedparser",
     "classify_equity_event(",
