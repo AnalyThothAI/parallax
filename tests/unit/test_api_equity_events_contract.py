@@ -83,6 +83,38 @@ def test_equity_events_api_lists_read_model_rows_with_filters_without_postgres()
     }
 
 
+def test_equity_events_rejects_malformed_feed_cursor() -> None:
+    equity_events = FakeEquityEventRepository()
+    app = _app(equity_events)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/equity-events",
+            params={"cursor": "bad:event-1"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_cursor", "field": "cursor"}
+    assert equity_events.event_page_calls == []
+
+
+def test_equity_events_rejects_invalid_window() -> None:
+    equity_events = FakeEquityEventRepository()
+    app = _app(equity_events)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/equity-events",
+            params={"window": "abc"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
+    assert equity_events.event_page_calls == []
+
+
 def test_equity_event_detail_returns_404_for_missing_event() -> None:
     equity_events = FakeEquityEventRepository()
     equity_events.event_detail = None
@@ -217,6 +249,22 @@ def test_equity_events_company_timeline_returns_cursor_page() -> None:
             "next_cursor": "6000:timeline-1",
         },
     }
+
+
+def test_equity_events_company_timeline_rejects_malformed_cursor() -> None:
+    equity_events = FakeEquityEventRepository()
+    app = _app(equity_events)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/equity-events/companies/AAPL/timeline",
+            params={"cursor": "bad:row-1"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_cursor", "field": "cursor"}
+    assert equity_events.timeline_calls == []
 
 
 class FakeEquityEventRepository:

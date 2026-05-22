@@ -2137,13 +2137,9 @@ def _decode_cursor(cursor: str | None) -> tuple[int | None, str | None]:
     if not cursor:
         return None, None
     raw_time, separator, row_id = str(cursor).partition(":")
-    if not separator:
-        return None, str(cursor)
-    try:
-        cursor_time = int(raw_time)
-    except ValueError:
-        return None, str(cursor)
-    return cursor_time, row_id
+    if not separator or not raw_time.isdigit() or not row_id.strip():
+        raise ValueError("invalid_cursor")
+    return int(raw_time), row_id
 
 
 def _window_ms(window: str | None) -> int | None:
@@ -2151,26 +2147,22 @@ def _window_ms(window: str | None) -> int | None:
         return None
     raw = str(window).strip().lower()
     if raw.endswith("ms"):
-        return _positive_int(raw[:-2])
+        return _required_positive_int(raw[:-2])
     if raw.endswith("m"):
-        minutes = _positive_int(raw[:-1])
-        return None if minutes is None else minutes * 60_000
+        return _required_positive_int(raw[:-1]) * 60_000
     if raw.endswith("h"):
-        hours = _positive_int(raw[:-1])
-        return None if hours is None else hours * 3_600_000
+        return _required_positive_int(raw[:-1]) * 3_600_000
     if raw.endswith("d"):
-        days = _positive_int(raw[:-1])
-        return None if days is None else days * 86_400_000
-    return _positive_int(raw)
+        return _required_positive_int(raw[:-1]) * 86_400_000
+    return _required_positive_int(raw)
 
 
-def _positive_int(value: str) -> int | None:
-    try:
-        parsed = int(value)
-    except ValueError:
-        return None
+def _required_positive_int(value: str) -> int:
+    if not value.isdigit():
+        raise ValueError("invalid_window")
+    parsed = int(value)
     if parsed <= 0:
-        return None
+        raise ValueError("invalid_window")
     return parsed
 
 

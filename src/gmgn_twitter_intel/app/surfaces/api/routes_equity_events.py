@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime
+from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit
 from gmgn_twitter_intel.domains.equity_event_intel.queries.equity_event_query import EquityEventQuery
@@ -30,11 +31,12 @@ def list_equity_events(
     q: Annotated[str, Query()] = "",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
+    validated_cursor = _public_cursor(cursor)
     with runtime.repositories() as repos:
         data = _equity_event_read_model(repos).list_events(
             limit=_limit(limit, maximum=200),
-            cursor=cursor or None,
-            window=window or None,
+            cursor=validated_cursor,
+            window=_public_window(window),
             universe=universe or None,
             ticker=ticker or None,
             event_type=event_type or None,
@@ -116,11 +118,12 @@ def get_equity_event_company_timeline(
     cursor: Annotated[str, Query()] = "",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
+    validated_cursor = _public_cursor(cursor)
     with runtime.repositories() as repos:
         data = _equity_event_read_model(repos).company_timeline(
             ticker=ticker,
             limit=_limit(limit, maximum=200),
-            cursor=cursor or None,
+            cursor=validated_cursor,
         )
     return _json({"ok": True, "data": data})
 
@@ -140,3 +143,28 @@ def get_equity_event(request: Request, event_id: str) -> JSONResponse:
 
 def _equity_event_read_model(repos: Any) -> EquityEventQuery:
     return EquityEventQuery(repository=repos.equity_events)
+
+
+def _public_cursor(value: str) -> str | None:
+    if not value:
+        return None
+    raw = value.strip()
+    raw_time, separator, row_id = raw.partition(":")
+    if not separator or not raw_time.isdigit() or not row_id.strip():
+        raise ApiBadRequest("invalid_cursor", field="cursor")
+    return raw
+
+
+def _public_window(value: str) -> str | None:
+    if not value:
+        return None
+    raw = value.strip().lower()
+    if raw.endswith("ms"):
+        amount = raw[:-2]
+    elif raw.endswith(("m", "h", "d")):
+        amount = raw[:-1]
+    else:
+        amount = raw
+    if not amount.isdigit() or int(amount) <= 0:
+        raise ApiBadRequest("invalid_window", field="window")
+    return raw
