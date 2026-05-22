@@ -27,6 +27,7 @@ import {
   type OpsWorker,
 } from "../model/opsDiagnostics";
 import "./ops.css";
+import "./opsQueues.css";
 
 type OpsDiagnosticsPageProps = {
   diagnostics: OpsDiagnostics | null | undefined;

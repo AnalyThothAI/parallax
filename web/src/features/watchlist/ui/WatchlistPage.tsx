@@ -14,6 +14,7 @@ import { WatchlistHero } from "./WatchlistHero";
 import { WatchlistInsightRail } from "./WatchlistInsightRail";
 import { WatchlistMetricStrip } from "./WatchlistMetricStrip";
 import "./watchlist.css";
+import "./watchlistResponsive.css";
 
 type WatchlistPageProps = {
   accountUnreadCounts?: Record<string, number> | null;

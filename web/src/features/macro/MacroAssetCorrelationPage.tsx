@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 
 import { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
 import "./macro.css";
+import "./macroResponsive.css";
 import "./MacroAssetCorrelation.css";
 
 const WINDOWS: MacroAssetCorrelationWindow[] = ["20d", "60d", "120d"];

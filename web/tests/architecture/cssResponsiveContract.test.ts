@@ -401,7 +401,7 @@ describe("responsive CSS contract", () => {
     ).toEqual([]);
   });
 
-  it("reports side-effect CSS files above the 700-line budget", () => {
+  it("reports side-effect CSS files above the 500-line budget", () => {
     const oversized = collectFiles(srcRoot)
       .filter(isSideEffectCssFile)
       .map((path) => ({
@@ -409,7 +409,7 @@ describe("responsive CSS contract", () => {
         lines: readFileSync(path, "utf8").split(/\r?\n/).length,
         relativePath: relativeToSrc(path),
       }))
-      .filter(({ lines }) => lines > 700);
+      .filter(({ lines }) => lines > 500);
 
     const newOversized = oversized
       .filter(({ relativePath }) => !oversizedSideEffectCss.has(relativePath))
@@ -418,8 +418,8 @@ describe("responsive CSS contract", () => {
     expect(
       newOversized,
       [
-        "Side-effect CSS files must stay at or below 700 lines.",
-        "Allowlisted oversized files are temporary and must be reduced during the responsive CSS architecture hard-cut plan.",
+        "Side-effect CSS files must stay at or below 500 lines.",
+        "Split feature and primitive styling into adjacent owner CSS files instead of growing route-wide buckets.",
         ...oversized.map(({ relativePath, lines }) => `- ${relativePath}: ${lines} lines`),
       ].join("\n"),
     ).toEqual([]);

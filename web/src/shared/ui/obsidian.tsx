@@ -4,6 +4,7 @@ import { useId } from "react";
 
 import type { ObsidianSource, ObsidianTone } from "./obsidianLanguage";
 import "./obsidian.css";
+import "./obsidianRecords.css";
 
 export type {
   ObsidianSource,

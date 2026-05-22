@@ -138,6 +138,33 @@ describe("CSS architecture harness", () => {
     expect([...retiredFiles, ...retiredImports]).toEqual([]);
   });
 
+  it("keeps retired route and sidebar selector fragments out of production side-effect CSS", () => {
+    const retiredFragments = [
+      "desktop-side-rail",
+      "mobile-route-nav",
+      "side-rail",
+      "route-nav",
+    ];
+    const offenders = collectFiles(srcRoot)
+      .filter(isSideEffectCssFile)
+      .flatMap((path) => {
+        const css = readFileSync(path, "utf8");
+
+        return cssRules(css).flatMap((rule) =>
+          retiredFragments
+            .filter((fragment) => rule.selector.includes(fragment))
+            .map(
+              (fragment) =>
+                `${relativeToSrc(path)}:${lineNumber(css, rule.start)} keeps retired ${fragment} fragment via ${compactSelector(
+                  rule.selector,
+                )}`,
+            ),
+        );
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps side-effect CSS imported only by local owner files", () => {
     const sourceFiles = collectFiles(srcRoot).filter((path) =>
       [".ts", ".tsx"].includes(extname(path)),

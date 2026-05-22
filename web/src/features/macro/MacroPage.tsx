@@ -42,6 +42,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useMacroQuery } from "./api/useMacroQuery";
 import "./macro.css";
+import "./macroResponsive.css";
 import "./MacroWorkbenchPanels.css";
 
 type MacroModuleId =

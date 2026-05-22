@@ -15,6 +15,7 @@ import { SearchAmbiguousCase } from "./SearchAmbiguousCase";
 import { SearchTokenIntelPage } from "./SearchTokenIntelPage";
 import { SearchTopicCase } from "./SearchTopicCase";
 import "./search.css";
+import "./searchDetails.css";
 
 export function SearchIntelPage({ token }: { token?: string }) {
   const navigate = useNavigate();
