@@ -476,6 +476,64 @@ class NewsRepository:
             self.conn.commit()
         return {**dict(row), "status": status}
 
+    def upsert_news_context_item(
+        self,
+        *,
+        context_item_id: str,
+        source_id: str,
+        parent_news_item_id: str | None = None,
+        provider_item_id: str | None = None,
+        context_type: str,
+        author: str | None = None,
+        canonical_url: str | None = None,
+        body_text: str,
+        published_at_ms: int | None = None,
+        engagement_json: Mapping[str, Any] | None = None,
+        raw_payload_json: Mapping[str, Any] | None = None,
+        created_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO news_context_items (
+              context_item_id, source_id, parent_news_item_id, provider_item_id, context_type,
+              author, canonical_url, body_text, published_at_ms, engagement_json,
+              raw_payload_json, created_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (context_item_id) DO UPDATE SET
+              source_id = EXCLUDED.source_id,
+              parent_news_item_id = EXCLUDED.parent_news_item_id,
+              provider_item_id = EXCLUDED.provider_item_id,
+              context_type = EXCLUDED.context_type,
+              author = EXCLUDED.author,
+              canonical_url = EXCLUDED.canonical_url,
+              body_text = EXCLUDED.body_text,
+              published_at_ms = EXCLUDED.published_at_ms,
+              engagement_json = EXCLUDED.engagement_json,
+              raw_payload_json = EXCLUDED.raw_payload_json,
+              created_at_ms = EXCLUDED.created_at_ms
+            RETURNING *
+            """,
+            (
+                str(context_item_id),
+                str(source_id),
+                str(parent_news_item_id) if parent_news_item_id else None,
+                str(provider_item_id) if provider_item_id else None,
+                str(context_type),
+                str(author) if author is not None else None,
+                str(canonical_url) if canonical_url is not None else None,
+                str(body_text),
+                int(published_at_ms) if published_at_ms is not None else None,
+                _json(_json_dict(engagement_json)),
+                _json(_json_dict(raw_payload_json)),
+                int(created_at_ms),
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
     def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
         commit = bool(payload.pop("commit", True))
         row = self.conn.execute(
@@ -1139,6 +1197,7 @@ class NewsRepository:
                   COALESCE(stories.updated_at_ms, 0),
                   COALESCE(mention_updates.updated_at_ms, 0),
                   COALESCE(fact_updates.updated_at_ms, 0),
+                  COALESCE(context_updates.updated_at_ms, 0),
                   COALESCE(story_member_updates.updated_at_ms, 0)
                 ) AS source_updated_at_ms,
                 current_brief.status AS current_status,
@@ -1169,6 +1228,11 @@ class NewsRepository:
                   FROM news_fact_candidates
                  WHERE news_item_id = items.news_item_id
               ) AS fact_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(created_at_ms) AS updated_at_ms
+                  FROM news_context_items
+                 WHERE parent_news_item_id = items.news_item_id
+              ) AS context_updates ON true
               LEFT JOIN LATERAL (
                 SELECT MAX(created_at_ms) AS updated_at_ms
                   FROM news_story_members
@@ -1210,6 +1274,7 @@ class NewsRepository:
                        COALESCE(stories.updated_at_ms, 0),
                        COALESCE(mention_updates.updated_at_ms, 0),
                        COALESCE(fact_updates.updated_at_ms, 0),
+                       COALESCE(context_updates.updated_at_ms, 0),
                        COALESCE(story_member_updates.updated_at_ms, 0)
                      )
                   OR (
@@ -1240,6 +1305,7 @@ class NewsRepository:
               candidates.source_updated_at_ms,
               COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
               COALESCE(fact_rows.rows, '[]'::jsonb) AS fact_candidates,
+              COALESCE(context_rows.rows, '[]'::jsonb) AS context_items,
               COALESCE(story_member_rows.rows, '[]'::jsonb) AS story_members
             FROM candidates
             JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
@@ -1265,6 +1331,20 @@ class NewsRepository:
             ) AS fact_rows ON true
             LEFT JOIN LATERAL (
               SELECT jsonb_agg(
+                       to_jsonb(context_items.*)
+                       ORDER BY context_items.published_at_ms DESC NULLS LAST,
+                                context_items.context_item_id ASC
+                     ) AS rows
+                FROM (
+                  SELECT *
+                    FROM news_context_items
+                   WHERE parent_news_item_id = items.news_item_id
+                   ORDER BY published_at_ms DESC NULLS LAST, context_item_id ASC
+                   LIMIT 25
+                ) AS context_items
+            ) AS context_rows ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(
                        to_jsonb(member_items.*)
                        ORDER BY member_items.published_at_ms DESC, member_items.news_item_id ASC
                      ) AS rows
@@ -1286,19 +1366,38 @@ class NewsRepository:
                 max(0, int(limit)),
             ),
         ).fetchall()
-        return [
-            {
-                "item": _json_dict(row["item"]),
-                "story": _json_dict(row["story"]) if row["story"] is not None else None,
-                "token_mentions": _json_list(row["token_mentions"]),
-                "fact_candidates": _json_list(row["fact_candidates"]),
-                "story_members": _json_list(row["story_members"]),
-                "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
-                "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
-                "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
-            }
-            for row in rows
-        ]
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            item = _json_dict(row["item"])
+            context_items = _json_list(row["context_items"])
+            item["context_items"] = context_items
+            results.append(
+                {
+                    "item": item,
+                    "story": _json_dict(row["story"]) if row["story"] is not None else None,
+                    "token_mentions": _json_list(row["token_mentions"]),
+                    "fact_candidates": _json_list(row["fact_candidates"]),
+                    "context_items": context_items,
+                    "story_members": _json_list(row["story_members"]),
+                    "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
+                    "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
+                    "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
+                }
+            )
+        return results
+
+    def list_context_items_for_news_item(self, news_item_id: str, *, limit: int = 25) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+              FROM news_context_items
+             WHERE parent_news_item_id = %s
+             ORDER BY published_at_ms DESC NULLS LAST, context_item_id ASC
+             LIMIT %s
+            """,
+            (str(news_item_id), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_news_item_detail(self, *, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -1385,6 +1484,7 @@ class NewsRepository:
             """,
             (news_item_id,),
         ).fetchall()
+        context_items = self.list_context_items_for_news_item(news_item_id, limit=25)
         return {
             **_json_dict(row["item"]),
             "source": _json_dict(row["source"]),
@@ -1396,6 +1496,7 @@ class NewsRepository:
             "entities": _json_list(row["entities"]),
             "token_mentions": _json_list(row["token_mentions"]),
             "fact_candidates": _json_list(row["fact_candidates"]),
+            "context_items": context_items,
         }
 
     def get_news_story_detail(self, *, story_id: str) -> dict[str, Any] | None:

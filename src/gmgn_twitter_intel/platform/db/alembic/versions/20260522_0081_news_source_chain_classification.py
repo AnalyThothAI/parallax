@@ -37,6 +37,14 @@ SOURCE_ROLES = (
     "developer_signal",
     "observed_source",
 )
+CONTEXT_TYPES = (
+    "comment",
+    "reply",
+    "discussion",
+    "engagement_snapshot",
+    "related_post",
+    "source_quote",
+)
 PREVIOUS_SOURCE_ROLES = (
     "official_exchange",
     "official_regulator",
@@ -69,11 +77,46 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE news_sources ADD COLUMN IF NOT EXISTS source_quality_status TEXT NOT NULL DEFAULT 'unknown'"
     )
+    op.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS news_context_items (
+          context_item_id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL REFERENCES news_sources(source_id) ON DELETE CASCADE,
+          parent_news_item_id TEXT REFERENCES news_items(news_item_id) ON DELETE CASCADE,
+          provider_item_id TEXT REFERENCES news_provider_items(provider_item_id) ON DELETE SET NULL,
+          context_type TEXT NOT NULL,
+          author TEXT,
+          canonical_url TEXT,
+          body_text TEXT NOT NULL,
+          published_at_ms BIGINT,
+          engagement_json JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+          raw_payload_json JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+          created_at_ms BIGINT NOT NULL,
+          CONSTRAINT news_context_items_context_type_check
+            CHECK (context_type IN ({_quoted_list(CONTEXT_TYPES)}))
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS news_context_items_parent_published_idx
+          ON news_context_items (parent_news_item_id, published_at_ms DESC)
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS news_context_items_source_published_idx
+          ON news_context_items (source_id, published_at_ms DESC)
+        """
+    )
     _add_provider_type_constraint(PROVIDER_TYPES)
     _add_source_role_constraint(SOURCE_ROLES)
 
 
 def downgrade() -> None:
+    op.execute("DROP INDEX IF EXISTS news_context_items_source_published_idx")
+    op.execute("DROP INDEX IF EXISTS news_context_items_parent_published_idx")
+    op.execute("DROP TABLE IF EXISTS news_context_items")
     # Rows with new provider/source-role values must be removed before restoring old constraints.
     op.execute(f"DELETE FROM news_sources WHERE provider_type NOT IN ({_quoted_list(PREVIOUS_PROVIDER_TYPES)})")
     op.execute(f"DELETE FROM news_sources WHERE source_role NOT IN ({_quoted_list(PREVIOUS_SOURCE_ROLES)})")
