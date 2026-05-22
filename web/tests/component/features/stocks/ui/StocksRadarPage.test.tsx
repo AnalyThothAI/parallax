@@ -1,6 +1,6 @@
 import { StocksRadarPage } from "@features/stocks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createApiMock, ok, resetApiMock } from "@tests/msw/fixtures";
 import { apiHandlers } from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
@@ -137,9 +137,20 @@ describe("StocksRadarPage", () => {
     expect(screen.getByLabelText("stock RKLB")).toBeInTheDocument();
     expect(screen.getByText("$291.87")).toBeInTheDocument();
     expect(screen.getByText("RuntimeError")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "24h" }));
+    const controls = screen.getByLabelText("stocks radar controls");
+    const windowGroup = within(controls).getByLabelText("radar window");
+    const scopeGroup = within(controls).getByLabelText("token flow scope");
+    expect(within(windowGroup).getByRole("radio", { name: "1h" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    expect(within(scopeGroup).getByRole("radio", { name: "all" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    fireEvent.click(within(windowGroup).getByRole("radio", { name: "24h" }));
     expect(onWindowChange).toHaveBeenCalledWith("24h");
-    fireEvent.click(screen.getByRole("button", { name: "watched" }));
+    fireEvent.click(within(scopeGroup).getByRole("radio", { name: "watched" }));
     expect(onScopeChange).toHaveBeenCalledWith("matched");
 
     await waitFor(() => {

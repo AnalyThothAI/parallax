@@ -25,12 +25,20 @@ describe("live radar route", () => {
     renderAppRoute("/");
 
     const controls = await screen.findByLabelText("token radar scan controls");
-    const labels = within(controls)
+    const chainLabels = within(controls)
       .getAllByRole("button")
       .map((button) => button.textContent);
+    const windowGroup = within(controls).getByLabelText("radar window");
+    const windowLabels = within(windowGroup)
+      .getAllByRole("radio")
+      .map((radio) => radio.textContent);
 
-    expect(labels.slice(0, 6)).toEqual(["All", "SOL", "ETH", "BASE", "BSC", "CEX"]);
-    expect(labels.slice(6, 10)).toEqual(["5m", "1h", "4h", "24h"]);
+    expect(chainLabels.slice(0, 6)).toEqual(["All", "SOL", "ETH", "BASE", "BSC", "CEX"]);
+    expect(windowLabels).toEqual(["5m", "1h", "4h", "24h"]);
+    expect(
+      within(controls).getByRole("button", { name: "CEX" }).compareDocumentPosition(windowGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("shows sidebar badges for primary market destinations", async () => {

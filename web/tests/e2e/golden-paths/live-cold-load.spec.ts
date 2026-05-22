@@ -28,10 +28,15 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
   await expect(page.getByRole("button", { name: /sort by holders/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /sort by market/i })).toBeVisible();
   await expect(page.getByText("$UPEG watched account evidence")).toBeVisible();
-  await expect(page.getByRole("button", { name: "1h" })).toHaveClass(/active/);
+  const radarWindowControls = page.getByLabel("radar window");
+  const radarScopeControls = page.getByLabel("token flow scope");
+  await expect(radarWindowControls.getByRole("radio", { name: "1h" })).toHaveAttribute(
+    "data-state",
+    "on",
+  );
   await expect(
-    page.locator(".radar-controls-scope").getByRole("button", { name: "all" }),
-  ).toHaveClass(/active/);
+    radarScopeControls.getByRole("radio", { name: "all" }),
+  ).toHaveAttribute("data-state", "on");
   await expect(page).toHaveURL(/\/$/);
 
   const shellBox = await page.locator(".cockpit-shell").boundingBox();

@@ -26,11 +26,13 @@ describe("RemoteState shared UI", () => {
       </IconButton>,
     );
 
-    expect(screen.getByRole("button", { name: "refresh data" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "refresh data" })).toHaveClass(
-      "icon-button",
-      "extra-action",
-    );
+    const button = screen.getByRole("button", { name: "refresh data" });
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute("data-slot", "button");
+    expect(button).toHaveAttribute("data-size", "icon-sm");
+    expect(button).toHaveAttribute("data-variant", "outline");
+    expect(button).toHaveAttribute("type", "button");
+    expect(button).toHaveClass("size-7", "extra-action");
     expect(await axe(container)).toHaveNoViolations();
   });
 
