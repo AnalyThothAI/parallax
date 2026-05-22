@@ -13,6 +13,7 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel.providers import NewsSourceProvider
 from gmgn_twitter_intel.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
 from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+    NewsProviderContextObservation,
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
@@ -116,6 +117,7 @@ class NewsFetchWorker(WorkerBase):
                     source=source,
                     fetch_run_id=fetch_run_id,
                     observations=feed_result.observations,
+                    context_observations=feed_result.context_observations,
                     fetched_at_ms=now_ms,
                 )
                 repos.news.update_source_http_cache(
@@ -151,11 +153,13 @@ class NewsFetchWorker(WorkerBase):
         source: Mapping[str, Any],
         fetch_run_id: str,
         observations: list[NewsProviderObservation],
+        context_observations: list[NewsProviderContextObservation],
         fetched_at_ms: int,
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
         source_id = str(source["source_id"])
         source_domain = str(source["source_domain"])
+        parent_ids_by_source_key: dict[str, str] = {}
         for observation in observations:
             counts["fetched"] += 1
             provider = repository.upsert_provider_item(
@@ -189,10 +193,47 @@ class NewsFetchWorker(WorkerBase):
                 now_ms=fetched_at_ms,
                 commit=False,
             )
+            news_item_id = str(news.get("news_item_id") or "")
+            if news_item_id:
+                parent_ids_by_source_key[observation.source_item_key] = news_item_id
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
                 counts[status] += 1
+        self._persist_context_observations(
+            repository,
+            source_id=source_id,
+            parent_ids_by_source_key=parent_ids_by_source_key,
+            context_observations=context_observations,
+            fetched_at_ms=fetched_at_ms,
+        )
         return counts
+
+    def _persist_context_observations(
+        self,
+        repository: Any,
+        *,
+        source_id: str,
+        parent_ids_by_source_key: Mapping[str, str],
+        context_observations: list[NewsProviderContextObservation],
+        fetched_at_ms: int,
+    ) -> None:
+        for context in context_observations:
+            parent_news_item_id = parent_ids_by_source_key.get(context.parent_source_item_key)
+            repository.upsert_news_context_item(
+                context_item_id=context.context_item_id,
+                source_id=source_id,
+                parent_news_item_id=parent_news_item_id,
+                provider_item_id=None,
+                context_type=context.context_type,
+                author=context.author,
+                canonical_url=context.canonical_url,
+                body_text=context.body_text,
+                published_at_ms=context.published_at_ms,
+                engagement_json=context.engagement or {},
+                raw_payload_json=context.raw_payload,
+                created_at_ms=fetched_at_ms,
+                commit=False,
+            )
 
     def _mark_source_failed(self, *, source_id: str, fetch_run_id: str, now_ms: int, error: Exception) -> None:
         if not fetch_run_id:
