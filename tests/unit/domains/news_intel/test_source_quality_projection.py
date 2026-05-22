@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository, _source_status_payload
 from gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker import (
     NewsSourceQualityProjectionWorker,
 )
@@ -196,6 +198,87 @@ def test_source_quality_projection_worker_builds_rows_for_configured_windows() -
     assert all(row["source_id"] == "coindesk" for row in repo.rows)
 
 
+def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
+    payload = _source_status_payload(
+        {
+            "source_id": "coindesk",
+            "provider_type": "rss",
+            "source_domain": "coindesk.com",
+            "source_name": "CoinDesk",
+            "source_role": "specialist_media",
+            "trust_tier": "high",
+            "coverage_tags_json": ["crypto_market"],
+            "source_quality_status": "healthy",
+            "enabled": True,
+            "managed_by_config": True,
+            "refresh_interval_seconds": 300,
+            "item_count": 4,
+            "next_fetch_after_ms": 0,
+            "consecutive_failures": 0,
+            "latest_quality_json": {
+                "row_id": "news-source-quality:coindesk:24h",
+                "source_id": "coindesk",
+                "window": "24h",
+                "computed_at_ms": NOW_MS,
+                "fetch_success_rate": 1,
+                "items_fetched": 10,
+                "items_inserted": 8,
+                "duplicate_rate": 0.2,
+                "process_success_rate": 1,
+                "resolved_token_rate": 0.75,
+                "attention_rate": 0.25,
+                "accepted_fact_rate": 0.5,
+                "brief_ready_rate": 0.5,
+                "median_lag_ms": 500,
+                "quality_score": 82.5,
+                "diagnostics_json": {"status": "healthy"},
+                "projection_version": SOURCE_QUALITY_PROJECTION_VERSION,
+            },
+        }
+    )
+
+    assert payload["coverage_tags"] == ["crypto_market"]
+    assert payload["quality"]["diagnostics_json"] == {"status": "healthy"}
+    json.dumps(payload)
+
+
+def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
+    conn = CapturingQualityConnection()
+    repo = NewsRepository(conn)
+
+    repo.replace_source_quality_rows(
+        rows=[
+            {
+                "row_id": "news-source-quality:coindesk:24h",
+                "source_id": "coindesk",
+                "window": "24h",
+                "computed_at_ms": NOW_MS,
+                "fetch_success_rate": 1,
+                "items_fetched": 10,
+                "items_inserted": 8,
+                "duplicate_rate": 0.2,
+                "process_success_rate": 1,
+                "resolved_token_rate": 0.75,
+                "attention_rate": 0.25,
+                "accepted_fact_rate": 0.5,
+                "brief_ready_rate": 0.5,
+                "median_lag_ms": 500,
+                "quality_score": 82.5,
+                "diagnostics_json": {"status": "healthy"},
+                "projection_version": SOURCE_QUALITY_PROJECTION_VERSION,
+            }
+        ],
+        status_window="24h",
+    )
+
+    status_update = next(sql for sql, _ in conn.calls if "UPDATE news_sources" in sql)
+    status_params = next(params for sql, params in conn.calls if "UPDATE news_sources" in sql)
+    assert "updated_at_ms = GREATEST(updated_at_ms, %s)" in status_update
+    assert "source_quality_status IS DISTINCT FROM %s" in status_update
+    assert status_params == ("healthy", NOW_MS, "coindesk", "healthy")
+    assert conn.commits == 1
+
+
 class FakeSourceQualityDB:
     def __init__(self, repo: FakeSourceQualityRepository) -> None:
         self.repo = repo
@@ -244,3 +327,20 @@ class FakeSourceQualityRepository:
         assert commit is True
         self.status_windows.append(status_window)
         self.rows.extend(dict(row) for row in rows)
+
+
+class CapturingQualityConnection:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, object]] = []
+        self.commits = 0
+
+    def execute(self, sql: str, params: object = None) -> CapturingQualityCursor:
+        self.calls.append((sql, params))
+        return CapturingQualityCursor()
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
+class CapturingQualityCursor:
+    pass

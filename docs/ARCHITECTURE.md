@@ -97,7 +97,8 @@ are wrong too.
    are written only by `NewsStoryProjectionWorker`;
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by
-   `NewsPageProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
+   `NewsPageProjectionWorker`; `news_source_quality_rows` is written only by
+   `NewsSourceQualityProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
    and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`;
    `macro_view_snapshots` is written only by
    `MacroViewProjectionWorker`.

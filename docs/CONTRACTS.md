@@ -159,15 +159,22 @@ News Intel contract:
 - `/api/news` is read-only and paginated. Rows come from `news_page_rows` or
   the raw visible item fallback; handlers do not fetch feeds, run extraction,
   execute agents, or rebuild projections.
-- `/api/news` accepts optional filters including `direction=bullish|bearish`;
-  direction filtering is based only on persisted `agent_brief.direction`.
+- `/api/news` accepts optional filters including `direction=bullish|bearish`,
+  `provider_type`, `source_role`, `trust_tier`, `coverage_tag`, and
+  `content_class`. Direction filtering is based only on persisted
+  `agent_brief.direction`; source classification filters read persisted
+  `source_json`, and `content_class` reads persisted fact lanes.
 - News rows expose deterministic fields (`headline`, `summary`,
   `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata) plus
-  compact `agent_brief`, `agent_brief_status`, and
-  `agent_brief_computed_at_ms`. A ready compact brief includes `summary_zh`,
-  `market_read_zh`, `direction`, `decision_class`, bull/bear strengths,
-  evidence count/data-gap metadata, run id, prompt/schema versions, and hashes
-  when available.
+  compact source metadata (`provider_type`, `source_role`, `trust_tier`,
+  `coverage_tags`, `source_quality_status`), compact `agent_brief`,
+  `agent_brief_status`, and `agent_brief_computed_at_ms`. A ready compact brief
+  includes `summary_zh`, `market_read_zh`, `direction`, `decision_class`,
+  bull/bear strengths, evidence count/data-gap metadata, run id,
+  prompt/schema versions, and hashes when available.
+- `/api/news/sources/status` exposes source classification fields, item counts,
+  control-plane fetch status, `source_quality_status`, and the latest
+  `news_source_quality_rows` payload when available.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
   the full current item brief and a sanitized latest run summary. It excludes
   raw provider request/response payloads from the public item-detail contract.

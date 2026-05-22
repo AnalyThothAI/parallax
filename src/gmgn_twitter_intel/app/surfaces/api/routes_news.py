@@ -24,6 +24,11 @@ def list_news(
     lane: Annotated[str, Query()] = "",
     source: Annotated[str, Query()] = "",
     target: Annotated[str, Query()] = "",
+    provider_type: Annotated[str, Query()] = "",
+    source_role: Annotated[str, Query()] = "",
+    trust_tier: Annotated[str, Query()] = "",
+    coverage_tag: Annotated[str, Query()] = "",
+    content_class: Annotated[str, Query()] = "",
     q: Annotated[str, Query()] = "",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
@@ -36,6 +41,11 @@ def list_news(
             lane=lane or None,
             source=source or None,
             target=target or None,
+            provider_type=provider_type or None,
+            source_role=source_role or None,
+            trust_tier=trust_tier or None,
+            coverage_tag=coverage_tag or None,
+            content_class=content_class or None,
             q=q or None,
         )
     return _json({"ok": True, "data": data})

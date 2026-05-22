@@ -623,6 +623,11 @@ class NewsRepository:
         lane: str | None = None,
         source: str | None = None,
         target: str | None = None,
+        provider_type: str | None = None,
+        source_role: str | None = None,
+        trust_tier: str | None = None,
+        coverage_tag: str | None = None,
+        content_class: str | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
@@ -637,6 +642,31 @@ class NewsRepository:
         if source:
             filters.append("source_domain = %s")
             filter_params.append(str(source))
+        if provider_type:
+            filters.append("source_json ->> 'provider_type' = %s")
+            filter_params.append(str(provider_type))
+        if source_role:
+            filters.append("source_json ->> 'source_role' = %s")
+            filter_params.append(str(source_role))
+        if trust_tier:
+            filters.append("source_json ->> 'trust_tier' = %s")
+            filter_params.append(str(trust_tier))
+        if coverage_tag:
+            filters.append("(source_json -> 'coverage_tags') ? %s")
+            filter_params.append(str(coverage_tag))
+        if content_class:
+            filters.append(
+                """
+                EXISTS (
+                  SELECT 1
+                    FROM jsonb_array_elements(fact_lanes_json) AS fact_lane(value)
+                   WHERE fact_lane.value ->> 'content_class' = %s
+                      OR fact_lane.value ->> 'event_type' = %s
+                )
+                """
+            )
+            normalized_content_class = str(content_class)
+            filter_params.extend([normalized_content_class, normalized_content_class])
         if q:
             filters.append("(headline ILIKE %s OR summary ILIKE %s)")
             needle = f"%{str(q).strip()}%"
@@ -690,10 +720,13 @@ class NewsRepository:
                 '{{}}'::jsonb AS story_json,
                 jsonb_build_object(
                   'source_id', items.source_id,
+                  'provider_type', sources.provider_type,
                   'source_domain', items.source_domain,
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier
+                  'trust_tier', sources.trust_tier,
+                  'coverage_tags', sources.coverage_tags_json,
+                  'source_quality_status', sources.source_quality_status
                 ) AS source_json,
                 '{{"status":"pending"}}'::jsonb AS agent_brief_json,
                 'pending'::text AS agent_status,
@@ -1128,13 +1161,14 @@ class NewsRepository:
                      page.computed_at_ms AS projected_at_ms,
                      page.projection_version AS projected_version
                 FROM news_items AS items
+                JOIN news_sources AS sources ON sources.source_id = items.source_id
                 LEFT JOIN news_story_members AS members ON members.news_item_id = items.news_item_id
                 LEFT JOIN news_story_groups AS stories ON stories.story_id = members.story_id
                 LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
                 LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
                 LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
                 LEFT JOIN news_page_rows AS page ON page.news_item_id = items.news_item_id
-               GROUP BY items.news_item_id, stories.story_id, current_brief.news_item_id, page.row_id
+               GROUP BY items.news_item_id, sources.source_id, stories.story_id, current_brief.news_item_id, page.row_id
               HAVING page.row_id IS NULL
                   OR page.projection_version <> %s
                   OR page.computed_at_ms < GREATEST(
@@ -1145,6 +1179,14 @@ class NewsRepository:
                        COALESCE(current_brief.updated_at_ms, 0),
                        COALESCE(current_brief.computed_at_ms, 0)
                      )
+                  OR page.source_json ->> 'source_id' IS DISTINCT FROM items.source_id
+                  OR page.source_json ->> 'provider_type' IS DISTINCT FROM sources.provider_type
+                  OR page.source_json ->> 'source_domain' IS DISTINCT FROM items.source_domain
+                  OR page.source_json ->> 'source_name' IS DISTINCT FROM sources.source_name
+                  OR page.source_json ->> 'source_role' IS DISTINCT FROM sources.source_role
+                  OR page.source_json ->> 'trust_tier' IS DISTINCT FROM sources.trust_tier
+                  OR COALESCE(page.source_json -> 'coverage_tags', '[]'::jsonb) <> sources.coverage_tags_json
+                  OR page.source_json ->> 'source_quality_status' IS DISTINCT FROM sources.source_quality_status
                ORDER BY (page.row_id IS NULL) DESC,
                         source_updated_at_ms ASC,
                         items.published_at_ms DESC,
@@ -1154,9 +1196,12 @@ class NewsRepository:
             SELECT
               to_jsonb(items.*)
                 || jsonb_build_object(
+                  'provider_type', sources.provider_type,
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier
+                  'trust_tier', sources.trust_tier,
+                  'coverage_tags_json', sources.coverage_tags_json,
+                  'source_quality_status', sources.source_quality_status
                 ) AS item,
               CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
               CASE
@@ -1793,10 +1838,17 @@ class NewsRepository:
                 self.conn.execute(
                     """
                     UPDATE news_sources
-                       SET source_quality_status = %s
+                       SET source_quality_status = %s,
+                           updated_at_ms = GREATEST(updated_at_ms, %s)
                      WHERE source_id = %s
+                       AND source_quality_status IS DISTINCT FROM %s
                     """,
-                    (str(status or "unknown"), payload["source_id"]),
+                    (
+                        str(status or "unknown"),
+                        payload["computed_at_ms"],
+                        payload["source_id"],
+                        str(status or "unknown"),
+                    ),
                 )
         if commit:
             self.conn.commit()
@@ -1805,14 +1857,36 @@ class NewsRepository:
         rows = self.conn.execute(
             """
             SELECT sources.*,
-                   COUNT(items.news_item_id)::int AS item_count
+                   COALESCE(item_counts.item_count, 0)::int AS item_count,
+                   CASE
+                     WHEN latest_quality.row_id IS NULL THEN NULL
+                     ELSE to_jsonb(latest_quality.*)
+                   END AS latest_quality_json
               FROM news_sources AS sources
-              LEFT JOIN news_items AS items ON items.source_id = sources.source_id
-             GROUP BY sources.source_id
+              LEFT JOIN LATERAL (
+                SELECT COUNT(items.news_item_id)::int AS item_count
+                  FROM news_items AS items
+                 WHERE items.source_id = sources.source_id
+              ) AS item_counts ON true
+              LEFT JOIN LATERAL (
+                SELECT *
+                  FROM news_source_quality_rows AS quality
+                 WHERE quality.source_id = sources.source_id
+                 ORDER BY
+                   quality.computed_at_ms DESC,
+                   CASE quality.window
+                     WHEN '24h' THEN 0
+                     WHEN '4h' THEN 1
+                     WHEN '1h' THEN 2
+                     WHEN '7d' THEN 3
+                     ELSE 4
+                   END
+                 LIMIT 1
+              ) AS latest_quality ON true
              ORDER BY sources.enabled DESC, sources.source_domain ASC, sources.source_id ASC
             """
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [_source_status_payload(row) for row in rows]
 
     def replace_page_rows_for_items(
         self,
@@ -2101,6 +2175,53 @@ def _source_quality_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
         "quality_score": _optional_float(row.get("quality_score")),
         "diagnostics_json": _json(row.get("diagnostics_json") or {}),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
+def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    latest_quality = _json_dict(row.get("latest_quality_json"))
+    quality_payload = _source_quality_read_payload(latest_quality) if latest_quality else None
+    return {
+        "source_id": str(row["source_id"]),
+        "provider_type": str(row.get("provider_type") or ""),
+        "source_domain": str(row.get("source_domain") or ""),
+        "source_name": str(row.get("source_name") or ""),
+        "source_role": str(row.get("source_role") or ""),
+        "trust_tier": str(row.get("trust_tier") or ""),
+        "coverage_tags": _json_list(row.get("coverage_tags_json")),
+        "source_quality_status": str(row.get("source_quality_status") or "unknown"),
+        "quality": quality_payload,
+        "enabled": bool(row.get("enabled")),
+        "managed_by_config": bool(row.get("managed_by_config")),
+        "refresh_interval_seconds": int(row.get("refresh_interval_seconds") or 0),
+        "item_count": int(row.get("item_count") or 0),
+        "last_fetch_at_ms": int(row["last_fetch_at_ms"]) if row.get("last_fetch_at_ms") is not None else None,
+        "last_success_at_ms": int(row["last_success_at_ms"]) if row.get("last_success_at_ms") is not None else None,
+        "next_fetch_after_ms": int(row.get("next_fetch_after_ms") or 0),
+        "consecutive_failures": int(row.get("consecutive_failures") or 0),
+        "last_error": row.get("last_error"),
+    }
+
+
+def _source_quality_read_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": str(row["row_id"]),
+        "source_id": str(row["source_id"]),
+        "window": str(row["window"]),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "fetch_success_rate": _optional_float(row.get("fetch_success_rate")),
+        "items_fetched": int(row.get("items_fetched") or 0),
+        "items_inserted": int(row.get("items_inserted") or 0),
+        "duplicate_rate": _optional_float(row.get("duplicate_rate")),
+        "process_success_rate": _optional_float(row.get("process_success_rate")),
+        "resolved_token_rate": _optional_float(row.get("resolved_token_rate")),
+        "attention_rate": _optional_float(row.get("attention_rate")),
+        "accepted_fact_rate": _optional_float(row.get("accepted_fact_rate")),
+        "brief_ready_rate": _optional_float(row.get("brief_ready_rate")),
+        "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
+        "quality_score": _optional_float(row.get("quality_score")),
+        "diagnostics_json": _json_dict(row.get("diagnostics_json")),
         "projection_version": str(row["projection_version"]),
     }
 

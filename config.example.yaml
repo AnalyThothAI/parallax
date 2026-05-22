@@ -68,6 +68,8 @@ providers:
 
 news_intel:
   enabled: true
+  # Worker runtime knobs live in workers.yaml, not config.yaml. Ensure
+  # news_page_projection.wakes_on there includes news_item_brief_updated.
   sources:
     - source_id: coindesk
       provider_type: rss
@@ -76,6 +78,16 @@ news_intel:
       source_name: CoinDesk
       source_role: specialist_media
       trust_tier: high
+      coverage_tags: ["crypto_market", "crypto_policy", "exchange_listing"]
+      authority_scope:
+        event_types: ["exchange_listing", "regulatory_action", "funding"]
+        domains: ["coindesk.com"]
+      fetch_policy:
+        max_items: 50
+      context_policy:
+        fetch_discussion: false
+      cost_policy:
+        class: free
       enabled: true
       refresh_interval_seconds: 300
     - source_id: cointelegraph

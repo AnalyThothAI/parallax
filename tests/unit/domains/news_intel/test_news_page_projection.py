@@ -40,8 +40,47 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
     assert row["token_lanes"][0]["reason_codes"] == ["SYMBOL_NOT_IN_REGISTRY"]
     assert row["fact_lanes"][0]["status"] == "attention"
     assert row["story"] == {"story_id": "story-1", "item_count": 2, "source_count": 1}
-    assert row["source"] == {"source_id": "example-rss", "source_domain": "example.test"}
+    assert row["source"] == {
+        "source_id": "example-rss",
+        "source_domain": "example.test",
+        "coverage_tags": [],
+    }
     assert row["projection_version"] == NEWS_PAGE_PROJECTION_VERSION
+
+
+def test_build_news_page_row_includes_compact_source_classification() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "Coinbase lists NEWX",
+            "summary": "Trading starts today",
+            "source_id": "coinbase-announcements",
+            "provider_type": "rss",
+            "source_domain": "coinbase.com",
+            "source_name": "Coinbase Announcements",
+            "source_role": "official_exchange",
+            "trust_tier": "official",
+            "coverage_tags_json": ["crypto_exchange", "exchange_listing"],
+            "source_quality_status": "healthy",
+            "canonical_url": "https://coinbase.com/a",
+            "published_at_ms": 1000,
+        },
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=2000,
+    )
+
+    assert row["source"] == {
+        "source_id": "coinbase-announcements",
+        "provider_type": "rss",
+        "source_domain": "coinbase.com",
+        "source_name": "Coinbase Announcements",
+        "source_role": "official_exchange",
+        "trust_tier": "official",
+        "coverage_tags": ["crypto_exchange", "exchange_listing"],
+        "source_quality_status": "healthy",
+    }
 
 
 def test_build_news_page_row_uses_stable_row_id() -> None:
