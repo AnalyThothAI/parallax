@@ -171,6 +171,22 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
                 "source_received_at_ms": 1_000,
             }
         ]
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-1"],
+                    "source_max_received_at_ms": 1_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                }
+            ],
+            now_ms=2_000,
+        )
 
         enqueue = repo.enqueue_missing_mention_semantics(
             source_rows,
@@ -429,6 +445,67 @@ def test_digest_context_counts_admission_source_set_without_semantics(tmp_path):
     assert context["labeled_event_count"] == 0
     assert context["terminal_unavailable_count"] == 0
     assert context["semantic_rows"] == []
+
+
+def test_due_mentions_for_labeling_filters_to_current_admitted_1h_sources(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        assert evidence.insert_event(make_event("event-1"), is_watched=True) is True
+        assert evidence.insert_event(make_event("event-24h"), is_watched=True) is True
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-1"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "24h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": ["event-24h"],
+                    "source_max_received_at_ms": 2_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                },
+            ],
+            now_ms=2_000,
+        )
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "1h source",
+                    "source_received_at_ms": 2_000,
+                },
+                {
+                    "event_id": "event-24h",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "legacy source",
+                    "source_received_at_ms": 2_000,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_000,
+        )
+
+        due = repo.due_mentions_for_labeling(now_ms=2_001, limit=10, max_per_target=10, windows=("1h",))
+    finally:
+        conn.close()
+
+    assert [row["event_id"] for row in due] == ["event-1"]
 
 
 def test_digest_context_counts_missing_semantics_outside_prompt_limit(tmp_path):
@@ -1263,6 +1340,33 @@ def test_due_mentions_for_labeling_limits_rows_per_target(tmp_path):
             hot_rows + cold_rows,
             schema_version="narrative_intel_v1",
             model_version="gpt-test",
+            now_ms=20_000,
+        )
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:Hot",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": [row["event_id"] for row in hot_rows],
+                    "source_max_received_at_ms": 10_004,
+                    "source_event_count": len(hot_rows),
+                    "independent_author_count": len(hot_rows),
+                },
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:Cold",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": "narrative_intel_v1",
+                    "source_event_ids": [row["event_id"] for row in cold_rows],
+                    "source_max_received_at_ms": 9_001,
+                    "source_event_count": len(cold_rows),
+                    "independent_author_count": len(cold_rows),
+                },
+            ],
             now_ms=20_000,
         )
 

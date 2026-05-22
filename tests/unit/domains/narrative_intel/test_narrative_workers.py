@@ -499,7 +499,9 @@ def test_mention_semantics_claim_passes_per_target_cycle_cap():
     rows = worker._claim_due_rows_sync(now_ms=10_000, limit=10)
 
     assert len(rows) == 1
-    assert repo.due_mentions_calls == [{"now_ms": 10_000, "limit": 10, "max_per_target": 3}]
+    assert repo.due_mentions_calls == [
+        {"now_ms": 10_000, "limit": 10, "max_per_target": 3, "windows": ("1h",)}
+    ]
 
 
 def test_mention_semantics_worker_treats_unknown_provider_labels_as_retryable_failure():
@@ -1365,8 +1367,10 @@ class FakeNarrativeRepository:
         )
         return {"updated": len(admission_ids)}
 
-    def due_mentions_for_labeling(self, *, now_ms, limit, max_per_target=None):
-        self.due_mentions_calls.append({"now_ms": now_ms, "limit": limit, "max_per_target": max_per_target})
+    def due_mentions_for_labeling(self, *, now_ms, limit, windows, max_per_target=None):
+        self.due_mentions_calls.append(
+            {"now_ms": now_ms, "limit": limit, "max_per_target": max_per_target, "windows": tuple(windows)}
+        )
         if self.due_mentions is not None:
             return self.due_mentions[:limit]
         return [

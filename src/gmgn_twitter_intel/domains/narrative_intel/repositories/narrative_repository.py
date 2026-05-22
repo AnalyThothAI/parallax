@@ -377,9 +377,10 @@ class NarrativeRepository:
         now_ms: int,
         limit: int,
         max_per_target: int | None = None,
+        windows: tuple[str, ...] = ("1h",),
     ) -> list[dict[str, Any]]:
         per_target_filter = ""
-        params: list[Any] = [int(now_ms)]
+        params: list[Any] = [int(now_ms), list(windows)]
         if max_per_target is not None and int(max_per_target) > 0:
             per_target_filter = "WHERE target_rank <= %s"
             params.append(int(max_per_target))
@@ -395,6 +396,16 @@ class NarrativeRepository:
               FROM token_mention_semantics AS semantics
               WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
                 AND semantics.next_retry_at_ms <= %s
+                AND EXISTS (
+                  SELECT 1
+                  FROM narrative_admissions AS admissions
+                  WHERE admissions.status = 'admitted'
+                    AND admissions.schema_version = semantics.schema_version
+                    AND admissions.target_type = semantics.target_type
+                    AND admissions.target_id = semantics.target_id
+                    AND admissions."window" = ANY(%s)
+                    AND admissions.source_event_ids_json ? semantics.event_id
+                )
             )
             SELECT ranked.*,
                    events.text_clean AS text_clean,

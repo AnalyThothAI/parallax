@@ -369,6 +369,7 @@ class MentionSemanticsWorker(WorkerBase):
                     now_ms=now_ms,
                     limit=limit,
                     max_per_target=max_per_target,
+                    windows=_settings_windows(self.settings),
                 )
             )
 
