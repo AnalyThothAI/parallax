@@ -68,7 +68,7 @@ def create_app(
     app.include_router(create_api_router(_readiness_payload))
 
     @app.get("/healthz", response_class=PlainTextResponse)
-    def healthz() -> str:
+    async def healthz() -> str:
         return "ok\n"
 
     @app.get("/readyz", response_model=StatusData)
