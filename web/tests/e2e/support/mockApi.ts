@@ -8,12 +8,26 @@ const ADDRESS = "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
 const TARGET_ID = `asset:dex:eth:${ADDRESS.toLowerCase()}`;
 const unhandledApiRequests = new WeakMap<Page, string[]>();
 
-export async function installMockApi(page: Page) {
+export type MockApiOptions = {
+  delayNonBootstrapMs?: number;
+  failNonBootstrap?: boolean;
+};
+
+export async function installMockApi(page: Page, options: MockApiOptions = {}) {
   unhandledApiRequests.set(page, []);
 
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+
+    if (path !== "/api/bootstrap") {
+      if (options.delayNonBootstrapMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.delayNonBootstrapMs));
+      }
+      if (options.failNonBootstrap) {
+        return route.abort("failed");
+      }
+    }
 
     if (path === "/api/bootstrap") {
       return fulfill(route, {

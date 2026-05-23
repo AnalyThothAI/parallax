@@ -1,9 +1,26 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   expectNoDocumentHorizontalOverflow,
   expectNoUnhandledApiRequests,
 } from "@tests/e2e/support/layoutAssertions";
 import { installMockApi } from "@tests/e2e/support/mockApi";
+
+async function expectSidebarRouteClickFast(
+  page: Page,
+  routeName: string,
+  expectedPath: string,
+  budgetMs = 250,
+) {
+  const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
+  const startedAt = Date.now();
+
+  await Promise.all([
+    page.waitForURL((url) => url.pathname === expectedPath),
+    primaryNavigation.getByRole("link", { name: routeName }).click(),
+  ]);
+
+  expect(Date.now() - startedAt).toBeLessThanOrEqual(budgetMs);
+}
 
 test.describe("desktop sidebar navigation", () => {
   test.beforeEach(({}, testInfo) => {
@@ -40,6 +57,40 @@ test.describe("desktop sidebar navigation", () => {
 
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoUnhandledApiRequests(page);
+  });
+
+  test("switches desktop routes from the sidebar without waiting for route data", async ({ page }) => {
+    await installMockApi(page);
+    await page.goto("/");
+
+    await expectSidebarRouteClickFast(page, "News", "/news");
+    await expectSidebarRouteClickFast(page, "Stocks", "/stocks");
+    await expectSidebarRouteClickFast(page, "Token Radar", "/");
+    await expectSidebarRouteClickFast(page, "Signal Lab", "/signal-lab");
+    await expectSidebarRouteClickFast(page, "Ops", "/ops");
+    await expectSidebarRouteClickFast(page, "宏观", "/macro");
+    await expectSidebarRouteClickFast(page, "Watchlist", "/watchlist");
+
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoUnhandledApiRequests(page);
+  });
+
+  test("keeps desktop sidebar navigation instant while API requests are delayed", async ({ page }) => {
+    await installMockApi(page, { delayNonBootstrapMs: 5_000 });
+    await page.goto("/");
+
+    await expectSidebarRouteClickFast(page, "News", "/news");
+    await expectSidebarRouteClickFast(page, "Stocks", "/stocks");
+    await expectSidebarRouteClickFast(page, "Signal Lab", "/signal-lab");
+  });
+
+  test("keeps desktop sidebar navigation available when route APIs fail", async ({ page }) => {
+    await installMockApi(page, { failNonBootstrap: true });
+    await page.goto("/");
+
+    await expectSidebarRouteClickFast(page, "News", "/news");
+    await expectSidebarRouteClickFast(page, "Ops", "/ops");
+    await expectSidebarRouteClickFast(page, "Token Radar", "/");
   });
 });
 
