@@ -49,7 +49,7 @@ def test_token_radar_projection_worker_catches_up_from_db_without_wake(tmp_path)
         row = conn.execute(
             """
             SELECT count(*) AS count
-            FROM token_radar_rows
+            FROM token_radar_current_rows
             WHERE "window" = '1h' AND scope = 'all'
             """,
         ).fetchone()

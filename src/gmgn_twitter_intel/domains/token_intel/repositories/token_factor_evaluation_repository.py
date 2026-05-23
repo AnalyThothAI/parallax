@@ -23,7 +23,7 @@ class TokenFactorEvaluationRepository:
         rows = self.conn.execute(
             """
             SELECT *
-            FROM token_radar_rows
+            FROM token_radar_snapshot_audit
             WHERE factor_version = %s
               AND "window" = %s
               AND scope = %s

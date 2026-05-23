@@ -47,7 +47,7 @@ class PendingAssetProfileQuery:
                 MAX(rows.computed_at_ms) AS latest_radar_computed_at_ms,
                 MAX(rows.source_max_received_at_ms) AS latest_event_received_at_ms
               FROM current_radar_sets
-              JOIN token_radar_rows rows
+              JOIN token_radar_current_rows rows
                 ON rows.projection_version = %s
                AND rows."window" = current_radar_sets."window"
                AND rows.scope = current_radar_sets.scope

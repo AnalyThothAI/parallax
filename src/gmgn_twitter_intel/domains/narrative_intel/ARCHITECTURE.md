@@ -2,11 +2,11 @@
 
 Narrative Intel is a CQRS read-model lane downstream of Token Radar. Its
 business truth starts with material facts (`events`, token resolutions, market
-facts, and current `token_radar_rows`) and then flows through three rebuildable
+facts, and current `token_radar_current_rows`) and then flows through three rebuildable
 read models:
 
 ```text
-token_radar_rows
+token_radar_current_rows
   -> narrative_admissions
   -> token_mention_semantics
   -> token_discussion_digests

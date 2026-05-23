@@ -63,9 +63,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_capture_tier.advisory_lock_key == 2026051503
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
     assert settings.token_radar_projection.wakes_on == ("market_tick_written", "resolution_updated")
-    assert settings.token_radar_projection.retention_days == 7
-    assert settings.token_radar_projection.retention_batch_size == 10_000
-    assert settings.token_radar_projection.retention_settlement_grace_days == 2
     assert settings.narrative_admission.interval_seconds == 60
     assert settings.narrative_admission.soft_timeout_seconds == 180
     assert settings.narrative_admission.hard_timeout_seconds == 300

@@ -106,7 +106,7 @@ material facts
         |
         v
 token_intel TokenRadarProjectionWorker
-  writes token_radar_rows + token_radar_projection_coverage
+  writes token_radar_current_rows + token_radar_projection_coverage
         |
         | latest ready coverage is admission frontier only
         v
@@ -134,7 +134,7 @@ Ownership table:
 
 | Read model / state | Writer | Readers |
 |---|---|---|
-| `token_radar_rows` | `TokenRadarProjectionWorker` | API, NarrativeAdmissionWorker, Pulse |
+| `token_radar_current_rows` | `TokenRadarProjectionWorker` | API, NarrativeAdmissionWorker, Pulse |
 | `token_radar_projection_coverage` | `TokenRadarProjectionWorker` | API, NarrativeAdmissionWorker |
 | `narrative_admissions` | `NarrativeAdmissionWorker` | MentionSemanticsWorker, TokenDiscussionDigestWorker, health query |
 | `token_mention_semantics` | `MentionSemanticsWorker` | Digest worker, timeline read model, health query |
@@ -145,7 +145,7 @@ Ownership table:
 
 ## Admission Frontier
 
-Admission must start from `token_radar_projection_coverage`, not from a free scan over historical `token_radar_rows`.
+Admission must start from `token_radar_projection_coverage`, not from a free scan over historical Radar snapshots.
 
 Required query shape:
 
@@ -160,7 +160,7 @@ WITH latest AS (
     AND computed_at_ms IS NOT NULL
 )
 SELECT rows.*
-FROM token_radar_rows AS rows
+FROM token_radar_current_rows AS rows
 JOIN latest ON latest.computed_at_ms = rows.computed_at_ms
 WHERE rows.projection_version = :projection_version
   AND rows."window" = :window
@@ -201,7 +201,7 @@ Source set generation uses material facts:
 - `events.received_at_ms` bounded by window
 - `events.is_watched` when scope is `matched`
 
-`token_radar_rows.source_event_ids_json` may be used as an admission seed or priority hint, but not as the only source of source volume if it is capped or partial. The source set query owns this expansion and must be bounded by config.
+`token_radar_current_rows.source_event_ids_json` may be used as an admission seed or priority hint, but not as the only source of source volume if it is capped or partial. The source set query owns this expansion and must be bounded by config.
 
 ## Worker State Machines
 
@@ -381,4 +381,3 @@ Expected live outcome after drain and at least one worker cycle:
 9. Monitor narrative health until backlog and top-row statuses stabilize.
 
 Rollback is database backup + code rollback. Do not add runtime compatibility switches to keep old admission/digest behavior alive.
-

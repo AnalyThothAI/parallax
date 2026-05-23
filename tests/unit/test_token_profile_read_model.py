@@ -271,7 +271,14 @@ class FakeTokenRadar:
     def __init__(self, *, rows: list[dict[str, Any]]) -> None:
         self.rows = rows
 
-    def latest_rows(self, *, window: str, scope: str, limit: int, projection_version: str) -> list[dict[str, Any]]:
+    def latest_current_rows(
+        self,
+        *,
+        window: str,
+        scope: str,
+        limit: int,
+        projection_version: str,
+    ) -> list[dict[str, Any]]:
         return self.rows[:limit]
 
     def latest_coverage(self, *, projection_version: str, windows: tuple[str, ...], scopes: tuple[str, ...]):

@@ -300,12 +300,10 @@ Docker ordering invariant:
     ON CONFLICT (resolution_id) DO NOTHING;
     ```
   - Add the equivalent `to_remove` CTE that inserts `resolution_status='NIL'`, `target_type=NULL`, `target_id=NULL`, `pricefeed_id=NULL`, and reason `cex_binance_hard_cut_removed`.
-- Delete rebuildable CEX read rows:
-    ```sql
-    DELETE FROM token_radar_rows
-    WHERE target_type = 'CexToken'
-       OR pricefeed_id LIKE 'pricefeed:cex:okx:%';
-    ```
+- Do not mutate Token Radar storage from this asset-market cleanup. The command
+  reports impacted Token Radar counts, then operators run
+  `ops clean-reset-token-radar-storage --execute` so the Token Radar owner clears
+  current/history/audit storage and projection controls in one place.
 - Detach OKX CEX event anchors:
     ```sql
     UPDATE enriched_events
@@ -811,7 +809,12 @@ Do not use `make docker-up` for the first hard-cut rollout, because it starts `a
    docker compose run --rm --no-deps app gmgn-twitter-intel ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400
    ```
    Expected: OKX CEX rows are removed and `market_ticks_source_provider_check` is validated.
-10. Start app:
+10. Clean-reset Token Radar derived storage:
+   ```bash
+   docker compose run --rm --no-deps app gmgn-twitter-intel ops clean-reset-token-radar-storage --execute
+   ```
+   Expected: Token Radar current/history/audit storage starts from zero and the next projection rebuilds from current material facts.
+11. Start app:
    ```bash
    docker compose up -d app
    ```

@@ -73,7 +73,7 @@ def test_admitted_radar_rows_query_matches_current_token_radar_schema(tmp_path):
                 """
                 SELECT column_name
                 FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'token_radar_rows'
+                WHERE table_schema = 'public' AND table_name = 'token_radar_current_rows'
                 """
             ).fetchall()
         }
@@ -573,6 +573,7 @@ def test_pending_mention_semantics_count_filters_to_current_admitted_1h_sources(
             target_id="solana:So111",
             schema_version="narrative_intel_v1",
             windows=("1h",),
+            scopes=("matched",),
         )
     finally:
         conn.close()
@@ -1006,7 +1007,7 @@ def test_current_narrative_snapshots_keep_last_ready_on_source_delta(tmp_path):
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "source_event_ids": ["event-a", "event-b"],
@@ -1024,7 +1025,7 @@ def test_current_narrative_snapshots_keep_last_ready_on_source_delta(tmp_path):
             {
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -1048,7 +1049,7 @@ def test_current_narrative_snapshots_keep_last_ready_on_source_delta(tmp_path):
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "source_event_ids": ["event-a", "event-b", "event-c"],
@@ -1062,7 +1063,7 @@ def test_current_narrative_snapshots_keep_last_ready_on_source_delta(tmp_path):
 
         current = repo.current_narrative_snapshots_for_targets(
             [{"target_type": "chain_token", "target_id": "solana:So111"}],
-            window="24h",
+            window="1h",
             scope="matched",
             schema_version="narrative_intel_v1",
             now_ms=5_000,
@@ -1795,18 +1796,18 @@ def _insert_radar_row(
 ) -> None:
     conn.execute(
         """
-        INSERT INTO token_radar_rows(
+        INSERT INTO token_radar_current_rows(
           row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
           lane, rank, intent_id, event_id, intent_json, asset_json, primary_venue_json,
           attention_json, resolution_json, market_json, score_json, decision, data_health_json,
-          source_event_ids_json, created_at_ms, target_type, target_id, pricefeed_id, target_json,
+          source_event_ids_json, listed_at_ms, created_at_ms, target_type, target_id, pricefeed_id, target_json,
           price_json, factor_snapshot_json, factor_version
         )
         VALUES (
           %s, 'token_radar_v3', '24h', 'all', %s, %s,
           'all', %s, %s, %s, %s, %s, NULL,
           %s, %s, %s, %s, 'watch', %s,
-          %s, %s, 'Asset', %s, NULL, %s,
+          %s, %s, %s, 'Asset', %s, NULL, %s,
           %s, %s, 'token_factor_snapshot_v3_social_attention'
         )
         """,
@@ -1825,6 +1826,7 @@ def _insert_radar_row(
             Jsonb({"rank_score": max(0, 100 - rank)}),
             Jsonb({"alpha": "ready"}),
             Jsonb([event_id]),
+            computed_at_ms,
             computed_at_ms,
             target_id,
             Jsonb({"target_id": target_id}),

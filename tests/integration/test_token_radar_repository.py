@@ -82,7 +82,7 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
     assert coverage[("1h", "all")]["error"] == "statement timeout"
 
 
-def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
+def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     row = {
         "row_id": "row-factor-1",
@@ -110,7 +110,7 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.replace_rows(
+        repo.publish_rows(
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -118,7 +118,7 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
             rows=[row],
         )
 
-        latest = repo.latest_rows(
+        latest = repo.latest_current_rows(
             window="1h",
             scope="all",
             limit=10,
@@ -130,7 +130,7 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
     assert latest[0]["factor_snapshot_json"]["schema_version"] == TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
-def test_replace_rows_retains_older_runs_but_latest_rows_reads_newest(tmp_path):
+def test_publish_rows_replaces_current_and_retains_audit_history(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     older = _valid_factor_row()
     older["row_id"] = "row-factor-older"
@@ -143,14 +143,14 @@ def test_replace_rows_retains_older_runs_but_latest_rows_reads_newest(tmp_path):
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.replace_rows(
+        repo.publish_rows(
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
             rows=[older],
         )
-        repo.replace_rows(
+        repo.publish_rows(
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
@@ -160,13 +160,13 @@ def test_replace_rows_retains_older_runs_but_latest_rows_reads_newest(tmp_path):
         retained = conn.execute(
             """
             SELECT row_id
-            FROM token_radar_rows
+            FROM token_radar_snapshot_audit
             WHERE projection_version = %s AND "window" = %s AND scope = %s
             ORDER BY computed_at_ms ASC
             """,
             ("token-radar-v11-factor-alpha-gated", "1h", "all"),
         ).fetchall()
-        latest = repo.latest_rows(
+        current = repo.latest_current_rows(
             window="1h",
             scope="all",
             limit=10,
@@ -176,65 +176,46 @@ def test_replace_rows_retains_older_runs_but_latest_rows_reads_newest(tmp_path):
         conn.close()
 
     assert [row["row_id"] for row in retained] == ["row-factor-older", "row-factor-newer"]
-    assert [row["row_id"] for row in latest] == ["row-factor-newer"]
-    assert latest[0]["listed_at_ms"] == 1_778_000_000_000
+    assert [row["row_id"] for row in current] == ["row-factor-newer"]
+    assert current[0]["listed_at_ms"] == 1_778_000_000_000
 
 
-def test_delete_prunable_rows_preserves_coverage_batch_and_actual_latest_batch(tmp_path):
+def test_publish_rows_rejects_old_rows_after_newer_zero_row_coverage(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    projection_version = TOKEN_RADAR_PROJECTION_VERSION
+    stale_row = _valid_factor_row()
+    stale_row["row_id"] = "row-factor-stale"
     try:
         migrate(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        for row_id, computed_at_ms, rank_score in (
-            ("row-old-prunable", 1_778_000_000_000, 10),
-            ("row-coverage-protected", 1_778_000_060_000, 20),
-            ("row-actual-latest-protected", 1_778_000_120_000, 30),
-        ):
-            row = _valid_factor_row()
-            row["row_id"] = row_id
-            row["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=rank_score)
-            repo.replace_rows(
-                projection_version=projection_version,
-                window="1h",
-                scope="all",
-                computed_at_ms=computed_at_ms,
-                rows=[row],
-            )
         repo.mark_coverage(
-            projection_version=projection_version,
+            projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
             scope="all",
             status="ready",
-            reason=None,
-            source_rows=3,
-            row_count=1,
+            row_count=0,
             computed_at_ms=1_778_000_060_000,
-            started_at_ms=1_778_000_060_000,
-            finished_at_ms=1_778_000_060_000,
-            error=None,
         )
 
-        deleted = repo.delete_prunable_rows_batch(cutoff_ms=1_778_000_180_000, batch_size=10)
-        remaining = conn.execute(
-            """
-            SELECT row_id
-            FROM token_radar_rows
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
-            ORDER BY computed_at_ms ASC
-            """,
-            (projection_version, "1h", "all"),
-        ).fetchall()
+        written = repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[stale_row],
+        )
+        current = repo.latest_current_rows(
+            window="1h",
+            scope="all",
+            limit=10,
+            projection_version="token-radar-v11-factor-alpha-gated",
+        )
     finally:
         conn.close()
 
-    assert deleted == 1
-    assert [row["row_id"] for row in remaining] == [
-        "row-coverage-protected",
-        "row-actual-latest-protected",
-    ]
+    assert written is False
+    assert current == []
 
 
 def _valid_factor_row() -> dict[str, object]:

@@ -254,7 +254,8 @@ def test_registry_active_live_market_targets_projects_rank_score_from_factor_sna
     assert "AS rank_score" in conn.sql
     assert "token_radar_projection_coverage" in conn.sql
     assert "JOIN LATERAL" in conn.sql
-    assert "ORDER BY token_radar_rows.computed_at_ms DESC" in conn.sql
+    assert "ORDER BY token_radar_current_rows.computed_at_ms DESC" in conn.sql
+    assert "token_radar_rows" not in conn.sql
     assert conn.params == (
         TOKEN_RADAR_PROJECTION_VERSION,
         TOKEN_RADAR_PROJECTION_VERSION,

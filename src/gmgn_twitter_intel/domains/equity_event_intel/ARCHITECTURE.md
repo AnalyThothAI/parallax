@@ -90,8 +90,8 @@ evidence packets. Missing evidence is represented as `insufficient` plus
 
 ## Boundaries
 
-- This domain must not write `news_items`, `news_page_rows`,
-  `token_radar_rows`, `pulse_candidates`, or `market_ticks`.
+- This domain must not write `news_items`, `news_page_rows`, Token Radar
+  current/history/audit read models, `pulse_candidates`, or `market_ticks`.
 - API/frontend code must not import equity event workers, SEC clients,
   provider libraries, event classifiers, or fact extractors.
 - `/earnings` renders backend read models and persisted brief states directly.

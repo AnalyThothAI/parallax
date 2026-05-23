@@ -42,20 +42,20 @@ class TokenProfileSourceQuery:
             ),
             radar_targets AS MATERIALIZED (
               SELECT
-                token_radar_rows.target_type,
-                token_radar_rows.target_id,
-                MIN(token_radar_rows.rank) AS best_radar_rank,
-                MAX(token_radar_rows.computed_at_ms) AS latest_radar_computed_at_ms,
-                MAX(token_radar_rows.source_max_received_at_ms) AS latest_event_received_at_ms
+                token_radar_current_rows.target_type,
+                token_radar_current_rows.target_id,
+                MIN(token_radar_current_rows.rank) AS best_radar_rank,
+                MAX(token_radar_current_rows.computed_at_ms) AS latest_radar_computed_at_ms,
+                MAX(token_radar_current_rows.source_max_received_at_ms) AS latest_event_received_at_ms
               FROM current_radar_sets
-              JOIN token_radar_rows
-                ON token_radar_rows.projection_version = %s
-               AND token_radar_rows."window" = current_radar_sets."window"
-               AND token_radar_rows.scope = current_radar_sets.scope
-               AND token_radar_rows.computed_at_ms = current_radar_sets.computed_at_ms
-              WHERE token_radar_rows.target_type IN ('Asset', 'CexToken')
-                AND token_radar_rows.target_id IS NOT NULL
-              GROUP BY token_radar_rows.target_type, token_radar_rows.target_id
+              JOIN token_radar_current_rows
+                ON token_radar_current_rows.projection_version = %s
+               AND token_radar_current_rows."window" = current_radar_sets."window"
+               AND token_radar_current_rows.scope = current_radar_sets.scope
+               AND token_radar_current_rows.computed_at_ms = current_radar_sets.computed_at_ms
+              WHERE token_radar_current_rows.target_type IN ('Asset', 'CexToken')
+                AND token_radar_current_rows.target_id IS NOT NULL
+              GROUP BY token_radar_current_rows.target_type, token_radar_current_rows.target_id
             ),
             recent_resolution_rows AS MATERIALIZED (
               SELECT

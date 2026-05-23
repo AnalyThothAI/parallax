@@ -17,7 +17,7 @@ enqueue `5m`.
 ## Data Flow
 
 ```text
-token_radar_rows + events + enriched_events + market facts + identity facts
+token_radar_current_rows + events + enriched_events + market facts + identity facts
   -> PulseCandidateWorker admission
   -> PulseEvidenceBuilder
   -> pulse_evidence_packets
@@ -125,7 +125,7 @@ not good enough for default discovery.
 - No public row without `evidence_packet_hash`.
 - No non-abstain decision without `supporting_evidence_refs`.
 - No decision without an audit row.
-- Pulse never writes `token_radar_rows`.
+- Pulse never writes Token Radar current/history/audit read models.
 
 ## Update Triggers
 

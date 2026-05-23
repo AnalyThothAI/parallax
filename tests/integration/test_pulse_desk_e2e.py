@@ -449,7 +449,7 @@ class _StaticRows:
     def __init__(self, *, rows: list[dict[str, Any]]) -> None:
         self.rows = rows
 
-    def latest_rows(self, **_: Any) -> list[dict[str, Any]]:
+    def latest_current_rows(self, **_: Any) -> list[dict[str, Any]]:
         return list(self.rows)
 
     def timeline_rows(self, **_: Any) -> list[dict[str, Any]]:

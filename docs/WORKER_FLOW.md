@@ -69,7 +69,7 @@ The hot path from one public-stream frame to product output is:
 
 4. Token Intel projection
    - token_radar_projection reads facts through token_radar_source_query
-   - rebuilds token_radar_rows.factor_snapshot_json
+   - publishes token_radar_current_rows for hot reads, token_radar_rank_history for compact rank history, and token_radar_snapshot_audit for point-in-time factor snapshots
    - emits token_radar_updated as a wake hint
 
 5. Narrative Intelligence read models
@@ -81,7 +81,7 @@ The hot path from one public-stream frame to product output is:
    - emits narrative_semantics_updated only as a wake hint for digest refresh
 
 6. Consumers
-   - Pulse reads token_radar_rows, gates candidates, runs the agent, and writes audit rows
+   - Pulse reads token_radar_current_rows, gates candidates, runs the agent, and writes audit rows
    - Pulse may include ready discussion digest evidence but never triggers narrative workers
    - notifications evaluate candidates and enqueue deliveries
    - API / WebSocket / CLI read public read models
@@ -226,7 +226,7 @@ Examples:
 - `projection_runs`
 - `projection_offsets`
 - projection coverage rows
-- `token_radar_rows.computed_at_ms`
+- `token_radar_current_rows.computed_at_ms`
 - `token_mention_semantics.computed_at_ms`
 - `token_discussion_digests.computed_at_ms`
 - status payload fields such as `last_result` and `last_error`
@@ -304,8 +304,9 @@ Use this order for real-data investigations:
 
 4. Identify the projection.
    If the fact exists but the UI/API is wrong, inspect the read model:
-   `token_radar_rows`, `token_profile_current`, `pulse_candidates`, or
-   the relevant watchlist/notification model.
+   `token_radar_current_rows`, `token_radar_rank_history`,
+   `token_radar_snapshot_audit`, `token_profile_current`,
+   `pulse_candidates`, or the relevant watchlist/notification model.
 
 5. Check wake versus catch-up.
    If a wake was missed, the next `interval_seconds` catch-up should

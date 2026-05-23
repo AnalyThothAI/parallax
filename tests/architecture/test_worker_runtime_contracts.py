@@ -200,7 +200,10 @@ TOKEN_RADAR_WRITE_OWNER_ALLOWLIST = {
 }
 
 SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
-    "token_radar_rows": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
+    "token_radar_current_rows": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
+    "token_radar_rank_history": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
+    "token_radar_snapshot_audit": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
+    "token_radar_target_first_seen": TOKEN_RADAR_WRITE_OWNER_ALLOWLIST,
     "token_profile_current": {
         SRC / "domains/asset_market/repositories/token_profile_current_repository.py",
         SRC / "domains/asset_market/runtime/token_profile_current_worker.py",

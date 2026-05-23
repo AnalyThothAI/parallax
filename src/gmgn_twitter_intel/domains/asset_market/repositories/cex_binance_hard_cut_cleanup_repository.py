@@ -4,7 +4,16 @@ from contextlib import nullcontext
 from typing import Any
 
 ADVISORY_LOCK_KEY = 2026052107
-TOKEN_RADAR_ROWS_TABLE = "token_radar_" "rows"
+TOKEN_RADAR_IMPACT_TABLES = (
+    "token_radar_current_rows",
+    "token_radar_rank_history",
+    "token_radar_snapshot_audit",
+)
+TOKEN_RADAR_CLEAN_RESET_ACTION = {
+    "required": True,
+    "command": "ops clean-reset-token-radar-storage --execute",
+    "reason": "Token Radar storage is owned by token_intel; reset it through the dedicated hard-cut command.",
+}
 TOKEN_CAPTURE_TIER_TABLE = "token_capture_" "tier"
 LEGACY_PRICE_TABLE = "price_" "observations"
 
@@ -41,6 +50,7 @@ def cleanup_cex_binance_hard_cut(
             "min_binance_feeds": min_binance_feeds,
             "counts": counts,
             "planned_actions": counts,
+            "token_radar_storage": TOKEN_RADAR_CLEAN_RESET_ACTION,
             "constraint_validated": False,
         }
 
@@ -64,6 +74,7 @@ def cleanup_cex_binance_hard_cut(
             "before_counts": before_counts,
             "executed_counts": executed_counts,
             "after_counts": after_counts,
+            "token_radar_storage": TOKEN_RADAR_CLEAN_RESET_ACTION,
             "constraint_validated": True,
         }
 
@@ -171,9 +182,21 @@ COUNT_SQL: dict[str, str] = {
           AND tir.target_type = 'CexToken'
           AND binance_feed.target_id IS NULL
     """,
-    "token_radar_rows_to_delete": f"""
-        SELECT COUNT(*)::bigint AS token_radar_rows_to_delete
-        FROM {TOKEN_RADAR_ROWS_TABLE}
+    "token_radar_current_rows_to_reset": """
+        SELECT COUNT(*)::bigint AS token_radar_current_rows_to_reset
+        FROM token_radar_current_rows
+        WHERE target_type = 'CexToken'
+           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
+    """,
+    "token_radar_rank_history_to_reset": """
+        SELECT COUNT(*)::bigint AS token_radar_rank_history_to_reset
+        FROM token_radar_rank_history
+        WHERE target_type = 'CexToken'
+           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
+    """,
+    "token_radar_snapshot_audit_to_reset": """
+        SELECT COUNT(*)::bigint AS token_radar_snapshot_audit_to_reset
+        FROM token_radar_snapshot_audit
         WHERE target_type = 'CexToken'
            OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
     """,
@@ -338,14 +361,6 @@ REMOVE_CURRENT_RESOLUTIONS_SQL = """
 CLEANUP_SQL: tuple[tuple[str, str], ...] = (
     ("current_resolutions_repointed", REPOINT_CURRENT_RESOLUTIONS_SQL),
     ("current_resolutions_removed", REMOVE_CURRENT_RESOLUTIONS_SQL),
-    (
-        "token_radar_rows_deleted",
-        f"""
-        DELETE FROM {TOKEN_RADAR_ROWS_TABLE}
-        WHERE target_type = 'CexToken'
-           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
-        """,
-    ),
     (
         "enriched_events_detached",
         """

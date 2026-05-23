@@ -22,8 +22,8 @@ def test_operational_audit_reports_counts_fk_checks_and_projection_schema(tmp_pa
     assert payload["counts"]["events"] == 0
     assert payload["counts"]["registry_assets"] == 0
     assert payload["projection_schema"]["projection_offsets"] is True
-    assert payload["projection_schema"]["token_radar_rows"] is True
-    assert payload["foreign_key_checks"]["token_radar_rows_missing_intents"] == 0
+    assert payload["projection_schema"]["token_radar_current_rows"] is True
+    assert payload["foreign_key_checks"]["token_radar_current_rows_missing_intents"] == 0
 
 
 def test_query_audit_explains_hot_read_paths_without_analyze(tmp_path):

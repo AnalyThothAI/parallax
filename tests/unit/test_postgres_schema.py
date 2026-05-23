@@ -93,6 +93,10 @@ EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260523_0084_equity_event_fact_candidate_shape.py"
 )
+TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0085_token_radar_storage_root_fix.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -499,6 +503,31 @@ def test_equity_event_fact_candidate_shape_migration_backfills_feature_branch_sc
         "ADD COLUMN IF NOT EXISTS required_slots_json JSONB NOT NULL DEFAULT '{}'::jsonb",
         "ADD COLUMN IF NOT EXISTS evidence_span_start INTEGER NOT NULL DEFAULT 0",
         "ADD COLUMN IF NOT EXISTS evidence_span_end INTEGER NOT NULL DEFAULT 0",
+    ):
+        assert statement in text
+
+
+def test_token_radar_storage_root_fix_migration_hard_cuts_old_storage() -> None:
+    text = TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260523_0085"',
+        'down_revision = "20260523_0084"',
+        "CREATE TABLE IF NOT EXISTS token_radar_current_rows",
+        "CREATE TABLE IF NOT EXISTS token_radar_snapshot_audit",
+        "PARTITION BY RANGE (computed_at_ms)",
+        "CREATE TABLE IF NOT EXISTS token_radar_rank_history",
+        "CREATE TABLE IF NOT EXISTS token_radar_storage_maintenance_runs",
+        'UNIQUE (projection_version, "window", scope, lane, rank)',
+        "idx_token_radar_current_rows_read",
+        "idx_token_radar_rank_history_read",
+        "idx_token_radar_snapshot_audit_settlement",
+        "DROP TABLE IF EXISTS token_radar_rows CASCADE",
+        "DROP TABLE IF EXISTS token_radar_retention_runs",
+        "TRUNCATE TABLE token_radar_target_first_seen RESTART IDENTITY",
+        "DELETE FROM token_radar_projection_coverage",
+        "DELETE FROM projection_offsets",
+        "DELETE FROM projection_runs",
     ):
         assert statement in text
 

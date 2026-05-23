@@ -7,7 +7,7 @@ from gmgn_twitter_intel.domains.asset_market.services.cex_binance_hard_cut_clean
     cleanup_cex_binance_hard_cut,
 )
 
-TOKEN_RADAR_ROWS_TABLE = "token_radar_" "rows"
+TOKEN_RADAR_CURRENT_ROWS_TABLE = "token_radar_current_rows"
 TOKEN_CAPTURE_TIER_TABLE = "token_capture_" "tier"
 LEGACY_PRICE_TABLE = "price_" "observations"
 
@@ -18,7 +18,9 @@ def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
             "binance_canonical_usdt_perp_feeds": 512,
             "current_resolutions_to_repoint": 7,
             "current_resolutions_to_remove": 3,
-            "token_radar_rows_to_delete": 11,
+            "token_radar_current_rows_to_reset": 11,
+            "token_radar_rank_history_to_reset": 12,
+            "token_radar_snapshot_audit_to_reset": 13,
             "okx_market_ticks_to_delete": 13,
         }
     )
@@ -36,8 +38,11 @@ def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
     assert result["counts"]["binance_canonical_usdt_perp_feeds"] == 512
     assert result["counts"]["current_resolutions_to_repoint"] == 7
     assert result["counts"]["current_resolutions_to_remove"] == 3
-    assert result["counts"]["token_radar_rows_to_delete"] == 11
+    assert result["counts"]["token_radar_current_rows_to_reset"] == 11
+    assert result["counts"]["token_radar_rank_history_to_reset"] == 12
+    assert result["counts"]["token_radar_snapshot_audit_to_reset"] == 13
     assert result["counts"]["okx_market_ticks_to_delete"] == 13
+    assert result["token_radar_storage"]["command"] == "ops clean-reset-token-radar-storage --execute"
     assert conn.transaction_entries == 0
     assert not _has_statement(conn.sqls, "pg_advisory_xact_lock")
     assert not _has_mutation(conn.sqls)
@@ -101,10 +106,10 @@ def test_execute_runs_cleanup_in_fk_safe_order_and_validates_constraint() -> Non
     )
 
     assert _first_statement_index(conn.sqls, "pg_advisory_xact_lock") == 0
+    assert not _has_statement(conn.sqls, f"DELETE FROM {TOKEN_RADAR_CURRENT_ROWS_TABLE}")
+    assert not _has_statement(conn.sqls, "DELETE FROM token_radar_rank_history")
+    assert not _has_statement(conn.sqls, "DELETE FROM token_radar_snapshot_audit")
     assert _first_statement_index(conn.sqls, "UPDATE token_intent_resolutions") < _first_statement_index(
-        conn.sqls, f"DELETE FROM {TOKEN_RADAR_ROWS_TABLE}"
-    )
-    assert _first_statement_index(conn.sqls, f"DELETE FROM {TOKEN_RADAR_ROWS_TABLE}") < _first_statement_index(
         conn.sqls, "UPDATE enriched_events"
     )
     assert _first_statement_index(conn.sqls, "UPDATE enriched_events") < _first_statement_index(

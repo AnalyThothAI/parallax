@@ -13,7 +13,8 @@ def test_recent_profile_targets_uses_current_radar_and_bounded_recent_resolution
     sql = conn.sqls[-1]
     params = conn.params[-1]
     assert "token_radar_projection_coverage" in sql
-    assert "token_radar_rows" in sql
+    assert "token_radar_current_rows" in sql
+    assert "token_radar_rows" not in sql
     assert "token_intent_resolutions" in sql
     assert "recent_resolution_rows AS MATERIALIZED" in sql
     assert "events.received_at_ms >= %s" in sql

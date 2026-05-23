@@ -6,15 +6,16 @@
 
 ```
 usage: gmgn-twitter-intel [-h]
-                          {serve,init,config,pulse,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops} ...
+                          {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,pulse,db,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops}
+  {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,social-events,enrichment-jobs,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.gmgn-twitter-intel/config.yaml
     config              print effective runtime configuration
     pulse               Signal Pulse diagnostics
     db                  database lifecycle commands
+    macro               Macro Intelligence commands
     recent              print recent stored events
     search              search stored tweets by query text
     asset-flow          rank resolved assets and unresolved attention
@@ -53,24 +54,22 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,clean-reset-token-radar-storage,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-token-radar-first-seen,backfill-watchlist-signal-stats,prune-token-radar,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,clean-reset-token-radar-storage,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
     backfill-enrichment-jobs
                         enqueue social-event-v2 extraction jobs for existing
                         watched events
-    backfill-token-radar-first-seen
-                        backfill compact Token Radar first-seen metadata from
-                        historical rows
     backfill-watchlist-signal-stats
                         backfill watchlist signal event ledger and stats read
                         model
-    prune-token-radar   prune old Token Radar read-model rows while preserving
-                        current protected batches
+    clean-reset-token-radar-storage
+                        drop legacy Token Radar storage and clear rebuildable
+                        Token Radar read models
     projection-status   print projection offsets and latest runs
     worker-status       print canonical worker runtime status
     validate-projections

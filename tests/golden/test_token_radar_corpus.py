@@ -48,7 +48,7 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
         )
 
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
-    rows = repos.token_radar.latest_rows(
+    rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
         limit=20,
@@ -77,7 +77,7 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
 
     result = ingest.ingest_event(event, is_watched=True)
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
-    rows = repos.token_radar.latest_rows(
+    rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
         limit=20,
@@ -101,7 +101,7 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
 
     result = ingest.ingest_event(event, is_watched=True)
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
-    rows = repos.token_radar.latest_rows(
+    rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
         limit=20,

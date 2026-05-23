@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -11,12 +12,60 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 
+RADAR_ROW_COLUMNS = (
+    "row_id",
+    "projection_version",
+    "window",
+    "scope",
+    "computed_at_ms",
+    "source_max_received_at_ms",
+    "lane",
+    "rank",
+    "intent_id",
+    "event_id",
+    "target_type",
+    "target_id",
+    "pricefeed_id",
+    "intent_json",
+    "asset_json",
+    "primary_venue_json",
+    "target_json",
+    "attention_json",
+    "resolution_json",
+    "market_json",
+    "price_json",
+    "score_json",
+    "factor_snapshot_json",
+    "factor_version",
+    "decision",
+    "data_health_json",
+    "source_event_ids_json",
+    "listed_at_ms",
+    "created_at_ms",
+)
+RADAR_ROW_INSERT_COLUMNS_SQL = """
+  row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
+  lane, rank, intent_id, event_id, target_type, target_id, pricefeed_id, intent_json,
+  asset_json, primary_venue_json, target_json, attention_json, resolution_json,
+  market_json, price_json, score_json, factor_snapshot_json, factor_version, decision,
+  data_health_json, source_event_ids_json, listed_at_ms, created_at_ms
+"""
+RADAR_ROW_INSERT_VALUES_SQL = """
+  %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
+  %(source_max_received_at_ms)s, %(lane)s, %(rank)s, %(intent_id)s, %(event_id)s,
+  %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(intent_json)s, %(asset_json)s,
+  %(primary_venue_json)s, %(target_json)s, %(attention_json)s, %(resolution_json)s,
+  %(market_json)s, %(price_json)s, %(score_json)s, %(factor_snapshot_json)s,
+  %(factor_version)s, %(decision)s, %(data_health_json)s, %(source_event_ids_json)s,
+  %(listed_at_ms)s, %(created_at_ms)s
+"""
+
 
 class TokenRadarRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def replace_rows(
+    def publish_rows(
         self,
         *,
         projection_version: str,
@@ -35,10 +84,17 @@ class TokenRadarRepository:
         latest = self.conn.execute(
             """
             SELECT MAX(computed_at_ms) AS computed_at_ms
-            FROM token_radar_rows
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            FROM (
+              SELECT MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_current_rows
+              WHERE projection_version = %s AND "window" = %s AND scope = %s
+              UNION ALL
+              SELECT MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_projection_coverage
+              WHERE projection_version = %s AND "window" = %s AND scope = %s
+            ) publication_watermark
             """,
-            (projection_version, window, scope),
+            (projection_version, window, scope, projection_version, window, scope),
         ).fetchone()
         latest_computed_at_ms = (
             int(latest["computed_at_ms"]) if latest and latest["computed_at_ms"] is not None else None
@@ -47,6 +103,8 @@ class TokenRadarRepository:
             if commit:
                 self.conn.commit()
             return False
+
+        self.ensure_storage_partitions(computed_at_ms=int(computed_at_ms), commit=False)
         for row in rows:
             _validate_factor_contract(row)
         listed_at_by_key = self.first_seen_by_identity(
@@ -56,50 +114,69 @@ class TokenRadarRepository:
             rows=rows,
         )
         rows_to_insert = [
-            {
-                **row,
-                "listed_at_ms": listed_at_by_key.get(_identity_key(row), int(computed_at_ms)),
-            }
+            _runtime_row_payload(
+                row,
+                projection_version=projection_version,
+                window=window,
+                scope=scope,
+                computed_at_ms=int(computed_at_ms),
+                listed_at_ms=listed_at_by_key.get(_identity_key(row), int(computed_at_ms)),
+            )
             for row in rows
         ]
+
         self.conn.execute(
             """
-            DELETE FROM token_radar_rows
-            WHERE projection_version = %s
-              AND "window" = %s
-              AND scope = %s
-              AND computed_at_ms = %s
+            DELETE FROM token_radar_current_rows
+            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            """,
+            (projection_version, window, scope),
+        )
+        self.conn.execute(
+            """
+            DELETE FROM token_radar_rank_history
+            WHERE projection_version = %s AND "window" = %s AND scope = %s AND computed_at_ms = %s
+            """,
+            (projection_version, window, scope, int(computed_at_ms)),
+        )
+        self.conn.execute(
+            """
+            DELETE FROM token_radar_snapshot_audit
+            WHERE projection_version = %s AND "window" = %s AND scope = %s AND computed_at_ms = %s
             """,
             (projection_version, window, scope, int(computed_at_ms)),
         )
         for row in rows_to_insert:
+            payload = _json_payload(row)
+            self.conn.execute(
+                f"""
+                INSERT INTO token_radar_current_rows({RADAR_ROW_INSERT_COLUMNS_SQL})
+                VALUES ({RADAR_ROW_INSERT_VALUES_SQL})
+                """,
+                payload,
+            )
             self.conn.execute(
                 """
-                INSERT INTO token_radar_rows(
+                INSERT INTO token_radar_rank_history(
                   row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
-                  lane, rank, intent_id, event_id, target_type, target_id, pricefeed_id, intent_json,
-                  asset_json, primary_venue_json, target_json, factor_snapshot_json, factor_version,
-                  decision, data_health_json,
-                  source_event_ids_json, listed_at_ms, created_at_ms
+                  lane, rank, rank_score, decision, intent_id, event_id, target_type, target_id, pricefeed_id,
+                  target_json, listed_at_ms, created_at_ms
                 )
                 VALUES (
                   %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
-                  %(source_max_received_at_ms)s, %(lane)s, %(rank)s, %(intent_id)s, %(event_id)s,
-                  %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(intent_json)s, %(asset_json)s,
-                  %(primary_venue_json)s, %(target_json)s, %(factor_snapshot_json)s, %(factor_version)s,
-                  %(decision)s, %(data_health_json)s,
-                  %(source_event_ids_json)s, %(listed_at_ms)s, %(created_at_ms)s
+                  %(source_max_received_at_ms)s, %(lane)s, %(rank)s, %(rank_score)s, %(decision)s,
+                  %(intent_id)s, %(event_id)s, %(target_type)s, %(target_id)s, %(pricefeed_id)s,
+                  %(target_json)s, %(listed_at_ms)s, %(created_at_ms)s
                 )
                 """,
-                _json_payload(
-                    {
-                        **row,
-                        "projection_version": projection_version,
-                        "window": window,
-                        "scope": scope,
-                        "computed_at_ms": computed_at_ms,
-                    }
-                ),
+                _rank_history_payload(row),
+            )
+            self.conn.execute(
+                f"""
+                INSERT INTO token_radar_snapshot_audit(snapshot_id, {RADAR_ROW_INSERT_COLUMNS_SQL})
+                VALUES (%(snapshot_id)s, {RADAR_ROW_INSERT_VALUES_SQL})
+                """,
+                {"snapshot_id": str(row["row_id"]), **payload},
             )
         self.upsert_first_seen_batch(
             projection_version=projection_version,
@@ -113,7 +190,7 @@ class TokenRadarRepository:
             self.conn.commit()
         return True
 
-    def latest_rows(
+    def latest_current_rows(
         self,
         *,
         window: str,
@@ -123,23 +200,16 @@ class TokenRadarRepository:
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            WITH latest AS (
-              SELECT MAX(computed_at_ms) AS computed_at_ms
-              FROM token_radar_rows
-              WHERE projection_version = %s AND "window" = %s AND scope = %s
-            ),
-            ranked AS (
+            WITH ranked AS (
               SELECT *
               FROM (
                 SELECT
-                  token_radar_rows.*,
+                  current_rows.*,
                   row_number() OVER (PARTITION BY lane ORDER BY rank ASC) AS lane_rank
-                FROM token_radar_rows
-                JOIN latest
-                  ON token_radar_rows.computed_at_ms = latest.computed_at_ms
-                WHERE token_radar_rows.projection_version = %s
-                  AND token_radar_rows."window" = %s
-                  AND token_radar_rows.scope = %s
+                FROM token_radar_current_rows current_rows
+                WHERE current_rows.projection_version = %s
+                  AND current_rows."window" = %s
+                  AND current_rows.scope = %s
               ) latest_ranked
               WHERE lane_rank <= %s
             )
@@ -152,58 +222,47 @@ class TokenRadarRepository:
                 projection_version,
                 window,
                 scope,
-                projection_version,
-                window,
-                scope,
                 max(0, int(limit)),
                 max(0, int(limit)) * 2,
             ),
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def _listed_at_by_identity(
+    def latest_snapshot_audit_rows(
         self,
         *,
-        projection_version: str,
         window: str,
         scope: str,
-        rows: list[dict[str, Any]],
-    ) -> dict[tuple[str, str], int]:
-        identities = list(dict.fromkeys(_identity_key(row) for row in rows))
-        if not identities:
-            return {}
-        target_type_keys = [target_type for target_type, _ in identities]
-        identity_ids = [identity_id for _, identity_id in identities]
+        limit: int,
+        projection_version: str,
+    ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            WITH requested(target_type_key, identity_id) AS (
-              SELECT *
-              FROM unnest(%s::text[], %s::text[])
+            WITH latest AS (
+              SELECT MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_snapshot_audit
+              WHERE projection_version = %s AND "window" = %s AND scope = %s
             )
-            SELECT
-              requested.target_type_key,
-              requested.identity_id,
-              first_seen.listed_at_ms
-            FROM requested
-            LEFT JOIN LATERAL (
-              SELECT COALESCE(history.listed_at_ms, history.computed_at_ms) AS listed_at_ms
-              FROM token_radar_rows history
-              WHERE history.projection_version = %s
-                AND history."window" = %s
-                AND history.scope = %s
-                AND COALESCE(history.target_type, '') = requested.target_type_key
-                AND COALESCE(history.target_id, history.intent_id) = requested.identity_id
-              ORDER BY history.computed_at_ms ASC
-              LIMIT 1
-            ) first_seen ON true
+            SELECT audit.*
+            FROM token_radar_snapshot_audit audit
+            JOIN latest ON audit.computed_at_ms = latest.computed_at_ms
+            WHERE audit.projection_version = %s
+              AND audit."window" = %s
+              AND audit.scope = %s
+            ORDER BY audit.lane DESC, audit.rank ASC
+            LIMIT %s
             """,
-            (target_type_keys, identity_ids, projection_version, window, scope),
+            (
+                projection_version,
+                window,
+                scope,
+                projection_version,
+                window,
+                scope,
+                max(0, int(limit)),
+            ),
         ).fetchall()
-        return {
-            (str(row["target_type_key"]), str(row["identity_id"])): int(row["listed_at_ms"])
-            for row in rows
-            if row.get("listed_at_ms") is not None
-        }
+        return [dict(row) for row in rows]
 
     def first_seen_by_identity(
         self,
@@ -238,24 +297,11 @@ class TokenRadarRepository:
             """,
             (target_type_keys, identity_ids, projection_version, window, scope),
         ).fetchall()
-        listed_at_by_key = {
+        return {
             (str(row["target_type_key"]), str(row["identity_id"])): int(row["first_seen_ms"])
             for row in compact_rows
             if row.get("first_seen_ms") is not None
         }
-        missing_rows = [
-            row for row in rows if _identity_key(row) in identities and _identity_key(row) not in listed_at_by_key
-        ]
-        if missing_rows:
-            listed_at_by_key.update(
-                self._listed_at_by_identity(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    rows=missing_rows,
-                )
-            )
-        return listed_at_by_key
 
     def upsert_first_seen_batch(
         self,
@@ -326,485 +372,17 @@ class TokenRadarRepository:
             self.conn.commit()
         return len(records)
 
-    def backfill_first_seen_from_history(
-        self,
-        *,
-        batch_size: int,
-        after_key: tuple[str, str, str, str, str] | None = None,
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        limit = max(1, int(batch_size))
-        after_projection_version, after_window, after_scope, after_target_type_key, after_identity_id = after_key or (
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        rows = self.conn.execute(
-            """
-            WITH identity_page AS (
-              SELECT DISTINCT ON (
-                projection_version,
-                "window",
-                scope,
-                COALESCE(target_type, ''),
-                COALESCE(target_id, intent_id)
-              )
-                projection_version,
-                "window",
-                scope,
-                COALESCE(target_type, '') AS target_type_key,
-                COALESCE(target_id, intent_id) AS identity_id
-              FROM token_radar_rows
-              WHERE COALESCE(target_id, intent_id, '') <> ''
-                AND (
-                  %s::text IS NULL
-                  OR (projection_version, "window", scope, COALESCE(target_type, ''), COALESCE(target_id, intent_id))
-                     > (%s, %s, %s, %s, %s)
-                )
-              ORDER BY
-                projection_version,
-                "window",
-                scope,
-                COALESCE(target_type, ''),
-                COALESCE(target_id, intent_id),
-                computed_at_ms ASC
-              LIMIT %s
-            ),
-            grouped AS (
-              SELECT
-                identity_page.projection_version,
-                identity_page."window",
-                identity_page.scope,
-                identity_page.target_type_key,
-                identity_page.identity_id,
-                MIN(COALESCE(rows.listed_at_ms, rows.computed_at_ms)) AS first_seen_ms,
-                MAX(rows.computed_at_ms) AS last_seen_ms,
-                (
-                  ARRAY_AGG(
-                    rows.row_id
-                    ORDER BY
-                      COALESCE(rows.listed_at_ms, rows.computed_at_ms) ASC,
-                      rows.computed_at_ms ASC,
-                      rows.row_id ASC
-                  )
-                )[1] AS first_row_id,
-                (ARRAY_AGG(rows.row_id ORDER BY rows.computed_at_ms DESC, rows.row_id DESC))[1] AS latest_row_id
-              FROM identity_page
-              JOIN token_radar_rows rows
-                ON rows.projection_version = identity_page.projection_version
-               AND rows."window" = identity_page."window"
-               AND rows.scope = identity_page.scope
-               AND COALESCE(rows.target_type, '') = identity_page.target_type_key
-               AND COALESCE(rows.target_id, rows.intent_id) = identity_page.identity_id
-              GROUP BY
-                identity_page.projection_version,
-                identity_page."window",
-                identity_page.scope,
-                identity_page.target_type_key,
-                identity_page.identity_id
-            )
-            SELECT *
-            FROM grouped
-            ORDER BY projection_version, "window", scope, target_type_key, identity_id
-            """,
-            (
-                after_projection_version,
-                after_projection_version,
-                after_window,
-                after_scope,
-                after_target_type_key,
-                after_identity_id,
-                limit,
-            ),
-        ).fetchall()
-        records = [dict(row) for row in rows]
-        if records:
-            now_ms = _now_ms()
-            values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(records))
-            params: list[Any] = []
-            for row in records:
-                params.extend(
-                    [
-                        row["projection_version"],
-                        row["window"],
-                        row["scope"],
-                        row["target_type_key"],
-                        row["identity_id"],
-                        int(row["first_seen_ms"]),
-                        int(row["last_seen_ms"]),
-                        row.get("first_row_id"),
-                        row.get("latest_row_id"),
-                        now_ms,
-                        now_ms,
-                    ]
-                )
+    def ensure_storage_partitions(self, *, computed_at_ms: int, commit: bool = True) -> None:
+        year_month, start_ms, end_ms = _month_partition_bounds(int(computed_at_ms))
+        for parent in ("token_radar_rank_history", "token_radar_snapshot_audit"):
+            partition = f"{parent}_{year_month}"
             self.conn.execute(
                 f"""
-                INSERT INTO token_radar_target_first_seen(
-                  projection_version, "window", scope, target_type_key, identity_id,
-                  first_seen_ms, last_seen_ms, first_row_id, latest_row_id, created_at_ms, updated_at_ms
-                )
-                VALUES {values_sql}
-                ON CONFLICT(projection_version, "window", scope, target_type_key, identity_id)
-                DO UPDATE SET
-                  first_seen_ms = LEAST(token_radar_target_first_seen.first_seen_ms, excluded.first_seen_ms),
-                  last_seen_ms = GREATEST(token_radar_target_first_seen.last_seen_ms, excluded.last_seen_ms),
-                  first_row_id = CASE
-                    WHEN excluded.first_seen_ms <= token_radar_target_first_seen.first_seen_ms
-                      THEN excluded.first_row_id
-                    ELSE token_radar_target_first_seen.first_row_id
-                  END,
-                  latest_row_id = CASE
-                    WHEN excluded.last_seen_ms >= token_radar_target_first_seen.last_seen_ms
-                      THEN excluded.latest_row_id
-                    ELSE token_radar_target_first_seen.latest_row_id
-                  END,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                params,
+                CREATE TABLE IF NOT EXISTS {partition}
+                  PARTITION OF {parent}
+                  FOR VALUES FROM ({start_ms}) TO ({end_ms})
+                """
             )
-        if commit:
-            self.conn.commit()
-        next_after_key = None
-        if records:
-            last = records[-1]
-            next_after_key = (
-                str(last["projection_version"]),
-                str(last["window"]),
-                str(last["scope"]),
-                str(last["target_type_key"]),
-                str(last["identity_id"]),
-            )
-        return {
-            "rows_upserted": len(records),
-            "next_after_key": next_after_key,
-            "has_more": len(records) == limit,
-        }
-
-    def backfill_first_seen_rows_batch(
-        self,
-        *,
-        batch_size: int,
-        after_computed_at_ms: int | None = None,
-        after_row_id: str | None = None,
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        limit = max(1, int(batch_size))
-        rows = self.conn.execute(
-            """
-            SELECT
-              row_id,
-              projection_version,
-              "window",
-              scope,
-              computed_at_ms,
-              COALESCE(listed_at_ms, computed_at_ms) AS first_seen_ms,
-              COALESCE(target_type, '') AS target_type_key,
-              COALESCE(target_id, intent_id) AS identity_id
-            FROM token_radar_rows
-            WHERE COALESCE(target_id, intent_id, '') <> ''
-              AND (
-                %s::bigint IS NULL
-                OR (computed_at_ms, row_id) > (%s, %s)
-              )
-            ORDER BY computed_at_ms ASC, row_id ASC
-            LIMIT %s
-            """,
-            (
-                after_computed_at_ms,
-                after_computed_at_ms,
-                after_row_id,
-                limit,
-            ),
-        ).fetchall()
-        raw_records = [dict(row) for row in rows]
-        compacted: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
-        for row in raw_records:
-            key = (
-                str(row["projection_version"]),
-                str(row["window"]),
-                str(row["scope"]),
-                str(row["target_type_key"]),
-                str(row["identity_id"]),
-            )
-            first_seen_ms = int(row["first_seen_ms"])
-            last_seen_ms = int(row["computed_at_ms"])
-            current = compacted.get(key)
-            if current is None:
-                compacted[key] = {
-                    "projection_version": key[0],
-                    "window": key[1],
-                    "scope": key[2],
-                    "target_type_key": key[3],
-                    "identity_id": key[4],
-                    "first_seen_ms": first_seen_ms,
-                    "last_seen_ms": last_seen_ms,
-                    "first_row_id": row["row_id"],
-                    "latest_row_id": row["row_id"],
-                }
-                continue
-            if first_seen_ms <= int(current["first_seen_ms"]):
-                current["first_seen_ms"] = first_seen_ms
-                current["first_row_id"] = row["row_id"]
-            if last_seen_ms >= int(current["last_seen_ms"]):
-                current["last_seen_ms"] = last_seen_ms
-                current["latest_row_id"] = row["row_id"]
-
-        records = list(compacted.values())
-        if records:
-            now_ms = _now_ms()
-            values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(records))
-            params: list[Any] = []
-            for row in records:
-                params.extend(
-                    [
-                        row["projection_version"],
-                        row["window"],
-                        row["scope"],
-                        row["target_type_key"],
-                        row["identity_id"],
-                        int(row["first_seen_ms"]),
-                        int(row["last_seen_ms"]),
-                        row["first_row_id"],
-                        row["latest_row_id"],
-                        now_ms,
-                        now_ms,
-                    ]
-                )
-            self.conn.execute(
-                f"""
-                INSERT INTO token_radar_target_first_seen(
-                  projection_version, "window", scope, target_type_key, identity_id,
-                  first_seen_ms, last_seen_ms, first_row_id, latest_row_id, created_at_ms, updated_at_ms
-                )
-                VALUES {values_sql}
-                ON CONFLICT(projection_version, "window", scope, target_type_key, identity_id)
-                DO UPDATE SET
-                  first_seen_ms = LEAST(token_radar_target_first_seen.first_seen_ms, excluded.first_seen_ms),
-                  last_seen_ms = GREATEST(token_radar_target_first_seen.last_seen_ms, excluded.last_seen_ms),
-                  first_row_id = CASE
-                    WHEN excluded.first_seen_ms <= token_radar_target_first_seen.first_seen_ms
-                      THEN excluded.first_row_id
-                    ELSE token_radar_target_first_seen.first_row_id
-                  END,
-                  latest_row_id = CASE
-                    WHEN excluded.last_seen_ms >= token_radar_target_first_seen.last_seen_ms
-                      THEN excluded.latest_row_id
-                    ELSE token_radar_target_first_seen.latest_row_id
-                  END,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                params,
-            )
-        if commit:
-            self.conn.commit()
-        last = raw_records[-1] if raw_records else None
-        return {
-            "rows_scanned": len(raw_records),
-            "rows_upserted": len(records),
-            "last_computed_at_ms": int(last["computed_at_ms"]) if last else after_computed_at_ms,
-            "last_row_id": str(last["row_id"]) if last else after_row_id,
-            "has_more": len(raw_records) == limit,
-        }
-
-    def protected_batch_counts(self) -> dict[str, int]:
-        row = self.conn.execute(
-            """
-            WITH coverage_batches AS (
-              SELECT projection_version, "window", scope, computed_at_ms
-              FROM token_radar_projection_coverage
-              WHERE computed_at_ms IS NOT NULL
-            ),
-            coverage_keys AS (
-              SELECT DISTINCT projection_version, "window", scope
-              FROM coverage_batches
-            ),
-            actual_latest_batches AS (
-              SELECT
-                coverage_keys.projection_version,
-                coverage_keys."window",
-                coverage_keys.scope,
-                latest_rows.computed_at_ms
-              FROM coverage_keys
-              JOIN LATERAL (
-                SELECT token_radar_rows.computed_at_ms
-                FROM token_radar_rows
-                WHERE token_radar_rows.projection_version = coverage_keys.projection_version
-                  AND token_radar_rows."window" = coverage_keys."window"
-                  AND token_radar_rows.scope = coverage_keys.scope
-                ORDER BY token_radar_rows.computed_at_ms DESC
-                LIMIT 1
-              ) latest_rows ON true
-            )
-            SELECT
-              (SELECT COUNT(*) FROM coverage_batches) AS protected_coverage_batches,
-              (SELECT COUNT(*) FROM actual_latest_batches) AS protected_actual_latest_batches
-            """
-        ).fetchone()
-        return {
-            "protected_coverage_batches": int(row["protected_coverage_batches"] if row else 0),
-            "protected_actual_latest_batches": int(row["protected_actual_latest_batches"] if row else 0),
-        }
-
-    def plan_prunable_rows(self, *, cutoff_ms: int, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH coverage_batches AS (
-              SELECT projection_version, "window", scope, computed_at_ms
-              FROM token_radar_projection_coverage
-              WHERE computed_at_ms IS NOT NULL
-            ),
-            coverage_keys AS (
-              SELECT DISTINCT projection_version, "window", scope
-              FROM coverage_batches
-            ),
-            actual_latest_batches AS (
-              SELECT
-                coverage_keys.projection_version,
-                coverage_keys."window",
-                coverage_keys.scope,
-                latest_rows.computed_at_ms
-              FROM coverage_keys
-              JOIN LATERAL (
-                SELECT token_radar_rows.computed_at_ms
-                FROM token_radar_rows
-                WHERE token_radar_rows.projection_version = coverage_keys.projection_version
-                  AND token_radar_rows."window" = coverage_keys."window"
-                  AND token_radar_rows.scope = coverage_keys.scope
-                ORDER BY token_radar_rows.computed_at_ms DESC
-                LIMIT 1
-              ) latest_rows ON true
-            ),
-            protected_batches AS (
-              SELECT * FROM coverage_batches
-              UNION
-              SELECT * FROM actual_latest_batches
-            )
-            SELECT
-              rows.row_id,
-              rows.projection_version,
-              rows."window",
-              rows.scope,
-              rows.computed_at_ms
-            FROM token_radar_rows rows
-            WHERE rows.computed_at_ms < %s
-              AND NOT EXISTS (
-                SELECT 1
-                FROM protected_batches current
-                WHERE current.projection_version = rows.projection_version
-                  AND current."window" = rows."window"
-                  AND current.scope = rows.scope
-                  AND current.computed_at_ms = rows.computed_at_ms
-              )
-            ORDER BY rows.computed_at_ms ASC, rows.row_id ASC
-            LIMIT %s
-            """,
-            (int(cutoff_ms), max(0, int(limit))),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def delete_prunable_rows_batch(self, *, cutoff_ms: int, batch_size: int, commit: bool = True) -> int:
-        rows = self.conn.execute(
-            """
-            WITH coverage_batches AS (
-              SELECT projection_version, "window", scope, computed_at_ms
-              FROM token_radar_projection_coverage
-              WHERE computed_at_ms IS NOT NULL
-            ),
-            coverage_keys AS (
-              SELECT DISTINCT projection_version, "window", scope
-              FROM coverage_batches
-            ),
-            actual_latest_batches AS (
-              SELECT
-                coverage_keys.projection_version,
-                coverage_keys."window",
-                coverage_keys.scope,
-                latest_rows.computed_at_ms
-              FROM coverage_keys
-              JOIN LATERAL (
-                SELECT token_radar_rows.computed_at_ms
-                FROM token_radar_rows
-                WHERE token_radar_rows.projection_version = coverage_keys.projection_version
-                  AND token_radar_rows."window" = coverage_keys."window"
-                  AND token_radar_rows.scope = coverage_keys.scope
-                ORDER BY token_radar_rows.computed_at_ms DESC
-                LIMIT 1
-              ) latest_rows ON true
-            ),
-            protected_batches AS (
-              SELECT * FROM coverage_batches
-              UNION
-              SELECT * FROM actual_latest_batches
-            ),
-            victims AS (
-              SELECT rows.row_id
-              FROM token_radar_rows rows
-              WHERE rows.computed_at_ms < %s
-                AND NOT EXISTS (
-                  SELECT 1
-                  FROM protected_batches current
-                  WHERE current.projection_version = rows.projection_version
-                    AND current."window" = rows."window"
-                    AND current.scope = rows.scope
-                    AND current.computed_at_ms = rows.computed_at_ms
-                )
-              ORDER BY rows.computed_at_ms ASC, rows.row_id ASC
-              LIMIT %s
-            )
-            DELETE FROM token_radar_rows rows
-            USING victims
-            WHERE rows.row_id = victims.row_id
-            RETURNING rows.row_id
-            """,
-            (int(cutoff_ms), max(0, int(batch_size))),
-        ).fetchall()
-        if commit:
-            self.conn.commit()
-        return len(rows)
-
-    def insert_retention_run(self, payload: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
-        row = self.conn.execute(
-            """
-            INSERT INTO token_radar_retention_runs(
-              run_id, mode, retention_days, cutoff_ms, batch_size, max_batches,
-              rows_planned, rows_deleted, status, error, started_at_ms, finished_at_ms, created_at_ms
-            )
-            VALUES (
-              %(run_id)s, %(mode)s, %(retention_days)s, %(cutoff_ms)s, %(batch_size)s, %(max_batches)s,
-              %(rows_planned)s, %(rows_deleted)s, %(status)s, %(error)s, %(started_at_ms)s, %(finished_at_ms)s,
-              %(created_at_ms)s
-            )
-            RETURNING *
-            """,
-            payload,
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return dict(row) if row else dict(payload)
-
-    def finish_retention_run(
-        self,
-        run_id: str,
-        *,
-        status: str,
-        rows_deleted: int,
-        error: str | None = None,
-        commit: bool = True,
-    ) -> None:
-        self.conn.execute(
-            """
-            UPDATE token_radar_retention_runs
-            SET status = %s,
-                rows_deleted = %s,
-                error = %s,
-                finished_at_ms = %s
-            WHERE run_id = %s
-            """,
-            (status, max(0, int(rows_deleted)), error, _now_ms(), str(run_id)),
-        )
         if commit:
             self.conn.commit()
 
@@ -903,21 +481,71 @@ class TokenRadarRepository:
         }
 
 
+def _runtime_row_payload(
+    row: dict[str, Any],
+    *,
+    projection_version: str,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+    listed_at_ms: int,
+) -> dict[str, Any]:
+    out = dict(row)
+    out.update(
+        {
+            "projection_version": projection_version,
+            "window": window,
+            "scope": scope,
+            "computed_at_ms": int(computed_at_ms),
+            "listed_at_ms": int(listed_at_ms),
+        }
+    )
+    return out
+
+
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
     _validate_factor_contract(row)
-    out = dict(row)
+    out = {column: row.get(column) for column in RADAR_ROW_COLUMNS}
     for key in (
         "factor_snapshot_json",
         "intent_json",
         "asset_json",
         "primary_venue_json",
         "target_json",
+        "attention_json",
+        "resolution_json",
+        "market_json",
+        "price_json",
+        "score_json",
         "data_health_json",
         "source_event_ids_json",
     ):
         payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
         out[key] = Jsonb(_json_ready(payload))
     return out
+
+
+def _rank_history_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": row.get("row_id"),
+        "projection_version": row.get("projection_version"),
+        "window": row.get("window"),
+        "scope": row.get("scope"),
+        "computed_at_ms": row.get("computed_at_ms"),
+        "source_max_received_at_ms": row.get("source_max_received_at_ms"),
+        "lane": row.get("lane"),
+        "rank": row.get("rank"),
+        "rank_score": _rank_score(row.get("factor_snapshot_json")),
+        "decision": row.get("decision"),
+        "intent_id": row.get("intent_id"),
+        "event_id": row.get("event_id"),
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "pricefeed_id": row.get("pricefeed_id"),
+        "target_json": Jsonb(_json_ready(row.get("target_json") or {})),
+        "listed_at_ms": row.get("listed_at_ms"),
+        "created_at_ms": row.get("created_at_ms"),
+    }
 
 
 def _identity_key(row: dict[str, Any]) -> tuple[str, str]:
@@ -932,6 +560,29 @@ def _nonempty_identities(rows: list[dict[str, Any]]) -> list[tuple[str, str]]:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _month_partition_bounds(computed_at_ms: int) -> tuple[str, int, int]:
+    current = datetime.fromtimestamp(computed_at_ms / 1000, tz=UTC)
+    start = datetime(current.year, current.month, 1, tzinfo=UTC)
+    if current.month == 12:
+        end = datetime(current.year + 1, 1, 1, tzinfo=UTC)
+    else:
+        end = datetime(current.year, current.month + 1, 1, tzinfo=UTC)
+    return start.strftime("%Y%m"), int(start.timestamp() * 1000), int(end.timestamp() * 1000)
+
+
+def _rank_score(factor_snapshot: Any) -> float | None:
+    if not isinstance(factor_snapshot, dict):
+        return None
+    composite = factor_snapshot.get("composite")
+    if not isinstance(composite, dict):
+        return None
+    value = composite.get("rank_score")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _validate_factor_contract(row: dict[str, Any]) -> None:

@@ -626,10 +626,11 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
   `recommended_decision`.
 - `provenance`: source event ids and compute time.
 
-Historical `token_radar_rows` are retained only for the configured hot
-settlement window. Latest reads select the newest projection row, compact
+Current Token Radar reads use `token_radar_current_rows`. Lightweight rank
+history is stored in `token_radar_rank_history`, while full point-in-time
+factor snapshots live only in partitioned `token_radar_snapshot_audit`. Compact
 first-seen metadata preserves `listed_at_ms`, and diagnostics/settlement
-commands evaluate older hot-window runs by `computed_at_ms` and score version.
+commands evaluate bounded audit snapshots by `computed_at_ms` and score version.
 
 Operational commands:
 
@@ -639,9 +640,10 @@ Operational commands:
   return evaluations when sufficient later market observations exist.
 - `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
-- `gmgn-twitter-intel ops prune-token-radar` is an explicit operator
-  maintenance command for bounded `token_radar_rows` retention; HTTP handlers
-  and normal API reads never prune rows as a side effect.
+- `gmgn-twitter-intel ops clean-reset-token-radar-storage` is an explicit
+  operator maintenance command for dropping legacy Token Radar storage and
+  clearing rebuildable Token Radar read models. It never touches material fact
+  tables.
 
 ## Privacy boundary
 

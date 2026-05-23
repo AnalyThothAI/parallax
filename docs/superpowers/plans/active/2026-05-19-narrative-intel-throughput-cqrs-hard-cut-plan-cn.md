@@ -79,7 +79,7 @@ Do this as one hard-cut branch. Do not ship a partial state where web expects th
 
 - [ ] Add integration test for latest Radar frontier:
   - seed `token_radar_projection_coverage` with latest ready `computed_at_ms=2000`;
-  - seed older `token_radar_rows.computed_at_ms=1000` with high ranks;
+  - seed current Radar rows for `computed_at_ms=2000`;
   - seed latest rows with fewer/lower ranks;
   - query admission frontier;
   - assert only `computed_at_ms=2000` rows are returned.
@@ -168,7 +168,7 @@ WITH latest AS (
     AND computed_at_ms IS NOT NULL
 )
 SELECT rows.*
-FROM token_radar_rows rows
+FROM token_radar_current_rows rows
 JOIN latest ON latest.computed_at_ms = rows.computed_at_ms
 WHERE rows.projection_version = %(projection_version)s
   AND rows."window" = %(window)s
@@ -184,7 +184,7 @@ LIMIT %(limit)s
   - returns event ids, max received time, source count, independent author count;
   - has a hard `source_limit`.
 
-- [ ] Keep `token_radar_rows.source_event_ids_json` as an optional seed/diagnostic only. Source count must be computed from source facts/source set.
+- [ ] Keep `token_radar_current_rows.source_event_ids_json` as an optional seed/diagnostic only. Source count must be computed from source facts/source set.
 
 Target files:
 
@@ -492,4 +492,3 @@ Expected after at least one full cycle:
 - [ ] No runtime compatibility branch remains for old admission/digest behavior.
 - [ ] No API request path writes narrative read models or calls provider.
 - [ ] Docs and generated contracts match shipped behavior.
-
