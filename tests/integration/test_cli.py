@@ -576,6 +576,77 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
     assert events.index(("release",)) < events.index(("worker_close",))
 
 
+def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypatch):
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    events: list[tuple] = []
+    configured_lock_key = 909090
+
+    class FakeDB:
+        api_pool = None
+        worker_pool = None
+        wake_pool = None
+
+        def wake_emitter(self):
+            return object()
+
+        def wake_listener(self, worker_name, wakes_on):
+            events.append(("wake_listener", worker_name, tuple(wakes_on)))
+            return object()
+
+        def acquire_advisory_lock_connection(self, worker_name, key):
+            events.append(("acquire", worker_name, key))
+            raise RuntimeError("advisory_lock_unavailable")
+
+    class FakeWorker:
+        SINGLE_WRITER_KEY = 2026051501
+
+        def __init__(self, **kwargs):
+            self.settings = kwargs["settings"]
+            events.append(("worker_init", kwargs["name"]))
+
+        def _advisory_lock_key(self):
+            return configured_lock_key
+
+        def rebuild_once(self, **kwargs):
+            events.append(("rebuild", kwargs))
+            return {"rows_written": 1}
+
+        async def aclose(self):
+            events.append(("worker_close",))
+
+    db = FakeDB()
+    settings = SimpleNamespace(
+        workers=SimpleNamespace(
+            token_radar_projection=SimpleNamespace(
+                advisory_lock_key=configured_lock_key,
+                batch_size=100,
+                wakes_on=("market_tick_written",),
+            )
+        )
+    )
+    monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
+    monkeypatch.setattr(ops_module, "TokenRadarProjectionWorker", FakeWorker)
+
+    result = ops_module._run_token_radar_projection_worker_once(
+        settings,
+        windows=("1h",),
+        scopes=("all",),
+        limit=5,
+        now_ms=1_700_000_000_000,
+    )
+
+    assert result["status"] == "skipped"
+    assert result["notes"] == {
+        "reason": "advisory_lock_unavailable",
+        "worker_name": "token_radar_projection",
+        "lock_key": configured_lock_key,
+    }
+    assert ("acquire", "token_radar_projection", configured_lock_key) in events
+    assert not any(event[0] == "rebuild" for event in events)
+    assert events[-1] == ("worker_close",)
+
+
 def test_social_enrichment_cli_reports_empty_read_models_without_error(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "postgres_test_db"

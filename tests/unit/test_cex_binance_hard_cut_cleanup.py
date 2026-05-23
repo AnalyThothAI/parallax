@@ -48,6 +48,40 @@ def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
     assert not _has_mutation(conn.sqls)
 
 
+def test_cleanup_sql_does_not_reference_removed_price_observations_table() -> None:
+    conn = RecordingConn(counts={"binance_canonical_usdt_perp_feeds": 512})
+
+    cleanup_cex_binance_hard_cut(
+        conn,
+        dry_run=False,
+        execute=True,
+        min_binance_feeds=400,
+        now_ms=1_779_321_600_000,
+    )
+
+    assert not _has_statement(conn.sqls, LEGACY_PRICE_TABLE)
+
+
+def test_execute_only_passes_params_to_now_ms_sql_and_escapes_literal_percent() -> None:
+    conn = RecordingConn(counts={"binance_canonical_usdt_perp_feeds": 512})
+
+    cleanup_cex_binance_hard_cut(
+        conn,
+        dry_run=False,
+        execute=True,
+        min_binance_feeds=400,
+        now_ms=1_779_321_600_000,
+    )
+
+    cleanup_calls = list(zip(conn.sqls, conn.params, strict=True))[1:]
+    for sql, params in cleanup_calls:
+        if "%(now_ms)s" in sql:
+            assert params == {"now_ms": 1_779_321_600_000}
+            assert "LIKE 'okx:%'" not in sql
+        else:
+            assert params is None
+
+
 def test_execute_acquires_transaction_lock_and_aborts_below_min_binance_feeds() -> None:
     conn = RecordingConn(counts={"binance_canonical_usdt_perp_feeds": 12})
 
@@ -122,9 +156,6 @@ def test_execute_runs_cleanup_in_fk_safe_order_and_validates_constraint() -> Non
         conn.sqls, f"DELETE FROM {TOKEN_CAPTURE_TIER_TABLE}"
     )
     assert _first_statement_index(conn.sqls, f"DELETE FROM {TOKEN_CAPTURE_TIER_TABLE}") < _first_statement_index(
-        conn.sqls, f"DELETE FROM {LEGACY_PRICE_TABLE}"
-    )
-    assert _first_statement_index(conn.sqls, f"DELETE FROM {LEGACY_PRICE_TABLE}") < _first_statement_index(
         conn.sqls, "DELETE FROM price_feeds"
     )
     assert _first_statement_index(conn.sqls, "DELETE FROM price_feeds") < _first_statement_index(

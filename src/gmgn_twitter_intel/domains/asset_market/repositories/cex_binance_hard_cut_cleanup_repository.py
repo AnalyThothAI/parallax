@@ -15,7 +15,6 @@ TOKEN_RADAR_CLEAN_RESET_ACTION = {
     "reason": "Token Radar storage is owned by token_intel; reset it through the dedicated hard-cut command.",
 }
 TOKEN_CAPTURE_TIER_TABLE = "token_capture_" "tier"
-LEGACY_PRICE_TABLE = "price_" "observations"
 
 
 class CexBinanceHardCutAbort(RuntimeError):
@@ -117,7 +116,7 @@ def _execute_cleanup(conn: Any, *, now_ms: int) -> dict[str, int]:
     params = {"now_ms": now_ms}
     executed: dict[str, int] = {}
     for name, sql in CLEANUP_SQL:
-        result = _execute(conn, sql, params)
+        result = _execute(conn, sql, params if "%(now_ms)s" in sql else None)
         executed[name] = _rowcount(result)
     return executed
 
@@ -228,12 +227,6 @@ COUNT_SQL: dict[str, str] = {
         FROM {TOKEN_CAPTURE_TIER_TABLE}
         WHERE target_type = 'cex_symbol'
           AND target_id LIKE 'okx:%'
-    """,
-    "okx_legacy_price_rows_to_delete": f"""
-        SELECT COUNT(*)::bigint AS okx_legacy_price_rows_to_delete
-        FROM {LEGACY_PRICE_TABLE}
-        WHERE provider IN ('okx_cex', 'okx')
-           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
     """,
     "okx_price_feeds_to_delete": """
         SELECT COUNT(*)::bigint AS okx_price_feeds_to_delete
@@ -385,7 +378,7 @@ CLEANUP_SQL: tuple[tuple[str, str], ...] = (
             last_reason = 'cex_okx_removed',
             updated_at_ms = %(now_ms)s
         WHERE target_type = 'cex_symbol'
-          AND target_id LIKE 'okx:%'
+          AND target_id LIKE 'okx:%%'
           AND status = 'pending'
         """,
     ),
@@ -403,14 +396,6 @@ CLEANUP_SQL: tuple[tuple[str, str], ...] = (
         DELETE FROM {TOKEN_CAPTURE_TIER_TABLE}
         WHERE target_type = 'cex_symbol'
           AND target_id LIKE 'okx:%'
-        """,
-    ),
-    (
-        "okx_legacy_price_rows_deleted",
-        f"""
-        DELETE FROM {LEGACY_PRICE_TABLE}
-        WHERE provider IN ('okx_cex', 'okx')
-           OR pricefeed_id LIKE 'pricefeed:cex:okx:%'
         """,
     ),
     (
