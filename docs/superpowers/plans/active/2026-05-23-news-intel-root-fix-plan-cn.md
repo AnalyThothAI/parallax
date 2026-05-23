@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Active plan, not implemented  
+**Status:** Implemented on `codex/news-intel-root-fix`; live verification recorded in `2026-05-23-news-intel-root-fix-verification-cn.md`
 **Date:** 2026-05-23  
 **Owning diagnosis:** Live `/news` route inspection, `/readyz` worker snapshot, DB row counts, and News Intel code review on `main`  
 **Recommended branch:** `codex/news-intel-root-fix`

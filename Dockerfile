@@ -40,7 +40,7 @@ RUN set -eu; \
     printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries; \
     for attempt in 1 2 3 4 5; do \
         apt-get update \
-        && apt-get install -y --no-install-recommends git \
+        && apt-get install -y --no-install-recommends build-essential git \
         && rm -rf /var/lib/apt/lists/* \
         && exit 0; \
         rm -rf /var/lib/apt/lists/*; \
