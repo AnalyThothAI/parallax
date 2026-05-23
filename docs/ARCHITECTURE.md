@@ -100,6 +100,9 @@ are wrong too.
    `TokenProfileCurrentWorker`; it may expose token logos only from ready
    local rows in `token_image_assets`. `news_story_groups` and `news_story_members`
    are written only by `NewsStoryProjectionWorker`;
+   `news_items.content_class`, `news_items.content_tags_json`, and
+   `news_items.content_classification_json` are written by
+   `NewsItemProcessWorker` as item-level material facts;
    `news_item_agent_runs` and `news_item_agent_briefs` are written only by
    `NewsItemBriefWorker`; `news_page_rows` is written only by
    `NewsPageProjectionWorker`; `news_source_quality_rows` is written only by

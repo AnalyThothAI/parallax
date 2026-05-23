@@ -19,7 +19,13 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     with TestClient(app) as client:
         response = client.get(
             "/api/news",
-            params={"limit": 1, "cursor": "2000:row-old", "direction": "bullish"},
+            params={
+                "limit": 1,
+                "cursor": "2000:row-old",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "content_tag": "sec",
+            },
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -29,7 +35,9 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
             "content_class": None,
             "coverage_tag": None,
             "cursor": "2000:row-old",
+            "decision_class": "driver",
             "direction": "bullish",
+            "include_unprojected": False,
             "lane": None,
             "limit": 1,
             "provider_type": None,
@@ -39,6 +47,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
             "status": None,
             "target": None,
             "trust_tier": None,
+            "content_tag": "sec",
         }
     ]
     assert response.json() == {
@@ -59,6 +68,9 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
                     "fact_lanes_json": [],
                     "story_json": {},
                     "source_json": {"source_id": "example-rss"},
+                    "content_class": "regulation",
+                    "content_tags_json": ["sec"],
+                    "content_classification_json": {"policy_version": "test"},
                     "agent_brief_json": {"status": "pending"},
                     "agent_brief": {"status": "pending"},
                     "agent_status": "pending",
@@ -85,17 +97,22 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
                 "source_role": "specialist_media",
                 "trust_tier": "high",
                 "coverage_tag": "crypto_market",
-                "content_class": "regulatory_action",
+                "content_class": "regulation",
+                "content_tag": "sec",
+                "decision_class": "driver",
             },
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 200
     assert news.calls[-1] == {
-        "content_class": "regulatory_action",
+        "content_class": "regulation",
+        "content_tag": "sec",
         "coverage_tag": "crypto_market",
         "cursor": None,
+        "decision_class": "driver",
         "direction": None,
+        "include_unprojected": False,
         "lane": None,
         "limit": 100,
         "provider_type": "rss",
@@ -108,9 +125,118 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
     }
 
 
+def test_news_api_rejects_noncanonical_content_class_without_postgres() -> None:
+    news = FakeNewsRepository()
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/news",
+            params={"content_class": "regulatory_action"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "invalid_content_class",
+        "field": "content_class",
+    }
+    assert news.calls == []
+
+
+def test_news_api_can_request_unprojected_fallback_without_postgres() -> None:
+    news = FakeNewsRepository()
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/news",
+            params={"include_unprojected": "true"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert news.calls[-1]["include_unprojected"] is True
+
+
+def test_news_api_source_status_includes_provider_diagnostics_without_postgres() -> None:
+    news = FakeNewsRepository()
+    news.source_status_rows = [
+        {
+            "source_id": "example-rss",
+            "provider_type": "rss",
+            "coverage_tags": ["crypto_market"],
+            "enabled": True,
+            "last_seen_at_ms": 3_000,
+            "latest_item_published_at_ms": 2_000,
+            "latest_item_fetched_at_ms": 3_000,
+            "latest_context_seen_at_ms": None,
+            "context_item_count": 0,
+            "latest_fetch_run": {
+                "status": "success",
+                "started_at_ms": 2_900,
+                "finished_at_ms": 3_000,
+                "http_status": 200,
+                "fetched_count": 1,
+                "inserted_count": 1,
+                "updated_count": 0,
+                "duplicate_count": 0,
+                "error": None,
+            },
+            "latest_quality_counts": {"fetch_run_count": 1},
+            "provider_health": {
+                "status": "healthy",
+                "reason": "quality_status",
+                "last_error": None,
+                "consecutive_failures": 0,
+                "last_success_at_ms": 3_000,
+                "last_seen_at_ms": 3_000,
+            },
+            "provider_capability_tags": ["poll_primary_items", "http_cache"],
+        },
+        {
+            "source_id": "unsupported-openbb",
+            "provider_type": "openbb",
+            "coverage_tags": [],
+            "enabled": True,
+            "source_quality_status": "degraded",
+            "provider_health": {"status": "degraded"},
+        }
+    ]
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get("/api/news/sources/status", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "data": {
+            "provider_capabilities": {
+                "supported_provider_types": ["atom", "cryptopanic", "json_feed", "rss"],
+                "configured_provider_types": ["openbb", "rss"],
+                "unsupported_configured_provider_types": ["openbb"],
+            },
+            "source_hygiene": {
+                "sources_missing_coverage_tags": ["unsupported-openbb"],
+                "unsupported_sources": [{"source_id": "unsupported-openbb", "provider_type": "openbb"}],
+                "degraded_sources": [{"source_id": "unsupported-openbb", "status": "degraded"}],
+                "warnings": [
+                    {"source_id": "unsupported-openbb", "reason": "unsupported_provider_type"},
+                    {"source_id": "unsupported-openbb", "reason": "missing_coverage_tags"},
+                    {"source_id": "unsupported-openbb", "reason": "provider_health_degraded"},
+                ],
+            },
+            "sources": news.source_status_rows,
+        },
+    }
+
+
 class FakeNewsRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.source_status_rows: list[dict[str, object]] = []
 
     def list_news_page_rows(
         self,
@@ -127,14 +253,20 @@ class FakeNewsRepository:
         trust_tier: str | None = None,
         coverage_tag: str | None = None,
         content_class: str | None = None,
+        content_tag: str | None = None,
+        decision_class: str | None = None,
         q: str | None = None,
+        include_unprojected: bool,
     ):
         self.calls.append(
             {
                 "content_class": content_class,
+                "content_tag": content_tag,
                 "coverage_tag": coverage_tag,
                 "cursor": cursor,
+                "decision_class": decision_class,
                 "direction": direction,
+                "include_unprojected": include_unprojected,
                 "lane": lane,
                 "limit": limit,
                 "provider_type": provider_type,
@@ -161,6 +293,9 @@ class FakeNewsRepository:
                 "fact_lanes_json": [],
                 "story_json": {},
                 "source_json": {"source_id": "example-rss"},
+                "content_class": "regulation",
+                "content_tags_json": ["sec"],
+                "content_classification_json": {"policy_version": "test"},
                 "agent_brief_json": {"status": "pending"},
                 "agent_brief": {"status": "pending"},
                 "agent_status": "pending",
@@ -181,7 +316,7 @@ class FakeNewsRepository:
         return {"fact_candidate_id": fact_candidate_id}
 
     def list_source_status(self):
-        return []
+        return self.source_status_rows
 
 
 class FakeRepositoryContext:

@@ -101,7 +101,19 @@ export type NewsRow = {
   title?: string | null;
   summary?: string | null;
   source_domain?: string | null;
+  provider_type?: string | null;
+  source_role?: string | null;
+  trust_tier?: string | null;
+  coverage_tags?: string[];
+  source_quality_status?: string | null;
+  source_json?: NewsSourceSummary | Record<string, unknown> | null;
+  source?: NewsSourceSummary | null;
   canonical_url?: string | null;
+  content_class?: string | null;
+  content_tags_json?: string[];
+  content_tags?: string[];
+  content_classification_json?: Record<string, unknown>;
+  content_classification?: Record<string, unknown>;
   token_lanes?: NewsTokenLane[];
   fact_lanes?: NewsFactLane[];
   token_lanes_json?: NewsTokenLane[];
@@ -113,15 +125,20 @@ export type NewsRow = {
   agent_brief_computed_at_ms?: number | null;
 };
 
+export type NewsSourceSummary = {
+  source_id?: string | null;
+  source_name?: string | null;
+  source_domain?: string | null;
+  provider_type?: string | null;
+  source_role?: string | null;
+  trust_tier?: string | null;
+  coverage_tags?: string[];
+  source_quality_status?: string | null;
+};
+
 export type NewsItemDetail = NewsRow & {
   content?: string | null;
   body_text?: string | null;
-  source?: {
-    source_name?: string | null;
-    source_domain?: string | null;
-    trust_tier?: string | null;
-    source_role?: string | null;
-  } | null;
   story_members?: Array<{
     story_id?: string | null;
     status?: string | null;

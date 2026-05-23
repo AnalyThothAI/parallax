@@ -359,6 +359,18 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert db.repo.entities["news-1"][0].entity_type == "symbol"
     assert db.repo.mentions["news-1"][0].resolution_status == "known_symbol"
     assert db.repo.fact_candidates["news-1"][0].validation_status == "accepted"
+    assert db.repo.content_classifications == [
+        {
+            "news_item_id": "news-1",
+            "content_class": "exchange_listing",
+            "content_tags": ["exchange_listing"],
+            "classification_payload": {
+                "policy_version": "news_content_classification_v1",
+                "matched_rules": ["fact_event_type:exchange_listing"],
+            },
+            "now_ms": NOW_MS,
+        }
+    ]
     assert db.repo.processed_items == [{"news_item_id": "news-1", "processed_at_ms": NOW_MS}]
     assert db.repo.failed_items == []
     assert wake_bus.notifications == [{"count": 1}]
@@ -641,6 +653,7 @@ class FakeItemProcessRepository:
         self.entities: dict[str, list[object]] = {}
         self.mentions: dict[str, list[object]] = {}
         self.fact_candidates: dict[str, list[object]] = {}
+        self.content_classifications: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.failed_items: list[dict[str, int | str]] = []
 
@@ -656,6 +669,25 @@ class FakeItemProcessRepository:
 
     def replace_fact_candidates(self, news_item_id: str, candidates: list[object]) -> None:
         self.fact_candidates[news_item_id] = candidates
+
+    def update_item_content_classification(
+        self,
+        *,
+        news_item_id: str,
+        content_class: str,
+        content_tags: list[str],
+        classification_payload: dict[str, object],
+        now_ms: int,
+    ) -> None:
+        self.content_classifications.append(
+            {
+                "news_item_id": news_item_id,
+                "content_class": content_class,
+                "content_tags": content_tags,
+                "classification_payload": classification_payload,
+                "now_ms": now_ms,
+            }
+        )
 
     def mark_item_processed(self, news_item_id: str, processed_at_ms: int) -> None:
         self.processed_items.append({"news_item_id": news_item_id, "processed_at_ms": processed_at_ms})

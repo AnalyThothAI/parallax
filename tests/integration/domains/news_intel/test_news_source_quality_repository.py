@@ -22,6 +22,7 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             source_name="CoinDesk",
             source_role="specialist_media",
             trust_tier="high",
+            context_policy={"enabled": True},
             now_ms=NOW_MS - 10_000,
         )
         fetch_run_id = repo.start_fetch_run(source_id="coindesk", started_at_ms=NOW_MS - 9_000)
@@ -180,6 +181,7 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             "SELECT source_quality_status FROM news_sources WHERE source_id = %s",
             ("coindesk",),
         ).fetchone()
+        source_status = repo.list_source_status()[0]
     finally:
         conn.close()
 
@@ -196,3 +198,29 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
     assert stored["items_fetched"] == 2
     assert stored["quality_score"] is not None
     assert source["source_quality_status"] == stored["diagnostics_json"]["status"]
+    assert source_status["latest_item_published_at_ms"] == NOW_MS - 60_000
+    assert source_status["latest_item_fetched_at_ms"] == NOW_MS - 7_000
+    assert source_status["context_item_count"] == 1
+    assert source_status["latest_context_seen_at_ms"] == NOW_MS - 1_000
+    assert source_status["last_seen_at_ms"] == NOW_MS - 1_000
+    assert source_status["latest_fetch_run"] == {
+        "status": "success",
+        "started_at_ms": NOW_MS - 9_000,
+        "finished_at_ms": NOW_MS - 8_000,
+        "http_status": None,
+        "fetched_count": 2,
+        "inserted_count": 1,
+        "updated_count": 0,
+        "duplicate_count": 1,
+        "error": None,
+    }
+    assert source_status["latest_quality_counts"]["fetch_run_count"] == 1
+    assert source_status["latest_quality_counts"]["context_item_count"] == 1
+    assert source_status["provider_health"]["status"] == stored["diagnostics_json"]["status"]
+    assert source_status["provider_health"]["last_seen_at_ms"] == NOW_MS - 1_000
+    assert source_status["provider_capability_tags"] == [
+        "poll_primary_items",
+        "http_cache",
+        "context_items",
+        "high_trust",
+    ]

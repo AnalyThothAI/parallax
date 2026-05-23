@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Active plan, not implemented  
+**Status:** Implemented on `codex/news-intel-root-fix`; live verification recorded in `2026-05-23-news-intel-root-fix-verification-cn.md`
 **Date:** 2026-05-23  
 **Owning diagnosis:** Live `/news` route inspection, `/readyz` worker snapshot, DB row counts, and News Intel code review on `main`  
 **Recommended branch:** `codex/news-intel-root-fix`
@@ -120,7 +120,7 @@ If the team wants one branch, use separate commits matching the tasks below.
   Canonical `content_class` and `content_tags` literals plus deterministic normalization helpers.
 - `src/gmgn_twitter_intel/domains/news_intel/services/news_content_classification.py`
   Pure deterministic classifier from headline/summary/source/fact lanes to content class and tags.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0085_news_content_classification.py`
+- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py`
   Adds item-level classification storage and read-model indexes.
 - `tests/unit/domains/news_intel/test_news_content_classification.py`
   Unit tests for deterministic class assignment.
@@ -304,7 +304,7 @@ If implementation appears to require these files, stop and split that work into 
 **Files:**
 - Create: `src/gmgn_twitter_intel/domains/news_intel/types/content_classification.py`
 - Create: `src/gmgn_twitter_intel/domains/news_intel/services/news_content_classification.py`
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0085_news_content_classification.py`
+- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py`
 - Modify: `src/gmgn_twitter_intel/domains/news_intel/repositories/news_repository.py`
 - Modify: `src/gmgn_twitter_intel/domains/news_intel/runtime/news_item_process_worker.py`
 - Test: `tests/unit/domains/news_intel/test_news_content_classification.py`

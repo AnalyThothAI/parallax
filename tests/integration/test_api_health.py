@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -177,6 +178,15 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, upstream_clien
             upstream_client_factory=upstream_client_factory,
         ),
     )
+
+
+def test_healthz_handler_is_async_to_avoid_threadpool_starvation(tmp_path):
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, start_collector=False)
+
+    route = next(route for route in app.routes if getattr(route, "path", None) == "/healthz")
+
+    assert inspect.iscoroutinefunction(route.endpoint)
 
 
 def test_healthz_readyz_and_metrics_return_status(tmp_path):

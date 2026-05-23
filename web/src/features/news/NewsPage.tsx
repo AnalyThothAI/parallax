@@ -47,6 +47,132 @@ type NewsPageProps = {
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
 
 type NewsDirectionFilter = "all" | "bullish" | "bearish";
+type NewsContentDomainFilter =
+  | "all"
+  | "crypto_market"
+  | "macro_policy"
+  | "rates_fed"
+  | "regulation"
+  | "etf_fund_flow"
+  | "exchange_listing"
+  | "security_hack"
+  | "protocol_development"
+  | "equity_earnings"
+  | "analyst_rating"
+  | "ai_semiconductors"
+  | "energy_geopolitics"
+  | "consumer_macro"
+  | "market_structure"
+  | "low_signal"
+  | "low-context";
+type NewsDecisionFilter = "all" | "driver" | "watch" | "context" | "discard";
+type NewsContentTagFilter =
+  | "all"
+  | "tokenized_stocks"
+  | "low_context"
+  | "yahoo_finance"
+  | "regulation"
+  | "regulatory_action"
+  | "analyst_rating"
+  | "etf_fund_flow"
+  | "exchange_listing"
+  | "security_hack"
+  | "security_incident"
+  | "crypto_market"
+  | "macro_policy"
+  | "rates_fed"
+  | "protocol_development"
+  | "equity_earnings"
+  | "ai_semiconductors"
+  | "energy_geopolitics"
+  | "consumer_macro"
+  | "market_structure";
+type NewsSourceFilter =
+  | "all"
+  | "official"
+  | "official-exchange"
+  | "high-trust"
+  | "rss"
+  | "cryptopanic"
+  | "exchange";
+
+type NewsFilterOption<T extends string> = {
+  id: T;
+  label: string;
+};
+
+const CONTENT_DOMAIN_OPTIONS: Array<
+  NewsFilterOption<NewsContentDomainFilter> & {
+    content_class?: string;
+    content_tag?: string;
+  }
+> = [
+  { id: "all", label: "All" },
+  { id: "crypto_market", label: "Crypto Market", content_class: "crypto_market" },
+  { id: "macro_policy", label: "Macro Policy", content_class: "macro_policy" },
+  { id: "rates_fed", label: "Rates/Fed", content_class: "rates_fed" },
+  { id: "regulation", label: "Regulation", content_class: "regulation" },
+  { id: "etf_fund_flow", label: "ETF/Fund Flow", content_class: "etf_fund_flow" },
+  { id: "exchange_listing", label: "Exchange Listing", content_class: "exchange_listing" },
+  { id: "security_hack", label: "Security Hack", content_class: "security_hack" },
+  { id: "protocol_development", label: "Protocol Dev", content_class: "protocol_development" },
+  { id: "equity_earnings", label: "Equity Earnings", content_class: "equity_earnings" },
+  { id: "analyst_rating", label: "Analyst Rating", content_class: "analyst_rating" },
+  { id: "ai_semiconductors", label: "AI/Semis", content_class: "ai_semiconductors" },
+  { id: "energy_geopolitics", label: "Energy/Geo", content_class: "energy_geopolitics" },
+  { id: "consumer_macro", label: "Consumer Macro", content_class: "consumer_macro" },
+  { id: "market_structure", label: "Market Structure", content_class: "market_structure" },
+  { id: "low_signal", label: "Low Signal", content_class: "low_signal" },
+  { id: "low-context", label: "Low context", content_tag: "low_context" },
+];
+
+const CONTENT_TAG_OPTIONS: Array<NewsFilterOption<NewsContentTagFilter>> = [
+  { id: "all", label: "All tags" },
+  { id: "tokenized_stocks", label: "tokenized_stocks" },
+  { id: "low_context", label: "low_context" },
+  { id: "yahoo_finance", label: "yahoo_finance" },
+  { id: "regulation", label: "regulation" },
+  { id: "regulatory_action", label: "regulatory_action" },
+  { id: "analyst_rating", label: "analyst_rating" },
+  { id: "etf_fund_flow", label: "etf_fund_flow" },
+  { id: "exchange_listing", label: "exchange_listing" },
+  { id: "security_hack", label: "security_hack" },
+  { id: "security_incident", label: "security_incident" },
+  { id: "crypto_market", label: "crypto_market" },
+  { id: "macro_policy", label: "macro_policy" },
+  { id: "rates_fed", label: "rates_fed" },
+  { id: "protocol_development", label: "protocol_development" },
+  { id: "equity_earnings", label: "equity_earnings" },
+  { id: "ai_semiconductors", label: "ai_semiconductors" },
+  { id: "energy_geopolitics", label: "energy_geopolitics" },
+  { id: "consumer_macro", label: "consumer_macro" },
+  { id: "market_structure", label: "market_structure" },
+];
+
+const DECISION_OPTIONS: Array<NewsFilterOption<NewsDecisionFilter>> = [
+  { id: "all", label: "All" },
+  { id: "driver", label: "Driver" },
+  { id: "watch", label: "Watch" },
+  { id: "context", label: "Context" },
+  { id: "discard", label: "Discard" },
+];
+
+const SOURCE_OPTIONS: Array<
+  NewsFilterOption<NewsSourceFilter> & {
+    coverage_tag?: string;
+    provider_type?: string;
+    source_role?: string;
+    trust_tier?: string;
+  }
+> = [
+  { id: "all", label: "All" },
+  { id: "official", label: "Official", trust_tier: "official" },
+  { id: "official-exchange", label: "Official exchange", source_role: "official_exchange" },
+  { id: "high-trust", label: "High trust", trust_tier: "high" },
+  { id: "rss", label: "RSS", provider_type: "rss" },
+  { id: "cryptopanic", label: "CryptoPanic", provider_type: "cryptopanic" },
+  { id: "exchange", label: "Exchange coverage", coverage_tag: "exchange_listing" },
+];
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
   if (newsItemId) {
@@ -57,11 +183,35 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
+  const [contentDomainFilter, setContentDomainFilter] = useState<NewsContentDomainFilter>("all");
+  const [contentTagFilter, setContentTagFilter] = useState<NewsContentTagFilter>("all");
+  const [decisionFilter, setDecisionFilter] = useState<NewsDecisionFilter>("all");
   const [directionFilter, setDirectionFilter] = useState<NewsDirectionFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<NewsSourceFilter>("all");
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
   const direction = directionFilter === "all" ? null : directionFilter;
+  const contentDomain = CONTENT_DOMAIN_OPTIONS.find((option) => option.id === contentDomainFilter);
+  const source = SOURCE_OPTIONS.find((option) => option.id === sourceFilter);
+  const contentTag =
+    contentTagFilter === "all" ? (contentDomain?.content_tag ?? null) : contentTagFilter;
+  const contentClass = contentDomain?.content_class ?? null;
+  const decisionClass = decisionFilter === "all" ? null : decisionFilter;
+  const q = searchQuery.trim() || null;
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
-  const query = useNewsPageWithToken(token, { cursor, direction, limit: NEWS_PAGE_SIZE });
+  const query = useNewsPageWithToken(token, {
+    content_class: contentClass,
+    content_tag: contentTag,
+    coverage_tag: source?.coverage_tag ?? null,
+    cursor,
+    decision_class: decisionClass,
+    direction,
+    limit: NEWS_PAGE_SIZE,
+    provider_type: source?.provider_type ?? null,
+    q,
+    source_role: source?.source_role ?? null,
+    trust_tier: source?.trust_tier ?? null,
+  });
   const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
   const hasNextPage = Boolean(query.data?.next_cursor);
   const showLoading = query.isLoading && rows.length === 0;
@@ -73,10 +223,62 @@ function NewsQueueRoute({ token }: { token: string }) {
       : "no rows";
   const summary = useMemo(() => buildQueueSummary(rows), [rows]);
   const pageNumber = cursorStack.length;
+  const resetCursor = () => setCursorStack([null]);
 
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
       <div aria-label="News intel page container" className="news-table-wrap">
+        <div className="news-filter-panel" aria-label="News filters">
+          <NewsFilterGroup
+            label="Content"
+            options={CONTENT_DOMAIN_OPTIONS}
+            value={contentDomainFilter}
+            onChange={(next) => {
+              setContentDomainFilter(next);
+              setContentTagFilter("all");
+              resetCursor();
+            }}
+          />
+          <NewsFilterGroup
+            label="Tag"
+            options={CONTENT_TAG_OPTIONS}
+            value={contentTagFilter}
+            onChange={(next) => {
+              setContentTagFilter(next);
+              resetCursor();
+            }}
+          />
+          <NewsFilterGroup
+            label="Decision"
+            options={DECISION_OPTIONS}
+            value={decisionFilter}
+            onChange={(next) => {
+              setDecisionFilter(next);
+              resetCursor();
+            }}
+          />
+          <NewsFilterGroup
+            label="Source"
+            options={SOURCE_OPTIONS}
+            value={sourceFilter}
+            onChange={(next) => {
+              setSourceFilter(next);
+              resetCursor();
+            }}
+          />
+          <label className="news-search-filter">
+            <span>Search</span>
+            <input
+              aria-label="Search news"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                resetCursor();
+              }}
+              placeholder="headline or summary"
+            />
+          </label>
+        </div>
         <div className="news-control-bar">
           <NewsDirectionTabs
             value={directionFilter}
@@ -136,6 +338,37 @@ function NewsQueueRoute({ token }: { token: string }) {
         ) : null}
       </div>
     </section>
+  );
+}
+
+function NewsFilterGroup<T extends string>({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: T) => void;
+  options: Array<NewsFilterOption<T>>;
+  value: T;
+}) {
+  return (
+    <div className="news-filter-group" aria-label={label}>
+      <span>{label}</span>
+      <div className="news-filter-buttons">
+        {options.map((option) => (
+          <button
+            aria-pressed={option.id === value}
+            className="news-filter-button"
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -229,9 +462,7 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
         </div>
       </header>
 
-      {showLoading ? (
-        <PageState.Loading layout="panel" rows={8} label="loading news item" />
-      ) : null}
+      {showLoading ? <PageState.Loading layout="panel" rows={8} label="loading news item" /> : null}
       {query.isError ? <PageState.Error error={query.error ?? "News item unavailable"} /> : null}
       {!showLoading && !query.isError && !item ? (
         <PageState.Empty title="News item not found" />
@@ -312,6 +543,11 @@ function NewsDeskRow({ item, onOpen }: { item: NewsRow; onOpen: () => void }) {
   const dataGapCount = brief?.data_gap_count ?? brief?.data_gaps?.length ?? 0;
   const tokens = item.token_lanes ?? [];
   const facts = item.fact_lanes ?? [];
+  const contentTags = item.content_tags ?? item.content_tags_json ?? [];
+  const sourceRole = item.source?.source_role ?? item.source_role;
+  const trustTier = item.source?.trust_tier ?? item.trust_tier;
+  const providerType = item.source?.provider_type ?? item.provider_type;
+  const sourceQualityStatus = item.source?.source_quality_status ?? item.source_quality_status;
 
   return (
     <button
@@ -324,12 +560,19 @@ function NewsDeskRow({ item, onOpen }: { item: NewsRow; onOpen: () => void }) {
         <b>{item.latest_at_ms ? `${formatRelativeTime(item.latest_at_ms)} ago` : "time missing"}</b>
         <span>{newsLifecycleLabel(item.lifecycle_status)}</span>
         <small>{item.source_domain || "source unknown"}</small>
+        <small>
+          {[sourceRole, trustTier].filter(Boolean).join(" · ") || "source class unknown"}
+        </small>
       </div>
 
       <div className="news-event-cell">
         <div className="news-row-kicker">
           <span>{agentBriefLabel(brief?.status)}</span>
           {item.story_id ? <span>story linked</span> : <span>single item</span>}
+          {item.content_class ? <span>{item.content_class}</span> : null}
+          {contentTags.slice(0, 3).map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
           {tokens.slice(0, 2).map((token, index) => (
             <span key={`${token.symbol ?? token.target_id ?? "token"}-${index}`}>
               {token.symbol || token.target_id || "token"}
@@ -357,6 +600,8 @@ function NewsDeskRow({ item, onOpen }: { item: NewsRow; onOpen: () => void }) {
         <small>
           {facts.length} fact {facts.length === 1 ? "lane" : "lanes"}
         </small>
+        <small>{providerType || "provider unknown"}</small>
+        <small>{sourceQualityStatus || "quality unknown"}</small>
       </div>
 
       <div className="news-next-cell">
@@ -718,12 +963,24 @@ function MetadataList({ item }: { item: NewsItemDetail }) {
         <dd>{item.lifecycle_status}</dd>
       </div>
       <div>
+        <dt>Content</dt>
+        <dd>{item.content_class || "unknown"}</dd>
+      </div>
+      <div>
+        <dt>Tags</dt>
+        <dd>{(item.content_tags ?? item.content_tags_json ?? []).join(" / ") || "none"}</dd>
+      </div>
+      <div>
+        <dt>Provider</dt>
+        <dd>{item.source?.provider_type || item.provider_type || "unknown"}</dd>
+      </div>
+      <div>
         <dt>Source tier</dt>
-        <dd>{item.source?.trust_tier || "unknown"}</dd>
+        <dd>{item.source?.trust_tier || item.trust_tier || "unknown"}</dd>
       </div>
       <div>
         <dt>Source role</dt>
-        <dd>{item.source?.source_role || "unknown"}</dd>
+        <dd>{item.source?.source_role || item.source_role || "unknown"}</dd>
       </div>
       <div>
         <dt>Story id</dt>

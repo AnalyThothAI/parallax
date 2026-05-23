@@ -6,6 +6,8 @@ from typing import Any, Protocol
 from gmgn_twitter_intel.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
 from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
 
+SUPPORTED_NEWS_PROVIDER_TYPES = ("atom", "cryptopanic", "json_feed", "rss")
+
 
 class NewsFeedClient(Protocol):
     def fetch(
@@ -104,6 +106,9 @@ class NewsFeedProviderRegistry:
         except KeyError as exc:
             raise ValueError(f"unsupported news source provider: {provider_type}") from exc
 
+    def supported_provider_types(self) -> tuple[str, ...]:
+        return tuple(sorted(self._providers))
+
     def fetch(
         self,
         *,
@@ -159,6 +164,7 @@ def default_news_feed_provider_registry(
 
 
 __all__ = [
+    "SUPPORTED_NEWS_PROVIDER_TYPES",
     "CryptopanicNewsFeedProvider",
     "NewsFeedProviderRegistry",
     "RegistryNewsFeedProvider",

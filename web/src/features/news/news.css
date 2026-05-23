@@ -67,6 +67,95 @@
     padding: 10px;
   }
 
+  .news-filter-panel {
+    display: grid;
+    gap: 8px;
+    min-width: 1060px;
+    margin-bottom: 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: rgba(9, 12, 12, 0.82);
+    padding: 8px;
+  }
+
+  .news-filter-group {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .news-filter-group > span,
+  .news-search-filter span {
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .news-filter-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .news-filter-button {
+    min-height: 28px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    color: var(--dim);
+    background: rgba(7, 9, 8, 0.64);
+    padding: 0 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .news-filter-button[aria-pressed="true"] {
+    border-color: var(--agent-line);
+    color: var(--bone);
+    background: rgba(88, 112, 255, 0.16);
+  }
+
+  .news-filter-button:hover,
+  .news-filter-button:focus-visible {
+    outline: 0;
+    border-color: var(--agent-line);
+    color: var(--agent-ink);
+    background: var(--agent-soft);
+  }
+
+  .news-search-filter {
+    display: grid;
+    grid-template-columns: 88px minmax(220px, 360px);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .news-search-filter input {
+    min-height: 30px;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    color: var(--bone);
+    background: rgba(7, 9, 8, 0.64);
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .news-search-filter input:focus-visible {
+    outline: 0;
+    border-color: var(--agent-line);
+    box-shadow: inset 0 0 0 1px rgba(183, 156, 255, 0.08);
+  }
+
   .news-control-bar {
     display: flex;
     align-items: center;
@@ -318,5 +407,4 @@
       linear-gradient(90deg, rgba(183, 156, 255, 0.12), transparent 40%), rgba(22, 28, 24, 0.96);
     box-shadow: inset 0 0 0 1px rgba(183, 156, 255, 0.08);
   }
-
 }

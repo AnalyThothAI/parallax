@@ -24,6 +24,9 @@ forced into a resolved asset.
   `source_role`, `trust_tier`, `coverage_tags`) and source policy JSON. The
   page read model copies the compact classification fields into `source_json`
   so `/api/news` can filter without calling providers.
+- `news_items` carries item content classification (`content_class`,
+  `content_tags_json`, and `content_classification_json`). This describes what
+  happened in the item and is independent of who published it.
 - `news_item_agent_runs` is the append-only audit ledger for single-item
   agent brief attempts. `news_item_agent_briefs` is the current item-scoped
   brief read model. `NewsItemBriefWorker` is the only runtime writer for both.
@@ -38,12 +41,28 @@ forced into a resolved asset.
 | Stage | Responsibility |
 |-------|----------------|
 | Fetch | Reconcile configured sources into `news_sources`, fetch due feeds, persist provider items and normalized news items. |
-| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, and write attention-safe observations and fact candidates. |
+| Item processing | Read raw `news_items`, extract entities and token mentions deterministically, classify item content, and write attention-safe observations and fact candidates. |
 | Story projection | Rebuild deterministic story groups and memberships from news item facts and observations. |
 | Item brief | Build bounded item/story/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, validate the output, write the run ledger, and upsert the current brief. |
 | Page projection | Rebuild the News page rows from news facts, story state, item lifecycle, and the current item brief. |
 | Source quality projection | Rebuild per-source quality windows from source/fetch/item/token/fact/brief/context rows and update compact source quality status. |
-| API/UI | Read-only surfaces over `news_page_rows` or raw visible `news_items` during early rollout. |
+| API/UI | Read-only surfaces over projected `news_page_rows` by default, with explicit source/content/decision filters and source status diagnostics. Raw visible `news_items` fallback is opt-in for rollout/debugging only. |
+
+## Provider Waves
+
+The runtime-supported News provider types are `rss`, `atom`, `json_feed`, and
+`cryptopanic`. `/api/news/sources/status` reports these alongside configured
+provider types and source hygiene warnings.
+
+- Wave 1: enable `cryptopanic` where credentials exist; keep it as an
+  aggregator or specialist source, not an authority source.
+- Wave 2: add official RSS/manual API feeds for exchanges, regulators,
+  protocols, and issuers. These are the feeds eligible for accepted fact
+  candidates after authority-scope validation.
+- Wave 3: add OpenBB/macro/equity source adapters only where they do not cross
+  ownership with `equity_event_intel` or `macro_intel`.
+- Wave 4: add social/community/developer context sources. Replies, comments,
+  and threads belong in `news_context_items`, not in `news_items.body_text`.
 
 ## Boundaries
 

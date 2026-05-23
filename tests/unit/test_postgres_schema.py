@@ -97,6 +97,22 @@ TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260523_0085_token_radar_storage_root_fix.py"
 )
+EQUITY_EVENT_RUNTIME_INDEXES_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0086_equity_event_runtime_indexes.py"
+)
+NEWS_CONTENT_CLASSIFICATION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0087_news_content_classification.py"
+)
+NEWS_PAGE_FILTER_INDEXES_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0088_news_page_filter_indexes.py"
+)
+TOKEN_IMAGE_UNSUPPORTED_CLEANUP_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0089_token_image_unsupported_cleanup.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -528,6 +544,67 @@ def test_token_radar_storage_root_fix_migration_hard_cuts_old_storage() -> None:
         "DELETE FROM token_radar_projection_coverage",
         "DELETE FROM projection_offsets",
         "DELETE FROM projection_runs",
+    ):
+        assert statement in text
+
+
+def test_equity_event_runtime_indexes_cover_page_projection_latest_lookups() -> None:
+    text = EQUITY_EVENT_RUNTIME_INDEXES_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260523_0086"',
+        'down_revision = "20260523_0085"',
+        "idx_equity_event_page_rows_event_latest",
+        "ON equity_event_page_rows(company_event_id, computed_at_ms DESC, row_id ASC)",
+        "idx_equity_company_timeline_rows_event_latest",
+        "ON equity_company_timeline_rows(company_event_id, computed_at_ms DESC, row_id ASC)",
+        "idx_equity_event_alert_candidates_event_latest",
+        "ON equity_event_alert_candidates(company_event_id, computed_at_ms DESC, alert_candidate_id ASC)",
+    ):
+        assert statement in text
+
+
+def test_news_content_classification_migration_follows_runtime_indexes() -> None:
+    text = NEWS_CONTENT_CLASSIFICATION_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260523_0087"',
+        'down_revision = "20260523_0086"',
+        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS content_class",
+        "ALTER TABLE news_page_rows ADD COLUMN IF NOT EXISTS content_class",
+        "idx_news_items_content_class_time",
+        "idx_news_page_rows_content_class_time",
+    ):
+        assert statement in text
+
+
+def test_news_page_filter_indexes_follow_content_classification() -> None:
+    text = NEWS_PAGE_FILTER_INDEXES_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260523_0088"',
+        'down_revision = "20260523_0087"',
+        "idx_news_page_rows_provider_type_time",
+        "idx_news_page_rows_source_role_time",
+        "idx_news_page_rows_trust_tier_time",
+        "idx_news_page_rows_direction_time",
+        "idx_news_page_rows_decision_class_time",
+        "idx_news_page_rows_coverage_tags_gin",
+        "idx_news_page_rows_content_tags_gin",
+    ):
+        assert statement in text
+
+
+def test_token_image_unsupported_cleanup_follows_news_filter_indexes() -> None:
+    text = TOKEN_IMAGE_UNSUPPORTED_CLEANUP_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260523_0089"',
+        'down_revision = "20260523_0088"',
+        "UPDATE token_image_assets",
+        "status = 'unsupported'",
+        "last_error LIKE 'unsupported\\\\_%' ESCAPE '\\\\'",
+        "last_error LIKE 'image_too_large:%'",
     ):
         assert statement in text
 

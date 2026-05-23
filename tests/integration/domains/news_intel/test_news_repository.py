@@ -77,7 +77,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
             http_status=200,
         )
 
-        rows = repo.list_news_page_rows(limit=10)
+        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
         source = conn.execute("SELECT * FROM news_sources WHERE source_id = %s", ("coindesk-rss",)).fetchone()
         run = conn.execute("SELECT * FROM news_fetch_runs WHERE fetch_run_id = %s", (fetch_run_id,)).fetchone()
     finally:
@@ -457,7 +457,7 @@ def test_list_news_page_rows_keeps_raw_items_until_projection_catches_up(tmp_pat
             rows=[_page_row("row-projected", projected_item_id, source_id="source-1")],
         )
 
-        rows = repo.list_news_page_rows(limit=10)
+        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
     finally:
         conn.close()
 
@@ -481,8 +481,7 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
         config.attributes["database_url"] = _test_postgres_dsn()
         command.upgrade(config, "20260519_0066")
 
-        repo = NewsRepository(conn)
-        news_item_id = _insert_source_provider_and_item(repo)
+        news_item_id = _insert_legacy_source_provider_and_item(conn)
         conn.execute(
             """
             INSERT INTO news_page_rows (
@@ -501,6 +500,7 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
         conn.commit()
         command.upgrade(config, "head")
 
+        repo = NewsRepository(conn)
         rows = repo.list_news_page_rows(limit=10)
     finally:
         conn.close()
@@ -683,6 +683,9 @@ def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
                         "coverage_tags": ["crypto_exchange", "exchange_listing"],
                         "source_quality_status": "healthy",
                     },
+                    "content_class": "exchange_listing",
+                    "content_tags_json": ["exchange_listing"],
+                    "content_classification_json": {"policy_version": "test"},
                     "fact_lanes_json": [{"content_class": "exchange_listing", "event_type": "listing"}],
                 },
                 {
@@ -697,6 +700,9 @@ def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
                         "coverage_tags": [],
                         "source_quality_status": "unknown",
                     },
+                    "content_class": "market_commentary",
+                    "content_tags_json": ["markets"],
+                    "content_classification_json": {"policy_version": "test"},
                     "fact_lanes_json": [{"content_class": "market_commentary"}],
                 },
             ],
@@ -714,6 +720,104 @@ def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
         conn.close()
 
     assert [row["row_id"] for row in rows] == ["row-matching"]
+
+
+def test_list_news_page_rows_filters_by_item_content_classification(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        top_level_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="top-level",
+            title="Top level",
+        )
+        fact_only_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="fact-only",
+            title="Fact only",
+        )
+        other_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="other-class",
+            title="Other class",
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[top_level_item_id, fact_only_item_id, other_item_id],
+            rows=[
+                {
+                    **_page_row("row-top-level", top_level_item_id, source_id="source-1"),
+                    "content_class": "regulation",
+                    "content_tags_json": ["sec", "tokenized_stocks"],
+                    "content_classification_json": {"policy_version": "test", "matched_rules": ["sec"]},
+                },
+                {
+                    **_page_row("row-fact-only", fact_only_item_id, source_id="source-1"),
+                    "content_class": "market_commentary",
+                    "content_tags_json": ["markets"],
+                    "content_classification_json": {"policy_version": "test"},
+                    "fact_lanes_json": [{"content_class": "regulation", "event_type": "regulation"}],
+                },
+                {
+                    **_page_row("row-other", other_item_id, source_id="source-1"),
+                    "content_class": "market_commentary",
+                    "content_tags_json": ["markets"],
+                    "content_classification_json": {"policy_version": "test"},
+                },
+            ],
+        )
+
+        persisted = conn.execute(
+            """
+            SELECT content_class, content_tags_json, content_classification_json
+              FROM news_page_rows
+             WHERE row_id = 'row-top-level'
+            """
+        ).fetchone()
+        class_rows = repo.list_news_page_rows(limit=10, content_class="regulation")
+        tag_rows = repo.list_news_page_rows(limit=10, content_tag="sec")
+    finally:
+        conn.close()
+
+    assert persisted["content_class"] == "regulation"
+    assert persisted["content_tags_json"] == ["sec", "tokenized_stocks"]
+    assert persisted["content_classification_json"] == {"policy_version": "test", "matched_rules": ["sec"]}
+    assert [row["row_id"] for row in class_rows] == ["row-top-level"]
+    assert class_rows[0]["content_class"] == "regulation"
+    assert class_rows[0]["content_tags_json"] == ["sec", "tokenized_stocks"]
+    assert class_rows[0]["content_classification_json"] == {"policy_version": "test", "matched_rules": ["sec"]}
+    assert [row["row_id"] for row in tag_rows] == ["row-top-level"]
+
+
+def test_list_news_page_rows_filters_by_decision_class(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        driver_item_id = _insert_source_provider_and_item(repo, source_item_key="driver", title="Driver")
+        watch_item_id = _insert_source_provider_and_item(repo, source_item_key="watch", title="Watch")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[driver_item_id, watch_item_id],
+            rows=[
+                {
+                    **_page_row("row-driver", driver_item_id, source_id="source-1"),
+                    "agent_status": "ready",
+                    "agent_brief_json": {"status": "ready", "decision_class": "driver"},
+                },
+                {
+                    **_page_row("row-watch", watch_item_id, source_id="source-1"),
+                    "agent_status": "ready",
+                    "agent_brief_json": {"status": "ready", "decision_class": "watch"},
+                },
+            ],
+        )
+
+        rows = repo.list_news_page_rows(limit=10, decision_class="driver")
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in rows] == ["row-driver"]
+    assert rows[0]["agent_brief_json"]["decision_class"] == "driver"
 
 
 def test_page_projection_candidates_include_rows_when_source_classification_changes(tmp_path) -> None:
@@ -778,6 +882,18 @@ def test_page_projection_candidates_progress_after_partial_rebuild(tmp_path) -> 
                     projection_version=NEWS_PAGE_PROJECTION_VERSION,
                     computed_at_ms=NOW_MS + 1,
                 )
+                | {
+                    "source_json": {
+                        "source_id": "source-1",
+                        "provider_type": "rss",
+                        "source_domain": "example.com",
+                        "source_name": "Example",
+                        "source_role": "observed_source",
+                        "trust_tier": "standard",
+                        "coverage_tags": [],
+                        "source_quality_status": "unknown",
+                    }
+                }
                 for index, news_item_id in enumerate(first_ids)
             ],
         )
@@ -924,6 +1040,64 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
     assert status == "raw"
 
 
+def test_update_item_content_classification_persists_materialized_fields(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+
+        repo.update_item_content_classification(
+            news_item_id=news_item_id,
+            content_class="regulation",
+            content_tags=["tokenized_stocks", "sec"],
+            classification_payload={"policy_version": "test", "matched_rules": ["rule-1"]},
+            now_ms=NOW_MS + 1,
+        )
+
+        row = conn.execute(
+            """
+            SELECT content_class, content_tags_json, content_classification_json, updated_at_ms
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["content_class"] == "regulation"
+    assert row["content_tags_json"] == ["tokenized_stocks", "sec"]
+    assert row["content_classification_json"] == {"policy_version": "test", "matched_rules": ["rule-1"]}
+    assert row["updated_at_ms"] == NOW_MS + 1
+
+
+def test_list_unprocessed_items_claims_processed_unclassified_items(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        classified_id = _insert_source_provider_and_item(repo, source_item_key="classified", title="Classified")
+        unclassified_id = _insert_source_provider_and_item(repo, source_item_key="unclassified", title="Unclassified")
+        repo.update_item_content_classification(
+            news_item_id=classified_id,
+            content_class="crypto_market",
+            content_tags=["crypto_market"],
+            classification_payload={"policy_version": "test"},
+            now_ms=NOW_MS + 1,
+        )
+        repo.mark_item_processed(news_item_id=classified_id, processed_at_ms=NOW_MS + 2)
+        repo.mark_item_processed(news_item_id=unclassified_id, processed_at_ms=NOW_MS + 2)
+
+        rows = repo.list_unprocessed_items(limit=10, now_ms=NOW_MS + 3)
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in rows] == [unclassified_id]
+    assert rows[0]["lifecycle_status"] == "processed"
+    assert rows[0]["content_classification_json"] == {}
+
+
 def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -1035,6 +1209,51 @@ def _insert_source_provider_and_item(
         now_ms=NOW_MS,
     )
     return str(news["news_item_id"])
+
+
+def _insert_legacy_source_provider_and_item(conn) -> str:
+    news_item_id = "news-item-legacy"
+    conn.execute(
+        """
+        INSERT INTO news_sources (
+          source_id, provider_type, feed_url, source_domain, source_name,
+          source_role, trust_tier, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          'source-1', 'rss', 'https://example.com/rss.xml', 'example.com', 'Example',
+          'observed_source', 'standard', %s, %s
+        )
+        """,
+        (NOW_MS, NOW_MS),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_provider_items (
+          provider_item_id, source_id, source_item_key, canonical_url, payload_hash,
+          raw_payload_json, fetched_at_ms
+        )
+        VALUES (
+          'provider-item-legacy', 'source-1', 'guid-1', 'https://example.com/guid-1',
+          'hash-guid-1', '{"title":"Title"}'::jsonb, %s
+        )
+        """,
+        (NOW_MS,),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_items (
+          news_item_id, provider_item_id, source_id, source_domain, canonical_url,
+          title, summary, body_text, language, published_at_ms, fetched_at_ms,
+          content_hash, title_fingerprint, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, 'provider-item-legacy', 'source-1', 'example.com', 'https://example.com/guid-1',
+          'Title', 'Summary', 'Body', 'en', %s, %s, 'content-guid-1', 'title', %s, %s
+        )
+        """,
+        (news_item_id, NOW_MS, NOW_MS, NOW_MS, NOW_MS),
+    )
+    return news_item_id
 
 
 def _page_row(

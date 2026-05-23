@@ -8,6 +8,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.domains.news_intel.services.news_content_classification import classify_news_item_content
 from gmgn_twitter_intel.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from gmgn_twitter_intel.domains.news_intel.services.news_fact_candidates import build_fact_candidates
 from gmgn_twitter_intel.domains.news_intel.services.news_token_mentions import build_news_token_mentions
@@ -71,10 +72,23 @@ class NewsItemProcessWorker(WorkerBase):
                     token_mentions=mentions,
                     now_ms=now,
                 )
+                classification = classify_news_item_content(
+                    headline=_text(item_payload, "title"),
+                    summary=_text(item_payload, "summary"),
+                    source_domain=_text(item_payload, "source_domain"),
+                    fact_event_types=[candidate.event_type for candidate in candidates],
+                )
                 with self._repository_session() as repos:
                     repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities)
                     repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions)
                     repos.news.replace_fact_candidates(news_item_id=news_item_id, candidates=candidates)
+                    repos.news.update_item_content_classification(
+                        news_item_id=news_item_id,
+                        content_class=classification.content_class,
+                        content_tags=classification.content_tags,
+                        classification_payload=classification.classification_payload,
+                        now_ms=now,
+                    )
                     repos.news.mark_item_processed(news_item_id=news_item_id, processed_at_ms=now)
                 processed += 1
             except Exception as exc:  # pragma: no cover - exercised by integration/ops paths.

@@ -23,6 +23,7 @@ import type {
   NewsItemDetail,
   NewsRowsData,
   NewsRow,
+  NewsSourceSummary,
   NewsTokenLane,
 } from "@shared/model/newsIntel";
 
@@ -173,27 +174,41 @@ export async function fetchEquityEventSummary(
 
 export async function fetchNewsRows(
   params: {
+    content_class?: string | null;
+    content_tag?: string | null;
+    coverage_tag?: string | null;
     limit?: number;
     cursor?: string | null;
+    decision_class?: string | null;
     direction?: string | null;
     lane?: string | null;
+    provider_type?: string | null;
     q?: string | null;
     source?: string | null;
+    source_role?: string | null;
     status?: string | null;
     target?: string | null;
     token?: string | null;
+    trust_tier?: string | null;
   } = {},
 ): Promise<NewsRowsData> {
   const response = await getApi<NewsRowsData>("/api/news", {
     params: {
+      content_class: params.content_class,
+      content_tag: params.content_tag,
+      coverage_tag: params.coverage_tag,
       cursor: params.cursor,
+      decision_class: params.decision_class,
       direction: params.direction,
       lane: params.lane,
       limit: params.limit ?? 100,
+      provider_type: params.provider_type,
       q: params.q,
       source: params.source,
+      source_role: params.source_role,
       status: params.status,
       target: params.target,
+      trust_tier: params.trust_tier,
     },
     token: params.token ?? undefined,
   });
@@ -221,9 +236,19 @@ export async function fetchNewsItem({
 
 function normalizeNewsRow<T extends NewsRow>(row: T): T {
   const payload = row as T & Record<string, unknown>;
+  const source = normalizeNewsSource(payload.source ?? payload.source_json, payload);
+  const contentTags = stringArray(payload.content_tags ?? payload.content_tags_json);
+  const contentClassification = objectOrNull(
+    payload.content_classification ?? payload.content_classification_json,
+  );
   return {
     ...row,
     canonical_url: stringOrNull(payload.canonical_url ?? payload.url),
+    content_class: stringOrNull(payload.content_class),
+    content_tags: contentTags,
+    content_tags_json: contentTags,
+    content_classification: contentClassification ?? {},
+    content_classification_json: contentClassification ?? {},
     headline: stringOrNull(payload.headline ?? payload.title) ?? "Untitled news item",
     latest_at_ms: numberOrNull(
       payload.latest_at_ms ??
@@ -231,8 +256,15 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
         payload.fetched_at_ms ??
         payload.updated_at_ms,
     ),
-    source_domain: stringOrNull(payload.source_domain),
+    provider_type: source?.provider_type ?? null,
+    source,
+    source_domain: stringOrNull(payload.source_domain) ?? source?.source_domain ?? null,
+    source_json: source,
+    source_quality_status: source?.source_quality_status ?? null,
+    source_role: source?.source_role ?? null,
     summary: stringOrNull(payload.summary),
+    trust_tier: source?.trust_tier ?? null,
+    coverage_tags: source?.coverage_tags ?? [],
     token_lanes: normalizeTokenLanes(row.token_lanes ?? row.token_lanes_json),
     fact_lanes: normalizeFactLanes(row.fact_lanes ?? row.fact_lanes_json),
     agent_brief: normalizeAgentBrief(
@@ -250,6 +282,47 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
       payload.agent_brief_status ?? payload.agent_status,
     ) as NewsAgentBriefStatus | null,
     agent_brief_computed_at_ms: numberOrNull(payload.agent_brief_computed_at_ms),
+  };
+}
+
+function normalizeNewsSource(raw: unknown, row: Record<string, unknown>): NewsSourceSummary | null {
+  const payload = objectOrNull(raw);
+  const sourceDomain = stringOrNull(payload?.source_domain ?? row.source_domain);
+  const sourceName = stringOrNull(payload?.source_name ?? row.source_name);
+  const providerType = stringOrNull(payload?.provider_type ?? row.provider_type);
+  const sourceRole = stringOrNull(payload?.source_role ?? row.source_role);
+  const trustTier = stringOrNull(payload?.trust_tier ?? row.trust_tier);
+  const coverageTags = stringArray(
+    payload?.coverage_tags ??
+      payload?.coverage_tags_json ??
+      row.coverage_tags ??
+      row.coverage_tags_json,
+  );
+  const sourceQualityStatus = stringOrNull(
+    payload?.source_quality_status ?? row.source_quality_status,
+  );
+  const sourceId = stringOrNull(payload?.source_id ?? row.source_id);
+  if (
+    !sourceDomain &&
+    !sourceName &&
+    !providerType &&
+    !sourceRole &&
+    !trustTier &&
+    !coverageTags.length &&
+    !sourceQualityStatus &&
+    !sourceId
+  ) {
+    return null;
+  }
+  return {
+    source_id: sourceId,
+    source_name: sourceName,
+    source_domain: sourceDomain,
+    provider_type: providerType,
+    source_role: sourceRole,
+    trust_tier: trustTier,
+    coverage_tags: coverageTags,
+    source_quality_status: sourceQualityStatus,
   };
 }
 
@@ -323,9 +396,7 @@ function normalizeAgentBrief(
   const payload = objectOrNull(raw) ?? {};
   const briefJson = objectOrNull(payload.brief_json);
   const status =
-    stringOrNull(payload.status ?? statusAlias) ??
-    stringOrNull(briefJson?.status) ??
-    "pending";
+    stringOrNull(payload.status ?? statusAlias) ?? stringOrNull(briefJson?.status) ?? "pending";
   const bullView = normalizeAgentBriefView(payload.bull_view ?? briefJson?.bull_view);
   const bearView = normalizeAgentBriefView(payload.bear_view ?? briefJson?.bear_view);
   const dataGaps = normalizeAgentDataGaps(payload.data_gaps ?? briefJson?.data_gaps);
