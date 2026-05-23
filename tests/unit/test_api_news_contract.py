@@ -140,9 +140,53 @@ def test_news_api_can_request_unprojected_fallback_without_postgres() -> None:
     assert news.calls[-1]["include_unprojected"] is True
 
 
+def test_news_api_source_status_includes_provider_diagnostics_without_postgres() -> None:
+    news = FakeNewsRepository()
+    news.source_status_rows = [
+        {
+            "source_id": "example-rss",
+            "provider_type": "rss",
+            "last_seen_at_ms": 3_000,
+            "latest_item_published_at_ms": 2_000,
+            "latest_item_fetched_at_ms": 3_000,
+            "latest_context_seen_at_ms": None,
+            "context_item_count": 0,
+            "latest_fetch_run": {
+                "status": "success",
+                "started_at_ms": 2_900,
+                "finished_at_ms": 3_000,
+                "http_status": 200,
+                "fetched_count": 1,
+                "inserted_count": 1,
+                "updated_count": 0,
+                "duplicate_count": 0,
+                "error": None,
+            },
+            "latest_quality_counts": {"fetch_run_count": 1},
+            "provider_health": {
+                "status": "healthy",
+                "reason": "quality_status",
+                "last_error": None,
+                "consecutive_failures": 0,
+                "last_success_at_ms": 3_000,
+                "last_seen_at_ms": 3_000,
+            },
+            "provider_capability_tags": ["poll_primary_items", "http_cache"],
+        }
+    ]
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get("/api/news/sources/status", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "data": {"sources": news.source_status_rows}}
+
+
 class FakeNewsRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.source_status_rows: list[dict[str, object]] = []
 
     def list_news_page_rows(
         self,
@@ -222,7 +266,7 @@ class FakeNewsRepository:
         return {"fact_candidate_id": fact_candidate_id}
 
     def list_source_status(self):
-        return []
+        return self.source_status_rows
 
 
 class FakeRepositoryContext:

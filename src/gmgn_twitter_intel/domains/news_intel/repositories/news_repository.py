@@ -2005,17 +2005,52 @@ class NewsRepository:
         rows = self.conn.execute(
             """
             SELECT sources.*,
-                   COALESCE(item_counts.item_count, 0)::int AS item_count,
+                   COALESCE(item_aggregate.item_count, 0)::int AS item_count,
+                   item_aggregate.latest_item_published_at_ms,
+                   item_aggregate.latest_item_fetched_at_ms,
+                   COALESCE(context_aggregate.context_item_count, 0)::int AS context_item_count,
+                   context_aggregate.latest_context_seen_at_ms,
+                   latest_fetch_run.latest_fetch_run_json,
                    CASE
                      WHEN latest_quality.row_id IS NULL THEN NULL
                      ELSE to_jsonb(latest_quality.*)
                    END AS latest_quality_json
               FROM news_sources AS sources
               LEFT JOIN LATERAL (
-                SELECT COUNT(items.news_item_id)::int AS item_count
+                SELECT COUNT(items.news_item_id)::int AS item_count,
+                       MAX(items.published_at_ms) AS latest_item_published_at_ms,
+                       MAX(items.fetched_at_ms) AS latest_item_fetched_at_ms
                   FROM news_items AS items
                  WHERE items.source_id = sources.source_id
-              ) AS item_counts ON true
+              ) AS item_aggregate ON true
+              LEFT JOIN LATERAL (
+                SELECT COUNT(context_items.context_item_id)::int AS context_item_count,
+                       MAX(
+                         GREATEST(
+                           COALESCE(context_items.published_at_ms, context_items.created_at_ms),
+                           context_items.created_at_ms
+                         )
+                       ) AS latest_context_seen_at_ms
+                  FROM news_context_items AS context_items
+                 WHERE context_items.source_id = sources.source_id
+              ) AS context_aggregate ON true
+              LEFT JOIN LATERAL (
+                SELECT jsonb_build_object(
+                         'status', fetch_runs.status,
+                         'started_at_ms', fetch_runs.started_at_ms,
+                         'finished_at_ms', fetch_runs.finished_at_ms,
+                         'http_status', fetch_runs.http_status,
+                         'fetched_count', fetch_runs.fetched_count,
+                         'inserted_count', fetch_runs.inserted_count,
+                         'updated_count', fetch_runs.updated_count,
+                         'duplicate_count', fetch_runs.duplicate_count,
+                         'error', fetch_runs.error
+                       ) AS latest_fetch_run_json
+                  FROM news_fetch_runs AS fetch_runs
+                 WHERE fetch_runs.source_id = sources.source_id
+                 ORDER BY fetch_runs.started_at_ms DESC, fetch_runs.fetch_run_id DESC
+                 LIMIT 1
+              ) AS latest_fetch_run ON true
               LEFT JOIN LATERAL (
                 SELECT *
                   FROM news_source_quality_rows AS quality
@@ -2403,6 +2438,16 @@ def _source_quality_payload(row: Mapping[str, Any]) -> dict[str, Any]:
 def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     latest_quality = _json_dict(row.get("latest_quality_json"))
     quality_payload = _source_quality_read_payload(latest_quality) if latest_quality else None
+    latest_item_published_at_ms = _optional_int(row.get("latest_item_published_at_ms"))
+    latest_item_fetched_at_ms = _optional_int(row.get("latest_item_fetched_at_ms"))
+    latest_context_seen_at_ms = _optional_int(row.get("latest_context_seen_at_ms"))
+    context_item_count = int(row.get("context_item_count") or 0)
+    last_success_at_ms = _optional_int(row.get("last_success_at_ms"))
+    last_seen_at_ms = _max_optional_int(
+        latest_item_fetched_at_ms,
+        latest_context_seen_at_ms,
+        last_success_at_ms,
+    )
     return {
         "source_id": str(row["source_id"]),
         "provider_type": str(row.get("provider_type") or ""),
@@ -2417,11 +2462,24 @@ def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "managed_by_config": bool(row.get("managed_by_config")),
         "refresh_interval_seconds": int(row.get("refresh_interval_seconds") or 0),
         "item_count": int(row.get("item_count") or 0),
-        "last_fetch_at_ms": int(row["last_fetch_at_ms"]) if row.get("last_fetch_at_ms") is not None else None,
-        "last_success_at_ms": int(row["last_success_at_ms"]) if row.get("last_success_at_ms") is not None else None,
+        "context_item_count": context_item_count,
+        "latest_item_published_at_ms": latest_item_published_at_ms,
+        "latest_item_fetched_at_ms": latest_item_fetched_at_ms,
+        "latest_context_seen_at_ms": latest_context_seen_at_ms,
+        "last_seen_at_ms": last_seen_at_ms,
+        "latest_fetch_run": _latest_fetch_run_payload(row.get("latest_fetch_run_json")),
+        "latest_quality_counts": _latest_quality_counts(latest_quality),
+        "provider_health": _provider_health_payload(
+            row=row,
+            quality_payload=quality_payload,
+            last_seen_at_ms=last_seen_at_ms,
+        ),
+        "provider_capability_tags": _provider_capability_tags(row=row, context_item_count=context_item_count),
+        "last_fetch_at_ms": _optional_int(row.get("last_fetch_at_ms")),
+        "last_success_at_ms": last_success_at_ms,
         "next_fetch_after_ms": int(row.get("next_fetch_after_ms") or 0),
         "consecutive_failures": int(row.get("consecutive_failures") or 0),
-        "last_error": row.get("last_error"),
+        "last_error": _compact_error(row.get("last_error")),
     }
 
 
@@ -2487,6 +2545,120 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _positive_optional_int(value: Any) -> int | None:
+    item = _optional_int(value)
+    if item is None or item <= 0:
+        return None
+    return item
+
+
+def _max_optional_int(*values: int | None) -> int | None:
+    normalized = [int(value) for value in values if value is not None]
+    if not normalized:
+        return None
+    return max(normalized)
+
+
+def _latest_fetch_run_payload(value: Any) -> dict[str, Any] | None:
+    row = _json_dict(value)
+    if not row:
+        return None
+    return {
+        "status": str(row.get("status") or "unknown"),
+        "started_at_ms": _optional_int(row.get("started_at_ms")),
+        "finished_at_ms": _positive_optional_int(row.get("finished_at_ms")),
+        "http_status": _optional_int(row.get("http_status")),
+        "fetched_count": int(row.get("fetched_count") or 0),
+        "inserted_count": int(row.get("inserted_count") or 0),
+        "updated_count": int(row.get("updated_count") or 0),
+        "duplicate_count": int(row.get("duplicate_count") or 0),
+        "error": _compact_error(row.get("error")),
+    }
+
+
+def _latest_quality_counts(latest_quality: Mapping[str, Any]) -> dict[str, Any]:
+    diagnostics = _json_dict(latest_quality.get("diagnostics_json"))
+    counts = _json_dict(diagnostics.get("counts"))
+    return {str(key): value for key, value in counts.items()}
+
+
+def _provider_health_payload(
+    *,
+    row: Mapping[str, Any],
+    quality_payload: Mapping[str, Any] | None,
+    last_seen_at_ms: int | None,
+) -> dict[str, Any]:
+    consecutive_failures = int(row.get("consecutive_failures") or 0)
+    last_error = _compact_error(row.get("last_error"))
+    last_success_at_ms = _optional_int(row.get("last_success_at_ms"))
+    if not bool(row.get("enabled")):
+        status = "disabled"
+        reason = "source_disabled"
+    elif consecutive_failures > 0:
+        status = "failing"
+        reason = "consecutive_failures"
+    else:
+        quality_status = str(row.get("source_quality_status") or "unknown")
+        if quality_payload:
+            quality_status = str(_json_dict(quality_payload.get("diagnostics_json")).get("status") or quality_status)
+        if quality_status in {"healthy", "watch", "degraded", "poor"}:
+            status = quality_status
+            reason = "quality_status"
+        elif last_seen_at_ms is not None:
+            status = "unknown"
+            reason = "observed_without_quality"
+        else:
+            status = "unknown"
+            reason = "no_observations"
+    return {
+        "status": status,
+        "reason": reason,
+        "last_error": last_error,
+        "consecutive_failures": consecutive_failures,
+        "last_success_at_ms": last_success_at_ms,
+        "last_seen_at_ms": last_seen_at_ms,
+    }
+
+
+def _provider_capability_tags(*, row: Mapping[str, Any], context_item_count: int) -> list[str]:
+    provider_type = str(row.get("provider_type") or "").strip().lower()
+    source_role = str(row.get("source_role") or "").strip().lower()
+    trust_tier = str(row.get("trust_tier") or "").strip().lower()
+    tags: list[str] = []
+    if provider_type in {"rss", "atom", "json_feed"}:
+        tags.extend(["poll_primary_items", "http_cache"])
+    elif provider_type in {"cryptopanic", "manual_api", "openbb", "github", "ossinsight"}:
+        tags.extend(["poll_primary_items", "api_backed"])
+    elif provider_type in {"twitter_profile", "twitter_thread_context", "reddit", "telegram_public", "hackernews"}:
+        tags.extend(["poll_primary_items", "browser_backed"])
+    else:
+        tags.append("poll_primary_items")
+    if context_item_count > 0 or _context_policy_enabled(row.get("context_policy_json")):
+        tags.append("context_items")
+    if source_role.startswith("official_") or trust_tier == "official":
+        tags.append("official_source")
+    if trust_tier in {"official", "high"}:
+        tags.append("high_trust")
+    return list(dict.fromkeys(tags))
+
+
+def _context_policy_enabled(value: Any) -> bool:
+    policy = _json_dict(value)
+    if not policy:
+        return False
+    if "enabled" in policy:
+        return bool(policy.get("enabled"))
+    if "disabled" in policy:
+        return not bool(policy.get("disabled"))
+    return any(bool(item) for item in policy.values())
 
 
 def _json(value: Any) -> Jsonb:

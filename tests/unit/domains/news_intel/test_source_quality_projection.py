@@ -213,8 +213,26 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
             "managed_by_config": True,
             "refresh_interval_seconds": 300,
             "item_count": 4,
+            "context_policy_json": {"enabled": True},
+            "context_item_count": 2,
+            "latest_item_published_at_ms": NOW_MS - 40_000,
+            "latest_item_fetched_at_ms": NOW_MS - 30_000,
+            "latest_context_seen_at_ms": NOW_MS - 20_000,
+            "latest_fetch_run_json": {
+                "status": "failed",
+                "started_at_ms": NOW_MS - 10_000,
+                "finished_at_ms": NOW_MS - 9_000,
+                "http_status": 503,
+                "fetched_count": 0,
+                "inserted_count": 0,
+                "updated_count": 0,
+                "duplicate_count": 0,
+                "error": "upstream timeout",
+            },
+            "last_success_at_ms": NOW_MS - 50_000,
             "next_fetch_after_ms": 0,
-            "consecutive_failures": 0,
+            "consecutive_failures": 1,
+            "last_error": "upstream timeout",
             "latest_quality_json": {
                 "row_id": "news-source-quality:coindesk:24h",
                 "source_id": "coindesk",
@@ -231,15 +249,86 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
                 "brief_ready_rate": 0.5,
                 "median_lag_ms": 500,
                 "quality_score": 82.5,
-                "diagnostics_json": {"status": "healthy"},
+                "diagnostics_json": {
+                    "counts": {"fetch_run_count": 4, "context_item_count": 2},
+                    "status": "healthy",
+                },
                 "projection_version": SOURCE_QUALITY_PROJECTION_VERSION,
             },
         }
     )
 
     assert payload["coverage_tags"] == ["crypto_market"]
-    assert payload["quality"]["diagnostics_json"] == {"status": "healthy"}
+    assert payload["quality"]["diagnostics_json"]["status"] == "healthy"
+    assert payload["latest_quality_counts"] == {"fetch_run_count": 4, "context_item_count": 2}
+    assert payload["latest_item_published_at_ms"] == NOW_MS - 40_000
+    assert payload["latest_item_fetched_at_ms"] == NOW_MS - 30_000
+    assert payload["latest_context_seen_at_ms"] == NOW_MS - 20_000
+    assert payload["context_item_count"] == 2
+    assert payload["last_seen_at_ms"] == NOW_MS - 20_000
+    assert payload["latest_fetch_run"] == {
+        "status": "failed",
+        "started_at_ms": NOW_MS - 10_000,
+        "finished_at_ms": NOW_MS - 9_000,
+        "http_status": 503,
+        "fetched_count": 0,
+        "inserted_count": 0,
+        "updated_count": 0,
+        "duplicate_count": 0,
+        "error": "upstream timeout",
+    }
+    assert payload["provider_health"] == {
+        "status": "failing",
+        "reason": "consecutive_failures",
+        "last_error": "upstream timeout",
+        "consecutive_failures": 1,
+        "last_success_at_ms": NOW_MS - 50_000,
+        "last_seen_at_ms": NOW_MS - 20_000,
+    }
+    assert payload["provider_capability_tags"] == [
+        "poll_primary_items",
+        "http_cache",
+        "context_items",
+        "high_trust",
+    ]
     json.dumps(payload)
+
+
+def test_source_status_payload_marks_disabled_and_api_backed_capabilities() -> None:
+    payload = _source_status_payload(
+        {
+            "source_id": "cryptopanic",
+            "provider_type": "cryptopanic",
+            "source_domain": "cryptopanic.com",
+            "source_name": "CryptoPanic",
+            "source_role": "aggregator",
+            "trust_tier": "standard",
+            "coverage_tags_json": [],
+            "source_quality_status": "unknown",
+            "enabled": False,
+            "managed_by_config": True,
+            "refresh_interval_seconds": 300,
+            "item_count": 0,
+            "context_item_count": 0,
+            "next_fetch_after_ms": 0,
+            "consecutive_failures": 0,
+            "last_error": "disabled by config",
+            "latest_quality_json": None,
+        }
+    )
+
+    assert payload["last_seen_at_ms"] is None
+    assert payload["latest_fetch_run"] is None
+    assert payload["latest_quality_counts"] == {}
+    assert payload["provider_health"] == {
+        "status": "disabled",
+        "reason": "source_disabled",
+        "last_error": "disabled by config",
+        "consecutive_failures": 0,
+        "last_success_at_ms": None,
+        "last_seen_at_ms": None,
+    }
+    assert payload["provider_capability_tags"] == ["poll_primary_items", "api_backed"]
 
 
 def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
