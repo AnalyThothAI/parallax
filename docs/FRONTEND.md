@@ -62,6 +62,16 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   trading narrative from headline, summary, or fact-lane keyword heuristics.
   Queue pagination is explicit; direction tabs request backend filters rather
   than client-side reclassification.
+- **Earnings route.** `/earnings` is owned by `features/equity-events` and
+  renders persisted Equity Event Intel read models from `/api/equity-events*`.
+  The first viewport is the event feed; `/earnings/calendar` renders expected
+  and matched calendar rows; `/earnings/events/:eventId` renders event detail.
+  Frontend code must not infer event type, surprise, source trust, brief
+  direction, decision class, or trade action from headlines, summaries, or
+  keyword rules. It renders `equity_event_page_rows`,
+  `equity_event_calendar_rows`, and persisted `equity_event_agent_briefs`
+  directly, including `pending`, `ready`, `stale`, `failed`, `insufficient`,
+  and `disabled` brief states.
 - **Macro route.** `/macro` renders deterministic Macro Intel state from
   `/api/macro`. Regime, component scores, indicators, triggers, and data
   gaps come from `macro_view_snapshots`; frontend code does not recompute macro
@@ -72,7 +82,7 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 - **Cascade layers.** Side-effect CSS participates in the app cascade contract declared in `styles/tokens.css`: `app.base`, `app.primitives`, `app.shell`, `app.features`, then `app.overrides`. `styles/base.css` uses `app.base`; shared primitives use `app.primitives`; cockpit shell files use `app.shell`; feature route CSS uses `app.features`. Unlayered side-effect CSS is allowed only for Tailwind's import file.
 - **Responsive CSS contract.** Mobile behavior is a tested architecture surface, not a best-effort visual tweak. Shell CSS owns `.cockpit-shell`, `.cockpit-main`, `.center-column`, `.topbar`, and the shadcn sidebar composition (`SidebarProvider`, `AppSidebar`, `SidebarInset`, and `SidebarTrigger`) split by owner files (`cockpitShell.css`, `CockpitTopbar.css`, `AppSidebar.css`, and `cockpitShellContract.css`). Final shell breakpoint decisions, including the mobile topbar row height token, live in `features/cockpit/ui/cockpitShellContract.css`. Mobile and tablet route navigation uses the shadcn `Sheet` drawer opened from the topbar trigger. Live-only task visibility is feature-owned by `features/live/ui/live.css`, using `.live-task-nav` and `[data-mobile-task-panel]` only inside `.live-page`.
 - **Route controls.** Shells do not render route-specific filter controls. Window/scope/venue/handle controls belong to the feature route that consumes them; `CockpitShell` and `SearchShell` own only navigation, frame layout, the main route scroll container, hotkeys, and notifications. Top-level radar routes must use owner-prefixed table selectors (`token-radar-*`, `stock-radar-*`) rather than generic historical selectors such as `.radar-row`, `.metric`, or `.phase`.
-- **Shell navigation.** Desktop users navigate through the collapsible shadcn `AppSidebar`; tablet and mobile users open the same route tree through the topbar `SidebarTrigger` and shadcn drawer. Radar, Stocks, News, Macro, Watchlist, Signal Lab, and Ops must remain reachable from that drawer, while Search remains reachable through the topbar submit flow. The live Radar/Tape/Lab task switcher is `LivePage`-owned, mobile-only, and must not render on Stocks, News, Macro, Watchlist, Ops, Search, or Token Case routes.
+- **Shell navigation.** Desktop users navigate through the collapsible shadcn `AppSidebar`; tablet and mobile users open the same route tree through the topbar `SidebarTrigger` and shadcn drawer. Radar, Stocks, News, Earnings, Macro, Watchlist, Signal Lab, and Ops must remain reachable from that drawer, while Search remains reachable through the topbar submit flow. The live Radar/Tape/Lab task switcher is `LivePage`-owned, mobile-only, and must not render on Stocks, News, Earnings, Macro, Watchlist, Ops, Search, or Token Case routes.
 - **Scrolling.** `body` remains locked for the app shell. `.center-column` is the shell-managed route scroll container. On mobile, `LivePage` owns a two-row feature layout: active task content in `minmax(0, 1fr)` and `.live-task-nav` as a real bottom row, not a fixed overlay. Radar rows scroll inside `.token-radar-table` above that nav; the page must not keep the desktop `405px` bottom-deck row. Route-level nested scrollers are allowed only when they are intentionally bounded and covered by Playwright overflow/reachability assertions.
 - **Breakpoint policy.** Desktop density starts at `1280px`. Tablet uses a single route column from `768px` through `1279px`. Mobile rules are `max-width: 767px` and must appear late enough in the cascade to win over base and desktop/tablet rules. Use container queries for local card/panel behavior when component width matters more than viewport width.
 - **Side-effect CSS budget.** Architecture tests fail any side-effect CSS file above 700 lines. The target budget after this responsive hard cut is 500 lines per side-effect CSS file; component-specific styling should move toward CSS Modules or smaller owner files.
@@ -117,7 +127,7 @@ Production bundles ship inside the same Docker image as the Python service and a
 
 Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
-1. Hard-reload `/`, `/search`, `/signal-lab`, `/signal-lab/pulse/:candidateId`, `/stocks`, `/news`, `/news/:newsItemId`, `/macro`, `/watchlist`, `/ops`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
+1. Hard-reload `/`, `/search`, `/signal-lab`, `/signal-lab/pulse/:candidateId`, `/stocks`, `/news`, `/news/:newsItemId`, `/earnings`, `/earnings/calendar`, `/earnings/events/:eventId`, `/macro`, `/watchlist`, `/ops`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
 3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
 4. Confirm no failing `/api/*` requests in the browser session.
