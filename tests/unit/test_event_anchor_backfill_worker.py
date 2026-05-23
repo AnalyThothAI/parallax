@@ -206,6 +206,14 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
     assert result.notes["captures_attached"] == 1
 
     assert wake.emitted == [("chain_token", "solana:AAA")]
+    assert db.dirty_target_enqueues == [
+        {
+            "rows": [("chain_token", "solana:AAA")],
+            "reason": "event_anchor_backfill_attached",
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
 
 
 def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
@@ -244,6 +252,7 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
                 target_type="cex_symbol",
                 target_id="OKX:BTC-USDT",
                 t_event_ms=int(kwargs["event_ms"]),
+                tick_observed_at_ms=tick.observed_at_ms,
                 tick_id=tick.tick_id,
                 tick_lag_ms=25,
                 capture_method="tier3_inline",
@@ -295,6 +304,7 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
                 target_type="chain_token",
                 target_id="solana:NOPE",
                 t_event_ms=int(kwargs["event_ms"]),
+                tick_observed_at_ms=None,
                 tick_id=None,
                 tick_lag_ms=None,
                 capture_method="unavailable",
@@ -371,6 +381,7 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
                 target_type="chain_token",
                 target_id=target_id,
                 t_event_ms=int(kwargs["event_ms"]),
+                tick_observed_at_ms=tick.observed_at_ms,
                 tick_id=tick.tick_id,
                 tick_lag_ms=25,
                 capture_method="tier3_inline",
@@ -401,6 +412,14 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
         "solana:SECOND",
     ]
     assert wake.emitted == [("chain_token", "solana:SECOND")]
+    assert db.dirty_target_enqueues == [
+        {
+            "rows": [("chain_token", "solana:SECOND")],
+            "reason": "event_anchor_backfill_attached",
+            "now_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
 
 
 def _settings(*, max_attempts: int = 3) -> Any:
@@ -462,6 +481,7 @@ class _UnavailableService:
             target_type=kwargs["resolution"]["target_type"],
             target_id=kwargs["resolution"]["target_id"],
             t_event_ms=int(kwargs["event_ms"]),
+            tick_observed_at_ms=None,
             tick_id=None,
             tick_lag_ms=None,
             capture_method="unavailable",
@@ -504,6 +524,7 @@ class _FakeDB:
         self.rescheduled_jobs: list[tuple[str, str, str]] = []
         self.done_jobs: list[tuple[str, str]] = []
         self.provider_calls = 0
+        self.dirty_target_enqueues: list[dict[str, Any]] = []
 
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
@@ -526,6 +547,7 @@ class _FakeRepos:
         self.enriched_events = _FakeEnrichedEventRepo(db)
         self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
         self.market_ticks = _FakeMarketTickRepo(db)
+        self.token_radar_dirty_targets = _FakeDirtyTargets(db)
         self.conn = SimpleNamespace(commit=lambda: None)
 
 
@@ -597,4 +619,21 @@ class _FakeMarketTickRepo:
     def insert_ticks(self, ticks: Any) -> int:
         materialized = list(ticks)
         self._db.inserted_ticks.extend(materialized)
+        return len(materialized)
+
+
+class _FakeDirtyTargets:
+    def __init__(self, db: _FakeDB) -> None:
+        self._db = db
+
+    def enqueue_market_targets(self, rows: Any, *, reason: str, now_ms: int, commit: bool) -> int:
+        materialized = list(rows)
+        self._db.dirty_target_enqueues.append(
+            {
+                "rows": materialized,
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
         return len(materialized)

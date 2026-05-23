@@ -10,7 +10,9 @@ from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository im
 from gmgn_twitter_intel.domains.token_intel.queries.event_token_projection_query import (
     EventTokenProjectionQuery,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import (
+    TokenRadarTargetFeatureQuery,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 
 
@@ -52,10 +54,17 @@ def test_registry_exact_cex_lookup_still_requires_a_matching_exchange_row() -> N
     assert conn.params_calls[-1] == ("okx", "BTC-USDT")
 
 
-def test_token_radar_source_preferred_cex_read_is_binance_usdt_swap_only() -> None:
+def test_token_radar_target_feature_preferred_cex_read_is_binance_usdt_swap_only() -> None:
     conn = RecordingConn()
 
-    TokenRadarSourceQuery(conn).source_rows(since_ms=1, scope="all", now_ms=2)
+    TokenRadarTargetFeatureQuery(conn).source_rows(
+        target_type_key="CexToken",
+        identity_id="cex_token:BTC",
+        since_ms=1,
+        score_since_ms=1,
+        scope="all",
+        now_ms=2,
+    )
 
     _assert_binance_usdt_swap_only(conn.sql_calls[-1])
     _assert_no_legacy_cex_preference_ordering(conn.sql_calls[-1])

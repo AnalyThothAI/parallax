@@ -227,14 +227,25 @@ class TokenImageSourceQuery:
                 ) AS source_row_number
               FROM source_rows
               WHERE source_url IS NOT NULL
+            ),
+            eligible_sources AS (
+              SELECT deduped_sources.*
+              FROM deduped_sources
+              LEFT JOIN token_image_assets AS terminal_assets
+                ON terminal_assets.source_url_hash = encode(
+                  sha256(convert_to(deduped_sources.source_url, 'UTF8')),
+                  'hex'
+                )
+               AND terminal_assets.status IN ('ready', 'unsupported')
+              WHERE deduped_sources.source_row_number = 1
+                AND terminal_assets.image_id IS NULL
             )
             SELECT
               source_url,
               source_provider,
               source_kind,
               raw_ref_json
-            FROM deduped_sources
-            WHERE source_row_number = 1
+            FROM eligible_sources
             ORDER BY
               CASE WHEN best_radar_rank IS NULL THEN 1 ELSE 0 END ASC,
               best_radar_rank ASC NULLS LAST,

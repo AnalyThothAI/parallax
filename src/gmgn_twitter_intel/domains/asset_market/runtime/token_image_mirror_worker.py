@@ -118,6 +118,24 @@ class _TokenImageAssetSessionRepository:
                 commit=commit,
             )
 
+    def mark_unsupported(
+        self,
+        source_url: str,
+        error: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        with self.db.worker_session(
+            self.worker_name,
+            statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
+        ) as repos:
+            repos.token_image_assets.mark_unsupported(
+                source_url=source_url,
+                error=error,
+                now_ms=now_ms,
+                commit=commit,
+            )
+
 
 def _record_mirror_result(result: dict[str, Any], mirror_result: dict[str, Any]) -> None:
     status = str(mirror_result.get("status") or "")

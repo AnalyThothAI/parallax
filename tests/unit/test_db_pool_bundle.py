@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from gmgn_twitter_intel.app.runtime import db_pool_bundle
-from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
+from gmgn_twitter_intel.app.runtime.db_pool_bundle import (
+    DBPoolBundle,
+    enabled_wake_listener_concurrency,
+    wake_pool_max_size,
+)
 from gmgn_twitter_intel.app.runtime.wake_waiter import WakeWaiter
+from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 
 
 class FakeConn:
@@ -90,6 +96,7 @@ class FakeSettings:
     postgres_pool_min_size: int = 1
     postgres_pool_max_size: int = 10
     postgres_connect_timeout_seconds: float = 5.0
+    workers: object | None = None
 
 
 def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
@@ -106,6 +113,8 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
 
     assert isinstance(bundle.api_pool, FakePool)
     assert isinstance(bundle.lock_pool, FakePool)
+    assert bundle.wake_pool_max_size == 3
+    assert bundle.enabled_wake_listener_concurrency == 0
     assert [item["application_name"] for item in created] == [
         "gmgn_api",
         "gmgn_worker",
@@ -128,6 +137,44 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
     assert created[4]["keepalives_interval"] > 0
     assert created[4]["keepalives_count"] > 0
     assert created[4]["max_size"] == 3
+
+
+def test_create_sizes_wake_pool_for_configured_wake_listeners(monkeypatch) -> None:
+    created: list[dict[str, Any]] = []
+
+    def fake_create_pool(dsn: str, **kwargs: Any) -> FakePool:
+        created.append({"dsn": dsn, **kwargs})
+        return FakePool()
+
+    monkeypatch.setattr(db_pool_bundle, "create_pool", fake_create_pool)
+    monkeypatch.setattr(db_pool_bundle, "with_password_from_file", lambda dsn, password_file: dsn)
+    settings = FakeSettings(
+        workers=SimpleNamespace(
+            token_radar_projection=SimpleNamespace(enabled=True, wakes_on=("market_tick_written",)),
+            mention_semantics=SimpleNamespace(enabled=True, wakes_on=("token_radar_updated",)),
+            news_page_projection=SimpleNamespace(enabled=True, wakes_on=("news_item_written",), concurrency=2),
+            disabled_worker=SimpleNamespace(enabled=False, wakes_on=("ignored",)),
+            interval_only_worker=SimpleNamespace(enabled=True, wakes_on=()),
+        )
+    )
+
+    bundle = DBPoolBundle.create(settings)
+
+    assert enabled_wake_listener_concurrency(settings) == 4
+    assert wake_pool_max_size(settings) >= 4 + 2
+    assert bundle.enabled_wake_listener_concurrency == 4
+    assert bundle.wake_pool_max_size == 6
+    assert created[4]["application_name"] == "gmgn_wake"
+    assert created[4]["max_size"] == 6
+
+
+def test_wake_pool_size_covers_enabled_listener_concurrency_for_default_workers() -> None:
+    settings = SimpleNamespace(workers=WorkersSettings())
+
+    wake_concurrency = enabled_wake_listener_concurrency(settings)
+
+    assert wake_concurrency > 0
+    assert wake_pool_max_size(settings) >= wake_concurrency + 2
 
 
 def test_api_session_yields_repositories_and_records_pool_wait(monkeypatch) -> None:

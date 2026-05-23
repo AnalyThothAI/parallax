@@ -641,6 +641,20 @@ def test_read_model_single_writers(table_name: str) -> None:
 
 
 @pytest.mark.architecture
+def test_token_radar_runtime_has_no_full_window_source_query() -> None:
+    old_query_path = SRC / "domains/token_intel/queries/token_radar_source_query.py"
+    old_module = "gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query"
+    violations = [
+        _rel(path)
+        for path in SRC.rglob("*.py")
+        if path != old_query_path and old_module in path.read_text()
+    ]
+
+    assert not old_query_path.exists()
+    assert violations == []
+
+
+@pytest.mark.architecture
 @pytest.mark.parametrize("table_name", LEGACY_ASSET_TABLES)
 def test_legacy_asset_tables_have_no_runtime_writers(table_name: str) -> None:
     write_pattern = re.compile(

@@ -30,10 +30,24 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
         conn.commit()
 
         projection = TokenRadarProjection(repos=repositories_for_connection(conn))
-        first_result = projection.rebuild(window="1h", scope="all", now_ms=FIXED_NOW_MS, limit=10)
+        _enqueue_radar_catch_up(conn, now_ms=FIXED_NOW_MS)
+        first_result = projection.rebuild_dirty_targets(
+            windows=("1h",),
+            scopes=("all",),
+            now_ms=FIXED_NOW_MS,
+            limit=10,
+            rank_limit=10,
+        )
         first_rows = _radar_rows(conn, computed_at_ms=int(first_result["computed_at_ms"]))
 
-        second_result = projection.rebuild(window="1h", scope="all", now_ms=FIXED_NOW_MS, limit=10)
+        _enqueue_radar_catch_up(conn, now_ms=FIXED_NOW_MS)
+        second_result = projection.rebuild_dirty_targets(
+            windows=("1h",),
+            scopes=("all",),
+            now_ms=FIXED_NOW_MS,
+            limit=10,
+            rank_limit=10,
+        )
         second_rows = _radar_rows(conn, computed_at_ms=int(second_result["computed_at_ms"]))
     finally:
         conn.close()
@@ -44,6 +58,17 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
     assert second_result["rows_written"] >= 1
     assert first_rows, "seeded current facts should produce at least one radar row"
     assert _semantic_rows(first_rows) == _semantic_rows(second_rows)
+
+
+def _enqueue_radar_catch_up(conn: Any, *, now_ms: int) -> None:
+    repos = repositories_for_connection(conn)
+    repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+        since_ms=now_ms - 60 * 60 * 1000,
+        now_ms=now_ms,
+        limit=10,
+        reason="integration_catch_up",
+        commit=True,
+    )
 
 
 def _radar_rows(conn: Any, *, computed_at_ms: int) -> list[dict[str, Any]]:
@@ -124,6 +149,7 @@ def _seed_resolved_radar_source(conn: Any) -> None:
         intent_id=intent_id,
         resolution_id=resolution_id,
         tick_id="tick-radar-idempotent-anchor",
+        tick_observed_at_ms=EVENT_MS,
         t_event_ms=EVENT_MS,
     )
 
@@ -231,6 +257,7 @@ def _insert_enriched_event(
     intent_id: str,
     resolution_id: str,
     tick_id: str,
+    tick_observed_at_ms: int,
     t_event_ms: int,
 ) -> None:
     target_id = f"eip155:1:{ASSET_ADDRESS.lower()}"
@@ -238,12 +265,12 @@ def _insert_enriched_event(
         """
         INSERT INTO enriched_events(
           event_id, intent_id, resolution_id, target_type, target_id,
-          t_event_ms, tick_id, tick_lag_ms, capture_method, capture_reason, created_at_ms
+          t_event_ms, tick_observed_at_ms, tick_id, tick_lag_ms, capture_method, capture_reason, created_at_ms
         )
         VALUES (
           %s, %s, %s, 'chain_token', %s,
-          %s, %s, 0, 'tier3_inline', 'integration_seed', %s
+          %s, %s, %s, 0, 'tier3_inline', 'integration_seed', %s
         )
         """,
-        (event_id, intent_id, resolution_id, target_id, t_event_ms, tick_id, t_event_ms),
+        (event_id, intent_id, resolution_id, target_id, t_event_ms, tick_observed_at_ms, tick_id, t_event_ms),
     )

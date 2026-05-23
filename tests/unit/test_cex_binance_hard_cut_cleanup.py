@@ -42,7 +42,7 @@ def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
     assert result["counts"]["token_radar_rank_history_to_reset"] == 12
     assert result["counts"]["token_radar_snapshot_audit_to_reset"] == 13
     assert result["counts"]["okx_market_ticks_to_delete"] == 13
-    assert result["token_radar_storage"]["command"] == "ops clean-reset-token-radar-storage --execute"
+    assert result["token_radar_storage"]["command"] == "ops reset-token-radar-postgres-hard-cut --execute"
     assert conn.transaction_entries == 0
     assert not _has_statement(conn.sqls, "pg_advisory_xact_lock")
     assert not _has_mutation(conn.sqls)

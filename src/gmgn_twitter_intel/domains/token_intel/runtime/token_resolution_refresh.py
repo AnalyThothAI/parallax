@@ -61,6 +61,7 @@ def reprocess_recent_token_intents(
     )
     reprocessed = 0
     resolved = 0
+    dirty_targets: list[dict[str, Any]] = []
     for intent in intents:
         evidence = repos.token_evidence.evidence_for_intent(str(intent["intent_id"]))
         decision = resolver.resolve(
@@ -81,12 +82,24 @@ def reprocess_recent_token_intents(
         reprocessed += 1
         if decision.target_type and decision.target_id:
             resolved += 1
+        dirty_target = _dirty_target_for_decision(decision)
+        if dirty_target is not None:
+            dirty_targets.append(dirty_target)
+    dirty_repo = getattr(repos, "token_radar_dirty_targets", None)
+    if dirty_targets and dirty_repo is not None:
+        dirty_repo.enqueue_targets(
+            dirty_targets,
+            reason="resolution_refresh",
+            now_ms=now_ms,
+            commit=False,
+        )
     repos.conn.commit()
     return {
         "window": window,
         "lookup_keys": lookup_keys or [],
         "reprocessed_intents": reprocessed,
         "resolved_intents": resolved,
+        "dirty_targets": len(dirty_targets),
         "since_ms": since_ms,
     }
 
@@ -98,3 +111,16 @@ def deferred_token_radar_projection() -> dict[str, Any]:
         "source_rows": 0,
         "windows": {},
     }
+
+
+def _dirty_target_for_decision(decision: Any) -> dict[str, Any] | None:
+    target_type = getattr(decision, "target_type", None)
+    target_id = getattr(decision, "target_id", None)
+    event_id = str(getattr(decision, "event_id", "") or "")
+    if target_type in {"Asset", "CexToken"} and target_id:
+        return {
+            "target_type_key": str(target_type),
+            "identity_id": str(target_id),
+            "source_event_ids": [event_id] if event_id else [],
+        }
+    return None

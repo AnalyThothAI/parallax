@@ -11,7 +11,7 @@ TOKEN_RADAR_IMPACT_TABLES = (
 )
 TOKEN_RADAR_CLEAN_RESET_ACTION = {
     "required": True,
-    "command": "ops clean-reset-token-radar-storage --execute",
+    "command": "ops reset-token-radar-postgres-hard-cut --execute",
     "reason": "Token Radar storage is owned by token_intel; reset it through the dedicated hard-cut command.",
 }
 TOKEN_CAPTURE_TIER_TABLE = "token_capture_" "tier"

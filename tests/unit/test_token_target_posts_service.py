@@ -79,6 +79,20 @@ def test_target_repository_reads_post_prices_from_enriched_events_and_market_tic
     assert "market_tick_lag_ms" in conn.sql
 
 
+def test_target_repository_latest_market_tick_reads_current_table():
+    conn = FakeConn(rows=[{"tick_id": "tick-current"}])
+
+    row = TokenTargetRepository(conn).latest_market_tick(
+        target_type="Asset",
+        target_id="asset:pepe",
+    )
+
+    assert row == {"tick_id": "tick-current"}
+    assert "market_tick_current" in conn.sql
+    assert "FROM market_ticks" not in conn.sql
+    assert "JOIN market_ticks" not in conn.sql
+
+
 class FakeTargets:
     def __init__(self, *, pages):
         self.pages = pages
@@ -138,3 +152,6 @@ class FakeConn:
 
     def fetchall(self):
         return self.rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None

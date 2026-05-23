@@ -261,6 +261,7 @@ class EventAnchorBackfillWorker(WorkerBase):
             target_type=cast(Any, str(row["target_type"])),
             target_id=str(row["target_id"]),
             t_event_ms=int(row["t_event_ms"]),
+            tick_observed_at_ms=tick.observed_at_ms,
             tick_id=tick.tick_id,
             tick_lag_ms=abs(tick.observed_at_ms - int(row["t_event_ms"])),
             capture_method=tick.source_tier,
@@ -363,6 +364,14 @@ class EventAnchorBackfillWorker(WorkerBase):
                     next_run_at_ms=reschedule.next_run_at_ms,
                 ):
                     rescheduled_count += 1
+            dirty_targets = getattr(repos, "token_radar_dirty_targets", None)
+            if attached_ticks and dirty_targets is not None:
+                dirty_targets.enqueue_market_targets(
+                    _dedupe_tick_targets(attached_ticks),
+                    reason="event_anchor_backfill_attached",
+                    now_ms=now_ms,
+                    commit=False,
+                )
             _commit_if_supported(repos)
         return inserted, attached_ticks, terminal_count, rescheduled_count
 
@@ -391,6 +400,10 @@ def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
     if notify is None:
         return
     notify(target_type=target_type, target_id=target_id)
+
+
+def _dedupe_tick_targets(ticks: Sequence[MarketTick]) -> list[tuple[str, str]]:
+    return list(dict.fromkeys((tick.target_type, tick.target_id) for tick in ticks))
 
 
 def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick:

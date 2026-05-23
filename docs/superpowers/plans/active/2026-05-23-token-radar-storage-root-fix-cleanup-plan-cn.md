@@ -62,8 +62,8 @@
 新增：
 
 ```bash
-uv run gmgn-twitter-intel ops clean-reset-token-radar-storage --dry-run
-uv run gmgn-twitter-intel ops clean-reset-token-radar-storage --execute
+uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --dry-run
+uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
 ```
 
 该命令可重复执行：
@@ -102,4 +102,4 @@ uv run ruff check src/gmgn_twitter_intel/domains/token_intel src/gmgn_twitter_in
 uv run gmgn-twitter-intel config
 ```
 
-只报告 `config_path` / `workers_config_path`、布尔状态和表大小，不打印 secret。执行 `clean-reset-token-radar-storage --execute` 后，重启/触发 Token Radar worker 从 facts 重新构建。
+只报告 `config_path` / `workers_config_path`、布尔状态和表大小，不打印 secret。执行 `reset-token-radar-postgres-hard-cut --execute` 后，重启/触发 Token Radar worker 从 facts 重新构建。

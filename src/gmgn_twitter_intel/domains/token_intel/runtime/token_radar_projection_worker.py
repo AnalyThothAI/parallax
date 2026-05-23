@@ -10,7 +10,7 @@ from loguru import logger
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_SCOPES = ("all", "matched")
@@ -57,6 +57,9 @@ class TokenRadarProjectionWorker(WorkerBase):
                 "source_rows": result["source_rows"],
                 "window": result.get("window"),
                 "scope": result.get("scope"),
+                "status": result.get("status"),
+                "claimed": result.get("claimed"),
+                "catch_up_enqueued": result.get("catch_up_enqueued"),
                 "windows": result["windows"],
             },
         )
@@ -91,57 +94,70 @@ class TokenRadarProjectionWorker(WorkerBase):
             self.limit = original_limit
 
     def _rebuild_once(self, *, computed_at_ms: int) -> dict[str, Any]:
-        result: dict[str, Any] = {
-            "computed_at_ms": computed_at_ms,
-            "rows_written": 0,
-            "source_rows": 0,
-            "windows": {},
-        }
-        coverage = self._latest_coverage()
-        missing_items = self._missing_work_items(coverage, computed_at_ms=computed_at_ms)
-        if missing_items:
-            work_items = _dedupe_work_items([*self._hot_work_items(), *missing_items])
-            primary_item = missing_items[0]
-        else:
-            work_items, primary_item = self._next_work_items(
-                coverage=coverage,
-                computed_at_ms=computed_at_ms,
-            )
-        for window, scope in work_items:
-            key = f"{window}:{scope}"
-            try:
-                with self._repository_session() as repos:
-                    projection = _projection_class()(repos=repos)
-                    window_result = projection.rebuild(
-                        window=window,
-                        scope=scope,
-                        now_ms=computed_at_ms,
-                        limit=self.limit,
-                    )
-            except Exception as exc:
-                self.last_error = self.last_error or str(exc)
-                logger.exception(f"token radar projection window failed: window={window} scope={scope} error={exc}")
-                window_result = {
-                    "rows_written": 0,
-                    "source_rows": 0,
-                    "computed_at_ms": computed_at_ms,
-                    "status": "failed",
-                    "error": str(exc),
-                }
-                self._mark_failed_coverage(
-                    window=window,
-                    scope=scope,
-                    computed_at_ms=computed_at_ms,
-                    error=str(exc),
+        try:
+            with self._repository_session() as repos:
+                projection = _projection_class()(repos=repos)
+                result = projection.rebuild_dirty_targets(
+                    windows=self.windows,
+                    scopes=self.scopes,
+                    now_ms=computed_at_ms,
+                    limit=self.limit,
+                    rank_limit=self.limit,
+                    lease_owner=self.name,
                 )
-            result["windows"][key] = window_result
-            result["rows_written"] += int(window_result.get("rows_written") or 0)
-            result["source_rows"] += int(window_result.get("source_rows") or 0)
-            result["window"] = primary_item[0]
-            result["scope"] = primary_item[1]
-            if str(window_result.get("status") or "") == "ready" and self.wake_bus is not None:
-                self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
+        except Exception as exc:
+            self.last_error = str(exc)
+            logger.exception(f"token radar dirty target projection failed: error={exc}")
+            result = {
+                "computed_at_ms": computed_at_ms,
+                "rows_written": 0,
+                "source_rows": 0,
+                "status": "failed",
+                "error": str(exc),
+                "claimed": 0,
+                "catch_up_enqueued": 0,
+                "windows": {},
+            }
+
+        result.setdefault("computed_at_ms", computed_at_ms)
+        result.setdefault("rows_written", 0)
+        result.setdefault("source_rows", 0)
+        result.setdefault("windows", {})
+        result.setdefault("claimed", 0)
+        result.setdefault("catch_up_enqueued", 0)
+        result["window"] = self.windows[0] if self.windows else None
+        result["scope"] = self.scopes[0] if self.scopes else None
+
+        if str(result.get("status") or "") == "failed":
+            self.last_error = self.last_error or str(result.get("error") or "token radar projection failed")
+
+        if int(result.get("claimed") or 0) <= 0 and str(result.get("status") or "") != "failed":
+            result["catch_up_enqueued"] = self._enqueue_recent_dirty_targets(computed_at_ms=computed_at_ms)
+
+        for key, window_result in result["windows"].items():
+            if str(window_result.get("status") or "") != "ready" or self.wake_bus is None:
+                continue
+            window, scope = str(key).split(":", 1)
+            self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
         return result
+
+    def _enqueue_recent_dirty_targets(self, *, computed_at_ms: int) -> int:
+        lookback_ms = max((WINDOW_MS.get(window, 0) for window in self.windows), default=0)
+        if lookback_ms <= 0:
+            lookback_ms = 60 * 60 * 1000
+        with self._repository_session() as repos:
+            dirty_repo = getattr(repos, "token_radar_dirty_targets", None)
+            if dirty_repo is None:
+                return 0
+            return int(
+                dirty_repo.enqueue_recent_resolved_targets(
+                    since_ms=max(0, int(computed_at_ms) - lookback_ms),
+                    now_ms=int(computed_at_ms),
+                    limit=self.limit,
+                    reason="projection_catch_up",
+                    commit=True,
+                )
+            )
 
     def _next_work_items(
         self,

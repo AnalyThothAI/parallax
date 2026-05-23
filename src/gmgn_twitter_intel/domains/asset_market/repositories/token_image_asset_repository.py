@@ -40,6 +40,7 @@ class TokenImageAssetRepository:
                   raw_ref_json = excluded.raw_ref_json,
                   observed_at_ms = excluded.observed_at_ms,
                   updated_at_ms = excluded.updated_at_ms
+                WHERE token_image_assets.status NOT IN ('ready', 'unsupported')
                 RETURNING image_id
                 """,
                 (
@@ -161,11 +162,40 @@ class TokenImageAssetRepository:
                 next_refresh_at_ms = %s,
                 updated_at_ms = %s
             WHERE source_url_hash = %s
-              AND status <> 'ready'
+              AND status NOT IN ('ready', 'unsupported')
             """,
             (
                 _optional_text(error),
                 retry_at_ms,
+                int(now_ms),
+                _source_url_hash(normalized_source_url),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
+    def mark_unsupported(
+        self,
+        source_url: str,
+        error: str,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        normalized_source_url = _required_source_url(source_url)
+        self.conn.execute(
+            """
+            UPDATE token_image_assets
+            SET status = 'unsupported',
+                failure_count = failure_count + 1,
+                last_error = %s,
+                next_refresh_at_ms = %s,
+                updated_at_ms = %s
+            WHERE source_url_hash = %s
+              AND status <> 'ready'
+            """,
+            (
+                _optional_text(error),
+                int(now_ms),
                 int(now_ms),
                 _source_url_hash(normalized_source_url),
             ),

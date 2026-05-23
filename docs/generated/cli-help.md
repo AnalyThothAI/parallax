@@ -54,10 +54,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,clean-reset-token-radar-storage,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,clean-reset-token-radar-storage,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -67,9 +67,15 @@ positional arguments:
     backfill-watchlist-signal-stats
                         backfill watchlist signal event ledger and stats read
                         model
-    clean-reset-token-radar-storage
-                        drop legacy Token Radar storage and clear rebuildable
-                        Token Radar read models
+    reset-token-radar-postgres-hard-cut
+                        hard reset rebuildable PostgreSQL Token Radar
+                        projection storage
+    ensure-postgres-partitions
+                        ensure current and next Token Radar PostgreSQL
+                        history/audit partitions
+    drop-expired-postgres-partitions
+                        explicit no-op until Token Radar PostgreSQL partition
+                        retention is configured
     projection-status   print projection offsets and latest runs
     worker-status       print canonical worker runtime status
     validate-projections

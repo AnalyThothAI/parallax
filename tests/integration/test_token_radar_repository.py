@@ -128,6 +128,9 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         conn.close()
 
     assert latest[0]["factor_snapshot_json"]["schema_version"] == TOKEN_FACTOR_SNAPSHOT_VERSION
+    assert latest[0]["target_type_key"] == "Asset"
+    assert latest[0]["identity_id"] == "asset-1"
+    assert latest[0]["payload_hash"]
 
 
 def test_publish_rows_replaces_current_and_retains_audit_history(tmp_path):
@@ -178,6 +181,170 @@ def test_publish_rows_replaces_current_and_retains_audit_history(tmp_path):
     assert [row["row_id"] for row in retained] == ["row-factor-older", "row-factor-newer"]
     assert [row["row_id"] for row in current] == ["row-factor-newer"]
     assert current[0]["listed_at_ms"] == 1_778_000_000_000
+
+
+def test_publish_rows_does_not_duplicate_history_or_audit_for_unchanged_payload(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    row = _valid_factor_row()
+    try:
+        migrate(conn)
+        _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
+        _insert_pricefeed(conn, "feed-1")
+        repo = TokenRadarRepository(conn)
+        repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[row],
+        )
+        row["row_id"] = "row-factor-same-later"
+        repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_060_000,
+            rows=[row],
+        )
+        counts = conn.execute(
+            """
+            SELECT
+              (SELECT count(*) FROM token_radar_rank_history) AS rank_history_count,
+              (SELECT count(*) FROM token_radar_snapshot_audit) AS snapshot_audit_count,
+              (
+                SELECT computed_at_ms
+                FROM token_radar_current_rows
+                WHERE identity_id = 'asset-1'
+              ) AS current_computed_at_ms
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert counts["rank_history_count"] == 1
+    assert counts["snapshot_audit_count"] == 1
+    assert counts["current_computed_at_ms"] == 1_778_000_060_000
+
+
+def test_publish_rows_removes_exited_current_rows_and_audits_rank_exit(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    first = _valid_factor_row()
+    first["row_id"] = "row-asset-1"
+    first["rank"] = 1
+    first["target_id"] = "asset-1"
+    second = _valid_factor_row()
+    second["row_id"] = "row-asset-2"
+    second["rank"] = 2
+    second["intent_id"] = "intent-2"
+    second["event_id"] = "event-2"
+    second["target_id"] = "asset-2"
+    entrant = _valid_factor_row()
+    entrant["row_id"] = "row-asset-3"
+    entrant["rank"] = 1
+    entrant["intent_id"] = "intent-3"
+    entrant["event_id"] = "event-3"
+    entrant["target_id"] = "asset-3"
+    entrant["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=99)
+    try:
+        migrate(conn)
+        _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
+        _insert_token_intent(conn, intent_id="intent-2", event_id="event-2")
+        _insert_token_intent(conn, intent_id="intent-3", event_id="event-3")
+        _insert_pricefeed(conn, "feed-1")
+        repo = TokenRadarRepository(conn)
+        repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[first, second],
+        )
+        repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_060_000,
+            rows=[entrant],
+        )
+        current = conn.execute(
+            """
+            SELECT identity_id, rank
+            FROM token_radar_current_rows
+            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            ORDER BY rank ASC
+            """,
+            ("token-radar-v11-factor-alpha-gated", "1h", "all"),
+        ).fetchall()
+        audit_reasons = conn.execute(
+            """
+            SELECT audit_reason, identity_id
+            FROM token_radar_snapshot_audit
+            WHERE projection_version = %s AND "window" = %s AND scope = %s
+              AND recorded_at_ms = %s
+            ORDER BY audit_reason ASC, identity_id ASC
+            """,
+            ("token-radar-v11-factor-alpha-gated", "1h", "all", 1_778_000_060_000),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [(row["identity_id"], row["rank"]) for row in current] == [("asset-3", 1)]
+    assert [(row["audit_reason"], row["identity_id"]) for row in audit_reasons] == [
+        ("rank_enter", "asset-3"),
+        ("rank_exit", "asset-1"),
+        ("rank_exit", "asset-2"),
+    ]
+
+
+def test_publish_rows_can_upsert_rank_swaps_without_current_row_delete(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    first = _valid_factor_row()
+    first["row_id"] = "row-asset-1"
+    first["rank"] = 1
+    first["target_id"] = "asset-1"
+    second = _valid_factor_row()
+    second["row_id"] = "row-asset-2"
+    second["rank"] = 2
+    second["intent_id"] = "intent-2"
+    second["event_id"] = "event-2"
+    second["target_id"] = "asset-2"
+    try:
+        migrate(conn)
+        _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
+        _insert_token_intent(conn, intent_id="intent-2", event_id="event-2")
+        _insert_pricefeed(conn, "feed-1")
+        repo = TokenRadarRepository(conn)
+        repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[first, second],
+        )
+        first["rank"] = 2
+        second["rank"] = 1
+        first["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=10)
+        second["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=90)
+        repo.publish_rows(
+            projection_version="token-radar-v11-factor-alpha-gated",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_060_000,
+            rows=[second, first],
+        )
+        ranks = conn.execute(
+            """
+            SELECT identity_id, rank
+            FROM token_radar_current_rows
+            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            ORDER BY rank ASC
+            """,
+            ("token-radar-v11-factor-alpha-gated", "1h", "all"),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [(row["identity_id"], row["rank"]) for row in ranks] == [("asset-2", 1), ("asset-1", 2)]
 
 
 def test_publish_rows_rejects_old_rows_after_newer_zero_row_coverage(tmp_path):

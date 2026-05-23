@@ -40,8 +40,12 @@ def test_token_radar_projection_worker_catches_up_from_db_without_wake(tmp_path)
             telemetry=object(),
         )
 
+        catch_up_result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
         result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
 
+        assert catch_up_result.failed == 0
+        assert catch_up_result.processed == 0
+        assert catch_up_result.notes["catch_up_enqueued"] >= 1
         assert result.failed == 0
         assert result.processed >= 1
         assert result.notes["source_rows"] >= 1
@@ -80,7 +84,9 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
             db=_DB(conn),
             telemetry=object(),
         )
+        catch_up_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
         radar_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
+        assert catch_up_result.notes["catch_up_enqueued"] >= 1
         assert radar_result.notes["rows_written"] >= 1
 
         pulse_worker = PulseCandidateWorker(
@@ -316,12 +322,13 @@ def _insert_enriched_event(
         """
         INSERT INTO enriched_events(
           event_id, intent_id, resolution_id, target_type, target_id,
-          t_event_ms, tick_id, tick_lag_ms, capture_method, capture_reason, created_at_ms
+          t_event_ms, tick_observed_at_ms, tick_id, tick_lag_ms,
+          capture_method, capture_reason, created_at_ms
         )
         VALUES (
           %s, %s, %s, 'chain_token', %s,
-          %s, %s, 0, 'tier3_inline', 'integration_seed', %s
+          %s, %s, %s, 0, 'tier3_inline', 'integration_seed', %s
         )
         """,
-        (event_id, intent_id, resolution_id, target_id, t_event_ms, tick_id, t_event_ms),
+        (event_id, intent_id, resolution_id, target_id, t_event_ms, t_event_ms, tick_id, t_event_ms),
     )

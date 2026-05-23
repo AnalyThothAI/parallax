@@ -110,6 +110,7 @@ def _pending_capture(
         target_type="chain_token",
         target_id="solana:abc",
         t_event_ms=1_700_000_000_000,
+        tick_observed_at_ms=None if tick_id is None else 1_700_000_000_100,
         tick_id=tick_id,
         tick_lag_ms=None if tick_id is None else 100,
         capture_method=capture_method,  # type: ignore[arg-type]

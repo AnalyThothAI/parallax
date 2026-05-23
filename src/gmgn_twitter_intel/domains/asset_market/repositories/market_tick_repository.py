@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable
 from typing import Any, cast
 
@@ -40,8 +42,11 @@ class MarketTickRepository:
                 "market tick id must be deterministic for (target_type, target_id, source_provider, observed_at_ms)"
             )
 
+        safe_payload = postgres_safe_json(tick.raw_payload_json)
+        payload_hash = _payload_hash(safe_payload)
         row = self._conn.execute(
             """
+            WITH inserted AS (
             INSERT INTO market_ticks(
                 tick_id,
                 target_type,
@@ -62,6 +67,7 @@ class MarketTickRepository:
                 market_cap_usd,
                 holders,
                 raw_payload_json,
+                payload_hash,
                 created_at_ms
             )
             VALUES (
@@ -84,10 +90,115 @@ class MarketTickRepository:
                 %(market_cap_usd)s,
                 %(holders)s,
                 %(raw_payload_json)s,
+                %(payload_hash)s,
                 %(created_at_ms)s
             )
-            ON CONFLICT(target_type, target_id, source_provider, observed_at_ms) DO NOTHING
+            ON CONFLICT(observed_at_ms, target_type, target_id, source_provider) DO NOTHING
+            RETURNING
+                observed_at_ms,
+                tick_id,
+                target_type,
+                target_id,
+                chain,
+                token_address,
+                exchange,
+                instrument,
+                pricefeed_id,
+                source_tier,
+                source_provider,
+                received_at_ms,
+                price_usd,
+                liquidity_usd,
+                volume_24h_usd,
+                open_interest_usd,
+                market_cap_usd,
+                holders,
+                raw_payload_json,
+                payload_hash,
+                created_at_ms
+            ),
+            current_upsert AS (
+            INSERT INTO market_tick_current(
+                target_type,
+                target_id,
+                tick_observed_at_ms,
+                tick_id,
+                source_tier,
+                source_provider,
+                chain,
+                token_address,
+                exchange,
+                instrument,
+                pricefeed_id,
+                price_usd,
+                liquidity_usd,
+                volume_24h_usd,
+                open_interest_usd,
+                market_cap_usd,
+                holders,
+                raw_payload_json,
+                payload_hash,
+                updated_at_ms,
+                created_at_ms
+            )
+            SELECT
+                target_type,
+                target_id,
+                observed_at_ms,
+                tick_id,
+                source_tier,
+                source_provider,
+                chain,
+                token_address,
+                exchange,
+                instrument,
+                pricefeed_id,
+                price_usd,
+                liquidity_usd,
+                volume_24h_usd,
+                open_interest_usd,
+                market_cap_usd,
+                holders,
+                raw_payload_json,
+                payload_hash,
+                received_at_ms,
+                created_at_ms
+            FROM inserted
+            ON CONFLICT(target_type, target_id) DO UPDATE
+            SET tick_observed_at_ms = excluded.tick_observed_at_ms,
+                tick_id = excluded.tick_id,
+                source_tier = excluded.source_tier,
+                source_provider = excluded.source_provider,
+                chain = excluded.chain,
+                token_address = excluded.token_address,
+                exchange = excluded.exchange,
+                instrument = excluded.instrument,
+                pricefeed_id = excluded.pricefeed_id,
+                price_usd = excluded.price_usd,
+                liquidity_usd = excluded.liquidity_usd,
+                volume_24h_usd = excluded.volume_24h_usd,
+                open_interest_usd = excluded.open_interest_usd,
+                market_cap_usd = excluded.market_cap_usd,
+                holders = excluded.holders,
+                raw_payload_json = excluded.raw_payload_json,
+                payload_hash = excluded.payload_hash,
+                updated_at_ms = excluded.updated_at_ms,
+                created_at_ms = excluded.created_at_ms
+            WHERE market_tick_current.tick_observed_at_ms < excluded.tick_observed_at_ms
+               OR (
+                 market_tick_current.tick_observed_at_ms = excluded.tick_observed_at_ms
+                 AND (
+                   market_tick_current.updated_at_ms < excluded.updated_at_ms
+                   OR (
+                     market_tick_current.updated_at_ms = excluded.updated_at_ms
+                     AND market_tick_current.tick_id <= excluded.tick_id
+                   )
+                 )
+               )
             RETURNING tick_id
+            )
+            SELECT tick_id
+            FROM inserted
             """,
             {
                 "tick_id": tick.tick_id,
@@ -108,7 +219,8 @@ class MarketTickRepository:
                 "open_interest_usd": tick.open_interest_usd,
                 "market_cap_usd": tick.market_cap_usd,
                 "holders": tick.holders,
-                "raw_payload_json": Jsonb(postgres_safe_json(tick.raw_payload_json)),
+                "raw_payload_json": Jsonb(safe_payload),
+                "payload_hash": payload_hash,
                 "created_at_ms": tick.created_at_ms,
             },
         ).fetchone()
@@ -266,3 +378,8 @@ class MarketTickRepository:
             },
         ).fetchone()
         return cast("dict[str, Any] | None", row)
+
+
+def _payload_hash(payload: Any) -> str:
+    payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
     refresh_recent_token_state,
     reprocess_recent_token_intents,
@@ -20,6 +22,66 @@ def test_lookup_key_reprocess_uses_all_recent_matching_intents_not_only_unresolv
 
     assert lookup.calls == [{"keys": ["symbol:SLOP"], "since_ms": 1_778_075_603_774, "limit": 500}]
     assert result["reprocessed_intents"] == 0
+
+
+def test_reprocess_enqueues_dirty_targets_for_incremental_token_radar(monkeypatch):
+    lookup = FakeLookup(
+        rows=[
+            {"intent_id": "intent-1", "event_id": "event-1", "primary_evidence_id": "evidence-1"},
+            {"intent_id": "intent-2", "event_id": "event-2", "primary_evidence_id": "evidence-2"},
+        ]
+    )
+    repos = FakeRepos(lookup=lookup)
+    decisions = [
+        SimpleNamespace(
+            intent_id="intent-1",
+            event_id="event-1",
+            target_type="Asset",
+            target_id="asset-1",
+            lookup_keys=["symbol:ONE"],
+        ),
+        SimpleNamespace(
+            intent_id="intent-2",
+            event_id="event-2",
+            target_type=None,
+            target_id=None,
+            lookup_keys=["symbol:TWO"],
+        ),
+    ]
+
+    class FakeResolver:
+        def __init__(self, **kwargs):
+            self.decisions = list(decisions)
+
+        def resolve(self, *args, **kwargs):
+            return self.decisions.pop(0)
+
+    monkeypatch.setattr(
+        "gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh.TokenIntentResolver",
+        FakeResolver,
+    )
+
+    result = reprocess_recent_token_intents(
+        repos=repos,
+        lookup_keys=["symbol:ONE", "symbol:TWO"],
+        now_ms=1_778_162_003_774,
+        window="24h",
+        limit=500,
+    )
+
+    assert result["reprocessed_intents"] == 2
+    assert result["resolved_intents"] == 1
+    assert result["dirty_targets"] == 1
+    assert repos.token_radar_dirty_targets.enqueues == [
+        {
+            "rows": [
+                {"target_type_key": "Asset", "identity_id": "asset-1", "source_event_ids": ["event-1"]},
+            ],
+            "reason": "resolution_refresh",
+            "now_ms": 1_778_162_003_774,
+            "commit": False,
+        }
+    ]
 
 
 def test_refresh_recent_token_state_defers_projection_to_worker(monkeypatch):
@@ -47,20 +109,51 @@ def test_refresh_recent_token_state_defers_projection_to_worker(monkeypatch):
 
 
 class FakeLookup:
-    def __init__(self):
+    def __init__(self, rows=None):
         self.calls = []
+        self.rows = list(rows or [])
 
     def recent_intents_for_lookup_keys(self, keys, *, since_ms, limit):
         self.calls.append({"keys": list(keys), "since_ms": since_ms, "limit": limit})
-        return []
+        return list(self.rows)
+
+    def recent_unresolved(self, *, since_ms, limit):
+        self.calls.append({"keys": None, "since_ms": since_ms, "limit": limit})
+        return list(self.rows)
+
+    def replace_lookup_keys(self, **kwargs):
+        return None
 
 
 class FakeRepos:
     def __init__(self, *, lookup):
         self.token_intent_lookup = lookup
+        self.token_intents = lookup
+        self.token_evidence = FakeTokenEvidence()
         self.registry = object()
         self.intent_resolutions = object()
+        self.token_radar_dirty_targets = FakeDirtyTargets()
         self.conn = FakeConn()
+
+
+class FakeTokenEvidence:
+    def evidence_for_intent(self, intent_id):
+        return []
+
+
+class FakeDirtyTargets:
+    def __init__(self):
+        self.enqueues = []
+
+    def enqueue_targets(self, rows, *, reason, now_ms, commit):
+        self.enqueues.append(
+            {
+                "rows": list(rows),
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
 
 
 class FakeConn:
