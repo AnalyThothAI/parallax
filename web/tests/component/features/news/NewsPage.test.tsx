@@ -15,6 +15,22 @@ vi.mock("@lib/api/client", () => ({
 const fetchNewsRowsMock = vi.mocked(fetchNewsRows);
 const fetchNewsItemMock = vi.mocked(fetchNewsItem);
 
+const defaultNewsFetchParams = {
+  content_class: null,
+  content_tag: null,
+  coverage_tag: null,
+  cursor: null,
+  decision_class: null,
+  direction: null,
+  limit: 100,
+  provider_type: null,
+  q: null,
+  source_role: null,
+  status: null,
+  token: "test-token",
+  trust_tier: null,
+};
+
 describe("NewsPage", () => {
   beforeEach(() => {
     fetchNewsRowsMock.mockReset();
@@ -37,7 +53,7 @@ describe("NewsPage", () => {
     expect(screen.getByText("Time")).toBeInTheDocument();
     expect(screen.getByText("Brief")).toBeInTheDocument();
     expect(screen.getByText("Direction")).toBeInTheDocument();
-    expect(screen.getByText("Decision")).toBeInTheDocument();
+    expect(screen.getAllByText("Decision").length).toBeGreaterThan(0);
     expect(screen.getByText("Evidence/Gaps")).toBeInTheDocument();
     expect(screen.getByText("Coinbase 上线 NEWX，短线关注流动性确认。")).toBeInTheDocument();
     expect(screen.getByText("bullish")).toBeInTheDocument();
@@ -46,38 +62,24 @@ describe("NewsPage", () => {
     expect(screen.getByRole("tab", { name: /bullish/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /bear/i })).toBeInTheDocument();
     expect(screen.getByText(/page\s+1/i)).toBeInTheDocument();
-    expect(fetchNewsRowsMock).toHaveBeenCalledWith({
-      cursor: null,
-      direction: null,
-      limit: 100,
-      status: null,
-      token: "test-token",
-    });
+    expect(fetchNewsRowsMock).toHaveBeenCalledWith(defaultNewsFetchParams);
+    expect(screen.getAllByText("crypto_market").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("exchange_listing").length).toBeGreaterThan(0);
+    expect(screen.getByText("official_exchange · official")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /next news page/i }));
 
     expect(await screen.findByText("Second page story")).toBeInTheDocument();
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
         cursor: "cursor-2",
-        direction: null,
-        limit: 100,
-        status: null,
-        token: "test-token",
       }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /previous news page/i }));
     expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
-        cursor: null,
-        direction: null,
-        limit: 100,
-        status: null,
-        token: "test-token",
-      }),
-    );
+    await waitFor(() => expect(fetchNewsRowsMock).toHaveBeenLastCalledWith(defaultNewsFetchParams));
   });
 
   it("requests backend direction filters from the news tabs", async () => {
@@ -94,14 +96,84 @@ describe("NewsPage", () => {
     expect(await screen.findByText("Regulator sues token issuer")).toBeInTheDocument();
     await waitFor(() =>
       expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
-        cursor: null,
+        ...defaultNewsFetchParams,
         direction: "bearish",
-        limit: 100,
-        status: null,
-        token: "test-token",
       }),
     );
     expect(screen.getByRole("tab", { name: /bear/i })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("button", { name: /previous news page/i })).toBeDisabled();
+  });
+
+  it("requests backend classification and source filters and preserves them while paging", async () => {
+    fetchNewsRowsMock.mockImplementation(async (params = {}) => ({
+      items: params.cursor === "cursor-2" ? [secondPageRow] : [firstPageRow],
+      next_cursor: params.cursor === "cursor-2" ? null : "cursor-2",
+    }));
+
+    renderNews(<NewsPage token="test-token" />);
+
+    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Regulation" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "regulation",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "tokenized_stocks" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "regulation",
+        content_tag: "tokenized_stocks",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Driver" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "regulation",
+        content_tag: "tokenized_stocks",
+        decision_class: "driver",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Official" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "regulation",
+        content_tag: "tokenized_stocks",
+        decision_class: "driver",
+        trust_tier: "official",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /next news page/i }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "regulation",
+        content_tag: "tokenized_stocks",
+        cursor: "cursor-2",
+        decision_class: "driver",
+        trust_tier: "official",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "CryptoPanic" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "regulation",
+        content_tag: "tokenized_stocks",
+        decision_class: "driver",
+        provider_type: "cryptopanic",
+      }),
+    );
     expect(screen.getByRole("button", { name: /previous news page/i })).toBeDisabled();
   });
 
@@ -200,6 +272,20 @@ const firstPageRow: NewsRow = {
   headline: "Coinbase lists NEWX",
   summary: "Trading starts today",
   source_domain: "example.test",
+  provider_type: "rss",
+  source_role: "official_exchange",
+  trust_tier: "official",
+  coverage_tags: ["crypto_exchange", "exchange_listing"],
+  source: {
+    provider_type: "rss",
+    source_domain: "example.test",
+    source_role: "official_exchange",
+    trust_tier: "official",
+    coverage_tags: ["crypto_exchange", "exchange_listing"],
+    source_quality_status: "healthy",
+  },
+  content_class: "crypto_market",
+  content_tags: ["exchange_listing", "tokenized_stocks"],
   latest_at_ms: 1_765_000_000_000,
   token_lanes: [{ lane: "attention", resolution_status: "unknown_attention", symbol: "NEWX" }],
   fact_lanes: [{ event_type: "listing", status: "attention" }],

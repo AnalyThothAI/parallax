@@ -210,6 +210,19 @@
       min-width: 0;
     }
 
+    .news-filter-panel {
+      min-width: 0;
+    }
+
+    .news-filter-group,
+    .news-search-filter {
+      grid-template-columns: 1fr;
+    }
+
+    .news-filter-button {
+      flex: 1 1 auto;
+    }
+
     .news-direction-tab-list,
     .news-pager {
       width: 100%;

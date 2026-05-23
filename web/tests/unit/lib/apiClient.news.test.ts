@@ -4,6 +4,104 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 describe("news API client normalization", () => {
+  it("sends news classification filters and normalizes content/source fields", async () => {
+    const observedParams: Record<string, string | null> = {};
+    server.use(
+      http.get(/.*\/api\/news$/, ({ request }) => {
+        const searchParams = new URL(request.url).searchParams;
+        [
+          "content_class",
+          "content_tag",
+          "coverage_tag",
+          "cursor",
+          "decision_class",
+          "direction",
+          "limit",
+          "provider_type",
+          "q",
+          "source_role",
+          "trust_tier",
+        ].forEach((key) => {
+          observedParams[key] = searchParams.get(key);
+        });
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            items: [
+              {
+                row_id: "row-classified",
+                news_item_id: "news-classified",
+                lifecycle_status: "attention",
+                headline: "SEC reviews tokenized stocks",
+                source_domain: "sec.gov",
+                content_class: "regulation",
+                content_tags_json: ["sec", "tokenized_stocks"],
+                content_classification_json: {
+                  policy_version: "news_content_classification_v1",
+                  matched_rules: ["text:regulation"],
+                },
+                source_json: {
+                  provider_type: "rss",
+                  source_role: "official_regulator",
+                  trust_tier: "official",
+                  coverage_tags: ["regulation", "sec"],
+                  source_quality_status: "healthy",
+                },
+              },
+            ],
+            next_cursor: null,
+          },
+        });
+      }),
+    );
+
+    const rows = await fetchNewsRows({
+      content_class: "regulation",
+      content_tag: "tokenized_stocks",
+      coverage_tag: "sec",
+      cursor: "cursor-1",
+      decision_class: "driver",
+      direction: "bullish",
+      limit: 25,
+      provider_type: "rss",
+      q: "tokenized",
+      source_role: "official_regulator",
+      token: "test-token",
+      trust_tier: "official",
+    });
+
+    expect(observedParams.content_class).toBe("regulation");
+    expect(observedParams.content_tag).toBe("tokenized_stocks");
+    expect(observedParams.coverage_tag).toBe("sec");
+    expect(observedParams.cursor).toBe("cursor-1");
+    expect(observedParams.decision_class).toBe("driver");
+    expect(observedParams.direction).toBe("bullish");
+    expect(observedParams.limit).toBe("25");
+    expect(observedParams.provider_type).toBe("rss");
+    expect(observedParams.q).toBe("tokenized");
+    expect(observedParams.source_role).toBe("official_regulator");
+    expect(observedParams.trust_tier).toBe("official");
+    expect(rows.items[0].content_class).toBe("regulation");
+    expect(rows.items[0].content_tags).toEqual(["sec", "tokenized_stocks"]);
+    expect(rows.items[0].content_tags_json).toEqual(["sec", "tokenized_stocks"]);
+    expect(rows.items[0].content_classification).toEqual({
+      policy_version: "news_content_classification_v1",
+      matched_rules: ["text:regulation"],
+    });
+    expect(rows.items[0].content_classification_json).toEqual({
+      policy_version: "news_content_classification_v1",
+      matched_rules: ["text:regulation"],
+    });
+    expect(rows.items[0].source?.provider_type).toBe("rss");
+    expect(rows.items[0].source?.source_role).toBe("official_regulator");
+    expect(rows.items[0].source?.trust_tier).toBe("official");
+    expect(rows.items[0].source?.coverage_tags).toEqual(["regulation", "sec"]);
+    expect(rows.items[0].provider_type).toBe("rss");
+    expect(rows.items[0].source_role).toBe("official_regulator");
+    expect(rows.items[0].trust_tier).toBe("official");
+    expect(rows.items[0].coverage_tags).toEqual(["regulation", "sec"]);
+  });
+
   it("normalizes flat, nested, and missing news agent briefs", async () => {
     server.use(
       http.get(/.*\/api\/news$/, () =>
@@ -32,10 +130,7 @@ describe("news API client normalization", () => {
                     thesis_zh: "空头来自后端",
                     evidence_refs: [{ ref: "fact:1", label: "Fact 1" }],
                   },
-                  data_gaps: [
-                    "缺少价格反应",
-                    { description_zh: "缺少身份映射", severity: "high" },
-                  ],
+                  data_gaps: ["缺少价格反应", { description_zh: "缺少身份映射", severity: "high" }],
                   evidence_refs: ["item:title", { ref: "fact:1", label: "Fact 1" }],
                 },
                 agent_brief_computed_at_ms: "1765000000000",

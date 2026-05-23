@@ -53,25 +53,87 @@ export const queryKeys = {
   macroSeries: (conceptKeys: string[], window: string) =>
     ["macro", "series", [...conceptKeys].sort(), window] as const,
   newsRows: ({
+    content_class,
+    content_tag,
+    coverage_tag,
     limit,
     cursor,
+    decision_class,
     direction,
+    provider_type,
+    q,
+    source_role,
     status,
+    trust_tier,
   }: {
+    content_class?: string | null;
+    content_tag?: string | null;
+    coverage_tag?: string | null;
     limit: number;
     cursor?: string | null;
+    decision_class?: string | null;
     direction?: string | null;
+    provider_type?: string | null;
+    q?: string | null;
+    source_role?: string | null;
     status?: string | null;
-  }) => ["news", limit, cursor ?? "", direction ?? "", status ?? ""] as const,
+    trust_tier?: string | null;
+  }) =>
+    [
+      "news",
+      limit,
+      cursor ?? "",
+      direction ?? "",
+      status ?? "",
+      decision_class ?? "",
+      content_class ?? "",
+      content_tag ?? "",
+      provider_type ?? "",
+      source_role ?? "",
+      trust_tier ?? "",
+      coverage_tag ?? "",
+      q ?? "",
+    ] as const,
   newsRowsInfinite: ({
+    content_class,
+    content_tag,
+    coverage_tag,
+    decision_class,
     direction,
     limit,
+    provider_type,
+    q,
+    source_role,
     status,
+    trust_tier,
   }: {
+    content_class?: string | null;
+    content_tag?: string | null;
+    coverage_tag?: string | null;
+    decision_class?: string | null;
     direction?: string | null;
     limit: number;
+    provider_type?: string | null;
+    q?: string | null;
+    source_role?: string | null;
     status?: string | null;
-  }) => ["news", "infinite", limit, direction ?? "", status ?? ""] as const,
+    trust_tier?: string | null;
+  }) =>
+    [
+      "news",
+      "infinite",
+      limit,
+      direction ?? "",
+      status ?? "",
+      decision_class ?? "",
+      content_class ?? "",
+      content_tag ?? "",
+      provider_type ?? "",
+      source_role ?? "",
+      trust_tier ?? "",
+      coverage_tag ?? "",
+      q ?? "",
+    ] as const,
   newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,
   targetSocialTimeline: (targetKey: string | null, window: WindowKey, scope: ScopeKey) =>
     ["target-social-timeline", targetKey, window, scope] as const,
@@ -120,13 +182,8 @@ export const queryKeys = {
       q ?? "",
     ] as const,
   equityEvent: (eventId: string) => ["equity-event", eventId] as const,
-  equityEventCalendar: ({
-    status,
-    ticker,
-  }: {
-    status?: string | null;
-    ticker?: string | null;
-  }) => ["equity-event-calendar", ticker ?? "", status ?? ""] as const,
+  equityEventCalendar: ({ status, ticker }: { status?: string | null; ticker?: string | null }) =>
+    ["equity-event-calendar", ticker ?? "", status ?? ""] as const,
   equityEventSummary: () => ["equity-event-summary"] as const,
   watchlistHandleOverview: (handle: string, scope: WatchlistTimelineScope) =>
     ["watchlist-handle-overview", handle, scope] as const,
