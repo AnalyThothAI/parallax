@@ -936,6 +936,64 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
     assert status == "raw"
 
 
+def test_update_item_content_classification_persists_materialized_fields(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo)
+
+        repo.update_item_content_classification(
+            news_item_id=news_item_id,
+            content_class="regulation",
+            content_tags=["tokenized_stocks", "sec"],
+            classification_payload={"policy_version": "test", "matched_rules": ["rule-1"]},
+            now_ms=NOW_MS + 1,
+        )
+
+        row = conn.execute(
+            """
+            SELECT content_class, content_tags_json, content_classification_json, updated_at_ms
+              FROM news_items
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row["content_class"] == "regulation"
+    assert row["content_tags_json"] == ["tokenized_stocks", "sec"]
+    assert row["content_classification_json"] == {"policy_version": "test", "matched_rules": ["rule-1"]}
+    assert row["updated_at_ms"] == NOW_MS + 1
+
+
+def test_list_unprocessed_items_claims_processed_unclassified_items(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        classified_id = _insert_source_provider_and_item(repo, source_item_key="classified", title="Classified")
+        unclassified_id = _insert_source_provider_and_item(repo, source_item_key="unclassified", title="Unclassified")
+        repo.update_item_content_classification(
+            news_item_id=classified_id,
+            content_class="crypto_market",
+            content_tags=["crypto_market"],
+            classification_payload={"policy_version": "test"},
+            now_ms=NOW_MS + 1,
+        )
+        repo.mark_item_processed(news_item_id=classified_id, processed_at_ms=NOW_MS + 2)
+        repo.mark_item_processed(news_item_id=unclassified_id, processed_at_ms=NOW_MS + 2)
+
+        rows = repo.list_unprocessed_items(limit=10, now_ms=NOW_MS + 3)
+    finally:
+        conn.close()
+
+    assert [row["news_item_id"] for row in rows] == [unclassified_id]
+    assert rows[0]["lifecycle_status"] == "processed"
+    assert rows[0]["content_classification_json"] == {}
+
+
 def test_get_news_item_detail_hydrates_agent_brief_and_latest_run_summary(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

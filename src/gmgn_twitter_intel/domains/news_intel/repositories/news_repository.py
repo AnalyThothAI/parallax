@@ -859,6 +859,10 @@ class NewsRepository:
               SELECT news_item_id
                 FROM news_items
                WHERE lifecycle_status IN ('raw', 'process_failed')
+                  OR (
+                    lifecycle_status = 'processed'
+                    AND content_classification_json = '{}'::jsonb
+                  )
                ORDER BY published_at_ms ASC, news_item_id ASC
                LIMIT %s
                FOR UPDATE SKIP LOCKED
@@ -888,6 +892,9 @@ class NewsRepository:
                    claimed.processing_attempts,
                    claimed.processing_error,
                    claimed.processed_at_ms,
+                   claimed.content_class,
+                   claimed.content_tags_json,
+                   claimed.content_classification_json,
                    claimed.created_at_ms,
                    claimed.updated_at_ms,
                    sources.source_role,
@@ -1033,6 +1040,36 @@ class NewsRepository:
              WHERE news_item_id = %s
             """,
             (int(processed_at_ms), int(processed_at_ms), news_item_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def update_item_content_classification(
+        self,
+        *,
+        news_item_id: str,
+        content_class: str,
+        content_tags: Sequence[str],
+        classification_payload: Mapping[str, Any],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE news_items
+               SET content_class = %s,
+                   content_tags_json = %s,
+                   content_classification_json = %s,
+                   updated_at_ms = %s
+             WHERE news_item_id = %s
+            """,
+            (
+                str(content_class),
+                _json([str(tag) for tag in content_tags]),
+                _json(_json_dict(classification_payload)),
+                int(now_ms),
+                str(news_item_id),
+            ),
         )
         if commit:
             self.conn.commit()
