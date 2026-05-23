@@ -588,10 +588,28 @@ def _run_token_radar_projection_worker_once(
         )
         try:
             lock_key = _effective_worker_advisory_lock_key(worker)
-            advisory_lock = db.acquire_advisory_lock_connection(
-                worker_name,
-                lock_key,
-            )
+            try:
+                advisory_lock = db.acquire_advisory_lock_connection(
+                    worker_name,
+                    lock_key,
+                )
+            except RuntimeError as exc:
+                if "advisory_lock_unavailable" not in str(exc):
+                    raise
+                return {
+                    "status": "skipped",
+                    "skipped": 1,
+                    "rows_written": 0,
+                    "source_rows": 0,
+                    "claimed": 0,
+                    "catch_up_enqueued": 0,
+                    "windows": {},
+                    "notes": {
+                        "reason": "advisory_lock_unavailable",
+                        "worker_name": worker_name,
+                        "lock_key": lock_key,
+                    },
+                }
             return worker.rebuild_once(now_ms=now_ms, windows=windows, scopes=scopes, limit=limit)
         finally:
             if advisory_lock is not None:

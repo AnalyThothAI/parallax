@@ -316,6 +316,22 @@ def test_makefile_exposes_global_cli_install_targets():
     assert "init: ## create ~/.gmgn-twitter-intel/config.yaml" in makefile
 
 
+def test_makefile_exposes_single_token_radar_cex_recovery_target():
+    makefile = (ROOT / "Makefile").read_text()
+
+    assert "token-radar-cex-recover: ## recover Token Radar CEX recognition" in makefile
+    assert "\t@$(GMGN) ops sync-binance-usdt-perp-universe --execute" in makefile
+    assert "\t@$(GMGN) ops sync-binance-cex-profiles" in makefile
+    assert "\t@$(GMGN) ops cex-binance-hard-cut-cleanup --dry-run --min-binance-feeds 400" in makefile
+    assert "\t@$(GMGN) ops cex-binance-hard-cut-cleanup --execute --min-binance-feeds 400" in makefile
+    assert "\t@$(GMGN) ops reset-token-radar-postgres-hard-cut --execute" in makefile
+    assert (
+        "\t@$(GMGN) ops rebuild-token-intents --window 24h --limit 5000 --projection-limit 5000"
+        in makefile
+    )
+    assert "\t@$(GMGN) ops audit-token-radar --window 1h --scope all --limit 20" in makefile
+
+
 def test_compose_bind_mounts_local_runtime_home_without_env_config_sources():
     compose = (ROOT / "compose.yaml").read_text()
     data = yaml.safe_load(compose)
