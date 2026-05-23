@@ -26,6 +26,8 @@ def build_news_page_row(
     source_payload = _source_payload(item)
     agent_payload = _compact_agent_brief(agent_brief)
     agent_status = str(agent_payload.get("status") or "pending")
+    content_tags = _json_list(item.get("content_tags_json"))
+    content_classification = _json_object(item.get("content_classification_json"))
     return {
         "row_id": _stable_id("news-page-row", NEWS_PAGE_PROJECTION_VERSION, news_item_id),
         "news_item_id": news_item_id,
@@ -38,6 +40,11 @@ def build_news_page_row(
         "canonical_url": str(item.get("canonical_url") or ""),
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
+        "content_class": item.get("content_class"),
+        "content_tags": content_tags,
+        "content_tags_json": content_tags,
+        "content_classification": content_classification,
+        "content_classification_json": content_classification,
         "story": story_payload,
         "source": source_payload,
         "agent_brief": agent_payload,

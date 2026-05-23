@@ -19,7 +19,13 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     with TestClient(app) as client:
         response = client.get(
             "/api/news",
-            params={"limit": 1, "cursor": "2000:row-old", "direction": "bullish"},
+            params={
+                "limit": 1,
+                "cursor": "2000:row-old",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "content_tag": "sec",
+            },
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -29,6 +35,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
             "content_class": None,
             "coverage_tag": None,
             "cursor": "2000:row-old",
+            "decision_class": "driver",
             "direction": "bullish",
             "include_unprojected": False,
             "lane": None,
@@ -40,6 +47,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
             "status": None,
             "target": None,
             "trust_tier": None,
+            "content_tag": "sec",
         }
     ]
     assert response.json() == {
@@ -60,6 +68,9 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
                     "fact_lanes_json": [],
                     "story_json": {},
                     "source_json": {"source_id": "example-rss"},
+                    "content_class": "regulation",
+                    "content_tags_json": ["sec"],
+                    "content_classification_json": {"policy_version": "test"},
                     "agent_brief_json": {"status": "pending"},
                     "agent_brief": {"status": "pending"},
                     "agent_status": "pending",
@@ -87,6 +98,8 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
                 "trust_tier": "high",
                 "coverage_tag": "crypto_market",
                 "content_class": "regulatory_action",
+                "content_tag": "sec",
+                "decision_class": "driver",
             },
             headers={"Authorization": "Bearer secret"},
         )
@@ -94,8 +107,10 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
     assert response.status_code == 200
     assert news.calls[-1] == {
         "content_class": "regulatory_action",
+        "content_tag": "sec",
         "coverage_tag": "crypto_market",
         "cursor": None,
+        "decision_class": "driver",
         "direction": None,
         "include_unprojected": False,
         "lane": None,
@@ -144,14 +159,18 @@ class FakeNewsRepository:
         trust_tier: str | None = None,
         coverage_tag: str | None = None,
         content_class: str | None = None,
+        content_tag: str | None = None,
+        decision_class: str | None = None,
         q: str | None = None,
         include_unprojected: bool,
     ):
         self.calls.append(
             {
                 "content_class": content_class,
+                "content_tag": content_tag,
                 "coverage_tag": coverage_tag,
                 "cursor": cursor,
+                "decision_class": decision_class,
                 "direction": direction,
                 "include_unprojected": include_unprojected,
                 "lane": lane,
@@ -180,6 +199,9 @@ class FakeNewsRepository:
                 "fact_lanes_json": [],
                 "story_json": {},
                 "source_json": {"source_id": "example-rss"},
+                "content_class": "regulation",
+                "content_tags_json": ["sec"],
+                "content_classification_json": {"policy_version": "test"},
                 "agent_brief_json": {"status": "pending"},
                 "agent_brief": {"status": "pending"},
                 "agent_status": "pending",

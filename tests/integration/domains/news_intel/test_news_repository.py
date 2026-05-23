@@ -683,6 +683,9 @@ def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
                         "coverage_tags": ["crypto_exchange", "exchange_listing"],
                         "source_quality_status": "healthy",
                     },
+                    "content_class": "exchange_listing",
+                    "content_tags_json": ["exchange_listing"],
+                    "content_classification_json": {"policy_version": "test"},
                     "fact_lanes_json": [{"content_class": "exchange_listing", "event_type": "listing"}],
                 },
                 {
@@ -697,6 +700,9 @@ def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
                         "coverage_tags": [],
                         "source_quality_status": "unknown",
                     },
+                    "content_class": "market_commentary",
+                    "content_tags_json": ["markets"],
+                    "content_classification_json": {"policy_version": "test"},
                     "fact_lanes_json": [{"content_class": "market_commentary"}],
                 },
             ],
@@ -714,6 +720,104 @@ def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
         conn.close()
 
     assert [row["row_id"] for row in rows] == ["row-matching"]
+
+
+def test_list_news_page_rows_filters_by_item_content_classification(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        top_level_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="top-level",
+            title="Top level",
+        )
+        fact_only_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="fact-only",
+            title="Fact only",
+        )
+        other_item_id = _insert_source_provider_and_item(
+            repo,
+            source_item_key="other-class",
+            title="Other class",
+        )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[top_level_item_id, fact_only_item_id, other_item_id],
+            rows=[
+                {
+                    **_page_row("row-top-level", top_level_item_id, source_id="source-1"),
+                    "content_class": "regulation",
+                    "content_tags_json": ["sec", "tokenized_stocks"],
+                    "content_classification_json": {"policy_version": "test", "matched_rules": ["sec"]},
+                },
+                {
+                    **_page_row("row-fact-only", fact_only_item_id, source_id="source-1"),
+                    "content_class": "market_commentary",
+                    "content_tags_json": ["markets"],
+                    "content_classification_json": {"policy_version": "test"},
+                    "fact_lanes_json": [{"content_class": "regulation", "event_type": "regulation"}],
+                },
+                {
+                    **_page_row("row-other", other_item_id, source_id="source-1"),
+                    "content_class": "market_commentary",
+                    "content_tags_json": ["markets"],
+                    "content_classification_json": {"policy_version": "test"},
+                },
+            ],
+        )
+
+        persisted = conn.execute(
+            """
+            SELECT content_class, content_tags_json, content_classification_json
+              FROM news_page_rows
+             WHERE row_id = 'row-top-level'
+            """
+        ).fetchone()
+        class_rows = repo.list_news_page_rows(limit=10, content_class="regulation")
+        tag_rows = repo.list_news_page_rows(limit=10, content_tag="sec")
+    finally:
+        conn.close()
+
+    assert persisted["content_class"] == "regulation"
+    assert persisted["content_tags_json"] == ["sec", "tokenized_stocks"]
+    assert persisted["content_classification_json"] == {"policy_version": "test", "matched_rules": ["sec"]}
+    assert [row["row_id"] for row in class_rows] == ["row-top-level"]
+    assert class_rows[0]["content_class"] == "regulation"
+    assert class_rows[0]["content_tags_json"] == ["sec", "tokenized_stocks"]
+    assert class_rows[0]["content_classification_json"] == {"policy_version": "test", "matched_rules": ["sec"]}
+    assert [row["row_id"] for row in tag_rows] == ["row-top-level"]
+
+
+def test_list_news_page_rows_filters_by_decision_class(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        driver_item_id = _insert_source_provider_and_item(repo, source_item_key="driver", title="Driver")
+        watch_item_id = _insert_source_provider_and_item(repo, source_item_key="watch", title="Watch")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[driver_item_id, watch_item_id],
+            rows=[
+                {
+                    **_page_row("row-driver", driver_item_id, source_id="source-1"),
+                    "agent_status": "ready",
+                    "agent_brief_json": {"status": "ready", "decision_class": "driver"},
+                },
+                {
+                    **_page_row("row-watch", watch_item_id, source_id="source-1"),
+                    "agent_status": "ready",
+                    "agent_brief_json": {"status": "ready", "decision_class": "watch"},
+                },
+            ],
+        )
+
+        rows = repo.list_news_page_rows(limit=10, decision_class="driver")
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in rows] == ["row-driver"]
+    assert rows[0]["agent_brief_json"]["decision_class"] == "driver"
 
 
 def test_page_projection_candidates_include_rows_when_source_classification_changes(tmp_path) -> None:

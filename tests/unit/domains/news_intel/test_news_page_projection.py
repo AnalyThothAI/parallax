@@ -83,6 +83,39 @@ def test_build_news_page_row_includes_compact_source_classification() -> None:
     }
 
 
+def test_build_news_page_row_copies_item_level_content_classification() -> None:
+    row = build_news_page_row(
+        item={
+            "news_item_id": "news-1",
+            "title": "SEC delays tokenized stock decision",
+            "summary": "The filing remains open.",
+            "source_domain": "example.test",
+            "canonical_url": "https://example.test/sec",
+            "published_at_ms": 1000,
+            "content_class": "regulation",
+            "content_tags_json": ("sec", "tokenized_stocks"),
+            "content_classification_json": {
+                "policy_version": "news_content_classification_v1",
+                "matched_rules": ["regulatory_body"],
+                "none_value": None,
+            },
+        },
+        story=None,
+        token_mentions=[],
+        fact_candidates=[],
+        computed_at_ms=2000,
+    )
+
+    assert row["content_class"] == "regulation"
+    assert row["content_tags"] == ["sec", "tokenized_stocks"]
+    assert row["content_tags_json"] == ["sec", "tokenized_stocks"]
+    assert row["content_classification"] == {
+        "policy_version": "news_content_classification_v1",
+        "matched_rules": ["regulatory_body"],
+    }
+    assert row["content_classification_json"] == row["content_classification"]
+
+
 def test_build_news_page_row_uses_stable_row_id() -> None:
     item = {
         "news_item_id": "news-1",

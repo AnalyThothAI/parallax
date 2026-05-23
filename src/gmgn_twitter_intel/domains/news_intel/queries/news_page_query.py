@@ -24,6 +24,8 @@ class NewsPageQuery:
         trust_tier: str | None = None,
         coverage_tag: str | None = None,
         content_class: str | None = None,
+        content_tag: str | None = None,
+        decision_class: str | None = None,
         q: str | None = None,
         include_unprojected: bool = False,
     ) -> dict[str, Any]:
@@ -40,6 +42,8 @@ class NewsPageQuery:
             trust_tier=trust_tier,
             coverage_tag=coverage_tag,
             content_class=content_class,
+            content_tag=content_tag,
+            decision_class=decision_class,
             q=q,
             include_unprojected=include_unprojected,
         )

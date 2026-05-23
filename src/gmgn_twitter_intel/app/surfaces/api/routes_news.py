@@ -29,6 +29,8 @@ def list_news(
     trust_tier: Annotated[str, Query()] = "",
     coverage_tag: Annotated[str, Query()] = "",
     content_class: Annotated[str, Query()] = "",
+    content_tag: Annotated[str, Query()] = "",
+    decision_class: Annotated[str, Query()] = "",
     q: Annotated[str, Query()] = "",
     include_unprojected: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
@@ -47,6 +49,8 @@ def list_news(
             trust_tier=trust_tier or None,
             coverage_tag=coverage_tag or None,
             content_class=content_class or None,
+            content_tag=content_tag or None,
+            decision_class=decision_class or None,
             q=q or None,
             include_unprojected=include_unprojected,
         )

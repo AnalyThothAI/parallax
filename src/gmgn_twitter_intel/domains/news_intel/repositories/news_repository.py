@@ -628,6 +628,8 @@ class NewsRepository:
         trust_tier: str | None = None,
         coverage_tag: str | None = None,
         content_class: str | None = None,
+        content_tag: str | None = None,
+        decision_class: str | None = None,
         q: str | None = None,
         include_unprojected: bool = False,
     ) -> list[dict[str, Any]]:
@@ -645,6 +647,8 @@ class NewsRepository:
                 trust_tier=trust_tier,
                 coverage_tag=coverage_tag,
                 content_class=content_class,
+                content_tag=content_tag,
+                decision_class=decision_class,
                 q=q,
             )
         return self._list_projected_news_page_rows(
@@ -660,6 +664,8 @@ class NewsRepository:
             trust_tier=trust_tier,
             coverage_tag=coverage_tag,
             content_class=content_class,
+            content_tag=content_tag,
+            decision_class=decision_class,
             q=q,
         )
 
@@ -678,6 +684,8 @@ class NewsRepository:
         trust_tier: str | None = None,
         coverage_tag: str | None = None,
         content_class: str | None = None,
+        content_tag: str | None = None,
+        decision_class: str | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
@@ -692,6 +700,8 @@ class NewsRepository:
             trust_tier=trust_tier,
             coverage_tag=coverage_tag,
             content_class=content_class,
+            content_tag=content_tag,
+            decision_class=decision_class,
             q=q,
         )
         rows = self.conn.execute(
@@ -708,6 +718,9 @@ class NewsRepository:
               canonical_url,
               token_lanes_json,
               fact_lanes_json,
+              content_class,
+              content_tags_json,
+              content_classification_json,
               story_json,
               source_json,
               agent_brief_json,
@@ -751,6 +764,8 @@ class NewsRepository:
         trust_tier: str | None = None,
         coverage_tag: str | None = None,
         content_class: str | None = None,
+        content_tag: str | None = None,
+        decision_class: str | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
@@ -765,6 +780,8 @@ class NewsRepository:
             trust_tier=trust_tier,
             coverage_tag=coverage_tag,
             content_class=content_class,
+            content_tag=content_tag,
+            decision_class=decision_class,
             q=q,
         )
         rows = self.conn.execute(
@@ -782,6 +799,9 @@ class NewsRepository:
                 canonical_url,
                 token_lanes_json,
                 fact_lanes_json,
+                content_class,
+                content_tags_json,
+                content_classification_json,
                 story_json,
                 source_json,
                 agent_brief_json,
@@ -805,6 +825,9 @@ class NewsRepository:
                 items.canonical_url,
                 '[]'::jsonb AS token_lanes_json,
                 '[]'::jsonb AS fact_lanes_json,
+                items.content_class,
+                items.content_tags_json,
+                items.content_classification_json,
                 '{{}}'::jsonb AS story_json,
                 jsonb_build_object(
                   'source_id', items.source_id,
@@ -2029,13 +2052,15 @@ class NewsRepository:
                 INSERT INTO news_page_rows (
                   row_id, news_item_id, story_id, latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, token_lanes_json,
-                  fact_lanes_json, story_json, source_json, agent_brief_json, agent_status,
-                  agent_brief_computed_at_ms, computed_at_ms, projection_version
+                  fact_lanes_json, content_class, content_tags_json, content_classification_json,
+                  story_json, source_json, agent_brief_json, agent_status, agent_brief_computed_at_ms,
+                  computed_at_ms, projection_version
                 )
                 VALUES (
                   %(row_id)s, %(news_item_id)s, %(story_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
                   %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(token_lanes_json)s,
-                  %(fact_lanes_json)s, %(story_json)s, %(source_json)s, %(agent_brief_json)s, %(agent_status)s,
+                  %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
+                  %(story_json)s, %(source_json)s, %(agent_brief_json)s, %(agent_status)s,
                   %(agent_brief_computed_at_ms)s, %(computed_at_ms)s, %(projection_version)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
@@ -2049,6 +2074,9 @@ class NewsRepository:
                   canonical_url = EXCLUDED.canonical_url,
                   token_lanes_json = EXCLUDED.token_lanes_json,
                   fact_lanes_json = EXCLUDED.fact_lanes_json,
+                  content_class = EXCLUDED.content_class,
+                  content_tags_json = EXCLUDED.content_tags_json,
+                  content_classification_json = EXCLUDED.content_classification_json,
                   story_json = EXCLUDED.story_json,
                   source_json = EXCLUDED.source_json,
                   agent_brief_json = EXCLUDED.agent_brief_json,
@@ -2147,6 +2175,8 @@ def _news_page_row_filter_sql(
     trust_tier: str | None = None,
     coverage_tag: str | None = None,
     content_class: str | None = None,
+    content_tag: str | None = None,
+    decision_class: str | None = None,
     q: str | None = None,
 ) -> tuple[str, list[Any]]:
     filters: list[str] = []
@@ -2157,6 +2187,9 @@ def _news_page_row_filter_sql(
     if direction:
         filters.append("LOWER(agent_brief_json ->> 'direction') = %s")
         filter_params.append(str(direction).strip().lower())
+    if decision_class:
+        filters.append("agent_brief_json ->> 'decision_class' = %s")
+        filter_params.append(str(decision_class))
     if source:
         filters.append("source_domain = %s")
         filter_params.append(str(source))
@@ -2173,18 +2206,11 @@ def _news_page_row_filter_sql(
         filters.append("(source_json -> 'coverage_tags') ? %s")
         filter_params.append(str(coverage_tag))
     if content_class:
-        filters.append(
-            """
-            EXISTS (
-              SELECT 1
-                FROM jsonb_array_elements(fact_lanes_json) AS fact_lane(value)
-               WHERE fact_lane.value ->> 'content_class' = %s
-                  OR fact_lane.value ->> 'event_type' = %s
-            )
-            """
-        )
-        normalized_content_class = str(content_class)
-        filter_params.extend([normalized_content_class, normalized_content_class])
+        filters.append("content_class = %s")
+        filter_params.append(str(content_class))
+    if content_tag:
+        filters.append("(content_tags_json ? %s)")
+        filter_params.append(str(content_tag))
     if q:
         filters.append("(headline ILIKE %s OR summary ILIKE %s)")
         needle = f"%{str(q).strip()}%"
@@ -2210,6 +2236,11 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["story_id"] = payload.get("story_id")
     payload["token_lanes_json"] = _json(payload.get("token_lanes_json", payload.get("token_lanes")) or [])
     payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json", payload.get("fact_lanes")) or [])
+    payload["content_class"] = str(payload.get("content_class") or "low_signal")
+    payload["content_tags_json"] = _json(payload.get("content_tags_json", payload.get("content_tags")) or [])
+    payload["content_classification_json"] = _json(
+        payload.get("content_classification_json", payload.get("content_classification")) or {}
+    )
     payload["story_json"] = _json(payload.get("story_json", payload.get("story")) or {})
     payload["source_json"] = _json(payload.get("source_json", payload.get("source")) or {})
     agent_brief = payload.get("agent_brief_json", payload.get("agent_brief")) or {"status": "pending"}
