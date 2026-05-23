@@ -10,6 +10,7 @@ from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runt
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit
 from gmgn_twitter_intel.domains.news_intel.queries.news_page_query import NewsPageQuery
+from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 
 router = APIRouter()
 
@@ -91,9 +92,55 @@ def get_news_fact(request: Request, fact_candidate_id: str) -> JSONResponse:
 def get_news_source_status(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
-        data = {"sources": _news_read_model(repos).source_status()}
+        sources = _news_read_model(repos).source_status()
+        data = {
+            "provider_capabilities": _provider_capabilities(sources),
+            "source_hygiene": _source_hygiene(sources),
+            "sources": sources,
+        }
     return _json({"ok": True, "data": data})
 
 
 def _news_read_model(repos: Any) -> NewsPageQuery:
     return NewsPageQuery(repository=repos.news)
+
+
+def _provider_capabilities(sources: list[dict[str, Any]]) -> dict[str, Any]:
+    supported = set(SUPPORTED_NEWS_PROVIDER_TYPES)
+    configured = sorted({str(source.get("provider_type") or "") for source in sources if source.get("provider_type")})
+    unsupported = [provider_type for provider_type in configured if provider_type not in supported]
+    return {
+        "supported_provider_types": list(SUPPORTED_NEWS_PROVIDER_TYPES),
+        "configured_provider_types": configured,
+        "unsupported_configured_provider_types": unsupported,
+    }
+
+
+def _source_hygiene(sources: list[dict[str, Any]]) -> dict[str, Any]:
+    supported = set(SUPPORTED_NEWS_PROVIDER_TYPES)
+    sources_missing_coverage_tags: list[str] = []
+    unsupported_sources: list[dict[str, str]] = []
+    degraded_sources: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
+    for source in sources:
+        source_id = str(source.get("source_id") or "")
+        if not source_id:
+            continue
+        provider_type = str(source.get("provider_type") or "")
+        if provider_type and provider_type not in supported:
+            unsupported_sources.append({"source_id": source_id, "provider_type": provider_type})
+            warnings.append({"source_id": source_id, "reason": "unsupported_provider_type"})
+        if bool(source.get("enabled")) and not source.get("coverage_tags"):
+            sources_missing_coverage_tags.append(source_id)
+            warnings.append({"source_id": source_id, "reason": "missing_coverage_tags"})
+        health = source.get("provider_health") if isinstance(source.get("provider_health"), dict) else {}
+        health_status = str(health.get("status") or source.get("source_quality_status") or "")
+        if health_status in {"degraded", "poor", "failing"}:
+            degraded_sources.append({"source_id": source_id, "status": health_status})
+            warnings.append({"source_id": source_id, "reason": f"provider_health_{health_status}"})
+    return {
+        "sources_missing_coverage_tags": sources_missing_coverage_tags,
+        "unsupported_sources": unsupported_sources,
+        "degraded_sources": degraded_sources,
+        "warnings": warnings,
+    }

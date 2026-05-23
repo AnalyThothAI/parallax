@@ -146,6 +146,8 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
         {
             "source_id": "example-rss",
             "provider_type": "rss",
+            "coverage_tags": ["crypto_market"],
+            "enabled": True,
             "last_seen_at_ms": 3_000,
             "latest_item_published_at_ms": 2_000,
             "latest_item_fetched_at_ms": 3_000,
@@ -172,6 +174,14 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
                 "last_seen_at_ms": 3_000,
             },
             "provider_capability_tags": ["poll_primary_items", "http_cache"],
+        },
+        {
+            "source_id": "unsupported-openbb",
+            "provider_type": "openbb",
+            "coverage_tags": [],
+            "enabled": True,
+            "source_quality_status": "degraded",
+            "provider_health": {"status": "degraded"},
         }
     ]
     app = _app(news)
@@ -180,7 +190,27 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
         response = client.get("/api/news/sources/status", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "data": {"sources": news.source_status_rows}}
+    assert response.json() == {
+        "ok": True,
+        "data": {
+            "provider_capabilities": {
+                "supported_provider_types": ["atom", "cryptopanic", "json_feed", "rss"],
+                "configured_provider_types": ["openbb", "rss"],
+                "unsupported_configured_provider_types": ["openbb"],
+            },
+            "source_hygiene": {
+                "sources_missing_coverage_tags": ["unsupported-openbb"],
+                "unsupported_sources": [{"source_id": "unsupported-openbb", "provider_type": "openbb"}],
+                "degraded_sources": [{"source_id": "unsupported-openbb", "status": "degraded"}],
+                "warnings": [
+                    {"source_id": "unsupported-openbb", "reason": "unsupported_provider_type"},
+                    {"source_id": "unsupported-openbb", "reason": "missing_coverage_tags"},
+                    {"source_id": "unsupported-openbb", "reason": "provider_health_degraded"},
+                ],
+            },
+            "sources": news.source_status_rows,
+        },
+    }
 
 
 class FakeNewsRepository:

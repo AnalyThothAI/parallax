@@ -214,6 +214,8 @@ class NewsObjectData(ApiSchema):
 
 
 class NewsSourceStatusData(ApiSchema):
+    provider_capabilities: JsonObject = Field(default_factory=dict)
+    source_hygiene: JsonObject = Field(default_factory=dict)
     sources: list[JsonObject] = Field(default_factory=list)
 
 

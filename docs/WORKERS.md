@@ -115,10 +115,10 @@ notification_delivery
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | due `narrative_admissions` source sets, `events`, queued semantics | `token_mention_semantics`, `narrative_model_runs` | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
 | `token_discussion_digest` (`TokenDiscussionDigestWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/token_discussion_digest_worker.py` | `narrative_admissions`, `token_mention_semantics`, market/profile facts | `token_discussion_digests`, `narrative_model_runs` | `token_radar_updated`, `narrative_semantics_updated`, `market_tick_written` | none | `interval_seconds` |
 | `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
-| `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_item_written` | `news_item_processed` | `interval_seconds` |
+| `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_items.content_class/content_tags_json/content_classification_json` | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
-| `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
+| `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items` including item content classification, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
 | `news_source_quality_projection` (`NewsSourceQualityProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_source_quality_projection_worker.py` | `news_sources`, `news_fetch_runs`, `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_item_agent_briefs`, `news_context_items` | `news_source_quality_rows`, `news_sources.source_quality_status` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
 | `equity_event_source_reconcile` (`EquityEventSourceReconcileWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_source_reconcile_worker.py` | configured `equity_event_intel.companies`, expected events, registry US equity identity | `equity_event_sources`, `equity_event_universe_members`, `equity_expected_events` | poll | `equity_event_sources_reconciled` | `interval_seconds` |
 | `equity_event_fetch` (`EquityEventFetchWorker`) | `equity_event_intel` | `domains/equity_event_intel/runtime/equity_event_fetch_worker.py` | due `equity_event_sources`, SEC submissions provider payloads | `equity_event_fetch_runs`, `equity_provider_documents`, `equity_event_documents` | `equity_event_sources_reconciled` | `equity_event_document_written` | `interval_seconds` |
@@ -133,6 +133,35 @@ notification_delivery
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | `watchlist_handle_signal_stats`, due `watchlist_handle_summary_jobs`, recent signal extractions for summary input | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
+
+## News Provider Operations
+
+News runtime provider support is intentionally smaller than the source
+classification vocabulary. The supported provider types are `rss`, `atom`,
+`json_feed`, and `cryptopanic`. `/api/news/sources/status` reports:
+
+- `provider_capabilities.supported_provider_types`
+- `provider_capabilities.configured_provider_types`
+- `provider_capabilities.unsupported_configured_provider_types`
+- `source_hygiene` warnings for unsupported providers, missing coverage tags,
+  and degraded/failing source health
+
+Safe operator checklist:
+
+```bash
+uv run gmgn-twitter-intel config
+curl -sS -H "Authorization: Bearer $GMGN_API_TOKEN" \
+  http://127.0.0.1:8765/api/news/sources/status | jq '.data.provider_capabilities'
+```
+
+Only report config paths and booleans from `gmgn-twitter-intel config`; never
+copy provider credentials, cookies, tokens, proxy URLs, or API keys into logs or
+docs. Staged provider waves are:
+
+1. Enable `cryptopanic` when credentials exist, as aggregator/specialist media.
+2. Add official regulator, exchange, protocol, and issuer RSS/manual API feeds.
+3. Add OpenBB/macro/equity adapters only behind explicit ownership boundaries.
+4. Add social/community/developer context sources into `news_context_items`.
 
 ## Narrative Intel Hard-Cut Ownership
 
