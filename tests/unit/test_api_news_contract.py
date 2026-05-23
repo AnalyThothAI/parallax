@@ -110,6 +110,21 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
     }
 
 
+def test_news_api_can_request_unprojected_fallback_without_postgres() -> None:
+    news = FakeNewsRepository()
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/news",
+            params={"include_unprojected": "true"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert news.calls[-1]["include_unprojected"] is True
+
+
 class FakeNewsRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []

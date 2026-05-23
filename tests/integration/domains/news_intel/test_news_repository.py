@@ -77,7 +77,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
             http_status=200,
         )
 
-        rows = repo.list_news_page_rows(limit=10)
+        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
         source = conn.execute("SELECT * FROM news_sources WHERE source_id = %s", ("coindesk-rss",)).fetchone()
         run = conn.execute("SELECT * FROM news_fetch_runs WHERE fetch_run_id = %s", (fetch_run_id,)).fetchone()
     finally:
@@ -457,7 +457,7 @@ def test_list_news_page_rows_keeps_raw_items_until_projection_catches_up(tmp_pat
             rows=[_page_row("row-projected", projected_item_id, source_id="source-1")],
         )
 
-        rows = repo.list_news_page_rows(limit=10)
+        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
     finally:
         conn.close()
 
@@ -481,8 +481,7 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
         config.attributes["database_url"] = _test_postgres_dsn()
         command.upgrade(config, "20260519_0066")
 
-        repo = NewsRepository(conn)
-        news_item_id = _insert_source_provider_and_item(repo)
+        news_item_id = _insert_legacy_source_provider_and_item(conn)
         conn.execute(
             """
             INSERT INTO news_page_rows (
@@ -501,6 +500,7 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
         conn.commit()
         command.upgrade(config, "head")
 
+        repo = NewsRepository(conn)
         rows = repo.list_news_page_rows(limit=10)
     finally:
         conn.close()
@@ -778,6 +778,18 @@ def test_page_projection_candidates_progress_after_partial_rebuild(tmp_path) -> 
                     projection_version=NEWS_PAGE_PROJECTION_VERSION,
                     computed_at_ms=NOW_MS + 1,
                 )
+                | {
+                    "source_json": {
+                        "source_id": "source-1",
+                        "provider_type": "rss",
+                        "source_domain": "example.com",
+                        "source_name": "Example",
+                        "source_role": "observed_source",
+                        "trust_tier": "standard",
+                        "coverage_tags": [],
+                        "source_quality_status": "unknown",
+                    }
+                }
                 for index, news_item_id in enumerate(first_ids)
             ],
         )
@@ -1035,6 +1047,51 @@ def _insert_source_provider_and_item(
         now_ms=NOW_MS,
     )
     return str(news["news_item_id"])
+
+
+def _insert_legacy_source_provider_and_item(conn) -> str:
+    news_item_id = "news-item-legacy"
+    conn.execute(
+        """
+        INSERT INTO news_sources (
+          source_id, provider_type, feed_url, source_domain, source_name,
+          source_role, trust_tier, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          'source-1', 'rss', 'https://example.com/rss.xml', 'example.com', 'Example',
+          'observed_source', 'standard', %s, %s
+        )
+        """,
+        (NOW_MS, NOW_MS),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_provider_items (
+          provider_item_id, source_id, source_item_key, canonical_url, payload_hash,
+          raw_payload_json, fetched_at_ms
+        )
+        VALUES (
+          'provider-item-legacy', 'source-1', 'guid-1', 'https://example.com/guid-1',
+          'hash-guid-1', '{"title":"Title"}'::jsonb, %s
+        )
+        """,
+        (NOW_MS,),
+    )
+    conn.execute(
+        """
+        INSERT INTO news_items (
+          news_item_id, provider_item_id, source_id, source_domain, canonical_url,
+          title, summary, body_text, language, published_at_ms, fetched_at_ms,
+          content_hash, title_fingerprint, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, 'provider-item-legacy', 'source-1', 'example.com', 'https://example.com/guid-1',
+          'Title', 'Summary', 'Body', 'en', %s, %s, 'content-guid-1', 'title', %s, %s
+        )
+        """,
+        (news_item_id, NOW_MS, NOW_MS, NOW_MS, NOW_MS),
+    )
+    return news_item_id
 
 
 def _page_row(
