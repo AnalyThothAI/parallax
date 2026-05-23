@@ -1,4 +1,4 @@
-import { AppSidebar, type AppSidebarBadges } from "@features/cockpit/ui/AppSidebar";
+import { AppSidebar } from "@features/cockpit/ui/AppSidebar";
 import { SidebarProvider } from "@shared/ui/sidebar";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -39,26 +39,25 @@ describe("AppSidebar", () => {
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });
 
-  it("renders numeric and string badges without empty chips for missing badge keys", () => {
-    renderSidebar({ badges: { news: "8+", token: 0 } });
+  it("keeps navigation free of server-backed badges", () => {
+    renderSidebar();
 
-    expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("8+")).toBeInTheDocument();
-    expect(document.querySelectorAll('[data-sidebar="menu-badge"]')).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Token Radar" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Stocks" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "News" })).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-sidebar="menu-badge"]')).toHaveLength(0);
   });
 });
 
 function renderSidebar({
-  badges = { news: "8+", stocks: 2, token: 4 },
   route = "/",
 }: {
-  badges?: AppSidebarBadges;
   route?: string;
 } = {}) {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <SidebarProvider>
-        <AppSidebar badges={badges} />
+        <AppSidebar />
       </SidebarProvider>
     </MemoryRouter>,
   );

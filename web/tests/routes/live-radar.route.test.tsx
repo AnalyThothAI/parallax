@@ -1,5 +1,4 @@
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
-import { ok } from "@tests/msw/fixtures";
+import { cleanup, screen, within } from "@testing-library/react";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,50 +41,16 @@ describe("live radar route", () => {
     ).toBeTruthy();
   });
 
-  it("shows sidebar badges for primary market destinations", async () => {
-    setupAppRouteTest((apiMock) => {
-      mockLiveRadarRoute(apiMock);
-      const baseGetApi = apiMock.getApiImpl;
-      apiMock.getApiImpl = async (path, options) => {
-        if (path === "/api/stocks-radar") {
-          return ok({
-            rows: [{ target: { symbol: "AAPL" } }, { target: { symbol: "RKLB" } }],
-            health: { returned_count: 2, quote_ready_count: 1, quote_unavailable_count: 1 },
-          });
-        }
-        if (path === "/api/news") {
-          return ok({
-            items: [
-              {
-                row_id: "news-1",
-                news_item_id: "news-1",
-                lifecycle_status: "processed",
-                headline: "First item",
-              },
-              {
-                row_id: "news-2",
-                news_item_id: "news-2",
-                lifecycle_status: "processed",
-                headline: "Second item",
-              },
-            ],
-            next_cursor: "next-page",
-          });
-        }
-        return baseGetApi(path, options);
-      };
-    });
+  it("keeps primary navigation free of server-backed badges", async () => {
     renderAppRoute("/");
 
     const navigation = await screen.findByRole("navigation", { name: "Primary navigation" });
 
-    await waitFor(() => {
-      expect(within(navigation).getByRole("link", { name: /Token Radar/i })).toBeInTheDocument();
-      expect(within(navigation).getByRole("link", { name: /Stocks/i })).toBeInTheDocument();
-      expect(within(navigation).getByText("2")).toBeInTheDocument();
-      expect(within(navigation).getByRole("link", { name: /News/i })).toBeInTheDocument();
-      expect(within(navigation).getByText("2+")).toBeInTheDocument();
-    });
+    expect(within(navigation).getByRole("link", { name: /Token Radar/i })).toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: /Stocks/i })).toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: /News/i })).toBeInTheDocument();
+    expect(within(navigation).queryByText("2")).not.toBeInTheDocument();
+    expect(within(navigation).queryByText("2+")).not.toBeInTheDocument();
   });
 
   it("treats pending projection coverage as loading instead of empty data", async () => {

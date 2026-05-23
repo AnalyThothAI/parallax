@@ -1,6 +1,6 @@
 import { NotificationBell } from "@features/notifications";
-import { compactNumber, formatRelativeTime } from "@lib/format";
-import type { NotificationSummary, StatusData, WindowKey } from "@lib/types";
+import { formatRelativeTime } from "@lib/format";
+import type { NotificationSummary, StatusData } from "@lib/types";
 import { opsPath } from "@shared/routing/paths";
 import { IconButton } from "@shared/ui/IconButton";
 import clsx from "clsx";
@@ -25,13 +25,6 @@ export type CockpitTopbarProps = {
     statusError: boolean;
     configReady: boolean;
   };
-  stats: {
-    tokenItemsCount: number;
-    windowKey: WindowKey;
-    signalLabSummaryTrade: number;
-    signalLabSummaryToken: number;
-    signalLabSummaryRisk: number;
-  };
   notifications: {
     summary: NotificationSummary | null;
     drawerOpen: boolean;
@@ -44,17 +37,12 @@ export function CockpitTopbar({
   navigationTrigger,
   search,
   status,
-  stats,
   notifications,
   onRefresh,
 }: CockpitTopbarProps) {
   const navigate = useNavigate();
   const opsRouteMatch = useMatch("/ops/*");
   const [searchDraft, setSearchDraft] = useState("");
-  const matchedTwitterEvents = numberDetail(
-    status.status?.workers.collector?.details?.matched_twitter_events,
-  );
-
   return (
     <header className="topbar">
       <div className="brand">
@@ -104,24 +92,6 @@ export function CockpitTopbar({
         <button type="submit">检索</button>
       </form>
 
-      <div className="top-stats">
-        <span>
-          matched <b>{compactNumber(matchedTwitterEvents)}</b>
-        </span>
-        <span>
-          flow·{stats.windowKey} <b>{compactNumber(stats.tokenItemsCount)}</b>
-        </span>
-        <span>
-          trade <b>{compactNumber(stats.signalLabSummaryTrade)}</b>
-        </span>
-        <span>
-          token <b>{compactNumber(stats.signalLabSummaryToken)}</b>
-        </span>
-        <span>
-          risk <b>{compactNumber(stats.signalLabSummaryRisk)}</b>
-        </span>
-      </div>
-
       <button
         aria-current={opsRouteMatch ? "page" : undefined}
         aria-label="Open ops diagnostics"
@@ -151,10 +121,6 @@ export function CockpitTopbar({
       </IconButton>
     </header>
   );
-}
-
-function numberDetail(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function WsStatusBeacon({

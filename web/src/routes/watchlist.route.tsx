@@ -7,7 +7,6 @@ export function Component() {
 
   return (
     <WatchlistPage
-      accountUnreadCounts={context.accountUnreadCounts}
       handles={context.configuredWatchlistHandles}
       token={context.token}
       onMarkHandleRead={context.onMarkHandleRead}

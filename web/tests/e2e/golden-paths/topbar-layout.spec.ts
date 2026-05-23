@@ -6,12 +6,12 @@ test.beforeEach(({}, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop-only layout contract");
 });
 
-test("topbar gives status chips priority over search width", async ({ page }) => {
+test("topbar keeps search and action controls contained", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 720 });
   await installMockApi(page);
   await page.goto("/");
 
-  await expect(page.locator(".top-stats")).toBeVisible();
+  await expect(page.locator(".top-stats")).toHaveCount(0);
   await expect(page.locator(".searchbar")).toBeVisible();
 
   const layout = await page.evaluate(() => {
@@ -29,29 +29,19 @@ test("topbar gives status chips priority over search width", async ({ page }) =>
       };
     };
 
-    const chips = Array.from(document.querySelectorAll<HTMLElement>(".top-stats span")).map(
-      (chip) => ({
-        text: chip.textContent?.trim() ?? "",
-        width: chip.getBoundingClientRect().width,
-        scrollWidth: chip.scrollWidth,
-      }),
-    );
-
     return {
       topbar: box(".topbar"),
       search: box(".searchbar"),
-      stats: box(".top-stats"),
-      chips,
+      ops: box(".topbar-ops-button"),
+      notifications: box(".topbar-notification-slot"),
+      refresh: box(".topbar-refresh-button"),
     };
   });
 
-  expect(layout.search.width).toBeLessThanOrEqual(250);
-  expect(layout.stats.width).toBeGreaterThan(layout.search.width * 2);
-  expect(layout.stats.right).toBeLessThanOrEqual(layout.search.left);
-  expect(Math.abs(layout.stats.centerY - layout.search.centerY)).toBeLessThanOrEqual(1);
-  expect(layout.stats.bottom).toBeLessThanOrEqual(layout.topbar.bottom);
-  expect(layout.chips).toHaveLength(5);
-  for (const chip of layout.chips) {
-    expect(chip.width, chip.text).toBeGreaterThanOrEqual(chip.scrollWidth - 1);
-  }
+  expect(layout.search.width).toBeGreaterThanOrEqual(240);
+  expect(layout.search.right).toBeLessThanOrEqual(layout.ops.left);
+  expect(layout.ops.right).toBeLessThanOrEqual(layout.notifications.left);
+  expect(layout.notifications.right).toBeLessThanOrEqual(layout.refresh.left);
+  expect(layout.refresh.right).toBeLessThanOrEqual(layout.topbar.right);
+  expect(layout.search.bottom).toBeLessThanOrEqual(layout.topbar.bottom);
 });

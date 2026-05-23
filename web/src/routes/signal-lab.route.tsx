@@ -7,7 +7,6 @@ export function Component() {
 
   return (
     <SignalLabPage
-      overviewData={context.signalLabOverviewData}
       selectedAccountEventId={context.selectedAccountEventId}
       token={context.token}
       onSelectAccountEvent={context.selectAccountEvent}

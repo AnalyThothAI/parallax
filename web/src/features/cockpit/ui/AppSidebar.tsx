@@ -1,4 +1,3 @@
-import { compactNumber } from "@lib/format";
 import {
   Sidebar,
   SidebarContent,
@@ -8,7 +7,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -19,16 +17,10 @@ import {
 } from "@shared/ui/sidebar";
 import { Link, NavLink, useMatch } from "react-router-dom";
 
-import {
-  APP_NAVIGATION_GROUPS,
-  type AppNavigationBadgeKey,
-  type AppNavigationItem,
-} from "./appNavigation";
+import { APP_NAVIGATION_GROUPS, type AppNavigationItem } from "./appNavigation";
 import "./AppSidebar.css";
 
-export type AppSidebarBadges = Partial<Record<AppNavigationBadgeKey, number | string>>;
-
-export function AppSidebar({ badges = {} }: { badges?: AppSidebarBadges }) {
+export function AppSidebar() {
   return (
     <Sidebar
       className="cockpit-app-sidebar"
@@ -55,7 +47,7 @@ export function AppSidebar({ badges = {} }: { badges?: AppSidebarBadges }) {
               <SidebarGroupContent>
                 <SidebarMenu>
                   {group.items.map((item) => (
-                    <AppSidebarItem badge={badgeForItem(item, badges)} item={item} key={item.to} />
+                    <AppSidebarItem item={item} key={item.to} />
                   ))}
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -77,7 +69,7 @@ export function AppSidebar({ badges = {} }: { badges?: AppSidebarBadges }) {
   );
 }
 
-function AppSidebarItem({ badge, item }: { badge?: string; item: AppNavigationItem }) {
+function AppSidebarItem({ item }: { item: AppNavigationItem }) {
   const active = useAppNavigationMatch(item);
   const closeSidebarOnNavigate = useCloseSidebarOnNavigate();
   const Icon = item.icon;
@@ -97,7 +89,6 @@ function AppSidebarItem({ badge, item }: { badge?: string; item: AppNavigationIt
           </NavLink>
         )}
       </SidebarMenuButton>
-      {badge !== undefined ? <SidebarMenuBadge>{badge}</SidebarMenuBadge> : null}
       {item.children?.length ? (
         <SidebarMenuSub>
           {item.children.map((child) => (
@@ -140,15 +131,4 @@ function useCloseSidebarOnNavigate() {
       setOpenMobile(false);
     }
   };
-}
-
-function badgeForItem(item: AppNavigationItem, badges: AppSidebarBadges): string | undefined {
-  if (!item.badgeKey) {
-    return undefined;
-  }
-  const value = badges[item.badgeKey];
-  if (value === undefined) {
-    return undefined;
-  }
-  return typeof value === "number" ? compactNumber(value) : value;
 }

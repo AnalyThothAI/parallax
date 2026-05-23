@@ -2,13 +2,12 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@shared/ui/sideba
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
-import { AppSidebar, type AppSidebarBadges } from "./AppSidebar";
+import { AppSidebar } from "./AppSidebar";
 import { NotificationLayer, type ShellNotificationProps } from "./CockpitShell";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
 
 export type SearchShellProps = {
   topbar: CockpitTopbarProps;
-  sidebar: { badges: AppSidebarBadges };
   notifications: ShellNotificationProps;
   onHotkey: (event: KeyboardEvent) => void;
   outletContext?: unknown;
@@ -16,7 +15,6 @@ export type SearchShellProps = {
 
 export function SearchShell({
   topbar,
-  sidebar,
   notifications,
   onHotkey,
   outletContext,
@@ -28,7 +26,7 @@ export function SearchShell({
 
   return (
     <SidebarProvider className="cockpit-shell search-shell">
-      <AppSidebar badges={sidebar.badges} />
+      <AppSidebar />
       <SidebarInset className="cockpit-main search-focus-mode">
         <CockpitTopbar
           {...topbar}

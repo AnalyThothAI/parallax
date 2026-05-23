@@ -17,7 +17,6 @@ import {
 type UseNotificationsControllerArgs = {
   enabled?: boolean;
   fallbackSummary?: NotificationSummary | null;
-  prefetchList?: boolean;
   setMobileTask: (task: LiveMobileTask) => void;
   socketNotifications: NotificationLivePayload[];
   token: string;
@@ -26,7 +25,6 @@ type UseNotificationsControllerArgs = {
 export function useNotificationsController({
   enabled = true,
   fallbackSummary,
-  prefetchList = false,
   setMobileTask,
   socketNotifications,
   token,
@@ -38,15 +36,13 @@ export function useNotificationsController({
   const summaryQuery = useQuery({
     queryKey: queryKeys.notificationSummary(),
     queryFn: () => getNotificationSummary(token),
-    enabled: Boolean(token) && enabled,
-    refetchInterval: 12_000,
+    enabled: Boolean(token) && enabled && drawerOpen,
   });
 
   const notificationsQuery = useQuery({
     queryKey: queryKeys.notifications(),
     queryFn: () => getNotifications(token),
-    enabled: Boolean(token) && enabled && (drawerOpen || prefetchList),
-    refetchInterval: drawerOpen ? 8_000 : 20_000,
+    enabled: Boolean(token) && enabled && drawerOpen,
   });
 
   const markReadMutation = useMutation({
@@ -82,12 +78,12 @@ export function useNotificationsController({
 
   const latestSocketNotificationId = socketNotifications[0]?.notification.notification_id ?? null;
   useEffect(() => {
-    if (!latestSocketNotificationId) {
+    if (!latestSocketNotificationId || !drawerOpen) {
       return;
     }
     void queryClient.invalidateQueries({ queryKey: queryKeys.notificationSummary() });
     void queryClient.invalidateQueries({ queryKey: queryKeys.notifications() });
-  }, [latestSocketNotificationId, queryClient]);
+  }, [drawerOpen, latestSocketNotificationId, queryClient]);
 
   const openNotification = (notification: NotificationItem) => {
     markReadMutation.mutate(notification.notification_id);
@@ -147,11 +143,17 @@ export function useNotificationsController({
   };
 
   const notifications = notificationsQuery.data?.data.items ?? [];
+  const socketSummary = summaryFromSocketNotifications(socketNotifications);
 
   return {
     drawerOpen,
     notifications,
-    notificationSummary: summaryQuery.data?.data ?? fallbackSummary ?? null,
+    notificationSummary:
+      summaryQuery.data?.data ??
+      notificationsQuery.data?.data.summary ??
+      socketSummary ??
+      fallbackSummary ??
+      null,
     notificationsLoading: notificationsQuery.isFetching && notifications.length === 0,
     markAllRead: () => markAllReadMutation.mutate(),
     markAuthorRead,
@@ -164,4 +166,57 @@ export function useNotificationsController({
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
+}
+
+function summaryFromSocketNotifications(
+  socketNotifications: NotificationLivePayload[],
+): NotificationSummary | null {
+  if (!socketNotifications.length) {
+    return null;
+  }
+  const accountUnreadCounts: Record<string, number> = {};
+  let highUnreadCount = 0;
+  let criticalUnreadCount = 0;
+  let unreadCount = 0;
+  let highestUnreadSeverity: NotificationSummary["highest_unread_severity"] = null;
+
+  for (const item of socketNotifications) {
+    const notification = item.notification;
+    if (notification.read_at_ms) {
+      continue;
+    }
+    unreadCount += 1;
+    if (notification.severity === "high") highUnreadCount += 1;
+    if (notification.severity === "critical") criticalUnreadCount += 1;
+    if (
+      highestUnreadSeverity === null ||
+      severityRank(notification.severity) > severityRank(highestUnreadSeverity)
+    ) {
+      highestUnreadSeverity = notification.severity;
+    }
+    const handle = normalizedHandle(notification.author_handle ?? "");
+    if (handle) {
+      accountUnreadCounts[handle] = (accountUnreadCounts[handle] ?? 0) + 1;
+    }
+  }
+
+  if (unreadCount === 0) {
+    return null;
+  }
+
+  return {
+    subscriber_key: "local",
+    unread_count: unreadCount,
+    high_unread_count: highUnreadCount,
+    critical_unread_count: criticalUnreadCount,
+    highest_unread_severity: highestUnreadSeverity,
+    account_unread_counts: accountUnreadCounts,
+  };
+}
+
+function severityRank(severity: string | null | undefined): number {
+  if (severity === "critical") return 3;
+  if (severity === "high") return 2;
+  if (severity === "warning") return 1;
+  return 0;
 }

@@ -23,13 +23,6 @@ describe("CockpitTopbar", () => {
             statusError: false,
             configReady: true,
           }}
-          stats={{
-            tokenItemsCount: 3,
-            windowKey: "1h",
-            signalLabSummaryTrade: 1,
-            signalLabSummaryToken: 2,
-            signalLabSummaryRisk: 0,
-          }}
           notifications={{ summary: null, drawerOpen: false, onToggleDrawer: vi.fn() }}
           onRefresh={vi.fn()}
         />
@@ -56,13 +49,6 @@ describe("CockpitTopbar", () => {
             statusLoading: false,
             statusError: false,
             configReady: true,
-          }}
-          stats={{
-            tokenItemsCount: 3,
-            windowKey: "1h",
-            signalLabSummaryTrade: 1,
-            signalLabSummaryToken: 2,
-            signalLabSummaryRisk: 0,
           }}
           notifications={{ summary: null, drawerOpen: false, onToggleDrawer: vi.fn() }}
           onRefresh={vi.fn()}

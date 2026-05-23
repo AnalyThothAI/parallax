@@ -4,7 +4,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@shared/ui/sideba
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 
-import { AppSidebar, type AppSidebarBadges } from "./AppSidebar";
+import { AppSidebar } from "./AppSidebar";
 import { CockpitTopbar, type CockpitTopbarProps } from "./CockpitTopbar";
 import "./cockpitShell.css";
 import "./cockpitShellContract.css";
@@ -23,7 +23,6 @@ export type ShellNotificationProps = {
 
 export type CockpitShellProps = {
   topbar: CockpitTopbarProps;
-  sidebar: { badges: AppSidebarBadges };
   notifications: ShellNotificationProps;
   onHotkey: (event: KeyboardEvent) => void;
   outletContext?: unknown;
@@ -31,7 +30,6 @@ export type CockpitShellProps = {
 
 export function CockpitShell({
   topbar,
-  sidebar,
   notifications,
   onHotkey,
   outletContext,
@@ -40,7 +38,7 @@ export function CockpitShell({
 
   return (
     <SidebarProvider className="cockpit-shell">
-      <AppSidebar badges={sidebar.badges} />
+      <AppSidebar />
       <SidebarInset className="cockpit-main">
         <CockpitTopbar
           {...topbar}

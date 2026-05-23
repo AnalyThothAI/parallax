@@ -10,10 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type AppNavigationBadgeKey = "news" | "stocks" | "token";
-
 export type AppNavigationItem = {
-  badgeKey?: AppNavigationBadgeKey;
   children?: AppNavigationItem[];
   end?: boolean;
   icon?: LucideIcon;
@@ -32,14 +29,12 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
     label: "Radar",
     items: [
       {
-        badgeKey: "token",
         end: true,
         icon: Radar,
         label: "Token Radar",
         to: "/",
       },
       {
-        badgeKey: "stocks",
         icon: BarChart3,
         label: "Stocks",
         matchPath: "/stocks/*",
@@ -51,7 +46,6 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
     label: "Intel",
     items: [
       {
-        badgeKey: "news",
         icon: Newspaper,
         label: "News",
         matchPath: "/news/*",
