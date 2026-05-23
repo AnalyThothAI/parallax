@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
@@ -12,6 +13,37 @@ from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
+_REDACTED = "<redacted>"
+_SECRET_ERROR_KEYS = (
+    "api[_-]?key",
+    "access[_-]?token",
+    "refresh[_-]?token",
+    "bearer[_-]?token",
+    "token",
+    "secret",
+    "authorization",
+    "cookie",
+    "key",
+    "password",
+    "passphrase",
+)
+_SECRET_ERROR_KEY_PATTERN = "|".join(_SECRET_ERROR_KEYS)
+_SECRET_QUERY_RE = re.compile(
+    rf"([?&](?:{_SECRET_ERROR_KEY_PATTERN})=)"
+    r"[^&#\s]+",
+    re.IGNORECASE,
+)
+_SECRET_KEY_VALUE_RE = re.compile(
+    rf"((?<![A-Za-z0-9_])(?:{_SECRET_ERROR_KEY_PATTERN})\s*[:=]\s*)([\"']?)[^\"'\s,;}}&]+([\"']?)",
+    re.IGNORECASE,
+)
+_SECRET_QUOTED_KEY_VALUE_RE = re.compile(
+    rf"((?<![A-Za-z0-9_])(?:{_SECRET_ERROR_KEY_PATTERN})\s*[:=]\s*)([\"']).*?\2",
+    re.IGNORECASE,
+)
+_SECRET_HEADER_RE = re.compile(r"\b(authorization|cookie)\s*:\s*[^\r\n]+", re.IGNORECASE)
+_BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+_URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 
 
 class NewsRepository:
@@ -2668,4 +2700,16 @@ def _json(value: Any) -> Jsonb:
 def _compact_error(error: str | None) -> str | None:
     if not error:
         return None
-    return str(error)[:2_000]
+    return _redact_error_text(str(error))[:2_000]
+
+
+def _redact_error_text(value: str) -> str:
+    text = _URL_USERINFO_RE.sub(rf"\1{_REDACTED}@", value)
+    text = _SECRET_HEADER_RE.sub(lambda match: f"{match.group(1)}: {_REDACTED}", text)
+    text = _BEARER_RE.sub(f"Bearer {_REDACTED}", text)
+    text = _SECRET_QUERY_RE.sub(rf"\1{_REDACTED}", text)
+    text = _SECRET_QUOTED_KEY_VALUE_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}{_REDACTED}{match.group(2)}",
+        text,
+    )
+    return _SECRET_KEY_VALUE_RE.sub(rf"\1\2{_REDACTED}\3", text)

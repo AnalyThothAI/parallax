@@ -294,6 +294,64 @@ def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
     json.dumps(payload)
 
 
+def test_source_status_payload_redacts_secret_error_fragments() -> None:
+    secret_error = (
+        "GET https://api.example.test/feed?api_key=sk-live&token=raw-token\n"
+        "https://api-token@example.test failed\n"
+        "upstream says Bearer bearer-secret expired\n"
+        "Authorization: Basic basic-secret\n"
+        "Cookie: sid=session-secret; refresh=refresh-secret\n"
+        "api_key='quoted secret with spaces'\n"
+        "postgres://user:pg-secret@db"
+    )
+
+    payload = _source_status_payload(
+        {
+            "source_id": "coindesk",
+            "provider_type": "rss",
+            "source_domain": "coindesk.com",
+            "source_name": "CoinDesk",
+            "source_role": "specialist_media",
+            "trust_tier": "high",
+            "coverage_tags_json": [],
+            "source_quality_status": "unknown",
+            "enabled": True,
+            "managed_by_config": True,
+            "refresh_interval_seconds": 300,
+            "item_count": 0,
+            "context_item_count": 0,
+            "next_fetch_after_ms": 0,
+            "consecutive_failures": 1,
+            "last_error": secret_error,
+            "latest_fetch_run_json": {
+                "status": "failed",
+                "started_at_ms": NOW_MS,
+                "finished_at_ms": NOW_MS + 1,
+                "error": secret_error,
+            },
+            "latest_quality_json": None,
+        }
+    )
+
+    returned_errors = (
+        payload["last_error"],
+        payload["provider_health"]["last_error"],
+        payload["latest_fetch_run"]["error"],
+    )
+    for returned_error in returned_errors:
+        assert returned_error is not None
+        assert "sk-live" not in returned_error
+        assert "raw-token" not in returned_error
+        assert "api-token" not in returned_error
+        assert "bearer-secret" not in returned_error
+        assert "basic-secret" not in returned_error
+        assert "session-secret" not in returned_error
+        assert "refresh-secret" not in returned_error
+        assert "quoted secret" not in returned_error
+        assert "pg-secret" not in returned_error
+        assert "<redacted>" in returned_error
+
+
 def test_source_status_payload_marks_disabled_and_api_backed_capabilities() -> None:
     payload = _source_status_payload(
         {

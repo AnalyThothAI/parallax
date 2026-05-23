@@ -66,6 +66,7 @@ describe("NewsPage", () => {
     expect(screen.getAllByText("crypto_market").length).toBeGreaterThan(0);
     expect(screen.getAllByText("exchange_listing").length).toBeGreaterThan(0);
     expect(screen.getByText("official_exchange · official")).toBeInTheDocument();
+    expect(screen.getByText("healthy")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /next news page/i }));
 
@@ -175,6 +176,29 @@ describe("NewsPage", () => {
       }),
     );
     expect(screen.getByRole("button", { name: /previous news page/i })).toBeDisabled();
+  });
+
+  it("clears stale secondary tags when the content domain supplies a tag", async () => {
+    fetchNewsRowsMock.mockResolvedValue({ items: [firstPageRow], next_cursor: null });
+
+    renderNews(<NewsPage token="test-token" />);
+
+    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "tokenized_stocks" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_tag: "tokenized_stocks",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Low context" }));
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_tag: "low_context",
+      }),
+    );
   });
 
   it("does not change rendered analysis when only the headline changes", async () => {

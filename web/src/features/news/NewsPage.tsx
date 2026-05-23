@@ -59,13 +59,17 @@ type NewsDecisionFilter = "all" | "driver" | "watch" | "context" | "discard";
 type NewsContentTagFilter =
   | "all"
   | "tokenized_stocks"
-  | "sec"
+  | "low_context"
+  | "yahoo_finance"
+  | "regulation"
+  | "regulatory_action"
   | "analyst_rating"
-  | "price_target"
+  | "etf_fund_flow"
   | "exchange_listing"
-  | "etf"
-  | "hack"
-  | "macro";
+  | "security_hack"
+  | "security_incident"
+  | "macro_policy"
+  | "rates_fed";
 type NewsSourceFilter =
   | "all"
   | "official"
@@ -98,13 +102,17 @@ const CONTENT_DOMAIN_OPTIONS: Array<
 const CONTENT_TAG_OPTIONS: Array<NewsFilterOption<NewsContentTagFilter>> = [
   { id: "all", label: "All tags" },
   { id: "tokenized_stocks", label: "tokenized_stocks" },
-  { id: "sec", label: "sec" },
+  { id: "low_context", label: "low_context" },
+  { id: "yahoo_finance", label: "yahoo_finance" },
+  { id: "regulation", label: "regulation" },
+  { id: "regulatory_action", label: "regulatory_action" },
   { id: "analyst_rating", label: "analyst_rating" },
-  { id: "price_target", label: "price_target" },
+  { id: "etf_fund_flow", label: "etf_fund_flow" },
   { id: "exchange_listing", label: "exchange_listing" },
-  { id: "etf", label: "etf" },
-  { id: "hack", label: "hack" },
-  { id: "macro", label: "macro" },
+  { id: "security_hack", label: "security_hack" },
+  { id: "security_incident", label: "security_incident" },
+  { id: "macro_policy", label: "macro_policy" },
+  { id: "rates_fed", label: "rates_fed" },
 ];
 
 const DECISION_OPTIONS: Array<NewsFilterOption<NewsDecisionFilter>> = [
@@ -193,6 +201,7 @@ function NewsQueueRoute({ token }: { token: string }) {
             value={contentDomainFilter}
             onChange={(next) => {
               setContentDomainFilter(next);
+              setContentTagFilter("all");
               resetCursor();
             }}
           />
@@ -504,6 +513,7 @@ function NewsDeskRow({ item, onOpen }: { item: NewsRow; onOpen: () => void }) {
   const sourceRole = item.source?.source_role ?? item.source_role;
   const trustTier = item.source?.trust_tier ?? item.trust_tier;
   const providerType = item.source?.provider_type ?? item.provider_type;
+  const sourceQualityStatus = item.source?.source_quality_status ?? item.source_quality_status;
 
   return (
     <button
@@ -557,6 +567,7 @@ function NewsDeskRow({ item, onOpen }: { item: NewsRow; onOpen: () => void }) {
           {facts.length} fact {facts.length === 1 ? "lane" : "lanes"}
         </small>
         <small>{providerType || "provider unknown"}</small>
+        <small>{sourceQualityStatus || "quality unknown"}</small>
       </div>
 
       <div className="news-next-cell">
