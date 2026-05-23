@@ -274,22 +274,22 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "equity_event_story_groups": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "equity_event_story_members": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "equity_event_agent_runs": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "equity_event_agent_briefs": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "cex_oi_radar_runs": {
         SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",
@@ -309,22 +309,22 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "equity_event_page_rows": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "equity_event_calendar_rows": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "equity_event_alert_candidates": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
     "equity_company_timeline_rows": {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
-        SRC / "platform/db/alembic/versions/20260522_0081_equity_event_intel.py",
+        SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
     },
 }
 

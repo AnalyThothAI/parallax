@@ -87,11 +87,11 @@ TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
 EQUITY_EVENT_INTEL_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_equity_event_intel.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0083_equity_event_intel.py"
 )
 EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260522_0082_equity_event_fact_candidate_shape.py"
+    "20260523_0084_equity_event_fact_candidate_shape.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -423,8 +423,8 @@ def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
     text = EQUITY_EVENT_INTEL_MIGRATION.read_text()
 
     for statement in (
-        'revision = "20260522_0081"',
-        'down_revision = "20260521_0080"',
+        'revision = "20260523_0083"',
+        'down_revision = "20260522_0082"',
         "CREATE TABLE IF NOT EXISTS equity_event_sources",
         "CREATE TABLE IF NOT EXISTS equity_event_fetch_runs",
         "CREATE TABLE IF NOT EXISTS equity_event_universe_members",
@@ -484,8 +484,8 @@ def test_equity_event_fact_candidate_shape_migration_backfills_feature_branch_sc
     text = EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION.read_text()
 
     for statement in (
-        'revision = "20260522_0082"',
-        'down_revision = "20260522_0081"',
+        'revision = "20260523_0084"',
+        'down_revision = "20260523_0083"',
         "ALTER TABLE equity_event_fact_candidates",
         "ADD COLUMN IF NOT EXISTS source_span_id TEXT",
         "ADD COLUMN IF NOT EXISTS company_id TEXT",
