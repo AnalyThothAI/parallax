@@ -72,6 +72,30 @@ def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
     assert result["projection"]["anchor_coverage"] == {"status": "pending", "ready": 0, "missing": 0, "total": 0}
 
 
+def test_asset_flow_serves_last_current_rows_while_projection_is_running():
+    service = asset_flow_service(
+        rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")],
+        coverage={
+            ("1h", "all"): {
+                "status": "running",
+                "reason": "projection_window_running",
+                "row_count": 0,
+                "source_rows": 0,
+                "computed_at_ms": 1_700_000_120_000,
+                "error": None,
+            }
+        },
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+
+    assert result["targets"][0]["target"]["symbol"] == "BTC"
+    assert result["projection"]["status"] == "fresh"
+    assert result["projection"]["reason"] == "projection_window_running"
+    assert result["projection"]["row_count"] == 1
+    assert result["projection"]["source_rows"] == 1
+
+
 def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing():
     row = radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")
     row.pop("factor_snapshot_json")

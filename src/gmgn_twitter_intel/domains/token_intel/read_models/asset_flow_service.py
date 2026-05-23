@@ -30,9 +30,6 @@ class AssetFlowService:
             windows=(window,),
             scopes=(scope,),
         ).get((window, scope))
-        if not coverage or coverage.get("status") != "ready":
-            return _pending_projection_payload(coverage)
-
         row_limit = max(0, int(limit)) * 2
         rows = self.token_radar.latest_current_rows(
             window=window,
@@ -40,6 +37,10 @@ class AssetFlowService:
             limit=row_limit,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
+        coverage_status = str((coverage or {}).get("status") or "")
+        if not rows and coverage_status != "ready":
+            return _pending_projection_payload(coverage)
+
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
         public_rows = [_public_row(row) for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
@@ -50,6 +51,9 @@ class AssetFlowService:
         for row in [*targets, *attention]:
             row.pop("_lane", None)
         returned_rows = [*targets[:limit], *attention[:limit]]
+        coverage_row_count = int((coverage or {}).get("row_count") or 0)
+        coverage_source_rows = int((coverage or {}).get("source_rows") or 0)
+        serving_previous_snapshot = coverage_status not in {"", "ready"}
         return {
             "targets": targets[:limit],
             "attention": attention[:limit],
@@ -57,9 +61,9 @@ class AssetFlowService:
                 "status": "fresh",
                 "version": TOKEN_RADAR_PROJECTION_VERSION,
                 "source": "token_radar_current_rows",
-                "reason": coverage.get("reason"),
-                "row_count": int(coverage.get("row_count") or 0),
-                "source_rows": int(coverage.get("source_rows") or 0),
+                "reason": (coverage or {}).get("reason"),
+                "row_count": len(rows) if serving_previous_snapshot else coverage_row_count or len(rows),
+                "source_rows": len(rows) if serving_previous_snapshot else coverage_source_rows or len(rows),
                 "source_max_received_at_ms": max(
                     (int(row.get("source_max_received_at_ms") or 0) for row in rows),
                     default=0,

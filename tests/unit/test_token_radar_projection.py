@@ -399,6 +399,30 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
     ]
 
 
+def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    now_ms = 1_777_800_060_000
+    feature_row = _project_group(
+        [source_row("event-1", received_at_ms=now_ms - 60_000)],
+        now_ms=now_ms,
+        window="5m",
+        scope="all",
+    )
+    token_radar = FakeTokenRadar([feature_row])
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    assert [call["status"] for call in token_radar.coverage] == ["ready"]
+
+
 def test_projection_does_not_call_current_market_repository(monkeypatch):
     recorder = FakeProjectionRecorder()
     now_ms = 1_777_800_060_000

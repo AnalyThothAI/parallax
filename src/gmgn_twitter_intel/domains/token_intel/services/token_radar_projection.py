@@ -236,20 +236,6 @@ class TokenRadarProjection:
         limit: int = 100,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
-        self.repos.token_radar.mark_coverage(
-            projection_version=PROJECTION_VERSION,
-            window=window,
-            scope=scope,
-            status="running",
-            reason="projection_window_running",
-            source_rows=0,
-            row_count=0,
-            computed_at_ms=computed_at_ms,
-            started_at_ms=computed_at_ms,
-            finished_at_ms=None,
-            error=None,
-            commit=True,
-        )
         try:
             feature_rows = self.repos.token_radar.list_target_features_for_rank_set(
                 projection_version=PROJECTION_VERSION,
