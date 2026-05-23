@@ -753,7 +753,7 @@ class EquityEventRepository:
                 ON provider.provider_document_id = documents.provider_document_id
              WHERE documents.lifecycle_status IN ('raw', 'process_failed')
                AND documents.processing_attempts < 3
-             ORDER BY documents.event_time_ms ASC, documents.event_document_id ASC
+             ORDER BY documents.event_time_ms DESC, documents.event_document_id ASC
              LIMIT %s
              FOR UPDATE SKIP LOCKED
             """,

@@ -481,6 +481,51 @@ def test_process_worker_retries_process_failed_documents(postgres_conn) -> None:
     assert document["processing_error"] is None
 
 
+def test_process_worker_claims_newest_raw_documents_first(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-old-backfill",
+        provider_document_id="provider-doc-old-backfill",
+        provider_document_key="0000789019-19-000001:10-Q",
+        accession_number="0000789019-19-000001",
+        content_hash="content-old-backfill",
+        event_time_ms=NOW_MS - 7 * 365 * 24 * 60 * 60 * 1000,
+    )
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-new-live",
+        provider_document_id="provider-doc-new-live",
+        provider_document_key="0000789019-26-000999:8-K",
+        accession_number="0000789019-26-000999",
+        form_type="8-K",
+        raw_payload_json={
+            "title": "Results of Operations and Financial Condition",
+            "body_text": "Revenue was $63.0 billion.",
+        },
+        content_hash="content-new-live",
+        event_time_ms=NOW_MS + 60_000,
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000, batch_size=1).run_once_sync()
+
+    statuses = {
+        row["event_document_id"]: row["lifecycle_status"]
+        for row in postgres_conn.execute(
+            """
+            SELECT event_document_id, lifecycle_status
+              FROM equity_event_documents
+             WHERE event_document_id IN (%s, %s)
+            """,
+            ("event-doc-old-backfill", "event-doc-new-live"),
+        ).fetchall()
+    }
+    event = postgres_conn.execute("SELECT * FROM equity_company_events").fetchone()
+    assert result.processed == 1
+    assert statuses == {"event-doc-old-backfill": "raw", "event-doc-new-live": "processed"}
+    assert event["primary_document_id"] == "event-doc-new-live"
+
+
 def test_reprocessing_updated_document_clears_stale_story_membership(postgres_conn) -> None:
     db = _WorkerDb(postgres_conn)
     repos = repositories_for_connection(postgres_conn)
@@ -1220,10 +1265,11 @@ def _brief_worker(
     )
 
 
-def _process_worker(db: _WorkerDb, *, now_ms: int) -> EquityEventProcessWorker:
+def _process_worker(db: _WorkerDb, *, now_ms: int, batch_size: int = 100) -> EquityEventProcessWorker:
+    settings = Settings(workers={"equity_event_process": {"batch_size": batch_size}})
     return EquityEventProcessWorker(
         name="equity_event_process",
-        settings=Settings().workers.equity_event_process,
+        settings=settings.workers.equity_event_process,
         db=db,
         telemetry=SimpleNamespace(),
         wake_bus=None,
