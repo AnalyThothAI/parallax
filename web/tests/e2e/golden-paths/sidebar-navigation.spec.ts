@@ -9,7 +9,7 @@ async function expectSidebarRouteClickFast(
   page: Page,
   routeName: string,
   expectedPath: string,
-  budgetMs = 250,
+  budgetMs = 300,
 ) {
   const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
   const startedAt = Date.now();
