@@ -49,6 +49,33 @@ def test_list_news_page_rows_can_include_unprojected_fallback_when_requested(tmp
     assert raw["agent_status"] == "pending"
 
 
+def test_news_page_rows_filter_indexes_cover_normal_ui_filters(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        rows = conn.execute(
+            """
+            SELECT indexname
+              FROM pg_indexes
+             WHERE schemaname = 'public'
+               AND tablename = 'news_page_rows'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    index_names = {str(row["indexname"]) for row in rows}
+    assert {
+        "idx_news_page_rows_provider_type_time",
+        "idx_news_page_rows_source_role_time",
+        "idx_news_page_rows_trust_tier_time",
+        "idx_news_page_rows_coverage_tags_gin",
+        "idx_news_page_rows_content_tags_gin",
+        "idx_news_page_rows_direction_time",
+        "idx_news_page_rows_decision_class_time",
+    } <= index_names
+
+
 def _insert_source_provider_and_item(
     repo: NewsRepository,
     *,

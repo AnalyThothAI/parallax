@@ -49,11 +49,21 @@ const EMPTY_NEWS_ROWS: NewsRow[] = [];
 type NewsDirectionFilter = "all" | "bullish" | "bearish";
 type NewsContentDomainFilter =
   | "all"
-  | "crypto"
-  | "equity-tradfi"
+  | "crypto_market"
+  | "macro_policy"
+  | "rates_fed"
   | "regulation"
-  | "security"
-  | "macro"
+  | "etf_fund_flow"
+  | "exchange_listing"
+  | "security_hack"
+  | "protocol_development"
+  | "equity_earnings"
+  | "analyst_rating"
+  | "ai_semiconductors"
+  | "energy_geopolitics"
+  | "consumer_macro"
+  | "market_structure"
+  | "low_signal"
   | "low-context";
 type NewsDecisionFilter = "all" | "driver" | "watch" | "context" | "discard";
 type NewsContentTagFilter =
@@ -68,8 +78,15 @@ type NewsContentTagFilter =
   | "exchange_listing"
   | "security_hack"
   | "security_incident"
+  | "crypto_market"
   | "macro_policy"
-  | "rates_fed";
+  | "rates_fed"
+  | "protocol_development"
+  | "equity_earnings"
+  | "ai_semiconductors"
+  | "energy_geopolitics"
+  | "consumer_macro"
+  | "market_structure";
 type NewsSourceFilter =
   | "all"
   | "official"
@@ -91,11 +108,21 @@ const CONTENT_DOMAIN_OPTIONS: Array<
   }
 > = [
   { id: "all", label: "All" },
-  { id: "crypto", label: "Crypto", content_class: "crypto_market" },
-  { id: "equity-tradfi", label: "Equity/TradFi", content_class: "analyst_rating" },
+  { id: "crypto_market", label: "Crypto Market", content_class: "crypto_market" },
+  { id: "macro_policy", label: "Macro Policy", content_class: "macro_policy" },
+  { id: "rates_fed", label: "Rates/Fed", content_class: "rates_fed" },
   { id: "regulation", label: "Regulation", content_class: "regulation" },
-  { id: "security", label: "Security", content_class: "security_hack" },
-  { id: "macro", label: "Macro", content_class: "macro_policy" },
+  { id: "etf_fund_flow", label: "ETF/Fund Flow", content_class: "etf_fund_flow" },
+  { id: "exchange_listing", label: "Exchange Listing", content_class: "exchange_listing" },
+  { id: "security_hack", label: "Security Hack", content_class: "security_hack" },
+  { id: "protocol_development", label: "Protocol Dev", content_class: "protocol_development" },
+  { id: "equity_earnings", label: "Equity Earnings", content_class: "equity_earnings" },
+  { id: "analyst_rating", label: "Analyst Rating", content_class: "analyst_rating" },
+  { id: "ai_semiconductors", label: "AI/Semis", content_class: "ai_semiconductors" },
+  { id: "energy_geopolitics", label: "Energy/Geo", content_class: "energy_geopolitics" },
+  { id: "consumer_macro", label: "Consumer Macro", content_class: "consumer_macro" },
+  { id: "market_structure", label: "Market Structure", content_class: "market_structure" },
+  { id: "low_signal", label: "Low Signal", content_class: "low_signal" },
   { id: "low-context", label: "Low context", content_tag: "low_context" },
 ];
 
@@ -111,8 +138,15 @@ const CONTENT_TAG_OPTIONS: Array<NewsFilterOption<NewsContentTagFilter>> = [
   { id: "exchange_listing", label: "exchange_listing" },
   { id: "security_hack", label: "security_hack" },
   { id: "security_incident", label: "security_incident" },
+  { id: "crypto_market", label: "crypto_market" },
   { id: "macro_policy", label: "macro_policy" },
   { id: "rates_fed", label: "rates_fed" },
+  { id: "protocol_development", label: "protocol_development" },
+  { id: "equity_earnings", label: "equity_earnings" },
+  { id: "ai_semiconductors", label: "ai_semiconductors" },
+  { id: "energy_geopolitics", label: "energy_geopolitics" },
+  { id: "consumer_macro", label: "consumer_macro" },
+  { id: "market_structure", label: "market_structure" },
 ];
 
 const DECISION_OPTIONS: Array<NewsFilterOption<NewsDecisionFilter>> = [

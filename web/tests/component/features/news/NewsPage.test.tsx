@@ -178,6 +178,22 @@ describe("NewsPage", () => {
     expect(screen.getByRole("button", { name: /previous news page/i })).toBeDisabled();
   });
 
+  it("exposes canonical content classes as first-level content filters", async () => {
+    fetchNewsRowsMock.mockResolvedValue({ items: [firstPageRow], next_cursor: null });
+
+    renderNews(<NewsPage token="test-token" />);
+
+    expect(await screen.findByText("Coinbase lists NEWX")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rates/Fed" }));
+
+    await waitFor(() =>
+      expect(fetchNewsRowsMock).toHaveBeenLastCalledWith({
+        ...defaultNewsFetchParams,
+        content_class: "rates_fed",
+      }),
+    );
+  });
+
   it("clears stale secondary tags when the content domain supplies a tag", async () => {
     fetchNewsRowsMock.mockResolvedValue({ items: [firstPageRow], next_cursor: null });
 

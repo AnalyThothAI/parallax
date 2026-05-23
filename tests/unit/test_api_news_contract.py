@@ -97,7 +97,7 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
                 "source_role": "specialist_media",
                 "trust_tier": "high",
                 "coverage_tag": "crypto_market",
-                "content_class": "regulatory_action",
+                "content_class": "regulation",
                 "content_tag": "sec",
                 "decision_class": "driver",
             },
@@ -106,7 +106,7 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
 
     assert response.status_code == 200
     assert news.calls[-1] == {
-        "content_class": "regulatory_action",
+        "content_class": "regulation",
         "content_tag": "sec",
         "coverage_tag": "crypto_market",
         "cursor": None,
@@ -123,6 +123,26 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
         "target": None,
         "trust_tier": "high",
     }
+
+
+def test_news_api_rejects_noncanonical_content_class_without_postgres() -> None:
+    news = FakeNewsRepository()
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/news",
+            params={"content_class": "regulatory_action"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "invalid_content_class",
+        "field": "content_class",
+    }
+    assert news.calls == []
 
 
 def test_news_api_can_request_unprojected_fallback_without_postgres() -> None:
