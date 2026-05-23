@@ -321,9 +321,21 @@ class NotificationRepository:
             clauses.append("n.last_seen_at_ms >= %s")
             params.append(int(since_ms))
         where = " AND ".join(clauses)
-        rows = self.conn.execute(
+        aggregate_row = self.conn.execute(
             f"""
-            SELECT n.notification_id, n.severity, n.author_handle
+            SELECT
+              COUNT(*) AS unread_count,
+              COUNT(*) FILTER (WHERE n.severity = 'high') AS high_unread_count,
+              COUNT(*) FILTER (WHERE n.severity = 'critical') AS critical_unread_count,
+              MAX(
+                CASE n.severity
+                  WHEN 'critical' THEN 3
+                  WHEN 'high' THEN 2
+                  WHEN 'warning' THEN 1
+                  WHEN 'info' THEN 0
+                  ELSE NULL
+                END
+              ) AS highest_unread_rank
             FROM notifications n
             LEFT JOIN notification_reads r
               ON r.notification_id = n.notification_id
@@ -331,29 +343,30 @@ class NotificationRepository:
             WHERE {where}
             """,
             params,
+        ).fetchone()
+        account_where = " AND ".join([*clauses, "n.author_handle IS NOT NULL"])
+        account_rows = self.conn.execute(
+            f"""
+            SELECT n.author_handle, COUNT(*) AS unread_count
+            FROM notifications n
+            LEFT JOIN notification_reads r
+              ON r.notification_id = n.notification_id
+             AND r.subscriber_key = %s
+            WHERE {account_where}
+            GROUP BY n.author_handle
+            ORDER BY n.author_handle ASC
+            """,
+            params,
         ).fetchall()
-        account_counts: dict[str, int] = {}
-        highest: str | None = None
-        high_count = 0
-        critical_count = 0
-        for row in rows:
-            severity = str(row["severity"])
-            if severity == "high":
-                high_count += 1
-            if severity == "critical":
-                critical_count += 1
-            if highest is None or SEVERITY_RANK[severity] > SEVERITY_RANK[highest]:
-                highest = severity
-            handle = row["author_handle"]
-            if handle:
-                account_counts[str(handle)] = account_counts.get(str(handle), 0) + 1
+        highest_rank = aggregate_row["highest_unread_rank"] if aggregate_row is not None else None
+        account_counts = {str(row["author_handle"]): int(row["unread_count"]) for row in account_rows}
         return {
             "subscriber_key": subscriber_key,
-            "unread_count": len(rows),
-            "high_unread_count": high_count,
-            "critical_unread_count": critical_count,
-            "highest_unread_severity": highest,
-            "account_unread_counts": dict(sorted(account_counts.items())),
+            "unread_count": int(aggregate_row["unread_count"] if aggregate_row is not None else 0),
+            "high_unread_count": int(aggregate_row["high_unread_count"] if aggregate_row is not None else 0),
+            "critical_unread_count": int(aggregate_row["critical_unread_count"] if aggregate_row is not None else 0),
+            "highest_unread_severity": _severity_from_rank(int(highest_rank)) if highest_rank is not None else None,
+            "account_unread_counts": account_counts,
         }
 
     def mark_read(self, *, notification_id: str, subscriber_key: str = "local", read_at_ms: int | None = None) -> bool:
@@ -676,6 +689,18 @@ def _normalize_severity(value: str) -> str:
     if normalized not in SEVERITY_RANK:
         raise ValueError("notification severity must be info, warning, high, or critical")
     return normalized
+
+
+def _severity_from_rank(rank: int) -> str | None:
+    if rank >= 3:
+        return "critical"
+    if rank == 2:
+        return "high"
+    if rank == 1:
+        return "warning"
+    if rank == 0:
+        return "info"
+    return None
 
 
 def _normalize_handle(value: str | None) -> str | None:

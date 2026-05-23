@@ -3,6 +3,19 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
+class RecordingConn:
+    def __init__(self, conn):
+        self.conn = conn
+        self.sql_strings: list[str] = []
+
+    def execute(self, sql, *args, **kwargs):
+        self.sql_strings.append(str(sql))
+        return self.conn.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+
 def repository(tmp_path) -> NotificationRepository:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
@@ -292,6 +305,51 @@ def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
     assert [row["notification_id"] for row in rows] == [info["notification_id"]]
     assert summary["unread_count"] == 1
     assert summary["high_unread_count"] == 0
+
+
+def test_summary_uses_sql_aggregates_without_materializing_unread_rows(tmp_path):
+    repo = repository(tmp_path)
+    high_indices = {1, 2, 3, 5}
+    rows = []
+    for index in range(25):
+        row = repo.insert_notification(
+            dedup_key=f"activity:event-{index}",
+            rule_id="watched_account_activity",
+            severity="high" if index in high_indices else "info",
+            title="activity",
+            body="new post",
+            entity_type="account",
+            entity_key=f"account:handle{index % 3}",
+            author_handle=f"handle{index % 3}",
+            event_id=f"event-{index}",
+            source_table="events",
+            source_id=f"event-{index}",
+            occurrence_at_ms=1_700_000_000_000 + index,
+            payload={},
+            channels=["in_app"],
+        )
+        assert row is not None
+        rows.append(row)
+    for index, row in enumerate(rows):
+        if index % 4 == 0:
+            repo.mark_read(
+                notification_id=row["notification_id"],
+                subscriber_key="local",
+                read_at_ms=1_700_000_100_000 + index,
+            )
+
+    recording = RecordingConn(repo.conn)
+    summary = NotificationRepository(recording).summary(subscriber_key="local")
+
+    assert summary["unread_count"] == 18
+    assert summary["critical_unread_count"] == 0
+    assert summary["high_unread_count"] == 4
+    assert summary["highest_unread_severity"] == "high"
+    assert summary["account_unread_counts"] == {"handle0": 6, "handle1": 6, "handle2": 6}
+    joined_sql = "\n".join(recording.sql_strings)
+    assert "COUNT(*)" in joined_sql
+    assert "GROUP BY n.author_handle" in joined_sql
+    assert "SELECT n.notification_id, n.severity, n.author_handle" not in joined_sql
 
 
 def test_mark_all_read_only_affects_selected_subscriber(tmp_path):

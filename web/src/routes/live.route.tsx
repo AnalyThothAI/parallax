@@ -31,9 +31,9 @@ export function Component() {
     token: context.token,
   });
   const socketSnapshot = useSocketSnapshot();
-  const recentReplayItems = recentQuery.data?.data.items ?? [];
+  const recentReplayItems = recentQuery.data?.data.items;
   const liveItems = useMemo(
-    () => mergeLiveItems(recentReplayItems, socketSnapshot.eventItems),
+    () => mergeLiveItems(recentReplayItems ?? [], socketSnapshot.eventItems),
     [recentReplayItems, socketSnapshot.eventItems],
   );
   const liveSignalTapeItems = useMemo(
