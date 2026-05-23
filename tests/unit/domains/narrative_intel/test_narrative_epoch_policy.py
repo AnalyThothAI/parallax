@@ -59,7 +59,7 @@ def _coverage(
 def test_unsupported_5m_window_never_refreshes_or_writes_status_digest() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(window="5m"),
-        last_ready_digest=None,
+        current_ready_digest=None,
         semantic_coverage=_coverage(),
         market_context=None,
         now_ms=NOW_MS,
@@ -75,7 +75,7 @@ def test_unsupported_5m_window_never_refreshes_or_writes_status_digest() -> None
 def test_ready_digest_plus_one_new_source_below_threshold_returns_no_material_delta() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(source_event_ids=["event-1", "event-2", "event-3", "event-4"]),
-        last_ready_digest=_ready_digest(source_event_ids=["event-1", "event-2", "event-3"]),
+        current_ready_digest=_ready_digest(source_event_ids=["event-1", "event-2", "event-3"]),
         semantic_coverage=_coverage(source_event_count=4),
         market_context=None,
         now_ms=NOW_MS,
@@ -89,7 +89,7 @@ def test_ready_digest_plus_one_new_source_below_threshold_returns_no_material_de
 def test_no_ready_digest_with_sufficient_source_and_semantic_coverage_refreshes_initial_ready() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(),
-        last_ready_digest=None,
+        current_ready_digest=None,
         semantic_coverage=_coverage(),
         market_context=None,
         now_ms=NOW_MS,
@@ -107,7 +107,7 @@ def test_new_source_or_author_delta_above_threshold_returns_material_delta_due()
             source_event_ids=["event-1", "event-2", "event-3", "event-4"],
             author_ids=["author-1", "author-2", "author-3"],
         ),
-        last_ready_digest=_ready_digest(
+        current_ready_digest=_ready_digest(
             source_event_ids=["event-1", "event-2", "event-3"],
             author_ids=["author-1"],
         ),
@@ -125,7 +125,7 @@ def test_new_source_or_author_delta_above_threshold_returns_material_delta_due()
 def test_expired_display_current_until_returns_ttl_refresh_due() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(),
-        last_ready_digest=_ready_digest(display_current_until_ms=NOW_MS - 1),
+        current_ready_digest=_ready_digest(display_current_until_ms=NOW_MS - 1),
         semantic_coverage=_coverage(),
         market_context=None,
         now_ms=NOW_MS,
@@ -140,7 +140,7 @@ def test_expired_display_current_until_returns_ttl_refresh_due() -> None:
 def test_missing_or_pending_semantics_without_ready_digest_returns_initial_ready() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(),
-        last_ready_digest=None,
+        current_ready_digest=None,
         semantic_coverage=_coverage(missing=1, pending=1, retryable=1),
         market_context=None,
         now_ms=NOW_MS,
@@ -155,7 +155,7 @@ def test_missing_or_pending_semantics_without_ready_digest_returns_initial_ready
 def test_missing_or_pending_semantics_with_ready_digest_does_not_write_status_digest() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(source_event_ids=["event-1", "event-2", "event-3", "event-4"]),
-        last_ready_digest=_ready_digest(source_event_ids=["event-1", "event-2", "event-3"]),
+        current_ready_digest=_ready_digest(source_event_ids=["event-1", "event-2", "event-3"]),
         semantic_coverage=_coverage(source_event_count=4, missing=2, pending=1),
         market_context=None,
         now_ms=NOW_MS,
@@ -172,7 +172,7 @@ def test_missing_or_pending_semantics_with_ready_digest_still_refreshes_on_mater
             source_event_ids=["event-1", "event-2", "event-3", "event-4", "event-5", "event-6"],
             author_ids=["author-1", "author-2", "author-3"],
         ),
-        last_ready_digest=_ready_digest(
+        current_ready_digest=_ready_digest(
             source_event_ids=["event-1", "event-2", "event-3"],
             author_ids=["author-1", "author-2"],
         ),
@@ -189,7 +189,7 @@ def test_missing_or_pending_semantics_with_ready_digest_still_refreshes_on_mater
 def test_price_move_over_threshold_returns_material_delta_due() -> None:
     decision = NarrativeEpochPolicy().evaluate(
         admission=_admission(),
-        last_ready_digest=_ready_digest(),
+        current_ready_digest=_ready_digest(),
         semantic_coverage=_coverage(),
         market_context={"price_move_pct": -12.1},
         now_ms=NOW_MS,
@@ -209,7 +209,7 @@ def test_source_event_id_json_strings_are_parsed_for_delta_detection() -> None:
             "source_event_count": 6,
             "independent_author_count": 2,
         },
-        last_ready_digest={
+        current_ready_digest={
             "source_event_ids_json": '["event-1","event-2","event-3"]',
             "independent_author_count": 2,
             "display_current_until_ms": NOW_MS + 1,
@@ -229,7 +229,7 @@ def test_epoch_policy_hard_cuts_digest_windows_to_1h() -> None:
 
     decision = NarrativeEpochPolicy().evaluate(
         admission={"window": "4h", "source_event_count": 10, "independent_author_count": 4},
-        last_ready_digest=None,
+        current_ready_digest=None,
         semantic_coverage={"source_event_count": 10, "missing_semantic_count": 0},
         market_context={},
         now_ms=10_000,

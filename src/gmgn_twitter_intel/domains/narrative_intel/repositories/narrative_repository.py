@@ -1384,7 +1384,7 @@ class NarrativeRepository:
         _commit_if_available(self.conn)
         return {"updated": int(getattr(cursor, "rowcount", 0) or 0)}
 
-    def latest_ready_digest_for_target(
+    def current_ready_digest_for_target(
         self,
         *,
         target_type: str,
@@ -1422,6 +1422,7 @@ class NarrativeRepository:
               AND digest.scope = %s
               AND digest.schema_version = %s
               AND digest.status = 'ready'
+              AND digest.is_current = true
             ORDER BY digest.computed_at_ms DESC, digest.digest_id DESC
             LIMIT 1
             """,
@@ -1463,18 +1464,18 @@ class NarrativeRepository:
         self,
         admission: dict[str, Any],
         *,
-        last_ready_digest: dict[str, Any] | None,
+        current_ready_digest: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        if last_ready_digest is None:
+        if current_ready_digest is None:
             return {}
         target_type = str(admission.get("target_type") or "")
         target_id = str(admission.get("target_id") or "")
         if target_type not in {"chain_token", "cex_symbol"} or not target_id:
             return {}
         ready_at_ms = _int(
-            last_ready_digest.get("epoch_closed_at_ms")
-            or last_ready_digest.get("source_window_end_ms")
-            or last_ready_digest.get("computed_at_ms")
+            current_ready_digest.get("epoch_closed_at_ms")
+            or current_ready_digest.get("source_window_end_ms")
+            or current_ready_digest.get("computed_at_ms")
         )
         current_at_ms = _int(
             admission.get("source_max_received_at_ms")
@@ -1538,6 +1539,7 @@ class NarrativeRepository:
         now_ms: int,
     ) -> dict[tuple[str, str], dict[str, Any]]:
         result: dict[tuple[str, str], dict[str, Any]] = {}
+        query_targets: list[dict[str, str]] = []
         for target in targets:
             target_type = str(target.get("target_type") or "")
             target_id = str(target.get("target_id") or "")
@@ -1551,34 +1553,53 @@ class NarrativeRepository:
                     schema_version=schema_version,
                 )
                 continue
+            if key not in result:
+                query_targets.append({"target_type": target_type, "target_id": target_id})
+            result[key] = {}
 
-            admission = self.current_admission_for_target(
-                target_type=target_type,
-                target_id=target_id,
-                window=window,
-                scope=scope,
-                schema_version=schema_version,
-            )
-            last_ready = self.latest_ready_digest_for_target(
-                target_type=target_type,
-                target_id=target_id,
-                window=window,
-                scope=scope,
-                schema_version=schema_version,
-            )
+        if not query_targets:
+            return result
+
+        admissions = self._current_admissions_for_targets(
+            query_targets,
+            window=window,
+            scope=scope,
+            schema_version=schema_version,
+        )
+        ready_digests = self._current_ready_digests_for_targets(
+            query_targets,
+            window=window,
+            scope=scope,
+            schema_version=schema_version,
+        )
+        coverage_by_admission = self._semantic_coverage_for_admissions(
+            [
+                admission
+                for key, admission in admissions.items()
+                if key not in ready_digests and _is_admitted(admission)
+            ]
+        )
+
+        for target in query_targets:
+            target_type = str(target.get("target_type") or "")
+            target_id = str(target.get("target_id") or "")
+            key = (target_type, target_id)
+            admission = admissions.get(key)
+            current_ready = ready_digests.get(key)
             current_admission = admission if _is_admitted(admission) else None
-            if last_ready is not None:
+            if current_ready is not None:
                 currentness = public_currentness(
-                    digest=last_ready,
+                    digest=current_ready,
                     admission=current_admission,
                     window=window,
                     now_ms=now_ms,
                     reason="not_in_current_frontier" if admission and not current_admission else None,
                 )
-                result[key] = {**last_ready, "_current_admission": current_admission, "currentness": currentness}
+                result[key] = {**current_ready, "_current_admission": current_admission, "currentness": currentness}
                 continue
 
-            reason = self._not_ready_reason_for_admission(admission)
+            coverage = coverage_by_admission.get(str((admission or {}).get("admission_id") or ""))
+            reason = self._not_ready_reason_from_coverage(admission, coverage)
             missing = _missing_digest_row(
                 target_type=target_type,
                 target_id=target_id,
@@ -1588,7 +1609,7 @@ class NarrativeRepository:
                 reason=reason,
             )
             if current_admission is not None:
-                coverage = self.semantic_coverage_for_admission(current_admission)
+                coverage = coverage or _empty_semantic_coverage()
                 missing.update(
                     {
                         "source_event_count": coverage["source_event_count"],
@@ -1611,6 +1632,180 @@ class NarrativeRepository:
             result[key] = missing
         return result
 
+    def _current_admissions_for_targets(
+        self,
+        targets: Sequence[dict[str, str]],
+        *,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH input_targets AS (
+              SELECT DISTINCT target_type, target_id
+              FROM jsonb_to_recordset(%s::jsonb) AS target(target_type text, target_id text)
+            )
+            SELECT DISTINCT ON (admission.target_type, admission.target_id) admission.*
+            FROM narrative_admissions AS admission
+            JOIN input_targets AS target
+              ON target.target_type = admission.target_type
+             AND target.target_id = admission.target_id
+            WHERE admission."window" = %s
+              AND admission.scope = %s
+              AND admission.schema_version = %s
+            ORDER BY admission.target_type,
+                     admission.target_id,
+                     CASE
+                       WHEN admission.status = 'admitted' THEN 0
+                       WHEN admission.status = 'suppressed' THEN 1
+                       ELSE 2
+                     END,
+                     admission.last_seen_at_ms DESC
+            """,
+            (_json([dict(target) for target in targets]), window, scope, schema_version),
+        ).fetchall()
+        return {(str(row["target_type"]), str(row["target_id"])): _row(row) for row in rows}
+
+    def _current_ready_digests_for_targets(
+        self,
+        targets: Sequence[dict[str, str]],
+        *,
+        window: str,
+        scope: str,
+        schema_version: str,
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH input_targets AS (
+              SELECT DISTINCT target_type, target_id
+              FROM jsonb_to_recordset(%s::jsonb) AS target(target_type text, target_id text)
+            ),
+            latest_ready AS (
+              SELECT DISTINCT ON (digest.target_type, digest.target_id) digest.*
+              FROM token_discussion_digests AS digest
+              JOIN input_targets AS target
+                ON target.target_type = digest.target_type
+               AND target.target_id = digest.target_id
+              WHERE digest."window" = %s
+                AND digest.scope = %s
+                AND digest.schema_version = %s
+                AND digest.status = 'ready'
+                AND digest.is_current = true
+              ORDER BY digest.target_type, digest.target_id, digest.computed_at_ms DESC, digest.digest_id DESC
+            )
+            SELECT latest_ready.*,
+                   COALESCE(backlog.pending, 0) AS semantic_backlog_pending,
+                   COALESCE(backlog.retryable, 0) AS semantic_backlog_retryable,
+                   COALESCE(backlog.unavailable, 0) AS semantic_backlog_unavailable,
+                   backlog.oldest_due_at_ms AS semantic_backlog_oldest_due_at_ms
+            FROM latest_ready
+            LEFT JOIN LATERAL (
+              SELECT
+                COUNT(*) FILTER (
+                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                ) AS pending,
+                COUNT(*) FILTER (WHERE semantics.status = 'retryable_error') AS retryable,
+                COUNT(*) FILTER (WHERE semantics.status = 'semantic_unavailable') AS unavailable,
+                MIN(semantics.next_retry_at_ms) FILTER (
+                  WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                ) AS oldest_due_at_ms
+              FROM token_mention_semantics AS semantics
+              WHERE semantics.target_type = latest_ready.target_type
+                AND semantics.target_id = latest_ready.target_id
+                AND semantics.schema_version = latest_ready.schema_version
+            ) AS backlog ON true
+            """,
+            (_json([dict(target) for target in targets]), window, scope, schema_version),
+        ).fetchall()
+        return {(str(row["target_type"]), str(row["target_id"])): _row(row) for row in rows}
+
+    def _semantic_coverage_for_admissions(
+        self,
+        admissions: Sequence[dict[str, Any]],
+    ) -> dict[str, dict[str, int]]:
+        result = {
+            str(admission.get("admission_id") or ""): _empty_semantic_coverage()
+            for admission in admissions
+            if str(admission.get("admission_id") or "")
+        }
+        payload = [
+            {
+                "admission_id": str(admission.get("admission_id") or ""),
+                "target_type": str(admission.get("target_type") or ""),
+                "target_id": str(admission.get("target_id") or ""),
+                "schema_version": str(admission.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
+                "source_event_ids_json": _json_list(
+                    admission.get("source_event_ids") or admission.get("source_event_ids_json")
+                ),
+            }
+            for admission in admissions
+            if str(admission.get("admission_id") or "")
+            and _json_list(admission.get("source_event_ids") or admission.get("source_event_ids_json"))
+        ]
+        if not payload:
+            return result
+        rows = self.conn.execute(
+            """
+            WITH input_admissions AS (
+              SELECT admission_id,
+                     target_type,
+                     target_id,
+                     schema_version,
+                     source_event_ids_json
+              FROM jsonb_to_recordset(%s::jsonb) AS admission(
+                admission_id text,
+                target_type text,
+                target_id text,
+                schema_version text,
+                source_event_ids_json jsonb
+              )
+            ),
+            source_ids AS (
+              SELECT admission.admission_id,
+                     admission.target_type,
+                     admission.target_id,
+                     admission.schema_version,
+                     source_id.source_ordinal,
+                     source_id.event_id
+              FROM input_admissions AS admission
+              CROSS JOIN LATERAL jsonb_array_elements_text(admission.source_event_ids_json)
+                WITH ORDINALITY AS source_id(event_id, source_ordinal)
+            ),
+            source_status AS (
+              SELECT source_ids.admission_id,
+                     source_ids.source_ordinal,
+                     source_ids.event_id,
+                     BOOL_OR(semantics.semantic_id IS NOT NULL) AS has_semantic,
+                     BOOL_OR(semantics.status IN ('queued', 'stale')) AS has_pending,
+                     BOOL_OR(semantics.status = 'retryable_error') AS has_retryable,
+                     BOOL_OR(semantics.status = 'labeled') AS has_labeled,
+                     BOOL_OR(semantics.status = 'semantic_unavailable') AS has_terminal_unavailable
+              FROM source_ids
+              LEFT JOIN token_mention_semantics AS semantics
+                ON semantics.event_id = source_ids.event_id
+               AND semantics.target_type = source_ids.target_type
+               AND semantics.target_id = source_ids.target_id
+               AND semantics.schema_version = source_ids.schema_version
+              GROUP BY source_ids.admission_id, source_ids.source_ordinal, source_ids.event_id
+            )
+            SELECT admission_id,
+                   COUNT(*) AS source_event_count,
+                   COUNT(*) FILTER (WHERE has_semantic) AS semantic_row_count,
+                   COUNT(*) FILTER (WHERE NOT has_semantic) AS missing_semantic_count,
+                   COUNT(*) FILTER (WHERE has_pending) AS pending_semantic_count,
+                   COUNT(*) FILTER (WHERE has_retryable) AS retryable_semantic_count,
+                   COUNT(*) FILTER (WHERE has_labeled) AS labeled_event_count,
+                   COUNT(*) FILTER (WHERE has_terminal_unavailable) AS terminal_unavailable_count
+            FROM source_status
+            GROUP BY admission_id
+            """,
+            (_json(payload),),
+        ).fetchall()
+        for row in rows:
+            result[str(row["admission_id"])] = {key: int(row[key] or 0) for key in _SEMANTIC_COVERAGE_KEYS}
+        return result
+
     def current_digests_for_targets(
         self,
         targets: Sequence[dict[str, str]],
@@ -1628,6 +1823,14 @@ class NarrativeRepository:
         )
 
     def _not_ready_reason_for_admission(self, admission: dict[str, Any] | None) -> str:
+        coverage = self.semantic_coverage_for_admission(admission) if _is_admitted(admission) else None
+        return self._not_ready_reason_from_coverage(admission, coverage)
+
+    @staticmethod
+    def _not_ready_reason_from_coverage(
+        admission: dict[str, Any] | None,
+        coverage: dict[str, int] | None,
+    ) -> str:
         if admission is None:
             return "no_ready_digest"
         if not _is_admitted(admission):
@@ -1636,7 +1839,7 @@ class NarrativeRepository:
             return "low_source_volume"
         if (_int(admission.get("independent_author_count")) or 0) == 0:
             return "low_independent_author_count"
-        coverage = self.semantic_coverage_for_admission(admission)
+        coverage = coverage or _empty_semantic_coverage()
         pending = (
             coverage["missing_semantic_count"]
             + coverage["pending_semantic_count"]

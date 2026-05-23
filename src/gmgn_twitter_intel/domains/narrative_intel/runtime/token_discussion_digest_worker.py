@@ -85,15 +85,15 @@ class TokenDiscussionDigestWorker(WorkerBase):
         deferred_epoch_policy = 0
         for target in targets:
             context = await asyncio.to_thread(self._digest_context_sync, target=target)
-            last_ready = await asyncio.to_thread(self._latest_ready_digest_sync, target=target)
+            current_ready = await asyncio.to_thread(self._current_ready_digest_sync, target=target)
             market_context = await asyncio.to_thread(
                 self._market_context_sync,
                 admission={**target, **context},
-                last_ready_digest=last_ready,
+                current_ready_digest=current_ready,
             )
             epoch_decision = self.epoch_policy.evaluate(
                 admission=_admission_for_policy(target=target, context=context),
-                last_ready_digest=last_ready,
+                current_ready_digest=current_ready,
                 semantic_coverage=context,
                 market_context=market_context,
                 now_ms=resolved_now_ms,
@@ -106,7 +106,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 now_ms=resolved_now_ms,
             )
             if not epoch_decision.should_refresh:
-                if epoch_decision.should_write_status_digest and last_ready is None:
+                if epoch_decision.should_write_status_digest and current_ready is None:
                     status_decision = self.service.refresh_decision(context)
                     refresh_reasons[status_decision.reason] = refresh_reasons.get(status_decision.reason, 0) + 1
                     digest = self.service.build_status_digest(
@@ -424,12 +424,9 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 )
             )
 
-    def _latest_ready_digest_sync(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
+    def _current_ready_digest_sync(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
         with self._repository_session() as repos:
-            method = getattr(repos.narratives, "latest_ready_digest_for_target", None)
-            if method is None:
-                return None
-            digest = method(
+            digest = repos.narratives.current_ready_digest_for_target(
                 target_type=str(target["target_type"]),
                 target_id=str(target["target_id"]),
                 window=str(target["window"]),
@@ -442,13 +439,13 @@ class TokenDiscussionDigestWorker(WorkerBase):
         self,
         *,
         admission: dict[str, Any],
-        last_ready_digest: dict[str, Any] | None,
+        current_ready_digest: dict[str, Any] | None,
     ) -> dict[str, Any]:
         with self._repository_session() as repos:
             method = getattr(repos.narratives, "market_context_for_admission", None)
             if method is None:
                 return {}
-            return dict(method(admission, last_ready_digest=last_ready_digest) or {})
+            return dict(method(admission, current_ready_digest=current_ready_digest) or {})
 
     def _replace_digest_sync(self, *, digest: dict[str, Any], now_ms: int) -> None:
         with self._repository_session() as repos:

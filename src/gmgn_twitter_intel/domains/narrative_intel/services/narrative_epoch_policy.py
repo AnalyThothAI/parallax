@@ -59,7 +59,7 @@ class NarrativeEpochPolicy:
         self,
         *,
         admission: Mapping[str, Any],
-        last_ready_digest: Mapping[str, Any] | None,
+        current_ready_digest: Mapping[str, Any] | None,
         semantic_coverage: Mapping[str, Any],
         market_context: Mapping[str, Any] | None,
         now_ms: int,
@@ -78,7 +78,7 @@ class NarrativeEpochPolicy:
         source_count = _int_value(semantic_coverage.get("source_event_count"), admission.get("source_event_count"))
         authors = _author_count(admission)
 
-        if last_ready_digest is None:
+        if current_ready_digest is None:
             if source_count <= 0 or authors <= 0:
                 return NarrativeEpochDecision(
                     reason="insufficient",
@@ -94,7 +94,7 @@ class NarrativeEpochPolicy:
                 refresh_reason="initial_ready",
             )
 
-        if _ttl_expired(last_ready_digest, now_ms=int(now_ms)):
+        if _ttl_expired(current_ready_digest, now_ms=int(now_ms)):
             return NarrativeEpochDecision(
                 reason="ttl_refresh_due",
                 should_refresh=True,
@@ -103,8 +103,8 @@ class NarrativeEpochPolicy:
                 refresh_reason="ttl_refresh_due",
             )
 
-        delta_sources = _source_delta_count(admission, last_ready_digest)
-        delta_authors = _author_delta_count(admission, last_ready_digest)
+        delta_sources = _source_delta_count(admission, current_ready_digest)
+        delta_authors = _author_delta_count(admission, current_ready_digest)
         price_move_pct = abs(_float_value((market_context or {}).get("price_move_pct")))
         if (
             delta_sources >= threshold.min_new_sources

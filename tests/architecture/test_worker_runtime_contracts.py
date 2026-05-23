@@ -690,7 +690,7 @@ def test_no_exact_fingerprint_only_public_narrative_hydration() -> None:
     )[0]
 
     assert "COALESCE(admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')" not in method
-    assert "latest_ready_digest_for_target" in method
+    assert "_current_ready_digests_for_targets" in method
     assert "public_currentness" in method
 
 
@@ -713,7 +713,7 @@ def test_narrative_cleanup_deletes_non_current_digest_state() -> None:
 def test_token_discussion_digest_worker_does_not_write_unsupported_5m_digests() -> None:
     text = NARRATIVE_EPOCH_POLICY.read_text()
     unsupported_index = text.find('reason="unsupported_window"')
-    next_decision_index = text.find("if last_ready_digest is None", unsupported_index)
+    next_decision_index = text.find("if current_ready_digest is None", unsupported_index)
 
     assert unsupported_index >= 0
     assert "should_refresh=False" in text[unsupported_index:next_decision_index]

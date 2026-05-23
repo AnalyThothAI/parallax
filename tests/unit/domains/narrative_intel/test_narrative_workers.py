@@ -925,7 +925,7 @@ def test_token_discussion_digest_worker_defer_below_threshold_delta_with_ready_d
                 "independent_author_count": 4,
                 "allowed_refs": [{"ref_id": "event:event-1", "kind": "event", "source_table": "events"}],
             },
-            last_ready_digest={
+            current_ready_digest={
                 "status": "ready",
                 "source_event_ids_json": ["event-1", "event-2", "event-3"],
                 "independent_author_count": 4,
@@ -986,7 +986,7 @@ def test_token_discussion_digest_worker_keeps_ready_digest_when_semantics_pendin
                 "independent_author_count": 4,
                 "allowed_refs": [],
             },
-            last_ready_digest={
+            current_ready_digest={
                 "status": "ready",
                 "source_event_ids_json": ["event-1", "event-2", "event-3"],
                 "independent_author_count": 4,
@@ -1173,7 +1173,7 @@ def test_token_discussion_digest_worker_refreshes_no_ready_digest_with_bounded_p
                     {"ref_id": "semantic:semantic-3", "kind": "semantic", "source_table": "token_mention_semantics"},
                 ],
             },
-            last_ready_digest=None,
+            current_ready_digest=None,
         )
         db = FakeDB(repo)
         worker = TokenDiscussionDigestWorker(
@@ -1580,12 +1580,12 @@ class FakeNarrativeRepository:
 
 
 class FakeDigestRepository:
-    def __init__(self, *, context=None, contexts=None, targets=None, last_ready_digest=None, market_context=None):
+    def __init__(self, *, context=None, contexts=None, targets=None, current_ready_digest=None, market_context=None):
         self.recorded_runs = []
         self.context = context
         self.contexts = dict(contexts or {})
         self.targets = list(targets) if targets is not None else None
-        self.last_ready_digest = last_ready_digest
+        self.current_ready_digest = current_ready_digest
         self.market_context = dict(market_context or {})
         self.replaced_digests = []
         self.digest_scans = []
@@ -1649,10 +1649,10 @@ class FakeDigestRepository:
             "allowed_refs": [{"ref_id": "event:event-1", "kind": "event", "source_table": "events"}],
         }
 
-    def latest_ready_digest_for_target(self, *, target_type, target_id, window, scope, schema_version):
-        return self.last_ready_digest
+    def current_ready_digest_for_target(self, *, target_type, target_id, window, scope, schema_version):
+        return self.current_ready_digest
 
-    def market_context_for_admission(self, admission, *, last_ready_digest):
+    def market_context_for_admission(self, admission, *, current_ready_digest):
         return self.market_context
 
     def record_narrative_model_run(self, run, *, commit=True):
