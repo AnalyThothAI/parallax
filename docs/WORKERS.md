@@ -90,7 +90,7 @@ event_anchor_backfill, live_price_gateway, resolution_refresh,
 asset_profile_refresh, token_image_mirror, token_radar_projection, token_profile_current,
 narrative_admission, mention_semantics, token_discussion_digest,
 news_fetch, news_item_process, news_story_projection,
-news_item_brief, news_page_projection,
+news_item_brief, news_page_projection, news_source_quality_projection,
 cex_oi_radar_board, macro_view_projection,
 pulse_candidate, enrichment, handle_summary, notification_rule,
 notification_delivery
@@ -112,11 +112,12 @@ notification_delivery
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | latest ready `token_radar_rows` frontier, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | due `narrative_admissions` source sets, `events`, queued semantics | `token_mention_semantics`, `narrative_model_runs` | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
 | `token_discussion_digest` (`TokenDiscussionDigestWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/token_discussion_digest_worker.py` | `narrative_admissions`, `token_mention_semantics`, market/profile facts | `token_discussion_digests`, `narrative_model_runs` | `token_radar_updated`, `narrative_semantics_updated`, `market_tick_written` | none | `interval_seconds` |
-| `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources`, due `news_sources`, RSS/Atom/CryptoPanic feeds | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
+| `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
 | `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
 | `news_page_projection` (`NewsPageProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_page_projection_worker.py` | `news_items`, `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_story_groups`, `news_story_members` | `news_page_rows` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
+| `news_source_quality_projection` (`NewsSourceQualityProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_source_quality_projection_worker.py` | `news_sources`, `news_fetch_runs`, `news_items`, `news_token_mentions`, `news_fact_candidates`, `news_item_agent_briefs`, `news_context_items` | `news_source_quality_rows`, `news_sources.source_quality_status` | `news_item_written`, `news_item_processed`, `news_story_updated`, `news_item_brief_updated` | none | `interval_seconds` |
 | `cex_oi_radar_board` (`CexOiRadarBoardWorker`) | `cex_market_intel` | `domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py` | Binance-backed `price_feeds`, Binance USD-M ticker/premium/OI history, bounded CoinGlass enrichment when available | `cex_oi_radar_runs`, `cex_oi_radar_rows`, `cex_detail_snapshots` | poll | none | `interval_seconds` |
 | `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | `macro_observations` history | `macro_view_snapshots` | poll | none | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope for Pulse `1h`/`4h` horizons, gate fields, route policy, source-quality policy | `pulse_agent_jobs`, `pulse_candidate_edge_state`, `pulse_candidate_run_budget`, `pulse_target_run_budget`, `pulse_agent_runs`, `pulse_agent_run_steps`, `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`, `pulse_agent_eval_results`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots` | `token_radar_updated` | none | `interval_seconds` |
@@ -227,7 +228,7 @@ not a read model.
 | `news_item_written` | `NewsFetchWorker` | `NewsItemProcessWorker`, `NewsPageProjectionWorker` | `{source_id, count}` |
 | `news_item_processed` | `NewsItemProcessWorker` | `NewsStoryProjectionWorker`, `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_story_updated` | `NewsStoryProjectionWorker` | `NewsItemBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
-| `news_item_brief_updated` | `NewsItemBriefWorker` | `NewsPageProjectionWorker` | `{count}` |
+| `news_item_brief_updated` | `NewsItemBriefWorker` | `NewsPageProjectionWorker`, `NewsSourceQualityProjectionWorker` | `{count}` |
 
 Wake payloads are hints only. Consumers re-read DB on wake and catch up
 on their configured cadence. `DBPoolBundle` owns wake emission and

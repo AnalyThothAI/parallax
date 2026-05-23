@@ -9,6 +9,7 @@ from gmgn_twitter_intel.app.runtime import providers_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market as asset_market_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import binance as binance_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import gmgn as gmgn_wiring
+from gmgn_twitter_intel.app.runtime.provider_wiring import news as news_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import okx as okx_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring import openai as openai_wiring
 from gmgn_twitter_intel.app.runtime.provider_wiring.gmgn import GmgnDexMarketProvider
@@ -425,6 +426,24 @@ def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_ne
         )
 
 
+def test_news_feed_client_returns_registry_backed_provider_and_closes_underlying_clients(monkeypatch) -> None:
+    rss_client = CloseCountingFeedClient()
+    cryptopanic_client = CloseCountingFeedClient()
+
+    monkeypatch.setattr(news_wiring, "FeedClient", lambda: rss_client)
+    monkeypatch.setattr(news_wiring, "CryptopanicFeedClient", lambda: cryptopanic_client)
+
+    provider = news_wiring.news_feed_client(Settings(ws_token="secret"))
+
+    assert isinstance(provider, news_wiring.RegistryBackedNewsSourceProvider)
+
+    provider.close()
+    provider.close()
+
+    assert rss_client.close_count == 1
+    assert cryptopanic_client.close_count == 1
+
+
 def test_openai_pulse_provider_wiring_requires_db_pool() -> None:
     with pytest.raises(RuntimeError, match="db_pool is required"):
         providers_wiring.wire_providers(
@@ -723,6 +742,14 @@ class CloseFailingDexQuoteProvider(FakeDexQuoteProvider):
 
 
 class CloseCountingCexProvider:
+    def __init__(self) -> None:
+        self.close_count = 0
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class CloseCountingFeedClient:
     def __init__(self) -> None:
         self.close_count = 0
 

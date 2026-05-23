@@ -20,9 +20,16 @@ forced into a resolved asset.
   `news_provider_items` plus normalized `news_items`.
 - `news_story_groups`, `news_story_members`, and `news_page_rows` are
   rebuildable read models.
+- `news_sources` carries source classification (`provider_type`,
+  `source_role`, `trust_tier`, `coverage_tags`) and source policy JSON. The
+  page read model copies the compact classification fields into `source_json`
+  so `/api/news` can filter without calling providers.
 - `news_item_agent_runs` is the append-only audit ledger for single-item
   agent brief attempts. `news_item_agent_briefs` is the current item-scoped
   brief read model. `NewsItemBriefWorker` is the only runtime writer for both.
+- `news_source_quality_rows` is a rebuildable source-quality read model
+  written only by `NewsSourceQualityProjectionWorker`; `news_sources`
+  stores only the compact latest `source_quality_status`.
 - `news_fact_candidates` references only `news_items`; story association is
   derived through read-model queries.
 
@@ -35,6 +42,7 @@ forced into a resolved asset.
 | Story projection | Rebuild deterministic story groups and memberships from news item facts and observations. |
 | Item brief | Build bounded item/story/token/fact packets, reserve `news.item_brief`, execute through the shared `AgentExecutionGateway`, validate the output, write the run ledger, and upsert the current brief. |
 | Page projection | Rebuild the News page rows from news facts, story state, item lifecycle, and the current item brief. |
+| Source quality projection | Rebuild per-source quality windows from source/fetch/item/token/fact/brief/context rows and update compact source quality status. |
 | API/UI | Read-only surfaces over `news_page_rows` or raw visible `news_items` during early rollout. |
 
 ## Boundaries

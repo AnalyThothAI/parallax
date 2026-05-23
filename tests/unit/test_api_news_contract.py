@@ -26,14 +26,19 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     assert response.status_code == 200
     assert news.calls == [
         {
+            "content_class": None,
+            "coverage_tag": None,
             "cursor": "2000:row-old",
             "direction": "bullish",
             "lane": None,
             "limit": 1,
+            "provider_type": None,
             "q": None,
             "source": None,
+            "source_role": None,
             "status": None,
             "target": None,
+            "trust_tier": None,
         }
     ]
     assert response.json() == {
@@ -68,6 +73,41 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     }
 
 
+def test_news_api_accepts_source_classification_filters_without_postgres() -> None:
+    news = FakeNewsRepository()
+    app = _app(news)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/news",
+            params={
+                "provider_type": "rss",
+                "source_role": "specialist_media",
+                "trust_tier": "high",
+                "coverage_tag": "crypto_market",
+                "content_class": "regulatory_action",
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert news.calls[-1] == {
+        "content_class": "regulatory_action",
+        "coverage_tag": "crypto_market",
+        "cursor": None,
+        "direction": None,
+        "lane": None,
+        "limit": 100,
+        "provider_type": "rss",
+        "q": None,
+        "source": None,
+        "source_role": "specialist_media",
+        "status": None,
+        "target": None,
+        "trust_tier": "high",
+    }
+
+
 class FakeNewsRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
@@ -82,18 +122,28 @@ class FakeNewsRepository:
         source: str | None = None,
         target: str | None = None,
         direction: str | None = None,
+        provider_type: str | None = None,
+        source_role: str | None = None,
+        trust_tier: str | None = None,
+        coverage_tag: str | None = None,
+        content_class: str | None = None,
         q: str | None = None,
     ):
         self.calls.append(
             {
+                "content_class": content_class,
+                "coverage_tag": coverage_tag,
                 "cursor": cursor,
                 "direction": direction,
                 "lane": lane,
                 "limit": limit,
+                "provider_type": provider_type,
                 "q": q,
                 "source": source,
+                "source_role": source_role,
                 "status": status,
                 "target": target,
+                "trust_tier": trust_tier,
             }
         )
         return [

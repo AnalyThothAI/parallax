@@ -107,10 +107,13 @@ def _source_payload(item: dict[str, Any]) -> dict[str, Any]:
     return _compact_mapping(
         {
             "source_id": item.get("source_id"),
+            "provider_type": item.get("provider_type"),
             "source_domain": item.get("source_domain"),
             "source_name": item.get("source_name"),
             "source_role": item.get("source_role"),
             "trust_tier": item.get("trust_tier"),
+            "coverage_tags": _json_list(item.get("coverage_tags_json")),
+            "source_quality_status": item.get("source_quality_status"),
         }
     )
 

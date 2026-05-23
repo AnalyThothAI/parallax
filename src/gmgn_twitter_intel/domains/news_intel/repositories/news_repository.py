@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
+from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 
@@ -30,6 +31,12 @@ class NewsRepository:
         managed_by_config: bool = True,
         enabled: bool = True,
         refresh_interval_seconds: int = 300,
+        coverage_tags: object = (),
+        asset_universe: object = (),
+        authority_scope: Mapping[str, Any] | None = None,
+        fetch_policy: Mapping[str, Any] | None = None,
+        context_policy: Mapping[str, Any] | None = None,
+        cost_policy: Mapping[str, Any] | None = None,
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
@@ -37,9 +44,11 @@ class NewsRepository:
             """
             INSERT INTO news_sources (
               source_id, provider_type, feed_url, source_domain, source_name, source_role,
-              trust_tier, managed_by_config, enabled, refresh_interval_seconds, created_at_ms, updated_at_ms
+              trust_tier, managed_by_config, enabled, refresh_interval_seconds,
+              coverage_tags_json, asset_universe_json, authority_scope_json, fetch_policy_json,
+              context_policy_json, cost_policy_json, created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (source_id) DO UPDATE SET
               provider_type = EXCLUDED.provider_type,
               feed_url = EXCLUDED.feed_url,
@@ -50,6 +59,12 @@ class NewsRepository:
               managed_by_config = EXCLUDED.managed_by_config,
               enabled = EXCLUDED.enabled,
               refresh_interval_seconds = EXCLUDED.refresh_interval_seconds,
+              coverage_tags_json = EXCLUDED.coverage_tags_json,
+              asset_universe_json = EXCLUDED.asset_universe_json,
+              authority_scope_json = EXCLUDED.authority_scope_json,
+              fetch_policy_json = EXCLUDED.fetch_policy_json,
+              context_policy_json = EXCLUDED.context_policy_json,
+              cost_policy_json = EXCLUDED.cost_policy_json,
               updated_at_ms = EXCLUDED.updated_at_ms
             RETURNING *
             """,
@@ -64,6 +79,12 @@ class NewsRepository:
                 bool(managed_by_config),
                 bool(enabled),
                 max(1, int(refresh_interval_seconds)),
+                _json(list(normalize_string_tuple(coverage_tags))),
+                _json(list(normalize_string_tuple(asset_universe))),
+                _json(_json_dict(authority_scope)),
+                _json(_json_dict(fetch_policy)),
+                _json(_json_dict(context_policy)),
+                _json(_json_dict(cost_policy)),
                 int(now_ms),
                 int(now_ms),
             ),
@@ -455,6 +476,64 @@ class NewsRepository:
             self.conn.commit()
         return {**dict(row), "status": status}
 
+    def upsert_news_context_item(
+        self,
+        *,
+        context_item_id: str,
+        source_id: str,
+        parent_news_item_id: str | None = None,
+        provider_item_id: str | None = None,
+        context_type: str,
+        author: str | None = None,
+        canonical_url: str | None = None,
+        body_text: str,
+        published_at_ms: int | None = None,
+        engagement_json: Mapping[str, Any] | None = None,
+        raw_payload_json: Mapping[str, Any] | None = None,
+        created_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO news_context_items (
+              context_item_id, source_id, parent_news_item_id, provider_item_id, context_type,
+              author, canonical_url, body_text, published_at_ms, engagement_json,
+              raw_payload_json, created_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (context_item_id) DO UPDATE SET
+              source_id = EXCLUDED.source_id,
+              parent_news_item_id = EXCLUDED.parent_news_item_id,
+              provider_item_id = EXCLUDED.provider_item_id,
+              context_type = EXCLUDED.context_type,
+              author = EXCLUDED.author,
+              canonical_url = EXCLUDED.canonical_url,
+              body_text = EXCLUDED.body_text,
+              published_at_ms = EXCLUDED.published_at_ms,
+              engagement_json = EXCLUDED.engagement_json,
+              raw_payload_json = EXCLUDED.raw_payload_json,
+              created_at_ms = EXCLUDED.created_at_ms
+            RETURNING *
+            """,
+            (
+                str(context_item_id),
+                str(source_id),
+                str(parent_news_item_id) if parent_news_item_id else None,
+                str(provider_item_id) if provider_item_id else None,
+                str(context_type),
+                str(author) if author is not None else None,
+                str(canonical_url) if canonical_url is not None else None,
+                str(body_text),
+                int(published_at_ms) if published_at_ms is not None else None,
+                _json(_json_dict(engagement_json)),
+                _json(_json_dict(raw_payload_json)),
+                int(created_at_ms),
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
     def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
         commit = bool(payload.pop("commit", True))
         row = self.conn.execute(
@@ -544,6 +623,11 @@ class NewsRepository:
         lane: str | None = None,
         source: str | None = None,
         target: str | None = None,
+        provider_type: str | None = None,
+        source_role: str | None = None,
+        trust_tier: str | None = None,
+        coverage_tag: str | None = None,
+        content_class: str | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
@@ -558,6 +642,31 @@ class NewsRepository:
         if source:
             filters.append("source_domain = %s")
             filter_params.append(str(source))
+        if provider_type:
+            filters.append("source_json ->> 'provider_type' = %s")
+            filter_params.append(str(provider_type))
+        if source_role:
+            filters.append("source_json ->> 'source_role' = %s")
+            filter_params.append(str(source_role))
+        if trust_tier:
+            filters.append("source_json ->> 'trust_tier' = %s")
+            filter_params.append(str(trust_tier))
+        if coverage_tag:
+            filters.append("(source_json -> 'coverage_tags') ? %s")
+            filter_params.append(str(coverage_tag))
+        if content_class:
+            filters.append(
+                """
+                EXISTS (
+                  SELECT 1
+                    FROM jsonb_array_elements(fact_lanes_json) AS fact_lane(value)
+                   WHERE fact_lane.value ->> 'content_class' = %s
+                      OR fact_lane.value ->> 'event_type' = %s
+                )
+                """
+            )
+            normalized_content_class = str(content_class)
+            filter_params.extend([normalized_content_class, normalized_content_class])
         if q:
             filters.append("(headline ILIKE %s OR summary ILIKE %s)")
             needle = f"%{str(q).strip()}%"
@@ -611,10 +720,13 @@ class NewsRepository:
                 '{{}}'::jsonb AS story_json,
                 jsonb_build_object(
                   'source_id', items.source_id,
+                  'provider_type', sources.provider_type,
                   'source_domain', items.source_domain,
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier
+                  'trust_tier', sources.trust_tier,
+                  'coverage_tags', sources.coverage_tags_json,
+                  'source_quality_status', sources.source_quality_status
                 ) AS source_json,
                 '{{"status":"pending"}}'::jsonb AS agent_brief_json,
                 'pending'::text AS agent_status,
@@ -671,7 +783,29 @@ class NewsRepository:
                WHERE items.news_item_id = picked.news_item_id
               RETURNING items.*
             )
-            SELECT claimed.*, sources.source_role, sources.trust_tier, sources.source_name
+            SELECT claimed.news_item_id,
+                   claimed.provider_item_id,
+                   claimed.source_id,
+                   sources.source_domain AS source_domain,
+                   claimed.canonical_url,
+                   claimed.title,
+                   claimed.summary,
+                   claimed.body_text,
+                   claimed.language,
+                   claimed.published_at_ms,
+                   claimed.fetched_at_ms,
+                   claimed.content_hash,
+                   claimed.title_fingerprint,
+                   claimed.lifecycle_status,
+                   claimed.processing_attempts,
+                   claimed.processing_error,
+                   claimed.processed_at_ms,
+                   claimed.created_at_ms,
+                   claimed.updated_at_ms,
+                   sources.source_role,
+                   sources.trust_tier,
+                   sources.source_name,
+                   sources.authority_scope_json
               FROM claimed
               JOIN news_sources AS sources ON sources.source_id = claimed.source_id
             """,
@@ -1027,13 +1161,14 @@ class NewsRepository:
                      page.computed_at_ms AS projected_at_ms,
                      page.projection_version AS projected_version
                 FROM news_items AS items
+                JOIN news_sources AS sources ON sources.source_id = items.source_id
                 LEFT JOIN news_story_members AS members ON members.news_item_id = items.news_item_id
                 LEFT JOIN news_story_groups AS stories ON stories.story_id = members.story_id
                 LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
                 LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
                 LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
                 LEFT JOIN news_page_rows AS page ON page.news_item_id = items.news_item_id
-               GROUP BY items.news_item_id, stories.story_id, current_brief.news_item_id, page.row_id
+               GROUP BY items.news_item_id, sources.source_id, stories.story_id, current_brief.news_item_id, page.row_id
               HAVING page.row_id IS NULL
                   OR page.projection_version <> %s
                   OR page.computed_at_ms < GREATEST(
@@ -1044,6 +1179,14 @@ class NewsRepository:
                        COALESCE(current_brief.updated_at_ms, 0),
                        COALESCE(current_brief.computed_at_ms, 0)
                      )
+                  OR page.source_json ->> 'source_id' IS DISTINCT FROM items.source_id
+                  OR page.source_json ->> 'provider_type' IS DISTINCT FROM sources.provider_type
+                  OR page.source_json ->> 'source_domain' IS DISTINCT FROM items.source_domain
+                  OR page.source_json ->> 'source_name' IS DISTINCT FROM sources.source_name
+                  OR page.source_json ->> 'source_role' IS DISTINCT FROM sources.source_role
+                  OR page.source_json ->> 'trust_tier' IS DISTINCT FROM sources.trust_tier
+                  OR COALESCE(page.source_json -> 'coverage_tags', '[]'::jsonb) <> sources.coverage_tags_json
+                  OR page.source_json ->> 'source_quality_status' IS DISTINCT FROM sources.source_quality_status
                ORDER BY (page.row_id IS NULL) DESC,
                         source_updated_at_ms ASC,
                         items.published_at_ms DESC,
@@ -1053,9 +1196,12 @@ class NewsRepository:
             SELECT
               to_jsonb(items.*)
                 || jsonb_build_object(
+                  'provider_type', sources.provider_type,
                   'source_name', sources.source_name,
                   'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier
+                  'trust_tier', sources.trust_tier,
+                  'coverage_tags_json', sources.coverage_tags_json,
+                  'source_quality_status', sources.source_quality_status
                 ) AS item,
               CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
               CASE
@@ -1118,6 +1264,7 @@ class NewsRepository:
                   COALESCE(stories.updated_at_ms, 0),
                   COALESCE(mention_updates.updated_at_ms, 0),
                   COALESCE(fact_updates.updated_at_ms, 0),
+                  COALESCE(context_updates.updated_at_ms, 0),
                   COALESCE(story_member_updates.updated_at_ms, 0)
                 ) AS source_updated_at_ms,
                 current_brief.status AS current_status,
@@ -1148,6 +1295,11 @@ class NewsRepository:
                   FROM news_fact_candidates
                  WHERE news_item_id = items.news_item_id
               ) AS fact_updates ON true
+              LEFT JOIN LATERAL (
+                SELECT MAX(created_at_ms) AS updated_at_ms
+                  FROM news_context_items
+                 WHERE parent_news_item_id = items.news_item_id
+              ) AS context_updates ON true
               LEFT JOIN LATERAL (
                 SELECT MAX(created_at_ms) AS updated_at_ms
                   FROM news_story_members
@@ -1189,6 +1341,7 @@ class NewsRepository:
                        COALESCE(stories.updated_at_ms, 0),
                        COALESCE(mention_updates.updated_at_ms, 0),
                        COALESCE(fact_updates.updated_at_ms, 0),
+                       COALESCE(context_updates.updated_at_ms, 0),
                        COALESCE(story_member_updates.updated_at_ms, 0)
                      )
                   OR (
@@ -1219,6 +1372,7 @@ class NewsRepository:
               candidates.source_updated_at_ms,
               COALESCE(token_rows.rows, '[]'::jsonb) AS token_mentions,
               COALESCE(fact_rows.rows, '[]'::jsonb) AS fact_candidates,
+              COALESCE(context_rows.rows, '[]'::jsonb) AS context_items,
               COALESCE(story_member_rows.rows, '[]'::jsonb) AS story_members
             FROM candidates
             JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
@@ -1244,6 +1398,20 @@ class NewsRepository:
             ) AS fact_rows ON true
             LEFT JOIN LATERAL (
               SELECT jsonb_agg(
+                       to_jsonb(context_items.*)
+                       ORDER BY context_items.published_at_ms DESC NULLS LAST,
+                                context_items.context_item_id ASC
+                     ) AS rows
+                FROM (
+                  SELECT *
+                    FROM news_context_items
+                   WHERE parent_news_item_id = items.news_item_id
+                   ORDER BY published_at_ms DESC NULLS LAST, context_item_id ASC
+                   LIMIT 25
+                ) AS context_items
+            ) AS context_rows ON true
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(
                        to_jsonb(member_items.*)
                        ORDER BY member_items.published_at_ms DESC, member_items.news_item_id ASC
                      ) AS rows
@@ -1265,19 +1433,38 @@ class NewsRepository:
                 max(0, int(limit)),
             ),
         ).fetchall()
-        return [
-            {
-                "item": _json_dict(row["item"]),
-                "story": _json_dict(row["story"]) if row["story"] is not None else None,
-                "token_mentions": _json_list(row["token_mentions"]),
-                "fact_candidates": _json_list(row["fact_candidates"]),
-                "story_members": _json_list(row["story_members"]),
-                "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
-                "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
-                "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
-            }
-            for row in rows
-        ]
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            item = _json_dict(row["item"])
+            context_items = _json_list(row["context_items"])
+            item["context_items"] = context_items
+            results.append(
+                {
+                    "item": item,
+                    "story": _json_dict(row["story"]) if row["story"] is not None else None,
+                    "token_mentions": _json_list(row["token_mentions"]),
+                    "fact_candidates": _json_list(row["fact_candidates"]),
+                    "context_items": context_items,
+                    "story_members": _json_list(row["story_members"]),
+                    "current_brief": _json_dict(row["current_brief"]) if row["current_brief"] is not None else None,
+                    "latest_run": _json_dict(row["latest_run"]) if row["latest_run"] is not None else None,
+                    "source_updated_at_ms": int(row["source_updated_at_ms"] or 0),
+                }
+            )
+        return results
+
+    def list_context_items_for_news_item(self, news_item_id: str, *, limit: int = 25) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+              FROM news_context_items
+             WHERE parent_news_item_id = %s
+             ORDER BY published_at_ms DESC NULLS LAST, context_item_id ASC
+             LIMIT %s
+            """,
+            (str(news_item_id), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_news_item_detail(self, *, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -1364,6 +1551,7 @@ class NewsRepository:
             """,
             (news_item_id,),
         ).fetchall()
+        context_items = self.list_context_items_for_news_item(news_item_id, limit=25)
         return {
             **_json_dict(row["item"]),
             "source": _json_dict(row["source"]),
@@ -1375,6 +1563,7 @@ class NewsRepository:
             "entities": _json_list(row["entities"]),
             "token_mentions": _json_list(row["token_mentions"]),
             "fact_candidates": _json_list(row["fact_candidates"]),
+            "context_items": context_items,
         }
 
     def get_news_story_detail(self, *, story_id: str) -> dict[str, Any] | None:
@@ -1443,18 +1632,261 @@ class NewsRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
+    def list_source_quality_inputs(
+        self,
+        *,
+        window_ms: int,
+        now_ms: int,
+    ) -> list[dict[str, Any]]:
+        window_start_ms = int(now_ms) - max(1, int(window_ms))
+        rows = self.conn.execute(
+            """
+            WITH source_rows AS (
+              SELECT source_id
+                FROM news_sources
+               ORDER BY enabled DESC, source_id ASC
+            ),
+            window_items AS (
+              SELECT items.*
+                FROM source_rows AS sources
+                JOIN news_items AS items ON items.source_id = sources.source_id
+               WHERE items.published_at_ms >= %s
+                 AND items.published_at_ms <= %s
+            ),
+            fetch_agg AS (
+              SELECT fetch_runs.source_id,
+                     COUNT(*)::int AS fetch_run_count,
+                     COUNT(*) FILTER (WHERE fetch_runs.status = 'success')::int AS fetch_success_count,
+                     COALESCE(SUM(fetch_runs.fetched_count), 0)::int AS items_fetched,
+                     COALESCE(SUM(fetch_runs.inserted_count), 0)::int AS items_inserted,
+                     COALESCE(SUM(fetch_runs.duplicate_count), 0)::int AS items_duplicate
+                FROM source_rows AS sources
+                JOIN news_fetch_runs AS fetch_runs ON fetch_runs.source_id = sources.source_id
+               WHERE fetch_runs.started_at_ms >= %s
+                 AND fetch_runs.started_at_ms <= %s
+               GROUP BY fetch_runs.source_id
+            ),
+            item_agg AS (
+              SELECT source_id,
+                     COUNT(*)::int AS item_count,
+                     COUNT(*) FILTER (WHERE lifecycle_status = 'processed')::int AS processed_item_count,
+                     MAX(published_at_ms)::bigint AS latest_item_published_at_ms,
+                     ROUND(
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (
+                         ORDER BY GREATEST(0, fetched_at_ms - published_at_ms)
+                       )
+                     )::bigint AS median_lag_ms
+                FROM window_items
+               GROUP BY source_id
+            ),
+            mention_agg AS (
+              SELECT items.source_id,
+                     COUNT(mentions.mention_id)::int AS mention_count,
+                     COUNT(mentions.mention_id) FILTER (
+                       WHERE mentions.resolution_status IN (
+                         'exact_address',
+                         'known_symbol',
+                         'unique_by_context'
+                       )
+                     )::int AS resolved_mention_count
+                FROM window_items AS items
+                JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
+               GROUP BY items.source_id
+            ),
+            fact_agg AS (
+              SELECT items.source_id,
+                     COUNT(facts.fact_candidate_id)::int AS fact_count,
+                     COUNT(facts.fact_candidate_id) FILTER (
+                       WHERE facts.validation_status = 'attention'
+                     )::int AS attention_fact_count,
+                     COUNT(facts.fact_candidate_id) FILTER (
+                       WHERE facts.validation_status = 'accepted'
+                     )::int AS accepted_fact_count
+                FROM window_items AS items
+                JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
+               GROUP BY items.source_id
+            ),
+            brief_agg AS (
+              SELECT items.source_id,
+                     COUNT(DISTINCT briefs.news_item_id) FILTER (
+                       WHERE briefs.status = 'ready'
+                     )::int AS ready_brief_count
+                FROM window_items AS items
+                JOIN news_item_agent_briefs AS briefs ON briefs.news_item_id = items.news_item_id
+               GROUP BY items.source_id
+            ),
+            context_agg AS (
+              SELECT context_items.source_id,
+                     COUNT(*)::int AS context_item_count,
+                     COUNT(DISTINCT parent_news_item_id) FILTER (
+                       WHERE parent_news_item_id IS NOT NULL
+                     )::int AS context_parent_item_count
+                FROM source_rows AS sources
+                JOIN news_context_items AS context_items
+                  ON context_items.source_id = sources.source_id
+               WHERE COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s
+                 AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s
+               GROUP BY context_items.source_id
+            ),
+            useful_item_agg AS (
+              SELECT useful_items.source_id,
+                     COUNT(DISTINCT useful_items.news_item_id)::int AS useful_item_count
+                FROM (
+                  SELECT items.source_id,
+                         items.news_item_id
+                    FROM window_items AS items
+                    JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
+                   WHERE facts.validation_status IN ('accepted', 'attention')
+                  UNION
+                  SELECT items.source_id,
+                         items.news_item_id
+                    FROM window_items AS items
+                    JOIN news_context_items AS context_items
+                      ON context_items.parent_news_item_id = items.news_item_id
+                   WHERE COALESCE(context_items.published_at_ms, context_items.created_at_ms) >= %s
+                     AND COALESCE(context_items.published_at_ms, context_items.created_at_ms) <= %s
+                ) AS useful_items
+               GROUP BY useful_items.source_id
+            )
+            SELECT sources.source_id,
+                   COALESCE(fetch_agg.fetch_run_count, 0)::int AS fetch_run_count,
+                   COALESCE(fetch_agg.fetch_success_count, 0)::int AS fetch_success_count,
+                   COALESCE(fetch_agg.items_fetched, 0)::int AS items_fetched,
+                   COALESCE(fetch_agg.items_inserted, 0)::int AS items_inserted,
+                   COALESCE(fetch_agg.items_duplicate, 0)::int AS items_duplicate,
+                   COALESCE(item_agg.item_count, 0)::int AS item_count,
+                   COALESCE(item_agg.processed_item_count, 0)::int AS processed_item_count,
+                   COALESCE(mention_agg.mention_count, 0)::int AS mention_count,
+                   COALESCE(mention_agg.resolved_mention_count, 0)::int AS resolved_mention_count,
+                   COALESCE(fact_agg.fact_count, 0)::int AS fact_count,
+                   COALESCE(fact_agg.attention_fact_count, 0)::int AS attention_fact_count,
+                   COALESCE(fact_agg.accepted_fact_count, 0)::int AS accepted_fact_count,
+                   COALESCE(brief_agg.ready_brief_count, 0)::int AS ready_brief_count,
+                   COALESCE(context_agg.context_item_count, 0)::int AS context_item_count,
+                   COALESCE(context_agg.context_parent_item_count, 0)::int AS context_parent_item_count,
+                   COALESCE(useful_item_agg.useful_item_count, 0)::int AS useful_item_count,
+                   item_agg.latest_item_published_at_ms,
+                   item_agg.median_lag_ms
+              FROM source_rows AS sources
+              LEFT JOIN fetch_agg ON fetch_agg.source_id = sources.source_id
+              LEFT JOIN item_agg ON item_agg.source_id = sources.source_id
+              LEFT JOIN mention_agg ON mention_agg.source_id = sources.source_id
+              LEFT JOIN fact_agg ON fact_agg.source_id = sources.source_id
+              LEFT JOIN brief_agg ON brief_agg.source_id = sources.source_id
+              LEFT JOIN context_agg ON context_agg.source_id = sources.source_id
+              LEFT JOIN useful_item_agg ON useful_item_agg.source_id = sources.source_id
+             ORDER BY sources.source_id ASC
+            """,
+            (
+                window_start_ms,
+                int(now_ms),
+                window_start_ms,
+                int(now_ms),
+                window_start_ms,
+                int(now_ms),
+                window_start_ms,
+                int(now_ms),
+            ),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def replace_source_quality_rows(
+        self,
+        *,
+        rows: Sequence[Mapping[str, Any]],
+        status_window: str | None = None,
+        commit: bool = True,
+    ) -> None:
+        normalized_status_window = str(status_window).strip().lower() if status_window else None
+        for row in rows:
+            payload = _source_quality_payload(row)
+            self.conn.execute(
+                """
+                INSERT INTO news_source_quality_rows (
+                  row_id, source_id, window, computed_at_ms, fetch_success_rate,
+                  items_fetched, items_inserted, duplicate_rate, process_success_rate,
+                  resolved_token_rate, attention_rate, accepted_fact_rate, brief_ready_rate,
+                  median_lag_ms, quality_score, diagnostics_json, projection_version
+                )
+                VALUES (
+                  %(row_id)s, %(source_id)s, %(window)s, %(computed_at_ms)s, %(fetch_success_rate)s,
+                  %(items_fetched)s, %(items_inserted)s, %(duplicate_rate)s, %(process_success_rate)s,
+                  %(resolved_token_rate)s, %(attention_rate)s, %(accepted_fact_rate)s, %(brief_ready_rate)s,
+                  %(median_lag_ms)s, %(quality_score)s, %(diagnostics_json)s, %(projection_version)s
+                )
+                ON CONFLICT (source_id, window) DO UPDATE SET
+                  row_id = EXCLUDED.row_id,
+                  computed_at_ms = EXCLUDED.computed_at_ms,
+                  fetch_success_rate = EXCLUDED.fetch_success_rate,
+                  items_fetched = EXCLUDED.items_fetched,
+                  items_inserted = EXCLUDED.items_inserted,
+                  duplicate_rate = EXCLUDED.duplicate_rate,
+                  process_success_rate = EXCLUDED.process_success_rate,
+                  resolved_token_rate = EXCLUDED.resolved_token_rate,
+                  attention_rate = EXCLUDED.attention_rate,
+                  accepted_fact_rate = EXCLUDED.accepted_fact_rate,
+                  brief_ready_rate = EXCLUDED.brief_ready_rate,
+                  median_lag_ms = EXCLUDED.median_lag_ms,
+                  quality_score = EXCLUDED.quality_score,
+                  diagnostics_json = EXCLUDED.diagnostics_json,
+                  projection_version = EXCLUDED.projection_version
+                """,
+                payload,
+            )
+            if normalized_status_window and payload["window"] == normalized_status_window:
+                status = _json_dict(row.get("diagnostics_json")).get("status")
+                self.conn.execute(
+                    """
+                    UPDATE news_sources
+                       SET source_quality_status = %s,
+                           updated_at_ms = GREATEST(updated_at_ms, %s)
+                     WHERE source_id = %s
+                       AND source_quality_status IS DISTINCT FROM %s
+                    """,
+                    (
+                        str(status or "unknown"),
+                        payload["computed_at_ms"],
+                        payload["source_id"],
+                        str(status or "unknown"),
+                    ),
+                )
+        if commit:
+            self.conn.commit()
+
     def list_source_status(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT sources.*,
-                   COUNT(items.news_item_id)::int AS item_count
+                   COALESCE(item_counts.item_count, 0)::int AS item_count,
+                   CASE
+                     WHEN latest_quality.row_id IS NULL THEN NULL
+                     ELSE to_jsonb(latest_quality.*)
+                   END AS latest_quality_json
               FROM news_sources AS sources
-              LEFT JOIN news_items AS items ON items.source_id = sources.source_id
-             GROUP BY sources.source_id
+              LEFT JOIN LATERAL (
+                SELECT COUNT(items.news_item_id)::int AS item_count
+                  FROM news_items AS items
+                 WHERE items.source_id = sources.source_id
+              ) AS item_counts ON true
+              LEFT JOIN LATERAL (
+                SELECT *
+                  FROM news_source_quality_rows AS quality
+                 WHERE quality.source_id = sources.source_id
+                 ORDER BY
+                   quality.computed_at_ms DESC,
+                   CASE quality.window
+                     WHEN '24h' THEN 0
+                     WHEN '4h' THEN 1
+                     WHEN '1h' THEN 2
+                     WHEN '7d' THEN 3
+                     ELSE 4
+                   END
+                 LIMIT 1
+              ) AS latest_quality ON true
              ORDER BY sources.enabled DESC, sources.source_domain ASC, sources.source_id ASC
             """
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [_source_status_payload(row) for row in rows]
 
     def replace_page_rows_for_items(
         self,
@@ -1544,8 +1976,21 @@ def _source_payload(source: NewsSourceConfig | Mapping[str, Any]) -> dict[str, A
             "managed_by_config": source.managed_by_config,
             "enabled": source.enabled,
             "refresh_interval_seconds": source.refresh_interval_seconds,
+            "coverage_tags": source.coverage_tags,
+            "asset_universe": source.asset_universe,
+            "authority_scope": source.authority_scope or {},
+            "fetch_policy": source.fetch_policy or {},
+            "context_policy": source.context_policy or {},
+            "cost_policy": source.cost_policy or {},
         }
-    return dict(source)
+    payload = dict(source)
+    payload["coverage_tags"] = normalize_string_tuple(payload.get("coverage_tags"))
+    payload["asset_universe"] = normalize_string_tuple(payload.get("asset_universe"))
+    payload["authority_scope"] = _json_dict(payload.get("authority_scope"))
+    payload["fetch_policy"] = _json_dict(payload.get("fetch_policy"))
+    payload["context_policy"] = _json_dict(payload.get("context_policy"))
+    payload["cost_policy"] = _json_dict(payload.get("cost_policy"))
+    return payload
 
 
 def news_page_cursor(row: Mapping[str, Any]) -> str:
@@ -1712,6 +2157,75 @@ def _agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _source_quality_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": str(row["row_id"]),
+        "source_id": str(row["source_id"]),
+        "window": str(row["window"]),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "fetch_success_rate": _optional_float(row.get("fetch_success_rate")),
+        "items_fetched": int(row.get("items_fetched") or 0),
+        "items_inserted": int(row.get("items_inserted") or 0),
+        "duplicate_rate": _optional_float(row.get("duplicate_rate")),
+        "process_success_rate": _optional_float(row.get("process_success_rate")),
+        "resolved_token_rate": _optional_float(row.get("resolved_token_rate")),
+        "attention_rate": _optional_float(row.get("attention_rate")),
+        "accepted_fact_rate": _optional_float(row.get("accepted_fact_rate")),
+        "brief_ready_rate": _optional_float(row.get("brief_ready_rate")),
+        "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
+        "quality_score": _optional_float(row.get("quality_score")),
+        "diagnostics_json": _json(row.get("diagnostics_json") or {}),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
+def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    latest_quality = _json_dict(row.get("latest_quality_json"))
+    quality_payload = _source_quality_read_payload(latest_quality) if latest_quality else None
+    return {
+        "source_id": str(row["source_id"]),
+        "provider_type": str(row.get("provider_type") or ""),
+        "source_domain": str(row.get("source_domain") or ""),
+        "source_name": str(row.get("source_name") or ""),
+        "source_role": str(row.get("source_role") or ""),
+        "trust_tier": str(row.get("trust_tier") or ""),
+        "coverage_tags": _json_list(row.get("coverage_tags_json")),
+        "source_quality_status": str(row.get("source_quality_status") or "unknown"),
+        "quality": quality_payload,
+        "enabled": bool(row.get("enabled")),
+        "managed_by_config": bool(row.get("managed_by_config")),
+        "refresh_interval_seconds": int(row.get("refresh_interval_seconds") or 0),
+        "item_count": int(row.get("item_count") or 0),
+        "last_fetch_at_ms": int(row["last_fetch_at_ms"]) if row.get("last_fetch_at_ms") is not None else None,
+        "last_success_at_ms": int(row["last_success_at_ms"]) if row.get("last_success_at_ms") is not None else None,
+        "next_fetch_after_ms": int(row.get("next_fetch_after_ms") or 0),
+        "consecutive_failures": int(row.get("consecutive_failures") or 0),
+        "last_error": row.get("last_error"),
+    }
+
+
+def _source_quality_read_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "row_id": str(row["row_id"]),
+        "source_id": str(row["source_id"]),
+        "window": str(row["window"]),
+        "computed_at_ms": int(row["computed_at_ms"]),
+        "fetch_success_rate": _optional_float(row.get("fetch_success_rate")),
+        "items_fetched": int(row.get("items_fetched") or 0),
+        "items_inserted": int(row.get("items_inserted") or 0),
+        "duplicate_rate": _optional_float(row.get("duplicate_rate")),
+        "process_success_rate": _optional_float(row.get("process_success_rate")),
+        "resolved_token_rate": _optional_float(row.get("resolved_token_rate")),
+        "attention_rate": _optional_float(row.get("attention_rate")),
+        "accepted_fact_rate": _optional_float(row.get("accepted_fact_rate")),
+        "brief_ready_rate": _optional_float(row.get("brief_ready_rate")),
+        "median_lag_ms": int(row["median_lag_ms"]) if row.get("median_lag_ms") is not None else None,
+        "quality_score": _optional_float(row.get("quality_score")),
+        "diagnostics_json": _json_dict(row.get("diagnostics_json")),
+        "projection_version": str(row["projection_version"]),
+    }
+
+
 def _object_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
@@ -1746,6 +2260,12 @@ def _first_int(*values: int | None) -> int:
         if value is not None:
             return max(0, int(value))
     return 0
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
 
 
 def _json(value: Any) -> Jsonb:

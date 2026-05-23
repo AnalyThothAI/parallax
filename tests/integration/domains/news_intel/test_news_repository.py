@@ -97,10 +97,13 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     assert rows[0]["story_json"] == {}
     assert rows[0]["source_json"] == {
         "source_id": "coindesk-rss",
+        "provider_type": "rss",
         "source_domain": "coindesk.com",
         "source_name": "CoinDesk",
         "source_role": "observed_source",
         "trust_tier": "standard",
+        "coverage_tags": [],
+        "source_quality_status": "unknown",
     }
 
 
@@ -639,6 +642,117 @@ def test_list_news_page_rows_filters_by_agent_brief_direction(tmp_path) -> None:
 
     assert [row["row_id"] for row in rows] == ["row-bearish"]
     assert rows[0]["agent_brief_json"]["direction"] == "bearish"
+
+
+def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="coinbase",
+            provider_type="rss",
+            feed_url="https://coinbase.com/rss.xml",
+            source_domain="coinbase.com",
+            source_name="Coinbase",
+            source_role="official_exchange",
+            trust_tier="official",
+            coverage_tags=("crypto_exchange", "exchange_listing"),
+            now_ms=NOW_MS,
+        )
+        matching_item_id = _insert_source_provider_and_item(
+            repo,
+            source_id="coinbase",
+            source_item_key="matching",
+            title="Matching",
+        )
+        other_item_id = _insert_source_provider_and_item(repo, source_item_key="other", title="Other")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[matching_item_id, other_item_id],
+            rows=[
+                {
+                    **_page_row("row-matching", matching_item_id, source_id="coinbase"),
+                    "source_domain": "coinbase.com",
+                    "source_json": {
+                        "source_id": "coinbase",
+                        "provider_type": "rss",
+                        "source_domain": "coinbase.com",
+                        "source_name": "Coinbase",
+                        "source_role": "official_exchange",
+                        "trust_tier": "official",
+                        "coverage_tags": ["crypto_exchange", "exchange_listing"],
+                        "source_quality_status": "healthy",
+                    },
+                    "fact_lanes_json": [{"content_class": "exchange_listing", "event_type": "listing"}],
+                },
+                {
+                    **_page_row("row-other", other_item_id, source_id="source-1"),
+                    "source_json": {
+                        "source_id": "source-1",
+                        "provider_type": "rss",
+                        "source_domain": "example.com",
+                        "source_name": "Example",
+                        "source_role": "observed_source",
+                        "trust_tier": "standard",
+                        "coverage_tags": [],
+                        "source_quality_status": "unknown",
+                    },
+                    "fact_lanes_json": [{"content_class": "market_commentary"}],
+                },
+            ],
+        )
+
+        rows = repo.list_news_page_rows(
+            limit=10,
+            provider_type="rss",
+            source_role="official_exchange",
+            trust_tier="official",
+            coverage_tag="exchange_listing",
+            content_class="exchange_listing",
+        )
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in rows] == ["row-matching"]
+
+
+def test_page_projection_candidates_include_rows_when_source_classification_changes(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        news_item_id = _insert_source_provider_and_item(repo, source_id="source-1")
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news_item_id],
+            rows=[
+                _page_row(
+                    "row-current",
+                    news_item_id,
+                    source_id="source-1",
+                    projection_version=NEWS_PAGE_PROJECTION_VERSION,
+                    computed_at_ms=NOW_MS + 10,
+                )
+            ],
+        )
+        conn.execute(
+            """
+            UPDATE news_sources
+               SET coverage_tags_json = '["exchange_listing"]'::jsonb,
+                   source_quality_status = 'healthy',
+                   updated_at_ms = %s
+             WHERE source_id = %s
+            """,
+            (NOW_MS + 100, "source-1"),
+        )
+        conn.commit()
+
+        candidates = repo.list_items_for_page_projection(limit=10)
+    finally:
+        conn.close()
+
+    assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
+    assert candidates[0]["item"]["coverage_tags_json"] == ["exchange_listing"]
+    assert candidates[0]["item"]["source_quality_status"] == "healthy"
 
 
 def test_page_projection_candidates_progress_after_partial_rebuild(tmp_path) -> None:

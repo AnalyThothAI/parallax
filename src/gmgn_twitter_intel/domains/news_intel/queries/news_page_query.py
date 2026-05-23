@@ -19,6 +19,11 @@ class NewsPageQuery:
         lane: str | None = None,
         source: str | None = None,
         target: str | None = None,
+        provider_type: str | None = None,
+        source_role: str | None = None,
+        trust_tier: str | None = None,
+        coverage_tag: str | None = None,
+        content_class: str | None = None,
         q: str | None = None,
     ) -> dict[str, Any]:
         rows = self.repository.list_news_page_rows(
@@ -29,6 +34,11 @@ class NewsPageQuery:
             lane=lane,
             source=source,
             target=target,
+            provider_type=provider_type,
+            source_role=source_role,
+            trust_tier=trust_tier,
+            coverage_tag=coverage_tag,
+            content_class=content_class,
             q=q,
         )
         next_cursor = news_page_cursor(rows[-1]) if rows else None

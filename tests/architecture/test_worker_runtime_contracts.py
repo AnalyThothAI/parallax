@@ -78,6 +78,10 @@ EXPECTED_WORKERS = {
     "news_page_projection": (
         "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
     ),
+    "news_source_quality_projection": (
+        "gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker."
+        "NewsSourceQualityProjectionWorker"
+    ),
     "cex_oi_radar_board": (
         "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
     ),
@@ -113,6 +117,7 @@ OLD_READYZ_WORKER_KEYS = {
     "news_story_projection",
     "news_item_brief",
     "news_page_projection",
+    "news_source_quality_projection",
     "pulse_candidate",
     "enrichment",
     "handle_summary",
@@ -233,6 +238,11 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/news_intel/repositories/news_repository.py",
         SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
         SRC / "platform/db/alembic/versions/20260520_0068_news_item_agent_brief.py",
+    },
+    "news_source_quality_rows": {
+        SRC / "domains/news_intel/repositories/news_repository.py",
+        SRC / "domains/news_intel/runtime/news_source_quality_projection_worker.py",
+        SRC / "platform/db/alembic/versions/20260522_0082_news_source_quality_rows.py",
     },
     "cex_oi_radar_runs": {
         SRC / "domains/cex_market_intel/repositories/cex_oi_radar_repository.py",

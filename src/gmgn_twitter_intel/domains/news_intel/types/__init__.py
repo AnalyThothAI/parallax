@@ -1,19 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, TypedDict
 
-ProviderType = Literal["rss", "atom", "json_feed", "cryptopanic"]
-SourceRole = Literal[
-    "official_exchange",
-    "official_regulator",
-    "official_protocol",
-    "official_issuer",
-    "specialist_media",
-    "aggregator",
-    "social",
-    "observed_source",
-]
+from gmgn_twitter_intel.domains.news_intel.types.source_classification import ProviderType, SourceRole
+
 TrustTier = Literal["official", "high", "standard", "low"]
 FetchRunStatus = Literal["running", "success", "failed"]
 UpsertStatus = Literal["inserted", "updated", "duplicate"]
@@ -31,6 +22,12 @@ class NewsSourceConfig:
     managed_by_config: bool = True
     enabled: bool = True
     refresh_interval_seconds: int = 300
+    coverage_tags: tuple[str, ...] = ()
+    asset_universe: tuple[str, ...] = ()
+    authority_scope: dict[str, Any] = field(default_factory=dict)
+    fetch_policy: dict[str, Any] = field(default_factory=dict)
+    context_policy: dict[str, Any] = field(default_factory=dict)
+    cost_policy: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

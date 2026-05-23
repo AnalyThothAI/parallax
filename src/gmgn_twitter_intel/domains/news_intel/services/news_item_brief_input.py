@@ -7,6 +7,7 @@ from typing import Any
 from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NewsItemBriefAgentConfig,
     NewsItemBriefConstraints,
+    NewsItemBriefContextItem,
     NewsItemBriefFactLane,
     NewsItemBriefInputPacket,
     NewsItemBriefNewsItem,
@@ -21,6 +22,8 @@ BODY_EXCERPT_MAX_CHARS = 2000
 MAX_TOKEN_LANES = 50
 MAX_FACT_LANES = 50
 MAX_STORY_MEMBERS = 8
+MAX_CONTEXT_ITEMS = 8
+CONTEXT_BODY_EXCERPT_MAX_CHARS = 500
 
 
 def build_news_item_brief_input_packet(
@@ -31,6 +34,7 @@ def build_news_item_brief_input_packet(
     fact_candidates: Sequence[Mapping[str, Any]],
     story_members: Sequence[Mapping[str, Any]],
     agent_config: NewsItemBriefAgentConfig,
+    context_items: Sequence[Mapping[str, Any]] = (),
 ) -> NewsItemBriefInputPacket:
     news_item = NewsItemBriefNewsItem(
         news_item_id=_str(item.get("news_item_id")),
@@ -50,6 +54,7 @@ def build_news_item_brief_input_packet(
     )
     token_lanes = [_token_lane(row) for row in sorted(token_mentions, key=_mention_sort_key)[:MAX_TOKEN_LANES]]
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
+    context_item_lanes = _context_items(context_items or _json_list(item.get("context_items")))
     story_context = _story_context(
         story=story,
         story_members=story_members,
@@ -59,6 +64,7 @@ def build_news_item_brief_input_packet(
         news_item=news_item,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
+        context_items=context_item_lanes,
         story_context=story_context,
     )
     packet_id = _packet_id(
@@ -66,6 +72,7 @@ def build_news_item_brief_input_packet(
         story_context=story_context,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
+        context_items=context_item_lanes,
         agent_config=agent_config,
     )
     packet = NewsItemBriefInputPacket(
@@ -74,6 +81,7 @@ def build_news_item_brief_input_packet(
         story_context=story_context,
         token_lanes=token_lanes,
         fact_lanes=fact_lanes,
+        context_items=context_item_lanes,
         evidence_refs=evidence_refs,
         constraints=NewsItemBriefConstraints(),
         prompt_version=agent_config.prompt_version,
@@ -111,6 +119,36 @@ def _fact_lane(row: Mapping[str, Any]) -> NewsItemBriefFactLane:
     )
 
 
+def _context_items(rows: Sequence[Any]) -> list[NewsItemBriefContextItem]:
+    context_items: list[NewsItemBriefContextItem] = []
+    for row in sorted(rows, key=_context_item_sort_key)[:MAX_CONTEXT_ITEMS]:
+        payload = _json_object(row)
+        context_item_id = _str(payload.get("context_item_id"))
+        if not context_item_id:
+            continue
+        context_items.append(
+            NewsItemBriefContextItem(
+                context_item_id=context_item_id,
+                context_type=_bounded(payload.get("context_type"), 64),
+                author=_optional_bounded(payload.get("author"), 255),
+                canonical_url=_optional_bounded(payload.get("canonical_url"), 2000),
+                body_excerpt=_bounded(
+                    payload.get("body_text") or payload.get("body_excerpt"),
+                    CONTEXT_BODY_EXCERPT_MAX_CHARS,
+                ),
+                published_at_ms=_optional_int(payload.get("published_at_ms")),
+                engagement=_json_object(payload.get("engagement_json") or payload.get("engagement")),
+            )
+        )
+    return context_items
+
+
+def _context_item_sort_key(row: Any) -> tuple[int, int, str]:
+    payload = _json_object(row)
+    published_at_ms = _optional_int(payload.get("published_at_ms"))
+    return (published_at_ms is None, -(published_at_ms or 0), _str(payload.get("context_item_id")))
+
+
 def _story_context(
     *,
     story: Mapping[str, Any] | None,
@@ -143,6 +181,7 @@ def _evidence_refs(
     news_item: NewsItemBriefNewsItem,
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
+    context_items: list[NewsItemBriefContextItem],
     story_context: NewsItemBriefStoryContext | None,
 ) -> list[str]:
     refs: list[str] = []
@@ -154,6 +193,7 @@ def _evidence_refs(
         refs.append("item:body_excerpt")
     refs.extend(f"fact:{row.fact_candidate_id}" for row in fact_lanes if row.fact_candidate_id)
     refs.extend(f"token:{row.mention_id}" for row in token_lanes if row.mention_id)
+    refs.extend(f"context:{row.context_item_id}" for row in context_items if row.context_item_id)
     if story_context is not None:
         refs.extend(f"story:{row.news_item_id}" for row in story_context.members if row.news_item_id)
     return _stable_unique(refs)
@@ -165,6 +205,7 @@ def _packet_id(
     story_context: NewsItemBriefStoryContext | None,
     token_lanes: list[NewsItemBriefTokenLane],
     fact_lanes: list[NewsItemBriefFactLane],
+    context_items: list[NewsItemBriefContextItem],
     agent_config: NewsItemBriefAgentConfig,
 ) -> str:
     digest = json_sha256(
@@ -175,6 +216,7 @@ def _packet_id(
             "story_members": [row.news_item_id for row in story_context.members] if story_context is not None else [],
             "tokens": [row.mention_id for row in token_lanes],
             "facts": [row.fact_candidate_id for row in fact_lanes],
+            "context_items": [row.context_item_id for row in context_items],
             "prompt_version": agent_config.prompt_version,
             "schema_version": agent_config.schema_version,
         }

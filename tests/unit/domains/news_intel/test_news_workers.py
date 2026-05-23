@@ -7,8 +7,14 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import News
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
+from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+    NewsProviderContextObservation,
+    NewsProviderFetchResult,
+    NewsProviderObservation,
+    NewsSourceHttpCache,
+    NewsSourceSnapshot,
+)
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
-from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResult
 
 NOW_MS = 1_779_000_000_000
 
@@ -24,19 +30,29 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
         "last_modified": "old-modified",
     }
     db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeFeedClient(
+    feed = FakeNewsSourceProvider(
         db,
-        FeedFetchResult(
+        NewsProviderFetchResult(
             status_code=200,
             etag="new-etag",
             last_modified="new-modified",
-            entries=[
-                {
-                    "id": "guid-1",
-                    "link": "https://example.com/story?utm_source=rss",
-                    "title": "SOL ETF approved",
-                    "summary": "Issuer confirms launch.",
-                }
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="guid-1",
+                    canonical_url="https://example.com/story",
+                    title="SOL ETF approved",
+                    summary="Issuer confirms launch.",
+                    body_text="Issuer confirms launch.",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={
+                        "id": "guid-1",
+                        "link": "https://example.com/story?utm_source=rss",
+                        "title": "SOL ETF approved",
+                        "summary": "Issuer confirms launch.",
+                        "source_domain": "example.com",
+                    },
+                )
             ],
         ),
     )
@@ -50,9 +66,11 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
     assert db.max_open_sessions == 1
     assert feed.calls == [
         {
-            "url": "https://example.com/rss.xml",
-            "etag": "old-etag",
-            "last_modified": "old-modified",
+            "source_id": "example-rss",
+            "provider_type": "rss",
+            "feed_url": "https://example.com/rss.xml",
+            "cache": NewsSourceHttpCache(etag="old-etag", last_modified="old-modified"),
+            "limit": 10,
         }
     ]
     assert db.repo.reconciled_sources == [source]
@@ -83,7 +101,7 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
         "source_name": "Example",
     }
     db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeFeedClient(db, FeedFetchResult(status_code=304, not_modified=True))
+    feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, not_modified=True, observations=[]))
     wake_bus = FakeWakeBus()
     worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
 
@@ -98,6 +116,165 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
     assert wake_bus.notifications == []
 
 
+def test_news_fetch_worker_persists_context_observations() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="guid-1",
+                    canonical_url="https://example.com/story",
+                    title="SOL ETF approved",
+                    summary="Issuer confirms launch.",
+                    body_text="Primary body stays primary.",
+                    language="en",
+                    published_at_ms=NOW_MS - 10,
+                    raw_payload={"id": "guid-1", "title": "SOL ETF approved"},
+                ),
+                NewsProviderObservation(
+                    source_item_key="guid-2",
+                    canonical_url="https://example.com/second-story",
+                    title="BTC ETF launches",
+                    summary="Second issuer confirms launch.",
+                    body_text="Second primary body.",
+                    language="en",
+                    published_at_ms=NOW_MS - 8,
+                    raw_payload={"id": "guid-2", "title": "BTC ETF launches"},
+                )
+            ],
+            context_observations=[
+                NewsProviderContextObservation(
+                    context_item_id="ctx-1",
+                    parent_source_item_key="guid-2",
+                    context_type="reply",
+                    author="analyst",
+                    canonical_url="https://example.social/post/1",
+                    body_text="Context should live outside news_items.body_text.",
+                    published_at_ms=NOW_MS - 5,
+                    engagement={"likes": 42},
+                    raw_payload={"id": "ctx-1", "kind": "reply"},
+                ),
+                NewsProviderContextObservation(
+                    context_item_id="ctx-unresolved",
+                    parent_source_item_key="missing-guid",
+                    context_type="reply",
+                    author=None,
+                    canonical_url="https://example.social/post/unresolved",
+                    body_text="Context without a parent should still be stored.",
+                    published_at_ms=None,
+                    engagement=None,
+                    raw_payload={"id": "ctx-unresolved", "kind": "reply"},
+                )
+            ],
+        ),
+    )
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 2
+    assert db.repo.news_items[0]["body_text"] == "Primary body stays primary."
+    assert db.repo.context_items == [
+        {
+            "context_item_id": "ctx-1",
+            "source_id": "example-rss",
+            "parent_news_item_id": "news-2",
+            "provider_item_id": None,
+            "context_type": "reply",
+            "author": "analyst",
+            "canonical_url": "https://example.social/post/1",
+            "body_text": "Context should live outside news_items.body_text.",
+            "published_at_ms": NOW_MS - 5,
+            "engagement_json": {"likes": 42},
+            "raw_payload_json": {"id": "ctx-1", "kind": "reply"},
+            "created_at_ms": NOW_MS,
+            "commit": False,
+        },
+        {
+            "context_item_id": "ctx-unresolved",
+            "source_id": "example-rss",
+            "parent_news_item_id": None,
+            "provider_item_id": None,
+            "context_type": "reply",
+            "author": None,
+            "canonical_url": "https://example.social/post/unresolved",
+            "body_text": "Context without a parent should still be stored.",
+            "published_at_ms": None,
+            "engagement_json": {},
+            "raw_payload_json": {"id": "ctx-unresolved", "kind": "reply"},
+            "created_at_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+
+
+def test_news_fetch_worker_persists_context_only_observations_without_processing_items() -> None:
+    source = {
+        "source_id": "example-rss",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/rss.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    db = FakeDB(FakeNewsRepository([source]))
+    feed = FakeNewsSourceProvider(
+        db,
+        NewsProviderFetchResult(
+            status_code=200,
+            observations=[],
+            context_observations=[
+                NewsProviderContextObservation(
+                    context_item_id="ctx-only",
+                    parent_source_item_key="missing-guid",
+                    context_type="reply",
+                    author="analyst",
+                    canonical_url=None,
+                    body_text="Context-only update.",
+                    published_at_ms=None,
+                    engagement=None,
+                    raw_payload={"id": "ctx-only"},
+                )
+            ],
+        ),
+    )
+    wake_bus = FakeWakeBus()
+    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 0
+    assert db.repo.news_items == []
+    assert db.repo.context_items == [
+        {
+            "context_item_id": "ctx-only",
+            "source_id": "example-rss",
+            "parent_news_item_id": None,
+            "provider_item_id": None,
+            "context_type": "reply",
+            "author": "analyst",
+            "canonical_url": None,
+            "body_text": "Context-only update.",
+            "published_at_ms": None,
+            "engagement_json": {},
+            "raw_payload_json": {"id": "ctx-only"},
+            "created_at_ms": NOW_MS,
+            "commit": False,
+        }
+    ]
+    assert db.repo.finished_runs[0]["fetched_count"] == 0
+    assert db.repo.finished_runs[0]["inserted_count"] == 0
+    assert wake_bus.notifications == []
+
+
 def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() -> None:
     source = {
         "source_id": "cryptopanic-en",
@@ -107,17 +284,27 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
         "source_name": "CryptoPanic",
     }
     db = FakeDB(FakeNewsRepository([source]))
-    feed = FakeFeedClient(
+    feed = FakeNewsSourceProvider(
         db,
-        FeedFetchResult(
+        NewsProviderFetchResult(
             status_code=200,
-            entries=[
-                {
-                    "id": "cryptopanic:32675220",
-                    "link": "https://coincu.com/mastercard-acquires-bvnk/",
-                    "title": "Mastercard Acquires BVNK",
-                    "summary": "Crypto payments deal explained.",
-                }
+            observations=[
+                NewsProviderObservation(
+                    source_item_key="cryptopanic:32675220",
+                    canonical_url="https://coincu.com/mastercard-acquires-bvnk/",
+                    title="Mastercard Acquires BVNK",
+                    summary="Crypto payments deal explained.",
+                    body_text="Crypto payments deal explained.",
+                    language="en",
+                    published_at_ms=NOW_MS,
+                    raw_payload={
+                        "id": "cryptopanic:32675220",
+                        "link": "https://coincu.com/mastercard-acquires-bvnk/",
+                        "title": "Mastercard Acquires BVNK",
+                        "summary": "Crypto payments deal explained.",
+                        "source_domain": "cryptopanic.com",
+                    },
+                )
             ],
         ),
     )
@@ -128,11 +315,11 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
     assert result.processed == 1
     assert feed.calls == [
         {
-            "url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
-            "etag": None,
-            "last_modified": None,
-            "provider_type": "cryptopanic",
             "source_id": "cryptopanic-en",
+            "provider_type": "cryptopanic",
+            "feed_url": "cryptopanic://posts?regions=en&kind=news&max_items=50",
+            "cache": NewsSourceHttpCache(etag=None, last_modified=None),
+            "limit": 10,
         }
     ]
     assert db.repo.provider_items[0]["source_item_key"] == "cryptopanic:32675220"
@@ -142,6 +329,12 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     item = {
         "news_item_id": "news-1",
         "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {
+            "event_types": ["exchange_listing"],
+            "domains": ["coinbase.com"],
+            "targets": [{"target_type": "CexToken", "target_id": "cex:BTC"}],
+        },
         "title": "Coinbase lists $BTC for trading",
         "summary": "Trading starts today",
         "body_text": "",
@@ -169,6 +362,35 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     assert db.repo.processed_items == [{"news_item_id": "news-1", "processed_at_ms": NOW_MS}]
     assert db.repo.failed_items == []
     assert wake_bus.notifications == [{"count": 1}]
+
+
+def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_role": "official_exchange",
+        "source_domain": "coinbase.com",
+        "authority_scope_json": {"event_types": ["exchange_delisting"], "domains": ["coinbase.com"]},
+        "title": "Coinbase lists $BTC for trading",
+        "summary": "Trading starts today",
+        "body_text": "",
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    candidate = db.repo.fact_candidates["news-1"][0]
+    assert candidate.event_type == "exchange_listing"
+    assert candidate.validation_status == "attention"
+    assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
 def test_news_story_projection_worker_assigns_items_in_worker_session_and_notifies() -> None:
@@ -221,7 +443,7 @@ def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> No
 def _worker(
     *,
     db: FakeDB,
-    feed_client: FakeFeedClient,
+    feed_client: FakeNewsSourceProvider,
     wake_bus: FakeWakeBus,
     sources: list[dict[str, object]],
 ) -> NewsFetchWorker:
@@ -288,28 +510,35 @@ class FakeProjectionDB:
         yield SimpleNamespace(news=self.repo)
 
 
-class FakeFeedClient:
-    def __init__(self, db: FakeDB, result: FeedFetchResult) -> None:
+class FakeNewsSourceProvider:
+    provider_type = "fake"
+
+    def __init__(self, db: FakeDB, result: NewsProviderFetchResult) -> None:
         self.db = db
         self.result = result
         self.calls: list[dict[str, object]] = []
 
     def fetch(
         self,
-        url: str,
+        source: NewsSourceSnapshot,
         *,
-        etag: str | None = None,
-        last_modified: str | None = None,
-        provider_type: str | None = None,
-        source: dict[str, object] | None = None,
-    ) -> FeedFetchResult:
+        since_ms: int | None = None,
+        cursor: dict[str, object] | None = None,
+        cache: NewsSourceHttpCache | None = None,
+        limit: int | None = None,
+    ) -> NewsProviderFetchResult:
         assert self.db.open_sessions == 0
-        call: dict[str, object] = {"url": url, "etag": etag, "last_modified": last_modified}
-        if provider_type is not None:
-            call["provider_type"] = provider_type
-        if source is not None:
-            call["source_id"] = source.get("source_id")
-        self.calls.append(call)
+        assert since_ms is None
+        assert cursor == {}
+        self.calls.append(
+            {
+                "source_id": source.source_id,
+                "provider_type": source.provider_type,
+                "feed_url": source.feed_url,
+                "cache": cache,
+                "limit": limit,
+            }
+        )
         return self.result
 
 
@@ -359,6 +588,7 @@ class FakeNewsRepository:
         self.fetch_runs: list[dict[str, object]] = []
         self.provider_items: list[dict[str, object]] = []
         self.news_items: list[dict[str, object]] = []
+        self.context_items: list[dict[str, object]] = []
         self.finished_runs: list[dict[str, object]] = []
         self.cache_updates: list[dict[str, object]] = []
 
@@ -389,11 +619,15 @@ class FakeNewsRepository:
 
     def upsert_provider_item(self, **payload):
         self.provider_items.append(payload)
-        return {"provider_item_id": "provider-1", "status": "inserted"}
+        return {"provider_item_id": f"provider-{len(self.provider_items)}", "status": "inserted"}
 
     def upsert_news_item(self, **payload):
         self.news_items.append(payload)
-        return {"news_item_id": "news-1", "status": "inserted"}
+        return {"news_item_id": f"news-{len(self.news_items)}", "status": "inserted"}
+
+    def upsert_news_context_item(self, **payload):
+        self.context_items.append(payload)
+        return payload
 
     def finish_fetch_run(self, **payload):
         self.finished_runs.append(payload)

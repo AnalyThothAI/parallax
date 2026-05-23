@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Any
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.news_intel.queries.news_page_query import NewsPageQuery
@@ -10,8 +12,13 @@ from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import News
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker import NewsStoryProjectionWorker
+from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
+    NewsProviderFetchResult,
+    NewsProviderObservation,
+    NewsSourceHttpCache,
+    NewsSourceSnapshot,
+)
 from gmgn_twitter_intel.domains.token_intel.interfaces import TokenIdentityLookupResult
-from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResult
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -30,21 +37,35 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
             "source_name": "Binance Announcements",
             "source_role": "official_exchange",
             "trust_tier": "high",
+            "authority_scope": {
+                "event_types": ["exchange_listing"],
+                "domains": ["binance.com"],
+                "targets": [{"target_type": "CexToken", "target_id": "cex:BTC"}],
+            },
             "refresh_interval_seconds": 300,
         }
         db = _SingleConnectionWorkerDB(conn)
         wake_bus = _FakeWakeBus()
         feed_client = _FakeFeedClient(
-            FeedFetchResult(
+            NewsProviderFetchResult(
                 status_code=200,
-                entries=[
-                    {
-                        "id": "binance-guid-1",
-                        "link": "https://www.binance.com/en/support/announcement/btc-listing?utm_source=rss",
-                        "title": "Binance lists $BTC for spot trading",
-                        "summary": "Trading opens today for the BTC/USDT pair.",
-                        "language": "en",
-                    }
+                observations=[
+                    NewsProviderObservation(
+                        source_item_key="binance-guid-1",
+                        canonical_url="https://www.binance.com/en/support/announcement/btc-listing",
+                        title="Binance lists $BTC for spot trading",
+                        summary="Trading opens today for the BTC/USDT pair.",
+                        body_text="Trading opens today for the BTC/USDT pair.",
+                        language="en",
+                        published_at_ms=NOW_MS,
+                        raw_payload={
+                            "id": "binance-guid-1",
+                            "link": "https://www.binance.com/en/support/announcement/btc-listing?utm_source=rss",
+                            "title": "Binance lists $BTC for spot trading",
+                            "summary": "Trading opens today for the BTC/USDT pair.",
+                            "language": "en",
+                        },
+                    )
                 ],
                 etag="etag-1",
                 last_modified="Tue, 19 May 2026 00:00:00 GMT",
@@ -100,9 +121,14 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert page_result.processed == 1
     assert feed_client.calls == [
         {
-            "url": "https://www.binance.com/en/support/announcement/rss",
+            "source_id": "binance-announcements",
+            "provider_type": "rss",
+            "feed_url": "https://www.binance.com/en/support/announcement/rss",
+            "since_ms": None,
+            "cursor": {},
             "etag": None,
             "last_modified": None,
+            "limit": 10,
         }
     ]
     assert wake_bus.notifications == [
@@ -119,7 +145,7 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert row["source_json"]["source_role"] == "official_exchange"
     assert row["token_lanes_json"][0]["resolution_status"] == "known_symbol"
     assert row["token_lanes_json"][0]["target_type"] == "CexToken"
-    assert row["fact_lanes_json"][0]["event_type"] == "listing"
+    assert row["fact_lanes_json"][0]["event_type"] == "exchange_listing"
     assert row["fact_lanes_json"][0]["status"] == "accepted"
     assert item_detail is not None
     assert item_detail["source"]["source_role"] == "official_exchange"
@@ -128,7 +154,7 @@ def test_news_workers_ingest_process_project_and_query_visible_news(tmp_path) ->
     assert item_detail["story_members"][0]["story_id"] == row["story_id"]
     assert story_detail is not None
     assert story_detail["token_mentions"][0]["target_type"] == "CexToken"
-    assert story_detail["fact_candidates"][0]["event_type"] == "listing"
+    assert story_detail["fact_candidates"][0]["event_type"] == "exchange_listing"
 
 
 def _worker_settings(*, batch_size: int) -> SimpleNamespace:
@@ -147,12 +173,31 @@ class _SingleConnectionWorkerDB:
 
 
 class _FakeFeedClient:
-    def __init__(self, result: FeedFetchResult) -> None:
+    def __init__(self, result: NewsProviderFetchResult) -> None:
         self.result = result
         self.calls: list[dict[str, object]] = []
 
-    def fetch(self, url: str, *, etag: str | None = None, last_modified: str | None = None) -> FeedFetchResult:
-        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
+    def fetch(
+        self,
+        source: NewsSourceSnapshot,
+        *,
+        since_ms: int | None,
+        cursor: Mapping[str, Any],
+        cache: NewsSourceHttpCache,
+        limit: int | None,
+    ) -> NewsProviderFetchResult:
+        self.calls.append(
+            {
+                "source_id": source.source_id,
+                "provider_type": source.provider_type,
+                "feed_url": source.feed_url,
+                "since_ms": since_ms,
+                "cursor": dict(cursor),
+                "etag": cache.etag,
+                "last_modified": cache.last_modified,
+                "limit": limit,
+            }
+        )
         return self.result
 
 
