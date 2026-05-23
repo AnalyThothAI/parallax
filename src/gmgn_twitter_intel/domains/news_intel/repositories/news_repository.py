@@ -1803,7 +1803,7 @@ class NewsRepository:
             self.conn.execute(
                 """
                 INSERT INTO news_source_quality_rows (
-                  row_id, source_id, window, computed_at_ms, fetch_success_rate,
+                  row_id, source_id, "window", computed_at_ms, fetch_success_rate,
                   items_fetched, items_inserted, duplicate_rate, process_success_rate,
                   resolved_token_rate, attention_rate, accepted_fact_rate, brief_ready_rate,
                   median_lag_ms, quality_score, diagnostics_json, projection_version
@@ -1814,7 +1814,7 @@ class NewsRepository:
                   %(resolved_token_rate)s, %(attention_rate)s, %(accepted_fact_rate)s, %(brief_ready_rate)s,
                   %(median_lag_ms)s, %(quality_score)s, %(diagnostics_json)s, %(projection_version)s
                 )
-                ON CONFLICT (source_id, window) DO UPDATE SET
+                ON CONFLICT (source_id, "window") DO UPDATE SET
                   row_id = EXCLUDED.row_id,
                   computed_at_ms = EXCLUDED.computed_at_ms,
                   fetch_success_rate = EXCLUDED.fetch_success_rate,
@@ -1874,7 +1874,7 @@ class NewsRepository:
                  WHERE quality.source_id = sources.source_id
                  ORDER BY
                    quality.computed_at_ms DESC,
-                   CASE quality.window
+                   CASE quality."window"
                      WHEN '24h' THEN 0
                      WHEN '4h' THEN 1
                      WHEN '1h' THEN 2

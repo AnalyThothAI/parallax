@@ -16,7 +16,7 @@ def upgrade() -> None:
         CREATE TABLE IF NOT EXISTS news_source_quality_rows (
           row_id TEXT PRIMARY KEY,
           source_id TEXT NOT NULL REFERENCES news_sources(source_id) ON DELETE CASCADE,
-          window TEXT NOT NULL,
+          "window" TEXT NOT NULL,
           computed_at_ms BIGINT NOT NULL,
           fetch_success_rate DOUBLE PRECISION,
           items_fetched INTEGER NOT NULL DEFAULT 0,
@@ -31,14 +31,14 @@ def upgrade() -> None:
           quality_score DOUBLE PRECISION,
           diagnostics_json JSONB NOT NULL DEFAULT '{}'::jsonb,
           projection_version TEXT NOT NULL,
-          UNIQUE (source_id, window)
+          UNIQUE (source_id, "window")
         )
         """
     )
     op.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_news_source_quality_source_window
-          ON news_source_quality_rows(source_id, window)
+          ON news_source_quality_rows(source_id, "window")
         """
     )
 
