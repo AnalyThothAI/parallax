@@ -52,20 +52,22 @@ class TokenImageMirrorService:
             result = self._mirror_source(source_url=source_url, now_ms=now_ms)
         except ValueError as exc:
             error = _error_text(exc)
-            self.repository.mark_error(
+            self.repository.mark_unsupported(
                 source_url,
                 error=error,
                 now_ms=int(now_ms),
-                retry_ms=self.retry_ms,
             )
-            return {"status": "error", "source_url": source_url, "error": error}
+            return {"status": "unsupported", "source_url": source_url, "error": error}
         except _TokenImageMirrorError as exc:
-            self.repository.mark_error(
-                source_url,
-                error=str(exc),
-                now_ms=int(now_ms),
-                retry_ms=self.retry_ms,
-            )
+            error = str(exc)
+            if _is_terminal_unsupported_error(error):
+                self.repository.mark_unsupported(
+                    source_url,
+                    error=error,
+                    now_ms=int(now_ms),
+                )
+                return {"status": "unsupported", "source_url": source_url, "error": error}
+            self.repository.mark_error(source_url, error=error, now_ms=int(now_ms), retry_ms=self.retry_ms)
             return {"status": "error", "source_url": source_url, "error": str(exc)}
         except Exception as exc:
             error = f"image_fetch_failed: {_error_text(exc)}"
@@ -247,3 +249,7 @@ def _int_header(value: str | None) -> int | None:
 def _error_text(exc: Exception) -> str:
     text = str(exc).strip()
     return text[:200] if text else exc.__class__.__name__
+
+
+def _is_terminal_unsupported_error(error: str) -> bool:
+    return error.startswith("unsupported_") or error.startswith("image_too_large:")

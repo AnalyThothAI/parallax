@@ -117,13 +117,25 @@ def build_parser() -> argparse.ArgumentParser:
     backfill_watchlist_signal_stats.add_argument("--max-batches", type=int, default=1)
     backfill_watchlist_signal_stats.add_argument("--after-cursor", default="")
     backfill_watchlist_signal_stats.add_argument("--dry-run", action="store_true")
-    clean_reset_token_radar_storage = ops_subcommands.add_parser(
-        "clean-reset-token-radar-storage",
-        help="drop legacy Token Radar storage and clear rebuildable Token Radar read models",
+    reset_token_radar_postgres_hard_cut = ops_subcommands.add_parser(
+        "reset-token-radar-postgres-hard-cut",
+        help="hard reset rebuildable PostgreSQL Token Radar projection storage",
     )
-    clean_reset_mode = clean_reset_token_radar_storage.add_mutually_exclusive_group(required=True)
-    clean_reset_mode.add_argument("--dry-run", action="store_true")
-    clean_reset_mode.add_argument("--execute", action="store_true")
+    reset_token_radar_postgres_hard_cut_mode = reset_token_radar_postgres_hard_cut.add_mutually_exclusive_group(
+        required=True
+    )
+    reset_token_radar_postgres_hard_cut_mode.add_argument("--dry-run", action="store_true")
+    reset_token_radar_postgres_hard_cut_mode.add_argument("--execute", action="store_true")
+    ensure_postgres_partitions = ops_subcommands.add_parser(
+        "ensure-postgres-partitions",
+        help="ensure current and next Token Radar PostgreSQL history/audit partitions",
+    )
+    ensure_postgres_partitions.add_argument("--execute", action="store_true", required=True)
+    drop_expired_postgres_partitions = ops_subcommands.add_parser(
+        "drop-expired-postgres-partitions",
+        help="explicit no-op until Token Radar PostgreSQL partition retention is configured",
+    )
+    drop_expired_postgres_partitions.add_argument("--execute", action="store_true", required=True)
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
     validate_projections = ops_subcommands.add_parser(

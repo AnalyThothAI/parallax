@@ -318,6 +318,7 @@ def _ingest_service_for_repos(
         market_ticks=getattr(repos, "market_ticks", None),
         enriched_events=getattr(repos, "enriched_events", None),
         event_anchor_jobs=getattr(repos, "event_anchor_jobs", None),
+        token_radar_dirty_targets=getattr(repos, "token_radar_dirty_targets", None),
         event_anchor_active_window_ms=event_anchor_active_window_ms,
     )
 

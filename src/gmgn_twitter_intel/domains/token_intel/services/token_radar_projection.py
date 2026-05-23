@@ -11,7 +11,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_RADAR_SOURCE_TABLE,
     WINDOW_MS,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import TokenRadarTargetFeatureQuery
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
     MIN_COHORT_SIZE,
@@ -43,6 +43,8 @@ DEX_DECISION_FLOORS = {
 }
 LIVE_LATEST_MAX_AGE_MS = 90 * 1000
 FRESH_LATEST_MAX_AGE_MS = 5 * 60 * 1000
+DIRTY_TARGET_LEASE_MS = 2 * 60 * 1000
+DIRTY_TARGET_RETRY_MS = 30 * 1000
 
 
 class TokenRadarProjection:
@@ -55,9 +57,185 @@ class TokenRadarProjection:
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
+        return self.refresh_rank_set(window=window, scope=scope, now_ms=computed_at_ms, limit=limit)
+
+    def rebuild_dirty_targets(
+        self,
+        *,
+        windows: tuple[str, ...],
+        scopes: tuple[str, ...],
+        now_ms: int | None = None,
+        limit: int = 100,
+        rank_limit: int = 100,
+        lease_owner: str = "token_radar_projection",
+    ) -> dict[str, Any]:
+        computed_at_ms = int(now_ms or time.time() * 1000)
+        claims = self.repos.token_radar_dirty_targets.claim_due(
+            limit=limit,
+            lease_ms=DIRTY_TARGET_LEASE_MS,
+            now_ms=computed_at_ms,
+            lease_owner=lease_owner,
+            commit=True,
+        )
+        result: dict[str, Any] = {
+            "computed_at_ms": computed_at_ms,
+            "rows_written": 0,
+            "source_rows": 0,
+            "claimed": len(claims),
+            "windows": {},
+            "status": "idle" if not claims else "ready",
+        }
+        if not claims:
+            return result
+
+        touched: set[tuple[str, str]] = set()
+        successful_claims: list[dict[str, str]] = []
+        failures = 0
+        first_error: str | None = None
+        for claim in claims:
+            claim_key = _claim_key(claim)
+            try:
+                for window in windows:
+                    for scope in scopes:
+                        score_result = self.score_target_window(
+                            target=claim,
+                            window=window,
+                            scope=scope,
+                            now_ms=computed_at_ms,
+                        )
+                        result["source_rows"] += int(score_result.get("source_rows") or 0)
+                        touched.add((window, scope))
+                successful_claims.append(claim_key)
+            except Exception as exc:
+                failures += 1
+                first_error = first_error or str(exc)
+                self.repos.token_radar_dirty_targets.mark_error(
+                    [claim_key],
+                    error=str(exc),
+                    retry_ms=DIRTY_TARGET_RETRY_MS,
+                    now_ms=computed_at_ms,
+                    commit=True,
+                )
+
+        for window, scope in sorted(touched):
+            key = f"{window}:{scope}"
+            try:
+                rank_result = self.refresh_rank_set(
+                    window=window,
+                    scope=scope,
+                    now_ms=computed_at_ms,
+                    limit=rank_limit,
+                )
+                if str(rank_result.get("status") or "") != "ready":
+                    raise RuntimeError(
+                        f"rank refresh did not publish current rows: "
+                        f"{rank_result.get('status') or 'unknown'}"
+                    )
+            except Exception as exc:
+                failures += 1
+                first_error = first_error or str(exc)
+                rank_result = {
+                    "rows_written": 0,
+                    "source_rows": 0,
+                    "computed_at_ms": computed_at_ms,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            result["windows"][key] = rank_result
+            result["rows_written"] += int(rank_result.get("rows_written") or 0)
+
+        if failures:
+            result["status"] = "failed"
+            errors = [str(item.get("error")) for item in result["windows"].values() if item.get("error")]
+            result["error"] = errors[0] if errors else "dirty target projection failed"
+            if successful_claims:
+                self.repos.token_radar_dirty_targets.mark_error(
+                    successful_claims,
+                    error=first_error or str(result["error"]),
+                    retry_ms=DIRTY_TARGET_RETRY_MS,
+                    now_ms=computed_at_ms,
+                    commit=True,
+                )
+        elif successful_claims:
+            self.repos.token_radar_dirty_targets.mark_done(successful_claims, now_ms=computed_at_ms, commit=True)
+        return result
+
+    def score_target_window(
+        self,
+        *,
+        target: dict[str, Any],
+        window: str,
+        scope: str,
+        now_ms: int,
+    ) -> dict[str, Any]:
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
-        score_since_ms = computed_at_ms - window_ms
-        analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
+        score_since_ms = int(now_ms) - window_ms
+        analysis_since_ms = _analysis_since_ms(computed_at_ms=int(now_ms), window_ms=window_ms)
+        source_rows = TokenRadarTargetFeatureQuery(self.repos.conn).source_rows(
+            target_type_key=str(target.get("target_type_key") or target.get("target_type") or ""),
+            identity_id=str(target.get("identity_id") or target.get("target_id") or ""),
+            since_ms=analysis_since_ms,
+            score_since_ms=score_since_ms,
+            scope=scope,
+            now_ms=int(now_ms),
+        )
+        total_window_events = len(
+            {str(row["event_id"]) for row in source_rows if int(row.get("received_at_ms") or 0) >= score_since_ms}
+        )
+        projected = _project_group(
+            source_rows,
+            now_ms=int(now_ms),
+            window=window,
+            scope=scope,
+            score_since_ms=score_since_ms,
+            window_ms=window_ms,
+            total_window_events=total_window_events,
+        )
+        target_type_key = str(target.get("target_type_key") or target.get("target_type") or "")
+        identity_id = str(target.get("identity_id") or target.get("target_id") or "")
+        if projected is None:
+            deleted = 0
+            for lane in ("resolved", "attention"):
+                deleted += self.repos.token_radar.delete_target_feature(
+                    projection_version=PROJECTION_VERSION,
+                    window=window,
+                    scope=scope,
+                    lane=lane,
+                    target_type_key=target_type_key,
+                    identity_id=identity_id,
+                    commit=False,
+                )
+            return {"status": "deleted" if deleted else "empty", "source_rows": len(source_rows), "rows_written": 0}
+
+        written = self.repos.token_radar.upsert_target_feature(
+            projection_version=PROJECTION_VERSION,
+            window=window,
+            scope=scope,
+            row=projected,
+            computed_at_ms=int(now_ms),
+            commit=False,
+        )
+        opposite_lane = "attention" if projected["lane"] == "resolved" else "resolved"
+        self.repos.token_radar.delete_target_feature(
+            projection_version=PROJECTION_VERSION,
+            window=window,
+            scope=scope,
+            lane=opposite_lane,
+            target_type_key=target_type_key,
+            identity_id=identity_id,
+            commit=False,
+        )
+        return {"status": "updated", "source_rows": len(source_rows), "rows_written": written}
+
+    def refresh_rank_set(
+        self,
+        *,
+        window: str,
+        scope: str,
+        now_ms: int,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        computed_at_ms = int(now_ms)
         self.repos.token_radar.mark_coverage(
             projection_version=PROJECTION_VERSION,
             window=window,
@@ -73,32 +251,12 @@ class TokenRadarProjection:
             commit=True,
         )
         try:
-            source_rows = self._source_rows(
-                since_ms=analysis_since_ms,
-                score_since_ms=score_since_ms,
+            feature_rows = self.repos.token_radar.list_target_features_for_rank_set(
+                projection_version=PROJECTION_VERSION,
+                window=window,
                 scope=scope,
-                now_ms=computed_at_ms,
             )
-            grouped = self._group_rows(source_rows)
-            total_window_events = len(
-                {str(row["event_id"]) for row in source_rows if int(row.get("received_at_ms") or 0) >= score_since_ms}
-            )
-            projected = [
-                row
-                for group in grouped.values()
-                if (
-                    row := _project_group(
-                        group,
-                        now_ms=computed_at_ms,
-                        window=window,
-                        scope=scope,
-                        score_since_ms=score_since_ms,
-                        window_ms=window_ms,
-                        total_window_events=total_window_events,
-                    )
-                )
-            ]
-            projected = self._apply_cross_section(projected)
+            projected = self._apply_cross_section(feature_rows)
             resolved = [row for row in projected if row["lane"] == "resolved"]
             attention = [row for row in projected if row["lane"] == "attention"]
             resolved.sort(key=_rank_key)
@@ -123,7 +281,7 @@ class TokenRadarProjection:
                 projection_name=TOKEN_RADAR_PROJECTION_NAME,
                 projection_version=PROJECTION_VERSION,
                 mode="rebuild",
-                source_start_ms=analysis_since_ms,
+                source_start_ms=0,
                 source_end_ms=computed_at_ms,
                 commit=False,
             )
@@ -139,7 +297,7 @@ class TokenRadarProjection:
                 projection_repo.finish_run(
                     run_id=str(run["run_id"]),
                     status="stale_skipped",
-                    rows_read=len(source_rows),
+                    rows_read=len(feature_rows),
                     rows_written=0,
                     dirty_ranges_written=0,
                     error="newer_projection_exists",
@@ -147,7 +305,7 @@ class TokenRadarProjection:
                 )
                 return {
                     "rows_written": 0,
-                    "source_rows": len(source_rows),
+                    "source_rows": len(feature_rows),
                     "computed_at_ms": computed_at_ms,
                     "status": "stale_skipped",
                 }
@@ -165,7 +323,7 @@ class TokenRadarProjection:
             projection_repo.finish_run(
                 run_id=str(run["run_id"]),
                 status="ready",
-                rows_read=len(source_rows),
+                rows_read=len(feature_rows),
                 rows_written=len(rows),
                 dirty_ranges_written=0,
                 commit=False,
@@ -176,7 +334,7 @@ class TokenRadarProjection:
                 scope=scope,
                 status="ready",
                 reason=None,
-                source_rows=len(source_rows),
+                source_rows=len(feature_rows),
                 row_count=len(rows),
                 computed_at_ms=computed_at_ms,
                 started_at_ms=computed_at_ms,
@@ -186,7 +344,7 @@ class TokenRadarProjection:
             )
             return {
                 "rows_written": len(rows),
-                "source_rows": len(source_rows),
+                "source_rows": len(feature_rows),
                 "computed_at_ms": computed_at_ms,
                 "status": "ready",
             }
@@ -206,21 +364,6 @@ class TokenRadarProjection:
                 commit=True,
             )
             raise
-
-    def _source_rows(
-        self,
-        *,
-        since_ms: int,
-        score_since_ms: int,
-        scope: str,
-        now_ms: int,
-    ) -> list[dict[str, Any]]:
-        return TokenRadarSourceQuery(self.repos.conn).source_rows(
-            since_ms=since_ms,
-            score_since_ms=score_since_ms,
-            scope=scope,
-            now_ms=now_ms,
-        )
 
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -353,6 +496,14 @@ def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _claim_key(claim: dict[str, Any]) -> dict[str, str]:
+    return {
+        "target_type_key": str(claim.get("target_type_key") or claim.get("target_type") or ""),
+        "identity_id": str(claim.get("identity_id") or claim.get("target_id") or ""),
+        "payload_hash": str(claim.get("payload_hash") or ""),
+    }
 
 
 def _project_group(

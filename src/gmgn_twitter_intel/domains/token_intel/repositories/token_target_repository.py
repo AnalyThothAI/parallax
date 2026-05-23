@@ -88,16 +88,14 @@ class TokenTargetRepository:
         if target_type == "Asset":
             row = self.conn.execute(
                 """
-                SELECT market_ticks.*
+                SELECT
+                  market_tick_current.*,
+                  market_tick_current.tick_observed_at_ms AS observed_at_ms,
+                  market_tick_current.updated_at_ms AS received_at_ms
                 FROM registry_assets
-                JOIN LATERAL (
-                  SELECT *
-                  FROM market_ticks
-                  WHERE market_ticks.target_type = 'chain_token'
-                    AND market_ticks.target_id = registry_assets.chain_id || ':' || registry_assets.address
-                  ORDER BY market_ticks.observed_at_ms DESC, market_ticks.tick_id DESC
-                  LIMIT 1
-                ) market_ticks ON true
+                JOIN market_tick_current
+                  ON market_tick_current.target_type = 'chain_token'
+                 AND market_tick_current.target_id = registry_assets.chain_id || ':' || registry_assets.address
                 WHERE registry_assets.asset_id = %s
                 """,
                 [target_id],
@@ -106,7 +104,10 @@ class TokenTargetRepository:
         if target_type == "CexToken":
             row = self.conn.execute(
                 """
-                SELECT market_ticks.*
+                SELECT
+                  market_tick_current.*,
+                  market_tick_current.tick_observed_at_ms AS observed_at_ms,
+                  market_tick_current.updated_at_ms AS received_at_ms
                 FROM cex_tokens
                 JOIN LATERAL (
                   SELECT *
@@ -122,14 +123,9 @@ class TokenTargetRepository:
                     price_feeds.native_market_id ASC
                   LIMIT 1
                 ) price_feeds ON true
-                JOIN LATERAL (
-                  SELECT *
-                  FROM market_ticks
-                  WHERE market_ticks.target_type = 'cex_symbol'
-                    AND market_ticks.target_id = price_feeds.provider || ':' || price_feeds.native_market_id
-                  ORDER BY market_ticks.observed_at_ms DESC, market_ticks.tick_id DESC
-                  LIMIT 1
-                ) market_ticks ON true
+                JOIN market_tick_current
+                  ON market_tick_current.target_type = 'cex_symbol'
+                 AND market_tick_current.target_id = price_feeds.provider || ':' || price_feeds.native_market_id
                 WHERE cex_tokens.cex_token_id = %s
                 """,
                 [target_id],
@@ -260,7 +256,8 @@ class TokenTargetRepository:
              AND event_market_capture.intent_id = tir.intent_id
              AND event_market_capture.resolution_id = tir.resolution_id
             LEFT JOIN market_ticks event_tick
-              ON event_tick.tick_id = event_market_capture.tick_id
+              ON event_tick.observed_at_ms = event_market_capture.tick_observed_at_ms
+             AND event_tick.tick_id = event_market_capture.tick_id
              AND event_tick.target_type = CASE
                 WHEN tir.target_type = 'CexToken' THEN 'cex_symbol'
                 ELSE event_tick.target_type

@@ -19,6 +19,7 @@ class EnrichedEventRepository:
                 target_type,
                 target_id,
                 t_event_ms,
+                tick_observed_at_ms,
                 tick_id,
                 tick_lag_ms,
                 capture_method,
@@ -32,6 +33,7 @@ class EnrichedEventRepository:
                 %(target_type)s,
                 %(target_id)s,
                 %(t_event_ms)s,
+                %(tick_observed_at_ms)s,
                 %(tick_id)s,
                 %(tick_lag_ms)s,
                 %(capture_method)s,
@@ -47,6 +49,7 @@ class EnrichedEventRepository:
                 "target_type": capture.target_type,
                 "target_id": capture.target_id,
                 "t_event_ms": capture.t_event_ms,
+                "tick_observed_at_ms": capture.tick_observed_at_ms,
                 "tick_id": capture.tick_id,
                 "tick_lag_ms": capture.tick_lag_ms,
                 "capture_method": capture.capture_method,
@@ -96,7 +99,8 @@ class EnrichedEventRepository:
         cursor = self._conn.execute(
             """
             UPDATE enriched_events
-            SET tick_id = %(tick_id)s,
+            SET tick_observed_at_ms = %(tick_observed_at_ms)s,
+                tick_id = %(tick_id)s,
                 tick_lag_ms = %(tick_lag_ms)s,
                 capture_method = %(capture_method)s,
                 capture_reason = %(capture_reason)s
@@ -104,11 +108,13 @@ class EnrichedEventRepository:
               AND intent_id = %(intent_id)s
               AND capture_method = 'unavailable'
               AND capture_reason = 'pending_backfill'
+              AND tick_observed_at_ms IS NULL
               AND tick_id IS NULL
             """,
             {
                 "event_id": capture.event_id,
                 "intent_id": capture.intent_id,
+                "tick_observed_at_ms": capture.tick_observed_at_ms,
                 "tick_id": capture.tick_id,
                 "tick_lag_ms": capture.tick_lag_ms,
                 "capture_method": capture.capture_method,
@@ -127,6 +133,7 @@ class EnrichedEventRepository:
               AND intent_id = %(intent_id)s
               AND capture_method = 'unavailable'
               AND capture_reason = 'pending_backfill'
+              AND tick_observed_at_ms IS NULL
               AND tick_id IS NULL
               AND tick_lag_ms IS NULL
             """,
@@ -159,5 +166,7 @@ class EnrichedEventRepository:
                 mt.raw_payload_json AS market_tick_raw_payload_json,
                 mt.created_at_ms AS market_tick_created_at_ms
             FROM enriched_events ee
-            LEFT JOIN market_ticks mt ON mt.tick_id = ee.tick_id
+            LEFT JOIN market_ticks mt
+              ON mt.observed_at_ms = ee.tick_observed_at_ms
+             AND mt.tick_id = ee.tick_id
         """

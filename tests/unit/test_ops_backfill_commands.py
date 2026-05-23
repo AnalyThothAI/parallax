@@ -9,7 +9,7 @@ from typing import Any
 from gmgn_twitter_intel.cli import main
 
 
-def test_clean_reset_token_radar_storage_dry_run_returns_plan_without_sql(monkeypatch) -> None:
+def test_reset_token_radar_postgres_hard_cut_dry_run_returns_plan_without_sql(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     conn = _FakeResetConn()
@@ -23,7 +23,7 @@ def test_clean_reset_token_radar_storage_dry_run_returns_plan_without_sql(monkey
     stdout = io.StringIO()
 
     code = main(
-        ["ops", "clean-reset-token-radar-storage", "--dry-run"],
+        ["ops", "reset-token-radar-postgres-hard-cut", "--dry-run"],
         stdout=stdout,
     )
 
@@ -33,7 +33,17 @@ def test_clean_reset_token_radar_storage_dry_run_returns_plan_without_sql(monkey
     assert payload["data"]["mode"] == "dry_run"
     assert payload["data"]["executed"] is False
     assert payload["data"]["fact_tables_touched"] is False
-    assert conn.sql == []
+    assert payload["data"]["config_or_secrets_touched"] is False
+    assert "market_ticks" in payload["data"]["preserved_fact_tables"]
+    assert conn.sql == [
+        (
+            "SELECT parent.relname AS parent, child.relname AS partition FROM pg_inherits "
+            "JOIN pg_class parent ON parent.oid = pg_inherits.inhparent "
+            "JOIN pg_class child ON child.oid = pg_inherits.inhrelid "
+            "WHERE parent.relname = ANY(%s) ORDER BY parent.relname ASC, child.relname ASC"
+        )
+    ]
+    assert payload["data"]["affected_partitions"] == []
 
 
 def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -> None:
@@ -106,7 +116,7 @@ def test_backfill_watchlist_signal_stats_dry_run_uses_non_mutating_call(monkeypa
     assert json.loads(stdout.getvalue())["data"]["dry_run"] is True
 
 
-def test_clean_reset_token_radar_storage_execute_runs_reset_sql(monkeypatch) -> None:
+def test_reset_token_radar_postgres_hard_cut_execute_runs_reset_sql(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     conn = _FakeResetConn()
@@ -122,7 +132,7 @@ def test_clean_reset_token_radar_storage_execute_runs_reset_sql(monkeypatch) -> 
     code = main(
         [
             "ops",
-            "clean-reset-token-radar-storage",
+            "reset-token-radar-postgres-hard-cut",
             "--execute",
         ],
         stdout=stdout,
@@ -143,6 +153,54 @@ def test_clean_reset_token_radar_storage_execute_runs_reset_sql(monkeypatch) -> 
         "DELETE",
         "DELETE",
     ]
+
+
+def test_ensure_postgres_partitions_execute_runs_partition_sql(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    conn = _FakeResetConn()
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(signals=SimpleNamespace(conn=conn))
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_769_987_654_321)
+    stdout = io.StringIO()
+
+    code = main(["ops", "ensure-postgres-partitions", "--execute"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["data"]["mode"] == "execute"
+    assert payload["data"]["months"] == ["202602", "202603"]
+    assert conn.commits == 1
+    assert len(conn.sql) == 4
+
+
+def test_drop_expired_postgres_partitions_execute_is_explicit_noop_without_retention(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    conn = _FakeResetConn()
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(signals=SimpleNamespace(conn=conn))
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    stdout = io.StringIO()
+
+    code = main(["ops", "drop-expired-postgres-partitions", "--execute"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["data"]["executed"] is False
+    assert payload["data"]["reason"] == "retention_not_configured"
+    assert conn.sql == []
 
 
 class _FakeWatchlistIntel:
@@ -187,6 +245,9 @@ class _FakeResetConn:
         self.sql.append(" ".join(sql.split()))
         self.params.append(params)
         return self
+
+    def fetchall(self) -> list[dict[str, str]]:
+        return []
 
     def commit(self) -> None:
         self.commits += 1

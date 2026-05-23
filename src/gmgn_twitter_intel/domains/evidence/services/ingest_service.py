@@ -73,6 +73,7 @@ class IngestService:
         market_ticks: MarketTickRepository | None = None,
         enriched_events: EnrichedEventRepository | None = None,
         event_anchor_jobs: EventAnchorBackfillJobRepository | None = None,
+        token_radar_dirty_targets: Any | None = None,
         event_anchor_active_window_ms: int = DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS,
     ) -> None:
         self.evidence = evidence
@@ -88,6 +89,7 @@ class IngestService:
         self.market_ticks = market_ticks or MarketTickRepository(evidence.conn)
         self.enriched_events = enriched_events or EnrichedEventRepository(evidence.conn)
         self.event_anchor_jobs = event_anchor_jobs or EventAnchorBackfillJobRepository(evidence.conn)
+        self.token_radar_dirty_targets = token_radar_dirty_targets
         self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
 
     def insert_raw_frame(self, **kwargs: Any) -> bool:
@@ -204,6 +206,14 @@ class IngestService:
                     keys=_decision_value(decision, "lookup_keys") or [],
                     source_evidence_id=getattr(intent, "primary_evidence_id", None),
                     created_at_ms=prepared.event_ms,
+                    commit=False,
+                )
+            dirty_targets = _dirty_targets_for_resolutions(resolutions)
+            if dirty_targets and self.token_radar_dirty_targets is not None:
+                self.token_radar_dirty_targets.enqueue_targets(
+                    dirty_targets,
+                    reason="ingest_resolution",
+                    now_ms=prepared.event_ms,
                     commit=False,
                 )
             for item in captures:
@@ -503,6 +513,23 @@ def _decision_value(decision: Any, key: str) -> Any:
     return getattr(decision, key)
 
 
+def _dirty_targets_for_resolutions(resolutions: list[Any]) -> list[dict[str, Any]]:
+    dirty_targets: list[dict[str, Any]] = []
+    for decision in resolutions:
+        event_id = str(_decision_value(decision, "event_id") or "")
+        target_type = _decision_value(decision, "target_type")
+        target_id = _decision_value(decision, "target_id")
+        if target_type in {"Asset", "CexToken"} and target_id:
+            dirty_targets.append(
+                {
+                    "target_type_key": str(target_type),
+                    "identity_id": str(target_id),
+                    "source_event_ids": [event_id] if event_id else [],
+                }
+            )
+    return dirty_targets
+
+
 def _unavailable_capture(
     prepared: PreparedIngest,
     market_resolution: dict[str, Any],
@@ -516,6 +543,7 @@ def _unavailable_capture(
         target_type=market_resolution["target_type"],
         target_id=str(market_resolution["target_id"]),
         t_event_ms=prepared.event_ms,
+        tick_observed_at_ms=None,
         tick_id=None,
         tick_lag_ms=None,
         capture_method="unavailable",

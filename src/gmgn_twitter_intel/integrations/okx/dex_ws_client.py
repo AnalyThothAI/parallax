@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +19,10 @@ from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE
 class OkxDexWsClientError(RuntimeError):
     pass
 
+
+OKX_DEX_WS_CONNECT_TIMEOUT_SECONDS = 5.0
+OKX_DEX_WS_LOGIN_TIMEOUT_SECONDS = 5.0
+OKX_DEX_WS_CLOSE_TIMEOUT_SECONDS = 5.0
 
 WS_CONNECTION_STATES = frozenset({"disconnected", "connecting", "authenticating", "subscribed", "streaming", "failed"})
 
@@ -74,10 +78,23 @@ class OkxDexWebSocketMarketProvider:
             websocket: Any | None = None
             try:
                 self._set_connection_state("connecting")
-                websocket = await websockets.connect(self.url, ping_interval=20, close_timeout=5)
+                websocket = await _await_bounded(
+                    websockets.connect(
+                        self.url,
+                        ping_interval=20,
+                        open_timeout=OKX_DEX_WS_CONNECT_TIMEOUT_SECONDS,
+                        close_timeout=OKX_DEX_WS_CLOSE_TIMEOUT_SECONDS,
+                    ),
+                    operation="connect",
+                    timeout_seconds=OKX_DEX_WS_CONNECT_TIMEOUT_SECONDS,
+                )
                 self._set_connection_state("authenticating")
                 await websocket.send(json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase)))
-                await _wait_for_login(websocket)
+                await _await_bounded(
+                    _wait_for_login(websocket),
+                    operation="login",
+                    timeout_seconds=OKX_DEX_WS_LOGIN_TIMEOUT_SECONDS,
+                )
                 self._websocket = websocket
                 websocket = None
                 self._set_connection_state("subscribed")
@@ -210,10 +227,46 @@ def _arg_from_key(key: tuple[str, str]) -> dict[str, str]:
 async def _close_websocket(websocket: Any | None) -> None:
     if websocket is None:
         return
+    close_task = asyncio.create_task(websocket.close())
     try:
-        await websocket.close()
+        await asyncio.wait_for(asyncio.shield(close_task), timeout=OKX_DEX_WS_CLOSE_TIMEOUT_SECONDS)
+    except TimeoutError:
+        close_task.cancel()
+        logger.warning("OKX DEX WS close timed out | timeout_seconds={}", OKX_DEX_WS_CLOSE_TIMEOUT_SECONDS)
     except Exception as exc:
+        close_task.cancel()
         logger.warning("OKX DEX WS close raised | error={}", exc)
+
+
+async def _await_bounded(awaitable: Awaitable[Any], *, operation: str, timeout_seconds: float) -> Any:
+    task = asyncio.ensure_future(awaitable)
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=max(0.001, float(timeout_seconds)))
+    except TimeoutError as exc:
+        _cancel_background_task(task, operation=operation)
+        raise TimeoutError(f"OKX DEX WS {operation} timed out after {timeout_seconds:g}s") from exc
+    except asyncio.CancelledError:
+        _cancel_background_task(task, operation=operation)
+        raise
+    except Exception:
+        if not task.done():
+            _cancel_background_task(task, operation=operation)
+        raise
+
+
+def _cancel_background_task(task: asyncio.Future[Any], *, operation: str) -> None:
+    if not task.done():
+        task.cancel()
+    task.add_done_callback(lambda done: _log_background_task_completion(done, operation=operation))
+
+
+def _log_background_task_completion(task: asyncio.Future[Any], *, operation: str) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception as exc:
+        logger.warning("OKX DEX WS background task failed after cancel | operation={} error={}", operation, exc)
 
 
 def _login_payload(api_key: str, secret_key: str, passphrase: str) -> dict[str, Any]:

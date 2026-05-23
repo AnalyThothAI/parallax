@@ -188,8 +188,8 @@ and full audit snapshots use partitioned `token_radar_snapshot_audit`.
 When resetting Token Radar read models against real data, dry-run first:
 
 ```bash
-uv run gmgn-twitter-intel ops clean-reset-token-radar-storage --dry-run
-uv run gmgn-twitter-intel ops clean-reset-token-radar-storage --execute
+uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --dry-run
+uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
 ```
 
 The reset command may clear Token Radar derived state and projection controls,

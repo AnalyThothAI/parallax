@@ -62,7 +62,7 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
 
     sql = "\n".join(conn.sql)
     assert "INSERT INTO market_ticks" in sql
-    assert "ON CONFLICT(target_type, target_id, source_provider, observed_at_ms) DO NOTHING" in sql
+    assert "ON CONFLICT(observed_at_ms, target_type, target_id, source_provider) DO NOTHING" in sql
     assert "RETURNING tick_id" in sql
     assert "UPDATE market_ticks" not in sql
     assert conn.commits == 0
@@ -71,6 +71,52 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
     assert conn.params[0]["holders"] == 1234
     assert conn.params[0]["open_interest_usd"] is None
     assert conn.params[0]["raw_payload_json"].obj == {"pair": "abc"}
+
+
+def test_insert_market_tick_upserts_current_row_from_inserted_tick_only() -> None:
+    conn = _ScriptedConnection([])
+    tick = _tick()
+
+    MarketTickRepository(conn).insert_tick(tick)
+
+    sql = conn.sql[-1]
+    normalized_sql = " ".join(sql.split())
+    assert "WITH inserted AS" in normalized_sql
+    assert "INSERT INTO market_ticks" in normalized_sql
+    assert "ON CONFLICT(observed_at_ms, target_type, target_id, source_provider) DO NOTHING" in normalized_sql
+    assert "INSERT INTO market_tick_current" in normalized_sql
+    assert "FROM inserted" in normalized_sql
+    assert "ON CONFLICT(target_type, target_id) DO UPDATE" in normalized_sql
+    assert "market_tick_current.tick_observed_at_ms < excluded.tick_observed_at_ms" in normalized_sql
+    assert "market_tick_current.tick_observed_at_ms = excluded.tick_observed_at_ms" in normalized_sql
+    assert "market_tick_current.updated_at_ms < excluded.updated_at_ms" in normalized_sql
+    assert "market_tick_current.updated_at_ms = excluded.updated_at_ms" in normalized_sql
+    assert "market_tick_current.tick_id <= excluded.tick_id" in normalized_sql
+    assert "RETURNING tick_id" in normalized_sql
+
+
+def test_current_upsert_prefers_later_received_at_for_same_observed_at() -> None:
+    conn = _CurrentTrackingConnection()
+    observed_at_ms = 1_700_000_000_000
+    older_received = _tick(
+        observed_at_ms=observed_at_ms,
+        received_at_ms=1_700_000_000_100,
+        source_provider="okx_dex_ws",
+    )
+    later_received = _tick(
+        observed_at_ms=observed_at_ms,
+        received_at_ms=1_700_000_000_900,
+        source_provider="gmgn_dex_quote",
+    )
+
+    repository = MarketTickRepository(conn)
+    repository.insert_tick(older_received)
+    repository.insert_tick(later_received)
+
+    current = conn.current[("chain_token", "solana:abc")]
+    assert current["tick_id"] == later_received.tick_id
+    assert current["tick_observed_at_ms"] == observed_at_ms
+    assert current["updated_at_ms"] == later_received.received_at_ms
 
 
 def test_insert_market_tick_strips_nul_bytes_from_raw_payload() -> None:
@@ -190,16 +236,75 @@ class _ScriptedConnection:
         self.commits += 1
 
 
+class _CurrentTrackingConnection:
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.params: list[dict[str, Any]] = []
+        self.inserted_keys: set[tuple[int, str, str, str]] = set()
+        self.current: dict[tuple[str, str], dict[str, Any]] = {}
+        self._next_row: dict[str, Any] | None = None
+
+    def execute(self, sql: str, params: dict[str, Any] | None = None) -> _CurrentTrackingConnection:
+        params = params or {}
+        self.sql.append(str(sql))
+        self.params.append(params)
+        normalized_sql = " ".join(str(sql).split())
+        assert "market_tick_current.updated_at_ms < excluded.updated_at_ms" in normalized_sql
+        assert "market_tick_current.updated_at_ms = excluded.updated_at_ms" in normalized_sql
+
+        inserted_key = (
+            int(params["observed_at_ms"]),
+            str(params["target_type"]),
+            str(params["target_id"]),
+            str(params["source_provider"]),
+        )
+        if inserted_key in self.inserted_keys:
+            self._next_row = None
+            return self
+
+        self.inserted_keys.add(inserted_key)
+        current_key = (str(params["target_type"]), str(params["target_id"]))
+        candidate = {
+            "tick_observed_at_ms": int(params["observed_at_ms"]),
+            "tick_id": str(params["tick_id"]),
+            "updated_at_ms": int(params["received_at_ms"]),
+        }
+        existing = self.current.get(current_key)
+        if existing is None or _candidate_replaces_current(candidate, existing):
+            self.current[current_key] = candidate
+        self._next_row = {"tick_id": str(params["tick_id"])}
+        return self
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self._next_row
+
+
+def _candidate_replaces_current(candidate: dict[str, Any], existing: dict[str, Any]) -> bool:
+    candidate_key = (
+        int(candidate["tick_observed_at_ms"]),
+        int(candidate["updated_at_ms"]),
+        str(candidate["tick_id"]),
+    )
+    existing_key = (
+        int(existing["tick_observed_at_ms"]),
+        int(existing["updated_at_ms"]),
+        str(existing["tick_id"]),
+    )
+    return candidate_key >= existing_key
+
+
 def _tick(
     *,
     tick_id: str | None = None,
     observed_at_ms: int = 1_700_000_000_000,
+    received_at_ms: int = 1_700_000_000_100,
+    source_provider: str = "okx_dex_ws",
     raw_payload_json: dict[str, Any] | None = None,
 ) -> MarketTick:
     tick_id = tick_id or market_tick_id(
         target_type="chain_token",
         target_id="solana:abc",
-        source_provider="okx_dex_ws",
+        source_provider=source_provider,  # type: ignore[arg-type]
         observed_at_ms=observed_at_ms,
     )
     return MarketTick(
@@ -212,9 +317,9 @@ def _tick(
         instrument=None,
         pricefeed_id="pf-1",
         source_tier="tier1_ws",
-        source_provider="okx_dex_ws",
+        source_provider=source_provider,  # type: ignore[arg-type]
         observed_at_ms=observed_at_ms,
-        received_at_ms=1_700_000_000_100,
+        received_at_ms=received_at_ms,
         price_usd=Decimal("1.23"),
         liquidity_usd=Decimal("1000"),
         volume_24h_usd=Decimal("5000"),

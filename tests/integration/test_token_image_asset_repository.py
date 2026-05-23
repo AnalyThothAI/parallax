@@ -185,6 +185,143 @@ def test_mark_error_does_not_downgrade_ready_row(tmp_path):
     assert row == ready_row
 
 
+def test_mark_error_does_not_downgrade_unsupported_row(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenImageAssetRepository(conn)
+        repo.upsert_pending_sources([_source_row(SOURCE_URL)], now_ms=NOW_MS)
+        repo.mark_unsupported(
+            SOURCE_URL,
+            error="unsupported_image_bytes: unknown_magic",
+            now_ms=NOW_MS + 100,
+        )
+        unsupported_row = conn.execute(
+            "SELECT * FROM token_image_assets WHERE source_url = %s",
+            (SOURCE_URL,),
+        ).fetchone()
+
+        repo.mark_error(
+            SOURCE_URL,
+            error="late transient failure",
+            now_ms=NOW_MS + 200,
+            retry_ms=30_000,
+        )
+        row = conn.execute(
+            "SELECT * FROM token_image_assets WHERE source_url = %s",
+            (SOURCE_URL,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == unsupported_row
+
+
+def test_mark_unsupported_is_terminal_and_not_claimed(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenImageAssetRepository(conn)
+        repo.upsert_pending_sources([_source_row(SOURCE_URL)], now_ms=NOW_MS)
+
+        repo.mark_unsupported(
+            SOURCE_URL,
+            error="unsupported_image_bytes: media_type_mismatch",
+            now_ms=NOW_MS + 200,
+        )
+        claimed = repo.claim_due_sources(now_ms=NOW_MS + 1_000_000, limit=10)
+        row = conn.execute(
+            "SELECT * FROM token_image_assets WHERE source_url = %s",
+            (SOURCE_URL,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert claimed == []
+    assert row["status"] == "unsupported"
+    assert row["failure_count"] == 1
+    assert row["last_error"] == "unsupported_image_bytes: media_type_mismatch"
+    assert row["next_refresh_at_ms"] == NOW_MS + 200
+    assert row["updated_at_ms"] == NOW_MS + 200
+
+
+def test_mark_unsupported_does_not_downgrade_ready_row(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenImageAssetRepository(conn)
+        repo.upsert_pending_sources([_source_row(SOURCE_URL)], now_ms=NOW_MS)
+        ready_row = repo.mark_ready(
+            SOURCE_URL,
+            media_type="image/png",
+            file_extension=".png",
+            content_sha256="a" * 64,
+            byte_size=1234,
+            storage_path="aaaaaaaa.png",
+            now_ms=NOW_MS + 100,
+        )
+
+        repo.mark_unsupported(
+            SOURCE_URL,
+            error="unsupported_image_bytes: late worker result",
+            now_ms=NOW_MS + 200,
+        )
+        row = conn.execute(
+            "SELECT * FROM token_image_assets WHERE source_url = %s",
+            (SOURCE_URL,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row == ready_row
+
+
+def test_upsert_pending_sources_does_not_update_terminal_ready_or_unsupported_rows(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenImageAssetRepository(conn)
+        repo.upsert_pending_sources(
+            [
+                _source_row(SOURCE_URL, raw_ref_json={"asset_id": "asset:ready"}),
+                _source_row(SECOND_SOURCE_URL, raw_ref_json={"asset_id": "asset:unsupported"}),
+            ],
+            now_ms=NOW_MS,
+        )
+        ready_row = repo.mark_ready(
+            SOURCE_URL,
+            media_type="image/png",
+            file_extension=".png",
+            content_sha256="a" * 64,
+            byte_size=1234,
+            storage_path="aaaaaaaa.png",
+            now_ms=NOW_MS + 100,
+        )
+        repo.mark_unsupported(
+            SECOND_SOURCE_URL,
+            error="unsupported_image_bytes: unknown_magic",
+            now_ms=NOW_MS + 200,
+        )
+        unsupported_row = conn.execute(
+            "SELECT * FROM token_image_assets WHERE source_url = %s",
+            (SECOND_SOURCE_URL,),
+        ).fetchone()
+
+        count = repo.upsert_pending_sources(
+            [
+                _source_row(SOURCE_URL, raw_ref_json={"asset_id": "asset:ready-churn"}),
+                _source_row(SECOND_SOURCE_URL, raw_ref_json={"asset_id": "asset:unsupported-churn"}),
+            ],
+            now_ms=NOW_MS + 300,
+        )
+        rows = conn.execute("SELECT * FROM token_image_assets ORDER BY source_url").fetchall()
+    finally:
+        conn.close()
+
+    assert count == 0
+    assert rows == sorted([ready_row, unsupported_row], key=lambda row: row["source_url"])
+
+
 def test_ready_lookup_filters_non_ready_sources_and_supports_image_id(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

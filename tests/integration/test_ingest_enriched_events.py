@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from decimal import Decimal
 
 from gmgn_twitter_intel.app.runtime.bootstrap import _PooledIngestStore
 from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenQuote
+from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
+from gmgn_twitter_intel.domains.asset_market.types import MarketTick, market_tick_id
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -107,6 +110,75 @@ def test_ingest_chain_event_with_provider_no_quote_still_writes_pending_backfill
     assert enriched_rows[0]["capture_method"] == "unavailable"
     assert enriched_rows[0]["capture_reason"] == "pending_backfill"
     assert enriched_rows[0]["tick_id"] is None
+
+
+def test_ingest_chain_event_with_existing_tick_writes_composite_tick_capture(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    migrate(conn)
+    event = make_event(
+        "event-existing-market",
+        text="https://gmgn.ai/eth/token/0x6982508145454ce325ddbe47a25d4ec3d2311933 has a fresh quote",
+        received_at_ms=1_700_000_020_000,
+    )
+    target_id = "eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    observed_at_ms = event.received_at_ms - 250
+    tick = MarketTick(
+        tick_id=market_tick_id(
+            target_type="chain_token",
+            target_id=target_id,
+            source_provider="gmgn_dex_quote",
+            observed_at_ms=observed_at_ms,
+        ),
+        target_type="chain_token",
+        target_id=target_id,
+        chain="eip155:1",
+        token_address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        exchange=None,
+        instrument=None,
+        pricefeed_id=None,
+        source_tier="tier3_inline",
+        source_provider="gmgn_dex_quote",
+        observed_at_ms=observed_at_ms,
+        received_at_ms=observed_at_ms,
+        price_usd=Decimal("0.0123"),
+        liquidity_usd=Decimal("123000"),
+        volume_24h_usd=Decimal("456000"),
+        open_interest_usd=None,
+        market_cap_usd=Decimal("1000000"),
+        holders=None,
+        created_at_ms=observed_at_ms,
+        raw_payload_json={"source": "test"},
+    )
+    MarketTickRepository(conn).insert_tick(tick)
+    conn.commit()
+    store = _PooledIngestStore(
+        _SingleConnectionDB(conn),
+        providers=AssetMarketProviders(dex_quote_market=_DexQuoteProvider([])),
+        now_ms=lambda: event.received_at_ms + 500,
+    )
+    try:
+        result = store.ingest_event(event, is_watched=True)
+        enriched_rows = conn.execute("SELECT * FROM enriched_events WHERE event_id = %s", (event.event_id,)).fetchall()
+        current_row = conn.execute(
+            """
+            SELECT *
+            FROM market_tick_current
+            WHERE target_type = %s AND target_id = %s
+            """,
+            ("chain_token", target_id),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert result.inserted is True
+    assert len(enriched_rows) == 1
+    assert enriched_rows[0]["tick_observed_at_ms"] == observed_at_ms
+    assert enriched_rows[0]["tick_id"] == tick.tick_id
+    assert enriched_rows[0]["capture_method"] == "tier3_inline"
+    assert enriched_rows[0]["tick_lag_ms"] == 250
+    assert current_row is not None
+    assert current_row["tick_observed_at_ms"] == observed_at_ms
+    assert current_row["tick_id"] == tick.tick_id
 
 
 class _DexQuoteProvider:

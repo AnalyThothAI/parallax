@@ -25,6 +25,16 @@ class FakeTokenRadar:
 class FakeRepos:
     def __init__(self, coverage):
         self.token_radar = FakeTokenRadar(coverage)
+        self.token_radar_dirty_targets = FakeDirtyTargets()
+
+
+class FakeDirtyTargets:
+    def __init__(self):
+        self.catch_up_calls: list[dict[str, object]] = []
+
+    def enqueue_recent_resolved_targets(self, **kwargs):
+        self.catch_up_calls.append(kwargs)
+        return 0
 
 
 class FakeSession:
@@ -60,25 +70,28 @@ class FakeAdvisoryLock:
         return None
 
 
-def test_projection_worker_refreshes_hot_windows_before_missing_current_version_windows(monkeypatch):
+def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild(monkeypatch):
     calls: list[dict[str, object]] = []
-    coverage = {
-        ("5m", "all"): {
-            "status": "ready",
-            "row_count": 0,
-            "source_rows": 0,
-            "computed_at_ms": 1_777_799_000_000,
-        }
-    }
+    coverage = {}
     wake_bus = FakeWakeBus()
 
     class FakeProjection:
         def __init__(self, *, repos):
             self.repos = repos
 
-        def rebuild(self, *, window, scope, now_ms=None, limit=100):
-            calls.append({"window": window, "scope": scope, "now_ms": now_ms, "limit": limit})
-            return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms, "status": "ready"}
+        def rebuild_dirty_targets(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "rows_written": 2,
+                "source_rows": 3,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 1,
+                "windows": {"5m:all": {"status": "ready", "rows_written": 2, "source_rows": 3}},
+            }
+
+        def rebuild(self, **kwargs):  # pragma: no cover - must not be called by runtime worker
+            raise AssertionError("worker must not call full-window rebuild")
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     db = FakeDB(coverage)
@@ -93,23 +106,18 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
     result = worker.rebuild_once(now_ms=1_777_800_000_000)
 
     assert calls == [
-        {"window": "5m", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "5m", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "1h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "1h", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "4h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "4h", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
+        {
+            "windows": ("5m", "1h", "4h"),
+            "scopes": ("all", "matched"),
+            "now_ms": 1_777_800_000_000,
+            "limit": 7,
+            "rank_limit": 7,
+            "lease_owner": "token_radar_projection",
+        }
     ]
-    assert result["rows_written"] == 12
-    assert result["windows"]["1h:all"]["status"] == "ready"
-    assert wake_bus.token_radar_notifications == [
-        {"window": "5m", "scope": "all"},
-        {"window": "5m", "scope": "matched"},
-        {"window": "1h", "scope": "all"},
-        {"window": "1h", "scope": "matched"},
-        {"window": "4h", "scope": "all"},
-        {"window": "4h", "scope": "matched"},
-    ]
+    assert result["rows_written"] == 2
+    assert result["windows"]["5m:all"]["status"] == "ready"
+    assert wake_bus.token_radar_notifications == [{"window": "5m", "scope": "all"}]
     assert isinstance(worker, WorkerBase)
     assert worker.SINGLE_WRITER_KEY == 2026051501
     assert db.worker_sessions[0] == {"name": "token_radar_projection", "statement_timeout_seconds": 120.0}
@@ -120,8 +128,15 @@ def test_projection_worker_run_once_returns_worker_result(monkeypatch):
         def __init__(self, *, repos):
             self.repos = repos
 
-        def rebuild(self, *, window, scope, now_ms=None, limit=100):
-            return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms, "status": "ready"}
+        def rebuild_dirty_targets(self, **kwargs):
+            return {
+                "rows_written": 2,
+                "source_rows": 3,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 1,
+                "windows": {"5m:all": {"status": "ready"}},
+            }
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     worker = module.TokenRadarProjectionWorker(
@@ -210,18 +225,25 @@ def test_projection_worker_retries_failed_missing_windows_after_cold_interval():
 
 
 def test_projection_worker_records_partial_window_results_before_background_failure(monkeypatch):
-    calls: list[tuple[str, str]] = []
     sessions: list[FakeSession] = []
 
     class FakeProjection:
         def __init__(self, *, repos):
             self.repos = repos
 
-        def rebuild(self, *, window, scope, now_ms=None, limit=100):
-            calls.append((window, scope))
-            if (window, scope) == ("1h", "matched"):
-                raise RuntimeError("source query timeout")
-            return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms, "status": "ready"}
+        def rebuild_dirty_targets(self, **kwargs):
+            return {
+                "rows_written": 2,
+                "source_rows": 3,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "failed",
+                "error": "target projection timeout",
+                "claimed": 2,
+                "windows": {
+                    "1h:all": {"status": "ready", "rows_written": 2, "source_rows": 3},
+                    "1h:matched": {"status": "failed", "error": "target projection timeout"},
+                },
+            }
 
     @contextmanager
     def repository_session(name, statement_timeout_seconds=None):
@@ -240,11 +262,10 @@ def test_projection_worker_records_partial_window_results_before_background_fail
 
     result = worker.rebuild_once(now_ms=1_777_800_000_000)
 
-    assert calls == [("1h", "all"), ("1h", "matched")]
     assert result["windows"]["1h:all"]["status"] == "ready"
     assert result["windows"]["1h:matched"]["status"] == "failed"
-    assert result["windows"]["1h:matched"]["error"] == "source query timeout"
-    assert worker.last_error == "source query timeout"
+    assert result["windows"]["1h:matched"]["error"] == "target projection timeout"
+    assert worker.last_error == "target projection timeout"
 
 
 def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
@@ -255,8 +276,15 @@ def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
             def __init__(self, *, repos):
                 self.repos = repos
 
-            def rebuild(self, *, window, scope, now_ms=None, limit=100):
-                return {"rows_written": 0, "source_rows": 0, "computed_at_ms": now_ms, "status": "ready"}
+            def rebuild_dirty_targets(self, **kwargs):
+                return {
+                    "rows_written": 0,
+                    "source_rows": 0,
+                    "computed_at_ms": kwargs["now_ms"],
+                    "status": "idle",
+                    "claimed": 0,
+                    "windows": {},
+                }
 
         monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
         worker = module.TokenRadarProjectionWorker(
@@ -352,12 +380,14 @@ def _worker(
         def __init__(self, *, repos):
             self.repos = repos
 
-        def rebuild(self, *, window, scope, now_ms=None, limit=100):
+        def rebuild_dirty_targets(self, **kwargs):
             return {
                 "rows_written": 1,
                 "source_rows": 1,
-                "computed_at_ms": now_ms,
+                "computed_at_ms": kwargs["now_ms"],
                 "status": "ready",
+                "claimed": 1,
+                "windows": {"5m:all": {"status": "ready"}},
             }
 
     monkeypatch = pytest.MonkeyPatch()
@@ -379,37 +409,47 @@ def _worker(
     return worker
 
 
-def test_projection_worker_skips_background_window_until_cold_interval_elapsed() -> None:
-    worker = _worker(
-        windows=("5m", "1h"),
-        scopes=("all",),
-        hot_windows=("5m",),
-        cold_interval_seconds=60,
-        coverage={
-            ("5m", "all"): {"status": "ready", "computed_at_ms": 1_000},
-            ("1h", "all"): {"status": "ready", "computed_at_ms": 990},
-        },
+def test_projection_worker_enqueues_bounded_catch_up_when_no_dirty_claims(monkeypatch) -> None:
+    class _FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            return {
+                "rows_written": 0,
+                "source_rows": 0,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "idle",
+                "claimed": 0,
+                "windows": {},
+            }
+
+    monkeypatch.setattr(module, "_projection_class", lambda: _FakeProjection)
+    db = FakeDB({})
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(windows=("5m", "1h"), scopes=("all",), hot_windows=("5m",), batch_size=7),
+        db=db,
+        telemetry=object(),
     )
-    try:
-        result = worker.rebuild_once(now_ms=1_500)
-        assert list(result["windows"]) == ["5m:all"]
-    finally:
-        worker._test_monkeypatch.undo()
+
+    result = worker.rebuild_once(now_ms=122_000)
+
+    assert result["status"] == "idle"
+    assert result["catch_up_enqueued"] == 0
+    assert db.sessions[-1].repos.token_radar_dirty_targets.catch_up_calls[-1]["limit"] == 7
 
 
-def test_projection_worker_runs_stale_background_window_after_cold_interval() -> None:
+def test_projection_worker_does_not_run_window_scan_after_catch_up() -> None:
     worker = _worker(
         windows=("5m", "1h"),
         scopes=("all",),
         hot_windows=("5m",),
         cold_interval_seconds=60,
-        coverage={
-            ("5m", "all"): {"status": "ready", "computed_at_ms": 120_000},
-            ("1h", "all"): {"status": "ready", "computed_at_ms": 1_000},
-        },
+        coverage={},
     )
     try:
         result = worker.rebuild_once(now_ms=122_000)
-        assert list(result["windows"]) == ["5m:all", "1h:all"]
+        assert list(result["windows"]) == ["5m:all"]
     finally:
         worker._test_monkeypatch.undo()

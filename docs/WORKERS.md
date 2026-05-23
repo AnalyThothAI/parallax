@@ -109,7 +109,7 @@ notification_delivery
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
 | `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | provider logo URLs from `asset_profiles`, exact identity evidence, `cex_token_profiles`, current/recent targets | `token_image_assets`, local cache files | poll | none | `interval_seconds` |
-| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
+| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_dirty_targets`; target-scoped facts via `token_radar_target_feature_query`, `market_tick_current`, `enriched_events`, `asset_identity_current` | `token_radar_target_features`, `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `token_image_assets`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | current `token_radar_current_rows` frontier, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | due `narrative_admissions` source sets, `events`, queued semantics | `token_mention_semantics`, `narrative_model_runs` | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
@@ -203,9 +203,9 @@ epoch-policy deferral is separate from provider capacity.
 `token_radar_current_rows`, `token_radar_rank_history`,
 `token_radar_snapshot_audit`, and `token_radar_target_first_seen`. The compact
 first-seen read model preserves `listed_at_ms` while current rows stay small.
-`ops clean-reset-token-radar-storage` is an explicit operator maintenance
-command for the clean-slate reset; it is never called by HTTP handlers,
-WebSocket paths, or normal worker catch-up.
+`ops reset-token-radar-postgres-hard-cut` is an explicit operator maintenance
+command for the clean-slate derived-storage reset; it is never called by HTTP
+handlers, WebSocket paths, or normal worker catch-up.
 
 `EnrichmentWorker` is the runtime writer for
 `watchlist_handle_signal_events` and `watchlist_handle_signal_stats`.

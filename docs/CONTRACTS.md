@@ -648,10 +648,14 @@ Operational commands:
   return evaluations when sufficient later market observations exist.
 - `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
-- `gmgn-twitter-intel ops clean-reset-token-radar-storage` is an explicit
+- `gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut` is an explicit
   operator maintenance command for dropping legacy Token Radar storage and
   clearing rebuildable Token Radar read models. It never touches material fact
-  tables.
+  tables, runtime config, or secrets.
+- `gmgn-twitter-intel ops ensure-postgres-partitions --execute` ensures current
+  and next month Token Radar rank-history and snapshot-audit partitions.
+- `gmgn-twitter-intel ops drop-expired-postgres-partitions --execute` is an
+  explicit no-op until partition retention is configured.
 
 ## Privacy boundary
 

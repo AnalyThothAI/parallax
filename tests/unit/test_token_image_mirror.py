@@ -26,7 +26,7 @@ def test_rejected_token_image_source_urls_require_https_known_host_and_path() ->
     assert not is_allowed_token_image_source_url("https://example.com/external-res/token-alpha.png")
 
 
-def test_mirror_marks_error_when_magic_bytes_mismatch_media_type(tmp_path) -> None:
+def test_mirror_marks_unsupported_when_magic_bytes_mismatch_media_type(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
         repository=repo,
@@ -36,33 +36,33 @@ def test_mirror_marks_error_when_magic_bytes_mismatch_media_type(tmp_path) -> No
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
-    assert result["status"] == "error"
+    assert result["status"] == "unsupported"
     assert repo.ready_rows == []
-    assert repo.error_rows == [
+    assert repo.error_rows == []
+    assert repo.unsupported_rows == [
         {
             "source_url": GMGN_URL,
             "now_ms": NOW_MS,
-            "retry_ms": TOKEN_IMAGE_MIRROR_RETRY_MS,
             "error_prefix": "unsupported_image_bytes",
         }
     ]
     assert not (tmp_path / "cache" / "token-images").exists()
 
 
-def test_mirror_marks_unsupported_source_url_error_without_fetching(tmp_path) -> None:
+def test_mirror_marks_unsupported_source_url_without_fetching(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     client = _FakeImageClient(_FakeImageResponse(content=PNG_BYTES, content_type="image/png"))
     service = TokenImageMirrorService(repository=repo, app_home=tmp_path, http_client=client)
 
     result = service.mirror_source({"source_url": "https://example.com/token.png"}, now_ms=NOW_MS)
 
-    assert result["status"] == "error"
+    assert result["status"] == "unsupported"
     assert repo.ready_rows == []
-    assert repo.error_rows == [
+    assert repo.error_rows == []
+    assert repo.unsupported_rows == [
         {
             "source_url": "https://example.com/token.png",
             "now_ms": NOW_MS,
-            "retry_ms": TOKEN_IMAGE_MIRROR_RETRY_MS,
             "error_prefix": "unsupported_image_url",
         }
     ]
@@ -105,12 +105,13 @@ def test_mirror_rejects_malformed_png_with_only_four_byte_prefix(tmp_path) -> No
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
-    assert result["status"] == "error"
+    assert result["status"] == "unsupported"
     assert repo.ready_rows == []
-    assert repo.error_rows[0]["error_prefix"] == "unsupported_image_bytes"
+    assert repo.error_rows == []
+    assert repo.unsupported_rows[0]["error_prefix"] == "unsupported_image_bytes"
 
 
-def test_mirror_marks_error_when_response_is_oversized(tmp_path) -> None:
+def test_mirror_marks_unsupported_when_response_is_oversized(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
         repository=repo,
@@ -126,12 +127,13 @@ def test_mirror_marks_error_when_response_is_oversized(tmp_path) -> None:
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
-    assert result["status"] == "error"
+    assert result["status"] == "unsupported"
     assert repo.ready_rows == []
-    assert repo.error_rows[0]["error_prefix"] == "image_too_large"
+    assert repo.error_rows == []
+    assert repo.unsupported_rows[0]["error_prefix"] == "image_too_large"
 
 
-def test_mirror_marks_error_when_actual_body_is_oversized(tmp_path) -> None:
+def test_mirror_marks_unsupported_when_actual_body_is_oversized(tmp_path) -> None:
     repo = _FakeTokenImageAssetRepository()
     service = TokenImageMirrorService(
         repository=repo,
@@ -146,9 +148,10 @@ def test_mirror_marks_error_when_actual_body_is_oversized(tmp_path) -> None:
 
     result = service.mirror_source({"source_url": GMGN_URL}, now_ms=NOW_MS)
 
-    assert result["status"] == "error"
+    assert result["status"] == "unsupported"
     assert repo.ready_rows == []
-    assert repo.error_rows[0]["error_prefix"] == "image_too_large"
+    assert repo.error_rows == []
+    assert repo.unsupported_rows[0]["error_prefix"] == "image_too_large"
 
 
 def test_mirror_marks_upstream_404_as_error_with_retry_backoff(tmp_path) -> None:
@@ -229,6 +232,7 @@ class _FakeTokenImageAssetRepository:
     def __init__(self) -> None:
         self.ready_rows: list[dict[str, object]] = []
         self.error_rows: list[dict[str, object]] = []
+        self.unsupported_rows: list[dict[str, object]] = []
 
     def mark_ready(
         self,
@@ -259,6 +263,15 @@ class _FakeTokenImageAssetRepository:
                 "source_url": source_url,
                 "now_ms": now_ms,
                 "retry_ms": retry_ms,
+                "error_prefix": error.split(":", maxsplit=1)[0],
+            }
+        )
+
+    def mark_unsupported(self, source_url: str, error: str, now_ms: int, commit: bool = True) -> None:
+        self.unsupported_rows.append(
+            {
+                "source_url": source_url,
+                "now_ms": now_ms,
                 "error_prefix": error.split(":", maxsplit=1)[0],
             }
         )

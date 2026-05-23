@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -187,6 +188,79 @@ def test_token_image_source_query_reads_current_and_recent_sources_without_old_r
     assert len(limited_rows) == 2
 
 
+def test_token_image_source_query_excludes_ready_and_unsupported_sources_by_hash(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    ready_url = "https://gmgn.ai/external-res/terminal-ready.png"
+    unsupported_url = "https://gmgn.ai/external-res/terminal-unsupported.gif"
+    pending_url = "https://static.okx.com/cdn/pending.webp"
+    error_url = "https://bin.bnbstatic.com/static/images/error.png"
+    missing_url = "https://bin.bnbstatic.com/static/images/missing.png"
+    try:
+        migrate(conn)
+        asset_id = _insert_resolved_asset(
+            conn,
+            event_id="event-terminal-asset",
+            intent_id="intent-terminal-asset",
+            resolution_id="resolution-terminal-asset",
+            chain_id="eip155:1",
+            address="0x4444444444444444444444444444444444444444",
+            received_at_ms=NOW_MS - 60_000,
+        )
+        cex_token_id = "cex_token:UNIT"
+        _insert_cex_token(conn, cex_token_id=cex_token_id, base_symbol="UNIT")
+        _insert_radar_row(
+            conn,
+            row_id="radar-terminal-asset",
+            event_id="event-terminal-asset",
+            intent_id="intent-terminal-asset",
+            target_type="Asset",
+            target_id=asset_id,
+            rank=1,
+            computed_at_ms=NOW_MS - 10_000,
+        )
+        _insert_radar_row(
+            conn,
+            row_id="radar-terminal-cex",
+            event_id="event-terminal-asset",
+            intent_id="intent-terminal-asset",
+            target_type="CexToken",
+            target_id=cex_token_id,
+            rank=2,
+            computed_at_ms=NOW_MS - 10_000,
+        )
+        _insert_radar_coverage(conn, window="24h", scope="all", computed_at_ms=NOW_MS - 10_000)
+        _insert_asset_profile(conn, asset_id=asset_id, provider=GMGN_DEX_PROFILE_PROVIDER, logo_url=ready_url)
+        _insert_asset_profile(conn, asset_id=asset_id, provider=BINANCE_WEB3_PROFILE_PROVIDER, logo_url=missing_url)
+        _insert_identity_evidence(
+            conn,
+            evidence_id="evidence-terminal-unsupported",
+            asset_id=asset_id,
+            provider="gmgn",
+            evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
+            raw_payload={"i": unsupported_url},
+        )
+        _insert_identity_evidence(
+            conn,
+            evidence_id="evidence-terminal-pending",
+            asset_id=asset_id,
+            provider="okx",
+            evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+            raw_payload={"tokenLogoUrl": pending_url},
+        )
+        _insert_cex_profile(conn, cex_token_id=cex_token_id, logo_url=error_url)
+        _insert_token_image_asset(conn, source_url=ready_url, status="ready")
+        _insert_token_image_asset(conn, source_url=unsupported_url, status="unsupported")
+        _insert_token_image_asset(conn, source_url=pending_url, status="pending")
+        _insert_token_image_asset(conn, source_url=error_url, status="error")
+        conn.commit()
+
+        rows = TokenImageSourceQuery(conn).candidate_sources(now_ms=NOW_MS, source_limit=20)
+    finally:
+        conn.close()
+
+    assert {row["source_url"] for row in rows} == {missing_url, error_url, pending_url}
+
+
 def _insert_resolved_asset(
     conn: Any,
     *,
@@ -316,42 +390,48 @@ def _insert_radar_row(
     conn.execute(
         """
         INSERT INTO token_radar_current_rows(
-          row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
-          lane, rank, intent_id, event_id, intent_json, asset_json, primary_venue_json,
-          attention_json, resolution_json, market_json, score_json, decision, data_health_json,
-          source_event_ids_json, listed_at_ms, created_at_ms, target_type, target_id, pricefeed_id, target_json,
-          price_json, factor_snapshot_json, factor_version
+          row_id, projection_version, "window", scope, lane, target_type_key, identity_id,
+          computed_at_ms, source_max_received_at_ms, rank, rank_score, intent_id, event_id,
+          target_type, target_id, pricefeed_id, intent_json, asset_json, primary_venue_json,
+          target_json, attention_json, resolution_json, market_json, price_json, score_json,
+          factor_snapshot_json, factor_version, decision, data_health_json, source_event_ids_json,
+          payload_hash, listed_at_ms, created_at_ms
         )
         VALUES (
-          %s, 'token-radar-v13-social-attention', '24h', 'all', %s, %s,
-          'all', %s, %s, %s, %s, %s, NULL,
-          %s, %s, %s, %s, 'watch', %s,
-          %s, %s, %s, %s, %s, NULL, %s,
-          %s, %s, 'token_factor_snapshot_v3_social_attention'
+          %s, 'token-radar-v13-social-attention', '24h', 'all', 'all', %s, %s,
+          %s, %s, %s, %s, %s, %s,
+          %s, %s, NULL, %s, %s, NULL,
+          %s, %s, %s, %s, %s, %s,
+          %s, 'token_factor_snapshot_v3_social_attention', 'watch', %s, %s,
+          %s, %s, %s
         )
         """,
         (
             row_id,
+            target_type,
+            target_id,
             computed_at_ms,
             computed_at_ms,
             rank,
+            max(0, 100 - rank),
             intent_id,
             event_id,
+            target_type,
+            target_id,
             Jsonb({"intent_id": intent_id}),
             Jsonb({"target_id": target_id}),
+            Jsonb({"target_type": target_type, "target_id": target_id}),
+            Jsonb({}),
             Jsonb({}),
             Jsonb({}),
             Jsonb({}),
             Jsonb({"rank_score": max(0, 100 - rank)}),
+            Jsonb({}),
             Jsonb({"alpha": "ready"}),
             Jsonb([event_id]),
+            f"payload:{row_id}",
             computed_at_ms,
             computed_at_ms,
-            target_type,
-            target_id,
-            Jsonb({"target_type": target_type, "target_id": target_id}),
-            Jsonb({}),
-            Jsonb({}),
         ),
     )
 
@@ -444,3 +524,54 @@ def _insert_cex_profile(conn: Any, *, cex_token_id: str, logo_url: str) -> None:
         """,
         (cex_token_id, logo_url, Jsonb({}), NOW_MS, NOW_MS, NOW_MS),
     )
+
+
+def _insert_token_image_asset(conn: Any, *, source_url: str, status: str) -> None:
+    source_url_hash = _sha256(source_url)
+    ready_values = (
+        "image/png",
+        ".png",
+        "a" * 64,
+        123,
+        f"{source_url_hash}.png",
+        f"/api/token-images/{source_url_hash}",
+    )
+    non_ready_values = (None, None, None, None, None, None)
+    media_type, file_extension, content_sha256, byte_size, storage_path, public_url = (
+        ready_values if status == "ready" else non_ready_values
+    )
+    conn.execute(
+        """
+        INSERT INTO token_image_assets(
+          image_id, source_url, source_url_hash, source_provider, source_kind, status,
+          media_type, file_extension, content_sha256, byte_size, storage_path, public_url,
+          raw_ref_json, failure_count, last_error, observed_at_ms, next_refresh_at_ms, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          %s, %s, %s, 'unit-test', 'unit-test', %s,
+          %s, %s, %s, %s, %s, %s,
+          %s, 0, NULL, %s, %s, %s, %s
+        )
+        """,
+        (
+            source_url_hash,
+            source_url,
+            source_url_hash,
+            status,
+            media_type,
+            file_extension,
+            content_sha256,
+            byte_size,
+            storage_path,
+            public_url,
+            Jsonb({}),
+            NOW_MS,
+            NOW_MS,
+            NOW_MS,
+            NOW_MS,
+        ),
+    )
+
+
+def _sha256(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()

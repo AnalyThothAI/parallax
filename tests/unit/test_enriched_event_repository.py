@@ -20,7 +20,9 @@ def test_insert_enriched_event_is_append_only() -> None:
     assert "UPDATE enriched_events" not in sql
     assert conn.commits == 0
     assert conn.params[-1]["event_id"] == "event-1"
+    assert conn.params[-1]["tick_observed_at_ms"] == 1_700_000_000_100
     assert conn.params[-1]["tick_id"] == "tick-1"
+    assert "tick_observed_at_ms" in sql
 
 
 def test_list_by_event_id_joins_market_tick_and_orders_by_intent() -> None:
@@ -31,7 +33,8 @@ def test_list_by_event_id_joins_market_tick_and_orders_by_intent() -> None:
     assert rows == [{"event_id": "event-1", "intent_id": "intent-1"}]
     sql = conn.sql[-1]
     assert "FROM enriched_events ee" in sql
-    assert "LEFT JOIN market_ticks mt ON mt.tick_id = ee.tick_id" in sql
+    assert "mt.observed_at_ms = ee.tick_observed_at_ms" in sql
+    assert "mt.tick_id = ee.tick_id" in sql
     assert "ee.event_id = %(event_id)s" in sql
     assert "ORDER BY ee.intent_id ASC" in sql
     assert conn.params[-1] == {"event_id": "event-1"}
@@ -46,7 +49,8 @@ def test_by_event_intent_selects_exact_joined_row() -> None:
     sql = conn.sql[-1]
     assert "ee.event_id = %(event_id)s" in sql
     assert "ee.intent_id = %(intent_id)s" in sql
-    assert "LEFT JOIN market_ticks mt ON mt.tick_id = ee.tick_id" in sql
+    assert "mt.observed_at_ms = ee.tick_observed_at_ms" in sql
+    assert "mt.tick_id = ee.tick_id" in sql
     assert conn.params[-1] == {"event_id": "event-1", "intent_id": "intent-1"}
 
 
@@ -66,6 +70,19 @@ def test_latest_for_target_orders_by_event_time_and_keys() -> None:
     assert "ORDER BY ee.t_event_ms DESC, ee.event_id DESC, ee.intent_id DESC" in sql
     assert "LIMIT %(limit)s" in sql
     assert conn.params[-1] == {"target_type": "chain_token", "target_id": "solana:abc", "limit": 25}
+
+
+def test_attach_backfill_capture_writes_composite_tick_key() -> None:
+    conn = _ScriptedConnection([])
+    capture = _capture()
+
+    EnrichedEventRepository(conn).attach_backfill_capture(capture)
+
+    sql = conn.sql[-1]
+    assert "SET tick_observed_at_ms = %(tick_observed_at_ms)s" in sql
+    assert "tick_id IS NULL" in sql
+    assert "tick_observed_at_ms IS NULL" in sql
+    assert conn.params[-1]["tick_observed_at_ms"] == 1_700_000_000_100
 
 
 class _ScriptedConnection:
@@ -106,6 +123,7 @@ def _capture() -> EnrichedEventCapture:
         target_type="chain_token",
         target_id="solana:abc",
         t_event_ms=1_700_000_000_000,
+        tick_observed_at_ms=1_700_000_000_100,
         tick_id="tick-1",
         tick_lag_ms=100,
         capture_method="tier1_ws",

@@ -1,0 +1,483 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+from psycopg.types.json import Jsonb
+
+from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
+
+
+class TokenRadarDirtyTargetRepository:
+    def __init__(self, conn: Any) -> None:
+        self.conn = conn
+
+    def enqueue_targets(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+        *,
+        reason: str,
+        now_ms: int,
+        due_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> int:
+        records = _dirty_records(rows, reason=reason, now_ms=int(now_ms), due_at_ms=due_at_ms)
+        if not records:
+            return 0
+        self.conn.execute(
+            """
+            WITH incoming AS (
+              SELECT *
+              FROM unnest(
+                %(target_type_keys)s::text[],
+                %(identity_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(source_event_ids_json)s::jsonb[]
+              ) AS incoming(target_type_key, identity_id, payload_hash, source_event_ids_json)
+            )
+            INSERT INTO token_radar_dirty_targets(
+              target_type_key,
+              identity_id,
+              dirty_reason,
+              payload_hash,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms,
+              source_event_ids_json
+            )
+            SELECT
+              incoming.target_type_key,
+              incoming.identity_id,
+              %(dirty_reason)s,
+              incoming.payload_hash,
+              %(due_at_ms)s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s,
+              incoming.source_event_ids_json
+            FROM incoming
+            ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              last_error = NULL,
+              first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms,
+              source_event_ids_json = (
+                SELECT COALESCE(jsonb_agg(DISTINCT source_id ORDER BY source_id), '[]'::jsonb)
+                FROM jsonb_array_elements_text(
+                  token_radar_dirty_targets.source_event_ids_json || EXCLUDED.source_event_ids_json
+                ) AS source_ids(source_id)
+              )
+            """,
+            {
+                "target_type_keys": [record["target_type_key"] for record in records],
+                "identity_ids": [record["identity_id"] for record in records],
+                "payload_hashes": [record["payload_hash"] for record in records],
+                "source_event_ids_json": [Jsonb(record["source_event_ids"]) for record in records],
+                "dirty_reason": str(reason),
+                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+                "now_ms": int(now_ms),
+            },
+        )
+        if commit:
+            self.conn.commit()
+        return len(records)
+
+    def claim_due(
+        self,
+        *,
+        limit: int,
+        lease_ms: int,
+        now_ms: int,
+        lease_owner: str,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT target_type_key, identity_id
+              FROM token_radar_dirty_targets
+              WHERE due_at_ms <= %(now_ms)s
+                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+              ORDER BY due_at_ms ASC, updated_at_ms ASC, target_type_key ASC, identity_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE token_radar_dirty_targets
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = token_radar_dirty_targets.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE token_radar_dirty_targets.target_type_key = due.target_type_key
+              AND token_radar_dirty_targets.identity_id = due.identity_id
+            RETURNING token_radar_dirty_targets.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                "lease_owner": str(lease_owner),
+                "limit": max(0, int(limit)),
+            },
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def enqueue_market_targets(
+        self,
+        rows: Iterable[Mapping[str, Any] | tuple[str, str]],
+        *,
+        reason: str,
+        now_ms: int,
+        due_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> int:
+        records = _market_target_records(rows)
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            """
+            WITH incoming(target_type, target_id) AS (
+              SELECT *
+              FROM unnest(%(target_types)s::text[], %(target_ids)s::text[])
+            ),
+            mapped AS (
+              SELECT DISTINCT
+                'Asset'::text AS target_type_key,
+                registry_assets.asset_id AS identity_id
+              FROM incoming
+              JOIN registry_assets
+                ON incoming.target_type = 'chain_token'
+               AND lower(registry_assets.chain_id || ':' || registry_assets.address) = lower(incoming.target_id)
+              UNION
+              SELECT DISTINCT
+                'CexToken'::text AS target_type_key,
+                price_feeds.subject_id AS identity_id
+              FROM incoming
+              JOIN price_feeds
+                ON incoming.target_type = 'cex_symbol'
+               AND price_feeds.subject_type = 'CexToken'
+               AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(incoming.target_id)
+            )
+            INSERT INTO token_radar_dirty_targets(
+              target_type_key,
+              identity_id,
+              dirty_reason,
+              payload_hash,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms,
+              source_event_ids_json
+            )
+            SELECT
+              mapped.target_type_key,
+              mapped.identity_id,
+              %(dirty_reason)s,
+              md5(
+                mapped.target_type_key || ':' || mapped.identity_id || ':' || %(dirty_reason)s || ':' ||
+                %(now_ms)s::text
+              ),
+              %(due_at_ms)s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s,
+              '[]'::jsonb
+            FROM mapped
+            WHERE mapped.identity_id IS NOT NULL
+            ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              last_error = NULL,
+              first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            """,
+            {
+                "target_types": [record["target_type"] for record in records],
+                "target_ids": [record["target_id"] for record in records],
+                "dirty_reason": str(reason),
+                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+                "now_ms": int(now_ms),
+            },
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def enqueue_recent_resolved_targets(
+        self,
+        *,
+        since_ms: int,
+        now_ms: int,
+        limit: int,
+        reason: str,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            WITH recent AS (
+              SELECT
+                token_intent_resolutions.target_type AS target_type_key,
+                token_intent_resolutions.target_id AS identity_id,
+                array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
+              FROM token_intent_resolutions
+              JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
+              JOIN events ON events.event_id = token_intents.event_id
+              WHERE events.received_at_ms >= %(since_ms)s
+                AND events.received_at_ms <= %(now_ms)s
+                AND token_intent_resolutions.is_current = true
+                AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
+                AND token_intent_resolutions.target_id IS NOT NULL
+              GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
+              ORDER BY MAX(events.received_at_ms) DESC,
+                       token_intent_resolutions.target_type ASC,
+                       token_intent_resolutions.target_id ASC
+              LIMIT %(limit)s
+            )
+            INSERT INTO token_radar_dirty_targets(
+              target_type_key,
+              identity_id,
+              dirty_reason,
+              payload_hash,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms,
+              source_event_ids_json
+            )
+            SELECT
+              recent.target_type_key,
+              recent.identity_id,
+              %(dirty_reason)s,
+              md5(recent.target_type_key || ':' || recent.identity_id || ':' || %(dirty_reason)s || ':' || %(now_ms)s),
+              %(now_ms)s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s,
+              to_jsonb(recent.source_event_ids)
+            FROM recent
+            ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              last_error = NULL,
+              first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms,
+              source_event_ids_json = (
+                SELECT COALESCE(jsonb_agg(DISTINCT source_id ORDER BY source_id), '[]'::jsonb)
+                FROM jsonb_array_elements_text(
+                  token_radar_dirty_targets.source_event_ids_json || EXCLUDED.source_event_ids_json
+                ) AS source_ids(source_id)
+              )
+            """,
+            {
+                "since_ms": int(since_ms),
+                "now_ms": int(now_ms),
+                "limit": max(0, int(limit)),
+                "dirty_reason": str(reason),
+            },
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def mark_done(
+        self,
+        keys: Iterable[Mapping[str, Any]],
+        *,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        records = _key_records(keys)
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(target_type_keys)s::text[],
+                %(identity_ids)s::text[],
+                %(payload_hashes)s::text[]
+              ) AS done(target_type_key, identity_id, payload_hash)
+            )
+            DELETE FROM token_radar_dirty_targets queue
+            USING done
+            WHERE queue.target_type_key = done.target_type_key
+              AND queue.identity_id = done.identity_id
+              AND queue.payload_hash = done.payload_hash
+            """,
+            _key_params(records),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def mark_error(
+        self,
+        keys: Iterable[Mapping[str, Any]],
+        *,
+        error: str,
+        retry_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        records = _key_records(keys)
+        if not records:
+            return 0
+        params = _key_params(records)
+        params.update(
+            {
+                "due_at_ms": int(now_ms) + max(1, int(retry_ms)),
+                "now_ms": int(now_ms),
+                "last_error": str(error)[:2048],
+            }
+        )
+        cursor = self.conn.execute(
+            """
+            WITH failed AS (
+              SELECT *
+              FROM unnest(
+                %(target_type_keys)s::text[],
+                %(identity_ids)s::text[],
+                %(payload_hashes)s::text[]
+              ) AS failed(target_type_key, identity_id, payload_hash)
+            )
+            UPDATE token_radar_dirty_targets queue
+            SET due_at_ms = %(due_at_ms)s,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                last_error = %(last_error)s,
+                updated_at_ms = %(now_ms)s
+            FROM failed
+            WHERE queue.target_type_key = failed.target_type_key
+              AND queue.identity_id = failed.identity_id
+              AND queue.payload_hash = failed.payload_hash
+            """,
+            params,
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+
+def _dirty_records(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    reason: str,
+    now_ms: int,
+    due_at_ms: int | None,
+) -> list[dict[str, Any]]:
+    records: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        target_type_key, identity_id = _target_key(row)
+        if not identity_id:
+            continue
+        source_event_ids = _source_event_ids(row)
+        payload_hash = _payload_hash(
+            {
+                "target_type_key": target_type_key,
+                "identity_id": identity_id,
+                "dirty_reason": str(reason),
+                "source_event_ids": source_event_ids,
+                "dirty_at_ms": int(now_ms),
+            }
+        )
+        records[(target_type_key, identity_id)] = {
+            "target_type_key": target_type_key,
+            "identity_id": identity_id,
+            "payload_hash": payload_hash,
+            "source_event_ids": source_event_ids,
+            "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+        }
+    return list(records.values())
+
+
+def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    for key in keys:
+        target_type_key, identity_id = _target_key(key)
+        payload_hash = str(key.get("payload_hash") or "")
+        if not identity_id:
+            continue
+        if not payload_hash:
+            raise ValueError("token radar dirty target completion requires payload_hash from claim_due")
+        records.append(
+            {
+                "target_type_key": str(target_type_key),
+                "identity_id": str(identity_id),
+                "payload_hash": payload_hash,
+            }
+        )
+    return records
+
+
+def _key_params(records: list[dict[str, str]]) -> dict[str, list[str]]:
+    return {
+        "target_type_keys": [record["target_type_key"] for record in records],
+        "identity_ids": [record["identity_id"] for record in records],
+        "payload_hashes": [record["payload_hash"] for record in records],
+    }
+
+
+def _market_target_records(rows: Iterable[Mapping[str, Any] | tuple[str, str]]) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        if isinstance(row, tuple):
+            target_type, target_id = row
+        else:
+            target_type = row.get("target_type")
+            target_id = row.get("target_id")
+        key = (str(target_type or ""), str(target_id or ""))
+        if not key[0] or not key[1] or key in seen:
+            continue
+        seen.add(key)
+        records.append({"target_type": key[0], "target_id": key[1]})
+    return records
+
+
+def _target_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    target_type_key = str(row.get("target_type_key") or row.get("target_type") or "")
+    identity_id = str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or "")
+    return target_type_key, identity_id
+
+
+def _source_event_ids(row: Mapping[str, Any]) -> list[str]:
+    raw = row.get("source_event_ids") if "source_event_ids" in row else row.get("source_event_ids_json")
+    if isinstance(raw, str):
+        return [raw]
+    if not isinstance(raw, Iterable):
+        return []
+    return sorted({str(item) for item in raw if str(item)})
+
+
+def _payload_hash(payload: Mapping[str, Any]) -> str:
+    safe_payload = postgres_safe_json(dict(payload))
+    encoded = json.dumps(safe_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()

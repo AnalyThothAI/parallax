@@ -88,6 +88,17 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     assert cex_provider.requests == ["BTCUSDT"]
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 2
+    assert repos.token_radar_dirty_targets.enqueues == [
+        {
+            "rows": [
+                ("chain_token", "eip155:1:0xAbC"),
+                ("cex_symbol", "binance:BTCUSDT"),
+            ],
+            "reason": "market_tick_current_changed",
+            "now_ms": 1_800_000_000_100,
+            "commit": False,
+        }
+    ]
 
     dex_tick, cex_tick = repos.market_ticks.inserted
     assert dex_tick.tick_id == market_tick_id(
@@ -513,6 +524,7 @@ class FakeRepos:
         sort_fresh_targets_last: bool = False,
     ) -> None:
         self.market_ticks = FakeMarketTicks(state)
+        self.token_radar_dirty_targets = FakeDirtyTargets()
         self.token_capture_tiers = FakeTokenCaptureTiers(
             tier_rows,
             market_ticks=self.market_ticks,
@@ -569,6 +581,15 @@ class FakeMarketTicks:
         self.inserted.extend(ticks)
         self.inserted_target_ids.update(str(tick.target_id) for tick in ticks)
         return [str(tick.tick_id) for tick in ticks]
+
+
+class FakeDirtyTargets:
+    def __init__(self) -> None:
+        self.enqueues: list[dict[str, object]] = []
+
+    def enqueue_market_targets(self, rows, *, reason, now_ms, commit) -> int:
+        self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
+        return len(self.enqueues[-1]["rows"])
 
 
 class FakeConn:

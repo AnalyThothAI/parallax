@@ -27,6 +27,8 @@ class DBPoolBundle:
     wake_pool: Any
     tool_pool: Any | None = None
     lock_pool: Any | None = None
+    wake_pool_max_size: int = 0
+    enabled_wake_listener_concurrency: int = 0
     telemetry: TelemetryRegistry | None = field(default_factory=TelemetryRegistry)
 
     @classmethod
@@ -73,10 +75,12 @@ class DBPoolBundle:
                 statement_timeout_seconds=_API_STATEMENT_TIMEOUT_SECONDS,
                 read_only=True,
             )
+            computed_wake_listener_concurrency = enabled_wake_listener_concurrency(settings)
+            computed_wake_pool_max_size = wake_pool_max_size(settings)
             wake_pool = create_pool(
                 dsn,
                 min_size=1,
-                max_size=3,
+                max_size=computed_wake_pool_max_size,
                 connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
                 application_name="gmgn_wake",
                 statement_timeout_seconds=None,
@@ -103,6 +107,8 @@ class DBPoolBundle:
             wake_pool=wake_pool,
             tool_pool=tool_pool,
             lock_pool=lock_pool,
+            wake_pool_max_size=computed_wake_pool_max_size,
+            enabled_wake_listener_concurrency=computed_wake_listener_concurrency,
             telemetry=telemetry if telemetry is not None else TelemetryRegistry(),
         )
 
@@ -250,6 +256,36 @@ def _normalize_worker_name(name: str) -> str:
 
 def _statement_timeout_value(seconds: float) -> str:
     return f"{max(0, int(float(seconds) * 1000))}ms"
+
+
+def wake_pool_max_size(settings: Any) -> int:
+    return max(3, enabled_wake_listener_concurrency(settings) + 2)
+
+
+def enabled_wake_listener_concurrency(settings: Any) -> int:
+    workers = getattr(settings, "workers", None)
+    if workers is None:
+        return 0
+    wake_slots = 0
+    for worker_settings in _iter_worker_settings(workers):
+        if not bool(getattr(worker_settings, "enabled", True)):
+            continue
+        wakes_on = tuple(getattr(worker_settings, "wakes_on", ()) or ())
+        if not wakes_on:
+            continue
+        wake_slots += max(1, int(getattr(worker_settings, "concurrency", 1) or 1))
+    return wake_slots
+
+
+def _iter_worker_settings(workers: Any) -> Iterator[Any]:
+    fields = getattr(type(workers), "model_fields", None)
+    if isinstance(fields, dict):
+        for name in fields:
+            yield getattr(workers, name)
+        return
+    for name, value in vars(workers).items():
+        if not str(name).startswith("_"):
+            yield value
 
 
 def _set_config(conn: Any, name: str, value: str) -> None:

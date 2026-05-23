@@ -99,11 +99,21 @@ def seed_postgres(db_path: Path) -> None:
             token_snapshot=snapshot,
         )
         ingest.ingest_event(token_event, is_watched=True)
-        TokenRadarProjection(repos=repositories_for_connection(conn)).rebuild(
-            window="5m",
-            scope="all",
-            now_ms=token_event.received_at_ms + 1,
+        repos = repositories_for_connection(conn)
+        now_ms = token_event.received_at_ms + 1
+        repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+            since_ms=max(0, token_event.received_at_ms - 5 * 60 * 1000),
+            now_ms=now_ms,
             limit=20,
+            reason="test_seed",
+            commit=True,
+        )
+        TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+            windows=("5m",),
+            scopes=("all",),
+            now_ms=now_ms,
+            limit=20,
+            rank_limit=20,
         )
     finally:
         conn.close()
@@ -185,7 +195,9 @@ class CliTests(unittest.TestCase):
             ],
             ["ops", "sync-us-equity-symbols"],
             ["ops", "rebuild-token-profiles", "--limit", "5"],
-            ["ops", "clean-reset-token-radar-storage", "--dry-run"],
+            ["ops", "reset-token-radar-postgres-hard-cut", "--dry-run"],
+            ["ops", "ensure-postgres-partitions", "--execute"],
+            ["ops", "drop-expired-postgres-partitions", "--execute"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -234,8 +246,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[22].ops_command, "sync-us-equity-symbols")
         self.assertEqual(parsed[23].ops_command, "rebuild-token-profiles")
         self.assertEqual(parsed[23].limit, 5)
-        self.assertEqual(parsed[24].ops_command, "clean-reset-token-radar-storage")
+        self.assertEqual(parsed[24].ops_command, "reset-token-radar-postgres-hard-cut")
         self.assertTrue(parsed[24].dry_run)
+        self.assertEqual(parsed[25].ops_command, "ensure-postgres-partitions")
+        self.assertTrue(parsed[25].execute)
+        self.assertEqual(parsed[26].ops_command, "drop-expired-postgres-partitions")
+        self.assertTrue(parsed[26].execute)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:

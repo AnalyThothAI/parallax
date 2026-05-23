@@ -43,6 +43,7 @@ class EnrichedEventCapture:
     target_type: MarketTickTargetType
     target_id: str
     t_event_ms: int
+    tick_observed_at_ms: int | None
     tick_id: str | None
     tick_lag_ms: int | None
     capture_method: EventCaptureMethod

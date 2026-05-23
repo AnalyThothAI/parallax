@@ -325,6 +325,7 @@ def test_enriched_events_pending_backfill_to_async_backfill_transition_succeeds(
             """
             UPDATE enriched_events
             SET tick_id = %s,
+                tick_observed_at_ms = %s,
                 tick_lag_ms = 100,
                 capture_method = 'tier3_inline',
                 capture_reason = 'async_backfill'
@@ -334,12 +335,12 @@ def test_enriched_events_pending_backfill_to_async_backfill_transition_succeeds(
               AND capture_reason = 'pending_backfill'
               AND tick_id IS NULL
             """,
-            ("tick-async-target",),
+            ("tick-async-target", 1),
         )
         conn.commit()
         row = conn.execute(
             """
-            SELECT capture_method, capture_reason, tick_id, tick_lag_ms
+            SELECT capture_method, capture_reason, tick_observed_at_ms, tick_id, tick_lag_ms
             FROM enriched_events
             WHERE event_id = 'event-async' AND intent_id = 'intent-async'
             """
@@ -350,6 +351,7 @@ def test_enriched_events_pending_backfill_to_async_backfill_transition_succeeds(
     assert row is not None
     assert row["capture_method"] == "tier3_inline"
     assert row["capture_reason"] == "async_backfill"
+    assert row["tick_observed_at_ms"] == 1
     assert row["tick_id"] == "tick-async-target"
     assert row["tick_lag_ms"] == 100
 
@@ -405,13 +407,14 @@ def test_enriched_events_other_updates_are_rejected_by_trigger(tmp_path):
                     """
                     UPDATE enriched_events
                     SET tick_id = %s,
+                        tick_observed_at_ms = %s,
                         tick_lag_ms = 100,
                         capture_method = 'tier3_inline',
                         capture_reason = 'async_backfill',
                         t_event_ms = t_event_ms + 1
                     WHERE event_id = 'event-async' AND intent_id = 'intent-async'
                     """,
-                    ("tick-async-target",),
+                    ("tick-async-target", 1),
                 )
         finally:
             conn.rollback()
@@ -571,6 +574,146 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
     }.issubset(indexes)
 
 
+def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and_hot_tables(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        tables = {
+            row["table_name"]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+        partition_keys = {
+            row["relname"]: row["partition_key"]
+            for row in conn.execute(
+                """
+                SELECT c.relname, pg_get_partkeydef(c.oid) AS partition_key
+                FROM pg_partitioned_table pt
+                JOIN pg_class c ON c.oid = pt.partrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.relname IN (
+                    'market_ticks',
+                    'token_radar_rank_history',
+                    'token_radar_snapshot_audit'
+                  )
+                """
+            ).fetchall()
+        }
+        primary_keys = {
+            row["table_name"]: _postgres_array_text(row["columns"])
+            for row in conn.execute(
+                """
+                SELECT tc.table_name, array_agg(kcu.column_name ORDER BY kcu.ordinal_position) AS columns
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                 AND tc.table_name = kcu.table_name
+                WHERE tc.table_schema = 'public'
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                  AND tc.table_name IN ('market_ticks', 'market_tick_current')
+                GROUP BY tc.table_name
+                """
+            ).fetchall()
+        }
+        fk_defs = [
+            row["constraint_def"]
+            for row in conn.execute(
+                """
+                SELECT pg_get_constraintdef(c.oid) AS constraint_def
+                FROM pg_constraint c
+                JOIN pg_class child ON child.oid = c.conrelid
+                JOIN pg_class parent ON parent.oid = c.confrelid
+                JOIN pg_namespace n ON n.oid = child.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.contype = 'f'
+                  AND child.relname = 'enriched_events'
+                  AND parent.relname = 'market_ticks'
+                """
+            ).fetchall()
+        ]
+        indexes = {
+            row["indexname"]: row["indexdef"]
+            for row in conn.execute(
+                """
+                SELECT indexname, indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename IN ('market_ticks', 'enriched_events')
+                """
+            ).fetchall()
+        }
+        payload_hash_columns = {
+            row["table_name"]
+            for row in conn.execute(
+                """
+                SELECT table_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_name = 'payload_hash'
+                  AND table_name IN (
+                    'market_tick_current',
+                    'token_radar_current_rows',
+                    'token_radar_target_features',
+                    'token_radar_dirty_targets'
+                  )
+                """
+            ).fetchall()
+        }
+        reloptions = {
+            row["relname"]: set(row["reloptions"] or [])
+            for row in conn.execute(
+                """
+                SELECT relname, reloptions
+                FROM pg_class
+                WHERE relnamespace = 'public'::regnamespace
+                  AND relname IN (
+                    'market_tick_current',
+                    'token_radar_current_rows',
+                    'token_radar_dirty_targets'
+                  )
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert "token_radar_rows" not in tables
+    assert {
+        "market_tick_current",
+        "token_radar_dirty_targets",
+        "token_radar_target_features",
+    }.issubset(tables)
+    assert partition_keys == {
+        "market_ticks": "RANGE (observed_at_ms)",
+        "token_radar_rank_history": "RANGE (recorded_at_ms)",
+        "token_radar_snapshot_audit": "RANGE (recorded_at_ms)",
+    }
+    assert primary_keys["market_ticks"] == ["observed_at_ms", "tick_id"]
+    assert primary_keys["market_tick_current"] == ["target_type", "target_id"]
+    assert any(
+        "FOREIGN KEY (tick_observed_at_ms, tick_id) REFERENCES market_ticks(observed_at_ms, tick_id)"
+        in constraint_def
+        for constraint_def in fk_defs
+    )
+    assert "idx_market_ticks_dedupe" in indexes
+    assert "(observed_at_ms, target_type, target_id, source_provider)" in indexes["idx_market_ticks_dedupe"]
+    assert "idx_market_ticks_target_observed" in indexes
+    assert "idx_enriched_events_tick" in indexes
+    assert payload_hash_columns == {
+        "market_tick_current",
+        "token_radar_current_rows",
+        "token_radar_target_features",
+        "token_radar_dirty_targets",
+    }
+    for table_options in reloptions.values():
+        assert "fillfactor=70" in table_options
+        assert "autovacuum_vacuum_scale_factor=0.02" in table_options
+        assert "autovacuum_analyze_scale_factor=0.02" in table_options
+
+
 def _seed_pending_backfill_row(conn) -> None:
     """Insert the minimum graph of events + intents + resolutions + ticks
     + enriched_events needed to exercise the trigger transitions."""
@@ -645,12 +788,12 @@ def _seed_pending_backfill_row(conn) -> None:
         """
         INSERT INTO enriched_events(
           event_id, intent_id, resolution_id, target_type, target_id,
-          t_event_ms, tick_id, tick_lag_ms,
+          t_event_ms, tick_observed_at_ms, tick_id, tick_lag_ms,
           capture_method, capture_reason, created_at_ms
         )
         VALUES (
           'event-async', 'intent-async', 'resolution-async', 'chain_token', 'solana:ASYNC',
-          1, NULL, NULL,
+          1, NULL, NULL, NULL,
           'unavailable', 'pending_backfill', 1
         )
         ON CONFLICT(event_id, intent_id) DO NOTHING
@@ -661,3 +804,9 @@ def _seed_pending_backfill_row(conn) -> None:
 
 def _legacy_price_table() -> str:
     return "_".join(("price", "observations"))
+
+
+def _postgres_array_text(value) -> list[str]:
+    if isinstance(value, list):
+        return value
+    return str(value).strip("{}").split(",")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -109,6 +110,14 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert stream.targets[0].pricefeed_id == "pf-1"
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 1
+    assert repos.token_radar_dirty_targets.enqueues == [
+        {
+            "rows": [("chain_token", "eip155:1:0xAbC")],
+            "reason": "market_tick_current_changed",
+            "now_ms": 1_800_000_000_100,
+            "commit": False,
+        }
+    ]
     tick = repos.market_ticks.inserted[0]
     assert tick.tick_id == market_tick_id(
         target_type="chain_token",
@@ -244,6 +253,28 @@ def test_market_tick_stream_worker_bounds_stream_cycle_and_closes_iterator() -> 
     assert repos.market_ticks.inserted == []
 
 
+def test_market_tick_stream_worker_bounds_subscription_replace_by_stream_cycle() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
+    db = FakeDB(state, repos)
+    stream = HangingReplaceDexMarketStream()
+    worker = MarketTickStreamWorker(
+        pool_bundle=db,
+        stream_dex_market=stream,
+        stream_cycle_seconds=0.001,
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    started = time.perf_counter()
+    with pytest.raises(TimeoutError):
+        asyncio.run(asyncio.wait_for(worker.run_once(), timeout=0.2))
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.05
+    assert stream.replace_cancelled is True
+    assert repos.market_ticks.inserted == []
+
+
 def test_market_tick_stream_worker_result_when_no_stream_provider() -> None:
     state = FakeSessionState()
     repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
@@ -280,6 +311,7 @@ class FakeRepos:
     def __init__(self, state: FakeSessionState, tier_rows: list[dict[str, object]]) -> None:
         self.token_capture_tiers = FakeTokenCaptureTiers(tier_rows)
         self.market_ticks = FakeMarketTicks(state)
+        self.token_radar_dirty_targets = FakeDirtyTargets()
         self.conn = FakeConn()
 
 
@@ -305,6 +337,15 @@ class FakeMarketTicks:
         assert self.state.in_session is True
         self.inserted.extend(ticks)
         return [str(tick.tick_id) for tick in ticks]
+
+
+class FakeDirtyTargets:
+    def __init__(self) -> None:
+        self.enqueues: list[dict[str, object]] = []
+
+    def enqueue_market_targets(self, rows, *, reason, now_ms, commit) -> int:
+        self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
+        return len(self.enqueues[-1]["rows"])
 
 
 class FakeConn:
@@ -407,6 +448,22 @@ class NeverYieldDexMarketStream:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class HangingReplaceDexMarketStream:
+    def __init__(self) -> None:
+        self.replace_cancelled = False
+
+    async def replace_subscriptions(self, targets) -> None:
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            self.replace_cancelled = True
+            raise
+
+    async def iter_price_info(self):
+        if False:
+            yield
 
 
 class FakeStatefulStreamProvider:

@@ -41,19 +41,21 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     require_token_factor_snapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import reprocess_recent_token_intents
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_storage_reset import (
-    clean_reset_token_radar_storage,
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_postgres_hard_reset import (
+    drop_expired_postgres_partitions,
+    ensure_postgres_partitions,
+    reset_token_radar_postgres_hard_cut,
 )
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
@@ -177,10 +179,26 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             )
             return 0, {"ok": True, "data": data}
 
-        if args.ops_command == "clean-reset-token-radar-storage":
-            data = clean_reset_token_radar_storage(
+        if args.ops_command == "reset-token-radar-postgres-hard-cut":
+            data = reset_token_radar_postgres_hard_cut(
                 repos.signals.conn,
                 dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "ensure-postgres-partitions":
+            data = ensure_postgres_partitions(
+                repos.signals.conn,
+                now_ms=_now_ms(),
+                dry_run=False,
+                execute=bool(args.execute),
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "drop-expired-postgres-partitions":
+            data = drop_expired_postgres_partitions(
+                repos.signals.conn,
                 execute=bool(args.execute),
             )
             return 0, {"ok": True, "data": data}
@@ -908,13 +926,13 @@ def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, no
         limit=limit,
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )
-    _source_query = TokenRadarSourceQuery(repos.conn)
-    source_current_window_rows = _source_query.source_count(
+    source_current_window_rows = _token_radar_source_count(
+        repos.conn,
         since_ms=now_ms - WINDOW_MS[window],
         scope=scope,
     )
-    source_max_resolution_ms = _source_query.max_resolution_ms()
-    source_max_market_tick_observed_at_ms = _source_query.max_market_tick_observed_at_ms()
+    source_max_resolution_ms = _token_radar_max_resolution_ms(repos.conn)
+    source_max_market_tick_observed_at_ms = _token_radar_max_market_tick_observed_at_ms(repos.conn)
     return {
         "window": window,
         "scope": scope,
@@ -927,6 +945,46 @@ def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, no
             source_max_market_tick_observed_at_ms=source_max_market_tick_observed_at_ms,
         ),
     }
+
+
+def _token_radar_source_count(conn: object, *, since_ms: int, scope: str) -> int:
+    watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS value
+        FROM token_intents
+        JOIN token_intent_resolutions
+          ON token_intent_resolutions.intent_id = token_intents.intent_id
+         AND token_intent_resolutions.is_current = true
+         AND token_intent_resolutions.resolver_policy_version = %s
+         AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
+         AND token_intent_resolutions.target_id IS NOT NULL
+        JOIN events ON events.event_id = token_intents.event_id
+        WHERE events.received_at_ms >= %s {watched_clause}
+        """,
+        (TOKEN_RADAR_RESOLVER_POLICY_VERSION, int(since_ms)),
+    ).fetchone()
+    return int(row["value"] or 0) if row else 0
+
+
+def _token_radar_max_resolution_ms(conn: object) -> int | None:
+    row = conn.execute(
+        """
+        SELECT MAX(decision_time_ms) AS value
+        FROM token_intent_resolutions
+        WHERE is_current = true
+          AND target_type IN ('Asset', 'CexToken')
+          AND target_id IS NOT NULL
+        """
+    ).fetchone()
+    value = row["value"] if row else None
+    return int(value) if value is not None else None
+
+
+def _token_radar_max_market_tick_observed_at_ms(conn: object) -> int | None:
+    row = conn.execute("SELECT MAX(tick_observed_at_ms) AS value FROM market_tick_current").fetchone()
+    value = row["value"] if row else None
+    return int(value) if value is not None else None
 
 
 def _audit_token_radar_current_rows(

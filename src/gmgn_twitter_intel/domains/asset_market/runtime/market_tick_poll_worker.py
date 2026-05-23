@@ -250,14 +250,22 @@ class MarketTickPollWorker(WorkerBase):
         by_tick_id = {tick.tick_id: tick for tick in materialized}
         with self.db.worker_session(self.name) as repos:
             inserted_ids = list(repos.market_ticks.insert_ticks_returning_ids(materialized))
-            _commit_if_supported(repos)
-        changed_targets = list(
-            dict.fromkeys(
-                (tick.target_type, tick.target_id)
-                for tick_id in inserted_ids
-                if (tick := by_tick_id.get(str(tick_id))) is not None
+            changed_targets = list(
+                dict.fromkeys(
+                    (tick.target_type, tick.target_id)
+                    for tick_id in inserted_ids
+                    if (tick := by_tick_id.get(str(tick_id))) is not None
+                )
             )
-        )
+            dirty_targets = getattr(repos, "token_radar_dirty_targets", None)
+            if changed_targets and dirty_targets is not None:
+                dirty_targets.enqueue_market_targets(
+                    changed_targets,
+                    reason="market_tick_current_changed",
+                    now_ms=int(self.clock()),
+                    commit=False,
+                )
+            _commit_if_supported(repos)
         for target_type, target_id in changed_targets:
             _emit_wake(self.wake_emitter, target_type=target_type, target_id=target_id)
         return len(inserted_ids)

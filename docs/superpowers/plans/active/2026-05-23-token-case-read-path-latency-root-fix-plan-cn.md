@@ -214,7 +214,7 @@ Do not introduce a frontend-only workaround that hides loading while the backend
   - Size `wake_pool` based on enabled listeners or replace many listeners with shared fanout.
 
 - Inspect existing CLI: `src/gmgn_twitter_intel/app/surfaces/cli/commands/ops.py`
-  - Confirm `prune-token-radar` exists and can safely reduce the current 120GB table.
+  - Confirm hard-cut PostgreSQL reset and partition helpers exist; legacy Token Radar prune/backfill commands must stay removed.
 
 ### Documentation
 
@@ -917,58 +917,58 @@ All selected tests pass.
 - Modify: `docs/RELIABILITY.md`
 - Modify: `docs/TECH_DEBT.md`
 
-- [ ] **Step 7.1: Confirm existing prune command**
+- [ ] **Step 7.1: Confirm hard-cut maintenance commands**
 
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops --help | rg "prune-token-radar|backfill-token-radar-first-seen"
+uv run gmgn-twitter-intel ops --help | rg "reset-token-radar-postgres-hard-cut|ensure-postgres-partitions|drop-expired-postgres-partitions"
 ```
 
 Expected:
 
 ```text
-prune-token-radar
-backfill-token-radar-first-seen
+reset-token-radar-postgres-hard-cut
+ensure-postgres-partitions
+drop-expired-postgres-partitions
 ```
 
-- [ ] **Step 7.2: Dry-run current retention impact**
+- [ ] **Step 7.2: Dry-run derived-storage reset impact**
 
 Run against real config only after `uv run gmgn-twitter-intel config` confirms paths:
 
 ```bash
-uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
+uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --dry-run
 ```
 
 Expected:
 
 ```text
-Dry-run reports candidate rows and does not delete data.
+Dry-run reports derived tables, attached partition scope, projection-control filters, preserved facts, and does not delete data.
 ```
 
-- [ ] **Step 7.3: Execute bounded pruning in controlled batches**
+- [ ] **Step 7.3: Execute hard-cut derived reset once**
 
 Run:
 
 ```bash
-uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
+uv run gmgn-twitter-intel ops reset-token-radar-postgres-hard-cut --execute
 ```
 
-Repeat only after checking API health and DB load. Do not run unbounded deletes.
+Run only after confirming the service can rebuild from current material facts. Do not run legacy bounded prune commands.
 
-- [ ] **Step 7.4: Verify size reduction**
+- [ ] **Step 7.4: Ensure history/audit partitions**
 
 Run:
 
 ```bash
-docker exec gmgn-twitter-intel-postgres-1 psql -U gmgn_app -d gmgn_twitter_intel -c \
-"select pg_size_pretty(pg_relation_size('token_radar_rows')) as heap, pg_size_pretty(pg_indexes_size('token_radar_rows')) as indexes, pg_size_pretty(pg_total_relation_size('token_radar_rows')) as total"
+uv run gmgn-twitter-intel ops ensure-postgres-partitions --execute
 ```
 
 Expected:
 
 ```text
-Total size trends down after pruning and vacuum maintenance.
+Current and next month `token_radar_rank_history_*` and `token_radar_snapshot_audit_*` partitions exist.
 ```
 
 - [ ] **Step 7.5: Add reliability doc note**
@@ -976,10 +976,10 @@ Total size trends down after pruning and vacuum maintenance.
 In `docs/RELIABILITY.md`, update the Token Radar maintenance section with:
 
 ```markdown
-Token Radar rows are rebuildable read-model output. Production must run bounded
-`ops prune-token-radar` maintenance before `token_radar_rows` grows large enough
-to dominate API IO. Run dry-run first, then small execute batches, and verify
-`pg_total_relation_size('token_radar_rows')` plus API p95 after each batch.
+Token Radar rows are rebuildable read-model output. Production uses
+`ops reset-token-radar-postgres-hard-cut` for one-shot derived-storage resets
+and `ops ensure-postgres-partitions` for rank-history/audit partition readiness.
+Legacy `prune-token-radar` and first-seen backfill commands are removed.
 ```
 
 ---

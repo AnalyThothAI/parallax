@@ -113,6 +113,10 @@ TOKEN_IMAGE_UNSUPPORTED_CLEANUP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
     "20260523_0089_token_image_unsupported_cleanup.py"
 )
+TOKEN_RADAR_POSTGRES_HARD_CUT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0090_token_radar_postgres_hard_cut.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -607,6 +611,84 @@ def test_token_image_unsupported_cleanup_follows_news_filter_indexes() -> None:
         "last_error LIKE 'image_too_large:%'",
     ):
         assert statement in text
+
+
+def test_token_radar_postgres_hard_cut_revision_is_in_alembic_graph() -> None:
+    script = ScriptDirectory.from_config(alembic_config())
+
+    revision = script.get_revision("20260523_0090")
+
+    assert revision is not None
+    assert revision.down_revision == "20260523_0089"
+    assert revision.module.__file__ is not None
+    assert revision.module.__file__.endswith("20260523_0090_token_radar_postgres_hard_cut.py")
+
+
+def test_token_radar_postgres_hard_cut_migration_partitions_hot_tables() -> None:
+    text = TOKEN_RADAR_POSTGRES_HARD_CUT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260523_0090"' in text
+    assert 'down_revision = "20260523_0089"' in text
+    assert "DROP TABLE IF EXISTS token_radar_rows CASCADE" in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_rows" not in text
+
+    assert "CREATE TABLE IF NOT EXISTS market_ticks" in text
+    assert "PRIMARY KEY (observed_at_ms, tick_id)" in text
+    assert "PARTITION BY RANGE (observed_at_ms)" in text
+    assert "CREATE TABLE IF NOT EXISTS market_ticks_default" in text
+    assert "PARTITION OF market_ticks DEFAULT" in text
+    assert (
+        "ON market_ticks(observed_at_ms, target_type, target_id, source_provider)"
+        in normalized_text
+    )
+    assert (
+        "ON market_ticks(target_type, target_id, observed_at_ms DESC, tick_id DESC)"
+        in normalized_text
+    )
+
+    assert "CREATE TABLE IF NOT EXISTS enriched_events" in text
+    assert "tick_observed_at_ms BIGINT" in text
+    assert (
+        "FOREIGN KEY (tick_observed_at_ms, tick_id) "
+        "REFERENCES market_ticks(observed_at_ms, tick_id) ON DELETE RESTRICT"
+    ) in normalized_text
+    assert "CREATE INDEX IF NOT EXISTS idx_enriched_events_tick" in text
+    assert "ON enriched_events(tick_observed_at_ms, tick_id)" in normalized_text
+
+    for table_name in (
+        "market_tick_current",
+        "token_radar_dirty_targets",
+        "token_radar_target_features",
+        "token_radar_current_rows",
+    ):
+        assert f"CREATE TABLE IF NOT EXISTS {table_name}" in text
+
+    for table_name in (
+        "market_tick_current",
+        "token_radar_dirty_targets",
+        "token_radar_current_rows",
+    ):
+        table_statement = _extract_sql_statement(text, f"CREATE TABLE IF NOT EXISTS {table_name}")
+        assert "payload_hash TEXT NOT NULL" in table_statement or (
+            table_name == "token_radar_current_rows" and "payload_hash TEXT NOT NULL" in text
+        )
+        assert f"ALTER TABLE {table_name} SET (" in text
+        assert "fillfactor" in text[text.index(f"ALTER TABLE {table_name} SET (") :]
+        assert "autovacuum_vacuum_scale_factor" in text[text.index(f"ALTER TABLE {table_name} SET (") :]
+
+    target_features_statement = _extract_sql_statement(
+        text,
+        "CREATE TABLE IF NOT EXISTS token_radar_target_features",
+    )
+    assert "payload_hash TEXT NOT NULL" in target_features_statement
+
+    assert "CREATE TABLE IF NOT EXISTS token_radar_rank_history" in text
+    assert "recorded_at_ms BIGINT NOT NULL" in text
+    assert "PARTITION BY RANGE (recorded_at_ms)" in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_rank_history_default" in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_snapshot_audit" in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_snapshot_audit_default" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:
