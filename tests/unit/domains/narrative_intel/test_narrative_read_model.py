@@ -2,6 +2,7 @@ from gmgn_twitter_intel.domains.narrative_intel.read_models.narrative_read_model
     NarrativeReadModel,
 )
 
+
 def test_hydrate_token_radar_projects_digest_storage_fields_to_public_contract():
     repo = FakeNarrativeRepository(
         {

@@ -224,7 +224,7 @@ def test_source_event_id_json_strings_are_parsed_for_delta_detection() -> None:
 
 
 def test_epoch_policy_hard_cuts_digest_windows_to_1h() -> None:
-    assert DIGEST_WINDOWS == frozenset({"1h"})
+    assert frozenset({"1h"}) == DIGEST_WINDOWS
     assert set(DEFAULT_THRESHOLDS) == {"1h"}
 
     decision = NarrativeEpochPolicy().evaluate(

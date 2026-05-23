@@ -8,6 +8,9 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_decision_runtime import
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
+from gmgn_twitter_intel.integrations.openai_agents.equity_event_brief_agent_client import (
+    OpenAIAgentsEquityEventBriefClient,
+)
 from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import OpenAIAgentsNarrativeIntelClient
 from gmgn_twitter_intel.integrations.openai_agents.news_item_brief_agent_client import (
@@ -202,6 +205,15 @@ def openai_news_item_brief_provider(
     )
 
 
+def openai_equity_event_brief_provider(
+    settings: Settings,
+    *,
+    agent_gateway: AgentExecutionGateway,
+) -> OpenAIAgentsEquityEventBriefClient:
+    del settings
+    return OpenAIAgentsEquityEventBriefClient(agent_gateway=agent_gateway)
+
+
 def build_agent_execution_gateway(
     settings: Settings,
     *,
@@ -253,9 +265,11 @@ def _require_llm_gateway(llm_gateway: object | None) -> object:
 
 
 __all__ = [
+    "OpenAIAgentsEquityEventBriefClient",
     "OpenAINarrativeIntelProvider",
     "OpenAIPulseDecisionProvider",
     "build_agent_execution_gateway",
+    "openai_equity_event_brief_provider",
     "openai_narrative_intel_provider",
     "openai_news_item_brief_provider",
     "openai_pulse_decision_provider",

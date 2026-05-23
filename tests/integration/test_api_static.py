@@ -28,6 +28,7 @@ def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
         token_route = client.get("/token/CexToken/cex_token%3AZEC")
         signal_lab_route = client.get("/signal-lab")
         news_route = client.get("/news")
+        earnings_route = client.get("/earnings")
         macro_route = client.get("/macro")
         watchlist_route = client.get("/watchlist?handle=toly")
         asset = client.get("/assets/app.js")
@@ -45,6 +46,8 @@ def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
     assert "text/html" in signal_lab_route.headers["content-type"]
     assert news_route.status_code == 200
     assert "text/html" in news_route.headers["content-type"]
+    assert earnings_route.status_code == 200
+    assert "text/html" in earnings_route.headers["content-type"]
     assert macro_route.status_code == 200
     assert "text/html" in macro_route.headers["content-type"]
     assert watchlist_route.status_code == 200
@@ -74,6 +77,9 @@ def test_frontend_dist_serves_browser_routes_for_spa(tmp_path):
         signal_lab_route = client.get("/signal-lab")
         news_route = client.get("/news")
         news_detail_route = client.get("/news/story/story_123")
+        earnings_route = client.get("/earnings")
+        earnings_calendar_route = client.get("/earnings/calendar")
+        earnings_detail_route = client.get("/earnings/events/event-1")
         macro_route = client.get("/macro")
         watchlist_route = client.get("/watchlist?handle=toly")
         missing_api = client.get("/api/not-a-route")
@@ -88,6 +94,12 @@ def test_frontend_dist_serves_browser_routes_for_spa(tmp_path):
     assert "text/html" in news_route.headers["content-type"]
     assert news_detail_route.status_code == 200
     assert "text/html" in news_detail_route.headers["content-type"]
+    assert earnings_route.status_code == 200
+    assert "text/html" in earnings_route.headers["content-type"]
+    assert earnings_calendar_route.status_code == 200
+    assert "text/html" in earnings_calendar_route.headers["content-type"]
+    assert earnings_detail_route.status_code == 200
+    assert "text/html" in earnings_detail_route.headers["content-type"]
     assert macro_route.status_code == 200
     assert "text/html" in macro_route.headers["content-type"]
     assert watchlist_route.status_code == 200

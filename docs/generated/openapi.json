@@ -245,6 +245,282 @@
         "title": "ApiEnvelope[EnrichmentJobsData]",
         "type": "object"
       },
+      "ApiEnvelope_EquityEventCalendarData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquityEventCalendarData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[EquityEventCalendarData]",
+        "type": "object"
+      },
+      "ApiEnvelope_EquityEventObjectData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquityEventObjectData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[EquityEventObjectData]",
+        "type": "object"
+      },
+      "ApiEnvelope_EquityEventSourceStatusData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquityEventSourceStatusData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[EquityEventSourceStatusData]",
+        "type": "object"
+      },
+      "ApiEnvelope_EquityEventSummaryData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquityEventSummaryData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[EquityEventSummaryData]",
+        "type": "object"
+      },
+      "ApiEnvelope_EquityEventTimelineData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquityEventTimelineData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[EquityEventTimelineData]",
+        "type": "object"
+      },
+      "ApiEnvelope_EquityEventsData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquityEventsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[EquityEventsData]",
+        "type": "object"
+      },
       "ApiEnvelope_LiveMarketData_": {
         "additionalProperties": true,
         "properties": {
@@ -1625,6 +1901,127 @@
         "title": "EnrichmentJobsData",
         "type": "object"
       },
+      "EquityEventCalendarData": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "EquityEventCalendarData",
+        "type": "object"
+      },
+      "EquityEventObjectData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "EquityEventObjectData",
+        "type": "object"
+      },
+      "EquityEventSourceStatusData": {
+        "additionalProperties": true,
+        "properties": {
+          "sources": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "title": "EquityEventSourceStatusData",
+        "type": "object"
+      },
+      "EquityEventSummaryData": {
+        "additionalProperties": true,
+        "properties": {
+          "brief_pending_count": {
+            "default": 0,
+            "title": "Brief Pending Count",
+            "type": "integer"
+          },
+          "latest_event_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Event At Ms"
+          },
+          "p0_open_count": {
+            "default": 0,
+            "title": "P0 Open Count",
+            "type": "integer"
+          },
+          "today_count": {
+            "default": 0,
+            "title": "Today Count",
+            "type": "integer"
+          }
+        },
+        "title": "EquityEventSummaryData",
+        "type": "object"
+      },
+      "EquityEventTimelineData": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "title": "EquityEventTimelineData",
+        "type": "object"
+      },
+      "EquityEventsData": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "title": "EquityEventsData",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1736,6 +2133,11 @@
           "epoch": {
             "$ref": "#/components/schemas/NarrativeEpochHealth"
           },
+          "estimated_digest_drain_seconds": {
+            "default": 0,
+            "title": "Estimated Digest Drain Seconds",
+            "type": "integer"
+          },
           "now_ms": {
             "anyOf": [
               {
@@ -1751,6 +2153,20 @@
             "default": 0,
             "title": "Pending Digest Count",
             "type": "integer"
+          },
+          "realtime_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Realtime Scopes",
+            "type": "array"
+          },
+          "realtime_windows": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Realtime Windows",
+            "type": "array"
           },
           "recent_runs": {
             "additionalProperties": {
@@ -2063,6 +2479,11 @@
           "current_source_rows": {
             "default": 0,
             "title": "Current Source Rows",
+            "type": "integer"
+          },
+          "estimated_semantic_drain_seconds": {
+            "default": 0,
+            "title": "Estimated Semantic Drain Seconds",
             "type": "integer"
           },
           "missing_semantic_rows": {
@@ -4416,6 +4837,17 @@
       "TokenDiscussionDigestData": {
         "additionalProperties": true,
         "properties": {
+          "analysis_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Window"
+          },
           "coverage": {
             "additionalProperties": true,
             "title": "Coverage",
@@ -4429,6 +4861,28 @@
             "title": "Data Gaps",
             "type": "array"
           },
+          "reuse_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuse Reason"
+          },
+          "source_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Window"
+          },
           "status": {
             "enum": [
               "ready",
@@ -4439,6 +4893,17 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "surface_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Window"
           }
         },
         "required": [
@@ -5431,6 +5896,442 @@
         ]
       }
     },
+    "/api/equity-events": {
+      "get": {
+        "operationId": "list_equity_events_api_equity_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "universe",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Universe",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Event Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Priority",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_role",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lifecycle_status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Lifecycle Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brief_status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Brief Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventsData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Equity Events",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/equity-events/calendar": {
+      "get": {
+        "operationId": "list_equity_event_calendar_api_equity_events_calendar_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "universe",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Universe",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventCalendarData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Equity Event Calendar",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/equity-events/companies/{ticker}/timeline": {
+      "get": {
+        "operationId": "get_equity_event_company_timeline_api_equity_events_companies__ticker__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventTimelineData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Equity Event Company Timeline",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/equity-events/sources/status": {
+      "get": {
+        "operationId": "get_equity_event_source_status_api_equity_events_sources_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventSourceStatusData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Equity Event Source Status",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/equity-events/stories/{story_id}": {
+      "get": {
+        "operationId": "get_equity_event_story_api_equity_events_stories__story_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "story_id",
+            "required": true,
+            "schema": {
+              "title": "Story Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventObjectData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Equity Event Story",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/equity-events/summary": {
+      "get": {
+        "operationId": "get_equity_event_summary_api_equity_events_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventSummaryData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Equity Event Summary",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/equity-events/{event_id}": {
+      "get": {
+        "operationId": "get_equity_event_api_equity_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_EquityEventObjectData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Equity Event",
+        "tags": [
+          "api"
+        ]
+      }
+    },
     "/api/live-market": {
       "get": {
         "operationId": "live_market_api_live_market_get",
@@ -5699,6 +6600,56 @@
             "schema": {
               "default": "",
               "title": "Target",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Provider Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_role",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Source Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trust_tier",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Trust Tier",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "coverage_tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Coverage Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "content_class",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Content Class",
               "type": "string"
             }
           },

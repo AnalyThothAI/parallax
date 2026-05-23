@@ -126,6 +126,25 @@ const routeCases: RouteCase[] = [
     lastMeaningfulSelector: ".news-detail-side",
   },
   {
+    name: "earnings",
+    path: "/earnings",
+    primary: async (page) => {
+      await expect(page.getByRole("region", { name: "Equity event intel" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Earnings" })).toBeVisible();
+    },
+    specific: async (page) => {
+      await expect(page.getByRole("list", { name: "earnings event feed" })).toBeVisible();
+      await expect(page.getByText("NVDA Q3 earnings release")).toBeVisible();
+      await expect(page.getByText("收入增速和指引构成一线事件流。")).toBeVisible();
+    },
+    nestedOverflowSelectors: [
+      ".equity-event-route",
+      ".equity-event-feed",
+      ".equity-event-feed-row",
+    ],
+    lastMeaningfulSelector: ".equity-event-feed-row",
+  },
+  {
     name: "watchlist",
     path: "/watchlist",
     primary: async (page) => {

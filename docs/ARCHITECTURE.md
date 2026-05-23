@@ -15,6 +15,7 @@ GMGN public stream
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/news_intel          (configured news ingestion, news facts, story and page read models)
+  → domains/equity_event_intel  (SEC/IR/company-event facts, calendar, cited briefs, earnings page read models)
   → domains/cex_market_intel    (centralized exchange derivative radar read models)
   → domains/macro_intel         (macro observation facts and regime view snapshots)
   → domains/notifications       (rules, delivery)
@@ -52,8 +53,11 @@ are wrong too.
    `token_intents`, `token_intent_lookup_keys`, `token_intent_resolutions`,
    `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
    `market_ticks`, `enriched_events`, `news_provider_items`, `news_items`,
-   `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, and
-   `macro_observations` are
+   `news_item_entities`, `news_token_mentions`, `news_fact_candidates`,
+   `equity_event_sources`, `equity_expected_events`,
+   `equity_provider_documents`, `equity_event_documents`,
+   `equity_company_events`, `equity_event_source_spans`,
+   `equity_event_fact_candidates`, and `macro_observations` are
    the business fact tables. Control plane tables such as
    `event_anchor_backfill_jobs` and `news_fetch_runs` own worker scheduling state
    and are not product truth. `macro_import_runs` records importer provenance,
@@ -100,6 +104,13 @@ are wrong too.
    `NewsPageProjectionWorker`; `news_source_quality_rows` is written only by
    `NewsSourceQualityProjectionWorker`. `cex_oi_radar_runs`, `cex_oi_radar_rows`,
    and `cex_detail_snapshots` are written only by `CexOiRadarBoardWorker`;
+   `equity_event_story_groups` and `equity_event_story_members` are written
+   only by `EquityEventStoryProjectionWorker`;
+   `equity_event_agent_runs` and `equity_event_agent_briefs` are written only
+   by `EquityEventBriefWorker`;
+   `equity_event_page_rows`, `equity_event_calendar_rows`,
+   `equity_event_alert_candidates`, and `equity_company_timeline_rows` are
+   written only by `EquityEventPageProjectionWorker`;
    `macro_view_snapshots` is written only by
    `MacroViewProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels

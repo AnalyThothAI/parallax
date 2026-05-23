@@ -7,6 +7,7 @@ from fastapi import APIRouter
 
 from gmgn_twitter_intel.app.surfaces.api import (
     routes_cex,
+    routes_equity_events,
     routes_events,
     routes_macro,
     routes_news,
@@ -30,6 +31,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     router.include_router(routes_watchlist.router)
     router.include_router(routes_search.router)
     router.include_router(routes_radar.router)
+    router.include_router(routes_equity_events.router)
     router.include_router(routes_cex.router)
     router.include_router(routes_macro.router)
     router.include_router(routes_news.router)

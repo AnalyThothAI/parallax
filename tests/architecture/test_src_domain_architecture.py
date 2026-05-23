@@ -19,6 +19,7 @@ DOMAINS = {
     "macro_intel",
     "narrative_intel",
     "news_intel",
+    "equity_event_intel",
     "social_enrichment",
     "notifications",
     "pulse_lab",
@@ -33,6 +34,7 @@ PROVIDER_DOMAINS = {
     "asset_market",
     "narrative_intel",
     "news_intel",
+    "equity_event_intel",
     "social_enrichment",
     "pulse_lab",
     "watchlist_intel",
@@ -65,6 +67,7 @@ PROVIDER_WIRING_FACADE_ALLOWED_IMPORTS = {
 }
 PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "AssetMarketProviders",
+    "EquityEventIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",

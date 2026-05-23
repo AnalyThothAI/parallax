@@ -106,6 +106,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/equity-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Equity Events */
+        get: operations["list_equity_events_api_equity_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/equity-events/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Equity Event Calendar */
+        get: operations["list_equity_event_calendar_api_equity_events_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/equity-events/companies/{ticker}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Equity Event Company Timeline */
+        get: operations["get_equity_event_company_timeline_api_equity_events_companies__ticker__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/equity-events/sources/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Equity Event Source Status */
+        get: operations["get_equity_event_source_status_api_equity_events_sources_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/equity-events/stories/{story_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Equity Event Story */
+        get: operations["get_equity_event_story_api_equity_events_stories__story_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/equity-events/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Equity Event Summary */
+        get: operations["get_equity_event_summary_api_equity_events_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/equity-events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Equity Event */
+        get: operations["get_equity_event_api_equity_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/live-market": {
         parameters: {
             query?: never;
@@ -847,6 +966,78 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ApiEnvelope[EquityEventCalendarData] */
+        ApiEnvelope_EquityEventCalendarData_: {
+            data?: components["schemas"]["EquityEventCalendarData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[EquityEventObjectData] */
+        ApiEnvelope_EquityEventObjectData_: {
+            data?: components["schemas"]["EquityEventObjectData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[EquityEventSourceStatusData] */
+        ApiEnvelope_EquityEventSourceStatusData_: {
+            data?: components["schemas"]["EquityEventSourceStatusData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[EquityEventSummaryData] */
+        ApiEnvelope_EquityEventSummaryData_: {
+            data?: components["schemas"]["EquityEventSummaryData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[EquityEventTimelineData] */
+        ApiEnvelope_EquityEventTimelineData_: {
+            data?: components["schemas"]["EquityEventTimelineData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ApiEnvelope[EquityEventsData] */
+        ApiEnvelope_EquityEventsData_: {
+            data?: components["schemas"]["EquityEventsData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ApiEnvelope[LiveMarketData] */
         ApiEnvelope_LiveMarketData_: {
             data?: components["schemas"]["LiveMarketData"] | null;
@@ -1219,6 +1410,72 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** EquityEventCalendarData */
+        EquityEventCalendarData: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** EquityEventObjectData */
+        EquityEventObjectData: {
+            [key: string]: unknown;
+        };
+        /** EquityEventSourceStatusData */
+        EquityEventSourceStatusData: {
+            /** Sources */
+            sources?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** EquityEventSummaryData */
+        EquityEventSummaryData: {
+            /**
+             * Brief Pending Count
+             * @default 0
+             */
+            brief_pending_count: number;
+            /** Latest Event At Ms */
+            latest_event_at_ms?: number | null;
+            /**
+             * P0 Open Count
+             * @default 0
+             */
+            p0_open_count: number;
+            /**
+             * Today Count
+             * @default 0
+             */
+            today_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** EquityEventTimelineData */
+        EquityEventTimelineData: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** EquityEventsData */
+        EquityEventsData: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1280,6 +1537,11 @@ export interface components {
                 [key: string]: number;
             };
             epoch?: components["schemas"]["NarrativeEpochHealth"];
+            /**
+             * Estimated Digest Drain Seconds
+             * @default 0
+             */
+            estimated_digest_drain_seconds: number;
             /** Now Ms */
             now_ms?: number | null;
             /**
@@ -1287,6 +1549,10 @@ export interface components {
              * @default 0
              */
             pending_digest_count: number;
+            /** Realtime Scopes */
+            realtime_scopes?: string[];
+            /** Realtime Windows */
+            realtime_windows?: string[];
             /** Recent Runs */
             recent_runs?: {
                 [key: string]: components["schemas"]["NarrativeRunHealth"];
@@ -1453,6 +1719,11 @@ export interface components {
              * @default 0
              */
             current_source_rows: number;
+            /**
+             * Estimated Semantic Drain Seconds
+             * @default 0
+             */
+            estimated_semantic_drain_seconds: number;
             /**
              * Missing Semantic Rows
              * @default 0
@@ -2220,6 +2491,8 @@ export interface components {
         };
         /** TokenDiscussionDigestData */
         TokenDiscussionDigestData: {
+            /** Analysis Window */
+            analysis_window?: string | null;
             /** Coverage */
             coverage?: {
                 [key: string]: unknown;
@@ -2227,11 +2500,17 @@ export interface components {
             currentness: components["schemas"]["NarrativeCurrentnessData"];
             /** Data Gaps */
             data_gaps?: unknown[];
+            /** Reuse Reason */
+            reuse_reason?: string | null;
+            /** Source Window */
+            source_window?: string | null;
             /**
              * Status
              * @enum {string}
              */
             status: "ready" | "pending" | "insufficient" | "semantic_unavailable" | "stale";
+            /** Surface Window */
+            surface_window?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -2709,6 +2988,219 @@ export interface operations {
             };
         };
     };
+    list_equity_events_api_equity_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                window?: string;
+                universe?: string;
+                ticker?: string;
+                event_type?: string;
+                priority?: string;
+                source_role?: string;
+                lifecycle_status?: string;
+                brief_status?: string;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_equity_event_calendar_api_equity_events_calendar_get: {
+        parameters: {
+            query?: {
+                from?: number | null;
+                to?: number | null;
+                universe?: string;
+                ticker?: string;
+                status?: string;
+                session?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventCalendarData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_equity_event_company_timeline_api_equity_events_companies__ticker__timeline_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventTimelineData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_equity_event_source_status_api_equity_events_sources_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventSourceStatusData_"];
+                };
+            };
+        };
+    };
+    get_equity_event_story_api_equity_events_stories__story_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                story_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventObjectData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_equity_event_summary_api_equity_events_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventSummaryData_"];
+                };
+            };
+        };
+    };
+    get_equity_event_api_equity_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_EquityEventObjectData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     live_market_api_live_market_get: {
         parameters: {
             query?: {
@@ -2855,6 +3347,11 @@ export interface operations {
                 lane?: string;
                 source?: string;
                 target?: string;
+                provider_type?: string;
+                source_role?: string;
+                trust_tier?: string;
+                coverage_tag?: string;
+                content_class?: string;
                 q?: string;
             };
             header?: never;

@@ -3,6 +3,7 @@ from __future__ import annotations
 from gmgn_twitter_intel.app.runtime.provider_wiring import wire_asset_market_providers, wire_providers
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
+    EquityEventIntelProviders,
     IngestionProviders,
     MacrodataProviders,
     NarrativeIntelProviders,
@@ -16,6 +17,7 @@ from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
 
 __all__ = [
     "AssetMarketProviders",
+    "EquityEventIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",

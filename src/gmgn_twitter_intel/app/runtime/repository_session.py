@@ -27,6 +27,9 @@ from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_detail_snapsho
     CexDetailSnapshotRepository,
 )
 from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repository import CexOiRadarRepository
+from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_event_repository import (
+    EquityEventRepository,
+)
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
@@ -104,6 +107,7 @@ class RepositorySession:
     narratives: NarrativeRepository
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
+    equity_events: EquityEventRepository
     cex_derivative_series: CexDerivativeSeriesRepository
     cex_detail_snapshots: CexDetailSnapshotRepository
     cex_oi_radar: CexOiRadarRepository
@@ -153,6 +157,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         narratives=NarrativeRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
+        equity_events=EquityEventRepository(conn),
         cex_derivative_series=CexDerivativeSeriesRepository(conn),
         cex_detail_snapshots=CexDetailSnapshotRepository(conn),
         cex_oi_radar=CexOiRadarRepository(conn),

@@ -50,6 +50,27 @@ CANONICAL_WORKER_CLASSES = {
         "gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker."
         "NewsSourceQualityProjectionWorker"
     ),
+    "equity_event_source_reconcile": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+        "equity_event_source_reconcile_worker.EquityEventSourceReconcileWorker"
+    ),
+    "equity_event_fetch": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker.EquityEventFetchWorker"
+    ),
+    "equity_event_process": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker.EquityEventProcessWorker"
+    ),
+    "equity_event_story_projection": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+        "equity_event_story_projection_worker.EquityEventStoryProjectionWorker"
+    ),
+    "equity_event_brief": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker.EquityEventBriefWorker"
+    ),
+    "equity_event_page_projection": (
+        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+        "equity_event_page_projection_worker.EquityEventPageProjectionWorker"
+    ),
     "cex_oi_radar_board": (
         "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
     ),
@@ -88,6 +109,12 @@ WORKER_START_PRIORITY = {
     "news_item_brief": 94,
     "news_page_projection": 95,
     "news_source_quality_projection": 95,
+    "equity_event_source_reconcile": 96,
+    "equity_event_fetch": 97,
+    "equity_event_process": 98,
+    "equity_event_story_projection": 99,
+    "equity_event_brief": 100,
+    "equity_event_page_projection": 101,
     "cex_oi_radar_board": 95,
     "macro_view_projection": 95,
     "pulse_candidate": 96,

@@ -4,6 +4,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
+    EquityEventIntelProviders,
     IngestionProviders,
     MacrodataProviders,
     NarrativeIntelProviders,
@@ -23,7 +24,14 @@ def wire_providers(
     agent_execution_gateway: object | None = None,
     db_pool: Any | None = None,
 ) -> WiredProviders:
-    from gmgn_twitter_intel.app.runtime.provider_wiring import asset_market, gmgn, macrodata, news, openai
+    from gmgn_twitter_intel.app.runtime.provider_wiring import (
+        asset_market,
+        equity_events,
+        gmgn,
+        macrodata,
+        news,
+        openai,
+    )
 
     return WiredProviders(
         ingestion=IngestionProviders(
@@ -83,6 +91,20 @@ def wire_providers(
             else None,
         ),
         macrodata=macrodata.wire_macrodata(settings),
+        equity_event_intel=equity_events.wire_equity_event_intel(
+            settings,
+            brief_provider=openai.openai_equity_event_brief_provider(
+                settings,
+                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
+            )
+            if (
+                settings.equity_event_intel.enabled
+                and settings.equity_event_intel.agent.enabled
+                and settings.workers.equity_event_brief.enabled
+                and settings.equity_event_brief_configured
+            )
+            else None,
+        ),
         agent_execution_gateway=agent_execution_gateway,
     )
 
@@ -101,6 +123,7 @@ def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> 
 
 __all__ = [
     "AssetMarketProviders",
+    "EquityEventIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",

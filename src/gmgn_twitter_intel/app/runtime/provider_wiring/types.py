@@ -12,6 +12,10 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenQuoteProvider,
     ProviderHealth,
 )
+from gmgn_twitter_intel.domains.equity_event_intel.providers import (
+    EquityEventBriefProvider,
+    EquityEventDocumentProvider,
+)
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
 from gmgn_twitter_intel.domains.news_intel.providers import NewsItemBriefProvider, NewsSourceProvider
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
@@ -77,6 +81,12 @@ class MacrodataProviders:
 
 
 @dataclass(frozen=True, slots=True)
+class EquityEventIntelProviders:
+    document_provider: EquityEventDocumentProvider | None = None
+    brief_provider: EquityEventBriefProvider | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
@@ -86,11 +96,13 @@ class WiredProviders:
     pulse_lab: PulseLabProviders
     watchlist_intel: WatchlistIntelProviders
     macrodata: MacrodataProviders
+    equity_event_intel: EquityEventIntelProviders
     agent_execution_gateway: object | None = None
 
 
 __all__ = [
     "AssetMarketProviders",
+    "EquityEventIntelProviders",
     "IngestionProviders",
     "MacrodataProviders",
     "NarrativeIntelProviders",
