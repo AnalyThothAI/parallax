@@ -38,6 +38,10 @@ export async function installMockApi(page: Page) {
     if (path === "/api/notifications") return fulfill(route, notificationsData());
     if (path === "/api/news") return fulfill(route, newsRowsData());
     if (path.startsWith("/api/news/items/")) return fulfill(route, newsItemDetailData(path));
+    if (path === "/api/equity-events") return fulfill(route, equityEventRowsData());
+    if (path === "/api/equity-events/calendar") return fulfill(route, equityEventCalendarData());
+    if (path === "/api/equity-events/summary") return fulfill(route, equityEventSummaryData());
+    if (path.startsWith("/api/equity-events/")) return fulfill(route, equityEventDetailData(path));
     if (path.endsWith("/read"))
       return fulfill(route, { notification_id: "notification-1", updated: true });
     if (path === "/api/notifications/read-all") return fulfill(route, { updated: true });
@@ -132,6 +136,108 @@ function newsItemDetailData(path: string) {
       computed_at_ms: NOW,
     },
     agent_run: null,
+  };
+}
+
+function equityEventRowsData() {
+  return {
+    items: [
+      {
+        company_event_id: "event-nvda-1",
+        ticker: "NVDA",
+        company_name: "NVIDIA",
+        event_type: "earnings_release",
+        priority: "P0",
+        source_role: "official_issuer",
+        latest_event_at_ms: NOW,
+        lifecycle_status: "ready",
+        headline: "NVDA Q3 earnings release",
+        summary: "Revenue acceleration with cited official evidence.",
+        documents_json: [{ event_document_id: "doc-nvda-1", document_type: "press_release" }],
+        facts_json: [{ fact_candidate_id: "fact-nvda-1", metric_name: "revenue" }],
+        brief_json: {
+          status: "ready",
+          direction: "bullish",
+          decision_class: "driver",
+          summary_zh: "收入增速和指引构成一线事件流。",
+          event_read_zh: "官方材料显示收入重新加速。",
+        },
+      },
+    ],
+    next_cursor: null,
+  };
+}
+
+function equityEventCalendarData() {
+  return {
+    items: [
+      {
+        expected_event_id: "expected-nvda-1",
+        ticker: "NVDA",
+        company_name: "NVIDIA",
+        event_type: "earnings_release",
+        priority: "P0",
+        source_role: "calendar",
+        fiscal_period: "Q3",
+        expected_at_ms: NOW,
+        status: "matched",
+        headline: "NVDA Q3 earnings release matched",
+        calendar_json: { observed_company_event_id: "event-nvda-1" },
+      },
+    ],
+  };
+}
+
+function equityEventSummaryData() {
+  return {
+    p0_open_count: 1,
+    today_count: 1,
+    brief_pending_count: 0,
+    latest_event_at_ms: NOW,
+  };
+}
+
+function equityEventDetailData(path: string) {
+  const eventId = decodeURIComponent(path.split("/").pop() ?? "event-nvda-1");
+  return {
+    company_event_id: eventId,
+    ticker: "NVDA",
+    company_name: "NVIDIA",
+    event_type: "earnings_release",
+    priority: "P0",
+    source_role: "official_issuer",
+    latest_event_at_ms: NOW,
+    headline: "NVDA Q3 earnings release",
+    documents_json: [
+      {
+        event_document_id: "doc-nvda-1",
+        document_type: "press_release",
+        document_url: "https://example.com/nvda",
+      },
+    ],
+    facts_json: [
+      {
+        fact_candidate_id: "fact-nvda-1",
+        metric_name: "revenue",
+        value_numeric: 35000,
+        value_unit: "USD millions",
+        validation_status: "accepted",
+      },
+    ],
+    spans_json: [{ span_id: "span-nvda-1", evidence_quote: "Revenue increased year over year." }],
+    story_json: {
+      story_id: "story-nvda",
+      representative_headline: "AI capex earnings cluster",
+      event_count: 2,
+    },
+    brief_json: {
+      status: "ready",
+      direction: "bullish",
+      decision_class: "driver",
+      summary_zh: "收入增速和指引构成一线事件流。",
+      event_read_zh: "官方材料显示收入重新加速。",
+      evidence_refs: ["fact:fact-nvda-1"],
+    },
   };
 }
 
