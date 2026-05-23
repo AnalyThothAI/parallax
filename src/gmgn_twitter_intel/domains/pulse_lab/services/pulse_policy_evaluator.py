@@ -35,7 +35,7 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
             latest = conn.execute(
                 """
                 SELECT computed_at_ms
-                FROM token_radar_rows
+                FROM token_radar_current_rows
                 WHERE computed_at_ms >= %s
                   AND computed_at_ms <= %s
                   AND projection_version = %s
@@ -62,7 +62,7 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
                   source_max_received_at_ms,
                   factor_snapshot_json,
                   source_event_ids_json
-                FROM token_radar_rows
+                FROM token_radar_current_rows
                 WHERE projection_version = %s
                   AND "window" = %s
                   AND scope = %s

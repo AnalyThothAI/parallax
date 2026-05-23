@@ -215,6 +215,8 @@ def test_evaluation_repository_selects_point_in_time_rows_for_settlement():
     )
 
     assert rows == [{"row_id": "row:a"}]
+    assert "FROM token_radar_snapshot_audit" in conn.sql
+    assert "token_radar_rows" not in conn.sql
     assert "computed_at_ms + %s <= %s" in conn.sql
     assert "ORDER BY computed_at_ms DESC, rank ASC, lane ASC, row_id ASC" in conn.sql
     assert conn.params == (TOKEN_FACTOR_SNAPSHOT_VERSION, "1h", "all", 3_600_000, 1_700_003_600_001, 50)

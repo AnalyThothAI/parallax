@@ -127,7 +127,7 @@ class TokenRadarProjection:
                 source_end_ms=computed_at_ms,
                 commit=False,
             )
-            rows_replaced = self.repos.token_radar.replace_rows(
+            rows_replaced = self.repos.token_radar.publish_rows(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,

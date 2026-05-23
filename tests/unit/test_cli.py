@@ -1,25 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
 from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
-
-
-def test_ops_backfill_token_radar_first_seen_parser_accepts_batch_controls() -> None:
-    args = build_parser().parse_args(
-        [
-            "ops",
-            "backfill-token-radar-first-seen",
-            "--batch-size",
-            "5000",
-            "--max-batches",
-            "1",
-        ]
-    )
-
-    assert args.command == "ops"
-    assert args.ops_command == "backfill-token-radar-first-seen"
-    assert args.batch_size == 5000
-    assert args.max_batches == 1
-    assert args.after_cursor == ""
 
 
 def test_ops_backfill_watchlist_signal_stats_parser_accepts_batch_controls() -> None:
@@ -43,41 +26,40 @@ def test_ops_backfill_watchlist_signal_stats_parser_accepts_batch_controls() -> 
     assert args.dry_run is True
 
 
-def test_ops_prune_token_radar_parser_requires_explicit_mode() -> None:
+def test_ops_clean_reset_token_radar_storage_parser_requires_explicit_mode() -> None:
     parser = build_parser()
 
     dry_run = parser.parse_args(
         [
             "ops",
-            "prune-token-radar",
-            "--retention-days",
-            "7",
-            "--batch-size",
-            "10000",
-            "--max-batches",
-            "1",
+            "clean-reset-token-radar-storage",
             "--dry-run",
         ]
     )
     execute = parser.parse_args(
         [
             "ops",
-            "prune-token-radar",
-            "--retention-days",
-            "7",
-            "--batch-size",
-            "10000",
-            "--max-batches",
-            "1",
+            "clean-reset-token-radar-storage",
             "--execute",
         ]
     )
 
-    assert dry_run.ops_command == "prune-token-radar"
+    assert dry_run.ops_command == "clean-reset-token-radar-storage"
     assert dry_run.dry_run is True
     assert dry_run.execute is False
     assert execute.execute is True
     assert execute.dry_run is False
+
+
+def test_removed_token_radar_storage_ops_commands_are_not_registered() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "prune-token-radar", "--dry-run"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "backfill-token-radar-first-seen"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "clean-reset-token-radar-storage"])
 
 
 def test_ops_mirror_token_images_parser_accepts_limits() -> None:

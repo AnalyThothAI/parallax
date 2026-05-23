@@ -185,6 +185,7 @@ class CliTests(unittest.TestCase):
             ],
             ["ops", "sync-us-equity-symbols"],
             ["ops", "rebuild-token-profiles", "--limit", "5"],
+            ["ops", "clean-reset-token-radar-storage", "--dry-run"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -233,6 +234,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[22].ops_command, "sync-us-equity-symbols")
         self.assertEqual(parsed[23].ops_command, "rebuild-token-profiles")
         self.assertEqual(parsed[23].limit, 5)
+        self.assertEqual(parsed[24].ops_command, "clean-reset-token-radar-storage")
+        self.assertTrue(parsed[24].dry_run)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -451,6 +454,8 @@ class CliTests(unittest.TestCase):
             ["ops", "resolve-asset-symbol", "--symbol", "MIRROR"],
             ["ops", "asset-resolution-health"],
             ["ops", "audit-asset-attribution", "--event-id", "event-1"],
+            ["ops", "prune-token-radar", "--dry-run"],
+            ["ops", "backfill-token-radar-first-seen"],
         ]
         for command in obsolete_commands:
             self.assertEqual(main(command, stdout=io.StringIO()), 2)
@@ -702,7 +707,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     assert isinstance(captured["client"], FakeClient)
 
 
-def test_cli_ops_factor_diagnostics_reads_latest_token_radar_rows(monkeypatch, tmp_path):
+def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkeypatch, tmp_path):
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
     from gmgn_twitter_intel.domains.token_intel.interfaces import (
         TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -713,7 +718,7 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_rows(monkeypatch, t
     captured = {}
 
     class FakeTokenRadar:
-        def latest_rows(self, **kwargs):
+        def latest_current_rows(self, **kwargs):
             captured.update(kwargs)
             return [
                 {

@@ -26,7 +26,7 @@ BullBearStrength = Literal["absent", "weak", "moderate", "strong"]
 MonitoringHorizon = Literal["1h", "4h", "24h"]
 
 _PRESCRIPTIVE_EXECUTION_RE = re.compile(
-    r"(建议|推荐|应当|应该|必须|不要|立刻|马上|适合).{0,12}"
+    r"(建议|推荐|应当|应该|必须|不要|立刻|马上|适合|设置).{0,12}"
     r"(买入|卖出|开仓|建仓|做多|做空|止损|止盈|加仓|减仓)|"
     r"(买入|卖出|开仓|建仓|做多|做空).{0,8}(止损|止盈|目标价|杠杆|仓位)|"
     r"(止损|止盈|目标价|杠杆|仓位).{0,8}(买入|卖出|开仓|做多|做空)|"

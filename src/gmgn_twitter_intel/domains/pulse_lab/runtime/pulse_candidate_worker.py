@@ -167,7 +167,7 @@ class PulseCandidateWorker(WorkerBase):
                         window=window,
                         scope=scope,
                     )
-                    rows = repos.token_radar.latest_rows(
+                    rows = repos.token_radar.latest_current_rows(
                         window=window,
                         scope=scope,
                         limit=self.batch_size,

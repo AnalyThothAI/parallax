@@ -9,7 +9,7 @@ GMGN public stream
   → domains/ingestion           (raw frame normalisation, snapshot gate)
   → domains/evidence            (transactional facts: events, evidence, intents, resolutions, asset identity)
   → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
-  → domains/token_intel         (token_radar_rows projection, scoring, search read model)
+  → domains/token_intel         (Token Radar current/history/audit projections, scoring, search read model)
   → domains/narrative_intel     (per-mention semantics and token discussion digests)
   → domains/social_enrichment   (watched-event extraction)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
@@ -82,8 +82,9 @@ are wrong too.
    identity tables, `enriched_events`, and `market_ticks`. Public payloads do
    not return raw resolution fact rows.
 5. **One writer per read model.** Each derived read model has exactly one
-   runtime writer: `token_radar_rows` is written only by
-   `TokenRadarProjectionWorker`; `token_capture_tier` is written only by
+   runtime writer: `token_radar_current_rows`, `token_radar_rank_history`,
+   `token_radar_snapshot_audit`, and `token_radar_target_first_seen` are written
+   only by `TokenRadarProjectionWorker`; `token_capture_tier` is written only by
    `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,
    `pulse_candidate_run_budget`, `pulse_target_run_budget`,
    `pulse_agent_runs`, `pulse_agent_run_steps`,

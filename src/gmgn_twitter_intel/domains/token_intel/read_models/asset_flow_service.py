@@ -34,7 +34,7 @@ class AssetFlowService:
             return _pending_projection_payload(coverage)
 
         row_limit = max(0, int(limit)) * 2
-        rows = self.token_radar.latest_rows(
+        rows = self.token_radar.latest_current_rows(
             window=window,
             scope=scope,
             limit=row_limit,
@@ -56,7 +56,7 @@ class AssetFlowService:
             "projection": {
                 "status": "fresh",
                 "version": TOKEN_RADAR_PROJECTION_VERSION,
-                "source": "token_radar_rows",
+                "source": "token_radar_current_rows",
                 "reason": coverage.get("reason"),
                 "row_count": int(coverage.get("row_count") or 0),
                 "source_rows": int(coverage.get("source_rows") or 0),
@@ -210,7 +210,7 @@ def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, An
         "projection": {
             "status": "pending",
             "version": TOKEN_RADAR_PROJECTION_VERSION,
-            "source": "token_radar_rows",
+            "source": "token_radar_current_rows",
             "reason": reason,
             "row_count": int((coverage or {}).get("row_count") or 0),
             "source_rows": int((coverage or {}).get("source_rows") or 0),

@@ -33,8 +33,13 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "token_intents" in names
     assert "token_intent_evidence" in names
     assert "token_intent_resolutions" in names
-    assert "token_radar_rows" in names
+    assert "token_radar_current_rows" in names
+    assert "token_radar_snapshot_audit" in names
+    assert "token_radar_rank_history" in names
+    assert "token_radar_storage_maintenance_runs" in names
     for legacy_table in (
+        "token_radar_rows",
+        "token_radar_retention_runs",
         "asset_mentions",
         "asset_attributions",
         "asset_resolution_jobs",
@@ -189,7 +194,7 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
                 """
                 SELECT column_name
                 FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'token_radar_rows'
+                WHERE table_schema = 'public' AND table_name = 'token_radar_current_rows'
                 """
             ).fetchall()
         }
@@ -251,7 +256,7 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
                 SELECT indexname
                 FROM pg_indexes
                 WHERE schemaname = 'public'
-                  AND tablename IN ('token_score_evaluations', 'token_radar_rows')
+                  AND tablename IN ('token_score_evaluations', 'token_radar_snapshot_audit')
                 """
             ).fetchall()
         }
@@ -276,7 +281,9 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
     assert columns["score_stddev"]["data_type"] == "double precision"
     assert columns["score_stddev"]["is_nullable"] == "YES"
     assert columns["diagnostics_json"]["is_nullable"] == "NO"
-    assert {"idx_token_score_evaluations_generated", "idx_token_radar_rows_settlement"}.issubset(token_factor_indexes)
+    assert {"idx_token_score_evaluations_generated", "idx_token_radar_snapshot_audit_settlement"}.issubset(
+        token_factor_indexes
+    )
     assert {
         "idx_market_ticks_target_observed",
         "idx_enriched_events_target_time",
@@ -465,7 +472,7 @@ def test_event_anchor_backfill_jobs_control_plane_table_present(tmp_path):
     assert "idx_event_anchor_backfill_jobs_due" in indexes
 
 
-def test_runtime_schema_contains_token_radar_retention_and_watchlist_signal_stats(tmp_path):
+def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signal_stats(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -522,7 +529,9 @@ def test_runtime_schema_contains_token_radar_retention_and_watchlist_signal_stat
                 FROM pg_indexes
                 WHERE schemaname = 'public'
                   AND tablename IN (
-                    'token_radar_rows',
+                    'token_radar_current_rows',
+                    'token_radar_rank_history',
+                    'token_radar_snapshot_audit',
                     'token_radar_target_first_seen',
                     'social_event_extractions',
                     'watchlist_handle_signal_stats',
@@ -535,11 +544,16 @@ def test_runtime_schema_contains_token_radar_retention_and_watchlist_signal_stat
         conn.close()
 
     assert {
+        "token_radar_current_rows",
+        "token_radar_rank_history",
+        "token_radar_snapshot_audit",
         "token_radar_target_first_seen",
-        "token_radar_retention_runs",
+        "token_radar_storage_maintenance_runs",
         "watchlist_handle_signal_stats",
         "watchlist_handle_signal_events",
     }.issubset(tables)
+    assert "token_radar_rows" not in tables
+    assert "token_radar_retention_runs" not in tables
     assert "normalized_handle" in social_extraction_columns
     assert first_seen_columns["target_type_key"]["data_type"] == "text"
     assert first_seen_columns["target_type_key"]["is_nullable"] == "NO"
@@ -547,7 +561,9 @@ def test_runtime_schema_contains_token_radar_retention_and_watchlist_signal_stat
     assert first_seen_columns["identity_id"]["is_nullable"] == "NO"
     assert signal_events_primary_key_columns == {"event_id"}
     assert {
-        "idx_token_radar_rows_prune",
+        "idx_token_radar_current_rows_read",
+        "idx_token_radar_rank_history_read",
+        "idx_token_radar_snapshot_audit_read",
         "idx_token_radar_first_seen_updated",
         "idx_social_event_extractions_signal_normalized_handle_received",
         "idx_watchlist_handle_signal_stats_latest",

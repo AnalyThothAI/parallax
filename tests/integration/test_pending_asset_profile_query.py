@@ -153,17 +153,6 @@ def test_pending_asset_profile_query_prioritizes_current_radar_assets(tmp_path):
             computed_at_ms=1_700_000_029_000,
         )
         _insert_radar_coverage(conn, window="24h", scope="all", computed_at_ms=1_700_000_029_000)
-        _insert_radar_row(
-            conn,
-            row_id="radar-newer-history-not-published",
-            event_id="event-old-radar",
-            intent_id="intent-old-radar",
-            asset_id=None,
-            target_id="asset:not-current-radar",
-            symbol="STALE",
-            rank=1,
-            computed_at_ms=1_700_000_029_500,
-        )
         conn.commit()
 
         rows = PendingAssetProfileQuery(conn).pending_rows(
@@ -265,18 +254,18 @@ def _insert_radar_row(
 ) -> None:
     conn.execute(
         """
-        INSERT INTO token_radar_rows(
+        INSERT INTO token_radar_current_rows(
           row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
           lane, rank, intent_id, event_id, intent_json, asset_json, primary_venue_json,
           attention_json, resolution_json, market_json, score_json, decision, data_health_json,
-          source_event_ids_json, created_at_ms, target_type, target_id, pricefeed_id, target_json,
+          source_event_ids_json, listed_at_ms, created_at_ms, target_type, target_id, pricefeed_id, target_json,
           price_json, factor_snapshot_json, factor_version
         )
         VALUES (
           %s, 'token-radar-v13-social-attention', '24h', 'all', %s, %s,
           'all', %s, %s, %s, %s, %s, NULL,
           %s, %s, %s, %s, 'watch', %s,
-          %s, %s, 'Asset', %s, NULL, %s,
+          %s, %s, %s, 'Asset', %s, NULL, %s,
           %s, %s, 'token_factor_snapshot_v3_social_attention'
         )
         """,
@@ -295,6 +284,7 @@ def _insert_radar_row(
             Jsonb({"rank_score": max(0, 100 - rank)}),
             Jsonb({"alpha": "ready"}),
             Jsonb([event_id]),
+            computed_at_ms,
             computed_at_ms,
             target_id,
             Jsonb({"symbol": symbol, "target_id": target_id}),

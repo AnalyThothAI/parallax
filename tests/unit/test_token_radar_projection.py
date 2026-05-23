@@ -899,7 +899,7 @@ class FakeRejectingTokenRadar:
     def mark_coverage(self, **kwargs):
         self.coverage.append(kwargs)
 
-    def replace_rows(self, **kwargs):
+    def publish_rows(self, **kwargs):
         return False
 
 
@@ -911,6 +911,6 @@ class FakeTokenRadar:
     def mark_coverage(self, **kwargs):
         self.coverage.append(kwargs)
 
-    def replace_rows(self, **kwargs):
+    def publish_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True

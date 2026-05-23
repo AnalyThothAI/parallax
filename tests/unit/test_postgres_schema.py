@@ -87,11 +87,15 @@ TOKEN_PROFILE_LOCAL_LOGO_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py"
 )
 EQUITY_EVENT_INTEL_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260522_0081_equity_event_intel.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0083_equity_event_intel.py"
 )
 EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260522_0082_equity_event_fact_candidate_shape.py"
+    "20260523_0084_equity_event_fact_candidate_shape.py"
+)
+TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260523_0085_token_radar_storage_root_fix.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -423,8 +427,8 @@ def test_equity_event_intel_migration_adds_domain_tables_and_indexes() -> None:
     text = EQUITY_EVENT_INTEL_MIGRATION.read_text()
 
     for statement in (
-        'revision = "20260522_0081"',
-        'down_revision = "20260521_0080"',
+        'revision = "20260523_0083"',
+        'down_revision = "20260522_0082"',
         "CREATE TABLE IF NOT EXISTS equity_event_sources",
         "CREATE TABLE IF NOT EXISTS equity_event_fetch_runs",
         "CREATE TABLE IF NOT EXISTS equity_event_universe_members",
@@ -484,8 +488,8 @@ def test_equity_event_fact_candidate_shape_migration_backfills_feature_branch_sc
     text = EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION.read_text()
 
     for statement in (
-        'revision = "20260522_0082"',
-        'down_revision = "20260522_0081"',
+        'revision = "20260523_0084"',
+        'down_revision = "20260523_0083"',
         "ALTER TABLE equity_event_fact_candidates",
         "ADD COLUMN IF NOT EXISTS source_span_id TEXT",
         "ADD COLUMN IF NOT EXISTS company_id TEXT",
@@ -499,6 +503,31 @@ def test_equity_event_fact_candidate_shape_migration_backfills_feature_branch_sc
         "ADD COLUMN IF NOT EXISTS required_slots_json JSONB NOT NULL DEFAULT '{}'::jsonb",
         "ADD COLUMN IF NOT EXISTS evidence_span_start INTEGER NOT NULL DEFAULT 0",
         "ADD COLUMN IF NOT EXISTS evidence_span_end INTEGER NOT NULL DEFAULT 0",
+    ):
+        assert statement in text
+
+
+def test_token_radar_storage_root_fix_migration_hard_cuts_old_storage() -> None:
+    text = TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260523_0085"',
+        'down_revision = "20260523_0084"',
+        "CREATE TABLE IF NOT EXISTS token_radar_current_rows",
+        "CREATE TABLE IF NOT EXISTS token_radar_snapshot_audit",
+        "PARTITION BY RANGE (computed_at_ms)",
+        "CREATE TABLE IF NOT EXISTS token_radar_rank_history",
+        "CREATE TABLE IF NOT EXISTS token_radar_storage_maintenance_runs",
+        'UNIQUE (projection_version, "window", scope, lane, rank)',
+        "idx_token_radar_current_rows_read",
+        "idx_token_radar_rank_history_read",
+        "idx_token_radar_snapshot_audit_settlement",
+        "DROP TABLE IF EXISTS token_radar_rows CASCADE",
+        "DROP TABLE IF EXISTS token_radar_retention_runs",
+        "TRUNCATE TABLE token_radar_target_first_seen RESTART IDENTITY",
+        "DELETE FROM token_radar_projection_coverage",
+        "DELETE FROM projection_offsets",
+        "DELETE FROM projection_runs",
     ):
         assert statement in text
 

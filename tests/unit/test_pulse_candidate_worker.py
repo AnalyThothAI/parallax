@@ -1403,7 +1403,7 @@ class FakeTokenRadar:
         self.rows_by_window_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self.latest_calls = 0
 
-    def latest_rows(self, **kwargs: Any) -> list[dict[str, Any]]:
+    def latest_current_rows(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.latest_calls += 1
         key = (kwargs.get("window"), kwargs.get("scope"))
         if key in self.rows_by_window_scope:

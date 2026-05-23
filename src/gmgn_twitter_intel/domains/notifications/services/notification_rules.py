@@ -302,7 +302,7 @@ class NotificationRuleEngine:
                     symbol=symbol,
                     chain=chain,
                     address=address,
-                    source_table="token_radar_rows",
+                    source_table="token_radar_current_rows",
                     source_id=identity_key,
                     occurrence_at_ms=occurrence_at_ms,
                     payload=payload,

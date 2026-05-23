@@ -6,7 +6,7 @@ grouping, fact candidates, item-scoped agent briefs, and the independent News
 page read model.
 
 The bounded context does not own Token Radar, Pulse, or market facts. News
-workers never write `token_radar_rows`, Signal Pulse tables, or price tick
+workers never write Token Radar current/history/audit read models, Signal Pulse tables, or price tick
 tables. Token identity is read only through domain interfaces; unresolved,
 unknown, or ambiguous mentions remain in attention state instead of being
 forced into a resolved asset.

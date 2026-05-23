@@ -105,7 +105,7 @@ def test_complete_backend_hot_path_without_notify_dependency(
             ).run_once(now_ms=FIXED_NOW_MS + 2_000)
         )
         assert radar_result.notes["rows_written"] >= 1
-        _assert_counts({"token_radar_rows": 1})
+        _assert_counts({"token_radar_current_rows": 1})
         _promote_single_fixture_radar_row_for_pulse()
         _seed_profile_for_pulse_evidence()
 

@@ -258,7 +258,7 @@ class FakeConn:
         job_rows: list[dict] | None = None,
     ) -> None:
         self._rows = {
-            "token_radar_rows": radar_rows,
+            "token_radar_current_rows": radar_rows,
             "pulse_candidates": candidate_rows,
             "pulse_agent_runs": run_rows,
             "pulse_agent_jobs": job_rows or [],
@@ -273,14 +273,14 @@ class FakeConn:
             return FakeCursor(self._rows["pulse_agent_runs"])
         if "FROM pulse_agent_jobs" in sql:
             return FakeCursor(self._rows["pulse_agent_jobs"])
-        if "FROM token_radar_rows" in sql and '"window" = %s' in sql and "scope = %s" in sql:
+        if "FROM token_radar_current_rows" in sql and '"window" = %s' in sql and "scope = %s" in sql:
             if "SELECT computed_at_ms" in sql:
                 window, scope = str(params[-2]), str(params[-1])
             else:
                 window, scope = str(params[1]), str(params[2])
             rows = [
                 row
-                for row in self._rows["token_radar_rows"]
+                for row in self._rows["token_radar_current_rows"]
                 if row.get("window") == window and row.get("scope") == scope
             ]
             if "SELECT computed_at_ms" in sql:

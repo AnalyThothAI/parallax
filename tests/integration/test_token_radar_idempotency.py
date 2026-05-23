@@ -60,7 +60,7 @@ def _radar_rows(conn: Any, *, computed_at_ms: int) -> list[dict[str, Any]]:
           factor_snapshot_json,
           data_health_json,
           source_event_ids_json
-        FROM token_radar_rows
+        FROM token_radar_current_rows
         WHERE projection_version = %s
           AND "window" = '1h'
           AND scope = 'all'

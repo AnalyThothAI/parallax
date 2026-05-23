@@ -405,12 +405,12 @@ class RegistryRepository:
               ) coverage
               JOIN LATERAL (
                 SELECT computed_at_ms
-                FROM token_radar_rows
-                WHERE token_radar_rows.projection_version = %s
-                  AND token_radar_rows."window" = coverage."window"
-                  AND token_radar_rows.scope = coverage.scope
-                  AND token_radar_rows.computed_at_ms >= %s
-                ORDER BY token_radar_rows.computed_at_ms DESC
+                FROM token_radar_current_rows
+                WHERE token_radar_current_rows.projection_version = %s
+                  AND token_radar_current_rows."window" = coverage."window"
+                  AND token_radar_current_rows.scope = coverage.scope
+                  AND token_radar_current_rows.computed_at_ms >= %s
+                ORDER BY token_radar_current_rows.computed_at_ms DESC
                 LIMIT 1
               ) latest_rows ON true
             ),
@@ -424,7 +424,7 @@ class RegistryRepository:
                 NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
                   AS rank_score
               FROM latest_sets
-              JOIN token_radar_rows rows
+              JOIN token_radar_current_rows rows
                 ON rows.projection_version = %s
                AND rows."window" = latest_sets."window"
                AND rows.scope = latest_sets.scope

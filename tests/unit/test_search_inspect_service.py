@@ -174,7 +174,7 @@ class FakeTokenRadar:
             for scope in scopes
         }
 
-    def latest_rows(self, *, window, scope, limit, projection_version):
+    def latest_current_rows(self, *, window, scope, limit, projection_version):
         return []
 
 

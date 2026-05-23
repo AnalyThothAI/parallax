@@ -17,7 +17,9 @@ HOT_PATH_COUNT_QUERIES: dict[str, str] = {
     ),
     "event_anchor_jobs": "SELECT count(*) AS value FROM event_anchor_backfill_jobs WHERE event_id = %(event_id)s",
     "market_ticks": "SELECT count(*) AS value FROM market_ticks",
-    "token_radar_rows": "SELECT count(*) AS value FROM token_radar_rows WHERE \"window\" = '1h' AND scope = 'all'",
+    "token_radar_current_rows": (
+        "SELECT count(*) AS value FROM token_radar_current_rows WHERE \"window\" = '1h' AND scope = 'all'"
+    ),
     "pulse_agent_jobs": "SELECT count(*) AS value FROM pulse_agent_jobs",
     "pulse_agent_runs": "SELECT count(*) AS value FROM pulse_agent_runs",
     "pulse_candidates": "SELECT count(*) AS value FROM pulse_candidates",
@@ -54,7 +56,7 @@ def promote_latest_token_radar_row_for_pulse(conn: Any, *, target_id: str) -> No
     rows = conn.execute(
         """
         SELECT row_id, factor_snapshot_json
-        FROM token_radar_rows
+        FROM token_radar_current_rows
         WHERE "window" = '1h'
           AND scope = 'all'
         ORDER BY (target_id = %(target_id)s) DESC, computed_at_ms DESC, rank ASC
@@ -67,7 +69,7 @@ def promote_latest_token_radar_row_for_pulse(conn: Any, *, target_id: str) -> No
         _make_snapshot_pulse_ready(snapshot)
         conn.execute(
             """
-            UPDATE token_radar_rows
+            UPDATE token_radar_current_rows
             SET factor_snapshot_json = %(factor_snapshot_json)s,
                 decision = 'high_alert',
                 data_health_json = %(data_health_json)s

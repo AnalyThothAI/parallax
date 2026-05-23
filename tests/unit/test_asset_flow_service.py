@@ -38,7 +38,7 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     assert "current_market" not in btc
     assert result["attention"] == []
     assert result["projection"]["version"] == TOKEN_RADAR_PROJECTION_VERSION
-    assert result["projection"]["source"] == "token_radar_rows"
+    assert result["projection"]["source"] == "token_radar_current_rows"
     assert result["projection"]["anchor_coverage"] == {"status": "ready", "ready": 1, "missing": 0, "total": 1}
     assert result["projection"]["unresolved"] == {
         "identity_missing_count": 1,
@@ -115,7 +115,7 @@ class FakeTokenRadar:
         self.coverage = coverage
         self.calls = []
 
-    def latest_rows(self, *, window, scope, limit, projection_version):
+    def latest_current_rows(self, *, window, scope, limit, projection_version):
         self.calls.append({"window": window, "scope": scope, "limit": limit, "projection_version": projection_version})
         return self.rows[:limit]
 

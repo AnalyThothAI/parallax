@@ -780,9 +780,6 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
     assert workers.handle_summary.time_threshold_ms == 1_800_000
     assert workers.handle_summary.window_days == 3
-    assert workers.token_radar_projection.retention_days == 7
-    assert workers.token_radar_projection.retention_batch_size == 10_000
-    assert workers.token_radar_projection.retention_settlement_grace_days == 2
     Settings(**{**payload, "workers": workers})
 
 

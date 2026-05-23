@@ -995,9 +995,6 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
-    retention_days: int = Field(default=7, ge=2)
-    retention_batch_size: int = Field(default=10_000, ge=1)
-    retention_settlement_grace_days: int = Field(default=2, ge=0)
     advisory_lock_key: int = 2026051501
     wakes_on: tuple[str, ...] = ("market_tick_written", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
@@ -2025,9 +2022,6 @@ token_radar_projection:
   interval_seconds: 10.0
   batch_size: 100
   statement_timeout_seconds: 120.0
-  retention_days: 7
-  retention_batch_size: 10000
-  retention_settlement_grace_days: 2
   advisory_lock_key: 2026051501
   wakes_on: ["market_tick_written", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]

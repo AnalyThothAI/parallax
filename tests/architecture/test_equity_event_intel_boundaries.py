@@ -9,6 +9,9 @@ WEB_ROOT = ROOT / "web/src"
 
 FORBIDDEN_TABLE_REFERENCES = (
     "token_radar_rows",
+    "token_radar_current_rows",
+    "token_radar_rank_history",
+    "token_radar_snapshot_audit",
     "pulse_candidates",
     "news_items",
     "news_page_rows",

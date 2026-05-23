@@ -357,7 +357,7 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
     assert "`0xpepe`" in hot[0].body
     assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
     assert "[X Search]" in hot[0].body
-    assert hot[0].source_table == "token_radar_rows"
+    assert hot[0].source_table == "token_radar_current_rows"
     assert hot[0].payload["target_id"] == "asset:eip155:1:erc20:0xpepe"
     assert hot[0].payload["social_heat_score"] == 82
     assert hot[0].payload["decision"] == "driver"

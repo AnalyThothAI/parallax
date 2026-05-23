@@ -51,7 +51,9 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_retention import TokenRadarRetentionService
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_storage_reset import (
+    clean_reset_token_radar_storage,
+)
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
@@ -155,7 +157,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
     with repositories(settings) as repos:
         if args.ops_command == "factor-diagnostics":
-            rows = repos.token_radar.latest_rows(
+            rows = repos.token_radar.latest_current_rows(
                 window=args.window,
                 scope=args.scope,
                 limit=args.limit,
@@ -175,12 +177,11 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             )
             return 0, {"ok": True, "data": data}
 
-        if args.ops_command == "backfill-token-radar-first-seen":
-            data = _backfill_token_radar_first_seen(
-                repos.token_radar,
-                batch_size=args.batch_size,
-                max_batches=args.max_batches,
-                after_cursor=args.after_cursor,
+        if args.ops_command == "clean-reset-token-radar-storage":
+            data = clean_reset_token_radar_storage(
+                repos.signals.conn,
+                dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
             )
             return 0, {"ok": True, "data": data}
 
@@ -191,18 +192,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 max_batches=args.max_batches,
                 after_cursor=args.after_cursor,
                 dry_run=bool(args.dry_run),
-            )
-            return 0, {"ok": True, "data": data}
-
-        if args.ops_command == "prune-token-radar":
-            data = TokenRadarRetentionService(token_radar=repos.token_radar).prune(
-                now_ms=_now_ms(),
-                retention_days=args.retention_days,
-                settlement_grace_days=args.settlement_grace_days,
-                batch_size=args.batch_size,
-                max_batches=args.max_batches,
-                dry_run=bool(args.dry_run),
-                execute=bool(args.execute),
             )
             return 0, {"ok": True, "data": data}
 
@@ -315,62 +304,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
 
     return 2, {"ok": False, "error": f"unknown ops command: {args.ops_command}"}
-
-
-def _backfill_token_radar_first_seen(
-    repository: object,
-    *,
-    batch_size: int,
-    max_batches: int,
-    after_cursor: str = "",
-) -> dict[str, Any]:
-    parsed_batch_size = max(1, int(batch_size))
-    parsed_max_batches = max(1, int(max_batches))
-    parsed_cursor = _cursor_mapping(after_cursor)
-    after_computed_at_ms = _optional_int(parsed_cursor.get("computed_at_ms"))
-    after_row_id = str(parsed_cursor.get("row_id") or "") or None
-    batches = 0
-    rows_scanned = 0
-    rows_upserted = 0
-    has_more = False
-    for _ in range(parsed_max_batches):
-        result = dict(
-            _call_with_supported_kwargs(
-                repository.backfill_first_seen_rows_batch,  # type: ignore[attr-defined]
-                batch_size=parsed_batch_size,
-                after_computed_at_ms=after_computed_at_ms,
-                after_row_id=after_row_id,
-                commit=True,
-            )
-        )
-        batches += 1
-        rows_scanned += int(result.get("rows_scanned") or result.get("rows_upserted") or 0)
-        rows_upserted += int(result.get("rows_upserted") or 0)
-        has_more = bool(result.get("has_more"))
-        next_computed_at_ms = _optional_int(result.get("last_computed_at_ms"))
-        next_row_id = str(result.get("last_row_id") or "") or None
-        if next_computed_at_ms is not None and next_row_id is not None:
-            if next_computed_at_ms == after_computed_at_ms and next_row_id == after_row_id:
-                break
-            after_computed_at_ms = next_computed_at_ms
-            after_row_id = next_row_id
-        if not has_more or next_computed_at_ms is None or next_row_id is None:
-            break
-    last_cursor = (
-        {"computed_at_ms": after_computed_at_ms, "row_id": after_row_id}
-        if after_computed_at_ms is not None and after_row_id is not None
-        else None
-    )
-    return {
-        "processed": rows_scanned,
-        "upserted": rows_upserted,
-        "has_more": has_more,
-        "last_cursor": last_cursor,
-        "next_after_cursor": _cursor_json(last_cursor),
-        "batches": batches,
-        "rows_scanned": rows_scanned,
-        "rows_upserted": rows_upserted,
-    }
 
 
 def _backfill_watchlist_signal_stats(
@@ -969,7 +902,7 @@ def _audit_token_intent(repos: object, *, event_id: str | None, intent_id: str |
 
 
 def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, now_ms: int) -> dict:
-    rows = repos.token_radar.latest_rows(
+    rows = repos.token_radar.latest_current_rows(
         window=window,
         scope=scope,
         limit=limit,
@@ -986,7 +919,7 @@ def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, no
         "window": window,
         "scope": scope,
         "limit": limit,
-        **_audit_token_radar_rows(
+        **_audit_token_radar_current_rows(
             rows,
             now_ms=now_ms,
             source_current_window_rows=source_current_window_rows,
@@ -996,7 +929,7 @@ def _audit_token_radar(repos: object, *, window: str, scope: str, limit: int, no
     }
 
 
-def _audit_token_radar_rows(
+def _audit_token_radar_current_rows(
     rows: list[dict],
     *,
     now_ms: int,

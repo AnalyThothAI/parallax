@@ -170,38 +170,46 @@ interval; service correctness must not depend on `NOTIFY` delivery.
 ## One writer per read model
 
 Each derived read model has exactly one runtime writer. A second runtime
-writer of `token_radar_rows`, `pulse_candidates`, or any future read model
+writer of `token_radar_current_rows`, `token_radar_rank_history`,
+`token_radar_snapshot_audit`, `pulse_candidates`, or any future read model
 is both a reliability incident and an architecture-test violation. The
 canonical worker registry and worker inventory are architecture-guarded
 so runtime ownership stays explicit. Ops paths and CLI rebuilds are
 explicit exceptions and must call the same projection service the worker
 uses; they do not run their own SQL.
 
-## Bounded Token Radar And Watchlist Summary Maintenance
+## Token Radar Clean Reset And Watchlist Summary Maintenance
 
-Before pruning Token Radar history or re-enabling Watchlist handle summaries
-against existing data, backfill compact read models in bounded batches:
+Token Radar storage is a clean-reset hard cut. Legacy `token_radar_rows` and
+`token_radar_retention_runs` are removed by migration/reset; current reads use
+`token_radar_current_rows`, lightweight history uses `token_radar_rank_history`,
+and full audit snapshots use partitioned `token_radar_snapshot_audit`.
+
+When resetting Token Radar read models against real data, dry-run first:
 
 ```bash
-uv run gmgn-twitter-intel ops backfill-token-radar-first-seen --batch-size 5000 --max-batches 20
+uv run gmgn-twitter-intel ops clean-reset-token-radar-storage --dry-run
+uv run gmgn-twitter-intel ops clean-reset-token-radar-storage --execute
+```
+
+The reset command may clear Token Radar derived state and projection controls,
+but it must not touch material facts such as `events`, `token_intents`,
+`token_intent_resolutions`, `asset_identity_*`, `market_ticks`, or
+`enriched_events`.
+
+Cross-domain hard-cut cleanup commands, such as CEX Binance cleanup, may report
+Token Radar rows that will become stale, but they do not delete Token Radar
+tables directly. Run the clean-reset command after those fact-level cleanups
+and before restarting Token Radar projection workers.
+
+Before re-enabling Watchlist handle summaries against existing data, backfill
+compact watchlist read models in bounded batches:
+
+```bash
 uv run gmgn-twitter-intel ops backfill-watchlist-signal-stats --batch-size 5000 --max-batches 20
 ```
 
-Prune `token_radar_rows` through the explicit maintenance command only. Always
-dry-run first, then execute small batches while checking `/readyz` and public
-read surfaces between runs:
-
-```bash
-uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --dry-run
-uv run gmgn-twitter-intel ops prune-token-radar --retention-days 7 --batch-size 10000 --max-batches 1 --execute
-```
-
-`ops prune-token-radar` must report protected current batches and delete at
-most the requested batch budget. It is an operator action, not an API side
-effect. Current-batch protection uses `token_radar_projection_coverage`; the
-extra actual-latest protection is evaluated for projection/window/scope keys
-known to that coverage table, avoiding a full historical scan of
-`token_radar_rows`. `handle_summary` should stay disabled in operator-owned
+`handle_summary` should stay disabled in operator-owned
 `~/.gmgn-twitter-intel/workers.yaml` until
 `backfill-watchlist-signal-stats` reports `has_more=false` and the stats row
 counts are plausible for the configured handles.

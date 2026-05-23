@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft
+**Status:** Superseded for Token Radar storage by `docs/superpowers/plans/active/2026-05-23-token-radar-storage-root-fix-cleanup-plan-cn.md`
 **Date:** 2026-05-20
 **Owning spec:** Inline operator requirement: prune old `token_radar_rows`, restore `handle_summary`, and remove the root DB bottleneck without breaking live business surfaces.
 **Worktree:** `.worktrees/token-radar-retention-watchlist-summary-hard-cut/`
 **Branch:** `codex/token-radar-retention-watchlist-summary-hard-cut`
 
-**Goal:** Make Token Radar history bounded and make watchlist handle summaries event-driven, so production can retain only the hot read-model horizon while `/api/token-radar`, Signal Pulse, Narrative, Recent, News, and watchlist pages continue to work.
+**Goal:** Historical plan. The watchlist-summary portion remains historical context; the Token Radar retention/prune portion is no longer the target architecture. The 2026-05-23 hard cut deletes the legacy Radar table and restarts derived Radar storage from zero instead of keeping retention compatibility.
 
 **Architecture:** Keep Kappa/CQRS boundaries: PostgreSQL fact tables remain the business truth; `token_radar_rows`, `watchlist_handle_summaries`, `watchlist_handle_signal_stats`, and `watchlist_handle_signal_events` are rebuildable read/control models with one runtime writer per model. Before pruning historical radar rows, persist first-seen/listed-at metadata in a compact read model keyed by the same identity semantics as runtime rows (`target_type_key`, `identity_id`). Before re-enabling `handle_summary`, move trigger decisions from historical scans to an indexed, event-idempotent stats ledger updated by enrichment writes and bounded backfill.
 

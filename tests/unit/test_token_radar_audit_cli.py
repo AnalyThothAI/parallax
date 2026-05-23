@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.app.surfaces.cli.commands import ops as cli_ops
-from gmgn_twitter_intel.app.surfaces.cli.commands.ops import _audit_token_radar_rows
+from gmgn_twitter_intel.app.surfaces.cli.commands.ops import _audit_token_radar_current_rows
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
@@ -9,8 +9,8 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
-def test_audit_token_radar_rows_rejects_legacy_runtime_payload_without_snapshot():
-    audit = _audit_token_radar_rows(
+def test_audit_token_radar_current_rows_rejects_legacy_runtime_payload_without_snapshot():
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -33,8 +33,8 @@ def test_audit_token_radar_rows_rejects_legacy_runtime_payload_without_snapshot(
     )
 
 
-def test_audit_token_radar_rows_accepts_factor_snapshot_contract():
-    audit = _audit_token_radar_rows(
+def test_audit_token_radar_current_rows_accepts_factor_snapshot_contract():
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -58,8 +58,8 @@ def test_audit_token_radar_rows_accepts_factor_snapshot_contract():
     assert audit["market_lag_ms"] == 500
 
 
-def test_audit_token_radar_rows_rejects_empty_projection_when_sources_exist():
-    audit = _audit_token_radar_rows(
+def test_audit_token_radar_current_rows_rejects_empty_projection_when_sources_exist():
+    audit = _audit_token_radar_current_rows(
         [],
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
@@ -71,8 +71,8 @@ def test_audit_token_radar_rows_rejects_empty_projection_when_sources_exist():
     assert any(item["code"] == "empty_projection_rows" for item in audit["violations"])
 
 
-def test_audit_token_radar_rows_accepts_empty_projection_when_current_scope_is_empty():
-    audit = _audit_token_radar_rows(
+def test_audit_token_radar_current_rows_accepts_empty_projection_when_current_scope_is_empty():
+    audit = _audit_token_radar_current_rows(
         [],
         now_ms=1_700_000_000_000,
         source_current_window_rows=0,
@@ -84,10 +84,10 @@ def test_audit_token_radar_rows_accepts_empty_projection_when_current_scope_is_e
     assert audit["source_current_window_rows"] == 0
 
 
-def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
+def test_audit_token_radar_current_rows_rejects_missing_factor_family_contract():
     snapshot = factor_snapshot()
     del snapshot["families"]["social_heat"]
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -110,11 +110,11 @@ def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
     assert any(item["code"] == "missing_factor_families" for item in audit["violations"])
 
 
-def test_audit_token_radar_rows_rejects_extra_old_factor_family_contract():
+def test_audit_token_radar_current_rows_rejects_extra_old_factor_family_contract():
     snapshot = factor_snapshot()
     snapshot["families"]["market_quality"] = family({"market_status": "fresh"})
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -137,11 +137,11 @@ def test_audit_token_radar_rows_rejects_extra_old_factor_family_contract():
     assert any(item["code"] == "extra_factor_families" for item in audit["violations"])
 
 
-def test_audit_token_radar_rows_rejects_hard_gates_key():
+def test_audit_token_radar_current_rows_rejects_hard_gates_key():
     snapshot = factor_snapshot()
     snapshot["hard_gates"] = {"eligible_for_high_alert": True}
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -168,11 +168,11 @@ def test_audit_token_radar_rows_rejects_hard_gates_key():
     )
 
 
-def test_audit_token_radar_rows_rejects_malformed_v3_contract():
+def test_audit_token_radar_current_rows_rejects_malformed_v3_contract():
     snapshot = factor_snapshot()
     snapshot["nested"] = {"volume_24h_usd": 123.45}
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -197,11 +197,11 @@ def test_audit_token_radar_rows_rejects_malformed_v3_contract():
     )
 
 
-def test_audit_token_radar_rows_rejects_empty_v3_provenance():
+def test_audit_token_radar_current_rows_rejects_empty_v3_provenance():
     snapshot = factor_snapshot()
     snapshot["provenance"] = {}
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -227,11 +227,11 @@ def test_audit_token_radar_rows_rejects_empty_v3_provenance():
     )
 
 
-def test_audit_token_radar_rows_rejects_empty_v3_source_event_ids():
+def test_audit_token_radar_current_rows_rejects_empty_v3_source_event_ids():
     snapshot = factor_snapshot()
     snapshot["provenance"]["source_event_ids"] = []
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -257,11 +257,11 @@ def test_audit_token_radar_rows_rejects_empty_v3_source_event_ids():
     )
 
 
-def test_audit_token_radar_rows_rejects_empty_v3_family_block():
+def test_audit_token_radar_current_rows_rejects_empty_v3_family_block():
     snapshot = factor_snapshot()
     snapshot["families"]["social_heat"] = {}
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -287,8 +287,8 @@ def test_audit_token_radar_rows_rejects_empty_v3_family_block():
     )
 
 
-def test_audit_token_radar_rows_rejects_wrong_factor_version():
-    audit = _audit_token_radar_rows(
+def test_audit_token_radar_current_rows_rejects_wrong_factor_version():
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -311,13 +311,13 @@ def test_audit_token_radar_rows_rejects_wrong_factor_version():
     assert any(item["code"] == "wrong_factor_version" for item in audit["violations"])
 
 
-def test_audit_token_radar_rows_rejects_high_alert_when_gate_is_not_eligible():
+def test_audit_token_radar_current_rows_rejects_high_alert_when_gate_is_not_eligible():
     snapshot = factor_snapshot()
     snapshot["gates"]["eligible_for_high_alert"] = False
     snapshot["gates"]["blocked_reasons"] = ["market_stale"]
     snapshot["composite"]["recommended_decision"] = "high_alert"
 
-    audit = _audit_token_radar_rows(
+    audit = _audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -340,13 +340,13 @@ def test_audit_token_radar_rows_rejects_high_alert_when_gate_is_not_eligible():
     assert any(item["code"] == "high_alert_without_gate_eligibility" for item in audit["violations"])
 
 
-def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch):
+def test_audit_token_radar_current_rows_uses_domain_factor_snapshot_version(monkeypatch):
     runtime_version = "token_factor_snapshot_runtime_test"
     monkeypatch.setattr(cli_ops, "TOKEN_FACTOR_SNAPSHOT_VERSION", runtime_version)
     snapshot = factor_snapshot()
     snapshot["schema_version"] = runtime_version
 
-    audit = cli_ops._audit_token_radar_rows(
+    audit = cli_ops._audit_token_radar_current_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
