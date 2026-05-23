@@ -30,6 +30,7 @@ def list_news(
     coverage_tag: Annotated[str, Query()] = "",
     content_class: Annotated[str, Query()] = "",
     q: Annotated[str, Query()] = "",
+    include_unprojected: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
@@ -47,6 +48,7 @@ def list_news(
             coverage_tag=coverage_tag or None,
             content_class=content_class or None,
             q=q or None,
+            include_unprojected=include_unprojected,
         )
     return _json({"ok": True, "data": data})
 

@@ -25,6 +25,7 @@ class NewsPageQuery:
         coverage_tag: str | None = None,
         content_class: str | None = None,
         q: str | None = None,
+        include_unprojected: bool = False,
     ) -> dict[str, Any]:
         rows = self.repository.list_news_page_rows(
             limit=max(1, int(limit)),
@@ -40,6 +41,7 @@ class NewsPageQuery:
             coverage_tag=coverage_tag,
             content_class=content_class,
             q=q,
+            include_unprojected=include_unprojected,
         )
         next_cursor = news_page_cursor(rows[-1]) if rows else None
         return {"items": rows, "next_cursor": next_cursor}

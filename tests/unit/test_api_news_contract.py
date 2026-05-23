@@ -30,6 +30,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
             "coverage_tag": None,
             "cursor": "2000:row-old",
             "direction": "bullish",
+            "include_unprojected": False,
             "lane": None,
             "limit": 1,
             "provider_type": None,
@@ -96,6 +97,7 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
         "coverage_tag": "crypto_market",
         "cursor": None,
         "direction": None,
+        "include_unprojected": False,
         "lane": None,
         "limit": 100,
         "provider_type": "rss",
@@ -128,6 +130,7 @@ class FakeNewsRepository:
         coverage_tag: str | None = None,
         content_class: str | None = None,
         q: str | None = None,
+        include_unprojected: bool,
     ):
         self.calls.append(
             {
@@ -135,6 +138,7 @@ class FakeNewsRepository:
                 "coverage_tag": coverage_tag,
                 "cursor": cursor,
                 "direction": direction,
+                "include_unprojected": include_unprojected,
                 "lane": lane,
                 "limit": limit,
                 "provider_type": provider_type,

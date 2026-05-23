@@ -629,56 +629,144 @@ class NewsRepository:
         coverage_tag: str | None = None,
         content_class: str | None = None,
         q: str | None = None,
+        include_unprojected: bool = False,
+    ) -> list[dict[str, Any]]:
+        if include_unprojected:
+            return self._list_news_page_rows_with_unprojected_fallback(
+                limit=limit,
+                cursor=cursor,
+                status=status,
+                direction=direction,
+                lane=lane,
+                source=source,
+                target=target,
+                provider_type=provider_type,
+                source_role=source_role,
+                trust_tier=trust_tier,
+                coverage_tag=coverage_tag,
+                content_class=content_class,
+                q=q,
+            )
+        return self._list_projected_news_page_rows(
+            limit=limit,
+            cursor=cursor,
+            status=status,
+            direction=direction,
+            lane=lane,
+            source=source,
+            target=target,
+            provider_type=provider_type,
+            source_role=source_role,
+            trust_tier=trust_tier,
+            coverage_tag=coverage_tag,
+            content_class=content_class,
+            q=q,
+        )
+
+    def _list_projected_news_page_rows(
+        self,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        status: str | None = None,
+        direction: str | None = None,
+        lane: str | None = None,
+        source: str | None = None,
+        target: str | None = None,
+        provider_type: str | None = None,
+        source_role: str | None = None,
+        trust_tier: str | None = None,
+        coverage_tag: str | None = None,
+        content_class: str | None = None,
+        q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
-        filters: list[str] = []
-        filter_params: list[Any] = []
-        if status:
-            filters.append("lifecycle_status = %s")
-            filter_params.append(str(status))
-        if direction:
-            filters.append("LOWER(agent_brief_json ->> 'direction') = %s")
-            filter_params.append(str(direction).strip().lower())
-        if source:
-            filters.append("source_domain = %s")
-            filter_params.append(str(source))
-        if provider_type:
-            filters.append("source_json ->> 'provider_type' = %s")
-            filter_params.append(str(provider_type))
-        if source_role:
-            filters.append("source_json ->> 'source_role' = %s")
-            filter_params.append(str(source_role))
-        if trust_tier:
-            filters.append("source_json ->> 'trust_tier' = %s")
-            filter_params.append(str(trust_tier))
-        if coverage_tag:
-            filters.append("(source_json -> 'coverage_tags') ? %s")
-            filter_params.append(str(coverage_tag))
-        if content_class:
-            filters.append(
-                """
-                EXISTS (
-                  SELECT 1
-                    FROM jsonb_array_elements(fact_lanes_json) AS fact_lane(value)
-                   WHERE fact_lane.value ->> 'content_class' = %s
-                      OR fact_lane.value ->> 'event_type' = %s
-                )
-                """
+        filter_sql, filter_params = _news_page_row_filter_sql(
+            status=status,
+            direction=direction,
+            lane=lane,
+            source=source,
+            target=target,
+            provider_type=provider_type,
+            source_role=source_role,
+            trust_tier=trust_tier,
+            coverage_tag=coverage_tag,
+            content_class=content_class,
+            q=q,
+        )
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              row_id,
+              news_item_id,
+              story_id,
+              latest_at_ms,
+              lifecycle_status,
+              headline,
+              summary,
+              source_domain,
+              canonical_url,
+              token_lanes_json,
+              fact_lanes_json,
+              story_json,
+              source_json,
+              agent_brief_json,
+              agent_status,
+              agent_status AS agent_brief_status,
+              agent_brief_json AS agent_brief,
+              agent_brief_computed_at_ms,
+              computed_at_ms,
+              projection_version
+            FROM news_page_rows
+            WHERE (
+              %s::bigint IS NULL
+              OR (latest_at_ms, row_id) < (%s::bigint, %s::text)
             )
-            normalized_content_class = str(content_class)
-            filter_params.extend([normalized_content_class, normalized_content_class])
-        if q:
-            filters.append("(headline ILIKE %s OR summary ILIKE %s)")
-            needle = f"%{str(q).strip()}%"
-            filter_params.extend([needle, needle])
-        if lane:
-            filters.append("(token_lanes_json::text ILIKE %s OR fact_lanes_json::text ILIKE %s)")
-            lane_needle = f"%{str(lane).strip()}%"
-            filter_params.extend([lane_needle, lane_needle])
-        if target:
-            filters.append("token_lanes_json::text ILIKE %s")
-            filter_params.append(f"%{str(target).strip()}%")
-        filter_sql = " AND " + " AND ".join(filters) if filters else ""
+            {filter_sql}
+            ORDER BY latest_at_ms DESC, row_id DESC
+            LIMIT %s
+            """,
+            (
+                cursor_time,
+                cursor_time,
+                cursor_id,
+                *filter_params,
+                max(0, int(limit)),
+            ),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _list_news_page_rows_with_unprojected_fallback(
+        self,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        status: str | None = None,
+        direction: str | None = None,
+        lane: str | None = None,
+        source: str | None = None,
+        target: str | None = None,
+        provider_type: str | None = None,
+        source_role: str | None = None,
+        trust_tier: str | None = None,
+        coverage_tag: str | None = None,
+        content_class: str | None = None,
+        q: str | None = None,
+    ) -> list[dict[str, Any]]:
+        cursor_time, cursor_id = _decode_page_cursor(cursor)
+        filter_sql, filter_params = _news_page_row_filter_sql(
+            status=status,
+            direction=direction,
+            lane=lane,
+            source=source,
+            target=target,
+            provider_type=provider_type,
+            source_role=source_role,
+            trust_tier=trust_tier,
+            coverage_tag=coverage_tag,
+            content_class=content_class,
+            q=q,
+        )
         rows = self.conn.execute(
             f"""
             WITH visible_rows AS (
@@ -2008,6 +2096,71 @@ def _decode_page_cursor(cursor: str | None) -> tuple[int | None, str | None]:
     except ValueError:
         return None, str(cursor)
     return cursor_time, row_id
+
+
+def _news_page_row_filter_sql(
+    *,
+    status: str | None = None,
+    direction: str | None = None,
+    lane: str | None = None,
+    source: str | None = None,
+    target: str | None = None,
+    provider_type: str | None = None,
+    source_role: str | None = None,
+    trust_tier: str | None = None,
+    coverage_tag: str | None = None,
+    content_class: str | None = None,
+    q: str | None = None,
+) -> tuple[str, list[Any]]:
+    filters: list[str] = []
+    filter_params: list[Any] = []
+    if status:
+        filters.append("lifecycle_status = %s")
+        filter_params.append(str(status))
+    if direction:
+        filters.append("LOWER(agent_brief_json ->> 'direction') = %s")
+        filter_params.append(str(direction).strip().lower())
+    if source:
+        filters.append("source_domain = %s")
+        filter_params.append(str(source))
+    if provider_type:
+        filters.append("source_json ->> 'provider_type' = %s")
+        filter_params.append(str(provider_type))
+    if source_role:
+        filters.append("source_json ->> 'source_role' = %s")
+        filter_params.append(str(source_role))
+    if trust_tier:
+        filters.append("source_json ->> 'trust_tier' = %s")
+        filter_params.append(str(trust_tier))
+    if coverage_tag:
+        filters.append("(source_json -> 'coverage_tags') ? %s")
+        filter_params.append(str(coverage_tag))
+    if content_class:
+        filters.append(
+            """
+            EXISTS (
+              SELECT 1
+                FROM jsonb_array_elements(fact_lanes_json) AS fact_lane(value)
+               WHERE fact_lane.value ->> 'content_class' = %s
+                  OR fact_lane.value ->> 'event_type' = %s
+            )
+            """
+        )
+        normalized_content_class = str(content_class)
+        filter_params.extend([normalized_content_class, normalized_content_class])
+    if q:
+        filters.append("(headline ILIKE %s OR summary ILIKE %s)")
+        needle = f"%{str(q).strip()}%"
+        filter_params.extend([needle, needle])
+    if lane:
+        filters.append("(token_lanes_json::text ILIKE %s OR fact_lanes_json::text ILIKE %s)")
+        lane_needle = f"%{str(lane).strip()}%"
+        filter_params.extend([lane_needle, lane_needle])
+    if target:
+        filters.append("token_lanes_json::text ILIKE %s")
+        filter_params.append(f"%{str(target).strip()}%")
+    filter_sql = " AND " + " AND ".join(filters) if filters else ""
+    return filter_sql, filter_params
 
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
