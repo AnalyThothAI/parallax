@@ -146,7 +146,7 @@ class NarrativeRepository:
         rows = self.conn.execute(
             """
             WITH latest AS (
-              SELECT computed_at_ms
+              SELECT computed_at_ms, row_count
               FROM token_radar_projection_coverage
               WHERE projection_version = %s
                 AND "window" = %s
@@ -160,23 +160,33 @@ class NarrativeRepository:
                    token_radar_current_rows.target_type,
                    token_radar_current_rows.target_id,
                    token_radar_current_rows.rank,
-                   token_radar_current_rows.computed_at_ms,
+                   latest.computed_at_ms AS computed_at_ms,
+                   token_radar_current_rows.computed_at_ms AS row_computed_at_ms,
                    NULLIF(
                      token_radar_current_rows.factor_snapshot_json->'composite'->>'rank_score', ''
                    )::double precision AS rank_score,
                    token_radar_current_rows.source_event_ids_json,
                    token_radar_current_rows.source_max_received_at_ms
-            FROM token_radar_current_rows
-            JOIN latest ON latest.computed_at_ms = token_radar_current_rows.computed_at_ms
-            WHERE token_radar_current_rows."window" = %s
-              AND token_radar_current_rows.scope = %s
-              AND token_radar_current_rows.projection_version = %s
+            FROM latest
+            JOIN token_radar_current_rows
+              ON token_radar_current_rows.projection_version = %s
+             AND token_radar_current_rows."window" = %s
+             AND token_radar_current_rows.scope = %s
+            WHERE latest.row_count > 0
               AND token_radar_current_rows.target_type IS NOT NULL
               AND token_radar_current_rows.target_id IS NOT NULL
             ORDER BY token_radar_current_rows.rank ASC
             LIMIT %s
             """,
-            (projection_version, window, scope, window, scope, projection_version, int(limit)),
+            (
+                projection_version,
+                window,
+                scope,
+                projection_version,
+                window,
+                scope,
+                int(limit),
+            ),
         ).fetchall()
         return [_row(row) for row in rows]
 

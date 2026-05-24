@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectNoUnhandledApiRequests } from "@tests/e2e/support/layoutAssertions";
 import { installMockApi } from "@tests/e2e/support/mockApi";
 
 // @desktop-only-spec
@@ -75,4 +76,31 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
 
   await expect(page.locator(".detail-task-panel")).toHaveCount(0);
   await expect(page.locator(".detail-drawer")).toHaveCount(0);
+});
+
+test("radar row click reaches token detail without hit-test interception", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await installMockApi(page);
+  await page.goto("/");
+
+  const radarRow = page.getByRole("article", { name: "Token Radar item $UPEG" });
+  await expect(radarRow).toBeVisible();
+
+  const hitTest = await radarRow.evaluate((row) => {
+    const rect = row.getBoundingClientRect();
+    const element = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    return {
+      rowContainsHit: element ? row.contains(element) : false,
+      hitClassName: element instanceof HTMLElement ? element.className : "",
+      hitTagName: element?.tagName ?? "",
+    };
+  });
+  expect(hitTest).toMatchObject({ rowContainsHit: true });
+
+  await radarRow.click();
+  await expect(page).toHaveURL(/\/token\/Asset\/asset%3Adex%3Aeth%3A/);
+  await expectNoUnhandledApiRequests(page);
 });

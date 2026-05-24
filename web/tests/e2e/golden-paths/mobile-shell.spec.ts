@@ -115,6 +115,39 @@ test("mobile radar list remains reachable above the task nav without overlap", a
   await expectNoUnhandledApiRequests(page);
 });
 
+test("mobile radar row click reaches token detail above the task nav", async ({ page }) => {
+  await installMockApi(page);
+  await page.goto("/?window=24h&scope=matched");
+
+  const rows = page.locator(".token-radar-row");
+  await expect(rows).toHaveCount(8);
+  const lastRow = rows.last();
+  await lastRow.scrollIntoViewIfNeeded();
+
+  const hitTest = await lastRow.evaluate((row) => {
+    const rect = row.getBoundingClientRect();
+    const element = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    const taskNav = document.querySelector(".live-task-nav");
+    return {
+      rowContainsHit: element ? row.contains(element) : false,
+      hitClassName: element instanceof HTMLElement ? element.className : "",
+      hitTagName: element?.tagName ?? "",
+      taskNavContainsHit: element ? Boolean(taskNav?.contains(element)) : false,
+    };
+  });
+  expect(hitTest).toMatchObject({
+    rowContainsHit: true,
+    taskNavContainsHit: false,
+  });
+
+  await lastRow.click();
+  await expect(page).toHaveURL(/\/token\/Asset\/asset%3Adex%3Aeth%3A/);
+  await expectNoUnhandledApiRequests(page);
+});
+
 async function expectActiveMobileTask(page: Page, activePanel: string) {
   await expect(page.locator(`[data-mobile-task-panel="${activePanel}"]`)).toBeVisible();
   for (const inactivePanel of ["radar", "tape", "lab"].filter((panel) => panel !== activePanel)) {

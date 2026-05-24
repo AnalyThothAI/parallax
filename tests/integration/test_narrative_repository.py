@@ -5,6 +5,7 @@ from psycopg.types.json import Jsonb
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -94,12 +95,12 @@ def test_admitted_radar_rows_query_matches_current_token_radar_schema(tmp_path):
             window="5m",
             scope="all",
             limit=10,
-            projection_version="token_radar_v3",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
     finally:
         conn.close()
 
-    assert "rank_score" not in columns
+    assert "rank_score" in columns
     assert "factor_snapshot_json" in columns
     assert rows == []
 
@@ -114,7 +115,7 @@ def test_admitted_radar_rows_uses_latest_ready_projection_frontier(tmp_path):
             conn,
             window="24h",
             scope="all",
-            projection_version="token_radar_v3",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             computed_at_ms=1_000,
         )
         _insert_radar_row(
@@ -142,9 +143,16 @@ def test_admitted_radar_rows_uses_latest_ready_projection_frontier(tmp_path):
                 started_at_ms = 2_000,
                 finished_at_ms = 2_000,
                 updated_at_ms = 2_000
-            WHERE projection_version = 'token_radar_v3'
+            WHERE projection_version = %s
               AND "window" = '24h'
               AND scope = 'all'
+            """,
+            (TOKEN_RADAR_PROJECTION_VERSION,),
+        )
+        conn.execute(
+            """
+            DELETE FROM token_radar_current_rows
+            WHERE row_id IN ('radar-old-1', 'radar-old-2')
             """
         )
         _insert_radar_row(
@@ -162,13 +170,63 @@ def test_admitted_radar_rows_uses_latest_ready_projection_frontier(tmp_path):
             window="24h",
             scope="all",
             limit=3,
-            projection_version="token_radar_v3",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
     finally:
         conn.close()
 
     assert [row["computed_at_ms"] for row in rows] == [2_000]
     assert [row["target_id"] for row in rows] == ["asset:latest:rank10"]
+
+
+def test_admitted_radar_rows_uses_current_rows_when_coverage_timestamp_advances_without_row_churn(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        assert evidence.insert_event(make_event("event-stable"), is_watched=True) is True
+        _insert_intent(conn, intent_id="intent-event-stable", event_id="event-stable", observed_at_ms=1_000)
+        _insert_radar_coverage(
+            conn,
+            window="24h",
+            scope="all",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            computed_at_ms=1_000,
+        )
+        _insert_radar_row(
+            conn,
+            row_id="radar-stable",
+            event_id="event-stable",
+            intent_id="intent-event-stable",
+            target_id="asset:stable:rank1",
+            rank=1,
+            computed_at_ms=1_000,
+        )
+        conn.execute(
+            """
+            UPDATE token_radar_projection_coverage
+            SET computed_at_ms = 2_000,
+                started_at_ms = 2_000,
+                finished_at_ms = 2_000,
+                updated_at_ms = 2_000
+            WHERE projection_version = %s
+              AND "window" = '24h'
+              AND scope = 'all'
+            """,
+            (TOKEN_RADAR_PROJECTION_VERSION,),
+        )
+        conn.commit()
+
+        rows = repo.admitted_radar_rows(
+            window="24h",
+            scope="all",
+            limit=3,
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        )
+    finally:
+        conn.close()
+
+    assert [row["target_id"] for row in rows] == ["asset:stable:rank1"]
+    assert [row["computed_at_ms"] for row in rows] == [2_000]
+    assert [row["row_computed_at_ms"] for row in rows] == [1_000]
 
 
 def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
@@ -1776,24 +1834,29 @@ def _insert_radar_row(
         """
         INSERT INTO token_radar_current_rows(
           row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
-          lane, rank, intent_id, event_id, intent_json, asset_json, primary_venue_json,
+          lane, target_type_key, identity_id, rank, rank_score, intent_id, event_id, intent_json,
+          asset_json, primary_venue_json,
           attention_json, resolution_json, market_json, score_json, decision, data_health_json,
-          source_event_ids_json, listed_at_ms, created_at_ms, target_type, target_id, pricefeed_id, target_json,
+          source_event_ids_json, payload_hash, listed_at_ms, created_at_ms, target_type, target_id,
+          pricefeed_id, target_json,
           price_json, factor_snapshot_json, factor_version
         )
         VALUES (
-          %s, 'token_radar_v3', '24h', 'all', %s, %s,
-          'all', %s, %s, %s, %s, %s, NULL,
+          %s, %s, '24h', 'all', %s, %s,
+          'all', 'Asset', %s, %s, %s, %s, %s, %s, %s, NULL,
           %s, %s, %s, %s, 'watch', %s,
-          %s, %s, %s, 'Asset', %s, NULL, %s,
+          %s, %s, %s, %s, 'Asset', %s, NULL, %s,
           %s, %s, 'token_factor_snapshot_v3_social_attention'
         )
         """,
         (
             row_id,
+            TOKEN_RADAR_PROJECTION_VERSION,
             computed_at_ms,
             computed_at_ms,
+            target_id,
             rank,
+            max(0, 100 - rank),
             intent_id,
             event_id,
             Jsonb({"intent_id": intent_id}),
@@ -1804,6 +1867,7 @@ def _insert_radar_row(
             Jsonb({"rank_score": max(0, 100 - rank)}),
             Jsonb({"alpha": "ready"}),
             Jsonb([event_id]),
+            f"test-payload-hash:{row_id}",
             computed_at_ms,
             computed_at_ms,
             target_id,
