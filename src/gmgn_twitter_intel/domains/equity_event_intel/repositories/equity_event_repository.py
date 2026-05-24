@@ -8,16 +8,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.equity_event_intel._constants import (
-    EQUITY_EVENT_ALERT_PROJECTION_VERSION,
-    EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
-    EQUITY_EVENT_PAGE_PROJECTION_VERSION,
-    EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
-)
-
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
-_ALERT_SOURCE_ROLES = ("official_regulator", "official_issuer")
-_ALERT_FACT_STATUSES = ("accepted", "attention")
 
 
 class EquityEventRepository:
@@ -56,7 +47,15 @@ class EquityEventRepository:
               enabled = EXCLUDED.enabled,
               refresh_interval_seconds = EXCLUDED.refresh_interval_seconds,
               updated_at_ms = EXCLUDED.updated_at_ms
-            RETURNING *
+            WHERE equity_event_sources.provider_type IS DISTINCT FROM EXCLUDED.provider_type
+               OR equity_event_sources.company_id IS DISTINCT FROM EXCLUDED.company_id
+               OR equity_event_sources.ticker IS DISTINCT FROM EXCLUDED.ticker
+               OR equity_event_sources.cik IS DISTINCT FROM EXCLUDED.cik
+               OR equity_event_sources.source_role IS DISTINCT FROM EXCLUDED.source_role
+               OR equity_event_sources.trust_tier IS DISTINCT FROM EXCLUDED.trust_tier
+               OR equity_event_sources.enabled IS DISTINCT FROM EXCLUDED.enabled
+               OR equity_event_sources.refresh_interval_seconds IS DISTINCT FROM EXCLUDED.refresh_interval_seconds
+            RETURNING *, (xmax = 0) AS _inserted
             """,
             (
                 source_id,
@@ -72,9 +71,10 @@ class EquityEventRepository:
                 int(now_ms),
             ),
         ).fetchone()
+        payload = self._source_reconcile_row(source_id=str(source_id), row=row)
         if commit:
             self.conn.commit()
-        return dict(row)
+        return payload
 
     def list_source_status(self, *, limit: int = 100) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -88,6 +88,64 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def _source_reconcile_row(self, *, source_id: str, row: Any | None) -> dict[str, Any]:
+        if row is None:
+            return self._get_source_reconcile_row(source_id=source_id, reconcile_status="duplicate")
+        payload = dict(row)
+        inserted = bool(payload.pop("_inserted", False))
+        return _with_reconcile_status(payload, "inserted" if inserted else "updated")
+
+    def _get_source_reconcile_row(self, *, source_id: str, reconcile_status: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT *
+              FROM equity_event_sources
+             WHERE source_id = %s
+             LIMIT 1
+            """,
+            (source_id,),
+        ).fetchone()
+        return _with_reconcile_status(dict(row), reconcile_status)
+
+    def _universe_reconcile_row(self, *, company_id: str, row: Any | None) -> dict[str, Any]:
+        if row is None:
+            existing = self.conn.execute(
+                """
+                SELECT *
+                  FROM equity_event_universe_members
+                 WHERE company_id = %s
+                 LIMIT 1
+                """,
+                (company_id,),
+            ).fetchone()
+            return _with_reconcile_status(dict(existing), "duplicate")
+        payload = dict(row)
+        inserted = bool(payload.pop("_inserted", False))
+        return _with_reconcile_status(payload, "inserted" if inserted else "updated")
+
+    def _expected_reconcile_row(self, *, expected_event_id: str, row: Any | None) -> dict[str, Any]:
+        if row is None:
+            existing = self.conn.execute(
+                """
+                SELECT *
+                  FROM equity_expected_events
+                 WHERE expected_event_id = %s
+                 LIMIT 1
+                """,
+                (expected_event_id,),
+            ).fetchone()
+            return _with_reconcile_status(dict(existing), "duplicate")
+        payload = dict(row)
+        inserted = bool(payload.pop("_inserted", False))
+        previous_status = payload.pop("_previous_status", None)
+        if inserted:
+            status = "inserted"
+        elif previous_status == "stale" and payload.get("status") == "expected":
+            status = "restored"
+        else:
+            status = "updated"
+        return _with_reconcile_status(payload, status)
+
     def reconcile_sources(
         self,
         *,
@@ -96,42 +154,75 @@ class EquityEventRepository:
         now_ms: int,
         commit: bool = True,
     ) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
+        summary = self.reconcile_source_catalog(
+            sources=sources,
+            universe_members=universe_members,
+            now_ms=now_ms,
+            commit=commit,
+        )
+        return [dict(row) for row in summary["sources"]]
+
+    def reconcile_source_catalog(
+        self,
+        *,
+        sources: Sequence[Mapping[str, Any]],
+        universe_members: Sequence[Mapping[str, Any]] = (),
+        now_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        changed_sources: list[dict[str, Any]] = []
+        changed_company_ids: list[str] = []
         active_source_ids: list[str] = []
         for source in sources:
             active_source_ids.append(str(source["source_id"]))
-            rows.append(
-                self.upsert_source(
-                    source_id=str(source["source_id"]),
-                    provider_type=str(source["provider_type"]),
-                    company_id=str(source["company_id"]),
-                    ticker=str(source["ticker"]),
-                    cik=_optional_str(source.get("cik")),
-                    source_role=str(source["source_role"]),
-                    trust_tier=str(source.get("trust_tier") or "standard"),
-                    refresh_interval_seconds=int(source.get("refresh_interval_seconds") or 300),
-                    enabled=bool(source.get("enabled", True)),
-                    now_ms=now_ms,
-                    commit=False,
-                )
+            row = self.upsert_source(
+                source_id=str(source["source_id"]),
+                provider_type=str(source["provider_type"]),
+                company_id=str(source["company_id"]),
+                ticker=str(source["ticker"]),
+                cik=_optional_str(source.get("cik")),
+                source_role=str(source["source_role"]),
+                trust_tier=str(source.get("trust_tier") or "standard"),
+                refresh_interval_seconds=int(source.get("refresh_interval_seconds") or 300),
+                enabled=bool(source.get("enabled", True)),
+                now_ms=now_ms,
+                commit=False,
             )
-            self._update_source_extra_json(
+            extra_changed = self._update_source_extra_json(
                 source_id=str(source["source_id"]),
                 extra_json=_json_dict(source.get("extra_json")),
                 now_ms=now_ms,
                 commit=False,
             )
+            if extra_changed and row.get("reconcile_status") == "duplicate":
+                row = self._get_source_reconcile_row(source_id=str(source["source_id"]), reconcile_status="updated")
+            if row.get("reconcile_status") != "duplicate":
+                changed_sources.append(row)
+                changed_company_ids.append(str(row["company_id"]))
         for member in universe_members:
-            self.upsert_universe_member(member, now_ms=now_ms, commit=False)
-        self.deactivate_unreconciled_universe_members(
-            active_company_ids=[str(member["company_id"]) for member in universe_members],
-            now_ms=now_ms,
-            commit=False,
+            member_row = self.upsert_universe_member(member, now_ms=now_ms, commit=False)
+            if member_row.get("reconcile_status") != "duplicate":
+                changed_company_ids.append(str(member_row["company_id"]))
+        changed_company_ids.extend(
+            self.deactivate_unreconciled_universe_members(
+                active_company_ids=[str(member["company_id"]) for member in universe_members],
+                now_ms=now_ms,
+                commit=False,
+            )
         )
-        self.disable_unreconciled_sources(active_source_ids=active_source_ids, now_ms=now_ms, commit=False)
+        changed_company_ids.extend(
+            self.disable_unreconciled_sources(
+                active_source_ids=active_source_ids,
+                now_ms=now_ms,
+                commit=False,
+            )
+        )
         if commit:
             self.conn.commit()
-        return rows
+        return {
+            "sources": changed_sources,
+            "changed_company_ids": _unique_str_values(changed_company_ids),
+        }
 
     def upsert_universe_member(
         self,
@@ -156,7 +247,14 @@ class EquityEventRepository:
               priority = EXCLUDED.priority,
               config_json = EXCLUDED.config_json,
               updated_at_ms = EXCLUDED.updated_at_ms
-            RETURNING *
+            WHERE equity_event_universe_members.ticker IS DISTINCT FROM EXCLUDED.ticker
+               OR equity_event_universe_members.company_name IS DISTINCT FROM EXCLUDED.company_name
+               OR equity_event_universe_members.cik IS DISTINCT FROM EXCLUDED.cik
+               OR equity_event_universe_members.exchange IS DISTINCT FROM EXCLUDED.exchange
+               OR equity_event_universe_members.active IS DISTINCT FROM EXCLUDED.active
+               OR equity_event_universe_members.priority IS DISTINCT FROM EXCLUDED.priority
+               OR equity_event_universe_members.config_json IS DISTINCT FROM EXCLUDED.config_json
+            RETURNING *, (xmax = 0) AS _inserted
             """,
             (
                 str(member["company_id"]),
@@ -171,9 +269,10 @@ class EquityEventRepository:
                 int(now_ms),
             ),
         ).fetchone()
+        payload = self._universe_reconcile_row(company_id=str(member["company_id"]), row=row)
         if commit:
             self.conn.commit()
-        return dict(row)
+        return payload
 
     def disable_unreconciled_sources(
         self,
@@ -181,8 +280,8 @@ class EquityEventRepository:
         active_source_ids: Sequence[str],
         now_ms: int,
         commit: bool = True,
-    ) -> int:
-        cursor = self.conn.execute(
+    ) -> list[str]:
+        rows = self.conn.execute(
             """
             UPDATE equity_event_sources
                SET enabled = false,
@@ -191,12 +290,13 @@ class EquityEventRepository:
                AND provider_type = 'sec_submissions'
                AND source_id LIKE %s
                AND NOT (source_id = ANY(%s::text[]))
+             RETURNING company_id
             """,
             (int(now_ms), "sec:%", [str(source_id) for source_id in active_source_ids]),
-        )
+        ).fetchall()
         if commit:
             self.conn.commit()
-        return int(cursor.rowcount or 0)
+        return _unique_str_values([str(row["company_id"]) for row in rows])
 
     def deactivate_unreconciled_universe_members(
         self,
@@ -204,20 +304,21 @@ class EquityEventRepository:
         active_company_ids: Sequence[str],
         now_ms: int,
         commit: bool = True,
-    ) -> int:
-        cursor = self.conn.execute(
+    ) -> list[str]:
+        rows = self.conn.execute(
             """
             UPDATE equity_event_universe_members
                SET active = false,
                    updated_at_ms = %s
              WHERE active = true
                AND NOT (company_id = ANY(%s::text[]))
+             RETURNING company_id
             """,
             (int(now_ms), [str(company_id) for company_id in active_company_ids]),
-        )
+        ).fetchall()
         if commit:
             self.conn.commit()
-        return int(cursor.rowcount or 0)
+        return _unique_str_values([str(row["company_id"]) for row in rows])
 
     def reconcile_expected_events(
         self,
@@ -233,8 +334,9 @@ class EquityEventRepository:
             if scoped_source_ids is not None
             else sorted({str(event["source_id"]) for event in expected_events})
         )
+        stale_rows: list[dict[str, Any]] = []
         if effective_source_ids:
-            self.mark_unreconciled_expected_events_stale(
+            stale_rows = self.mark_unreconciled_expected_events_stale(
                 active_expected_event_ids=active_expected_event_ids,
                 scoped_source_ids=effective_source_ids,
                 now_ms=now_ms,
@@ -257,7 +359,7 @@ class EquityEventRepository:
         ]
         if commit:
             self.conn.commit()
-        return rows
+        return [*stale_rows, *rows]
 
     def mark_unreconciled_expected_events_stale(
         self,
@@ -266,25 +368,26 @@ class EquityEventRepository:
         scoped_source_ids: Sequence[str],
         now_ms: int,
         commit: bool = True,
-    ) -> int:
-        cursor = self.conn.execute(
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
             """
             UPDATE equity_expected_events
                SET status = 'stale',
                    updated_at_ms = %s
-             WHERE status IN ('expected', 'stale')
+             WHERE status = 'expected'
                AND source_id = ANY(%s::text[])
                AND NOT (expected_event_id = ANY(%s::text[]))
+             RETURNING *
             """,
             (
                 int(now_ms),
                 [str(source_id) for source_id in scoped_source_ids],
                 [str(expected_event_id) for expected_event_id in active_expected_event_ids],
             ),
-        )
+        ).fetchall()
         if commit:
             self.conn.commit()
-        return int(cursor.rowcount or 0)
+        return [_with_reconcile_status(dict(row), "stale") for row in rows]
 
     def claim_due_sources(
         self,
@@ -464,6 +567,11 @@ class EquityEventRepository:
     ) -> dict[str, Any]:
         row = self.conn.execute(
             """
+            WITH existing AS (
+              SELECT status AS previous_status
+                FROM equity_expected_events
+               WHERE expected_event_id = %s
+            )
             INSERT INTO equity_expected_events (
               expected_event_id, company_id, ticker, event_type, fiscal_period,
               expected_at_ms, source_id, source_role, created_at_ms, updated_at_ms
@@ -482,9 +590,18 @@ class EquityEventRepository:
                 ELSE equity_expected_events.status
               END,
               updated_at_ms = EXCLUDED.updated_at_ms
-            RETURNING *
+            WHERE equity_expected_events.company_id IS DISTINCT FROM EXCLUDED.company_id
+               OR equity_expected_events.ticker IS DISTINCT FROM EXCLUDED.ticker
+               OR equity_expected_events.event_type IS DISTINCT FROM EXCLUDED.event_type
+               OR equity_expected_events.fiscal_period IS DISTINCT FROM EXCLUDED.fiscal_period
+               OR equity_expected_events.expected_at_ms IS DISTINCT FROM EXCLUDED.expected_at_ms
+               OR equity_expected_events.source_id IS DISTINCT FROM EXCLUDED.source_id
+               OR equity_expected_events.source_role IS DISTINCT FROM EXCLUDED.source_role
+               OR equity_expected_events.status = 'stale'
+            RETURNING *, (xmax = 0) AS _inserted, (SELECT previous_status FROM existing) AS _previous_status
             """,
             (
+                expected_event_id,
                 expected_event_id,
                 company_id,
                 ticker,
@@ -497,9 +614,10 @@ class EquityEventRepository:
                 int(now_ms),
             ),
         ).fetchone()
+        payload = self._expected_reconcile_row(expected_event_id=str(expected_event_id), row=row)
         if commit:
             self.conn.commit()
-        return dict(row)
+        return payload
 
     def upsert_provider_document(
         self,
@@ -818,6 +936,98 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def company_event_ids_for_document(self, *, event_document_id: str) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT company_event_id
+              FROM equity_company_events
+             WHERE primary_document_id = %s
+             ORDER BY company_event_id ASC
+            """,
+            (str(event_document_id),),
+        ).fetchall()
+        return [str(row["company_event_id"]) for row in rows]
+
+    def matching_expected_event_ids_for_company_events(self, *, company_event_ids: Sequence[str]) -> list[str]:
+        scoped_company_event_ids = [str(company_event_id) for company_event_id in company_event_ids]
+        if not scoped_company_event_ids:
+            return []
+        earnings_family = ["earnings_release", "quarterly_report"]
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT expected.expected_event_id
+              FROM equity_expected_events AS expected
+              JOIN equity_company_events AS events
+                ON events.company_event_id = ANY(%s::text[])
+               AND events.ticker = expected.ticker
+               AND (
+                 events.company_id = expected.company_id
+                 OR expected.company_id = ''
+               )
+               AND (
+                 expected.fiscal_period IS NULL
+                 OR events.fiscal_period IS NULL
+                 OR events.fiscal_period = expected.fiscal_period
+               )
+               AND (
+                 events.event_type = expected.event_type
+                 OR (
+                   expected.event_type = ANY(%s::text[])
+                   AND events.event_type = ANY(%s::text[])
+                 )
+               )
+             WHERE expected.status IN ('expected', 'observed')
+             ORDER BY expected.expected_event_id ASC
+            """,
+            (scoped_company_event_ids, earnings_family, earnings_family),
+        ).fetchall()
+        return [str(row["expected_event_id"]) for row in rows]
+
+    def company_event_ids_for_companies(self, *, company_ids: Sequence[str]) -> list[str]:
+        scoped_company_ids = [str(company_id) for company_id in company_ids]
+        if not scoped_company_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT company_event_id
+              FROM equity_company_events
+             WHERE company_id = ANY(%s::text[])
+             ORDER BY company_event_id ASC
+            """,
+            (scoped_company_ids,),
+        ).fetchall()
+        return [str(row["company_event_id"]) for row in rows]
+
+    def expected_event_ids_for_companies(self, *, company_ids: Sequence[str]) -> list[str]:
+        scoped_company_ids = [str(company_id) for company_id in company_ids]
+        if not scoped_company_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT expected_event_id
+              FROM equity_expected_events
+             WHERE company_id = ANY(%s::text[])
+             ORDER BY expected_event_id ASC
+            """,
+            (scoped_company_ids,),
+        ).fetchall()
+        return [str(row["expected_event_id"]) for row in rows]
+
+    def expected_event_ids_for_sources(self, *, source_ids: Sequence[str]) -> list[str]:
+        scoped_source_ids = [str(source_id) for source_id in source_ids]
+        if not scoped_source_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT expected_event_id
+              FROM equity_expected_events
+             WHERE source_id = ANY(%s::text[])
+             ORDER BY expected_event_id ASC
+            """,
+            (scoped_source_ids,),
+        ).fetchall()
+        return [str(row["expected_event_id"]) for row in rows]
+
     def replace_source_spans(
         self,
         *,
@@ -997,23 +1207,36 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
 
-    def list_events_missing_story(self, *, limit: int) -> list[dict[str, Any]]:
+    def load_events_for_story_projection(self, *, company_event_ids: Sequence[str]) -> list[dict[str, Any]]:
+        scoped_company_event_ids = [str(company_event_id) for company_event_id in company_event_ids]
+        if not scoped_company_event_ids:
+            return []
         rows = self.conn.execute(
             """
+            WITH target_events AS (
+              SELECT *
+                FROM equity_company_events
+               WHERE company_event_id = ANY(%s::text[])
+                 AND validation_status <> 'rejected'
+            )
             SELECT events.*,
-                   documents.accession_number
-              FROM equity_company_events AS events
+                   documents.accession_number,
+                   current_member.story_id AS current_story_id,
+                   current_member.relation AS current_story_relation
+              FROM target_events AS events
               LEFT JOIN equity_event_documents AS documents
                 ON documents.event_document_id = events.primary_document_id
-              LEFT JOIN equity_event_story_members AS members
-                ON members.company_event_id = events.company_event_id
-             WHERE members.company_event_id IS NULL
-               AND events.validation_status <> 'rejected'
+              LEFT JOIN LATERAL (
+                SELECT members.story_id,
+                       members.relation
+                  FROM equity_event_story_members AS members
+                 WHERE members.company_event_id = events.company_event_id
+                 ORDER BY members.created_at_ms DESC, members.story_id DESC
+                 LIMIT 1
+              ) AS current_member ON true
              ORDER BY events.event_time_ms ASC, events.company_event_id ASC
-             LIMIT %s
-             FOR UPDATE OF events SKIP LOCKED
             """,
-            (max(0, int(limit)),),
+            (scoped_company_event_ids,),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1486,79 +1709,18 @@ class EquityEventRepository:
             "latest_event_at_ms": row["latest_event_at_ms"],
         }
 
-    def page_projection_source_summary(self) -> dict[str, int]:
-        row = self.conn.execute(
-            """
-            SELECT
-              (
-                SELECT COUNT(*)
-                  FROM equity_company_events AS events
-                 WHERE events.validation_status <> 'rejected'
-              )::bigint AS eligible_event_count,
-              (
-                SELECT COUNT(DISTINCT rows.company_event_id)
-                  FROM equity_event_page_rows AS rows
-                  JOIN equity_company_events AS events
-                    ON events.company_event_id = rows.company_event_id
-                 WHERE rows.projection_version = %s
-                   AND events.validation_status <> 'rejected'
-              )::bigint AS page_row_count,
-              (
-                SELECT COUNT(DISTINCT rows.company_event_id)
-                  FROM equity_company_timeline_rows AS rows
-                  JOIN equity_company_events AS events
-                    ON events.company_event_id = rows.company_event_id
-                 WHERE rows.projection_version = %s
-                   AND events.validation_status <> 'rejected'
-              )::bigint AS timeline_row_count,
-              (
-                SELECT COUNT(*)
-                  FROM equity_company_events AS events
-                 WHERE events.validation_status <> 'rejected'
-                   AND events.priority = 'P0'
-                   AND events.source_role = ANY(%s::text[])
-                   AND EXISTS (
-                     SELECT 1
-                       FROM equity_event_fact_candidates AS facts
-                      WHERE facts.company_event_id = events.company_event_id
-                        AND facts.validation_status = ANY(%s::text[])
-                   )
-              )::bigint AS required_alert_count,
-              (
-                SELECT COUNT(DISTINCT candidates.company_event_id)
-                  FROM equity_event_alert_candidates AS candidates
-                  JOIN equity_company_events AS events
-                    ON events.company_event_id = candidates.company_event_id
-                 WHERE candidates.projection_version = %s
-                   AND events.validation_status <> 'rejected'
-              )::bigint AS alert_candidate_count,
-              GREATEST(
-                (
-                  SELECT COALESCE(MAX(events.updated_at_ms), 0)
-                    FROM equity_company_events AS events
-                   WHERE events.validation_status <> 'rejected'
-                ),
-                (SELECT COALESCE(MAX(universe.updated_at_ms), 0) FROM equity_event_universe_members AS universe),
-                (SELECT COALESCE(MAX(stories.updated_at_ms), 0) FROM equity_event_story_groups AS stories),
-                (SELECT COALESCE(MAX(briefs.updated_at_ms), 0) FROM equity_event_agent_briefs AS briefs),
-                (SELECT COALESCE(MAX(documents.updated_at_ms), 0) FROM equity_event_documents AS documents),
-                (SELECT COALESCE(MAX(facts.updated_at_ms), 0) FROM equity_event_fact_candidates AS facts)
-              )::bigint AS source_watermark_ms
-            """,
-            (
-                EQUITY_EVENT_PAGE_PROJECTION_VERSION,
-                EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
-                list(_ALERT_SOURCE_ROLES),
-                list(_ALERT_FACT_STATUSES),
-                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
-            ),
-        ).fetchone()
-        payload = dict(row)
-        return {key: int(payload[key] or 0) for key in payload}
-
-    def list_events_for_page_projection(self, *, limit: int) -> list[dict[str, Any]]:
+    def load_event_page_projection_payloads(self, *, company_event_ids: Sequence[str]) -> list[dict[str, Any]]:
+        scoped_company_event_ids = [str(company_event_id) for company_event_id in company_event_ids]
+        if not scoped_company_event_ids:
+            return []
         rows = self.conn.execute(
             """
+            WITH target_events AS (
+              SELECT *
+                FROM equity_company_events
+               WHERE company_event_id = ANY(%s::text[])
+                 AND validation_status <> 'rejected'
+            )
             SELECT events.*,
                    universe.company_name,
                    universe.priority AS company_priority,
@@ -1577,17 +1739,7 @@ class EquityEventRepository:
                    briefs.validator_version,
                    briefs.computed_at_ms AS brief_computed_at_ms,
                    briefs.updated_at_ms AS brief_updated_at_ms,
-                   page_rows.row_id AS page_row_id,
-                   page_rows.computed_at_ms AS page_computed_at_ms,
-                   page_rows.projection_version AS page_projection_version,
-                   alerts.alert_candidate_id,
-                   alerts.computed_at_ms AS alert_computed_at_ms,
-                   alerts.projection_version AS alert_projection_version,
-                   timeline_rows.row_id AS timeline_row_id,
-                   timeline_rows.computed_at_ms AS timeline_computed_at_ms,
-                   timeline_rows.projection_version AS timeline_projection_version,
                    COALESCE(fact_state.facts_updated_at_ms, 0) AS facts_updated_at_ms,
-                   COALESCE(fact_state.actionable_fact_count, 0) AS actionable_fact_count,
                    COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms,
                    GREATEST(
                      events.updated_at_ms,
@@ -1597,7 +1749,7 @@ class EquityEventRepository:
                      COALESCE(documents.updated_at_ms, 0),
                      COALESCE(fact_state.facts_updated_at_ms, 0)
                    ) AS source_watermark_ms
-              FROM equity_company_events AS events
+              FROM target_events AS events
               LEFT JOIN equity_event_universe_members AS universe
                 ON universe.company_id = events.company_id
               LEFT JOIN equity_event_story_members AS members
@@ -1609,145 +1761,13 @@ class EquityEventRepository:
               LEFT JOIN equity_event_documents AS documents
                 ON documents.event_document_id = events.primary_document_id
               LEFT JOIN LATERAL (
-                SELECT rows.*
-                  FROM equity_event_page_rows AS rows
-                 WHERE rows.company_event_id = events.company_event_id
-                 ORDER BY rows.computed_at_ms DESC, rows.row_id ASC
-                 LIMIT 1
-              ) AS page_rows ON true
-              LEFT JOIN LATERAL (
-                SELECT candidates.*
-                  FROM equity_event_alert_candidates AS candidates
-                 WHERE candidates.company_event_id = events.company_event_id
-                 ORDER BY candidates.computed_at_ms DESC, candidates.alert_candidate_id ASC
-                 LIMIT 1
-              ) AS alerts ON true
-              LEFT JOIN LATERAL (
-                SELECT rows.*
-                  FROM equity_company_timeline_rows AS rows
-                 WHERE rows.company_event_id = events.company_event_id
-                 ORDER BY rows.computed_at_ms DESC, rows.row_id ASC
-                 LIMIT 1
-              ) AS timeline_rows ON true
-              LEFT JOIN LATERAL (
-                SELECT MAX(facts.updated_at_ms) AS facts_updated_at_ms,
-                       COUNT(*) FILTER (
-                         WHERE facts.validation_status = ANY(%s::text[])
-                       )::integer AS actionable_fact_count
+                SELECT MAX(facts.updated_at_ms) AS facts_updated_at_ms
                   FROM equity_event_fact_candidates AS facts
                  WHERE facts.company_event_id = events.company_event_id
               ) AS fact_state ON true
-             WHERE events.validation_status <> 'rejected'
-               AND (
-                 page_rows.row_id IS NULL
-                 OR page_rows.projection_version <> %s
-                 OR page_rows.source_watermark_ms < GREATEST(
-                   events.updated_at_ms,
-                   COALESCE(universe.updated_at_ms, 0),
-                   COALESCE(stories.updated_at_ms, 0),
-                   COALESCE(briefs.updated_at_ms, 0),
-                   COALESCE(documents.updated_at_ms, 0),
-                   COALESCE(fact_state.facts_updated_at_ms, 0)
-                 )
-                 OR timeline_rows.row_id IS NULL
-                 OR timeline_rows.projection_version <> %s
-                 OR timeline_rows.source_watermark_ms < GREATEST(
-                   events.updated_at_ms,
-                   COALESCE(universe.updated_at_ms, 0),
-                   COALESCE(stories.updated_at_ms, 0),
-                   COALESCE(briefs.updated_at_ms, 0),
-                   COALESCE(documents.updated_at_ms, 0),
-                   COALESCE(fact_state.facts_updated_at_ms, 0)
-                 )
-                 OR (
-                   events.priority = 'P0'
-                   AND events.source_role = ANY(%s::text[])
-                   AND COALESCE(fact_state.actionable_fact_count, 0) > 0
-                   AND (
-                     alerts.alert_candidate_id IS NULL
-                     OR alerts.projection_version <> %s
-                     OR alerts.source_watermark_ms < GREATEST(
-                       events.updated_at_ms,
-                       COALESCE(universe.updated_at_ms, 0),
-                       COALESCE(stories.updated_at_ms, 0),
-                       COALESCE(briefs.updated_at_ms, 0),
-                       COALESCE(documents.updated_at_ms, 0),
-                       COALESCE(fact_state.facts_updated_at_ms, 0)
-                     )
-                   )
-                 )
-                 OR (
-                   NOT (
-                     events.priority = 'P0'
-                     AND events.source_role = ANY(%s::text[])
-                     AND COALESCE(fact_state.actionable_fact_count, 0) > 0
-                   )
-                   AND alerts.alert_candidate_id IS NOT NULL
-                 )
-               )
-             ORDER BY CASE
-                        WHEN page_rows.row_id IS NULL THEN 0
-                        WHEN page_rows.projection_version <> %s THEN 0
-                        WHEN page_rows.source_watermark_ms < GREATEST(
-                          events.updated_at_ms,
-                          COALESCE(universe.updated_at_ms, 0),
-                          COALESCE(stories.updated_at_ms, 0),
-                          COALESCE(briefs.updated_at_ms, 0),
-                          COALESCE(documents.updated_at_ms, 0),
-                          COALESCE(fact_state.facts_updated_at_ms, 0)
-                        ) THEN 0
-                        WHEN timeline_rows.row_id IS NULL THEN 0
-                        WHEN timeline_rows.projection_version <> %s THEN 0
-                        WHEN timeline_rows.source_watermark_ms < GREATEST(
-                          events.updated_at_ms,
-                          COALESCE(universe.updated_at_ms, 0),
-                          COALESCE(stories.updated_at_ms, 0),
-                          COALESCE(briefs.updated_at_ms, 0),
-                          COALESCE(documents.updated_at_ms, 0),
-                          COALESCE(fact_state.facts_updated_at_ms, 0)
-                        ) THEN 0
-                        WHEN events.priority = 'P0'
-                          AND events.source_role = ANY(%s::text[])
-                          AND COALESCE(fact_state.actionable_fact_count, 0) > 0
-                          AND (
-                            alerts.alert_candidate_id IS NULL
-                            OR alerts.projection_version <> %s
-                            OR alerts.source_watermark_ms < GREATEST(
-                              events.updated_at_ms,
-                              COALESCE(universe.updated_at_ms, 0),
-                              COALESCE(stories.updated_at_ms, 0),
-                              COALESCE(briefs.updated_at_ms, 0),
-                              COALESCE(documents.updated_at_ms, 0),
-                              COALESCE(fact_state.facts_updated_at_ms, 0)
-                            )
-                          ) THEN 0
-                        WHEN NOT (
-                          events.priority = 'P0'
-                          AND events.source_role = ANY(%s::text[])
-                          AND COALESCE(fact_state.actionable_fact_count, 0) > 0
-                        )
-                          AND alerts.alert_candidate_id IS NOT NULL THEN 0
-                        ELSE 1
-                      END ASC,
-                      events.event_time_ms DESC,
-                      events.company_event_id ASC
-             LIMIT %s
-             FOR UPDATE OF events SKIP LOCKED
+             ORDER BY events.event_time_ms DESC, events.company_event_id ASC
             """,
-            (
-                list(_ALERT_FACT_STATUSES),
-                EQUITY_EVENT_PAGE_PROJECTION_VERSION,
-                EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
-                list(_ALERT_SOURCE_ROLES),
-                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
-                list(_ALERT_SOURCE_ROLES),
-                EQUITY_EVENT_PAGE_PROJECTION_VERSION,
-                EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
-                list(_ALERT_SOURCE_ROLES),
-                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
-                list(_ALERT_SOURCE_ROLES),
-                max(0, int(limit)),
-            ),
+            (scoped_company_event_ids,),
         ).fetchall()
         payloads: list[dict[str, Any]] = []
         for row in rows:
@@ -2086,10 +2106,25 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
 
-    def list_expected_events_for_calendar_projection(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
+    def load_expected_calendar_projection_payloads(
+        self,
+        *,
+        expected_event_ids: Sequence[str],
+        now_ms: int,
+    ) -> list[dict[str, Any]]:
+        del now_ms
+        scoped_expected_event_ids = [str(expected_event_id) for expected_event_id in expected_event_ids]
+        if not scoped_expected_event_ids:
+            return []
         earnings_family = ["earnings_release", "quarterly_report"]
         rows = self.conn.execute(
             """
+            WITH target_expected AS (
+              SELECT *
+                FROM equity_expected_events
+               WHERE expected_event_id = ANY(%s::text[])
+                 AND status IN ('expected', 'observed')
+            )
             SELECT expected.*,
                    universe.company_name,
                    universe.priority AS company_priority,
@@ -2106,13 +2141,11 @@ class EquityEventRepository:
                    observed.validation_status AS observed_validation_status,
                    observed.summary AS observed_summary,
                    observed.updated_at_ms AS observed_updated_at_ms,
-                   calendar_rows.row_id AS calendar_row_id,
-                   calendar_rows.computed_at_ms AS calendar_computed_at_ms,
                    GREATEST(
                      expected.updated_at_ms,
                      COALESCE(observed.updated_at_ms, 0)
                    ) AS source_watermark_ms
-              FROM equity_expected_events AS expected
+              FROM target_expected AS expected
               LEFT JOIN equity_event_universe_members AS universe
                 ON universe.company_id = expected.company_id
               LEFT JOIN LATERAL (
@@ -2141,62 +2174,11 @@ class EquityEventRepository:
                           events.company_event_id ASC
                  LIMIT 1
               ) AS observed ON true
-              LEFT JOIN equity_event_calendar_rows AS calendar_rows
-                ON calendar_rows.expected_event_id = expected.expected_event_id
-             WHERE expected.status IN ('expected', 'observed')
-               AND (
-                 calendar_rows.row_id IS NULL
-                 OR calendar_rows.projection_version <> %s
-                 OR calendar_rows.source_watermark_ms < GREATEST(
-                   expected.updated_at_ms,
-                   COALESCE(observed.updated_at_ms, 0)
-                 )
-                 OR (
-                   calendar_rows.status = 'expected'
-                   AND expected.expected_at_ms < %s
-                 )
-               )
-             ORDER BY CASE
-                        WHEN calendar_rows.row_id IS NULL THEN 0
-                        WHEN calendar_rows.projection_version <> %s THEN 0
-                        WHEN calendar_rows.source_watermark_ms < GREATEST(
-                          expected.updated_at_ms,
-                          COALESCE(observed.updated_at_ms, 0)
-                        ) THEN 0
-                        WHEN calendar_rows.status = 'expected'
-                         AND expected.expected_at_ms < %s THEN 0
-                        ELSE 1
-                      END ASC,
-                      expected.expected_at_ms ASC,
-                      expected.expected_event_id ASC
-             LIMIT %s
+             ORDER BY expected.expected_at_ms ASC, expected.expected_event_id ASC
             """,
-            (
-                earnings_family,
-                earnings_family,
-                EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
-                int(now_ms),
-                EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
-                int(now_ms),
-                max(0, int(limit)),
-            ),
+            (scoped_expected_event_ids, earnings_family, earnings_family),
         ).fetchall()
         return [_calendar_projection_payload(dict(row)) for row in rows]
-
-    def list_inactive_expected_event_ids_for_calendar_projection(self, *, limit: int) -> list[str]:
-        rows = self.conn.execute(
-            """
-            SELECT expected.expected_event_id
-              FROM equity_expected_events AS expected
-              JOIN equity_event_calendar_rows AS calendar_rows
-                ON calendar_rows.expected_event_id = expected.expected_event_id
-             WHERE expected.status NOT IN ('expected', 'observed')
-             ORDER BY expected.updated_at_ms ASC, expected.expected_event_id ASC
-             LIMIT %s
-            """,
-            (max(0, int(limit)),),
-        ).fetchall()
-        return [str(row["expected_event_id"]) for row in rows]
 
     def replace_calendar_rows(
         self,
@@ -2477,18 +2459,20 @@ class EquityEventRepository:
         extra_json: Mapping[str, Any],
         now_ms: int,
         commit: bool = True,
-    ) -> None:
-        self.conn.execute(
+    ) -> bool:
+        cursor = self.conn.execute(
             """
             UPDATE equity_event_sources
                SET extra_json = %s,
                    updated_at_ms = %s
              WHERE source_id = %s
+               AND extra_json IS DISTINCT FROM %s
             """,
-            (Jsonb(dict(extra_json)), int(now_ms), source_id),
+            (Jsonb(dict(extra_json)), int(now_ms), source_id, Jsonb(dict(extra_json))),
         )
         if commit:
             self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0) > 0
 
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -2789,6 +2773,23 @@ def _optional_str(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _with_reconcile_status(row: dict[str, Any], reconcile_status: str) -> dict[str, Any]:
+    row["reconcile_status"] = str(reconcile_status)
+    return row
+
+
+def _unique_str_values(values: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def _compact_error(error: str | None) -> str | None:

@@ -9,6 +9,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.news_intel.services.source_quality_projection import window_ms_for_label
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 
@@ -72,6 +73,37 @@ class NewsRepository:
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
+        existing = self.conn.execute(
+            "SELECT * FROM news_sources WHERE source_id = %s",
+            (str(source_id),),
+        ).fetchone()
+        payload = {
+            "source_id": str(source_id),
+            "provider_type": str(provider_type),
+            "feed_url": str(feed_url),
+            "source_domain": str(source_domain),
+            "source_name": str(source_name),
+            "source_role": str(source_role),
+            "trust_tier": str(trust_tier),
+            "managed_by_config": bool(managed_by_config),
+            "enabled": bool(enabled),
+            "refresh_interval_seconds": max(1, int(refresh_interval_seconds)),
+            "coverage_tags_json": list(normalize_string_tuple(coverage_tags)),
+            "asset_universe_json": list(normalize_string_tuple(asset_universe)),
+            "authority_scope_json": _json_dict(authority_scope),
+            "fetch_policy_json": _json_dict(fetch_policy),
+            "context_policy_json": _json_dict(context_policy),
+            "cost_policy_json": _json_dict(cost_policy),
+        }
+        status = "inserted"
+        if existing is not None:
+            status = "updated" if _source_material_changed(existing, payload) else "duplicate"
+        if status == "duplicate":
+            row = dict(existing)
+            if commit:
+                self.conn.commit()
+            return {**row, "status": status}
+
         row = self.conn.execute(
             """
             INSERT INTO news_sources (
@@ -101,29 +133,29 @@ class NewsRepository:
             RETURNING *
             """,
             (
-                source_id,
-                provider_type,
-                feed_url,
-                source_domain,
-                source_name,
-                source_role,
-                trust_tier,
-                bool(managed_by_config),
-                bool(enabled),
-                max(1, int(refresh_interval_seconds)),
-                _json(list(normalize_string_tuple(coverage_tags))),
-                _json(list(normalize_string_tuple(asset_universe))),
-                _json(_json_dict(authority_scope)),
-                _json(_json_dict(fetch_policy)),
-                _json(_json_dict(context_policy)),
-                _json(_json_dict(cost_policy)),
+                payload["source_id"],
+                payload["provider_type"],
+                payload["feed_url"],
+                payload["source_domain"],
+                payload["source_name"],
+                payload["source_role"],
+                payload["trust_tier"],
+                payload["managed_by_config"],
+                payload["enabled"],
+                payload["refresh_interval_seconds"],
+                _json(payload["coverage_tags_json"]),
+                _json(payload["asset_universe_json"]),
+                _json(payload["authority_scope_json"]),
+                _json(payload["fetch_policy_json"]),
+                _json(payload["context_policy_json"]),
+                _json(payload["cost_policy_json"]),
                 int(now_ms),
                 int(now_ms),
             ),
         ).fetchone()
         if commit:
             self.conn.commit()
-        return dict(row)
+        return {**dict(row), "status": status}
 
     def reconcile_configured_sources(
         self,
@@ -171,6 +203,36 @@ class NewsRepository:
         if commit:
             self.conn.commit()
         return int(cursor.rowcount or 0)
+
+    def list_news_item_ids_for_sources(self, *, source_ids: Sequence[str]) -> list[str]:
+        normalized_ids = list(dict.fromkeys(str(source_id) for source_id in source_ids if str(source_id)))
+        if not normalized_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_items
+             WHERE source_id = ANY(%s::text[])
+             ORDER BY source_id ASC, news_item_id ASC
+            """,
+            (normalized_ids,),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
+
+    def list_source_ids_for_news_items(self, *, news_item_ids: Sequence[str]) -> list[str]:
+        normalized_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not normalized_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT source_id
+              FROM news_items
+             WHERE news_item_id = ANY(%s::text[])
+             ORDER BY source_id ASC
+            """,
+            (normalized_ids,),
+        ).fetchall()
+        return [str(row["source_id"]) for row in rows]
 
     def claim_due_sources(
         self,
@@ -442,9 +504,7 @@ class NewsRepository:
             ):
                 status = "updated"
         item_id = (
-            str(existing["news_item_id"])
-            if existing is not None
-            else news_item_id or f"news-item-{uuid.uuid4().hex}"
+            str(existing["news_item_id"]) if existing is not None else news_item_id or f"news-item-{uuid.uuid4().hex}"
         )
         row = self.conn.execute(
             """
@@ -501,7 +561,6 @@ class NewsRepository:
             self.conn.execute("DELETE FROM news_token_mentions WHERE news_item_id = %s", (item_id,))
             self.conn.execute("DELETE FROM news_item_entities WHERE news_item_id = %s", (item_id,))
             self.conn.execute("DELETE FROM news_story_members WHERE news_item_id = %s", (item_id,))
-            self.conn.execute("DELETE FROM news_page_rows WHERE news_item_id = %s", (item_id,))
             for story_id in story_ids:
                 self._refresh_story_counts(story_id=story_id, now_ms=now_ms)
         if commit:
@@ -1150,25 +1209,30 @@ class NewsRepository:
         if commit:
             self.conn.commit()
 
-    def list_items_missing_story(self, *, limit: int) -> list[dict[str, Any]]:
+    def load_items_for_story_projection(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
+        target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not target_ids:
+            return []
         rows = self.conn.execute(
             """
+            WITH target_items AS (
+              SELECT items.*
+                FROM news_items AS items
+               WHERE items.news_item_id = ANY(%s::text[])
+                 AND items.lifecycle_status = 'processed'
+            )
             SELECT items.*,
-                   COALESCE(
-                     jsonb_agg(DISTINCT mentions.target_type || ':' || mentions.target_id)
-                       FILTER (WHERE mentions.target_id IS NOT NULL),
-                     '[]'::jsonb
-                   ) AS token_targets
-              FROM news_items AS items
-              LEFT JOIN news_story_members AS members ON members.news_item_id = items.news_item_id
-              LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
-             WHERE members.news_item_id IS NULL
-               AND items.lifecycle_status = 'processed'
-             GROUP BY items.news_item_id
+                   COALESCE(mentions.token_targets, '[]'::jsonb) AS token_targets
+              FROM target_items AS items
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(DISTINCT mentions.target_type || ':' || mentions.target_id)
+                         FILTER (WHERE mentions.target_id IS NOT NULL) AS token_targets
+                  FROM news_token_mentions AS mentions
+                 WHERE mentions.news_item_id = items.news_item_id
+              ) AS mentions ON true
              ORDER BY items.published_at_ms ASC, items.news_item_id ASC
-             LIMIT %s
             """,
-            (max(0, int(limit)),),
+            (target_ids,),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1323,55 +1387,16 @@ class NewsRepository:
             (story_id, int(now_ms)),
         )
 
-    def list_items_for_page_projection(self, *, limit: int) -> list[dict[str, Any]]:
+    def load_items_for_page_projection(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
+        target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
+        if not target_ids:
+            return []
         rows = self.conn.execute(
             """
-            WITH candidates AS (
-              SELECT items.news_item_id,
-                     items.published_at_ms,
-                     GREATEST(
-                       items.updated_at_ms,
-                       COALESCE(stories.updated_at_ms, 0),
-                       COALESCE(MAX(mentions.created_at_ms), 0),
-                       COALESCE(MAX(facts.updated_at_ms), 0),
-                       COALESCE(current_brief.updated_at_ms, 0),
-                       COALESCE(current_brief.computed_at_ms, 0)
-                     ) AS source_updated_at_ms,
-                     page.row_id AS projected_row_id,
-                     page.computed_at_ms AS projected_at_ms,
-                     page.projection_version AS projected_version
+            WITH target_items AS (
+              SELECT items.*
                 FROM news_items AS items
-                JOIN news_sources AS sources ON sources.source_id = items.source_id
-                LEFT JOIN news_story_members AS members ON members.news_item_id = items.news_item_id
-                LEFT JOIN news_story_groups AS stories ON stories.story_id = members.story_id
-                LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
-                LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
-                LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
-                LEFT JOIN news_page_rows AS page ON page.news_item_id = items.news_item_id
-               GROUP BY items.news_item_id, sources.source_id, stories.story_id, current_brief.news_item_id, page.row_id
-              HAVING page.row_id IS NULL
-                  OR page.projection_version <> %s
-                  OR page.computed_at_ms < GREATEST(
-                       items.updated_at_ms,
-                       COALESCE(stories.updated_at_ms, 0),
-                       COALESCE(MAX(mentions.created_at_ms), 0),
-                       COALESCE(MAX(facts.updated_at_ms), 0),
-                       COALESCE(current_brief.updated_at_ms, 0),
-                       COALESCE(current_brief.computed_at_ms, 0)
-                     )
-                  OR page.source_json ->> 'source_id' IS DISTINCT FROM items.source_id
-                  OR page.source_json ->> 'provider_type' IS DISTINCT FROM sources.provider_type
-                  OR page.source_json ->> 'source_domain' IS DISTINCT FROM items.source_domain
-                  OR page.source_json ->> 'source_name' IS DISTINCT FROM sources.source_name
-                  OR page.source_json ->> 'source_role' IS DISTINCT FROM sources.source_role
-                  OR page.source_json ->> 'trust_tier' IS DISTINCT FROM sources.trust_tier
-                  OR COALESCE(page.source_json -> 'coverage_tags', '[]'::jsonb) <> sources.coverage_tags_json
-                  OR page.source_json ->> 'source_quality_status' IS DISTINCT FROM sources.source_quality_status
-               ORDER BY (page.row_id IS NULL) DESC,
-                        source_updated_at_ms ASC,
-                        items.published_at_ms DESC,
-                        items.news_item_id DESC
-               LIMIT %s
+               WHERE items.news_item_id = ANY(%s::text[])
             )
             SELECT
               to_jsonb(items.*)
@@ -1383,33 +1408,39 @@ class NewsRepository:
                   'coverage_tags_json', sources.coverage_tags_json,
                   'source_quality_status', sources.source_quality_status
                 ) AS item,
-              CASE WHEN stories.story_id IS NULL THEN NULL ELSE to_jsonb(stories.*) END AS story,
+              story.story_json AS story,
               CASE
                 WHEN current_brief.news_item_id IS NULL THEN NULL
                 ELSE to_jsonb(current_brief.*)
               END AS current_brief,
-              COALESCE(
-                jsonb_agg(DISTINCT to_jsonb(mentions.*)) FILTER (WHERE mentions.mention_id IS NOT NULL),
-                '[]'::jsonb
-              ) AS token_mentions,
-              COALESCE(
-                jsonb_agg(DISTINCT to_jsonb(facts.*)) FILTER (WHERE facts.fact_candidate_id IS NOT NULL),
-                '[]'::jsonb
-              ) AS fact_candidates
-            FROM candidates
-            JOIN news_items AS items ON items.news_item_id = candidates.news_item_id
+              COALESCE(mentions.token_mentions, '[]'::jsonb) AS token_mentions,
+              COALESCE(facts.fact_candidates, '[]'::jsonb) AS fact_candidates
+            FROM target_items AS items
             JOIN news_sources AS sources ON sources.source_id = items.source_id
-            LEFT JOIN news_story_members AS members ON members.news_item_id = items.news_item_id
-            LEFT JOIN news_story_groups AS stories ON stories.story_id = members.story_id
             LEFT JOIN news_item_agent_briefs AS current_brief ON current_brief.news_item_id = items.news_item_id
-            LEFT JOIN news_token_mentions AS mentions ON mentions.news_item_id = items.news_item_id
-            LEFT JOIN news_fact_candidates AS facts ON facts.news_item_id = items.news_item_id
-            GROUP BY items.news_item_id, sources.source_id, stories.story_id, current_brief.news_item_id
-            ORDER BY MAX(candidates.source_updated_at_ms) ASC,
-                     items.published_at_ms DESC,
-                     items.news_item_id DESC
+            LEFT JOIN LATERAL (
+              SELECT to_jsonb(stories.*) AS story_json
+                FROM news_story_members AS members
+                JOIN news_story_groups AS stories ON stories.story_id = members.story_id
+               WHERE members.news_item_id = items.news_item_id
+               ORDER BY members.created_at_ms DESC, members.story_id DESC
+               LIMIT 1
+            ) AS story ON true
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(jsonb_agg(to_jsonb(mentions.*) ORDER BY mentions.mention_id), '[]'::jsonb)
+                AS token_mentions
+                FROM news_token_mentions AS mentions
+               WHERE mentions.news_item_id = items.news_item_id
+            ) AS mentions ON true
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(jsonb_agg(to_jsonb(facts.*) ORDER BY facts.fact_candidate_id), '[]'::jsonb)
+                AS fact_candidates
+                FROM news_fact_candidates AS facts
+               WHERE facts.news_item_id = items.news_item_id
+            ) AS facts ON true
+            ORDER BY items.published_at_ms DESC, items.news_item_id DESC
             """,
-            (NEWS_PAGE_PROJECTION_VERSION, max(0, int(limit))),
+            (target_ids,),
         ).fetchall()
         return [
             {
@@ -1812,18 +1843,45 @@ class NewsRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
-    def list_source_quality_inputs(
+    def list_source_quality_inputs_for_targets(
         self,
         *,
+        source_windows: Sequence[tuple[str, str]],
+        now_ms: int,
+    ) -> list[dict[str, Any]]:
+        source_ids_by_window: dict[str, list[str]] = {}
+        for source_id, window in source_windows:
+            normalized_source_id = str(source_id)
+            normalized_window = str(window).strip().lower()
+            if not normalized_source_id or not normalized_window:
+                continue
+            source_ids_by_window.setdefault(normalized_window, []).append(normalized_source_id)
+        rows: list[dict[str, Any]] = []
+        for window, source_ids in source_ids_by_window.items():
+            window_rows = self._list_source_quality_inputs_for_source_ids(
+                source_ids=list(dict.fromkeys(source_ids)),
+                window_ms=window_ms_for_label(window),
+                now_ms=now_ms,
+            )
+            rows.extend({**row, "window": window} for row in window_rows)
+        return rows
+
+    def _list_source_quality_inputs_for_source_ids(
+        self,
+        *,
+        source_ids: Sequence[str] | None,
         window_ms: int,
         now_ms: int,
     ) -> list[dict[str, Any]]:
         window_start_ms = int(now_ms) - max(1, int(window_ms))
+        source_filter = list(dict.fromkeys(str(source_id) for source_id in (source_ids or []) if str(source_id)))
+        source_filter_param = source_filter or None
         rows = self.conn.execute(
             """
             WITH source_rows AS (
               SELECT source_id
                 FROM news_sources
+               WHERE %s::text[] IS NULL OR source_id = ANY(%s::text[])
                ORDER BY enabled DESC, source_id ASC
             ),
             window_items AS (
@@ -1958,6 +2016,8 @@ class NewsRepository:
              ORDER BY sources.source_id ASC
             """,
             (
+                source_filter_param,
+                source_filter_param,
                 window_start_ms,
                 int(now_ms),
                 window_start_ms,
@@ -1976,8 +2036,9 @@ class NewsRepository:
         rows: Sequence[Mapping[str, Any]],
         status_window: str | None = None,
         commit: bool = True,
-    ) -> None:
+    ) -> list[str]:
         normalized_status_window = str(status_window).strip().lower() if status_window else None
+        changed_status_source_ids: list[str] = []
         for row in rows:
             payload = _source_quality_payload(row)
             self.conn.execute(
@@ -2015,7 +2076,7 @@ class NewsRepository:
             )
             if normalized_status_window and payload["window"] == normalized_status_window:
                 status = _json_dict(row.get("diagnostics_json")).get("status")
-                self.conn.execute(
+                cursor = self.conn.execute(
                     """
                     UPDATE news_sources
                        SET source_quality_status = %s,
@@ -2030,8 +2091,11 @@ class NewsRepository:
                         str(status or "unknown"),
                     ),
                 )
+                if int(getattr(cursor, "rowcount", 0) or 0) > 0:
+                    changed_status_source_ids.append(str(payload["source_id"]))
         if commit:
             self.conn.commit()
+        return list(dict.fromkeys(changed_status_source_ids))
 
     def list_source_status(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -2535,6 +2599,38 @@ def _source_quality_read_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         "diagnostics_json": _json_dict(row.get("diagnostics_json")),
         "projection_version": str(row["projection_version"]),
     }
+
+
+def _source_material_changed(existing: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
+    fields = (
+        "provider_type",
+        "feed_url",
+        "source_domain",
+        "source_name",
+        "source_role",
+        "trust_tier",
+        "managed_by_config",
+        "enabled",
+        "refresh_interval_seconds",
+        "coverage_tags_json",
+        "asset_universe_json",
+        "authority_scope_json",
+        "fetch_policy_json",
+        "context_policy_json",
+        "cost_policy_json",
+    )
+    for field in fields:
+        if _comparable_source_value(existing.get(field)) != _comparable_source_value(payload.get(field)):
+            return True
+    return False
+
+
+def _comparable_source_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _comparable_source_value(item) for key, item in sorted(value.items())}
+    if isinstance(value, list | tuple | set):
+        return [_comparable_source_value(item) for item in value]
+    return value
 
 
 def _object_payload(value: Any) -> dict[str, Any]:

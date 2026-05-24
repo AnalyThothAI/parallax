@@ -487,6 +487,7 @@ def test_news_workers_have_defaults():
         "news_item_processed",
         "news_story_updated",
         "news_item_brief_updated",
+        "news_page_dirty",
     )
     assert settings.news_source_quality_projection.interval_seconds == 60
     assert settings.news_source_quality_projection.batch_size == 100

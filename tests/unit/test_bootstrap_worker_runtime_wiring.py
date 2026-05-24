@@ -214,9 +214,11 @@ def test_worker_factory_wires_news_fetch_by_default() -> None:
         "news_item_processed",
         "news_story_updated",
         "news_item_brief_updated",
+        "news_page_dirty",
     )
     assert workers["news_page_projection"].settings.advisory_lock_key == 2026051904
     assert isinstance(workers["news_source_quality_projection"], NewsSourceQualityProjectionWorker)
+    assert workers["news_source_quality_projection"].wake_bus is db.wake
     assert workers["news_source_quality_projection"].wake_waiter.channels == (
         "news_item_written",
         "news_item_processed",

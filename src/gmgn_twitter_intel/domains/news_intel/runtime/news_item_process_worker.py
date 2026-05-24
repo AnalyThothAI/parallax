@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
@@ -21,12 +21,14 @@ class NewsItemProcessWorker(WorkerBase):
         *,
         identity_lookup: TokenIdentityLookup | None = None,
         wake_bus: Any | None = None,
+        source_quality_windows: Iterable[str] | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.identity_lookup = identity_lookup
         self.wake_bus = wake_bus
+        self.source_quality_windows = _source_quality_windows(source_quality_windows)
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -78,18 +80,41 @@ class NewsItemProcessWorker(WorkerBase):
                     source_domain=_text(item_payload, "source_domain"),
                     fact_event_types=[candidate.event_type for candidate in candidates],
                 )
-                with self._repository_session() as repos:
-                    repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities)
-                    repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions)
-                    repos.news.replace_fact_candidates(news_item_id=news_item_id, candidates=candidates)
+                with self._repository_session() as repos, repos.conn.transaction():
+                    repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities, commit=False)
+                    repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions, commit=False)
+                    repos.news.replace_fact_candidates(
+                        news_item_id=news_item_id,
+                        candidates=candidates,
+                        commit=False,
+                    )
                     repos.news.update_item_content_classification(
                         news_item_id=news_item_id,
                         content_class=classification.content_class,
                         content_tags=classification.content_tags,
                         classification_payload=classification.classification_payload,
                         now_ms=now,
+                        commit=False,
                     )
-                    repos.news.mark_item_processed(news_item_id=news_item_id, processed_at_ms=now)
+                    repos.news.mark_item_processed(news_item_id=news_item_id, processed_at_ms=now, commit=False)
+                    repos.news_projection_dirty_targets.enqueue_targets(
+                        [
+                            {"projection_name": "story", "target_kind": "news_item", "target_id": news_item_id},
+                            {"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id},
+                            *[
+                                {
+                                    "projection_name": "source_quality",
+                                    "target_kind": "source",
+                                    "target_id": str(item_payload["source_id"]),
+                                    "window": window,
+                                }
+                                for window in self.source_quality_windows
+                            ],
+                        ],
+                        reason="news_item_processed",
+                        now_ms=now,
+                        commit=False,
+                    )
                 processed += 1
             except Exception as exc:  # pragma: no cover - exercised by integration/ops paths.
                 failed += 1
@@ -110,7 +135,7 @@ class NewsItemProcessWorker(WorkerBase):
         except Exception:
             return
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -142,6 +167,11 @@ def _json_dict(value: object) -> dict[str, Any]:
         if isinstance(parsed, Mapping):
             return dict(parsed)
     return {}
+
+
+def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
+    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
+    return normalized or ("24h", "7d")
 
 
 def _now_ms() -> int:

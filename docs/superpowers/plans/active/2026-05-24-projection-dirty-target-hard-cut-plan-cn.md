@@ -214,7 +214,7 @@ ALTER TABLE news_source_quality_rows
   ADD COLUMN IF NOT EXISTS source_watermark_ms BIGINT NOT NULL DEFAULT 0;
 ```
 
-The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE and returns claimed rows. Claimed rows include a completion token: full target key, `payload_hash`, `lease_owner`, and `attempt_count`. `mark_done` deletes successful dirty rows only when the full completion token still matches. `mark_error` clears the lease and schedules retry only when the full completion token still matches. Missing token fields raise `ValueError`. This prevents an old claim from deleting a newer dirty row that was re-enqueued while the old lease was active.
+The repository claim query uses `FOR UPDATE SKIP LOCKED` inside an update CTE and returns claimed rows. Claimed rows include a completion token: full target key, `payload_hash`, `lease_owner`, and `attempt_count`. `mark_done` deletes successful dirty rows only when the full completion token still matches. `mark_error` clears the lease and schedules retry only when the full completion token still matches. Missing token fields raise `ValueError`. This prevents an old claim from deleting materially newer dirty work that was re-enqueued while the old lease was active. A pure duplicate enqueue with the same target, reason, payload hash, and source watermark is only a wake hint and should not invalidate the current lease. Dirty-target fallback `payload_hash` excludes queue scheduling/control metadata such as `priority`, `due_at_ms`, lease fields, attempts, errors, and audit timestamps.
 
 ## Task 1: Add Dirty Target Storage And Repositories
 

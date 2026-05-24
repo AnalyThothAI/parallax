@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
@@ -34,6 +34,7 @@ class NewsItemBriefWorker(WorkerBase):
         *,
         provider: Any | None = None,
         wake_bus: Any | None = None,
+        source_quality_windows: Iterable[str] | None = None,
         clock_ms: Callable[[], int] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         **kwargs: Any,
@@ -41,6 +42,7 @@ class NewsItemBriefWorker(WorkerBase):
         super().__init__(**kwargs)
         self.provider = provider
         self.wake_bus = wake_bus
+        self.source_quality_windows = _source_quality_windows(source_quality_windows)
         self.clock_ms = clock_ms or _now_ms
         self.run_id_factory = run_id_factory or _default_run_id
 
@@ -49,9 +51,10 @@ class NewsItemBriefWorker(WorkerBase):
             return WorkerResult(skipped=1, notes={"reason": "missing_provider"})
 
         now = self.clock_ms()
+        provider = self.provider
         agent_config = default_news_item_brief_agent_config(
-            model=str(self.provider.model),
-            artifact_version_hash=str(self.provider.artifact_version_hash),
+            model=str(provider.model),
+            artifact_version_hash=str(provider.artifact_version_hash),
         )
         with self._repository_session() as repos:
             candidates = repos.news.list_items_for_brief(
@@ -106,6 +109,8 @@ class NewsItemBriefWorker(WorkerBase):
         agent_config: NewsItemBriefAgentConfig,
         now_ms: int,
     ) -> _CandidateOutcome:
+        if self.provider is None:
+            raise RuntimeError("news item brief provider is not configured")
         run_id = self.run_id_factory()
         started_at_ms = self.clock_ms()
         try:
@@ -252,6 +257,8 @@ class NewsItemBriefWorker(WorkerBase):
         started_at_ms: int,
         execution_started: bool | None = None,
     ) -> _CandidateOutcome:
+        if self.provider is None:
+            raise RuntimeError("news item brief provider is not configured")
         audit = _provider_error_audit(error) or dict(request_audit)
         resolved_execution_started = (
             bool(execution_started) if execution_started is not None else _provider_execution_started(error)
@@ -332,6 +339,8 @@ class NewsItemBriefWorker(WorkerBase):
         execution_started: bool,
         output_hash: str | None = None,
     ) -> None:
+        if self.provider is None:
+            raise RuntimeError("news item brief provider is not configured")
         with self._repository_session() as repos:
             repos.news.insert_news_item_agent_run(
                 run_id=run_id,
@@ -375,7 +384,7 @@ class NewsItemBriefWorker(WorkerBase):
         payload: Mapping[str, Any],
         computed_at_ms: int,
     ) -> None:
-        with self._repository_session() as repos:
+        with self._repository_session() as repos, repos.conn.transaction():
             repos.news.upsert_news_item_agent_brief(
                 news_item_id=packet.news_item.news_item_id,
                 agent_run_id=run_id,
@@ -391,6 +400,32 @@ class NewsItemBriefWorker(WorkerBase):
                 computed_at_ms=int(computed_at_ms),
                 created_at_ms=int(computed_at_ms),
                 updated_at_ms=int(computed_at_ms),
+                commit=False,
+            )
+            source_ids = repos.news.list_source_ids_for_news_items(
+                news_item_ids=[packet.news_item.news_item_id],
+            )
+            repos.news_projection_dirty_targets.enqueue_targets(
+                [
+                    {
+                        "projection_name": "page",
+                        "target_kind": "news_item",
+                        "target_id": packet.news_item.news_item_id,
+                    },
+                    *[
+                        {
+                            "projection_name": "source_quality",
+                            "target_kind": "source",
+                            "target_id": source_id,
+                            "window": window,
+                        }
+                        for source_id in source_ids
+                        for window in getattr(self, "source_quality_windows", ("24h", "7d"))
+                    ],
+                ],
+                reason="news_item_brief_updated",
+                now_ms=int(computed_at_ms),
+                commit=False,
             )
 
     def _upsert_failed_current(
@@ -410,7 +445,7 @@ class NewsItemBriefWorker(WorkerBase):
             computed_at_ms=computed_at_ms,
         )
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -518,10 +553,7 @@ def _fallback_request_audit(
 
 
 def _failed_brief(errors: list[dict[str, str]]) -> dict[str, Any]:
-    reason = "; ".join(
-        str(error.get("message") or error.get("code") or "")[:120]
-        for error in errors[:3]
-    )
+    reason = "; ".join(str(error.get("message") or error.get("code") or "")[:120] for error in errors[:3])
     suffix = f"原因：{reason}" if reason else "已记录失败原因供后续重试。"
     return {
         "status": "failed",
@@ -542,6 +574,11 @@ def _failed_brief(errors: list[dict[str, str]]) -> dict[str, Any]:
         ],
         "evidence_refs": [],
     }
+
+
+def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
+    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
+    return normalized or ("24h", "7d")
 
 
 def _provider_error_audit(error: Exception) -> dict[str, Any] | None:

@@ -1278,6 +1278,7 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
         "news_item_processed",
         "news_story_updated",
         "news_item_brief_updated",
+        "news_page_dirty",
     )
 
     @field_validator("wakes_on", mode="before")
@@ -1312,9 +1313,7 @@ class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
         if invalid:
             allowed = ", ".join(NEWS_SOURCE_QUALITY_WINDOWS)
             rejected = ", ".join(invalid)
-            raise ValueError(
-                f"news_source_quality_projection.windows must contain only {allowed}; got: {rejected}"
-            )
+            raise ValueError(f"news_source_quality_projection.windows must contain only {allowed}; got: {rejected}")
         return value
 
 
@@ -2127,7 +2126,8 @@ news_item_brief:
 news_page_projection:
   enabled: true
   advisory_lock_key: 2026051904
-  wakes_on: ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated"]
+  wakes_on:
+    ["news_item_written", "news_item_processed", "news_story_updated", "news_item_brief_updated", "news_page_dirty"]
 news_source_quality_projection:
   enabled: true
   interval_seconds: 60.0

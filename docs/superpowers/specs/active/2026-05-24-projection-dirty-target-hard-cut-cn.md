@@ -128,11 +128,11 @@ The changed arrow is the control-plane edge between fact writes and projection w
 - `target_id`: domain id for the target.
 - `dirty_reason`: source mutation category, such as `event_processed`, `story_updated`, `brief_updated`, `expected_event_reconciled`, or `projection_backfill`.
 - `source_watermark_ms`: latest source timestamp known at enqueue time.
-- `payload_hash`: stable coalescing hash for the target and reason.
+- `payload_hash`: stable coalescing hash for the target, reason, and source watermark. It excludes scheduling/control metadata such as `priority`, `due_at_ms`, lease fields, attempts, errors, and audit timestamps.
 - `priority`: small integer ordering key.
 - `due_at_ms`, `leased_until_ms`, `lease_owner`, `attempt_count`, `last_error`.
 - `first_dirty_at_ms`, `updated_at_ms`.
-- A claimed row returns a completion token: target key, `payload_hash`, `lease_owner`, and `attempt_count`. `mark_done` and `mark_error` must match the full token so an old claim cannot delete or overwrite a newer re-enqueue.
+- A claimed row returns a completion token: target key, `payload_hash`, `lease_owner`, and `attempt_count`. `mark_done` and `mark_error` must match the full token so an old claim cannot delete or overwrite materially newer dirty work. A pure duplicate enqueue with the same target, reason, payload hash, and source watermark is only a wake hint and should not invalidate the active lease.
 
 `news_projection_dirty_targets`:
 
@@ -146,6 +146,7 @@ The changed arrow is the control-plane edge between fact writes and projection w
 Projection row invariants:
 
 - `payload_hash` excludes volatile `computed_at_ms`.
+- Dirty-target fallback `payload_hash` excludes queue scheduling/control metadata such as priority, due time, lease fields, attempts, errors, and audit timestamps.
 - `source_watermark_ms` only moves forward.
 - Unchanged payloads do not update `computed_at_ms`.
 - Deletes are scoped to claimed target ids.
@@ -182,7 +183,7 @@ CLI/ops contract:
 - AC6. WHEN News Source Quality claims a `source_id/window` dirty target THEN it SHALL aggregate only the claimed source/window pair and SHALL not recompute all sources for all windows.
 - AC6a. WHEN a source-quality window can change only because time moved forward THEN the source/window dirty target SHALL be durably scheduled with `due_at_ms`; correctness SHALL NOT depend on an audit scan.
 - AC7. WHEN an unchanged Equity, News Page, or News Source Quality payload is projected twice THEN the read-model row SHALL keep its prior `computed_at_ms` and avoid a physical update.
-- AC7a. WHEN a claimed dirty target is re-enqueued before the old claim finishes THEN the old claim SHALL NOT delete or mark done the newer dirty row.
+- AC7a. WHEN a claimed dirty target is re-enqueued with materially newer work before the old claim finishes THEN the old claim SHALL NOT delete or mark done the newer dirty row. WHEN the re-enqueue is a pure duplicate with the same target, reason, payload hash, and source watermark THEN the current lease MAY remain valid.
 - AC8. WHEN the architecture test suite scans runtime workers THEN it SHALL fail if a projection worker calls deleted broad discovery methods or introduces a new `list_*_for_*_projection` runtime dependency.
 - AC9. WHEN the repair command is executed on an existing database THEN it SHALL enqueue coverage targets without directly writing read-model rows.
 - AC10. WHEN Docker is rebuilt and the service runs on live config THEN `/readyz` SHALL show projection workers healthy, dirty queues draining, and no repeating broad Equity or News projection query in `pg_stat_activity`.

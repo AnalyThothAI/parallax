@@ -331,6 +331,17 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     },
 }
 
+CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
+    "equity_event_projection_dirty_targets": {
+        SRC / "domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
+    },
+    "news_projection_dirty_targets": {
+        SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
+    },
+}
+
 LEGACY_ASSET_TABLES = ("assets", "asset_aliases", "asset_venues", "asset_market_snapshots")
 EXPECTED_WORKER_FACTORY_FILES = {
     "__init__.py",
@@ -641,14 +652,32 @@ def test_read_model_single_writers(table_name: str) -> None:
 
 
 @pytest.mark.architecture
+def test_dirty_target_control_plane_tables_are_not_read_models() -> None:
+    assert set(CONTROL_PLANE_TABLES).isdisjoint(SINGLE_WRITER_READ_MODELS)
+
+
+@pytest.mark.architecture
+@pytest.mark.parametrize("table_name", sorted(CONTROL_PLANE_TABLES))
+def test_dirty_target_control_plane_sql_is_repository_owned(table_name: str) -> None:
+    allowlist = CONTROL_PLANE_TABLES[table_name]
+    write_pattern = re.compile(
+        rf"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+{re.escape(table_name)}\b",
+        re.IGNORECASE,
+    )
+    violations = [
+        f"{_rel(path)} writes control-plane table {table_name}"
+        for path in SRC.rglob("*.py")
+        if path not in allowlist and write_pattern.search(path.read_text())
+    ]
+
+    assert violations == []
+
+
+@pytest.mark.architecture
 def test_token_radar_runtime_has_no_full_window_source_query() -> None:
     old_query_path = SRC / "domains/token_intel/queries/token_radar_source_query.py"
     old_module = "gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query"
-    violations = [
-        _rel(path)
-        for path in SRC.rglob("*.py")
-        if path != old_query_path and old_module in path.read_text()
-    ]
+    violations = [_rel(path) for path in SRC.rglob("*.py") if path != old_query_path and old_module in path.read_text()]
 
     assert not old_query_path.exists()
     assert violations == []

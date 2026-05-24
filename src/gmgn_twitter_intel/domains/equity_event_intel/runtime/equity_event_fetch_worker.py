@@ -209,7 +209,7 @@ class EquityEventFetchWorker(WorkerBase):
         except Exception:
             return
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),

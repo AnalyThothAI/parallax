@@ -488,8 +488,9 @@ class EquityEventBriefWorker(WorkerBase):
         computed_at_ms: int,
     ) -> None:
         with self._repository_session() as repos:
+            company_event_id = packet.current_event.company_event_id
             repos.equity_events.upsert_equity_event_agent_brief(
-                company_event_id=packet.current_event.company_event_id,
+                company_event_id=company_event_id,
                 agent_run_id=run_id,
                 status=str(payload["status"]),
                 validation_status=validation_status,
@@ -502,7 +503,18 @@ class EquityEventBriefWorker(WorkerBase):
                 computed_at_ms=int(computed_at_ms),
                 created_at_ms=int(computed_at_ms),
                 updated_at_ms=int(computed_at_ms),
+                commit=False,
             )
+            repos.equity_projection_dirty_targets.enqueue_targets(
+                _brief_dirty_targets(
+                    company_event_id=company_event_id,
+                    source_watermark_ms=int(computed_at_ms),
+                ),
+                reason="brief_updated",
+                now_ms=int(computed_at_ms),
+                commit=False,
+            )
+            repos.conn.commit()
 
     def _upsert_failed_current(
         self,
@@ -539,9 +551,7 @@ class EquityEventBriefWorker(WorkerBase):
 
     def _current_source_updated_at_ms(self, *, company_event_id: str) -> int:
         with self._repository_session() as repos:
-            return int(
-                repos.equity_events.get_event_brief_source_updated_at(company_event_id=company_event_id)
-            )
+            return int(repos.equity_events.get_event_brief_source_updated_at(company_event_id=company_event_id))
 
 
 class _CandidateOutcome:
@@ -582,6 +592,18 @@ def _current_brief_is_fresh(
     if str(current.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
         return False
     return int(current.get("computed_at_ms") or 0) >= int(candidate.get("source_updated_at_ms") or 0)
+
+
+def _brief_dirty_targets(*, company_event_id: str, source_watermark_ms: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "projection_name": projection_name,
+            "target_kind": "company_event",
+            "target_id": str(company_event_id),
+            "source_watermark_ms": int(source_watermark_ms),
+        }
+        for projection_name in ("page", "timeline", "alert")
+    ]
 
 
 def _has_official_evidence(packet: EquityEventBriefInputPacket) -> bool:
@@ -676,8 +698,7 @@ def _insufficient_no_official_evidence_brief(packet: EquityEventBriefInputPacket
         "data_gaps": [
             {
                 "description_zh": (
-                    f"{packet.current_event.ticker} 事件缺少监管文件或发行人官方证据，"
-                    "暂不生成可发布智能简报。"
+                    f"{packet.current_event.ticker} 事件缺少监管文件或发行人官方证据，暂不生成可发布智能简报。"
                 ),
                 "severity": "high",
             }
