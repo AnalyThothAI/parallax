@@ -107,8 +107,9 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
 
     assert calls == [
         {
-            "windows": ("5m", "1h", "4h"),
+            "windows": ("5m", "1h"),
             "scopes": ("all", "matched"),
+            "work_items": (("5m", "all"), ("5m", "matched"), ("1h", "all")),
             "now_ms": 1_777_800_000_000,
             "limit": 7,
             "rank_limit": 7,
@@ -153,6 +154,43 @@ def test_projection_worker_run_once_returns_worker_result(monkeypatch):
     assert result.notes["rows_written"] == 2
     assert result.notes["source_rows"] == 3
     assert result.notes["windows"]["5m:all"]["status"] == "ready"
+
+
+def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    class FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "rows_written": 0,
+                "source_rows": 0,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 1,
+                "windows": {"5m:all": {"status": "ready"}},
+            }
+
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    coverage = {
+        ("1h", "all"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
+        ("1h", "matched"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
+        ("4h", "all"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
+        ("4h", "matched"): {"status": "ready", "computed_at_ms": 1_777_799_990_000},
+    }
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
+        db=FakeDB(coverage),
+        telemetry=object(),
+    )
+
+    worker.rebuild_once(now_ms=1_777_800_000_000)
+
+    assert calls[0]["work_items"] == (("5m", "all"), ("5m", "matched"))
 
 
 def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():

@@ -1486,6 +1486,76 @@ class EquityEventRepository:
             "latest_event_at_ms": row["latest_event_at_ms"],
         }
 
+    def page_projection_source_summary(self) -> dict[str, int]:
+        row = self.conn.execute(
+            """
+            SELECT
+              (
+                SELECT COUNT(*)
+                  FROM equity_company_events AS events
+                 WHERE events.validation_status <> 'rejected'
+              )::bigint AS eligible_event_count,
+              (
+                SELECT COUNT(DISTINCT rows.company_event_id)
+                  FROM equity_event_page_rows AS rows
+                  JOIN equity_company_events AS events
+                    ON events.company_event_id = rows.company_event_id
+                 WHERE rows.projection_version = %s
+                   AND events.validation_status <> 'rejected'
+              )::bigint AS page_row_count,
+              (
+                SELECT COUNT(DISTINCT rows.company_event_id)
+                  FROM equity_company_timeline_rows AS rows
+                  JOIN equity_company_events AS events
+                    ON events.company_event_id = rows.company_event_id
+                 WHERE rows.projection_version = %s
+                   AND events.validation_status <> 'rejected'
+              )::bigint AS timeline_row_count,
+              (
+                SELECT COUNT(*)
+                  FROM equity_company_events AS events
+                 WHERE events.validation_status <> 'rejected'
+                   AND events.priority = 'P0'
+                   AND events.source_role = ANY(%s::text[])
+                   AND EXISTS (
+                     SELECT 1
+                       FROM equity_event_fact_candidates AS facts
+                      WHERE facts.company_event_id = events.company_event_id
+                        AND facts.validation_status = ANY(%s::text[])
+                   )
+              )::bigint AS required_alert_count,
+              (
+                SELECT COUNT(DISTINCT candidates.company_event_id)
+                  FROM equity_event_alert_candidates AS candidates
+                  JOIN equity_company_events AS events
+                    ON events.company_event_id = candidates.company_event_id
+                 WHERE candidates.projection_version = %s
+                   AND events.validation_status <> 'rejected'
+              )::bigint AS alert_candidate_count,
+              GREATEST(
+                (
+                  SELECT COALESCE(MAX(events.updated_at_ms), 0)
+                    FROM equity_company_events AS events
+                   WHERE events.validation_status <> 'rejected'
+                ),
+                (SELECT COALESCE(MAX(universe.updated_at_ms), 0) FROM equity_event_universe_members AS universe),
+                (SELECT COALESCE(MAX(stories.updated_at_ms), 0) FROM equity_event_story_groups AS stories),
+                (SELECT COALESCE(MAX(briefs.updated_at_ms), 0) FROM equity_event_agent_briefs AS briefs),
+                (SELECT COALESCE(MAX(documents.updated_at_ms), 0) FROM equity_event_documents AS documents),
+                (SELECT COALESCE(MAX(facts.updated_at_ms), 0) FROM equity_event_fact_candidates AS facts)
+              )::bigint AS source_watermark_ms
+            """,
+            (
+                EQUITY_EVENT_PAGE_PROJECTION_VERSION,
+                EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
+                list(_ALERT_SOURCE_ROLES),
+                list(_ALERT_FACT_STATUSES),
+                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
+            ),
+        ).fetchone()
+        payload = dict(row)
+        return {key: int(payload[key] or 0) for key in payload}
+
     def list_events_for_page_projection(self, *, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -1521,6 +1591,7 @@ class EquityEventRepository:
                    COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms,
                    GREATEST(
                      events.updated_at_ms,
+                     COALESCE(universe.updated_at_ms, 0),
                      COALESCE(stories.updated_at_ms, 0),
                      COALESCE(briefs.updated_at_ms, 0),
                      COALESCE(documents.updated_at_ms, 0),
@@ -1572,6 +1643,7 @@ class EquityEventRepository:
                  OR page_rows.projection_version <> %s
                  OR page_rows.source_watermark_ms < GREATEST(
                    events.updated_at_ms,
+                   COALESCE(universe.updated_at_ms, 0),
                    COALESCE(stories.updated_at_ms, 0),
                    COALESCE(briefs.updated_at_ms, 0),
                    COALESCE(documents.updated_at_ms, 0),
@@ -1581,6 +1653,7 @@ class EquityEventRepository:
                  OR timeline_rows.projection_version <> %s
                  OR timeline_rows.source_watermark_ms < GREATEST(
                    events.updated_at_ms,
+                   COALESCE(universe.updated_at_ms, 0),
                    COALESCE(stories.updated_at_ms, 0),
                    COALESCE(briefs.updated_at_ms, 0),
                    COALESCE(documents.updated_at_ms, 0),
@@ -1595,6 +1668,7 @@ class EquityEventRepository:
                      OR alerts.projection_version <> %s
                      OR alerts.source_watermark_ms < GREATEST(
                        events.updated_at_ms,
+                       COALESCE(universe.updated_at_ms, 0),
                        COALESCE(stories.updated_at_ms, 0),
                        COALESCE(briefs.updated_at_ms, 0),
                        COALESCE(documents.updated_at_ms, 0),
@@ -1616,6 +1690,7 @@ class EquityEventRepository:
                         WHEN page_rows.projection_version <> %s THEN 0
                         WHEN page_rows.source_watermark_ms < GREATEST(
                           events.updated_at_ms,
+                          COALESCE(universe.updated_at_ms, 0),
                           COALESCE(stories.updated_at_ms, 0),
                           COALESCE(briefs.updated_at_ms, 0),
                           COALESCE(documents.updated_at_ms, 0),
@@ -1625,6 +1700,7 @@ class EquityEventRepository:
                         WHEN timeline_rows.projection_version <> %s THEN 0
                         WHEN timeline_rows.source_watermark_ms < GREATEST(
                           events.updated_at_ms,
+                          COALESCE(universe.updated_at_ms, 0),
                           COALESCE(stories.updated_at_ms, 0),
                           COALESCE(briefs.updated_at_ms, 0),
                           COALESCE(documents.updated_at_ms, 0),
@@ -1638,6 +1714,7 @@ class EquityEventRepository:
                             OR alerts.projection_version <> %s
                             OR alerts.source_watermark_ms < GREATEST(
                               events.updated_at_ms,
+                              COALESCE(universe.updated_at_ms, 0),
                               COALESCE(stories.updated_at_ms, 0),
                               COALESCE(briefs.updated_at_ms, 0),
                               COALESCE(documents.updated_at_ms, 0),

@@ -699,6 +699,51 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     assert dirty_targets.errors == []
 
 
+def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkeypatch):
+    score_calls: list[tuple[str, str]] = []
+    refresh_calls: list[tuple[str, str]] = []
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {"conn": object(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+    )()
+
+    def score(self, **kwargs):
+        score_calls.append((kwargs["window"], kwargs["scope"]))
+        return {"source_rows": 1, "status": "updated"}
+
+    def refresh(self, **kwargs):
+        refresh_calls.append((kwargs["window"], kwargs["scope"]))
+        return {"rows_written": 1, "source_rows": 1, "status": "ready"}
+
+    monkeypatch.setattr(TokenRadarProjection, "score_target_window", score)
+    monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        windows=("5m", "1h", "4h", "24h"),
+        scopes=("all", "matched"),
+        work_items=(("5m", "all"), ("1h", "matched")),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert score_calls == [("5m", "all"), ("1h", "matched")]
+    assert refresh_calls == [("1h", "matched"), ("5m", "all")]
+    assert set(result["windows"]) == {"5m:all", "1h:matched"}
+
+
 def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failure(monkeypatch):
     dirty_targets = FakeDirtyTargets(
         [

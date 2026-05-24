@@ -96,10 +96,19 @@ class TokenRadarProjectionWorker(WorkerBase):
     def _rebuild_once(self, *, computed_at_ms: int) -> dict[str, Any]:
         try:
             with self._repository_session() as repos:
+                work_items = self._next_work_items(
+                    coverage=_latest_coverage_from_repos(
+                        repos,
+                        windows=self.windows,
+                        scopes=self.scopes,
+                    ),
+                    computed_at_ms=computed_at_ms,
+                )[0]
                 projection = _projection_class()(repos=repos)
                 result = projection.rebuild_dirty_targets(
-                    windows=self.windows,
-                    scopes=self.scopes,
+                    windows=tuple(dict.fromkeys(window for window, _scope in work_items)),
+                    scopes=tuple(dict.fromkeys(scope for _window, scope in work_items)),
+                    work_items=tuple(work_items),
                     now_ms=computed_at_ms,
                     limit=self.limit,
                     rank_limit=self.limit,
@@ -201,13 +210,10 @@ class TokenRadarProjectionWorker(WorkerBase):
 
     def _latest_coverage(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self._repository_session() as repos:
-            return cast(
-                dict[tuple[str, str], dict[str, Any]],
-                repos.token_radar.latest_coverage(
-                    projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                    windows=self.windows,
-                    scopes=self.scopes,
-                ),
+            return _latest_coverage_from_repos(
+                repos,
+                windows=self.windows,
+                scopes=self.scopes,
             )
 
     def _missing_work_items(
@@ -276,6 +282,22 @@ def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
         seen.add(item)
         out.append(item)
     return out
+
+
+def _latest_coverage_from_repos(
+    repos: Any,
+    *,
+    windows: tuple[str, ...],
+    scopes: tuple[str, ...],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    return cast(
+        dict[tuple[str, str], dict[str, Any]],
+        repos.token_radar.latest_coverage(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            windows=windows,
+            scopes=scopes,
+        ),
+    )
 
 
 def _projection_class() -> type[TokenRadarProjection]:

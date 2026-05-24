@@ -27,6 +27,7 @@ class EquityEventPageProjectionWorker(WorkerBase):
         super().__init__(**kwargs)
         self.wake_bus = wake_bus
         self.clock_ms = clock_ms or _now_ms
+        self._last_event_source_summary: dict[str, int] | None = None
 
     async def run_once(self) -> WorkerResult:
         return await asyncio.to_thread(self.run_once_sync)
@@ -42,7 +43,13 @@ class EquityEventPageProjectionWorker(WorkerBase):
         inactive_expected_event_ids: list[str] = []
 
         with self._repository_session() as repos:
-            for payload in repos.equity_events.list_events_for_page_projection(limit=self._batch_size()):
+            event_source_summary = repos.equity_events.page_projection_source_summary()
+            scan_event_projection = self._should_scan_event_projection(event_source_summary)
+            if scan_event_projection:
+                event_payloads = repos.equity_events.list_events_for_page_projection(limit=self._batch_size())
+            else:
+                event_payloads = []
+            for payload in event_payloads:
                 event, company, story, facts, documents, brief = _event_projection_parts(payload)
                 page_row = build_equity_event_page_row(
                     event=event,
@@ -109,6 +116,7 @@ class EquityEventPageProjectionWorker(WorkerBase):
                     commit=False,
                 )
             repos.conn.commit()
+            self._last_event_source_summary = event_source_summary
 
         processed = len(set(company_event_ids)) + len(set(expected_event_ids)) + len(set(inactive_expected_event_ids))
         if processed and self.wake_bus is not None:
@@ -121,10 +129,11 @@ class EquityEventPageProjectionWorker(WorkerBase):
                 "calendar_rows": len(calendar_rows),
                 "alert_candidates": len(alert_rows),
                 "timeline_rows": len(timeline_rows),
+                "event_scan": "scanned" if scan_event_projection else "skipped",
             },
         )
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -132,6 +141,22 @@ class EquityEventPageProjectionWorker(WorkerBase):
 
     def _batch_size(self) -> int:
         return max(1, int(getattr(self.settings, "batch_size", 100)))
+
+    def _should_scan_event_projection(self, summary: Mapping[str, Any]) -> bool:
+        eligible_event_count = int(summary.get("eligible_event_count") or 0)
+        page_row_count = int(summary.get("page_row_count") or 0)
+        timeline_row_count = int(summary.get("timeline_row_count") or 0)
+        if page_row_count < eligible_event_count or timeline_row_count < eligible_event_count:
+            return True
+        required_alert_count = int(summary.get("required_alert_count") or 0)
+        alert_candidate_count = int(summary.get("alert_candidate_count") or 0)
+        if alert_candidate_count != required_alert_count:
+            return True
+        source_watermark_ms = int(summary.get("source_watermark_ms") or 0)
+        if self._last_event_source_summary is None:
+            return True
+        previous_source_watermark_ms = int(self._last_event_source_summary.get("source_watermark_ms") or 0)
+        return source_watermark_ms != previous_source_watermark_ms
 
 
 def _event_projection_parts(

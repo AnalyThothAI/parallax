@@ -62,14 +62,16 @@ class TokenRadarProjection:
     def rebuild_dirty_targets(
         self,
         *,
-        windows: tuple[str, ...],
-        scopes: tuple[str, ...],
+        windows: tuple[str, ...] = (),
+        scopes: tuple[str, ...] = (),
+        work_items: tuple[tuple[str, str], ...] | None = None,
         now_ms: int | None = None,
         limit: int = 100,
         rank_limit: int = 100,
         lease_owner: str = "token_radar_projection",
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
+        resolved_work_items = _resolve_work_items(windows=windows, scopes=scopes, work_items=work_items)
         claims = self.repos.token_radar_dirty_targets.claim_due(
             limit=limit,
             lease_ms=DIRTY_TARGET_LEASE_MS,
@@ -95,16 +97,15 @@ class TokenRadarProjection:
         for claim in claims:
             claim_key = _claim_key(claim)
             try:
-                for window in windows:
-                    for scope in scopes:
-                        score_result = self.score_target_window(
-                            target=claim,
-                            window=window,
-                            scope=scope,
-                            now_ms=computed_at_ms,
-                        )
-                        result["source_rows"] += int(score_result.get("source_rows") or 0)
-                        touched.add((window, scope))
+                for window, scope in resolved_work_items:
+                    score_result = self.score_target_window(
+                        target=claim,
+                        window=window,
+                        scope=scope,
+                        now_ms=computed_at_ms,
+                    )
+                    result["source_rows"] += int(score_result.get("source_rows") or 0)
+                    touched.add((window, scope))
                 successful_claims.append(claim_key)
             except Exception as exc:
                 failures += 1
@@ -485,6 +486,17 @@ def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
     return max(baseline_since_ms, computed_at_ms - MAX_ANALYSIS_LOOKBACK_MS)
+
+
+def _resolve_work_items(
+    *,
+    windows: tuple[str, ...],
+    scopes: tuple[str, ...],
+    work_items: tuple[tuple[str, str], ...] | None,
+) -> tuple[tuple[str, str], ...]:
+    if work_items is not None:
+        return tuple(dict.fromkeys((str(window), str(scope)) for window, scope in work_items if window and scope))
+    return tuple((window, scope) for window in windows for scope in scopes)
 
 
 def _now_ms() -> int:
