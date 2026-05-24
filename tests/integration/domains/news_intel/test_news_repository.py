@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from types import SimpleNamespace
+
 from alembic import command
 from psycopg.types.json import Jsonb
 
@@ -12,6 +15,7 @@ from gmgn_twitter_intel.domains.news_intel._constants import (
     NEWS_PAGE_PROJECTION_VERSION,
 )
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository, news_page_cursor
+from gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
 from gmgn_twitter_intel.domains.news_intel.types.news_item_brief import (
     NEWS_ITEM_BRIEF_AGENT_NAME,
     NEWS_ITEM_BRIEF_LANE,
@@ -552,7 +556,7 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
             updated_at_ms=NOW_MS + 100,
         )
 
-        candidates = repo.list_items_for_page_projection(limit=10)
+        candidates = repo.load_items_for_page_projection(news_item_ids=[news_item_id])
         row = candidates[0]
         repo.replace_page_rows_for_items(
             news_item_ids=[news_item_id],
@@ -820,7 +824,7 @@ def test_list_news_page_rows_filters_by_decision_class(tmp_path) -> None:
     assert rows[0]["agent_brief_json"]["decision_class"] == "driver"
 
 
-def test_page_projection_candidates_include_rows_when_source_classification_changes(tmp_path) -> None:
+def test_page_projection_loader_includes_source_classification_changes(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -850,61 +854,13 @@ def test_page_projection_candidates_include_rows_when_source_classification_chan
         )
         conn.commit()
 
-        candidates = repo.list_items_for_page_projection(limit=10)
+        candidates = repo.load_items_for_page_projection(news_item_ids=[news_item_id])
     finally:
         conn.close()
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
     assert candidates[0]["item"]["coverage_tags_json"] == ["exchange_listing"]
     assert candidates[0]["item"]["source_quality_status"] == "healthy"
-
-
-def test_page_projection_candidates_progress_after_partial_rebuild(tmp_path) -> None:
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        repo = NewsRepository(conn)
-        item_ids = [
-            _insert_source_provider_and_item(repo, source_item_key="first", title="First"),
-            _insert_source_provider_and_item(repo, source_item_key="second", title="Second"),
-            _insert_source_provider_and_item(repo, source_item_key="third", title="Third"),
-        ]
-
-        first_batch = repo.list_items_for_page_projection(limit=2)
-        first_ids = [str(row["item"]["news_item_id"]) for row in first_batch]
-        repo.replace_page_rows_for_items(
-            news_item_ids=first_ids,
-            rows=[
-                _page_row(
-                    f"row-{index}",
-                    news_item_id,
-                    source_id="source-1",
-                    projection_version=NEWS_PAGE_PROJECTION_VERSION,
-                    computed_at_ms=NOW_MS + 1,
-                )
-                | {
-                    "source_json": {
-                        "source_id": "source-1",
-                        "provider_type": "rss",
-                        "source_domain": "example.com",
-                        "source_name": "Example",
-                        "source_role": "observed_source",
-                        "trust_tier": "standard",
-                        "coverage_tags": [],
-                        "source_quality_status": "unknown",
-                    }
-                }
-                for index, news_item_id in enumerate(first_ids)
-            ],
-        )
-
-        second_batch = repo.list_items_for_page_projection(limit=2)
-        second_ids = [str(row["item"]["news_item_id"]) for row in second_batch]
-    finally:
-        conn.close()
-
-    assert len(first_ids) == 2
-    assert second_ids == [next(item_id for item_id in item_ids if item_id not in set(first_ids))]
 
 
 def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> None:
@@ -1026,11 +982,32 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
             "SELECT lifecycle_status FROM news_items WHERE news_item_id = %s",
             (news_item_id,),
         ).fetchone()["lifecycle_status"]
+        repos = repositories_for_connection(conn)
+        repos.news_projection_dirty_targets.enqueue_targets(
+            [{"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id}],
+            reason="news_item_written",
+            now_ms=NOW_MS + 2,
+        )
+        page_worker = NewsPageProjectionWorker(
+            name="news_page_projection",
+            settings=SimpleNamespace(batch_size=10, lease_ms=60_000, retry_ms=30_000, statement_timeout_seconds=30),
+            db=_SingleConnectionWorkerDB(conn),
+            telemetry=object(),
+        )
+        page_result = page_worker.run_once_sync(now_ms=NOW_MS + 3)
+        refreshed_page = conn.execute(
+            """
+            SELECT story_id, token_lanes_json, fact_lanes_json
+              FROM news_page_rows
+             WHERE news_item_id = %s
+            """,
+            (news_item_id,),
+        ).fetchone()
     finally:
         conn.close()
 
     assert story_count == 0
-    assert page_count == 0
+    assert page_count == 1
     assert entity_count == 0
     assert mention_count == 0
     assert fact_count == 0
@@ -1038,6 +1015,10 @@ def test_updating_news_item_clears_stale_story_and_page_projection(tmp_path) -> 
     assert story["source_count"] == 0
     assert story["status"] == "stale"
     assert status == "raw"
+    assert page_result.processed == 1
+    assert refreshed_page["story_id"] is None
+    assert refreshed_page["token_lanes_json"] == []
+    assert refreshed_page["fact_lanes_json"] == []
 
 
 def test_update_item_content_classification_persists_materialized_fields(tmp_path) -> None:
@@ -1282,6 +1263,15 @@ def _page_row(
         "projection_version": projection_version,
         "computed_at_ms": computed_at_ms,
     }
+
+
+class _SingleConnectionWorkerDB:
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    @contextmanager
+    def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
+        yield repositories_for_connection(self.conn)
 
 
 def _insert_agent_run(repo: NewsRepository, *, news_item_id: str, run_id: str) -> dict[str, object]:

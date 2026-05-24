@@ -5,17 +5,18 @@ from typing import Any
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
 
 
-def test_page_projection_candidate_query_compares_persisted_source_payload() -> None:
+def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> None:
     conn = CapturingConnection()
     repo = NewsRepository(conn)
 
-    rows = repo.list_items_for_page_projection(limit=10)
+    rows = repo.load_items_for_page_projection(news_item_ids=["news-1"])
 
     assert rows == []
+    assert "WHERE items.news_item_id = ANY(%s::text[])" in conn.sql
     assert "JOIN news_sources AS sources ON sources.source_id = items.source_id" in conn.sql
-    assert "page.source_json ->> 'provider_type' IS DISTINCT FROM sources.provider_type" in conn.sql
-    assert "page.source_json ->> 'source_quality_status' IS DISTINCT FROM sources.source_quality_status" in conn.sql
-    assert "COALESCE(page.source_json -> 'coverage_tags', '[]'::jsonb) <> sources.coverage_tags_json" in conn.sql
+    assert "'provider_type', sources.provider_type" in conn.sql
+    assert "'source_quality_status', sources.source_quality_status" in conn.sql
+    assert "'coverage_tags_json', sources.coverage_tags_json" in conn.sql
 
 
 class CapturingConnection:

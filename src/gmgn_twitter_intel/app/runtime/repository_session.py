@@ -30,10 +30,16 @@ from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_oi_radar_repos
 from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_event_repository import (
     EquityEventRepository,
 )
+from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_projection_dirty_target_repository import (
+    EquityProjectionDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from gmgn_twitter_intel.domains.news_intel.repositories.news_projection_dirty_target_repository import (
+    NewsProjectionDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import NewsRepository
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
@@ -111,7 +117,9 @@ class RepositorySession:
     narratives: NarrativeRepository
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
+    news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
     equity_events: EquityEventRepository
+    equity_projection_dirty_targets: EquityProjectionDirtyTargetRepository
     cex_derivative_series: CexDerivativeSeriesRepository
     cex_detail_snapshots: CexDetailSnapshotRepository
     cex_oi_radar: CexOiRadarRepository
@@ -162,7 +170,9 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         narratives=NarrativeRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
+        news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
         equity_events=EquityEventRepository(conn),
+        equity_projection_dirty_targets=EquityProjectionDirtyTargetRepository(conn),
         cex_derivative_series=CexDerivativeSeriesRepository(conn),
         cex_detail_snapshots=CexDetailSnapshotRepository(conn),
         cex_oi_radar=CexOiRadarRepository(conn),

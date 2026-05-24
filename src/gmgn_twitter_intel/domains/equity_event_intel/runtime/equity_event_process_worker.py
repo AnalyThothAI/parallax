@@ -72,6 +72,9 @@ class EquityEventProcessWorker(WorkerBase):
                     else []
                 )
                 with self._repository_session() as repos:
+                    old_company_event_ids = repos.equity_events.company_event_ids_for_document(
+                        event_document_id=event_document_id
+                    )
                     repos.equity_events.clear_story_members_for_document(
                         event_document_id=event_document_id,
                         active_company_event_id=event.company_event_id,
@@ -112,6 +115,26 @@ class EquityEventProcessWorker(WorkerBase):
                         processed_at_ms=now,
                         commit=False,
                     )
+                    company_event_ids = _unique_ids([event.company_event_id, *old_company_event_ids])
+                    expected_event_ids = repos.equity_events.matching_expected_event_ids_for_company_events(
+                        company_event_ids=company_event_ids
+                    )
+                    dirty_targets = _company_event_dirty_targets(
+                        company_event_ids=company_event_ids,
+                        source_watermark_ms=now,
+                    )
+                    dirty_targets.extend(
+                        _expected_event_dirty_targets(
+                            expected_event_ids=expected_event_ids,
+                            source_watermark_ms=now,
+                        )
+                    )
+                    repos.equity_projection_dirty_targets.enqueue_targets(
+                        dirty_targets,
+                        reason="event_processed",
+                        now_ms=now,
+                        commit=False,
+                    )
                     repos.conn.commit()
                 processed += 1
             except Exception as exc:  # pragma: no cover - defensive worker path.
@@ -133,7 +156,7 @@ class EquityEventProcessWorker(WorkerBase):
         except Exception:
             return
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -145,6 +168,43 @@ class EquityEventProcessWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _company_event_dirty_targets(*, company_event_ids: list[str], source_watermark_ms: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "projection_name": projection_name,
+            "target_kind": "company_event",
+            "target_id": company_event_id,
+            "source_watermark_ms": int(source_watermark_ms),
+        }
+        for company_event_id in company_event_ids
+        for projection_name in ("story", "page", "timeline", "alert")
+    ]
+
+
+def _expected_event_dirty_targets(*, expected_event_ids: list[str], source_watermark_ms: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "projection_name": "calendar",
+            "target_kind": "expected_event",
+            "target_id": expected_event_id,
+            "source_watermark_ms": int(source_watermark_ms),
+        }
+        for expected_event_id in expected_event_ids
+    ]
+
+
+def _unique_ids(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 __all__ = ["EquityEventProcessWorker"]

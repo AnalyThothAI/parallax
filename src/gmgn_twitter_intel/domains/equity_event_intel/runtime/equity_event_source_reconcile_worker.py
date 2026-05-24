@@ -37,7 +37,7 @@ class EquityEventSourceReconcileWorker(WorkerBase):
                 registry_lookup=repos.registry.find_us_equity_symbol,
                 now_ms=now,
             )
-            sources = repos.equity_events.reconcile_sources(
+            source_catalog = repos.equity_events.reconcile_source_catalog(
                 sources=payloads.sources,
                 universe_members=payloads.universe_members,
                 now_ms=now,
@@ -49,8 +49,46 @@ class EquityEventSourceReconcileWorker(WorkerBase):
                 now_ms=now,
                 commit=False,
             )
+            material_expected_events = [event for event in expected_events if _is_material_reconcile(event)]
+            expected_event_ids = _unique_ids([str(event["expected_event_id"]) for event in material_expected_events])
+            expected_calendar_targets = _expected_event_dirty_targets(
+                expected_event_ids=expected_event_ids,
+                source_watermark_ms=now,
+            )
+            if expected_calendar_targets:
+                repos.equity_projection_dirty_targets.enqueue_targets(
+                    expected_calendar_targets,
+                    reason="expected_event_reconciled",
+                    now_ms=now,
+                    commit=False,
+                )
+            company_ids = _unique_ids([str(company_id) for company_id in source_catalog.get("changed_company_ids", [])])
+            affected_company_event_ids = repos.equity_events.company_event_ids_for_companies(company_ids=company_ids)
+            affected_expected_event_ids = repos.equity_events.expected_event_ids_for_companies(company_ids=company_ids)
+            metadata_targets = _company_event_dirty_targets(
+                company_event_ids=affected_company_event_ids,
+                source_watermark_ms=now,
+            )
+            metadata_targets.extend(
+                _expected_event_dirty_targets(
+                    expected_event_ids=[
+                        expected_event_id
+                        for expected_event_id in affected_expected_event_ids
+                        if expected_event_id not in set(expected_event_ids)
+                    ],
+                    source_watermark_ms=now,
+                )
+            )
+            if metadata_targets:
+                repos.equity_projection_dirty_targets.enqueue_targets(
+                    metadata_targets,
+                    reason="universe_metadata_reconciled",
+                    now_ms=now,
+                    commit=False,
+                )
             repos.conn.commit()
 
+        sources = [dict(row) for row in source_catalog.get("sources", [])]
         count = len(sources)
         if self.wake_bus is not None:
             self.wake_bus.notify_equity_event_sources_reconciled(count=count)
@@ -59,11 +97,11 @@ class EquityEventSourceReconcileWorker(WorkerBase):
             notes={
                 "sources": count,
                 "universe_members": len(payloads.universe_members),
-                "expected_events": len(expected_events),
+                "expected_events": len(material_expected_events),
             },
         )
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -72,3 +110,45 @@ class EquityEventSourceReconcileWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _company_event_dirty_targets(*, company_event_ids: list[str], source_watermark_ms: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "projection_name": projection_name,
+            "target_kind": "company_event",
+            "target_id": company_event_id,
+            "source_watermark_ms": int(source_watermark_ms),
+        }
+        for company_event_id in _unique_ids(company_event_ids)
+        for projection_name in ("page", "timeline", "alert")
+    ]
+
+
+def _expected_event_dirty_targets(*, expected_event_ids: list[str], source_watermark_ms: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "projection_name": "calendar",
+            "target_kind": "expected_event",
+            "target_id": expected_event_id,
+            "source_watermark_ms": int(source_watermark_ms),
+        }
+        for expected_event_id in _unique_ids(expected_event_ids)
+    ]
+
+
+def _unique_ids(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _is_material_reconcile(row: Any) -> bool:
+    status = str(dict(row).get("reconcile_status") or "")
+    return status != "duplicate"

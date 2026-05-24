@@ -613,6 +613,18 @@ def test_story_projection_rebuilds_members_after_partial_truncation(postgres_con
     _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
     postgres_conn.execute("DELETE FROM equity_event_story_members")
     postgres_conn.commit()
+    company_event_ids = [
+        str(row["company_event_id"])
+        for row in postgres_conn.execute(
+            "SELECT company_event_id FROM equity_company_events ORDER BY company_event_id ASC"
+        ).fetchall()
+    ]
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=company_event_ids,
+        projection_names=["story"],
+        now_ms=NOW_MS + 2_500,
+    )
 
     result = _story_worker(db, now_ms=NOW_MS + 3_000).run_once_sync()
 
@@ -644,6 +656,12 @@ def test_page_projection_worker_rebuilds_read_models_after_page_truncation(postg
     assert timeline_rows[0]["company_event_id"] == page_rows[0]["company_event_id"]
 
     postgres_conn.execute("DELETE FROM equity_event_page_rows")
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=[page_rows[0]["company_event_id"]],
+        projection_names=["page"],
+        now_ms=NOW_MS + 4_000,
+    )
     postgres_conn.commit()
 
     rebuild_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000).run_once_sync()
@@ -701,7 +719,7 @@ def test_page_projection_worker_acknowledges_source_watermark_without_rescanning
     first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
     before = postgres_conn.execute(
         """
-        SELECT computed_at_ms, source_watermark_ms, payload_hash
+        SELECT company_event_id, computed_at_ms, source_watermark_ms, payload_hash
           FROM equity_event_page_rows
         """
     ).fetchone()
@@ -711,6 +729,12 @@ def test_page_projection_worker_acknowledges_source_watermark_without_rescanning
            SET updated_at_ms = %s
         """,
         (NOW_MS + 9_000,),
+    )
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=[before["company_event_id"]],
+        projection_names=["page"],
+        now_ms=NOW_MS + 10_000,
     )
     postgres_conn.commit()
 
@@ -742,6 +766,11 @@ def test_page_projection_worker_wakes_for_matched_calendar_only_rebuild(postgres
         "DELETE FROM equity_event_calendar_rows WHERE expected_event_id = %s",
         ("expected:MSFT:2026Q1",),
     )
+    _enqueue_expected_event_projection_targets(
+        postgres_conn,
+        expected_event_ids=["expected:MSFT:2026Q1"],
+        now_ms=NOW_MS + 4_000,
+    )
     postgres_conn.commit()
 
     result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000, batch_size=10).run_once_sync()
@@ -767,6 +796,12 @@ def test_page_projection_worker_rebuilds_missing_alert_candidate_for_older_curre
         "DELETE FROM equity_event_alert_candidates WHERE company_event_id = %s",
         (older_event_id,),
     )
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=[older_event_id],
+        projection_names=["alert"],
+        now_ms=NOW_MS + 4_000,
+    )
     postgres_conn.commit()
 
     result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 4_000, batch_size=1).run_once_sync()
@@ -790,6 +825,12 @@ def test_page_projection_worker_rebuilds_missing_timeline_row_for_older_current_
     postgres_conn.execute(
         "DELETE FROM equity_company_timeline_rows WHERE company_event_id = %s",
         (older_event_id,),
+    )
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=[older_event_id],
+        projection_names=["timeline"],
+        now_ms=NOW_MS + 4_000,
     )
     postgres_conn.commit()
 
@@ -818,6 +859,11 @@ def test_page_projection_worker_removes_calendar_row_for_stale_expected_event(po
          WHERE expected_event_id = %s
         """,
         (NOW_MS + 4_000, "expected:MSFT:2026Q1"),
+    )
+    _enqueue_expected_event_projection_targets(
+        postgres_conn,
+        expected_event_ids=["expected:MSFT:2026Q1"],
+        now_ms=NOW_MS + 5_000,
     )
     postgres_conn.commit()
 
@@ -1447,6 +1493,11 @@ def _seed_future_expected_event(conn: Any, *, expected_at_ms: int) -> None:
         source_role="calendar",
         now_ms=NOW_MS,
     )
+    _enqueue_expected_event_projection_targets(
+        conn,
+        expected_event_ids=["expected:MSFT:2026Q2"],
+        now_ms=NOW_MS,
+    )
 
 
 def _company_event_id_for_document(conn: Any, event_document_id: str) -> str:
@@ -1456,6 +1507,54 @@ def _company_event_id_for_document(conn: Any, event_document_id: str) -> str:
     ).fetchone()
     assert row is not None
     return str(row["company_event_id"])
+
+
+def _enqueue_company_event_projection_targets(
+    conn: Any,
+    *,
+    company_event_ids: list[str],
+    projection_names: list[str],
+    now_ms: int,
+) -> None:
+    repos = repositories_for_connection(conn)
+    repos.equity_projection_dirty_targets.enqueue_targets(
+        [
+            {
+                "projection_name": projection_name,
+                "target_kind": "company_event",
+                "target_id": company_event_id,
+                "source_watermark_ms": now_ms,
+            }
+            for company_event_id in company_event_ids
+            for projection_name in projection_names
+        ],
+        reason="test_projection_dirty_target",
+        now_ms=now_ms,
+    )
+
+
+def _enqueue_expected_event_projection_targets(
+    conn: Any,
+    *,
+    expected_event_ids: list[str],
+    now_ms: int,
+    due_at_ms: int | None = None,
+) -> None:
+    repos = repositories_for_connection(conn)
+    repos.equity_projection_dirty_targets.enqueue_targets(
+        [
+            {
+                "projection_name": "calendar",
+                "target_kind": "expected_event",
+                "target_id": expected_event_id,
+                "source_watermark_ms": now_ms,
+            }
+            for expected_event_id in expected_event_ids
+        ],
+        reason="test_projection_dirty_target",
+        now_ms=now_ms,
+        due_at_ms=due_at_ms,
+    )
 
 
 def _seed_processable_document(

@@ -168,7 +168,10 @@ def test_source_quality_repository_aggregates_and_replaces_rows(tmp_path) -> Non
             created_at_ms=NOW_MS - 1_000,
         )
 
-        aggregate_inputs = repo.list_source_quality_inputs(window_ms=DAY_MS, now_ms=NOW_MS)
+        aggregate_inputs = repo.list_source_quality_inputs_for_targets(
+            source_windows=[("coindesk", "24h")],
+            now_ms=NOW_MS,
+        )
         rows = build_source_quality_rows(
             aggregate_inputs=aggregate_inputs,
             window="24h",

@@ -6,6 +6,7 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
+from gmgn_twitter_intel.app.ops.projection_dirty_targets import enqueue_projection_dirty_targets
 from gmgn_twitter_intel.app.runtime.bootstrap import _cleanup_provider_roots_sync, bootstrap
 from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.llm_gateway import LLMGateway
@@ -232,6 +233,16 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         if args.ops_command == "validate-projections":
             data = ProjectionValidationAudit(signals.conn).run(sample=args.sample)
             return (0 if data.get("ok") else 1), {"ok": bool(data.get("ok")), "data": data}
+
+        if args.ops_command == "enqueue-projection-dirty-targets":
+            data = enqueue_projection_dirty_targets(
+                repos,
+                domain=args.domain,
+                execute=bool(args.execute),
+                now_ms=_now_ms(),
+                source_quality_windows=settings.workers.news_source_quality_projection.windows,
+            )
+            return 0, {"ok": True, "data": data}
 
         if args.ops_command == "sync-binance-usdt-perp-universe":
             client = BinanceUsdmFuturesClient(

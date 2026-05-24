@@ -178,6 +178,16 @@ so runtime ownership stays explicit. Ops paths and CLI rebuilds are
 explicit exceptions and must call the same projection service the worker
 uses; they do not run their own SQL.
 
+Projection worker idle paths must be proportional to due dirty targets, not
+to fact-table size. Equity Event and News projection workers claim durable
+dirty targets (`equity_event_projection_dirty_targets`,
+`news_projection_dirty_targets`) and then load payloads by explicit target
+ids only. Runtime projection workers must not discover stale work by scanning
+material facts or read models, including missing-story scans, page-projection
+staleness scans, or source-quality all-source/window scans. Broad coverage
+discovery is allowed only in manual ops repair commands that enqueue dirty
+targets and do not write read-model rows.
+
 ## Token Radar Clean Reset And Watchlist Summary Maintenance
 
 Token Radar storage is a clean-reset hard cut. Legacy `token_radar_rows` and

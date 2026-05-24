@@ -149,7 +149,7 @@ def test_news_fetch_worker_persists_context_observations() -> None:
                     language="en",
                     published_at_ms=NOW_MS - 8,
                     raw_payload={"id": "guid-2", "title": "BTC ETF launches"},
-                )
+                ),
             ],
             context_observations=[
                 NewsProviderContextObservation(
@@ -173,7 +173,7 @@ def test_news_fetch_worker_persists_context_observations() -> None:
                     published_at_ms=None,
                     engagement=None,
                     raw_payload={"id": "ctx-unresolved", "kind": "reply"},
-                )
+                ),
             ],
         ),
     )
@@ -213,7 +213,7 @@ def test_news_fetch_worker_persists_context_observations() -> None:
             "raw_payload_json": {"id": "ctx-unresolved", "kind": "reply"},
             "created_at_ms": NOW_MS,
             "commit": False,
-        }
+        },
     ]
 
 
@@ -328,6 +328,7 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
 def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> None:
     item = {
         "news_item_id": "news-1",
+        "source_id": "source-1",
         "source_role": "official_exchange",
         "source_domain": "coinbase.com",
         "authority_scope_json": {
@@ -379,6 +380,7 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
 def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() -> None:
     item = {
         "news_item_id": "news-1",
+        "source_id": "source-1",
         "source_role": "official_exchange",
         "source_domain": "coinbase.com",
         "authority_scope_json": {"event_types": ["exchange_delisting"], "domains": ["coinbase.com"]},
@@ -473,6 +475,8 @@ def _worker(
 class FakeDB:
     def __init__(self, repo: FakeNewsRepository) -> None:
         self.repo = repo
+        self.conn = FakeConn()
+        self.dirty = FakeProjectionDirtyTargetRepository()
         self.open_sessions = 0
         self.max_open_sessions = 0
 
@@ -484,7 +488,7 @@ class FakeDB:
         self.open_sessions += 1
         self.max_open_sessions = max(self.max_open_sessions, self.open_sessions)
         try:
-            yield SimpleNamespace(news=self.repo)
+            yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
         finally:
             self.open_sessions -= 1
 
@@ -492,6 +496,8 @@ class FakeDB:
 class FakeItemProcessDB:
     def __init__(self, repo: FakeItemProcessRepository) -> None:
         self.repo = repo
+        self.conn = FakeConn()
+        self.dirty = FakeProjectionDirtyTargetRepository()
         self.open_sessions = 0
         self.max_open_sessions = 0
 
@@ -503,7 +509,7 @@ class FakeItemProcessDB:
         self.open_sessions += 1
         self.max_open_sessions = max(self.max_open_sessions, self.open_sessions)
         try:
-            yield SimpleNamespace(news=self.repo)
+            yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
         finally:
             self.open_sessions -= 1
 
@@ -512,6 +518,33 @@ class FakeProjectionDB:
     def __init__(self, expected_name: str, repo: object) -> None:
         self.expected_name = expected_name
         self.repo = repo
+        self.conn = FakeConn()
+        claimed = []
+        if expected_name == "news_page_projection":
+            claimed = [
+                {
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "window": "",
+                    "payload_hash": "hash-1",
+                    "lease_owner": expected_name,
+                    "attempt_count": 1,
+                }
+            ]
+        if expected_name == "news_story_projection":
+            claimed = [
+                {
+                    "projection_name": "story",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
+                    "window": "",
+                    "payload_hash": "hash-1",
+                    "lease_owner": expected_name,
+                    "attempt_count": 1,
+                }
+            ]
+        self.dirty = FakeProjectionDirtyTargetRepository(claimed)
         self.sessions: list[str] = []
 
     @contextmanager
@@ -519,7 +552,35 @@ class FakeProjectionDB:
         assert name == self.expected_name
         assert statement_timeout_seconds == 30
         self.sessions.append(name)
-        yield SimpleNamespace(news=self.repo)
+        yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+
+
+class FakeConn:
+    def commit(self) -> None:
+        return None
+
+    @contextmanager
+    def transaction(self):
+        yield
+
+
+class FakeProjectionDirtyTargetRepository:
+    def __init__(self, claimed=None) -> None:
+        self.claimed = claimed or []
+        self.enqueued: list[dict[str, object]] = []
+
+    def claim_due(self, **payload):
+        return [dict(row) for row in self.claimed]
+
+    def enqueue_targets(self, rows, *, reason: str, now_ms: int, commit: bool = True):
+        self.enqueued.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
+        return len(rows)
+
+    def mark_done(self, rows, *, now_ms: int, commit: bool = True):
+        return len(rows)
+
+    def mark_error(self, rows, *, error: str, retry_ms: int, now_ms: int, commit: bool = True):
+        return len(rows)
 
 
 class FakeNewsSourceProvider:
@@ -604,14 +665,17 @@ class FakeNewsRepository:
         self.finished_runs: list[dict[str, object]] = []
         self.cache_updates: list[dict[str, object]] = []
 
-    def reconcile_configured_sources(self, sources, *, now_ms: int):
+    def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
         self.reconciled_sources = list(sources)
         return []
 
-    def claim_due_sources(self, *, now_ms: int, limit: int):
+    def claim_due_sources(self, *, now_ms: int, limit: int, commit: bool = True):
         return self.due_sources[:limit]
 
-    def start_fetch_run(self, *, source_id: str, started_at_ms: int):
+    def list_news_item_ids_for_sources(self, *, source_ids):
+        return []
+
+    def start_fetch_run(self, *, source_id: str, started_at_ms: int, commit: bool = True):
         fetch_run_id = f"run-{source_id}"
         self.fetch_runs.append({"source_id": source_id, "started_at_ms": started_at_ms})
         return fetch_run_id
@@ -661,13 +725,13 @@ class FakeItemProcessRepository:
         self.list_calls.append({"limit": limit, "now_ms": now_ms})
         return self.items[:limit]
 
-    def replace_item_entities(self, news_item_id: str, entities: list[object]) -> None:
+    def replace_item_entities(self, news_item_id: str, entities: list[object], *, commit: bool = True) -> None:
         self.entities[news_item_id] = entities
 
-    def replace_token_mentions(self, news_item_id: str, mentions: list[object]) -> None:
+    def replace_token_mentions(self, news_item_id: str, mentions: list[object], *, commit: bool = True) -> None:
         self.mentions[news_item_id] = mentions
 
-    def replace_fact_candidates(self, news_item_id: str, candidates: list[object]) -> None:
+    def replace_fact_candidates(self, news_item_id: str, candidates: list[object], *, commit: bool = True) -> None:
         self.fact_candidates[news_item_id] = candidates
 
     def update_item_content_classification(
@@ -678,6 +742,7 @@ class FakeItemProcessRepository:
         content_tags: list[str],
         classification_payload: dict[str, object],
         now_ms: int,
+        commit: bool = True,
     ) -> None:
         self.content_classifications.append(
             {
@@ -689,7 +754,7 @@ class FakeItemProcessRepository:
             }
         )
 
-    def mark_item_processed(self, news_item_id: str, processed_at_ms: int) -> None:
+    def mark_item_processed(self, news_item_id: str, processed_at_ms: int, *, commit: bool = True) -> None:
         self.processed_items.append({"news_item_id": news_item_id, "processed_at_ms": processed_at_ms})
 
     def mark_item_process_failed(self, news_item_id: str, error: str, now_ms: int) -> None:
@@ -703,10 +768,14 @@ class FakeStoryProjectionRepository:
         self.story_members: list[dict[str, object]] = []
 
     def list_items_missing_story(self, *, limit: int):
-        assert limit == 10
+        raise AssertionError("story projection worker must not scan missing stories")
+
+    def load_items_for_story_projection(self, *, news_item_ids):
+        assert list(news_item_ids) == ["news-1"]
         return [
             {
                 "news_item_id": "news-1",
+                "source_id": "source-1",
                 "canonical_url": "https://example.test/a",
                 "content_hash": "hash-1",
                 "title_fingerprint": "coinbase lists newx",
@@ -734,8 +803,8 @@ class FakePageProjectionRepository:
         self.replaced_news_item_ids: list[str] = []
         self.replaced_rows: list[dict[str, object]] = []
 
-    def list_items_for_page_projection(self, *, limit: int):
-        assert limit == 10
+    def load_items_for_page_projection(self, *, news_item_ids):
+        assert list(news_item_ids) == ["news-1"]
         return [
             {
                 "item": {
@@ -772,6 +841,6 @@ class FakePageProjectionRepository:
             }
         ]
 
-    def replace_page_rows_for_items(self, *, news_item_ids, rows):
+    def replace_page_rows_for_items(self, *, news_item_ids, rows, commit: bool = True):
         self.replaced_news_item_ids = list(news_item_ids)
         self.replaced_rows = [dict(row) for row in rows]

@@ -172,7 +172,13 @@ def test_useful_item_count_is_not_double_counted_by_projection() -> None:
 
 def test_source_quality_projection_worker_builds_rows_for_configured_windows() -> None:
     repo = FakeSourceQualityRepository()
-    db = FakeSourceQualityDB(repo)
+    db = FakeSourceQualityDB(
+        repo,
+        claimed=[
+            _source_quality_claim("coindesk", window="24h"),
+            _source_quality_claim("coindesk", window="7d"),
+        ],
+    )
     worker = NewsSourceQualityProjectionWorker(
         name="news_source_quality_projection",
         settings=SimpleNamespace(
@@ -190,12 +196,36 @@ def test_source_quality_projection_worker_builds_rows_for_configured_windows() -
     assert result.processed == 2
     assert db.sessions == ["news_source_quality_projection"]
     assert repo.list_calls == [
-        {"window_ms": DAY_MS, "now_ms": NOW_MS},
-        {"window_ms": 7 * DAY_MS, "now_ms": NOW_MS},
+        {"source_windows": [("coindesk", "24h"), ("coindesk", "7d")], "now_ms": NOW_MS},
     ]
     assert [row["window"] for row in repo.rows] == ["24h", "7d"]
-    assert repo.status_windows == ["24h", "24h"]
+    assert repo.status_windows == ["24h"]
     assert all(row["source_id"] == "coindesk" for row in repo.rows)
+    assert db.dirty.marked_done == [
+        [_source_quality_claim("coindesk", window="24h"), _source_quality_claim("coindesk", window="7d")]
+    ]
+
+
+def test_source_quality_projection_worker_empty_dirty_queue_does_not_scan_sources() -> None:
+    repo = FakeSourceQualityRepository()
+    db = FakeSourceQualityDB(repo, claimed=[])
+    worker = NewsSourceQualityProjectionWorker(
+        name="news_source_quality_projection",
+        settings=SimpleNamespace(
+            batch_size=100,
+            statement_timeout_seconds=30,
+            windows=("24h", "7d"),
+        ),
+        db=db,
+        telemetry=object(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync()
+
+    assert result.processed == 0
+    assert result.notes["claimed"] == 0
+    assert repo.list_calls == []
 
 
 def test_source_status_payload_uses_plain_quality_diagnostics() -> None:
@@ -426,16 +456,36 @@ def test_replace_source_quality_rows_updates_source_status_freshness() -> None:
     assert conn.commits == 1
 
 
+def _source_quality_claim(
+    source_id: str,
+    *,
+    window: str,
+    payload_hash: str = "hash",
+    attempt_count: int = 1,
+) -> dict[str, object]:
+    return {
+        "projection_name": "source_quality",
+        "target_kind": "source",
+        "target_id": source_id,
+        "window": window,
+        "payload_hash": payload_hash,
+        "lease_owner": "news_source_quality_projection",
+        "attempt_count": attempt_count,
+    }
+
+
 class FakeSourceQualityDB:
-    def __init__(self, repo: FakeSourceQualityRepository) -> None:
+    def __init__(self, repo: FakeSourceQualityRepository, *, claimed: list[dict[str, object]]) -> None:
         self.repo = repo
+        self.conn = CapturingQualityConnection()
+        self.dirty = FakeDirtyTargets(claimed)
         self.sessions: list[str] = []
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert statement_timeout_seconds == 30
         self.sessions.append(name)
-        yield SimpleNamespace(news=self.repo)
+        yield SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
 
 
 class FakeSourceQualityRepository:
@@ -445,11 +495,13 @@ class FakeSourceQualityRepository:
 
         self.status_windows: list[str | None] = []
 
-    def list_source_quality_inputs(self, *, window_ms: int, now_ms: int):
-        self.list_calls.append({"window_ms": window_ms, "now_ms": now_ms})
+    def list_source_quality_inputs_for_targets(self, *, source_windows, now_ms: int):
+        normalized = [(str(source_id), str(window)) for source_id, window in source_windows]
+        self.list_calls.append({"source_windows": normalized, "now_ms": now_ms})
         return [
             {
-                "source_id": "coindesk",
+                "source_id": source_id,
+                "window": window,
                 "fetch_run_count": 1,
                 "fetch_success_count": 1,
                 "items_fetched": 2,
@@ -468,12 +520,49 @@ class FakeSourceQualityRepository:
                 "latest_item_published_at_ms": now_ms,
                 "median_lag_ms": 0,
             }
+            for source_id, window in normalized
         ]
 
-    def replace_source_quality_rows(self, *, rows, status_window: str | None = None, commit: bool = True) -> None:
-        assert commit is True
+    def replace_source_quality_rows(self, *, rows, status_window: str | None = None, commit: bool = True) -> list[str]:
+        assert commit is False
         self.status_windows.append(status_window)
         self.rows.extend(dict(row) for row in rows)
+        return []
+
+    def list_news_item_ids_for_sources(self, *, source_ids):
+        return []
+
+
+class FakeDirtyTargets:
+    def __init__(self, claimed: list[dict[str, object]]) -> None:
+        self.claimed = [dict(row) for row in claimed]
+        self.marked_done: list[list[dict[str, object]]] = []
+        self.enqueued: list[dict[str, object]] = []
+
+    def claim_due(self, **kwargs):
+        assert kwargs["projection_name"] == "source_quality"
+        assert kwargs["commit"] is False
+        return [dict(row) for row in self.claimed[: kwargs["limit"]]]
+
+    def mark_done(self, rows, *, now_ms: int, commit: bool = True):
+        assert commit is False
+        self.marked_done.append([dict(row) for row in rows])
+        return len(rows)
+
+    def mark_error(self, rows, *, error: str, retry_ms: int, now_ms: int, commit: bool = True):
+        raise AssertionError(f"source quality worker should not mark error: {error}")
+
+    def enqueue_targets(self, rows, *, reason: str, now_ms: int, commit: bool = True, due_at_ms: int | None = None):
+        self.enqueued.append(
+            {
+                "rows": [dict(row) for row in rows],
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+                "due_at_ms": due_at_ms,
+            }
+        )
+        return len(rows)
 
 
 class CapturingQualityConnection:
@@ -487,6 +576,10 @@ class CapturingQualityConnection:
 
     def commit(self) -> None:
         self.commits += 1
+
+    @contextmanager
+    def transaction(self):
+        yield
 
 
 class CapturingQualityCursor:

@@ -49,6 +49,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             news_settings=ctx.settings.news_intel,
             wake_bus=ctx.wake_bus,
             feed_client=feed_client,
+            source_quality_windows=workers.news_source_quality_projection.windows,
         )
 
     if workers.news_item_process.enabled:
@@ -63,6 +64,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 statement_timeout_seconds=workers.news_item_process.statement_timeout_seconds,
             ),
             wake_bus=ctx.wake_bus,
+            source_quality_windows=workers.news_source_quality_projection.windows,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_process.wakes_on),
         )
 
@@ -87,6 +89,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             telemetry=ctx.telemetry,
             provider=brief_provider,
             wake_bus=ctx.wake_bus,
+            source_quality_windows=workers.news_source_quality_projection.windows,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_brief.wakes_on),
         )
 
@@ -108,6 +111,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             settings=workers.news_source_quality_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
+            wake_bus=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, workers.news_source_quality_projection.wakes_on),
         )
     return constructed

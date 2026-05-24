@@ -264,23 +264,28 @@ Use these rules when adding or reviewing a worker:
 3. `NOTIFY` payloads are hints. A listener must re-read the database and
    must also run on bounded `interval_seconds` catch-up.
 
-4. Every pending control-plane state needs a terminal path such as
+4. Projection workers may claim dirty target control rows and load source
+   payloads by explicit ids. They must not scan facts or read models to
+   discover stale projection work while idle; manual ops repair commands
+   perform broad coverage discovery only by enqueueing dirty targets.
+
+5. Every pending control-plane state needs a terminal path such as
    `done`, `expired`, `failed`, or an explicit abstain decision.
 
-5. Provider IO must not happen while a worker holds a DB session.
+6. Provider IO must not happen while a worker holds a DB session.
    Materialize DB rows, close the session, call the provider, then open a
    new worker session to persist results.
 
-6. Cancellation cleanup is part of the domain state machine. If a
+7. Cancellation cleanup is part of the domain state machine. If a
    hard timeout interrupts provider IO after a claim, the worker must
    terminalize or requeue the claim and persist audit evidence before
    re-raising `asyncio.CancelledError`.
 
-7. Public surfaces read read models or query services. They do not call
+8. Public surfaces read read models or query services. They do not call
    providers, perform token resolution, run scoring, or reconstruct old
    fallback payloads.
 
-8. Cache-only state must be labeled cache-only. `LivePriceGateway`
+9. Cache-only state must be labeled cache-only. `LivePriceGateway`
    publishes latest market display updates but does not write market
    facts and must not become a correctness dependency.
 

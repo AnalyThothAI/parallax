@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from inspect import isawaitable
 from typing import Any
 
@@ -27,6 +27,7 @@ class NewsFetchWorker(WorkerBase):
         news_settings: Any,
         wake_bus: Any | None,
         feed_client: NewsSourceProvider,
+        source_quality_windows: Iterable[str] | None = None,
         clock_ms: Callable[[], int] | None = None,
         **kwargs: Any,
     ) -> None:
@@ -34,6 +35,7 @@ class NewsFetchWorker(WorkerBase):
         self.news_settings = news_settings
         self.wake_bus = wake_bus
         self.feed_client = feed_client
+        self.source_quality_windows = _source_quality_windows(source_quality_windows)
         self.clock_ms = clock_ms or _now_ms
 
     async def on_close(self) -> None:
@@ -50,9 +52,41 @@ class NewsFetchWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         configured_sources = tuple(getattr(self.news_settings, "sources", ()) or ())
-        with self._repository_session() as repos:
-            repos.news.reconcile_configured_sources(configured_sources, now_ms=now)
-            due_sources = repos.news.claim_due_sources(now_ms=now, limit=self._batch_size())
+        metadata_dirty_count = 0
+        with self._repository_session() as repos, repos.conn.transaction():
+            reconciled_sources = repos.news.reconcile_configured_sources(
+                configured_sources,
+                now_ms=now,
+                commit=False,
+            )
+            changed_source_ids = [
+                str(row["source_id"])
+                for row in reconciled_sources
+                if str(row.get("status") or "") == "updated" and row.get("source_id")
+            ]
+            changed_item_ids = (
+                repos.news.list_news_item_ids_for_sources(source_ids=changed_source_ids) if changed_source_ids else []
+            )
+            metadata_dirty_count = _enqueue_news_item_dirty_targets(
+                repos,
+                news_item_ids=changed_item_ids,
+                projection_names=("page",),
+                reason="source_metadata_changed",
+                now_ms=now,
+            )
+            _enqueue_source_quality_dirty_targets(
+                repos,
+                source_ids=changed_source_ids,
+                windows=self.source_quality_windows,
+                reason="source_metadata_changed",
+                now_ms=now,
+            )
+            due_sources = repos.news.claim_due_sources(now_ms=now, limit=self._batch_size(), commit=False)
+        _notify_news_page_dirty(
+            self.wake_bus,
+            count=metadata_dirty_count,
+            reason="source_metadata_changed",
+        )
 
         processed = 0
         failed = 0
@@ -74,8 +108,12 @@ class NewsFetchWorker(WorkerBase):
         source_id = str(source["source_id"])
         fetch_run_id = ""
         try:
-            with self._repository_session() as repos:
-                fetch_run_id = repos.news.start_fetch_run(source_id=source_id, started_at_ms=now_ms)
+            with self._repository_session() as repos, repos.conn.transaction():
+                fetch_run_id = repos.news.start_fetch_run(
+                    source_id=source_id,
+                    started_at_ms=now_ms,
+                    commit=False,
+                )
 
             snapshot = NewsSourceSnapshot.from_row(source, now_ms=now_ms)
             cache = NewsSourceHttpCache(
@@ -92,6 +130,44 @@ class NewsFetchWorker(WorkerBase):
 
             with self._repository_session() as repos:
                 if feed_result.not_modified:
+                    with repos.conn.transaction():
+                        repos.news.update_source_http_cache(
+                            source_id=source_id,
+                            etag=feed_result.etag,
+                            last_modified=feed_result.last_modified,
+                            now_ms=now_ms,
+                            commit=False,
+                        )
+                        repos.news.finish_fetch_run(
+                            fetch_run_id=fetch_run_id,
+                            source_id=source_id,
+                            status="success",
+                            finished_at_ms=now_ms,
+                            fetched_count=0,
+                            inserted_count=0,
+                            updated_count=0,
+                            duplicate_count=0,
+                            http_status=feed_result.status_code,
+                            commit=False,
+                        )
+                        _enqueue_source_quality_dirty_targets(
+                            repos,
+                            source_ids=[source_id],
+                            windows=self.source_quality_windows,
+                            reason="news_fetch_run_finished",
+                            now_ms=now_ms,
+                        )
+                    return WorkerResult(processed=0)
+
+                with repos.conn.transaction():
+                    counts = self._persist_entries(
+                        repos,
+                        source=source,
+                        fetch_run_id=fetch_run_id,
+                        observations=feed_result.observations,
+                        context_observations=feed_result.context_observations,
+                        fetched_at_ms=now_ms,
+                    )
                     repos.news.update_source_http_cache(
                         source_id=source_id,
                         etag=feed_result.etag,
@@ -104,40 +180,20 @@ class NewsFetchWorker(WorkerBase):
                         source_id=source_id,
                         status="success",
                         finished_at_ms=now_ms,
-                        fetched_count=0,
-                        inserted_count=0,
-                        updated_count=0,
-                        duplicate_count=0,
+                        fetched_count=counts["fetched"],
+                        inserted_count=counts["inserted"],
+                        updated_count=counts["updated"],
+                        duplicate_count=counts["duplicate"],
                         http_status=feed_result.status_code,
+                        commit=False,
                     )
-                    return WorkerResult(processed=0)
-
-                counts = self._persist_entries(
-                    repos.news,
-                    source=source,
-                    fetch_run_id=fetch_run_id,
-                    observations=feed_result.observations,
-                    context_observations=feed_result.context_observations,
-                    fetched_at_ms=now_ms,
-                )
-                repos.news.update_source_http_cache(
-                    source_id=source_id,
-                    etag=feed_result.etag,
-                    last_modified=feed_result.last_modified,
-                    now_ms=now_ms,
-                    commit=False,
-                )
-                repos.news.finish_fetch_run(
-                    fetch_run_id=fetch_run_id,
-                    source_id=source_id,
-                    status="success",
-                    finished_at_ms=now_ms,
-                    fetched_count=counts["fetched"],
-                    inserted_count=counts["inserted"],
-                    updated_count=counts["updated"],
-                    duplicate_count=counts["duplicate"],
-                    http_status=feed_result.status_code,
-                )
+                    _enqueue_source_quality_dirty_targets(
+                        repos,
+                        source_ids=[source_id],
+                        windows=self.source_quality_windows,
+                        reason="news_fetch_run_finished",
+                        now_ms=now_ms,
+                    )
             written = counts["inserted"] + counts["updated"]
             if written > 0 and self.wake_bus is not None:
                 self.wake_bus.notify_news_item_written(source_id=source_id, count=written)
@@ -148,7 +204,7 @@ class NewsFetchWorker(WorkerBase):
 
     def _persist_entries(
         self,
-        repository: Any,
+        repos: Any,
         *,
         source: Mapping[str, Any],
         fetch_run_id: str,
@@ -157,6 +213,8 @@ class NewsFetchWorker(WorkerBase):
         fetched_at_ms: int,
     ) -> dict[str, int]:
         counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
+        dirty_news_item_ids: list[str] = []
+        repository = repos.news
         source_id = str(source["source_id"])
         source_domain = str(source["source_domain"])
         parent_ids_by_source_key: dict[str, str] = {}
@@ -199,6 +257,15 @@ class NewsFetchWorker(WorkerBase):
             status = str(news.get("status") or provider.get("status") or "duplicate")
             if status in counts:
                 counts[status] += 1
+            if news_item_id and status in {"inserted", "updated"}:
+                dirty_news_item_ids.append(news_item_id)
+        _enqueue_news_item_dirty_targets(
+            repos,
+            news_item_ids=dirty_news_item_ids,
+            projection_names=("story", "page"),
+            reason="news_item_written",
+            now_ms=fetched_at_ms,
+        )
         self._persist_context_observations(
             repository,
             source_id=source_id,
@@ -239,18 +306,19 @@ class NewsFetchWorker(WorkerBase):
         if not fetch_run_id:
             return
         try:
-            with self._repository_session() as repos:
+            with self._repository_session() as repos, repos.conn.transaction():
                 repos.news.finish_fetch_run(
                     fetch_run_id=fetch_run_id,
                     source_id=source_id,
                     status="failed",
                     finished_at_ms=now_ms,
                     error=str(error),
+                    commit=False,
                 )
         except Exception:
             return
 
-    def _repository_session(self):
+    def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
@@ -263,6 +331,61 @@ class NewsFetchWorker(WorkerBase):
 def _payload_hash(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _enqueue_news_item_dirty_targets(
+    repos: Any,
+    *,
+    news_item_ids: list[str],
+    projection_names: Iterable[str],
+    reason: str,
+    now_ms: int,
+) -> int:
+    targets = [
+        {"projection_name": projection_name, "target_kind": "news_item", "target_id": news_item_id}
+        for projection_name in dict.fromkeys(str(name) for name in projection_names if str(name))
+        for news_item_id in dict.fromkeys(str(item) for item in news_item_ids if str(item))
+    ]
+    if not targets:
+        return 0
+    return int(repos.news_projection_dirty_targets.enqueue_targets(targets, reason=reason, now_ms=now_ms, commit=False))
+
+
+def _enqueue_source_quality_dirty_targets(
+    repos: Any,
+    *,
+    source_ids: Iterable[str],
+    windows: Iterable[str],
+    reason: str,
+    now_ms: int,
+) -> int:
+    targets = [
+        {
+            "projection_name": "source_quality",
+            "target_kind": "source",
+            "target_id": source_id,
+            "window": window,
+        }
+        for source_id in dict.fromkeys(str(source_id) for source_id in source_ids if str(source_id))
+        for window in _source_quality_windows(windows)
+    ]
+    if not targets:
+        return 0
+    return int(repos.news_projection_dirty_targets.enqueue_targets(targets, reason=reason, now_ms=now_ms, commit=False))
+
+
+def _notify_news_page_dirty(wake_bus: Any | None, *, count: int, reason: str) -> None:
+    if count <= 0 or wake_bus is None:
+        return
+    notify = getattr(wake_bus, "notify_news_page_dirty", None)
+    if notify is None:
+        return
+    notify(count=int(count), reason=str(reason))
+
+
+def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
+    normalized = tuple(dict.fromkeys(str(window).strip().lower() for window in (windows or ()) if str(window).strip()))
+    return normalized or ("24h", "7d")
 
 
 def _optional_str(value: Any) -> str | None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
@@ -368,6 +369,8 @@ def _audit(*, run_id: str, packet: Any, execution_started: bool) -> dict[str, An
 class FakeDB:
     def __init__(self, candidates: list[dict[str, Any]]) -> None:
         self.news = FakeNewsRepository(candidates)
+        self.conn = FakeConn()
+        self.dirty = FakeDirtyRepository()
         self.in_session = False
 
     def worker_session(self, worker_name: str, statement_timeout_seconds: float | None = None) -> FakeSession:
@@ -378,6 +381,8 @@ class FakeSession:
     def __init__(self, db: FakeDB) -> None:
         self.db = db
         self.news = db.news
+        self.conn = db.conn
+        self.news_projection_dirty_targets = db.dirty
 
     def __enter__(self) -> FakeSession:
         assert self.db.in_session is False
@@ -404,6 +409,32 @@ class FakeNewsRepository:
     def upsert_news_item_agent_brief(self, **payload: Any) -> dict[str, Any]:
         self.briefs.append(dict(payload))
         return dict(payload)
+
+    def list_source_ids_for_news_items(self, *, news_item_ids: list[str]) -> list[str]:
+        assert news_item_ids == ["news-item-1"]
+        return ["source-1"]
+
+
+class FakeDirtyRepository:
+    def __init__(self) -> None:
+        self.enqueued: list[dict[str, Any]] = []
+
+    def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:
+        self.enqueued.append(
+            {
+                "rows": [dict(row) for row in rows],
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+        return len(rows)
+
+
+class FakeConn:
+    @contextmanager
+    def transaction(self):
+        yield
 
 
 class FakeWakeBus:
