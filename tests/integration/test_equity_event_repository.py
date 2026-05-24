@@ -184,8 +184,9 @@ def test_equity_event_repository_replace_page_rows_preserves_unrelated_rows(post
             {
                 **_page_row("row-preserve-1", "event-preserve-1", "AAPL", NOW_MS + 2_000),
                 "headline": "AAPL event updated",
+                "payload_hash": "payload:row-preserve-1:updated",
             }
-        ]
+        ],
     )
 
     rows_by_id = {row["row_id"]: row for row in repos.equity_events.list_event_page_rows(limit=10)}
@@ -283,6 +284,358 @@ def test_equity_event_repository_provider_documents_are_idempotent_by_source_key
     assert second["provider_document_id"] == first["provider_document_id"]
     assert second["payload_hash"] == "hash-updated"
     assert second["raw_payload_json"]["version"] == 2
+
+
+def test_equity_event_repository_duplicate_event_document_does_not_advance_updated_at(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    provider = _seed_source_and_provider_document(repos)
+
+    first = repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-duplicate",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash="content-1",
+        now_ms=NOW_MS,
+    )
+    duplicate = repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-duplicate",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 10_000,
+        content_hash="content-1",
+        now_ms=NOW_MS + 10_000,
+    )
+    changed = repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-duplicate",
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-updated.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 20_000,
+        content_hash="content-2",
+        now_ms=NOW_MS + 20_000,
+    )
+
+    assert duplicate["status"] == "duplicate"
+    assert duplicate["updated_at_ms"] == first["updated_at_ms"]
+    assert duplicate["discovered_at_ms"] == first["discovered_at_ms"]
+    assert changed["status"] == "updated"
+    assert changed["updated_at_ms"] == NOW_MS + 20_000
+
+
+def test_equity_event_repository_duplicate_event_document_ignores_provider_row_churn(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    first_provider = _seed_source_and_provider_document(repos)
+    second_provider = repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-event-duplicate-second",
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key="0000789019-26-000001:10-Q:mirror",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        payload_hash="hash-1",
+        raw_payload_json={"form": "10-Q", "mirror": True},
+        fetched_at_ms=NOW_MS + 10_000,
+    )
+
+    first = repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-provider-churn",
+        provider_document_id=first_provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash="content-1",
+        now_ms=NOW_MS,
+    )
+    duplicate = repos.equity_events.upsert_event_document(
+        event_document_id="event-doc-provider-churn",
+        provider_document_id=second_provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 10_000,
+        content_hash="content-1",
+        now_ms=NOW_MS + 10_000,
+    )
+
+    assert duplicate["status"] == "duplicate"
+    assert duplicate["provider_document_id"] == first_provider["provider_document_id"]
+    assert duplicate["updated_at_ms"] == first["updated_at_ms"]
+
+
+def test_equity_event_repository_duplicate_company_event_does_not_advance_updated_at(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+
+    first = repos.equity_events.upsert_company_event(
+        company_event_id="event-company-duplicate",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 10_000,
+        lifecycle_status="raw",
+        validation_status="pending",
+        summary="",
+        now_ms=NOW_MS,
+    )
+    duplicate = repos.equity_events.upsert_company_event(
+        company_event_id="event-company-duplicate",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        validation_status="pending",
+        summary="",
+        now_ms=NOW_MS + 10_000,
+    )
+    changed = repos.equity_events.upsert_company_event(
+        company_event_id="event-company-duplicate",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P1",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        validation_status="pending",
+        summary="",
+        now_ms=NOW_MS + 20_000,
+    )
+
+    assert duplicate["status"] == "duplicate"
+    assert duplicate["updated_at_ms"] == first["updated_at_ms"]
+    assert changed["status"] == "updated"
+    assert changed["updated_at_ms"] == NOW_MS + 20_000
+
+
+def test_equity_event_repository_replace_page_rows_identical_payload_does_not_churn(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-page-stable",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.replace_page_rows(rows=[_page_row("row-page-stable", "event-page-stable", "MSFT", NOW_MS)])
+    before = postgres_conn.execute(
+        "SELECT computed_at_ms, xmin::text AS xmin FROM equity_event_page_rows WHERE row_id = %s",
+        ("row-page-stable",),
+    ).fetchone()
+
+    repos.equity_events.replace_page_rows(
+        company_event_ids=("event-page-stable",),
+        rows=[
+            {
+                **_page_row("row-page-stable", "event-page-stable", "MSFT", NOW_MS),
+                "computed_at_ms": NOW_MS + 10_000,
+            }
+        ],
+    )
+    after = postgres_conn.execute(
+        "SELECT computed_at_ms, xmin::text AS xmin FROM equity_event_page_rows WHERE row_id = %s",
+        ("row-page-stable",),
+    ).fetchone()
+
+    assert after["computed_at_ms"] == before["computed_at_ms"]
+    assert after["xmin"] == before["xmin"]
+
+
+def test_equity_event_repository_replace_page_rows_advances_source_watermark_without_content_churn(
+    postgres_conn,
+) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-page-ack",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.replace_page_rows(rows=[_page_row("row-page-ack", "event-page-ack", "MSFT", NOW_MS)])
+    before = postgres_conn.execute(
+        """
+        SELECT computed_at_ms, source_watermark_ms, payload_hash, xmin::text AS xmin
+          FROM equity_event_page_rows
+         WHERE row_id = %s
+        """,
+        ("row-page-ack",),
+    ).fetchone()
+
+    repos.equity_events.replace_page_rows(
+        company_event_ids=("event-page-ack",),
+        rows=[
+            {
+                **_page_row("row-page-ack", "event-page-ack", "MSFT", NOW_MS),
+                "computed_at_ms": NOW_MS + 10_000,
+                "source_watermark_ms": NOW_MS + 5_000,
+            }
+        ],
+    )
+    after = postgres_conn.execute(
+        """
+        SELECT computed_at_ms, source_watermark_ms, payload_hash, xmin::text AS xmin
+          FROM equity_event_page_rows
+         WHERE row_id = %s
+        """,
+        ("row-page-ack",),
+    ).fetchone()
+
+    assert after["source_watermark_ms"] == NOW_MS + 5_000
+    assert after["computed_at_ms"] == before["computed_at_ms"]
+    assert after["payload_hash"] == before["payload_hash"]
+    assert after["xmin"] != before["xmin"]
+
+
+def test_equity_event_repository_computes_missing_page_payload_hash(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-page-hashless",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+    first = _page_row("row-page-hashless", "event-page-hashless", "MSFT", NOW_MS)
+    first.pop("payload_hash")
+    repos.equity_events.replace_page_rows(rows=[first])
+    before = postgres_conn.execute(
+        "SELECT headline, payload_hash FROM equity_event_page_rows WHERE row_id = %s",
+        ("row-page-hashless",),
+    ).fetchone()
+
+    changed = _page_row("row-page-hashless", "event-page-hashless", "MSFT", NOW_MS)
+    changed.pop("payload_hash")
+    changed["headline"] = "MSFT event updated without caller hash"
+    changed["computed_at_ms"] = NOW_MS + 10_000
+    changed["source_watermark_ms"] = NOW_MS + 10_000
+    repos.equity_events.replace_page_rows(company_event_ids=("event-page-hashless",), rows=[changed])
+    after = postgres_conn.execute(
+        "SELECT headline, payload_hash FROM equity_event_page_rows WHERE row_id = %s",
+        ("row-page-hashless",),
+    ).fetchone()
+
+    assert before["payload_hash"]
+    assert after["payload_hash"] != before["payload_hash"]
+    assert after["headline"] == "MSFT event updated without caller hash"
+
+
+def test_equity_event_repository_replace_timeline_rows_identical_payload_does_not_churn(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-timeline",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+
+    repos.equity_events.replace_company_timeline_rows(rows=[_timeline_row("timeline-stable", "event-timeline")])
+    before = postgres_conn.execute(
+        "SELECT computed_at_ms, xmin::text AS xmin FROM equity_company_timeline_rows WHERE row_id = %s",
+        ("timeline-stable",),
+    ).fetchone()
+
+    repos.equity_events.replace_company_timeline_rows(
+        company_event_ids=("event-timeline",),
+        rows=[{**_timeline_row("timeline-stable", "event-timeline"), "computed_at_ms": NOW_MS + 10_000}],
+    )
+    after = postgres_conn.execute(
+        "SELECT computed_at_ms, xmin::text AS xmin FROM equity_company_timeline_rows WHERE row_id = %s",
+        ("timeline-stable",),
+    ).fetchone()
+
+    assert after["computed_at_ms"] == before["computed_at_ms"]
+    assert after["xmin"] == before["xmin"]
 
 
 def test_changed_event_document_content_resets_failed_processing_attempts_for_retry(postgres_conn) -> None:
@@ -421,5 +774,57 @@ def _page_row(row_id: str, company_event_id: str, ticker: str, latest_event_at_m
         "documents_json": [],
         "brief_json": {"status": "pending"},
         "computed_at_ms": latest_event_at_ms,
+        "source_watermark_ms": latest_event_at_ms,
         "projection_version": "equity_event_page_rows_v1",
+        "payload_hash": f"payload:{row_id}:stable",
     }
+
+
+def _timeline_row(row_id: str, company_event_id: str) -> dict[str, object]:
+    return {
+        "row_id": row_id,
+        "company_id": "market_instrument:us_equity:MSFT",
+        "ticker": "MSFT",
+        "company_event_id": company_event_id,
+        "story_id": None,
+        "event_type": "quarterly_report",
+        "priority": "P0",
+        "source_role": "official_regulator",
+        "event_time_ms": NOW_MS,
+        "lifecycle_status": "raw",
+        "headline": "MSFT 2026Q1 quarterly report",
+        "summary": "",
+        "payload_json": {"status": "pending"},
+        "computed_at_ms": NOW_MS,
+        "source_watermark_ms": NOW_MS,
+        "projection_version": "equity_company_timeline_rows_v1",
+        "payload_hash": f"payload:{row_id}:stable",
+    }
+
+
+def _seed_source_and_provider_document(repos) -> dict[str, object]:
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    return repos.equity_events.upsert_provider_document(
+        provider_document_id="provider-doc-event-duplicate",
+        source_id="sec:MSFT",
+        fetch_run_id=None,
+        provider_document_key="0000789019-26-000001:10-Q",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        payload_hash="hash-1",
+        raw_payload_json={"form": "10-Q"},
+        fetched_at_ms=NOW_MS,
+    )

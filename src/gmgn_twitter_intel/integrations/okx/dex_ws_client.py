@@ -20,11 +20,36 @@ class OkxDexWsClientError(RuntimeError):
     pass
 
 
-OKX_DEX_WS_CONNECT_TIMEOUT_SECONDS = 5.0
+class _OkxDexWsMissingPong(RuntimeError):
+    pass
+
+
+class _OkxDexWsReconnectFailed(RuntimeError):
+    pass
+
+
+OKX_DEX_WS_CONNECT_TIMEOUT_SECONDS = 10.0
 OKX_DEX_WS_LOGIN_TIMEOUT_SECONDS = 5.0
 OKX_DEX_WS_CLOSE_TIMEOUT_SECONDS = 5.0
+OKX_DEX_WS_IDLE_PING_SECONDS = 25.0
+OKX_DEX_WS_PONG_TIMEOUT_SECONDS = 5.0
+OKX_DEX_WS_CIRCUIT_FAILURES = 3
+OKX_DEX_WS_CIRCUIT_COOLDOWN_SECONDS = 60.0
 
-WS_CONNECTION_STATES = frozenset({"disconnected", "connecting", "authenticating", "subscribed", "streaming", "failed"})
+WS_CONNECTION_STATES = frozenset(
+    {
+        "disconnected",
+        "connecting",
+        "authenticating",
+        "subscribed",
+        "streaming",
+        "degraded_recoverable",
+        "failed_terminal",
+        "circuit_open",
+    }
+)
+
+_AUTH_ERROR_CODES = frozenset({"60005", "60007", "60009", "60011", "60012", "60013", "60014"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +83,19 @@ class OkxDexWebSocketMarketProvider:
         self.subscription_limit = max(1, int(subscription_limit))
         self.connection_state = "disconnected"
         self.last_state_change_at_ms = _now_ms()
+        self.last_message_at_ms: int | None = None
+        self.last_ping_at_ms: int | None = None
+        self.last_pong_at_ms: int | None = None
+        self.last_error_category: str | None = None
+        self.last_error_code: str | None = None
+        self.reconnect_count = 0
+        self.data_frame_count = 0
+        self.tick_count = 0
         self._websocket: Any | None = None
+        self._desired_args: set[tuple[str, str]] = set()
         self._subscribed_args: set[tuple[str, str]] = set()
+        self._recoverable_failure_count = 0
+        self._circuit_opened_at_ms: int | None = None
         self._lock = asyncio.Lock()
 
     def connection_state_payload(self) -> dict[str, Any]:
@@ -67,6 +103,16 @@ class OkxDexWebSocketMarketProvider:
             "provider": "okx_dex_ws",
             "state": self.connection_state,
             "last_state_change_at_ms": self.last_state_change_at_ms,
+            "last_message_at_ms": self.last_message_at_ms,
+            "last_ping_at_ms": self.last_ping_at_ms,
+            "last_pong_at_ms": self.last_pong_at_ms,
+            "last_error_category": self.last_error_category,
+            "last_error_code": self.last_error_code,
+            "reconnect_count": self.reconnect_count,
+            "desired_subscription_count": len(self._desired_args),
+            "acked_subscription_count": len(self._subscribed_args),
+            "data_frame_count": self.data_frame_count,
+            "tick_count": self.tick_count,
         }
 
     async def ensure_connected(self) -> None:
@@ -75,13 +121,14 @@ class OkxDexWebSocketMarketProvider:
         async with self._lock:
             if self._websocket is not None:
                 return
+            self._raise_if_circuit_open()
             websocket: Any | None = None
             try:
                 self._set_connection_state("connecting")
                 websocket = await _await_bounded(
                     websockets.connect(
                         self.url,
-                        ping_interval=20,
+                        ping_interval=None,
                         open_timeout=OKX_DEX_WS_CONNECT_TIMEOUT_SECONDS,
                         close_timeout=OKX_DEX_WS_CLOSE_TIMEOUT_SECONDS,
                     ),
@@ -90,79 +137,111 @@ class OkxDexWebSocketMarketProvider:
                 )
                 self._set_connection_state("authenticating")
                 await websocket.send(json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase)))
-                await _await_bounded(
-                    _wait_for_login(websocket),
-                    operation="login",
-                    timeout_seconds=OKX_DEX_WS_LOGIN_TIMEOUT_SECONDS,
-                )
+                await self._wait_for_login(websocket)
                 self._websocket = websocket
                 websocket = None
                 self._set_connection_state("subscribed")
+                self._recoverable_failure_count = 0
+                self._circuit_opened_at_ms = None
+                if self._desired_args:
+                    await self._send_subscription_replace(
+                        to_subscribe_keys=sorted(self._desired_args),
+                        to_unsubscribe_keys=[],
+                    )
             except asyncio.CancelledError:
                 await _close_websocket(websocket)
                 await self._drop_connection(state="disconnected")
                 raise
-            except Exception:
+            except OkxDexWsClientError:
                 await _close_websocket(websocket)
-                await self._drop_connection(state="failed")
+                await self._drop_connection(state="failed_terminal")
+                raise
+            except Exception as exc:
+                await _close_websocket(websocket)
+                await self._drop_connection(state="degraded_recoverable")
+                self._record_recoverable_error(
+                    category="connect_timeout" if isinstance(exc, TimeoutError) else "transport"
+                )
                 raise
 
     async def replace_subscriptions(self, targets: list[dict[str, str]]) -> None:
+        desired_args = _subscription_args(targets, limit=self.subscription_limit)
+        desired_keys = {_arg_key(arg) for arg in desired_args}
+        self._desired_args = set(desired_keys)
         await self.ensure_connected()
         websocket = self._websocket
         if websocket is None:
             raise OkxDexWsClientError("OKX DEX WS connection lost before replace_subscriptions")
-        desired_args = _subscription_args(targets, limit=self.subscription_limit)
-        desired_keys = {_arg_key(arg) for arg in desired_args}
         to_unsubscribe_keys = sorted(self._subscribed_args - desired_keys)
         to_subscribe_keys = sorted(desired_keys - self._subscribed_args)
         try:
-            if to_unsubscribe_keys:
-                await websocket.send(
-                    json.dumps(
-                        {
-                            "op": "unsubscribe",
-                            "args": [_arg_from_key(key) for key in to_unsubscribe_keys],
-                        }
-                    )
-                )
-            if to_subscribe_keys:
-                await websocket.send(
-                    json.dumps(
-                        {
-                            "op": "subscribe",
-                            "args": [_arg_from_key(key) for key in to_subscribe_keys],
-                        }
-                    )
-                )
+            await self._send_subscription_replace(
+                to_subscribe_keys=to_subscribe_keys,
+                to_unsubscribe_keys=to_unsubscribe_keys,
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
-            await self._drop_connection(state="failed")
+            await self._drop_connection(state="degraded_recoverable")
+            self._record_recoverable_error(category="transport")
             raise
         self._subscribed_args = desired_keys
 
     async def iter_price_info(self) -> AsyncIterator[OkxDexPriceInfoUpdate]:
-        await self.ensure_connected()
-        websocket = self._websocket
-        if websocket is None:
-            raise OkxDexWsClientError("OKX DEX WS connection lost before iter_price_info")
-        try:
-            while True:
-                raw_message = await websocket.recv()
+        while True:
+            await self.ensure_connected()
+            websocket = self._websocket
+            if websocket is None:
+                raise OkxDexWsClientError("OKX DEX WS connection lost before iter_price_info")
+            try:
+                raw_message = await self._recv_application_message(websocket)
+                if raw_message is None:
+                    continue
                 message = json.loads(str(raw_message))
-                if isinstance(message, dict) and message.get("event") == "error":
-                    raise OkxDexWsClientError(_error_message(message))
-                for row in _rows_from_message(message):
+                if isinstance(message, dict):
+                    event = _text(message.get("event"))
+                    if event == "notice":
+                        await self._reconnect_after_recoverable_error(
+                            "notice_reconnect",
+                            code=_text(message.get("code")),
+                        )
+                        continue
+                    if event == "error":
+                        code = _text(message.get("code"))
+                        if _is_auth_error_code(code):
+                            self._record_error(category="auth_error", code=code)
+                            await self._drop_connection(state="failed_terminal")
+                            raise OkxDexWsClientError(_error_message(message))
+                        await self._reconnect_after_recoverable_error("provider_error", code=code)
+                        continue
+                rows = _rows_from_message(message)
+                if rows:
+                    self.data_frame_count += 1
+                for row in rows:
                     update = _price_info_update_from_row(row)
                     if update is not None:
                         self._set_connection_state("streaming")
+                        self.tick_count += 1
                         yield update
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            await self._drop_connection(state="failed")
-            raise
+            except asyncio.CancelledError:
+                raise
+            except json.JSONDecodeError as exc:
+                self._record_error(category="malformed_json", code=None)
+                logger.warning("OKX DEX WS skipped malformed JSON frame | error={}", exc)
+                continue
+            except OkxDexWsClientError:
+                raise
+            except _OkxDexWsReconnectFailed as exc:
+                cause = exc.__cause__
+                if cause is not None:
+                    raise cause from exc
+                raise
+            except _OkxDexWsMissingPong:
+                await self._reconnect_after_recoverable_error("missing_pong")
+            except Exception as exc:
+                await self._reconnect_after_recoverable_error(
+                    "recv_timeout" if isinstance(exc, TimeoutError) else "transport"
+                )
 
     async def aclose(self) -> None:
         await self._drop_connection(state="disconnected")
@@ -173,6 +252,122 @@ class OkxDexWebSocketMarketProvider:
         self._subscribed_args = set()
         await _close_websocket(websocket)
         self._set_connection_state(state)
+
+    async def _wait_for_login(self, websocket: Any) -> None:
+        while True:
+            raw_message = await _await_bounded(
+                websocket.recv(),
+                operation="login",
+                timeout_seconds=OKX_DEX_WS_LOGIN_TIMEOUT_SECONDS,
+            )
+            self._record_message_seen(raw_message)
+            if _is_plain_pong(raw_message):
+                self.last_pong_at_ms = self.last_message_at_ms
+                continue
+            message = json.loads(str(raw_message))
+            if not isinstance(message, dict):
+                continue
+            if message.get("event") == "error":
+                code = _text(message.get("code"))
+                self._record_error(category="auth_error" if _is_auth_error_code(code) else "login_error", code=code)
+                raise OkxDexWsClientError(_error_message(message))
+            if message.get("event") == "login":
+                code = str(message.get("code") or "")
+                if code and code != "0":
+                    self._record_error(category="auth_error", code=code)
+                    raise OkxDexWsClientError(_error_message(message))
+                return
+
+    async def _send_subscription_replace(
+        self,
+        *,
+        to_subscribe_keys: list[tuple[str, str]],
+        to_unsubscribe_keys: list[tuple[str, str]],
+    ) -> None:
+        websocket = self._websocket
+        if websocket is None:
+            raise OkxDexWsClientError("OKX DEX WS connection lost before subscription replace")
+        if to_unsubscribe_keys:
+            await websocket.send(
+                json.dumps(
+                    {
+                        "op": "unsubscribe",
+                        "args": [_arg_from_key(key) for key in to_unsubscribe_keys],
+                    }
+                )
+            )
+        if to_subscribe_keys:
+            await websocket.send(
+                json.dumps(
+                    {
+                        "op": "subscribe",
+                        "args": [_arg_from_key(key) for key in to_subscribe_keys],
+                    }
+                )
+            )
+        self._subscribed_args = set(self._desired_args)
+
+    async def _recv_application_message(self, websocket: Any) -> str | bytes | None:
+        try:
+            raw_message = await asyncio.wait_for(websocket.recv(), timeout=max(0.001, OKX_DEX_WS_IDLE_PING_SECONDS))
+        except TimeoutError:
+            await websocket.send("ping")
+            self.last_ping_at_ms = _now_ms()
+            try:
+                raw_message = await asyncio.wait_for(
+                    websocket.recv(),
+                    timeout=max(0.001, OKX_DEX_WS_PONG_TIMEOUT_SECONDS),
+                )
+            except TimeoutError as exc:
+                raise _OkxDexWsMissingPong("OKX DEX WS missing application pong") from exc
+        self._record_message_seen(raw_message)
+        if _is_plain_pong(raw_message):
+            self.last_pong_at_ms = self.last_message_at_ms
+            return None
+        return raw_message
+
+    async def _reconnect_after_recoverable_error(self, category: str, *, code: str | None = None) -> None:
+        self._record_error(category=category, code=code)
+        self._recoverable_failure_count += 1
+        if self._recoverable_failure_count >= max(1, int(OKX_DEX_WS_CIRCUIT_FAILURES)):
+            self._circuit_opened_at_ms = _now_ms()
+            await self._drop_connection(state="circuit_open")
+            raise OkxDexWsClientError("OKX DEX WS circuit open")
+        await self._drop_connection(state="degraded_recoverable")
+        self.reconnect_count += 1
+        try:
+            await self.ensure_connected()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise _OkxDexWsReconnectFailed("OKX DEX WS reconnect failed") from exc
+
+    def _record_recoverable_error(self, *, category: str) -> None:
+        self._record_error(category=category, code=None)
+        self._recoverable_failure_count += 1
+        if self._recoverable_failure_count >= max(1, int(OKX_DEX_WS_CIRCUIT_FAILURES)):
+            self._circuit_opened_at_ms = _now_ms()
+            self._set_connection_state("circuit_open")
+
+    def _raise_if_circuit_open(self) -> None:
+        if self.connection_state != "circuit_open":
+            return
+        opened_at_ms = self._circuit_opened_at_ms
+        if opened_at_ms is not None:
+            age_seconds = max(0.0, (_now_ms() - opened_at_ms) / 1000)
+            if age_seconds >= max(0.001, OKX_DEX_WS_CIRCUIT_COOLDOWN_SECONDS):
+                self._recoverable_failure_count = 0
+                self._circuit_opened_at_ms = None
+                self._set_connection_state("disconnected")
+                return
+        raise OkxDexWsClientError("OKX DEX WS circuit open")
+
+    def _record_message_seen(self, raw_message: Any) -> None:
+        self.last_message_at_ms = _now_ms()
+
+    def _record_error(self, *, category: str, code: str | None) -> None:
+        self.last_error_category = category
+        self.last_error_code = _text(code)
 
     def _set_connection_state(self, state: str) -> None:
         if state not in WS_CONNECTION_STATES:
@@ -284,21 +479,6 @@ def _login_payload(api_key: str, secret_key: str, passphrase: str) -> dict[str, 
     }
 
 
-async def _wait_for_login(websocket: Any) -> None:
-    while True:
-        raw_message = await websocket.recv()
-        message = json.loads(str(raw_message))
-        if not isinstance(message, dict):
-            continue
-        if message.get("event") == "error":
-            raise OkxDexWsClientError(_error_message(message))
-        if message.get("event") == "login":
-            code = str(message.get("code") or "")
-            if code and code != "0":
-                raise OkxDexWsClientError(_error_message(message))
-            return
-
-
 def _rows_from_message(message: Any) -> list[dict[str, Any]]:
     if not isinstance(message, dict):
         return []
@@ -359,6 +539,19 @@ def _okx_timestamp() -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _is_plain_pong(raw_message: Any) -> bool:
+    if isinstance(raw_message, bytes):
+        try:
+            raw_message = raw_message.decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+    return str(raw_message).strip().lower() == "pong"
+
+
+def _is_auth_error_code(code: str | None) -> bool:
+    return _text(code) in _AUTH_ERROR_CODES
 
 
 def _error_message(row: dict[str, Any]) -> str:

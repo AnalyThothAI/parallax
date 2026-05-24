@@ -111,6 +111,8 @@ def test_publish_rows_skips_history_and_audit_when_payload_hash_is_unchanged():
 
     assert written is True
     assert conn.current_insert_params["payload_hash"] == existing_payload
+    current_sql = next(sql for sql in conn.sqls if "INSERT INTO token_radar_current_rows" in sql)
+    assert "WHERE token_radar_current_rows.payload_hash IS DISTINCT FROM excluded.payload_hash" in current_sql
     assert conn.rank_history_params == {}
     assert conn.snapshot_audit_params == {}
 
@@ -275,6 +277,24 @@ def test_upsert_target_feature_writes_compact_projection_row():
     assert conn.params["source_event_ids_json"].obj == ["event-1"]
     assert conn.params["source_intent_ids_json"].obj == ["intent-1"]
     assert conn.params["payload_hash"]
+    assert "WHERE token_radar_target_features.payload_hash IS DISTINCT FROM excluded.payload_hash" in conn.sql
+    assert "last_scored_at_ms < excluded.last_scored_at_ms" not in conn.sql
+
+
+def test_upsert_target_feature_returns_actual_rowcount_for_unchanged_payload():
+    conn = FakeConn(rowcount=0)
+    row = _valid_factor_row()
+
+    count = TokenRadarRepository(conn).upsert_target_feature(
+        projection_version="token-radar-v13-social-attention",
+        window="1h",
+        scope="all",
+        row=row,
+        computed_at_ms=1_778_000_060_000,
+        commit=False,
+    )
+
+    assert count == 0
 
 
 def test_delete_target_feature_uses_projection_identity_key():
@@ -369,11 +389,12 @@ def test_publish_rows_rejects_stale_writer_after_newer_zero_row_publication():
 
 
 class FakeConn:
-    def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
+    def __init__(self, rows: list[dict[str, Any]] | None = None, *, rowcount: int = 1) -> None:
         self.sql = ""
         self.params = ()
         self.calls = 0
         self.rows = rows or []
+        self.rowcount = rowcount
 
     def execute(self, sql, params=None):
         self.calls += 1

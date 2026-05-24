@@ -60,6 +60,27 @@ def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
     assert result["projection"]["anchor_coverage"] == {"status": "missing", "ready": 0, "missing": 0, "total": 0}
 
 
+def test_asset_flow_projection_metadata_prefers_coverage_timestamp():
+    service = asset_flow_service(
+        rows=[radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC")],
+        coverage={
+            ("1h", "all"): {
+                "status": "ready",
+                "reason": None,
+                "row_count": 1,
+                "source_rows": 1,
+                "computed_at_ms": 1_700_000_120_000,
+                "error": None,
+            }
+        },
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_130_000)
+
+    assert result["targets"][0]["radar"]["computed_at_ms"] == 1_700_000_060_000
+    assert result["projection"]["computed_at_ms"] == 1_700_000_120_000
+
+
 def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
     service = asset_flow_service(rows=[], coverage={})
 

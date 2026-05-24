@@ -7,7 +7,10 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.platform.db.json_safety import postgres_safe_json
+
+MARKET_DIRTY_MIN_INTERVAL_MS = 60_000
 
 
 class TokenRadarDirtyTargetRepository:
@@ -170,6 +173,51 @@ class TokenRadarDirtyTargetRepository:
                 ON incoming.target_type = 'cex_symbol'
                AND price_feeds.subject_type = 'CexToken'
                AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(incoming.target_id)
+            ),
+            latest_feature AS (
+              SELECT
+                features.target_type_key,
+                features.identity_id,
+                MAX(features.latest_market_observed_at_ms) AS latest_market_observed_at_ms
+              FROM token_radar_target_features features
+              JOIN mapped
+                ON mapped.target_type_key = features.target_type_key
+               AND mapped.identity_id = features.identity_id
+              WHERE features.projection_version = %(projection_version)s
+              GROUP BY features.target_type_key, features.identity_id
+            ),
+            target_coverage AS (
+              SELECT
+                target_coverage.target_type_key,
+                target_coverage.identity_id,
+                MAX(target_coverage.latest_market_observed_at_ms) AS latest_market_observed_at_ms
+              FROM token_radar_target_projection_coverage target_coverage
+              JOIN mapped
+                ON mapped.target_type_key = target_coverage.target_type_key
+               AND mapped.identity_id = target_coverage.identity_id
+              WHERE target_coverage.projection_version = %(projection_version)s
+              GROUP BY target_coverage.target_type_key, target_coverage.identity_id
+            ),
+            eligible AS (
+              SELECT mapped.*
+              FROM mapped
+              LEFT JOIN latest_feature
+                ON latest_feature.target_type_key = mapped.target_type_key
+               AND latest_feature.identity_id = mapped.identity_id
+              LEFT JOIN target_coverage
+                ON target_coverage.target_type_key = mapped.target_type_key
+               AND target_coverage.identity_id = mapped.identity_id
+              WHERE mapped.identity_id IS NOT NULL
+                AND (
+                  (
+                    latest_feature.latest_market_observed_at_ms IS NULL
+                    AND target_coverage.latest_market_observed_at_ms IS NULL
+                  )
+                  OR GREATEST(
+                    COALESCE(latest_feature.latest_market_observed_at_ms, 0),
+                    COALESCE(target_coverage.latest_market_observed_at_ms, 0)
+                  ) <= %(now_ms)s - %(market_dirty_min_interval_ms)s
+                )
             )
             INSERT INTO token_radar_dirty_targets(
               target_type_key,
@@ -186,13 +234,10 @@ class TokenRadarDirtyTargetRepository:
               source_event_ids_json
             )
             SELECT
-              mapped.target_type_key,
-              mapped.identity_id,
+              eligible.target_type_key,
+              eligible.identity_id,
               %(dirty_reason)s,
-              md5(
-                mapped.target_type_key || ':' || mapped.identity_id || ':' || %(dirty_reason)s || ':' ||
-                %(now_ms)s::text
-              ),
+              md5(eligible.target_type_key || ':' || eligible.identity_id || ':' || %(dirty_reason)s),
               %(due_at_ms)s,
               NULL,
               NULL,
@@ -201,22 +246,58 @@ class TokenRadarDirtyTargetRepository:
               %(now_ms)s,
               %(now_ms)s,
               '[]'::jsonb
-            FROM mapped
-            WHERE mapped.identity_id IS NOT NULL
+            FROM eligible
             ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
               dirty_reason = EXCLUDED.dirty_reason,
-              payload_hash = EXCLUDED.payload_hash,
+              payload_hash = CASE
+                WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
+                  THEN md5(
+                    EXCLUDED.payload_hash || ':claimed:' ||
+                    token_radar_dirty_targets.attempt_count::text || ':' ||
+                    token_radar_dirty_targets.payload_hash
+                  )
+                WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                 AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
+                  THEN token_radar_dirty_targets.payload_hash
+                ELSE EXCLUDED.payload_hash
+              END,
               due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = CASE
+                WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
+                ELSE token_radar_dirty_targets.leased_until_ms
+              END,
+              lease_owner = CASE
+                WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
+                ELSE token_radar_dirty_targets.lease_owner
+              END,
               last_error = NULL,
               first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM CASE
+                    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
+                      THEN md5(
+                        EXCLUDED.payload_hash || ':claimed:' ||
+                        token_radar_dirty_targets.attempt_count::text || ':' ||
+                        token_radar_dirty_targets.payload_hash
+                      )
+                    WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                     AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
+                      THEN token_radar_dirty_targets.payload_hash
+                    ELSE EXCLUDED.payload_hash
+                  END
+               OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+               OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
+               OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
+               OR token_radar_dirty_targets.last_error IS NOT NULL
             """,
             {
                 "target_types": [record["target_type"] for record in records],
                 "target_ids": [record["target_id"] for record in records],
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
                 "dirty_reason": str(reason),
                 "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
                 "now_ms": int(now_ms),
+                "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
             },
         )
         if commit:
@@ -323,14 +404,18 @@ class TokenRadarDirtyTargetRepository:
               FROM unnest(
                 %(target_type_keys)s::text[],
                 %(identity_ids)s::text[],
-                %(payload_hashes)s::text[]
-              ) AS done(target_type_key, identity_id, payload_hash)
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
             )
             DELETE FROM token_radar_dirty_targets queue
             USING done
             WHERE queue.target_type_key = done.target_type_key
               AND queue.identity_id = done.identity_id
               AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
             """,
             _key_params(records),
         )
@@ -365,8 +450,10 @@ class TokenRadarDirtyTargetRepository:
               FROM unnest(
                 %(target_type_keys)s::text[],
                 %(identity_ids)s::text[],
-                %(payload_hashes)s::text[]
-              ) AS failed(target_type_key, identity_id, payload_hash)
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS failed(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
             )
             UPDATE token_radar_dirty_targets queue
             SET due_at_ms = %(due_at_ms)s,
@@ -378,6 +465,8 @@ class TokenRadarDirtyTargetRepository:
             WHERE queue.target_type_key = failed.target_type_key
               AND queue.identity_id = failed.identity_id
               AND queue.payload_hash = failed.payload_hash
+              AND queue.lease_owner = failed.lease_owner
+              AND queue.attempt_count = failed.attempt_count
             """,
             params,
         )
@@ -418,30 +507,40 @@ def _dirty_records(
     return list(records.values())
 
 
-def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str]]:
-    records: list[dict[str, str]] = []
+def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]]:
+    records: list[dict[str, str | int]] = []
     for key in keys:
         target_type_key, identity_id = _target_key(key)
         payload_hash = str(key.get("payload_hash") or "")
+        lease_owner = str(key.get("lease_owner") or "")
+        attempt_count = int(key.get("attempt_count") or 0)
         if not identity_id:
             continue
         if not payload_hash:
             raise ValueError("token radar dirty target completion requires payload_hash from claim_due")
+        if not lease_owner:
+            raise ValueError("token radar dirty target completion requires lease_owner from claim_due")
+        if attempt_count <= 0:
+            raise ValueError("token radar dirty target completion requires attempt_count from claim_due")
         records.append(
             {
                 "target_type_key": str(target_type_key),
                 "identity_id": str(identity_id),
                 "payload_hash": payload_hash,
+                "lease_owner": lease_owner,
+                "attempt_count": attempt_count,
             }
         )
     return records
 
 
-def _key_params(records: list[dict[str, str]]) -> dict[str, list[str]]:
+def _key_params(records: list[dict[str, str | int]]) -> dict[str, list[Any]]:
     return {
-        "target_type_keys": [record["target_type_key"] for record in records],
-        "identity_ids": [record["identity_id"] for record in records],
-        "payload_hashes": [record["payload_hash"] for record in records],
+        "target_type_keys": [str(record["target_type_key"]) for record in records],
+        "identity_ids": [str(record["identity_id"]) for record in records],
+        "payload_hashes": [str(record["payload_hash"]) for record in records],
+        "lease_owners": [str(record["lease_owner"]) for record in records],
+        "attempt_counts": [int(record["attempt_count"]) for record in records],
     }
 
 

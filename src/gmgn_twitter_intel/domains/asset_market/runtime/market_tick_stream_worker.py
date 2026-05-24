@@ -91,17 +91,28 @@ class MarketTickStreamWorker(WorkerBase):
 
         stream_dex_market = self.stream_dex_market
         stream_result = await self._stream_and_persist_ticks(targets, stream_dex_market=stream_dex_market)
+        notes = {
+            "targets_selected": len(rows),
+            "stream_targets": len(targets),
+            "ticks_attempted": stream_result.attempted,
+            "ticks_inserted": stream_result.inserted,
+            "invalid_frames": stream_result.skipped,
+        }
+        if stream_result.degraded:
+            provider_state = stream_result.provider_state or {}
+            notes.update(
+                {
+                    "degraded": True,
+                    "provider_state": provider_state.get("state"),
+                    "provider_state_payload": provider_state,
+                    "failure_category": stream_result.failure_category,
+                }
+            )
 
         return WorkerResult(
             processed=stream_result.inserted,
             skipped=skipped_targets + stream_result.skipped,
-            notes={
-                "targets_selected": len(rows),
-                "stream_targets": len(targets),
-                "ticks_attempted": stream_result.attempted,
-                "ticks_inserted": stream_result.inserted,
-                "invalid_frames": stream_result.skipped,
-            },
+            notes=notes,
         )
 
     def _list_tier1_rows(self) -> list[dict[str, Any]]:
@@ -118,37 +129,58 @@ class MarketTickStreamWorker(WorkerBase):
         target_by_key = {_target_key(target.chain_id, target.address): target for target in targets}
         ticks: list[MarketTick] = []
         skipped = 0
-        await asyncio.wait_for(
-            stream_dex_market.replace_subscriptions(targets),
-            timeout=max(0.001, self.stream_cycle_seconds),
-        )
-        iterator = stream_dex_market.iter_price_info().__aiter__()
-        deadline = time.monotonic() + self.stream_cycle_seconds
+        inserted: int | None = None
+        degraded_result: _StreamPersistResult | None = None
         try:
-            while True:
-                remaining_seconds = deadline - time.monotonic()
-                if remaining_seconds <= 0:
-                    break
-                try:
-                    update = await asyncio.wait_for(iterator.__anext__(), timeout=remaining_seconds)
-                except (TimeoutError, StopAsyncIteration):
-                    break
-                target = target_by_key.get(_target_key(update.chain_id, update.address))
-                if target is None:
-                    skipped += 1
-                    continue
-                tick = _tick_from_update(update, target=target, received_at_ms=int(self.clock()))
-                if tick is None:
-                    skipped += 1
-                    continue
-                ticks.append(tick)
-        except Exception:
-            self._persist_ticks(ticks)
-            raise
-        finally:
-            close = getattr(iterator, "aclose", None)
-            if close is not None:
-                await close()
+            await asyncio.wait_for(
+                stream_dex_market.replace_subscriptions(targets),
+                timeout=max(0.001, self.stream_cycle_seconds),
+            )
+            iterator = stream_dex_market.iter_price_info().__aiter__()
+            deadline = time.monotonic() + self.stream_cycle_seconds
+            try:
+                while True:
+                    remaining_seconds = deadline - time.monotonic()
+                    if remaining_seconds <= 0:
+                        break
+                    try:
+                        update = await asyncio.wait_for(iterator.__anext__(), timeout=remaining_seconds)
+                    except (TimeoutError, StopAsyncIteration):
+                        break
+                    target = target_by_key.get(_target_key(update.chain_id, update.address))
+                    if target is None:
+                        skipped += 1
+                        continue
+                    tick = _tick_from_update(update, target=target, received_at_ms=int(self.clock()))
+                    if tick is None:
+                        skipped += 1
+                        continue
+                    ticks.append(tick)
+            except Exception as exc:
+                inserted = self._persist_ticks(ticks)
+                degraded_result = _degraded_stream_result(
+                    inserted=inserted,
+                    attempted=len(ticks),
+                    skipped=skipped,
+                    stream_dex_market=stream_dex_market,
+                    exc=exc,
+                )
+            finally:
+                close = getattr(iterator, "aclose", None)
+                if close is not None:
+                    await close()
+            if degraded_result is not None:
+                return degraded_result
+        except Exception as exc:
+            if inserted is None:
+                inserted = self._persist_ticks(ticks)
+            return _degraded_stream_result(
+                inserted=inserted,
+                attempted=len(ticks),
+                skipped=skipped,
+                stream_dex_market=stream_dex_market,
+                exc=exc,
+            )
         inserted = self._persist_ticks(ticks)
         return _StreamPersistResult(inserted=inserted, attempted=len(ticks), skipped=skipped)
 
@@ -191,6 +223,48 @@ class _StreamPersistResult:
     inserted: int
     attempted: int
     skipped: int
+    degraded: bool = False
+    provider_state: dict[str, Any] | None = None
+    failure_category: str | None = None
+
+
+def _degraded_stream_result(
+    *,
+    inserted: int,
+    attempted: int,
+    skipped: int,
+    stream_dex_market: DexMarketStreamProvider,
+    exc: BaseException,
+) -> _StreamPersistResult:
+    provider_state = _provider_connection_state_payload(stream_dex_market)
+    return _StreamPersistResult(
+        inserted=inserted,
+        attempted=attempted,
+        skipped=skipped,
+        degraded=True,
+        provider_state=provider_state,
+        failure_category=_provider_failure_category(provider_state, exc),
+    )
+
+
+def _provider_connection_state_payload(provider: Any) -> dict[str, Any]:
+    payload = getattr(provider, "connection_state_payload", None)
+    if not callable(payload):
+        return {}
+    try:
+        value = payload()
+    except Exception as exc:
+        return {"state": "unknown", "last_error_category": type(exc).__name__}
+    return value if isinstance(value, dict) else {}
+
+
+def _provider_failure_category(provider_state: Mapping[str, Any], exc: BaseException) -> str:
+    category = provider_state.get("last_error_category") if isinstance(provider_state, Mapping) else None
+    if category:
+        return str(category)
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    return type(exc).__name__
 
 
 def _stream_targets(rows: Sequence[Mapping[str, Any]], *, limit: int) -> tuple[list[DexMarketStreamTarget], int]:

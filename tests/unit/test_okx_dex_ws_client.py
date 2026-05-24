@@ -117,6 +117,16 @@ def test_okx_dex_ws_exposes_connection_state_payload():
     assert changed["provider"] == "okx_dex_ws"
     assert changed["state"] == "connecting"
     assert isinstance(changed["last_state_change_at_ms"], int)
+    assert changed["last_message_at_ms"] is None
+    assert changed["last_ping_at_ms"] is None
+    assert changed["last_pong_at_ms"] is None
+    assert changed["last_error_category"] is None
+    assert changed["last_error_code"] is None
+    assert changed["reconnect_count"] == 0
+    assert changed["desired_subscription_count"] == 0
+    assert changed["acked_subscription_count"] == 0
+    assert changed["data_frame_count"] == 0
+    assert changed["tick_count"] == 0
 
 
 def test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnecting(monkeypatch):
@@ -155,9 +165,109 @@ def test_okx_dex_ws_provider_subscribes_and_unsubscribes_without_reconnecting(mo
     assert fake_ws.closed is True
 
 
-def test_okx_dex_ws_provider_reconnects_after_recv_failure(monkeypatch):
-    first_ws = FakeWebSocket(messages=[_login_ok(), RuntimeError("connection closed")])
-    second_ws = FakeWebSocket(messages=[_login_ok()])
+def test_okx_dex_ws_consumes_plain_text_pong_without_json_parse(monkeypatch):
+    fake_ws = FakeWebSocket(messages=[_login_ok(), "pong", _price_message("1", "0xabc", price="1.23")])
+    connect_calls: list[dict[str, Any]] = []
+
+    def fake_connect(*args, **kwargs):
+        return _FakeConnect(fake_ws, connect_calls, args=args, kwargs=kwargs)
+
+    monkeypatch.setattr(dex_ws_client.websockets, "connect", fake_connect)
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=100,
+    )
+
+    async def scenario() -> None:
+        iterator = provider.iter_price_info().__aiter__()
+        update = await iterator.__anext__()
+        assert update.price_usd == 1.23
+        await provider.aclose()
+
+    asyncio.run(scenario())
+
+    payload = provider.connection_state_payload()
+    assert payload["last_pong_at_ms"] is not None
+    assert payload["data_frame_count"] == 1
+    assert payload["tick_count"] == 1
+
+
+def test_okx_dex_ws_idle_receive_sends_text_ping_consumes_pong_then_continues(monkeypatch):
+    fake_ws = QueueWebSocket(messages=[_login_ok()])
+    connect_calls: list[dict[str, Any]] = []
+
+    def fake_connect(*args, **kwargs):
+        return _FakeConnect(fake_ws, connect_calls, args=args, kwargs=kwargs)
+
+    monkeypatch.setattr(dex_ws_client.websockets, "connect", fake_connect)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_IDLE_PING_SECONDS", 0.001, raising=False)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_PONG_TIMEOUT_SECONDS", 0.05, raising=False)
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=100,
+    )
+
+    async def scenario() -> None:
+        iterator = provider.iter_price_info().__aiter__()
+        next_update = asyncio.create_task(iterator.__anext__())
+        await _wait_for_sent(fake_ws, "ping")
+        await fake_ws.queue_message("pong")
+        await fake_ws.queue_message(_price_message("1", "0xabc", price="1.23"))
+        update = await asyncio.wait_for(next_update, timeout=0.1)
+        assert update.price_usd == 1.23
+        await provider.aclose()
+
+    asyncio.run(scenario())
+
+    assert fake_ws.sent[1:] == ["ping"]
+    payload = provider.connection_state_payload()
+    assert payload["last_ping_at_ms"] is not None
+    assert payload["last_pong_at_ms"] is not None
+
+
+def test_okx_dex_ws_missing_pong_is_classified_distinctly(monkeypatch):
+    fake_websockets = [QueueWebSocket(messages=[_login_ok()])]
+    connect_calls: list[dict[str, Any]] = []
+
+    def fake_connect(*args, **kwargs):
+        return _FakeConnect(fake_websockets[len(connect_calls)], connect_calls, args=args, kwargs=kwargs)
+
+    monkeypatch.setattr(dex_ws_client.websockets, "connect", fake_connect)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_IDLE_PING_SECONDS", 0.001, raising=False)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_PONG_TIMEOUT_SECONDS", 0.001, raising=False)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_CIRCUIT_FAILURES", 1, raising=False)
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=100,
+    )
+
+    async def scenario() -> None:
+        iterator = provider.iter_price_info().__aiter__()
+        with pytest.raises(OkxDexWsClientError, match="OKX DEX WS circuit open"):
+            await iterator.__anext__()
+        await provider.aclose()
+
+    asyncio.run(scenario())
+
+    payload = provider.connection_state_payload()
+    assert len(connect_calls) == 1
+    assert payload["last_ping_at_ms"] is not None
+    assert payload["last_pong_at_ms"] is None
+    assert payload["last_error_category"] == "missing_pong"
+
+
+def test_okx_dex_ws_notice_reconnects_and_resubscribes_desired_targets(monkeypatch):
+    first_ws = FakeWebSocket(messages=[_login_ok(), json.dumps({"event": "notice", "msg": "service restarting"})])
+    second_ws = FakeWebSocket(messages=[_login_ok(), _price_message("1", "0xabc", price="1.23")])
     websockets = [first_ws, second_ws]
     connect_calls: list[dict[str, Any]] = []
 
@@ -176,9 +286,111 @@ def test_okx_dex_ws_provider_reconnects_after_recv_failure(monkeypatch):
     async def scenario() -> None:
         await provider.replace_subscriptions([{"chainIndex": "1", "tokenContractAddress": "0xabc"}])
         iterator = provider.iter_price_info().__aiter__()
-        with pytest.raises(RuntimeError, match="connection closed"):
+        update = await iterator.__anext__()
+        assert update.price_usd == 1.23
+        payload = provider.connection_state_payload()
+        assert payload["reconnect_count"] == 1
+        assert payload["desired_subscription_count"] == 1
+        assert payload["acked_subscription_count"] == 1
+        await provider.aclose()
+
+    asyncio.run(scenario())
+
+    assert len(connect_calls) == 2
+    assert _sent_ops(first_ws) == ["login", "subscribe"]
+    assert _sent_ops(second_ws) == ["login", "subscribe"]
+    assert first_ws.closed is True
+
+
+def test_okx_dex_ws_notice_reconnect_connect_timeout_does_not_open_circuit_too_early(monkeypatch):
+    first_ws = FakeWebSocket(messages=[_login_ok(), json.dumps({"event": "notice", "msg": "service restarting"})])
+    connect_calls: list[dict[str, Any]] = []
+
+    def fake_connect(*args, **kwargs):
+        if not connect_calls:
+            return _FakeConnect(first_ws, connect_calls, args=args, kwargs=kwargs)
+        connect_calls.append({"args": args, "kwargs": kwargs})
+        raise TimeoutError("connect timed out")
+
+    monkeypatch.setattr(dex_ws_client.websockets, "connect", fake_connect)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_CIRCUIT_FAILURES", 3, raising=False)
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=100,
+    )
+
+    async def scenario() -> None:
+        await provider.replace_subscriptions([{"chainIndex": "1", "tokenContractAddress": "0xabc"}])
+        iterator = provider.iter_price_info().__aiter__()
+        with pytest.raises(TimeoutError, match="connect timed out"):
             await iterator.__anext__()
-        await provider.ensure_connected()
+
+    asyncio.run(scenario())
+
+    payload = provider.connection_state_payload()
+    assert len(connect_calls) == 2
+    assert payload["state"] == "degraded_recoverable"
+    assert payload["last_error_category"] == "connect_timeout"
+
+
+def test_okx_dex_ws_repeated_connect_timeouts_open_circuit(monkeypatch):
+    connect_calls: list[dict[str, Any]] = []
+
+    async def failing_connect(*args, **kwargs):
+        connect_calls.append({"args": args, "kwargs": kwargs})
+        raise TimeoutError("connect timed out")
+
+    monkeypatch.setattr(dex_ws_client.websockets, "connect", failing_connect)
+    monkeypatch.setattr(dex_ws_client, "OKX_DEX_WS_CIRCUIT_FAILURES", 3, raising=False)
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=100,
+    )
+
+    async def scenario() -> None:
+        for _ in range(3):
+            with pytest.raises((TimeoutError, OkxDexWsClientError)):
+                await provider.ensure_connected()
+        with pytest.raises(OkxDexWsClientError, match="OKX DEX WS circuit open"):
+            await provider.ensure_connected()
+
+    asyncio.run(scenario())
+
+    payload = provider.connection_state_payload()
+    assert len(connect_calls) == 3
+    assert payload["state"] == "circuit_open"
+    assert payload["last_error_category"] == "connect_timeout"
+
+
+def test_okx_dex_ws_provider_reconnects_after_recv_failure(monkeypatch):
+    first_ws = FakeWebSocket(messages=[_login_ok(), RuntimeError("connection closed")])
+    second_ws = FakeWebSocket(messages=[_login_ok(), _price_message("1", "0xabc", price="1.23")])
+    websockets = [first_ws, second_ws]
+    connect_calls: list[dict[str, Any]] = []
+
+    def fake_connect(*args, **kwargs):
+        return _FakeConnect(websockets[len(connect_calls)], connect_calls, args=args, kwargs=kwargs)
+
+    monkeypatch.setattr(dex_ws_client.websockets, "connect", fake_connect)
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=100,
+    )
+
+    async def scenario() -> None:
+        await provider.replace_subscriptions([{"chainIndex": "1", "tokenContractAddress": "0xabc"}])
+        iterator = provider.iter_price_info().__aiter__()
+        update = await iterator.__anext__()
+        assert update.price_usd == 1.23
         await provider.aclose()
 
     asyncio.run(scenario())
@@ -209,7 +421,7 @@ def test_okx_dex_ws_connect_is_bounded_when_connect_hangs(monkeypatch):
 
     asyncio.run(scenario())
 
-    assert provider.connection_state == "failed"
+    assert provider.connection_state == "degraded_recoverable"
 
 
 def test_okx_dex_ws_close_is_bounded_when_websocket_close_hangs(monkeypatch):
@@ -295,6 +507,38 @@ class FakeWebSocket:
 
     async def close(self) -> None:
         self.closed = True
+
+
+class QueueWebSocket:
+    def __init__(self, *, messages: list[str | BaseException]) -> None:
+        self._queue: asyncio.Queue[str | BaseException] = asyncio.Queue()
+        for message in messages:
+            self._queue.put_nowait(message)
+        self.sent: list[str] = []
+        self.closed = False
+
+    async def send(self, payload: str) -> None:
+        self.sent.append(payload)
+
+    async def recv(self) -> str:
+        message = await self._queue.get()
+        if isinstance(message, BaseException):
+            raise message
+        return message
+
+    async def queue_message(self, message: str | BaseException) -> None:
+        await self._queue.put(message)
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+async def _wait_for_sent(fake_ws: QueueWebSocket, payload: str) -> None:
+    for _ in range(100):
+        if payload in fake_ws.sent:
+            return
+        await asyncio.sleep(0.001)
+    raise AssertionError(f"timed out waiting for sent payload: {payload}")
 
 
 class HangingCloseWebSocket:

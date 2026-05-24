@@ -74,8 +74,7 @@ EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 )
 TOKEN_RADAR_RETENTION_WATCHLIST_STATS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260520_0069_token_radar_retention_watchlist_stats.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0069_token_radar_retention_watchlist_stats.py"
 )
 TOKEN_NARRATIVE_EPOCHS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260520_0070_token_narrative_epochs.py"
@@ -90,32 +89,34 @@ EQUITY_EVENT_INTEL_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0083_equity_event_intel.py"
 )
 EQUITY_EVENT_FACT_CANDIDATE_SHAPE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0084_equity_event_fact_candidate_shape.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0084_equity_event_fact_candidate_shape.py"
 )
 TOKEN_RADAR_STORAGE_ROOT_FIX_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0085_token_radar_storage_root_fix.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0085_token_radar_storage_root_fix.py"
 )
 EQUITY_EVENT_RUNTIME_INDEXES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0086_equity_event_runtime_indexes.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0086_equity_event_runtime_indexes.py"
 )
 NEWS_CONTENT_CLASSIFICATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0087_news_content_classification.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0087_news_content_classification.py"
 )
 NEWS_PAGE_FILTER_INDEXES_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0088_news_page_filter_indexes.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0088_news_page_filter_indexes.py"
 )
 TOKEN_IMAGE_UNSUPPORTED_CLEANUP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0089_token_image_unsupported_cleanup.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0089_token_image_unsupported_cleanup.py"
 )
 TOKEN_RADAR_POSTGRES_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260523_0090_token_radar_postgres_hard_cut.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py"
+)
+TOKEN_RADAR_TARGET_FEATURE_FRESHNESS_INDEX_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0091_token_radar_target_feature_freshness_index.py"
+)
+EQUITY_PROJECTION_PAYLOAD_HASHES_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0092_equity_projection_payload_hashes.py"
+)
+TOKEN_RADAR_TARGET_PROJECTION_COVERAGE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0093_token_radar_target_projection_coverage.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -412,14 +413,8 @@ def test_token_image_assets_migration_adds_local_mirror_storage() -> None:
     ):
         assert ready_requirement in text
 
-    assert (
-        "ON token_image_assets(status, next_refresh_at_ms, updated_at_ms)"
-        in normalized_text
-    )
-    assert (
-        "ON token_image_assets(source_url_hash) WHERE status = 'ready'"
-        in normalized_text
-    )
+    assert "ON token_image_assets(status, next_refresh_at_ms, updated_at_ms)" in normalized_text
+    assert "ON token_image_assets(source_url_hash) WHERE status = 'ready'" in normalized_text
 
 
 def test_token_profile_local_logo_migration_removes_remote_public_logos() -> None:
@@ -638,20 +633,13 @@ def test_token_radar_postgres_hard_cut_migration_partitions_hot_tables() -> None
     assert "PARTITION BY RANGE (observed_at_ms)" in text
     assert "CREATE TABLE IF NOT EXISTS market_ticks_default" in text
     assert "PARTITION OF market_ticks DEFAULT" in text
-    assert (
-        "ON market_ticks(observed_at_ms, target_type, target_id, source_provider)"
-        in normalized_text
-    )
-    assert (
-        "ON market_ticks(target_type, target_id, observed_at_ms DESC, tick_id DESC)"
-        in normalized_text
-    )
+    assert "ON market_ticks(observed_at_ms, target_type, target_id, source_provider)" in normalized_text
+    assert "ON market_ticks(target_type, target_id, observed_at_ms DESC, tick_id DESC)" in normalized_text
 
     assert "CREATE TABLE IF NOT EXISTS enriched_events" in text
     assert "tick_observed_at_ms BIGINT" in text
     assert (
-        "FOREIGN KEY (tick_observed_at_ms, tick_id) "
-        "REFERENCES market_ticks(observed_at_ms, tick_id) ON DELETE RESTRICT"
+        "FOREIGN KEY (tick_observed_at_ms, tick_id) REFERENCES market_ticks(observed_at_ms, tick_id) ON DELETE RESTRICT"
     ) in normalized_text
     assert "CREATE INDEX IF NOT EXISTS idx_enriched_events_tick" in text
     assert "ON enriched_events(tick_observed_at_ms, tick_id)" in normalized_text
@@ -689,6 +677,57 @@ def test_token_radar_postgres_hard_cut_migration_partitions_hot_tables() -> None
     assert "CREATE TABLE IF NOT EXISTS token_radar_rank_history_default" in text
     assert "CREATE TABLE IF NOT EXISTS token_radar_snapshot_audit" in text
     assert "CREATE TABLE IF NOT EXISTS token_radar_snapshot_audit_default" in text
+
+
+def test_token_radar_target_feature_freshness_index_migration_matches_dirty_enqueue_lookup() -> None:
+    text = TOKEN_RADAR_TARGET_FEATURE_FRESHNESS_INDEX_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260524_0091"' in text
+    assert 'down_revision = "20260523_0090"' in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_radar_target_features_freshness" in text
+    assert (
+        "ON token_radar_target_features( projection_version, target_type_key, "
+        "identity_id, latest_market_observed_at_ms DESC )"
+    ) in normalized_text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_token_radar_target_features_freshness" in text
+
+
+def test_equity_projection_payload_hashes_migration_follows_token_radar_freshness_index() -> None:
+    text = EQUITY_PROJECTION_PAYLOAD_HASHES_MIGRATION.read_text()
+
+    assert 'revision = "20260524_0092"' in text
+    assert 'down_revision = "20260524_0091"' in text
+    for table_name, index_name in (
+        ("equity_event_page_rows", "idx_equity_event_page_rows_payload_hash"),
+        ("equity_company_timeline_rows", "idx_equity_company_timeline_rows_payload_hash"),
+        ("equity_event_alert_candidates", "idx_equity_event_alert_candidates_payload_hash"),
+        ("equity_event_calendar_rows", "idx_equity_event_calendar_rows_payload_hash"),
+    ):
+        assert f"ALTER TABLE {table_name}" in text
+        assert "ADD COLUMN IF NOT EXISTS payload_hash TEXT NOT NULL DEFAULT ''" in text
+        assert "ADD COLUMN IF NOT EXISTS source_watermark_ms BIGINT NOT NULL DEFAULT 0" in text
+        assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name}" in text
+        assert f"ON {table_name}(payload_hash)" in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_equity_event_calendar_rows_expected_event" in text
+    assert "ON equity_event_calendar_rows(expected_event_id)" in text
+
+
+def test_token_radar_target_projection_coverage_migration_follows_equity_projection_hashes() -> None:
+    text = TOKEN_RADAR_TARGET_PROJECTION_COVERAGE_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260524_0093"' in text
+    assert 'down_revision = "20260524_0092"' in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_target_projection_coverage" in text
+    assert "latest_market_observed_at_ms BIGINT NOT NULL DEFAULT 0" in text
+    assert "PRIMARY KEY(projection_version, target_type_key, identity_id)" in normalized_text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_radar_target_projection_coverage_freshness" in text
+    assert (
+        "ON token_radar_target_projection_coverage( projection_version, target_type_key, "
+        "identity_id, latest_market_observed_at_ms DESC )"
+    ) in normalized_text
+    assert "DROP TABLE IF EXISTS token_radar_target_projection_coverage" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

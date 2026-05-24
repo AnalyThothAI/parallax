@@ -59,7 +59,15 @@ def test_mark_done_deletes_only_matching_claim_payload_hash() -> None:
     conn.rowcount = 1
 
     deleted = TokenRadarDirtyTargetRepository(conn).mark_done(
-        [{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "claim-hash"}],
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "worker-a",
+                "attempt_count": 2,
+            }
+        ],
         now_ms=1_700_000_010_000,
         commit=False,
     )
@@ -68,8 +76,13 @@ def test_mark_done_deletes_only_matching_claim_payload_hash() -> None:
     assert deleted == 1
     assert "DELETE FROM token_radar_dirty_targets queue" in sql
     assert "queue.payload_hash = done.payload_hash" in sql
+    assert "queue.lease_owner = done.lease_owner" in sql
+    assert "queue.attempt_count = done.attempt_count" in sql
     assert "done.payload_hash = ''" not in sql
+    assert "done.lease_owner = ''" not in sql
     assert conn.params[-1]["payload_hashes"] == ["claim-hash"]
+    assert conn.params[-1]["lease_owners"] == ["worker-a"]
+    assert conn.params[-1]["attempt_counts"] == [2]
 
 
 def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> None:
@@ -77,7 +90,15 @@ def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> 
     conn.rowcount = 1
 
     updated = TokenRadarDirtyTargetRepository(conn).mark_error(
-        [{"target_type_key": "Asset", "identity_id": "asset-1", "payload_hash": "claim-hash"}],
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "worker-a",
+                "attempt_count": 2,
+            }
+        ],
         error="projection failed",
         retry_ms=30_000,
         now_ms=1_700_000_010_000,
@@ -89,6 +110,8 @@ def test_mark_error_releases_lease_without_overwriting_newer_dirty_payload() -> 
     assert "SET due_at_ms = %(due_at_ms)s" in sql
     assert "leased_until_ms = NULL" in sql
     assert "queue.payload_hash = failed.payload_hash" in sql
+    assert "queue.lease_owner = failed.lease_owner" in sql
+    assert "queue.attempt_count = failed.attempt_count" in sql
     assert "failed.payload_hash = ''" not in sql
     assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
     assert conn.params[-1]["last_error"] == "projection failed"
@@ -133,6 +156,35 @@ def test_enqueue_market_targets_maps_market_key_to_radar_identity_in_db() -> Non
     assert "ON CONFLICT(target_type_key, identity_id) DO UPDATE SET" in sql
     assert conn.params[-1]["target_types"] == ["chain_token", "cex_symbol"]
     assert conn.params[-1]["target_ids"] == ["eip155:1:0xabc", "binance:BTC-USDT"]
+
+
+def test_enqueue_market_targets_uses_stable_hash_and_coalesces_fresh_targets() -> None:
+    conn = _ScriptedConnection([])
+    conn.rowcount = 1
+
+    TokenRadarDirtyTargetRepository(conn).enqueue_market_targets(
+        [("chain_token", "eip155:1:0xabc")],
+        reason="market_tick_current_changed",
+        now_ms=1_700_000_000_000,
+        commit=False,
+    )
+
+    sql = conn.sql[-1]
+    assert "%(now_ms)s::text" not in sql
+    assert "MAX(features.latest_market_observed_at_ms)" in sql
+    assert "token_radar_target_projection_coverage" in sql
+    assert "MAX(target_coverage.latest_market_observed_at_ms)" in sql
+    assert "latest_market_observed_at_ms" in sql
+    assert "features.projection_version = %(projection_version)s" in sql
+    assert "target_coverage.projection_version = %(projection_version)s" in sql
+    assert "%(market_dirty_min_interval_ms)s" in sql
+    assert "payload_hash IS DISTINCT FROM EXCLUDED.payload_hash" in sql
+    assert "token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms" in sql
+    assert "leased_until_ms = CASE" in sql
+    assert "lease_owner = CASE" in sql
+    assert "token_radar_dirty_targets.last_error IS NOT NULL" in sql
+    assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
+    assert conn.params[-1]["market_dirty_min_interval_ms"] == 60_000
 
 
 def test_enqueue_recent_resolved_targets_is_bounded_catch_up_without_projection_scan() -> None:

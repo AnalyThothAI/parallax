@@ -29,6 +29,7 @@ def test_reset_token_radar_postgres_hard_cut_dry_run_lists_attached_partitions()
         "token_radar_snapshot_audit",
         "token_radar_target_features",
         "token_radar_target_first_seen",
+        "token_radar_target_projection_coverage",
     ]
     assert result["affected_partitions"] == [
         {"parent": "token_radar_rank_history", "partition": "token_radar_rank_history_default"},
@@ -76,7 +77,8 @@ def test_reset_token_radar_postgres_hard_cut_execute_runs_only_projection_storag
     assert (
         "TRUNCATE token_radar_dirty_targets, token_radar_current_rows, "
         "token_radar_rank_history, token_radar_snapshot_audit, "
-        "token_radar_target_features, token_radar_target_first_seen RESTART IDENTITY"
+        "token_radar_target_features, token_radar_target_first_seen, "
+        "token_radar_target_projection_coverage RESTART IDENTITY"
     ) in joined_sql
     assert "DELETE FROM token_radar_projection_coverage WHERE projection_version LIKE 'token-radar-%'" in joined_sql
     assert "DELETE FROM projection_offsets WHERE projection_name = 'token-radar'" in joined_sql

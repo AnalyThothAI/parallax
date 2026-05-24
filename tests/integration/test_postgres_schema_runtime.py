@@ -213,6 +213,67 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
     assert {"target_type", "target_id", "pricefeed_id", "target_json", "price_json"}.issubset(radar_columns)
 
 
+def test_runtime_schema_contains_equity_projection_payload_hash_columns_and_indexes(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        columns_by_table = {
+            table_name: {
+                row["column_name"]: row
+                for row in conn.execute(
+                    """
+                    SELECT column_name, data_type, is_nullable, column_default
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = %s
+                    """,
+                    (table_name,),
+                ).fetchall()
+            }
+            for table_name in (
+                "equity_event_page_rows",
+                "equity_company_timeline_rows",
+                "equity_event_alert_candidates",
+                "equity_event_calendar_rows",
+            )
+        }
+        indexes = {
+            row["indexname"]
+            for row in conn.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = ANY(%s::text[])
+                """,
+                (
+                    [
+                        "equity_event_page_rows",
+                        "equity_company_timeline_rows",
+                        "equity_event_alert_candidates",
+                        "equity_event_calendar_rows",
+                    ],
+                ),
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    for columns in columns_by_table.values():
+        assert columns["payload_hash"]["data_type"] == "text"
+        assert columns["payload_hash"]["is_nullable"] == "NO"
+        assert columns["payload_hash"]["column_default"] == "''::text"
+        assert columns["source_watermark_ms"]["data_type"] == "bigint"
+        assert columns["source_watermark_ms"]["is_nullable"] == "NO"
+        assert columns["source_watermark_ms"]["column_default"] == "0"
+    assert {
+        "idx_equity_event_page_rows_payload_hash",
+        "idx_equity_company_timeline_rows_payload_hash",
+        "idx_equity_event_alert_candidates_payload_hash",
+        "idx_equity_event_calendar_rows_payload_hash",
+        "idx_equity_event_calendar_rows_expected_event",
+    }.issubset(indexes)
+
+
 def test_runtime_schema_contains_signal_pulse_tables(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -641,7 +702,12 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE schemaname = 'public'
-                  AND tablename IN ('market_ticks', 'enriched_events')
+                  AND tablename IN (
+                    'market_ticks',
+                    'enriched_events',
+                    'token_radar_target_features',
+                    'token_radar_target_projection_coverage'
+                  )
                 """
             ).fetchall()
         }
@@ -672,7 +738,8 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                   AND relname IN (
                     'market_tick_current',
                     'token_radar_current_rows',
-                    'token_radar_dirty_targets'
+                    'token_radar_dirty_targets',
+                    'token_radar_target_projection_coverage'
                   )
                 """
             ).fetchall()
@@ -685,6 +752,7 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
         "market_tick_current",
         "token_radar_dirty_targets",
         "token_radar_target_features",
+        "token_radar_target_projection_coverage",
     }.issubset(tables)
     assert partition_keys == {
         "market_ticks": "RANGE (observed_at_ms)",
@@ -694,14 +762,23 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
     assert primary_keys["market_ticks"] == ["observed_at_ms", "tick_id"]
     assert primary_keys["market_tick_current"] == ["target_type", "target_id"]
     assert any(
-        "FOREIGN KEY (tick_observed_at_ms, tick_id) REFERENCES market_ticks(observed_at_ms, tick_id)"
-        in constraint_def
+        "FOREIGN KEY (tick_observed_at_ms, tick_id) REFERENCES market_ticks(observed_at_ms, tick_id)" in constraint_def
         for constraint_def in fk_defs
     )
     assert "idx_market_ticks_dedupe" in indexes
     assert "(observed_at_ms, target_type, target_id, source_provider)" in indexes["idx_market_ticks_dedupe"]
     assert "idx_market_ticks_target_observed" in indexes
     assert "idx_enriched_events_tick" in indexes
+    assert "idx_token_radar_target_features_freshness" in indexes
+    assert (
+        "(projection_version, target_type_key, identity_id, latest_market_observed_at_ms DESC)"
+        in indexes["idx_token_radar_target_features_freshness"]
+    )
+    assert "idx_token_radar_target_projection_coverage_freshness" in indexes
+    assert (
+        "(projection_version, target_type_key, identity_id, latest_market_observed_at_ms DESC)"
+        in indexes["idx_token_radar_target_projection_coverage_freshness"]
+    )
     assert payload_hash_columns == {
         "market_tick_current",
         "token_radar_current_rows",

@@ -147,6 +147,7 @@ class TokenRadarRepository:
             if previous is not None and str(previous.get("payload_hash") or "") != str(row["payload_hash"]):
                 self._neutralize_current_rank(row, temporary_rank=-(int(computed_at_ms) + index))
 
+        changed_rows: list[dict[str, Any]] = []
         for row, previous in change_baselines:
             changed = previous is None or str(previous.get("payload_hash") or "") != str(row["payload_hash"])
             payload = _json_payload(row)
@@ -262,11 +263,13 @@ class TokenRadarRepository:
                       THEN excluded.created_at_ms
                     ELSE token_radar_current_rows.created_at_ms
                   END
+                WHERE token_radar_current_rows.payload_hash IS DISTINCT FROM excluded.payload_hash
                 """,
                 payload,
             )
             if not changed:
                 continue
+            changed_rows.append(row)
             self.conn.execute(
                 """
                 INSERT INTO token_radar_rank_history(
@@ -303,7 +306,7 @@ class TokenRadarRepository:
             projection_version=projection_version,
             window=window,
             scope=scope,
-            rows=rows_to_insert,
+            rows=changed_rows,
             computed_at_ms=int(computed_at_ms),
             commit=False,
         )
@@ -494,7 +497,7 @@ class TokenRadarRepository:
             scope=scope,
             computed_at_ms=int(computed_at_ms),
         )
-        self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT INTO token_radar_target_features(
               projection_version, "window", scope, lane, target_type_key, identity_id,
@@ -530,13 +533,12 @@ class TokenRadarRepository:
               last_scored_at_ms = excluded.last_scored_at_ms,
               updated_at_ms = excluded.updated_at_ms
             WHERE token_radar_target_features.payload_hash IS DISTINCT FROM excluded.payload_hash
-               OR token_radar_target_features.last_scored_at_ms < excluded.last_scored_at_ms
             """,
             payload,
         )
         if commit:
             self.conn.commit()
-        return 1
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def delete_target_feature(
         self,
@@ -564,6 +566,49 @@ class TokenRadarRepository:
         if commit:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def mark_target_projection_coverage(
+        self,
+        *,
+        projection_version: str,
+        target_type_key: str,
+        identity_id: str,
+        latest_market_observed_at_ms: int,
+        projected_at_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO token_radar_target_projection_coverage(
+              projection_version, target_type_key, identity_id,
+              latest_market_observed_at_ms, last_projected_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT(projection_version, target_type_key, identity_id) DO UPDATE SET
+              latest_market_observed_at_ms = GREATEST(
+                token_radar_target_projection_coverage.latest_market_observed_at_ms,
+                excluded.latest_market_observed_at_ms
+              ),
+              last_projected_at_ms = GREATEST(
+                token_radar_target_projection_coverage.last_projected_at_ms,
+                excluded.last_projected_at_ms
+              ),
+              updated_at_ms = GREATEST(
+                token_radar_target_projection_coverage.updated_at_ms,
+                excluded.updated_at_ms
+              )
+            """,
+            (
+                projection_version,
+                str(target_type_key),
+                str(identity_id),
+                int(latest_market_observed_at_ms),
+                int(projected_at_ms),
+                int(projected_at_ms),
+            ),
+        )
+        if commit:
+            self.conn.commit()
 
     def list_target_features_for_rank_set(
         self,

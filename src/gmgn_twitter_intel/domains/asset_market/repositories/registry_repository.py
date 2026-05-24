@@ -395,31 +395,20 @@ class RegistryRepository:
             """
             WITH latest_sets AS MATERIALIZED (
               SELECT
-                coverage."window",
-                coverage.scope,
-                latest_rows.computed_at_ms
-              FROM (
-                SELECT DISTINCT "window", scope
-                FROM token_radar_projection_coverage
-                WHERE projection_version = %s
-              ) coverage
-              JOIN LATERAL (
-                SELECT computed_at_ms
-                FROM token_radar_current_rows
-                WHERE token_radar_current_rows.projection_version = %s
-                  AND token_radar_current_rows."window" = coverage."window"
-                  AND token_radar_current_rows.scope = coverage.scope
-                  AND token_radar_current_rows.computed_at_ms >= %s
-                ORDER BY token_radar_current_rows.computed_at_ms DESC
-                LIMIT 1
-              ) latest_rows ON true
+                "window",
+                scope,
+                computed_at_ms
+              FROM token_radar_projection_coverage
+              WHERE projection_version = %s
+                AND computed_at_ms >= %s
+                AND status = 'ready'
             ),
             active_targets AS MATERIALIZED (
               SELECT DISTINCT ON (rows.target_type, rows.target_id)
                 rows.target_type,
                 rows.target_id,
                 rows.pricefeed_id,
-                rows.computed_at_ms,
+                latest_sets.computed_at_ms,
                 rows.source_max_received_at_ms,
                 NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
                   AS rank_score
@@ -428,7 +417,6 @@ class RegistryRepository:
                 ON rows.projection_version = %s
                AND rows."window" = latest_sets."window"
                AND rows.scope = latest_sets.scope
-               AND rows.computed_at_ms = latest_sets.computed_at_ms
               WHERE rows.target_type IN ('Asset', 'CexToken')
                 AND rows.target_id IS NOT NULL
               ORDER BY
@@ -515,7 +503,6 @@ class RegistryRepository:
             LIMIT %s
             """,
             (
-                projection_version,
                 projection_version,
                 int(since_ms),
                 projection_version,

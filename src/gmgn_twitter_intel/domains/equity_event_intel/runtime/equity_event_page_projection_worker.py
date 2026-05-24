@@ -65,7 +65,10 @@ class EquityEventPageProjectionWorker(WorkerBase):
                     alert_rows.append(alert)
                 company_event_ids.append(str(event["company_event_id"]))
 
-            for payload in repos.equity_events.list_expected_events_for_calendar_projection(limit=self._batch_size()):
+            for payload in repos.equity_events.list_expected_events_for_calendar_projection(
+                limit=self._batch_size(),
+                now_ms=now,
+            ):
                 expected_event, observed_event, company = _calendar_projection_parts(payload)
                 calendar_rows.append(
                     build_equity_event_calendar_row(
@@ -107,11 +110,7 @@ class EquityEventPageProjectionWorker(WorkerBase):
                 )
             repos.conn.commit()
 
-        processed = (
-            len(set(company_event_ids))
-            + len(set(expected_event_ids))
-            + len(set(inactive_expected_event_ids))
-        )
+        processed = len(set(company_event_ids)) + len(set(expected_event_ids)) + len(set(inactive_expected_event_ids))
         if processed and self.wake_bus is not None:
             self.wake_bus.notify_equity_event_page_updated(count=processed)
         return WorkerResult(

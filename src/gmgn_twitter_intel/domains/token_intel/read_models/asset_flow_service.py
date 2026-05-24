@@ -41,7 +41,9 @@ class AssetFlowService:
         if not rows and coverage_status != "ready":
             return _pending_projection_payload(coverage)
 
-        computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
+        row_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
+        coverage_computed_at_ms = (coverage or {}).get("computed_at_ms")
+        computed_at_ms = coverage_computed_at_ms if coverage_computed_at_ms is not None else row_computed_at_ms
         public_rows = [_public_row(row) for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
@@ -68,7 +70,7 @@ class AssetFlowService:
                     (int(row.get("source_max_received_at_ms") or 0) for row in rows),
                     default=0,
                 ),
-                "computed_at_ms": computed_at_ms if computed_at_ms is not None else coverage.get("computed_at_ms"),
+                "computed_at_ms": computed_at_ms,
                 "anchor_coverage": _anchor_coverage(returned_rows),
                 "unresolved": unresolved,
             },

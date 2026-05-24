@@ -35,12 +35,13 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
             latest = conn.execute(
                 """
                 SELECT computed_at_ms
-                FROM token_radar_current_rows
+                FROM token_radar_projection_coverage
                 WHERE computed_at_ms >= %s
                   AND computed_at_ms <= %s
                   AND projection_version = %s
                   AND "window" = %s
                   AND scope = %s
+                  AND status = 'ready'
                 ORDER BY computed_at_ms DESC
                 LIMIT 1
                 """,
@@ -48,7 +49,6 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
             ).fetchone()
             if not latest:
                 continue
-            computed_at_ms = int(dict(latest).get("computed_at_ms") or 0)
             rows = conn.execute(
                 """
                 SELECT
@@ -66,10 +66,9 @@ def fetch_radar_rows(conn: Any, *, now_ms: int, lookback_hours: int) -> list[dic
                 WHERE projection_version = %s
                   AND "window" = %s
                   AND scope = %s
-                  AND computed_at_ms = %s
                 ORDER BY rank ASC
                 """,
-                (TOKEN_RADAR_PROJECTION_VERSION, window, scope, computed_at_ms),
+                (TOKEN_RADAR_PROJECTION_VERSION, window, scope),
             ).fetchall()
             results.extend(dict(row) for row in rows)
     return results
@@ -206,9 +205,7 @@ def summarize_candidate_policy_rows(
     current_windows: tuple[str, ...] | None = None,
     current_scopes: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    return _summarize_candidates_by_window_scope(
-        rows, current_windows=current_windows, current_scopes=current_scopes
-    )
+    return _summarize_candidates_by_window_scope(rows, current_windows=current_windows, current_scopes=current_scopes)
 
 
 def summarize_pulse_run_rows(
@@ -217,9 +214,7 @@ def summarize_pulse_run_rows(
     current_windows: tuple[str, ...] | None = None,
     current_scopes: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    return summarize_by_window_scope_and_outcome(
-        rows, current_windows=current_windows, current_scopes=current_scopes
-    )
+    return summarize_by_window_scope_and_outcome(rows, current_windows=current_windows, current_scopes=current_scopes)
 
 
 def summarize_job_policy_rows(
@@ -626,9 +621,10 @@ def _recommendation(evaluation: dict[str, Any]) -> str:
         or float(jobs.get("backpressure_rate") or 0.0) >= 0.5
     ):
         return "stop"
-    if float(source_quality.get("single_author_ratio") or 0.0) > 0.5 or float(
-        source_quality.get("ge3_author_ratio") or 0.0
-    ) < 0.3:
+    if (
+        float(source_quality.get("single_author_ratio") or 0.0) > 0.5
+        or float(source_quality.get("ge3_author_ratio") or 0.0) < 0.3
+    ):
         return "revise thresholds"
     return "ship"
 

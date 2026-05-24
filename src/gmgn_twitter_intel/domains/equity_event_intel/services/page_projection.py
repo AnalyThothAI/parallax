@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -31,26 +32,29 @@ def build_equity_event_page_row(
     company_name = str((company or {}).get("company_name") or "")
     fiscal_period = _optional_str(event.get("fiscal_period"))
     event_type = str(event["event_type"])
-    return {
-        "row_id": _stable_id("equity-event-page-row", EQUITY_EVENT_PAGE_PROJECTION_VERSION, company_event_id),
-        "company_event_id": company_event_id,
-        "story_id": _optional_str((story or {}).get("story_id")),
-        "company_id": str(event["company_id"]),
-        "ticker": ticker,
-        "company_name": company_name,
-        "event_type": event_type,
-        "priority": str(event["priority"]),
-        "source_role": str(event["source_role"]),
-        "latest_event_at_ms": int(event.get("event_time_ms") or computed_at_ms),
-        "lifecycle_status": str(event.get("lifecycle_status") or "raw"),
-        "headline": _event_headline(ticker=ticker, fiscal_period=fiscal_period, event_type=event_type),
-        "summary": str(event.get("summary") or ""),
-        "facts_json": [_fact_payload(row) for row in facts],
-        "documents_json": [_document_payload(row) for row in documents],
-        "brief_json": _brief_payload(brief),
-        "computed_at_ms": int(computed_at_ms),
-        "projection_version": EQUITY_EVENT_PAGE_PROJECTION_VERSION,
-    }
+    return _with_payload_hash(
+        {
+            "row_id": _stable_id("equity-event-page-row", EQUITY_EVENT_PAGE_PROJECTION_VERSION, company_event_id),
+            "company_event_id": company_event_id,
+            "story_id": _optional_str((story or {}).get("story_id")),
+            "company_id": str(event["company_id"]),
+            "ticker": ticker,
+            "company_name": company_name,
+            "event_type": event_type,
+            "priority": str(event["priority"]),
+            "source_role": str(event["source_role"]),
+            "latest_event_at_ms": int(event.get("event_time_ms") or computed_at_ms),
+            "lifecycle_status": str(event.get("lifecycle_status") or "raw"),
+            "headline": _event_headline(ticker=ticker, fiscal_period=fiscal_period, event_type=event_type),
+            "summary": str(event.get("summary") or ""),
+            "facts_json": [_fact_payload(row) for row in facts],
+            "documents_json": [_document_payload(row) for row in documents],
+            "brief_json": _brief_payload(brief),
+            "computed_at_ms": int(computed_at_ms),
+            "source_watermark_ms": _source_watermark(event, computed_at_ms=computed_at_ms),
+            "projection_version": EQUITY_EVENT_PAGE_PROJECTION_VERSION,
+        }
+    )
 
 
 def build_equity_event_calendar_row(
@@ -66,34 +70,39 @@ def build_equity_event_calendar_row(
     event_type = str(expected_event["event_type"])
     fiscal_period = _optional_str(expected_event.get("fiscal_period"))
     status = _calendar_status(expected_event=expected_event, observed_event=observed_event, now_ms=now_ms)
-    return {
-        "row_id": _stable_id("equity-event-calendar-row", EQUITY_EVENT_CALENDAR_PROJECTION_VERSION, expected_event_id),
-        "expected_event_id": expected_event_id,
-        "company_id": str(expected_event["company_id"]),
-        "ticker": ticker,
-        "company_name": str((company or {}).get("company_name") or ""),
-        "event_type": event_type,
-        "priority": str((company or {}).get("priority") or "P2"),
-        "source_role": str(expected_event["source_role"]),
-        "fiscal_period": fiscal_period,
-        "expected_at_ms": int(expected_event["expected_at_ms"]),
-        "status": status,
-        "headline": _calendar_headline(
-            ticker=ticker,
-            fiscal_period=fiscal_period,
-            event_type=event_type,
-            status=status,
-        ),
-        "calendar_json": {
-            "source_id": expected_event.get("source_id"),
-            "expected_status": expected_event.get("status"),
-            "observed_company_event_id": (observed_event or {}).get("company_event_id"),
-            "observed_event_type": (observed_event or {}).get("event_type"),
-            "observed_event_time_ms": _optional_int((observed_event or {}).get("event_time_ms")),
-        },
-        "computed_at_ms": int(computed_at_ms),
-        "projection_version": EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
-    }
+    return _with_payload_hash(
+        {
+            "row_id": _stable_id(
+                "equity-event-calendar-row", EQUITY_EVENT_CALENDAR_PROJECTION_VERSION, expected_event_id
+            ),
+            "expected_event_id": expected_event_id,
+            "company_id": str(expected_event["company_id"]),
+            "ticker": ticker,
+            "company_name": str((company or {}).get("company_name") or ""),
+            "event_type": event_type,
+            "priority": str((company or {}).get("priority") or "P2"),
+            "source_role": str(expected_event["source_role"]),
+            "fiscal_period": fiscal_period,
+            "expected_at_ms": int(expected_event["expected_at_ms"]),
+            "status": status,
+            "headline": _calendar_headline(
+                ticker=ticker,
+                fiscal_period=fiscal_period,
+                event_type=event_type,
+                status=status,
+            ),
+            "calendar_json": {
+                "source_id": expected_event.get("source_id"),
+                "expected_status": expected_event.get("status"),
+                "observed_company_event_id": (observed_event or {}).get("company_event_id"),
+                "observed_event_type": (observed_event or {}).get("event_type"),
+                "observed_event_time_ms": _optional_int((observed_event or {}).get("event_time_ms")),
+            },
+            "computed_at_ms": int(computed_at_ms),
+            "source_watermark_ms": _source_watermark(expected_event, computed_at_ms=computed_at_ms),
+            "projection_version": EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
+        }
+    )
 
 
 def build_equity_event_alert_candidate(
@@ -115,56 +124,64 @@ def build_equity_event_alert_candidate(
 
     company_event_id = str(event["company_event_id"])
     validation_status = str(event.get("validation_status") or "pending")
-    return {
-        "alert_candidate_id": _stable_id(
-            "equity-event-alert-candidate",
-            EQUITY_EVENT_ALERT_PROJECTION_VERSION,
-            company_event_id,
-        ),
-        "company_event_id": company_event_id,
-        "company_id": str(event["company_id"]),
-        "ticker": str(event.get("ticker") or page_row.get("ticker") or "").upper(),
-        "event_type": str(event["event_type"]),
-        "priority": str(event["priority"]),
-        "lifecycle_status": str(event.get("lifecycle_status") or page_row.get("lifecycle_status") or "raw"),
-        "validation_status": validation_status,
-        "alert_status": "pending",
-        "reason_codes_json": ["official_p0_event", "actionable_fact"],
-        "payload_json": {
-            "headline": page_row.get("headline"),
-            "summary": page_row.get("summary"),
-            "facts": actionable_facts[:5],
-            "brief": _json_object(page_row.get("brief_json")),
-        },
-        "computed_at_ms": int(computed_at_ms),
-        "projection_version": EQUITY_EVENT_ALERT_PROJECTION_VERSION,
-    }
+    return _with_payload_hash(
+        {
+            "alert_candidate_id": _stable_id(
+                "equity-event-alert-candidate",
+                EQUITY_EVENT_ALERT_PROJECTION_VERSION,
+                company_event_id,
+            ),
+            "company_event_id": company_event_id,
+            "company_id": str(event["company_id"]),
+            "ticker": str(event.get("ticker") or page_row.get("ticker") or "").upper(),
+            "event_type": str(event["event_type"]),
+            "priority": str(event["priority"]),
+            "lifecycle_status": str(event.get("lifecycle_status") or page_row.get("lifecycle_status") or "raw"),
+            "validation_status": validation_status,
+            "alert_status": "pending",
+            "reason_codes_json": ["official_p0_event", "actionable_fact"],
+            "payload_json": {
+                "headline": page_row.get("headline"),
+                "summary": page_row.get("summary"),
+                "facts": actionable_facts[:5],
+                "brief": _json_object(page_row.get("brief_json")),
+            },
+            "computed_at_ms": int(computed_at_ms),
+            "source_watermark_ms": int(page_row.get("source_watermark_ms") or computed_at_ms),
+            "projection_version": EQUITY_EVENT_ALERT_PROJECTION_VERSION,
+        }
+    )
 
 
 def build_equity_company_timeline_row(*, page_row: Mapping[str, Any], computed_at_ms: int) -> dict[str, Any]:
     company_event_id = str(page_row["company_event_id"])
-    return {
-        "row_id": _stable_id("equity-company-timeline-row", EQUITY_EVENT_TIMELINE_PROJECTION_VERSION, company_event_id),
-        "company_id": str(page_row["company_id"]),
-        "ticker": str(page_row["ticker"]).upper(),
-        "company_event_id": company_event_id,
-        "story_id": _optional_str(page_row.get("story_id")),
-        "event_type": str(page_row["event_type"]),
-        "priority": str(page_row["priority"]),
-        "source_role": str(page_row["source_role"]),
-        "event_time_ms": int(page_row["latest_event_at_ms"]),
-        "lifecycle_status": str(page_row["lifecycle_status"]),
-        "headline": str(page_row["headline"]),
-        "summary": str(page_row.get("summary") or ""),
-        "payload_json": {
-            "company_name": page_row.get("company_name") or "",
-            "facts": [_timeline_fact_payload(fact) for fact in _json_list(page_row.get("facts_json"))[:8]],
-            "documents": _json_list(page_row.get("documents_json"))[:5],
-            "brief": _json_object(page_row.get("brief_json")),
-        },
-        "computed_at_ms": int(computed_at_ms),
-        "projection_version": EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
-    }
+    return _with_payload_hash(
+        {
+            "row_id": _stable_id(
+                "equity-company-timeline-row", EQUITY_EVENT_TIMELINE_PROJECTION_VERSION, company_event_id
+            ),
+            "company_id": str(page_row["company_id"]),
+            "ticker": str(page_row["ticker"]).upper(),
+            "company_event_id": company_event_id,
+            "story_id": _optional_str(page_row.get("story_id")),
+            "event_type": str(page_row["event_type"]),
+            "priority": str(page_row["priority"]),
+            "source_role": str(page_row["source_role"]),
+            "event_time_ms": int(page_row["latest_event_at_ms"]),
+            "lifecycle_status": str(page_row["lifecycle_status"]),
+            "headline": str(page_row["headline"]),
+            "summary": str(page_row.get("summary") or ""),
+            "payload_json": {
+                "company_name": page_row.get("company_name") or "",
+                "facts": [_timeline_fact_payload(fact) for fact in _json_list(page_row.get("facts_json"))[:8]],
+                "documents": _json_list(page_row.get("documents_json"))[:5],
+                "brief": _json_object(page_row.get("brief_json")),
+            },
+            "computed_at_ms": int(computed_at_ms),
+            "source_watermark_ms": int(page_row.get("source_watermark_ms") or computed_at_ms),
+            "projection_version": EQUITY_EVENT_TIMELINE_PROJECTION_VERSION,
+        }
+    )
 
 
 def event_matches_expected_calendar(*, expected_event: Mapping[str, Any], event: Mapping[str, Any]) -> bool:
@@ -308,6 +325,25 @@ def _optional_str(value: Any) -> str | None:
 
 def _stable_id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _with_payload_hash(row: dict[str, Any]) -> dict[str, Any]:
+    row["payload_hash"] = _payload_hash(row)
+    return row
+
+
+def _payload_hash(row: Mapping[str, Any]) -> str:
+    payload = {
+        str(key): value
+        for key, value in row.items()
+        if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms"}
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _source_watermark(row: Mapping[str, Any], *, computed_at_ms: int) -> int:
+    return int(row.get("source_watermark_ms") or computed_at_ms)
 
 
 __all__ = [

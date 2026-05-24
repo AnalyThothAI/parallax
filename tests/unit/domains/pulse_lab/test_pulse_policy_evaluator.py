@@ -4,6 +4,7 @@ import pytest
 
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_policy_evaluator import (
     build_pulse_policy_evaluation,
+    fetch_radar_rows,
     render_pulse_policy_evaluation_report,
     summarize_candidate_policy_rows,
     summarize_job_policy_rows,
@@ -129,6 +130,7 @@ def test_build_pulse_policy_evaluation_uses_only_read_queries_and_returns_sectio
         candidate_rows=[_candidate_row("1h", "all", "display_trade_candidate")],
         run_rows=[_run_row("1h", "all", outcome="completed", status="completed", job_status="done")],
         job_rows=[_job_row("1h", "all", status="pending", has_run=False, next_run_at_ms=1_699_999_999_000)],
+        coverage_rows=[{"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "ready"}],
     )
 
     evaluation = build_pulse_policy_evaluation(conn, now_ms=1_700_000_000_000, lookback_hours=24)
@@ -141,6 +143,39 @@ def test_build_pulse_policy_evaluation_uses_only_read_queries_and_returns_sectio
     assert any("FROM pulse_agent_jobs" in sql for sql in conn.executed_sql)
     assert conn.executed_sql
     assert all(_is_read_only_select(sql) for sql in conn.executed_sql)
+
+
+def test_fetch_radar_rows_uses_projection_coverage_for_freshness() -> None:
+    conn = FakeConn(
+        radar_rows=[_radar_row("1h", "all", authors=3, top_share=0.3, watched_mentions=1, computed_at_ms=100)],
+        candidate_rows=[],
+        run_rows=[],
+        coverage_rows=[{"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "ready"}],
+    )
+
+    rows = fetch_radar_rows(conn, now_ms=1_700_000_060_000, lookback_hours=24)
+
+    assert len(rows) == 1
+    assert rows[0]["computed_at_ms"] == 100
+    assert any("FROM token_radar_projection_coverage" in sql for sql in conn.executed_sql)
+    freshness_sql = next(sql for sql in conn.executed_sql if "FROM token_radar_projection_coverage" in sql)
+    assert "status = 'ready'" in freshness_sql
+    assert "token_radar_current_rows" not in freshness_sql
+    row_sql = next(sql for sql in conn.executed_sql if "FROM token_radar_current_rows" in sql)
+    assert "%s AS computed_at_ms" not in row_sql
+
+
+def test_fetch_radar_rows_ignores_non_ready_projection_coverage() -> None:
+    conn = FakeConn(
+        radar_rows=[_radar_row("1h", "all", authors=3, top_share=0.3, watched_mentions=1, computed_at_ms=100)],
+        candidate_rows=[],
+        run_rows=[],
+        coverage_rows=[{"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "failed"}],
+    )
+
+    rows = fetch_radar_rows(conn, now_ms=1_700_000_060_000, lookback_hours=24)
+
+    assert rows == []
 
 
 def test_build_pulse_policy_evaluation_uses_configured_current_policy_selection() -> None:
@@ -161,6 +196,11 @@ def test_build_pulse_policy_evaluation_uses_configured_current_policy_selection(
         job_rows=[
             _job_row("1h", "matched", status="done", has_run=True, next_run_at_ms=900),
             _job_row("4h", "matched", status="done", has_run=True, next_run_at_ms=900),
+        ],
+        coverage_rows=[
+            {"window": "1h", "scope": "matched", "computed_at_ms": 1_700_000_000_000, "status": "ready"},
+            {"window": "1h", "scope": "all", "computed_at_ms": 1_700_000_000_000, "status": "ready"},
+            {"window": "4h", "scope": "matched", "computed_at_ms": 1_700_000_000_000, "status": "ready"},
         ],
     )
 
@@ -220,8 +260,7 @@ def test_report_rendering_redacts_secrets_and_includes_recommendation() -> None:
     assert "super-secret-password" not in report
     assert "postgresql://" not in report
     assert any(
-        f"Recommendation: {recommendation}" in report
-        for recommendation in ("ship", "revise thresholds", "stop")
+        f"Recommendation: {recommendation}" in report for recommendation in ("ship", "revise thresholds", "stop")
     )
     assert "/Users/qinghuan/.gmgn-twitter-intel/config.yaml" in report
     assert "config_path_under_operator_home: true" in report
@@ -256,9 +295,11 @@ class FakeConn:
         candidate_rows: list[dict],
         run_rows: list[dict],
         job_rows: list[dict] | None = None,
+        coverage_rows: list[dict] | None = None,
     ) -> None:
         self._rows = {
             "token_radar_current_rows": radar_rows,
+            "token_radar_projection_coverage": coverage_rows or [],
             "pulse_candidates": candidate_rows,
             "pulse_agent_runs": run_rows,
             "pulse_agent_jobs": job_rows or [],
@@ -273,18 +314,21 @@ class FakeConn:
             return FakeCursor(self._rows["pulse_agent_runs"])
         if "FROM pulse_agent_jobs" in sql:
             return FakeCursor(self._rows["pulse_agent_jobs"])
+        if "FROM token_radar_projection_coverage" in sql:
+            window, scope = str(params[-2]), str(params[-1])
+            rows = [
+                row
+                for row in self._rows["token_radar_projection_coverage"]
+                if row.get("window") == window and row.get("scope") == scope and row.get("status", "ready") == "ready"
+            ][:1]
+            return FakeCursor(rows)
         if "FROM token_radar_current_rows" in sql and '"window" = %s' in sql and "scope = %s" in sql:
-            if "SELECT computed_at_ms" in sql:
-                window, scope = str(params[-2]), str(params[-1])
-            else:
-                window, scope = str(params[1]), str(params[2])
+            window, scope = str(params[-2]), str(params[-1])
             rows = [
                 row
                 for row in self._rows["token_radar_current_rows"]
                 if row.get("window") == window and row.get("scope") == scope
             ]
-            if "SELECT computed_at_ms" in sql:
-                return FakeCursor([{"computed_at_ms": 1_000}] if rows else [])
             return FakeCursor(rows)
         for table, rows in self._rows.items():
             if table in sql:

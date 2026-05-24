@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -590,69 +592,78 @@ class EquityEventRepository:
         now_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        existing = self.conn.execute(
-            "SELECT * FROM equity_event_documents WHERE event_document_id = %s",
-            (event_document_id,),
-        ).fetchone()
-        status = "inserted"
-        if existing is not None:
-            status = "duplicate"
-            if (
-                existing["provider_document_id"] != provider_document_id
-                or existing["document_url"] != document_url
-                or existing["content_hash"] != content_hash
-                or existing["event_time_ms"] != int(event_time_ms)
-            ):
-                status = "updated"
         row = self.conn.execute(
             """
-            INSERT INTO equity_event_documents (
-              event_document_id, provider_document_id, company_id, ticker, cik, source_id,
-              source_role, document_type, form_type, accession_number, fiscal_period, document_url,
-              event_time_ms, discovered_at_ms, content_hash, created_at_ms, updated_at_ms
+            WITH upserted AS (
+              INSERT INTO equity_event_documents (
+                event_document_id, provider_document_id, company_id, ticker, cik, source_id,
+                source_role, document_type, form_type, accession_number, fiscal_period, document_url,
+                event_time_ms, discovered_at_ms, content_hash, created_at_ms, updated_at_ms
+              )
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+              ON CONFLICT (event_document_id) DO UPDATE SET
+                provider_document_id = EXCLUDED.provider_document_id,
+                company_id = EXCLUDED.company_id,
+                ticker = EXCLUDED.ticker,
+                cik = EXCLUDED.cik,
+                source_id = EXCLUDED.source_id,
+                source_role = EXCLUDED.source_role,
+                document_type = EXCLUDED.document_type,
+                form_type = EXCLUDED.form_type,
+                accession_number = EXCLUDED.accession_number,
+                fiscal_period = EXCLUDED.fiscal_period,
+                document_url = EXCLUDED.document_url,
+                event_time_ms = EXCLUDED.event_time_ms,
+                discovered_at_ms = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.discovered_at_ms
+                  ELSE EXCLUDED.discovered_at_ms
+                END,
+                content_hash = EXCLUDED.content_hash,
+                lifecycle_status = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.lifecycle_status
+                  ELSE 'raw'
+                END,
+                processing_attempts = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.processing_attempts
+                  ELSE 0
+                END,
+                processing_error = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.processing_error
+                  ELSE NULL
+                END,
+                processed_at_ms = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.processed_at_ms
+                  ELSE NULL
+                END,
+                updated_at_ms = EXCLUDED.updated_at_ms
+              WHERE equity_event_documents.company_id IS DISTINCT FROM EXCLUDED.company_id
+                 OR equity_event_documents.ticker IS DISTINCT FROM EXCLUDED.ticker
+                 OR equity_event_documents.cik IS DISTINCT FROM EXCLUDED.cik
+                 OR equity_event_documents.source_id IS DISTINCT FROM EXCLUDED.source_id
+                 OR equity_event_documents.source_role IS DISTINCT FROM EXCLUDED.source_role
+                 OR equity_event_documents.document_type IS DISTINCT FROM EXCLUDED.document_type
+                 OR equity_event_documents.form_type IS DISTINCT FROM EXCLUDED.form_type
+                 OR equity_event_documents.accession_number IS DISTINCT FROM EXCLUDED.accession_number
+                 OR equity_event_documents.fiscal_period IS DISTINCT FROM EXCLUDED.fiscal_period
+                 OR equity_event_documents.document_url IS DISTINCT FROM EXCLUDED.document_url
+                 OR equity_event_documents.event_time_ms IS DISTINCT FROM EXCLUDED.event_time_ms
+                 OR equity_event_documents.content_hash IS DISTINCT FROM EXCLUDED.content_hash
+              RETURNING *, CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END AS status
+            ),
+            existing AS (
+              SELECT *, 'duplicate'::text AS status
+              FROM equity_event_documents
+              WHERE event_document_id = %s
+                AND NOT EXISTS (SELECT 1 FROM upserted)
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (event_document_id) DO UPDATE SET
-              provider_document_id = EXCLUDED.provider_document_id,
-              company_id = EXCLUDED.company_id,
-              ticker = EXCLUDED.ticker,
-              cik = EXCLUDED.cik,
-              source_id = EXCLUDED.source_id,
-              source_role = EXCLUDED.source_role,
-              document_type = EXCLUDED.document_type,
-              form_type = EXCLUDED.form_type,
-              accession_number = EXCLUDED.accession_number,
-              fiscal_period = EXCLUDED.fiscal_period,
-              document_url = EXCLUDED.document_url,
-              event_time_ms = EXCLUDED.event_time_ms,
-              discovered_at_ms = CASE
-                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
-                THEN equity_event_documents.discovered_at_ms
-                ELSE EXCLUDED.discovered_at_ms
-              END,
-              content_hash = EXCLUDED.content_hash,
-              lifecycle_status = CASE
-                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
-                THEN equity_event_documents.lifecycle_status
-                ELSE 'raw'
-              END,
-              processing_attempts = CASE
-                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
-                THEN equity_event_documents.processing_attempts
-                ELSE 0
-              END,
-              processing_error = CASE
-                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
-                THEN equity_event_documents.processing_error
-                ELSE NULL
-              END,
-              processed_at_ms = CASE
-                WHEN equity_event_documents.content_hash = EXCLUDED.content_hash
-                THEN equity_event_documents.processed_at_ms
-                ELSE NULL
-              END,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            RETURNING *
+            SELECT * FROM upserted
+            UNION ALL
+            SELECT * FROM existing
             """,
             (
                 event_document_id,
@@ -672,11 +683,23 @@ class EquityEventRepository:
                 content_hash,
                 int(now_ms),
                 int(now_ms),
+                event_document_id,
             ),
         ).fetchone()
+        if row is None:
+            row = self.conn.execute(
+                """
+                SELECT *, 'duplicate'::text AS status
+                  FROM equity_event_documents
+                 WHERE event_document_id = %s
+                """,
+                (event_document_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"event document upsert returned no row for {event_document_id}")
         if commit:
             self.conn.commit()
-        return {**dict(row), "status": status}
+        return dict(row)
 
     def upsert_company_event(
         self,
@@ -699,27 +722,49 @@ class EquityEventRepository:
     ) -> dict[str, Any]:
         row = self.conn.execute(
             """
-            INSERT INTO equity_company_events (
-              company_event_id, company_id, ticker, primary_document_id, event_type, priority,
-              source_role, fiscal_period, event_time_ms, discovered_at_ms, lifecycle_status,
-              validation_status, summary, created_at_ms, updated_at_ms
+            WITH upserted AS (
+              INSERT INTO equity_company_events (
+                company_event_id, company_id, ticker, primary_document_id, event_type, priority,
+                source_role, fiscal_period, event_time_ms, discovered_at_ms, lifecycle_status,
+                validation_status, summary, created_at_ms, updated_at_ms
+              )
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+              ON CONFLICT (company_event_id) DO UPDATE SET
+                company_id = EXCLUDED.company_id,
+                ticker = EXCLUDED.ticker,
+                primary_document_id = EXCLUDED.primary_document_id,
+                event_type = EXCLUDED.event_type,
+                priority = EXCLUDED.priority,
+                source_role = EXCLUDED.source_role,
+                fiscal_period = EXCLUDED.fiscal_period,
+                event_time_ms = EXCLUDED.event_time_ms,
+                discovered_at_ms = EXCLUDED.discovered_at_ms,
+                lifecycle_status = EXCLUDED.lifecycle_status,
+                validation_status = EXCLUDED.validation_status,
+                summary = EXCLUDED.summary,
+                updated_at_ms = EXCLUDED.updated_at_ms
+              WHERE equity_company_events.company_id IS DISTINCT FROM EXCLUDED.company_id
+                 OR equity_company_events.ticker IS DISTINCT FROM EXCLUDED.ticker
+                 OR equity_company_events.primary_document_id IS DISTINCT FROM EXCLUDED.primary_document_id
+                 OR equity_company_events.event_type IS DISTINCT FROM EXCLUDED.event_type
+                 OR equity_company_events.priority IS DISTINCT FROM EXCLUDED.priority
+                 OR equity_company_events.source_role IS DISTINCT FROM EXCLUDED.source_role
+                 OR equity_company_events.fiscal_period IS DISTINCT FROM EXCLUDED.fiscal_period
+                 OR equity_company_events.event_time_ms IS DISTINCT FROM EXCLUDED.event_time_ms
+                 OR equity_company_events.lifecycle_status IS DISTINCT FROM EXCLUDED.lifecycle_status
+                 OR equity_company_events.validation_status IS DISTINCT FROM EXCLUDED.validation_status
+                 OR equity_company_events.summary IS DISTINCT FROM EXCLUDED.summary
+              RETURNING *, CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END AS status
+            ),
+            existing AS (
+              SELECT *, 'duplicate'::text AS status
+              FROM equity_company_events
+              WHERE company_event_id = %s
+                AND NOT EXISTS (SELECT 1 FROM upserted)
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (company_event_id) DO UPDATE SET
-              company_id = EXCLUDED.company_id,
-              ticker = EXCLUDED.ticker,
-              primary_document_id = EXCLUDED.primary_document_id,
-              event_type = EXCLUDED.event_type,
-              priority = EXCLUDED.priority,
-              source_role = EXCLUDED.source_role,
-              fiscal_period = EXCLUDED.fiscal_period,
-              event_time_ms = EXCLUDED.event_time_ms,
-              discovered_at_ms = EXCLUDED.discovered_at_ms,
-              lifecycle_status = EXCLUDED.lifecycle_status,
-              validation_status = EXCLUDED.validation_status,
-              summary = EXCLUDED.summary,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            RETURNING *
+            SELECT * FROM upserted
+            UNION ALL
+            SELECT * FROM existing
             """,
             (
                 company_event_id,
@@ -737,8 +782,20 @@ class EquityEventRepository:
                 summary,
                 int(now_ms),
                 int(now_ms),
+                company_event_id,
             ),
         ).fetchone()
+        if row is None:
+            row = self.conn.execute(
+                """
+                SELECT *, 'duplicate'::text AS status
+                  FROM equity_company_events
+                 WHERE company_event_id = %s
+                """,
+                (company_event_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"company event upsert returned no row for {company_event_id}")
         if commit:
             self.conn.commit()
         return dict(row)
@@ -1121,12 +1178,12 @@ class EquityEventRepository:
         self.conn.execute(
             """
             DELETE FROM equity_event_page_rows
-             WHERE row_id = ANY(%s::text[])
-                OR company_event_id = ANY(%s::text[])
+             WHERE company_event_id = ANY(%s::text[])
+               AND NOT (row_id = ANY(%s::text[]))
             """,
             (
-                scoped_row_ids,
                 scoped_company_event_ids,
+                scoped_row_ids,
             ),
         )
         for payload in payloads:
@@ -1135,14 +1192,15 @@ class EquityEventRepository:
                 INSERT INTO equity_event_page_rows (
                   row_id, company_event_id, story_id, company_id, ticker, company_name, event_type,
                   priority, source_role, latest_event_at_ms, lifecycle_status, headline, summary,
-                  facts_json, documents_json, brief_json, computed_at_ms, projection_version
+                  facts_json, documents_json, brief_json, computed_at_ms, projection_version,
+                  payload_hash, source_watermark_ms
                 )
                 VALUES (
                   %(row_id)s, %(company_event_id)s, %(story_id)s, %(company_id)s, %(ticker)s,
                   %(company_name)s, %(event_type)s, %(priority)s, %(source_role)s,
                   %(latest_event_at_ms)s, %(lifecycle_status)s, %(headline)s, %(summary)s,
                   %(facts_json)s, %(documents_json)s, %(brief_json)s, %(computed_at_ms)s,
-                  %(projection_version)s
+                  %(projection_version)s, %(payload_hash)s, %(source_watermark_ms)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   company_event_id = EXCLUDED.company_event_id,
@@ -1160,8 +1218,21 @@ class EquityEventRepository:
                   facts_json = EXCLUDED.facts_json,
                   documents_json = EXCLUDED.documents_json,
                   brief_json = EXCLUDED.brief_json,
-                  computed_at_ms = EXCLUDED.computed_at_ms,
-                  projection_version = EXCLUDED.projection_version
+                  computed_at_ms = CASE
+                    WHEN equity_event_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                      OR equity_event_page_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                    THEN EXCLUDED.computed_at_ms
+                    ELSE equity_event_page_rows.computed_at_ms
+                  END,
+                  projection_version = EXCLUDED.projection_version,
+                  payload_hash = EXCLUDED.payload_hash,
+                  source_watermark_ms = GREATEST(
+                    equity_event_page_rows.source_watermark_ms,
+                    EXCLUDED.source_watermark_ms
+                  )
+                WHERE equity_event_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                   OR equity_event_page_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                   OR equity_event_page_rows.source_watermark_ms < EXCLUDED.source_watermark_ms
                 """,
                 payload,
             )
@@ -1447,7 +1518,14 @@ class EquityEventRepository:
                    timeline_rows.projection_version AS timeline_projection_version,
                    COALESCE(fact_state.facts_updated_at_ms, 0) AS facts_updated_at_ms,
                    COALESCE(fact_state.actionable_fact_count, 0) AS actionable_fact_count,
-                   COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms
+                   COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms,
+                   GREATEST(
+                     events.updated_at_ms,
+                     COALESCE(stories.updated_at_ms, 0),
+                     COALESCE(briefs.updated_at_ms, 0),
+                     COALESCE(documents.updated_at_ms, 0),
+                     COALESCE(fact_state.facts_updated_at_ms, 0)
+                   ) AS source_watermark_ms
               FROM equity_company_events AS events
               LEFT JOIN equity_event_universe_members AS universe
                 ON universe.company_id = events.company_id
@@ -1492,7 +1570,7 @@ class EquityEventRepository:
                AND (
                  page_rows.row_id IS NULL
                  OR page_rows.projection_version <> %s
-                 OR page_rows.computed_at_ms < GREATEST(
+                 OR page_rows.source_watermark_ms < GREATEST(
                    events.updated_at_ms,
                    COALESCE(stories.updated_at_ms, 0),
                    COALESCE(briefs.updated_at_ms, 0),
@@ -1501,7 +1579,7 @@ class EquityEventRepository:
                  )
                  OR timeline_rows.row_id IS NULL
                  OR timeline_rows.projection_version <> %s
-                 OR timeline_rows.computed_at_ms < GREATEST(
+                 OR timeline_rows.source_watermark_ms < GREATEST(
                    events.updated_at_ms,
                    COALESCE(stories.updated_at_ms, 0),
                    COALESCE(briefs.updated_at_ms, 0),
@@ -1515,7 +1593,7 @@ class EquityEventRepository:
                    AND (
                      alerts.alert_candidate_id IS NULL
                      OR alerts.projection_version <> %s
-                     OR alerts.computed_at_ms < GREATEST(
+                     OR alerts.source_watermark_ms < GREATEST(
                        events.updated_at_ms,
                        COALESCE(stories.updated_at_ms, 0),
                        COALESCE(briefs.updated_at_ms, 0),
@@ -1536,7 +1614,7 @@ class EquityEventRepository:
              ORDER BY CASE
                         WHEN page_rows.row_id IS NULL THEN 0
                         WHEN page_rows.projection_version <> %s THEN 0
-                        WHEN page_rows.computed_at_ms < GREATEST(
+                        WHEN page_rows.source_watermark_ms < GREATEST(
                           events.updated_at_ms,
                           COALESCE(stories.updated_at_ms, 0),
                           COALESCE(briefs.updated_at_ms, 0),
@@ -1545,7 +1623,7 @@ class EquityEventRepository:
                         ) THEN 0
                         WHEN timeline_rows.row_id IS NULL THEN 0
                         WHEN timeline_rows.projection_version <> %s THEN 0
-                        WHEN timeline_rows.computed_at_ms < GREATEST(
+                        WHEN timeline_rows.source_watermark_ms < GREATEST(
                           events.updated_at_ms,
                           COALESCE(stories.updated_at_ms, 0),
                           COALESCE(briefs.updated_at_ms, 0),
@@ -1558,7 +1636,7 @@ class EquityEventRepository:
                           AND (
                             alerts.alert_candidate_id IS NULL
                             OR alerts.projection_version <> %s
-                            OR alerts.computed_at_ms < GREATEST(
+                            OR alerts.source_watermark_ms < GREATEST(
                               events.updated_at_ms,
                               COALESCE(stories.updated_at_ms, 0),
                               COALESCE(briefs.updated_at_ms, 0),
@@ -1931,7 +2009,7 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
 
-    def list_expected_events_for_calendar_projection(self, *, limit: int) -> list[dict[str, Any]]:
+    def list_expected_events_for_calendar_projection(self, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
         earnings_family = ["earnings_release", "quarterly_report"]
         rows = self.conn.execute(
             """
@@ -1952,7 +2030,11 @@ class EquityEventRepository:
                    observed.summary AS observed_summary,
                    observed.updated_at_ms AS observed_updated_at_ms,
                    calendar_rows.row_id AS calendar_row_id,
-                   calendar_rows.computed_at_ms AS calendar_computed_at_ms
+                   calendar_rows.computed_at_ms AS calendar_computed_at_ms,
+                   GREATEST(
+                     expected.updated_at_ms,
+                     COALESCE(observed.updated_at_ms, 0)
+                   ) AS source_watermark_ms
               FROM equity_expected_events AS expected
               LEFT JOIN equity_event_universe_members AS universe
                 ON universe.company_id = expected.company_id
@@ -1988,18 +2070,24 @@ class EquityEventRepository:
                AND (
                  calendar_rows.row_id IS NULL
                  OR calendar_rows.projection_version <> %s
-                 OR calendar_rows.computed_at_ms < GREATEST(
+                 OR calendar_rows.source_watermark_ms < GREATEST(
                    expected.updated_at_ms,
                    COALESCE(observed.updated_at_ms, 0)
+                 )
+                 OR (
+                   calendar_rows.status = 'expected'
+                   AND expected.expected_at_ms < %s
                  )
                )
              ORDER BY CASE
                         WHEN calendar_rows.row_id IS NULL THEN 0
                         WHEN calendar_rows.projection_version <> %s THEN 0
-                        WHEN calendar_rows.computed_at_ms < GREATEST(
+                        WHEN calendar_rows.source_watermark_ms < GREATEST(
                           expected.updated_at_ms,
                           COALESCE(observed.updated_at_ms, 0)
                         ) THEN 0
+                        WHEN calendar_rows.status = 'expected'
+                         AND expected.expected_at_ms < %s THEN 0
                         ELSE 1
                       END ASC,
                       expected.expected_at_ms ASC,
@@ -2010,7 +2098,9 @@ class EquityEventRepository:
                 earnings_family,
                 earnings_family,
                 EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
+                int(now_ms),
                 EQUITY_EVENT_CALENDAR_PROJECTION_VERSION,
+                int(now_ms),
                 max(0, int(limit)),
             ),
         ).fetchall()
@@ -2048,10 +2138,10 @@ class EquityEventRepository:
         self.conn.execute(
             """
             DELETE FROM equity_event_calendar_rows
-             WHERE row_id = ANY(%s::text[])
-                OR expected_event_id = ANY(%s::text[])
+             WHERE expected_event_id = ANY(%s::text[])
+               AND NOT (row_id = ANY(%s::text[]))
             """,
-            (scoped_row_ids, scoped_expected_event_ids),
+            (scoped_expected_event_ids, scoped_row_ids),
         )
         for payload in payloads:
             self.conn.execute(
@@ -2059,13 +2149,14 @@ class EquityEventRepository:
                 INSERT INTO equity_event_calendar_rows (
                   row_id, expected_event_id, company_id, ticker, company_name, event_type,
                   priority, source_role, fiscal_period, expected_at_ms, status, headline,
-                  calendar_json, computed_at_ms, projection_version
+                  calendar_json, computed_at_ms, projection_version, payload_hash, source_watermark_ms
                 )
                 VALUES (
                   %(row_id)s, %(expected_event_id)s, %(company_id)s, %(ticker)s,
                   %(company_name)s, %(event_type)s, %(priority)s, %(source_role)s,
                   %(fiscal_period)s, %(expected_at_ms)s, %(status)s, %(headline)s,
-                  %(calendar_json)s, %(computed_at_ms)s, %(projection_version)s
+                  %(calendar_json)s, %(computed_at_ms)s, %(projection_version)s, %(payload_hash)s,
+                  %(source_watermark_ms)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   expected_event_id = EXCLUDED.expected_event_id,
@@ -2080,8 +2171,21 @@ class EquityEventRepository:
                   status = EXCLUDED.status,
                   headline = EXCLUDED.headline,
                   calendar_json = EXCLUDED.calendar_json,
-                  computed_at_ms = EXCLUDED.computed_at_ms,
-                  projection_version = EXCLUDED.projection_version
+                  computed_at_ms = CASE
+                    WHEN equity_event_calendar_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                      OR equity_event_calendar_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                    THEN EXCLUDED.computed_at_ms
+                    ELSE equity_event_calendar_rows.computed_at_ms
+                  END,
+                  projection_version = EXCLUDED.projection_version,
+                  payload_hash = EXCLUDED.payload_hash,
+                  source_watermark_ms = GREATEST(
+                    equity_event_calendar_rows.source_watermark_ms,
+                    EXCLUDED.source_watermark_ms
+                  )
+                WHERE equity_event_calendar_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                   OR equity_event_calendar_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                   OR equity_event_calendar_rows.source_watermark_ms < EXCLUDED.source_watermark_ms
                 """,
                 payload,
             )
@@ -2105,10 +2209,10 @@ class EquityEventRepository:
         self.conn.execute(
             """
             DELETE FROM equity_event_alert_candidates
-             WHERE alert_candidate_id = ANY(%s::text[])
-                OR company_event_id = ANY(%s::text[])
+             WHERE company_event_id = ANY(%s::text[])
+               AND NOT (alert_candidate_id = ANY(%s::text[]))
             """,
-            (scoped_alert_ids, scoped_company_event_ids),
+            (scoped_company_event_ids, scoped_alert_ids),
         )
         for payload in payloads:
             self.conn.execute(
@@ -2116,13 +2220,13 @@ class EquityEventRepository:
                 INSERT INTO equity_event_alert_candidates (
                   alert_candidate_id, company_event_id, company_id, ticker, event_type, priority,
                   lifecycle_status, validation_status, alert_status, reason_codes_json,
-                  payload_json, computed_at_ms, projection_version
+                  payload_json, computed_at_ms, projection_version, payload_hash, source_watermark_ms
                 )
                 VALUES (
                   %(alert_candidate_id)s, %(company_event_id)s, %(company_id)s, %(ticker)s,
                   %(event_type)s, %(priority)s, %(lifecycle_status)s, %(validation_status)s,
                   %(alert_status)s, %(reason_codes_json)s, %(payload_json)s,
-                  %(computed_at_ms)s, %(projection_version)s
+                  %(computed_at_ms)s, %(projection_version)s, %(payload_hash)s, %(source_watermark_ms)s
                 )
                 ON CONFLICT (alert_candidate_id) DO UPDATE SET
                   company_event_id = EXCLUDED.company_event_id,
@@ -2135,8 +2239,21 @@ class EquityEventRepository:
                   alert_status = EXCLUDED.alert_status,
                   reason_codes_json = EXCLUDED.reason_codes_json,
                   payload_json = EXCLUDED.payload_json,
-                  computed_at_ms = EXCLUDED.computed_at_ms,
-                  projection_version = EXCLUDED.projection_version
+                  computed_at_ms = CASE
+                    WHEN equity_event_alert_candidates.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                      OR equity_event_alert_candidates.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                    THEN EXCLUDED.computed_at_ms
+                    ELSE equity_event_alert_candidates.computed_at_ms
+                  END,
+                  projection_version = EXCLUDED.projection_version,
+                  payload_hash = EXCLUDED.payload_hash,
+                  source_watermark_ms = GREATEST(
+                    equity_event_alert_candidates.source_watermark_ms,
+                    EXCLUDED.source_watermark_ms
+                  )
+                WHERE equity_event_alert_candidates.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                   OR equity_event_alert_candidates.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                   OR equity_event_alert_candidates.source_watermark_ms < EXCLUDED.source_watermark_ms
                 """,
                 payload,
             )
@@ -2162,11 +2279,10 @@ class EquityEventRepository:
         self.conn.execute(
             """
             DELETE FROM equity_company_timeline_rows
-             WHERE row_id = ANY(%s::text[])
-                OR company_id = ANY(%s::text[])
-                OR company_event_id = ANY(%s::text[])
+             WHERE (company_id = ANY(%s::text[]) OR company_event_id = ANY(%s::text[]))
+               AND NOT (row_id = ANY(%s::text[]))
             """,
-            (scoped_row_ids, scoped_company_ids, scoped_company_event_ids),
+            (scoped_company_ids, scoped_company_event_ids, scoped_row_ids),
         )
         for payload in payloads:
             self.conn.execute(
@@ -2174,13 +2290,13 @@ class EquityEventRepository:
                 INSERT INTO equity_company_timeline_rows (
                   row_id, company_id, ticker, company_event_id, story_id, event_type, priority,
                   source_role, event_time_ms, lifecycle_status, headline, summary, payload_json,
-                  computed_at_ms, projection_version
+                  computed_at_ms, projection_version, payload_hash, source_watermark_ms
                 )
                 VALUES (
                   %(row_id)s, %(company_id)s, %(ticker)s, %(company_event_id)s, %(story_id)s,
                   %(event_type)s, %(priority)s, %(source_role)s, %(event_time_ms)s,
                   %(lifecycle_status)s, %(headline)s, %(summary)s, %(payload_json)s,
-                  %(computed_at_ms)s, %(projection_version)s
+                  %(computed_at_ms)s, %(projection_version)s, %(payload_hash)s, %(source_watermark_ms)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   company_id = EXCLUDED.company_id,
@@ -2195,8 +2311,21 @@ class EquityEventRepository:
                   headline = EXCLUDED.headline,
                   summary = EXCLUDED.summary,
                   payload_json = EXCLUDED.payload_json,
-                  computed_at_ms = EXCLUDED.computed_at_ms,
-                  projection_version = EXCLUDED.projection_version
+                  computed_at_ms = CASE
+                    WHEN equity_company_timeline_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                      OR equity_company_timeline_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                    THEN EXCLUDED.computed_at_ms
+                    ELSE equity_company_timeline_rows.computed_at_ms
+                  END,
+                  projection_version = EXCLUDED.projection_version,
+                  payload_hash = EXCLUDED.payload_hash,
+                  source_watermark_ms = GREATEST(
+                    equity_company_timeline_rows.source_watermark_ms,
+                    EXCLUDED.source_watermark_ms
+                  )
+                WHERE equity_company_timeline_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                   OR equity_company_timeline_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
+                   OR equity_company_timeline_rows.source_watermark_ms < EXCLUDED.source_watermark_ms
                 """,
                 payload,
             )
@@ -2286,84 +2415,121 @@ class EquityEventRepository:
 
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "row_id": str(row["row_id"]),
-        "company_event_id": str(row["company_event_id"]),
-        "story_id": row.get("story_id"),
-        "company_id": str(row["company_id"]),
-        "ticker": str(row["ticker"]),
-        "company_name": str(row.get("company_name") or ""),
-        "event_type": str(row["event_type"]),
-        "priority": str(row["priority"]),
-        "source_role": str(row["source_role"]),
-        "latest_event_at_ms": int(row["latest_event_at_ms"]),
-        "lifecycle_status": str(row["lifecycle_status"]),
-        "headline": str(row["headline"]),
-        "summary": str(row.get("summary") or ""),
-        "facts_json": Jsonb(list(row.get("facts_json") or [])),
-        "documents_json": Jsonb(list(row.get("documents_json") or [])),
-        "brief_json": Jsonb(dict(row.get("brief_json") or {"status": "pending"})),
-        "computed_at_ms": int(row["computed_at_ms"]),
-        "projection_version": str(row["projection_version"]),
-    }
+    computed_at_ms = int(row["computed_at_ms"])
+    return _projection_payload(
+        {
+            "row_id": str(row["row_id"]),
+            "company_event_id": str(row["company_event_id"]),
+            "story_id": row.get("story_id"),
+            "company_id": str(row["company_id"]),
+            "ticker": str(row["ticker"]),
+            "company_name": str(row.get("company_name") or ""),
+            "event_type": str(row["event_type"]),
+            "priority": str(row["priority"]),
+            "source_role": str(row["source_role"]),
+            "latest_event_at_ms": int(row["latest_event_at_ms"]),
+            "lifecycle_status": str(row["lifecycle_status"]),
+            "headline": str(row["headline"]),
+            "summary": str(row.get("summary") or ""),
+            "facts_json": list(row.get("facts_json") or []),
+            "documents_json": list(row.get("documents_json") or []),
+            "brief_json": dict(row.get("brief_json") or {"status": "pending"}),
+            "computed_at_ms": computed_at_ms,
+            "source_watermark_ms": int(row.get("source_watermark_ms") or computed_at_ms),
+            "projection_version": str(row["projection_version"]),
+        },
+        json_fields=("facts_json", "documents_json", "brief_json"),
+    )
 
 
 def _calendar_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "row_id": str(row["row_id"]),
-        "expected_event_id": row.get("expected_event_id"),
-        "company_id": str(row["company_id"]),
-        "ticker": str(row["ticker"]),
-        "company_name": str(row.get("company_name") or ""),
-        "event_type": str(row["event_type"]),
-        "priority": str(row.get("priority") or "P2"),
-        "source_role": str(row["source_role"]),
-        "fiscal_period": row.get("fiscal_period"),
-        "expected_at_ms": int(row["expected_at_ms"]),
-        "status": str(row["status"]),
-        "headline": str(row.get("headline") or ""),
-        "calendar_json": Jsonb(dict(row.get("calendar_json") or {})),
-        "computed_at_ms": int(row["computed_at_ms"]),
-        "projection_version": str(row["projection_version"]),
-    }
+    computed_at_ms = int(row["computed_at_ms"])
+    return _projection_payload(
+        {
+            "row_id": str(row["row_id"]),
+            "expected_event_id": row.get("expected_event_id"),
+            "company_id": str(row["company_id"]),
+            "ticker": str(row["ticker"]),
+            "company_name": str(row.get("company_name") or ""),
+            "event_type": str(row["event_type"]),
+            "priority": str(row.get("priority") or "P2"),
+            "source_role": str(row["source_role"]),
+            "fiscal_period": row.get("fiscal_period"),
+            "expected_at_ms": int(row["expected_at_ms"]),
+            "status": str(row["status"]),
+            "headline": str(row.get("headline") or ""),
+            "calendar_json": dict(row.get("calendar_json") or {}),
+            "computed_at_ms": computed_at_ms,
+            "source_watermark_ms": int(row.get("source_watermark_ms") or computed_at_ms),
+            "projection_version": str(row["projection_version"]),
+        },
+        json_fields=("calendar_json",),
+    )
 
 
 def _alert_candidate_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "alert_candidate_id": str(row["alert_candidate_id"]),
-        "company_event_id": str(row["company_event_id"]),
-        "company_id": str(row["company_id"]),
-        "ticker": str(row["ticker"]),
-        "event_type": str(row["event_type"]),
-        "priority": str(row["priority"]),
-        "lifecycle_status": str(row["lifecycle_status"]),
-        "validation_status": str(row.get("validation_status") or "pending"),
-        "alert_status": str(row.get("alert_status") or "pending"),
-        "reason_codes_json": Jsonb(list(row.get("reason_codes_json") or [])),
-        "payload_json": Jsonb(dict(row.get("payload_json") or {})),
-        "computed_at_ms": int(row["computed_at_ms"]),
-        "projection_version": str(row["projection_version"]),
-    }
+    computed_at_ms = int(row["computed_at_ms"])
+    return _projection_payload(
+        {
+            "alert_candidate_id": str(row["alert_candidate_id"]),
+            "company_event_id": str(row["company_event_id"]),
+            "company_id": str(row["company_id"]),
+            "ticker": str(row["ticker"]),
+            "event_type": str(row["event_type"]),
+            "priority": str(row["priority"]),
+            "lifecycle_status": str(row["lifecycle_status"]),
+            "validation_status": str(row.get("validation_status") or "pending"),
+            "alert_status": str(row.get("alert_status") or "pending"),
+            "reason_codes_json": list(row.get("reason_codes_json") or []),
+            "payload_json": dict(row.get("payload_json") or {}),
+            "computed_at_ms": computed_at_ms,
+            "source_watermark_ms": int(row.get("source_watermark_ms") or computed_at_ms),
+            "projection_version": str(row["projection_version"]),
+        },
+        json_fields=("reason_codes_json", "payload_json"),
+    )
 
 
 def _company_timeline_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "row_id": str(row["row_id"]),
-        "company_id": str(row["company_id"]),
-        "ticker": str(row["ticker"]),
-        "company_event_id": row.get("company_event_id"),
-        "story_id": row.get("story_id"),
-        "event_type": str(row["event_type"]),
-        "priority": str(row["priority"]),
-        "source_role": str(row["source_role"]),
-        "event_time_ms": int(row["event_time_ms"]),
-        "lifecycle_status": str(row["lifecycle_status"]),
-        "headline": str(row["headline"]),
-        "summary": str(row.get("summary") or ""),
-        "payload_json": Jsonb(dict(row.get("payload_json") or {})),
-        "computed_at_ms": int(row["computed_at_ms"]),
-        "projection_version": str(row["projection_version"]),
+    computed_at_ms = int(row["computed_at_ms"])
+    return _projection_payload(
+        {
+            "row_id": str(row["row_id"]),
+            "company_id": str(row["company_id"]),
+            "ticker": str(row["ticker"]),
+            "company_event_id": row.get("company_event_id"),
+            "story_id": row.get("story_id"),
+            "event_type": str(row["event_type"]),
+            "priority": str(row["priority"]),
+            "source_role": str(row["source_role"]),
+            "event_time_ms": int(row["event_time_ms"]),
+            "lifecycle_status": str(row["lifecycle_status"]),
+            "headline": str(row["headline"]),
+            "summary": str(row.get("summary") or ""),
+            "payload_json": dict(row.get("payload_json") or {}),
+            "computed_at_ms": computed_at_ms,
+            "source_watermark_ms": int(row.get("source_watermark_ms") or computed_at_ms),
+            "projection_version": str(row["projection_version"]),
+        },
+        json_fields=("payload_json",),
+    )
+
+
+def _projection_payload(payload: dict[str, Any], *, json_fields: Sequence[str]) -> dict[str, Any]:
+    payload["payload_hash"] = _projection_payload_hash(payload)
+    for field in json_fields:
+        payload[field] = Jsonb(payload[field])
+    return payload
+
+
+def _projection_payload_hash(payload: Mapping[str, Any]) -> str:
+    hash_payload = {
+        str(key): value
+        for key, value in payload.items()
+        if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms"}
     }
+    encoded = json.dumps(hash_payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _story_payload(row: Mapping[str, Any]) -> dict[str, Any] | None:

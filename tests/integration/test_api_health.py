@@ -607,3 +607,36 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     assert payload["workers"]["pulse_candidate"]["last_result"] == {"processed": 1}
     assert payload["agent_execution"] == agent_execution
     assert "pulse_agent" not in payload
+
+
+def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
+        collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0})),
+        providers=SimpleNamespace(
+            asset_market=SimpleNamespace(
+                stream_dex_market=SimpleNamespace(
+                    connection_state_payload=lambda: {
+                        "provider": "okx_dex_ws",
+                        "state": "circuit_open",
+                        "last_state_change_at_ms": 12_000,
+                        "last_error_category": "connect_timeout",
+                    }
+                )
+            )
+        ),
+        agent_execution_gateway=None,
+        scheduler=SimpleNamespace(
+            status_payload=lambda: {},
+            unhealthy_reasons=lambda: [],
+        ),
+    )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+
+    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    assert status_code == 200
+    assert payload["ok"] is True
+    assert payload["reasons"] == []
+    assert payload["provider_states"]["okx_dex_ws"]["state"] == "circuit_open"
+    assert payload["provider_states"]["okx_dex_ws"]["last_error_category"] == "connect_timeout"

@@ -88,7 +88,54 @@ def test_build_equity_event_page_row_includes_frontend_payload() -> None:
     ]
     assert row["documents_json"][0]["event_document_id"] == "doc-msft-q1"
     assert row["computed_at_ms"] == NOW_MS + 1_000
+    assert row["source_watermark_ms"] == NOW_MS + 1_000
     assert row["projection_version"] == EQUITY_EVENT_PAGE_PROJECTION_VERSION
+    assert row["payload_hash"]
+
+
+def test_equity_event_page_payload_hash_ignores_ack_timestamps() -> None:
+    first = build_equity_event_page_row(
+        event=_event(),
+        company=_company(),
+        story={"story_id": "story-msft-q1"},
+        facts=[{"fact_candidate_id": "fact-1", "fact_type": "eps_actual", "validation_status": "accepted"}],
+        documents=[],
+        brief=None,
+        computed_at_ms=NOW_MS,
+    )
+    second = build_equity_event_page_row(
+        event=_event(),
+        company=_company(),
+        story={"story_id": "story-msft-q1"},
+        facts=[{"fact_candidate_id": "fact-1", "fact_type": "eps_actual", "validation_status": "accepted"}],
+        documents=[],
+        brief=None,
+        computed_at_ms=NOW_MS + 5_000,
+    )
+    source_ack_changed = build_equity_event_page_row(
+        event=_event(source_watermark_ms=NOW_MS + 9_000),
+        company=_company(),
+        story={"story_id": "story-msft-q1"},
+        facts=[{"fact_candidate_id": "fact-1", "fact_type": "eps_actual", "validation_status": "accepted"}],
+        documents=[],
+        brief=None,
+        computed_at_ms=NOW_MS + 5_000,
+    )
+    changed = build_equity_event_page_row(
+        event=_event(summary="Updated event summary."),
+        company=_company(),
+        story={"story_id": "story-msft-q1"},
+        facts=[{"fact_candidate_id": "fact-1", "fact_type": "eps_actual", "validation_status": "accepted"}],
+        documents=[],
+        brief=None,
+        computed_at_ms=NOW_MS + 5_000,
+    )
+
+    assert first["computed_at_ms"] != second["computed_at_ms"]
+    assert first["source_watermark_ms"] != source_ack_changed["source_watermark_ms"]
+    assert first["payload_hash"] == second["payload_hash"]
+    assert first["payload_hash"] == source_ack_changed["payload_hash"]
+    assert changed["payload_hash"] != first["payload_hash"]
 
 
 def test_build_equity_event_calendar_row_marks_expected_future_event() -> None:
@@ -106,6 +153,7 @@ def test_build_equity_event_calendar_row_marks_expected_future_event() -> None:
     assert row["priority"] == "P1"
     assert row["calendar_json"]["observed_company_event_id"] is None
     assert row["projection_version"] == EQUITY_EVENT_CALENDAR_PROJECTION_VERSION
+    assert row["payload_hash"]
 
 
 def test_build_equity_event_calendar_row_marks_matching_observed_event() -> None:
@@ -164,6 +212,7 @@ def test_build_equity_event_alert_candidate_only_emits_conservative_official_p0_
     assert alert["ticker"] == "MSFT"
     assert alert["alert_status"] == "pending"
     assert alert["reason_codes_json"] == ["official_p0_event", "actionable_fact"]
+    assert alert["payload_hash"]
     assert noisy is None
 
 
@@ -189,6 +238,7 @@ def test_build_equity_company_timeline_row_compacts_page_context() -> None:
         "documents": [],
         "brief": {"status": "ready", "summary_zh": "MSFT beats."},
     }
+    assert row["payload_hash"]
 
 
 def _event(**overrides: object) -> dict[str, object]:

@@ -89,7 +89,7 @@ class TokenRadarProjection:
             return result
 
         touched: set[tuple[str, str]] = set()
-        successful_claims: list[dict[str, str]] = []
+        successful_claims: list[dict[str, str | int]] = []
         failures = 0
         first_error: str | None = None
         for claim in claims:
@@ -128,8 +128,7 @@ class TokenRadarProjection:
                 )
                 if str(rank_result.get("status") or "") != "ready":
                     raise RuntimeError(
-                        f"rank refresh did not publish current rows: "
-                        f"{rank_result.get('status') or 'unknown'}"
+                        f"rank refresh did not publish current rows: {rank_result.get('status') or 'unknown'}"
                     )
             except Exception as exc:
                 failures += 1
@@ -205,6 +204,14 @@ class TokenRadarProjection:
                     identity_id=identity_id,
                     commit=False,
                 )
+            self.repos.token_radar.mark_target_projection_coverage(
+                projection_version=PROJECTION_VERSION,
+                target_type_key=target_type_key,
+                identity_id=identity_id,
+                latest_market_observed_at_ms=int(now_ms),
+                projected_at_ms=int(now_ms),
+                commit=False,
+            )
             return {"status": "deleted" if deleted else "empty", "source_rows": len(source_rows), "rows_written": 0}
 
         written = self.repos.token_radar.upsert_target_feature(
@@ -484,11 +491,13 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _claim_key(claim: dict[str, Any]) -> dict[str, str]:
+def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
     return {
         "target_type_key": str(claim.get("target_type_key") or claim.get("target_type") or ""),
         "identity_id": str(claim.get("identity_id") or claim.get("target_id") or ""),
         "payload_hash": str(claim.get("payload_hash") or ""),
+        "lease_owner": str(claim.get("lease_owner") or ""),
+        "attempt_count": int(claim.get("attempt_count") or 0),
     }
 
 

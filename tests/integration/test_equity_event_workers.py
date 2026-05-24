@@ -292,8 +292,7 @@ def test_reconcile_sources_deactivates_removed_universe_members(postgres_conn) -
     )
 
     rows = {
-        row["ticker"]: row
-        for row in postgres_conn.execute("SELECT * FROM equity_event_universe_members").fetchall()
+        row["ticker"]: row for row in postgres_conn.execute("SELECT * FROM equity_event_universe_members").fetchall()
     }
     assert rows["MSFT"]["active"] is True
     assert rows["AAPL"]["active"] is False
@@ -399,7 +398,7 @@ def test_duplicate_event_document_keeps_original_discovered_at_ms(postgres_conn)
         ("event-doc-1",),
     ).fetchone()
     assert row["discovered_at_ms"] == NOW_MS
-    assert row["updated_at_ms"] == NOW_MS + 60_000
+    assert row["updated_at_ms"] == NOW_MS
     assert row["lifecycle_status"] == "raw"
 
 
@@ -667,6 +666,70 @@ def test_page_projection_worker_is_idle_when_read_models_are_current(postgres_co
     assert first_result.processed == 2
     assert idle_result.processed == 0
     assert wake_bus.pages_updated == [2]
+
+
+def test_page_projection_worker_rebuilds_expected_calendar_row_after_due_time_passes(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_future_expected_event(postgres_conn, expected_at_ms=NOW_MS + 5_000)
+
+    first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 1_000, batch_size=10).run_once_sync()
+    first_row = postgres_conn.execute(
+        "SELECT status, computed_at_ms FROM equity_event_calendar_rows WHERE expected_event_id = %s",
+        ("expected:MSFT:2026Q2",),
+    ).fetchone()
+
+    due_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 6_000, batch_size=10).run_once_sync()
+    due_row = postgres_conn.execute(
+        "SELECT status, computed_at_ms FROM equity_event_calendar_rows WHERE expected_event_id = %s",
+        ("expected:MSFT:2026Q2",),
+    ).fetchone()
+
+    assert first_result.processed == 1
+    assert first_row["status"] == "expected"
+    assert due_result.processed == 1
+    assert due_row["status"] == "missed"
+    assert due_row["computed_at_ms"] == NOW_MS + 6_000
+    assert wake_bus.pages_updated == [1, 1]
+
+
+def test_page_projection_worker_acknowledges_source_watermark_without_rescanning(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+
+    first_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 3_000, batch_size=10).run_once_sync()
+    before = postgres_conn.execute(
+        """
+        SELECT computed_at_ms, source_watermark_ms, payload_hash
+          FROM equity_event_page_rows
+        """
+    ).fetchone()
+    postgres_conn.execute(
+        """
+        UPDATE equity_event_story_groups
+           SET updated_at_ms = %s
+        """,
+        (NOW_MS + 9_000,),
+    )
+    postgres_conn.commit()
+
+    ack_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 10_000, batch_size=10).run_once_sync()
+    after_ack = postgres_conn.execute(
+        """
+        SELECT computed_at_ms, source_watermark_ms, payload_hash
+          FROM equity_event_page_rows
+        """
+    ).fetchone()
+    idle_result = _page_worker(db, wake_bus=wake_bus, now_ms=NOW_MS + 11_000, batch_size=10).run_once_sync()
+
+    assert first_result.processed == 2
+    assert ack_result.processed == 1
+    assert idle_result.processed == 0
+    assert after_ack["source_watermark_ms"] == NOW_MS + 9_000
+    assert after_ack["computed_at_ms"] == before["computed_at_ms"]
+    assert after_ack["payload_hash"] == before["payload_hash"]
+    assert wake_bus.pages_updated == [2, 1]
 
 
 def test_page_projection_worker_wakes_for_matched_calendar_only_rebuild(postgres_conn) -> None:
@@ -1359,6 +1422,31 @@ def _seed_page_projection_source(conn: Any, *, include_newer_event: bool = False
         )
     _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
     _story_worker(db, now_ms=NOW_MS + 2_000).run_once_sync()
+
+
+def _seed_future_expected_event(conn: Any, *, expected_at_ms: int) -> None:
+    repos = repositories_for_connection(conn)
+    repos.equity_events.upsert_universe_member(
+        {
+            "company_id": "market_instrument:us_equity:MSFT",
+            "ticker": "MSFT",
+            "company_name": "Microsoft Corporation",
+            "active": True,
+            "priority": "P0",
+        },
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.upsert_expected_event(
+        expected_event_id="expected:MSFT:2026Q2",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        event_type="earnings_release",
+        fiscal_period="2026Q2",
+        expected_at_ms=expected_at_ms,
+        source_id="config:earnings",
+        source_role="calendar",
+        now_ms=NOW_MS,
+    )
 
 
 def _company_event_id_for_document(conn: Any, event_document_id: str) -> str:

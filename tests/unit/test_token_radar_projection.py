@@ -656,6 +656,8 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
                 "target_type_key": "Asset",
                 "identity_id": "asset-1",
                 "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
             }
         ]
     )
@@ -690,6 +692,8 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
             "target_type_key": "Asset",
             "identity_id": "asset-1",
             "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
         }
     ]
     assert dirty_targets.errors == []
@@ -702,6 +706,8 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
                 "target_type_key": "Asset",
                 "identity_id": "asset-1",
                 "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
             }
         ]
     )
@@ -731,6 +737,8 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
             "target_type_key": "Asset",
             "identity_id": "asset-1",
             "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
             "error": "target boom",
         }
     ]
@@ -743,6 +751,8 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
                 "target_type_key": "Asset",
                 "identity_id": "asset-1",
                 "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
             }
         ]
     )
@@ -778,6 +788,8 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
             "target_type_key": "Asset",
             "identity_id": "asset-1",
             "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
             "error": "rank publish failed",
         }
     ]
@@ -790,6 +802,8 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
                 "target_type_key": "Asset",
                 "identity_id": "asset-1",
                 "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
             }
         ]
     )
@@ -825,6 +839,8 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
             "target_type_key": "Asset",
             "identity_id": "asset-1",
             "payload_hash": "claim-hash",
+            "lease_owner": "projection-worker",
+            "attempt_count": 1,
             "error": "rank refresh did not publish current rows: stale_skipped",
         }
     ]

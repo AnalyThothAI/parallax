@@ -10,6 +10,7 @@ DERIVED_TABLES = [
     "token_radar_snapshot_audit",
     "token_radar_target_features",
     "token_radar_target_first_seen",
+    "token_radar_target_projection_coverage",
 ]
 LEGACY_HARD_DROP_TABLES = ["token_radar_rows", "token_radar_retention_runs"]
 PROJECTION_CONTROL_TABLES = [
@@ -32,7 +33,8 @@ _RESET_SQL = (
     (
         "TRUNCATE token_radar_dirty_targets, token_radar_current_rows, "
         "token_radar_rank_history, token_radar_snapshot_audit, "
-        "token_radar_target_features, token_radar_target_first_seen RESTART IDENTITY"
+        "token_radar_target_features, token_radar_target_first_seen, "
+        "token_radar_target_projection_coverage RESTART IDENTITY"
     ),
     "DELETE FROM token_radar_projection_coverage WHERE projection_version LIKE 'token-radar-%'",
     "DELETE FROM projection_offsets WHERE projection_name = 'token-radar'",
@@ -171,11 +173,7 @@ class _MonthBounds(NamedTuple):
 def _month_bounds(timestamp_ms: int) -> _MonthBounds:
     dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
     start = datetime(dt.year, dt.month, 1, tzinfo=UTC)
-    end = (
-        datetime(dt.year + 1, 1, 1, tzinfo=UTC)
-        if dt.month == 12
-        else datetime(dt.year, dt.month + 1, 1, tzinfo=UTC)
-    )
+    end = datetime(dt.year + 1, 1, 1, tzinfo=UTC) if dt.month == 12 else datetime(dt.year, dt.month + 1, 1, tzinfo=UTC)
     return _MonthBounds(
         year_month=f"{start.year:04d}{start.month:02d}",
         start_ms=int(start.timestamp() * 1000),

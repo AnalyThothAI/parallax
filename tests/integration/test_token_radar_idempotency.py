@@ -38,7 +38,7 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
             limit=10,
             rank_limit=10,
         )
-        first_rows = _radar_rows(conn, computed_at_ms=int(first_result["computed_at_ms"]))
+        first_rows = _radar_rows(conn)
 
         _enqueue_radar_catch_up(conn, now_ms=FIXED_NOW_MS)
         second_result = projection.rebuild_dirty_targets(
@@ -48,7 +48,7 @@ def test_token_radar_rebuild_is_idempotent_from_current_facts(tmp_path):
             limit=10,
             rank_limit=10,
         )
-        second_rows = _radar_rows(conn, computed_at_ms=int(second_result["computed_at_ms"]))
+        second_rows = _radar_rows(conn)
     finally:
         conn.close()
 
@@ -71,7 +71,7 @@ def _enqueue_radar_catch_up(conn: Any, *, now_ms: int) -> None:
     )
 
 
-def _radar_rows(conn: Any, *, computed_at_ms: int) -> list[dict[str, Any]]:
+def _radar_rows(conn: Any) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT
@@ -89,10 +89,9 @@ def _radar_rows(conn: Any, *, computed_at_ms: int) -> list[dict[str, Any]]:
         WHERE projection_version = %s
           AND "window" = '1h'
           AND scope = 'all'
-          AND computed_at_ms = %s
         ORDER BY lane, rank, target_type, target_id, intent_id
         """,
-        (PROJECTION_VERSION, computed_at_ms),
+        (PROJECTION_VERSION,),
     ).fetchall()
     return [dict(row) for row in rows]
 
