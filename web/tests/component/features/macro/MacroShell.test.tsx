@@ -13,7 +13,8 @@ describe("MacroShell", () => {
       { route: "/macro/assets/equities" },
     );
 
-    expect(screen.getByRole("heading", { name: "美股" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.getByText("美股风险偏好是否足以确认加密 beta？")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("href", "/macro");
     const breadcrumb = screen.getByRole("navigation", { name: "宏观面包屑" });
     expect(within(breadcrumb).getByRole("link", { name: "大类资产" })).toHaveAttribute(
@@ -38,9 +39,12 @@ describe("MacroShell", () => {
       "href",
       "/macro/assets/correlation",
     );
-    expect(screen.getByText("截至 2026-05-20")).toBeInTheDocument();
-    expect(screen.getByText("部分可用")).toBeInTheDocument();
-    expect(screen.getByText("equity_breadth_missing")).toBeInTheDocument();
+    const state = screen.getByLabelText("模块状态");
+    expect(within(state).getByText("截至 2026-05-20")).toBeInTheDocument();
+    expect(within(state).getByText("部分可用")).toBeInTheDocument();
+    expect(within(state).getByText("历史样本不足")).toBeInTheDocument();
+    expect(screen.getByText("历史样本不足：无法计算 60 日变化")).toBeInTheDocument();
+    expect(screen.queryByText("equity_breadth_missing")).not.toBeInTheDocument();
     expect(screen.getByText("Backend content slot")).toBeInTheDocument();
     expect(screen.queryByText(/frontend score/i)).not.toBeInTheDocument();
   });

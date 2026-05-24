@@ -10,7 +10,9 @@ from typing import Any
 
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CONCEPT_METADATA,
     MACRO_CORE_CONCEPTS,
+    MACRO_REQUIRED_STAT_POINTS,
     MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
     MACRO_VIEW_PROJECTION_VERSION,
@@ -81,10 +83,15 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
     settings = load_settings(require_ws_token=False)
     try:
         with repositories(settings) as repos:
+            history = repos.macro_intel.concept_history_counts(
+                concept_keys=MACRO_CORE_CONCEPTS,
+                lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+            )
             data = {
                 "migration_ready": True,
                 "observations_count": repos.macro_intel.observations_count(),
                 "concept_count": repos.macro_intel.concept_count(),
+                **_history_readiness_payload(history),
                 "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
                 "latest_snapshot": _json_ready(
                     repos.macro_intel.latest_snapshot(
@@ -97,10 +104,58 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             "migration_ready": False,
             "observations_count": 0,
             "concept_count": 0,
+            "history_ready": False,
+            "history_coverage": {
+                "required_points": MACRO_REQUIRED_STAT_POINTS,
+                "required_concept_count": len(MACRO_CORE_CONCEPTS),
+                "ready_concept_count": 0,
+                "coverage_ratio": 0.0,
+                "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+            },
+            "concepts_below_min_history": [],
             "latest_import_run": None,
             "latest_snapshot": None,
         }
     return 0, {"ok": True, "data": data}
+
+
+def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    rows_by_concept = {str(row.get("concept_key")): row for row in history_rows}
+    below_min: list[dict[str, Any]] = []
+    ready_count = 0
+    for concept_key in MACRO_CORE_CONCEPTS:
+        row = rows_by_concept.get(concept_key, {})
+        points = int(row.get("points") or 0)
+        if points >= MACRO_REQUIRED_STAT_POINTS:
+            ready_count += 1
+            continue
+        metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
+        below_min.append(
+            {
+                "concept_key": concept_key,
+                "label": metadata.get("label") or concept_key,
+                "short_label": metadata.get("short_label") or concept_key,
+                "points": points,
+                "required_points": MACRO_REQUIRED_STAT_POINTS,
+                "latest_observed_at": _json_ready(row.get("latest_observed_at")),
+                "oldest_observed_at": _json_ready(row.get("oldest_observed_at")),
+                "sources": list(row.get("sources") or []),
+            }
+        )
+
+    required_count = len(MACRO_CORE_CONCEPTS)
+    coverage_ratio = round(ready_count / required_count, 6) if required_count else 1.0
+    return {
+        "history_ready": not below_min,
+        "history_coverage": {
+            "required_points": MACRO_REQUIRED_STAT_POINTS,
+            "required_concept_count": required_count,
+            "ready_concept_count": ready_count,
+            "coverage_ratio": coverage_ratio,
+            "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+        },
+        "concepts_below_min_history": below_min,
+    }
 
 
 def _error_payload(error: str, exc: Exception) -> dict[str, Any]:

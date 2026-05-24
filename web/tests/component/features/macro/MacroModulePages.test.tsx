@@ -67,6 +67,33 @@ describe("Macro module pages", () => {
     expect(screen.getByRole("region", { name: "支撑表格" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "证据板" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据源" })).toBeInTheDocument();
+    const currentRead = screen.getByRole("region", { name: "当前解读" });
+    expect(within(currentRead).getByText("美股风险：等待小盘确认")).toBeInTheDocument();
+    expect(within(currentRead).getByText("风险偏好部分可用")).toBeInTheDocument();
+    expect(within(currentRead).getByText("低置信度")).toBeInTheDocument();
+    expect(
+      within(currentRead).getByText("美股代理有最新值，但历史样本不足，不能确认加密 beta。"),
+    ).toBeInTheDocument();
+    expect(within(currentRead).getByText("高 beta 山寨暴露等待更多历史确认。")).toBeInTheDocument();
+    const kpiStrip = screen.getByRole("region", { name: "关键指标" });
+    expect(within(kpiStrip).getByText("标普500")).toBeInTheDocument();
+    expect(within(kpiStrip).getByText("观测于 2026-05-20")).toBeInTheDocument();
+    const evidence = screen.getByRole("region", { name: "证据板" });
+    expect(within(evidence).getByRole("group", { name: "确认" })).toHaveTextContent(
+      "SPX 最新值可用Yahoo 最新观测存在",
+    );
+    expect(within(evidence).getByRole("group", { name: "反证" })).toHaveTextContent(
+      "IWM 样本不足小盘确认不足",
+    );
+    expect(within(evidence).getByRole("group", { name: "观察触发" })).toHaveTextContent(
+      "60日历史补齐核心代理达到最小样本",
+    );
+    expect(within(evidence).getByRole("group", { name: "失效条件" })).toHaveTextContent(
+      "SPX 跌破趋势风险偏好走弱",
+    );
+    const provenance = screen.getByRole("region", { name: "数据源" });
+    expect(within(provenance).getByText("计分排除")).toBeInTheDocument();
+    expect(screen.queryByText("insufficient_history")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "相关页面" })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/series", {
@@ -80,9 +107,10 @@ describe("Macro module pages", () => {
     renderWithProviders(
       <MacroOverviewPage
         module={macroModuleFixture({
-          current_read: {
-            current_regime: "term_premium_pressure",
-            summary: "",
+          read: {
+            headline: "",
+            regime_label: "期限溢价压力",
+            confidence_label: "中等置信度",
             trade_map: {},
           },
         })}
@@ -93,9 +121,10 @@ describe("Macro module pages", () => {
     );
 
     const currentRead = screen.getByRole("region", { name: "当前解读" });
-    expect(within(currentRead).getAllByText("term_premium_pressure").length).toBeGreaterThan(0);
+    expect(within(currentRead).getAllByText("期限溢价压力").length).toBeGreaterThan(0);
     expect(within(currentRead).queryByText("{}")).not.toBeInTheDocument();
     expect(within(currentRead).queryByText("暂无")).not.toBeInTheDocument();
+    expect(currentRead).not.toHaveTextContent("term_premium_pressure");
   });
 
   it("renders asset-class normalized return page from backend payloads", async () => {
@@ -157,10 +186,10 @@ describe("Macro module pages", () => {
 
     const points = screen.getAllByTestId("macro-yield-curve-point");
     expect(points.map((point) => point.textContent)).toEqual([
-      "2Y3.8%",
-      "5Y4%",
-      "10Y4.2%",
-      "30Y4.7%",
+      "2年期美债收益率3.8%",
+      "5年期美债收益率4%",
+      "10年期美债收益率4.2%",
+      "30年期美债收益率4.7%",
     ]);
     expect(apiMock.readApi).not.toHaveBeenCalledWith(
       "/api/macro/series",
@@ -179,13 +208,17 @@ describe("Macro module pages", () => {
     );
 
     const cexBoard = screen.getByRole("region", { name: "CEX 永续看板" });
-    expect(within(cexBoard).getByText("12,500,000,000")).toBeInTheDocument();
+    expect(within(cexBoard).getByText("12.50B")).toBeInTheDocument();
     expect(screen.queryByText("暂无表格行")).not.toBeInTheDocument();
     expect(screen.getAllByRole("table", { name: "CEX 永续看板" })).toHaveLength(1);
-    expect(screen.getByText("coinglass_partial")).toBeInTheDocument();
-    expect(screen.getByText("basis_missing")).toBeInTheDocument();
-    expect(screen.getByText("crypto_options_missing")).toBeInTheDocument();
-    expect(screen.getByText("etf_flows_missing")).toBeInTheDocument();
+    expect(screen.getByText("Coinglass 数据不完整")).toBeInTheDocument();
+    expect(screen.getByText("基差数据缺失")).toBeInTheDocument();
+    expect(screen.getByText("加密期权数据缺失")).toBeInTheDocument();
+    expect(screen.getByText("ETF 资金流缺失")).toBeInTheDocument();
+    expect(screen.queryByText("coinglass_partial")).not.toBeInTheDocument();
+    expect(screen.queryByText("basis_missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("crypto_options_missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("etf_flows_missing")).not.toBeInTheDocument();
     await screen.findByText("10%");
   });
 });

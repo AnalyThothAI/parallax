@@ -27,6 +27,8 @@ class MacroModuleConfig:
     module_id: str
     route_path: str
     title: str
+    subtitle: str
+    question: str
     section: str
     required_concepts: tuple[str, ...]
     optional_concepts: tuple[str, ...]
@@ -60,23 +62,23 @@ _MODULE_CONFIGS = {
     "overview": MacroModuleConfig(
         module_id="overview",
         route_path="/macro",
-        title="Overview",
+        title="宏观总览",
+        subtitle="跨资产、利率、波动率与信用链条",
+        question="宏观链条现在是在支持风险资产，还是提示降风险？",
         section="overview",
         required_concepts=(),
         optional_concepts=("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas"),
-        chart_specs=(
-            MacroChartSpec("macro_regime", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),
-        ),
-        table_specs=(
-            MacroTableSpec("panel_scorecard", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),
-        ),
+        chart_specs=(MacroChartSpec("macro_regime", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),),
+        table_specs=(MacroTableSpec("panel_scorecard", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),),
         gap_codes=(),
         related_routes=("/macro/assets", "/macro/rates", "/macro/liquidity", "/macro/volatility", "/macro/credit"),
     ),
     "assets": MacroModuleConfig(
         module_id="assets",
         route_path="/macro/assets",
-        title="Assets",
+        title="资产联动",
+        subtitle="跨资产风险偏好与加密确认",
+        question="跨资产信号是在确认 risk-on，还是开始转向防守？",
         section="assets",
         required_concepts=(),
         optional_concepts=("asset:spx", "asset:spy", "asset:qqq", "asset:iwm", "asset:tlt", "crypto:btc"),
@@ -94,7 +96,9 @@ _MODULE_CONFIGS = {
     "assets/equities": MacroModuleConfig(
         module_id="assets/equities",
         route_path="/macro/assets/equities",
-        title="Equities",
+        title="美股风险",
+        subtitle="SPX / QQQ / IWM 风险偏好确认",
+        question="美股领导力是在确认加密 beta，还是开始拖累风险资产？",
         section="assets",
         required_concepts=("asset:spx",),
         optional_concepts=("asset:spy", "asset:qqq", "asset:iwm"),
@@ -106,7 +110,9 @@ _MODULE_CONFIGS = {
     "assets/bonds": MacroModuleConfig(
         module_id="assets/bonds",
         route_path="/macro/assets/bonds",
-        title="Bonds",
+        title="债券资产",
+        subtitle="久期压力与信用确认",
+        question="债券市场是在释放久期压力，还是确认避险需求？",
         section="assets",
         required_concepts=("asset:tlt",),
         optional_concepts=("asset:hyg", "asset:lqd", "credit:hy_oas", "credit:ig_oas"),
@@ -118,7 +124,9 @@ _MODULE_CONFIGS = {
     "assets/commodities": MacroModuleConfig(
         module_id="assets/commodities",
         route_path="/macro/assets/commodities",
-        title="Commodities",
+        title="商品冲击",
+        subtitle="原油、黄金与通胀脉冲",
+        question="商品价格是在制造通胀压力，还是只是局部供需扰动？",
         section="assets",
         required_concepts=("commodity:wti",),
         optional_concepts=("asset:gld", "asset:uso"),
@@ -130,7 +138,9 @@ _MODULE_CONFIGS = {
     "assets/fx": MacroModuleConfig(
         module_id="assets/fx",
         route_path="/macro/assets/fx",
-        title="FX",
+        title="美元压力",
+        subtitle="DXY 与广义美元流动性",
+        question="美元是在收紧离岸流动性，还是给风险资产让路？",
         section="assets",
         required_concepts=("fx:dxy",),
         optional_concepts=("fx:broad_dollar",),
@@ -142,7 +152,9 @@ _MODULE_CONFIGS = {
     "assets/crypto": MacroModuleConfig(
         module_id="assets/crypto",
         route_path="/macro/assets/crypto",
-        title="Crypto",
+        title="加密资产",
+        subtitle="BTC / ETH 宏观 beta",
+        question="BTC/ETH 是在确认宏观 risk-on，还是只是自身波动？",
         section="assets",
         required_concepts=("crypto:btc",),
         optional_concepts=("crypto:eth",),
@@ -154,7 +166,9 @@ _MODULE_CONFIGS = {
     "assets/crypto-derivatives": MacroModuleConfig(
         module_id="assets/crypto-derivatives",
         route_path="/macro/assets/crypto-derivatives",
-        title="Crypto Derivatives",
+        title="加密衍生品",
+        subtitle="CEX OI、资金费率与杠杆状态",
+        question="合约杠杆是在放大趋势，还是制造挤仓风险？",
         section="assets",
         required_concepts=(),
         optional_concepts=("crypto:btc", "crypto:eth"),
@@ -166,7 +180,9 @@ _MODULE_CONFIGS = {
     "rates": MacroModuleConfig(
         module_id="rates",
         route_path="/macro/rates",
-        title="Rates",
+        title="利率定价",
+        subtitle="曲线、实际利率与估值压力",
+        question="利率曲线是在释放风险偏好，还是继续压制估值？",
         section="rates",
         required_concepts=("rates:dgs2", "rates:dgs10"),
         optional_concepts=("rates:dgs5", "rates:dgs30", "rates:10y2y", "rates:10y3m"),
@@ -178,7 +194,9 @@ _MODULE_CONFIGS = {
     "rates/yield-curve": MacroModuleConfig(
         module_id="rates/yield-curve",
         route_path="/macro/rates/yield-curve",
-        title="Yield Curve",
+        title="收益率曲线",
+        subtitle="2Y、5Y、10Y、30Y 与期限利差",
+        question="曲线形态是在交易衰退压力，还是交易期限溢价？",
         section="rates",
         required_concepts=("rates:dgs2", "rates:dgs10"),
         optional_concepts=("rates:dgs5", "rates:dgs30", "rates:10y2y", "rates:10y3m"),
@@ -190,7 +208,9 @@ _MODULE_CONFIGS = {
     "rates/real-rates": MacroModuleConfig(
         module_id="rates/real-rates",
         route_path="/macro/rates/real-rates",
-        title="Real Rates",
+        title="实际利率",
+        subtitle="TIPS 实际收益率与通胀补偿",
+        question="实际利率是在压制成长估值，还是通胀预期主导？",
         section="rates",
         required_concepts=("rates:real_10y",),
         optional_concepts=("inflation:10y_breakeven", "inflation:5y5y_forward"),
@@ -202,7 +222,9 @@ _MODULE_CONFIGS = {
     "fed": MacroModuleConfig(
         module_id="fed",
         route_path="/macro/fed",
-        title="Fed",
+        title="美联储走廊",
+        subtitle="政策利率、EFFR、IORB 与 SOFR",
+        question="政策走廊是否稳定，还是隔夜融资开始出现压力？",
         section="fed",
         required_concepts=("fed:target_upper", "fed:target_lower", "fed:effr", "fed:iorb"),
         optional_concepts=("liquidity:sofr",),
@@ -220,7 +242,9 @@ _MODULE_CONFIGS = {
     "liquidity": MacroModuleConfig(
         module_id="liquidity",
         route_path="/macro/liquidity",
-        title="Liquidity",
+        title="美元流动性",
+        subtitle="Fed 资产、RRP、TGA、准备金与 SOFR",
+        question="美元流动性是在扩张风险承载，还是抽走市场缓冲？",
         section="liquidity",
         required_concepts=("liquidity:fed_assets", "liquidity:on_rrp", "liquidity:tga"),
         optional_concepts=("liquidity:reserve_balances", "liquidity:sofr"),
@@ -234,7 +258,9 @@ _MODULE_CONFIGS = {
     "liquidity/transmission-chain": MacroModuleConfig(
         module_id="liquidity/transmission-chain",
         route_path="/macro/liquidity/transmission-chain",
-        title="Transmission Chain",
+        title="流动性传导链",
+        subtitle="资产负债表到融资市场的传导",
+        question="流动性压力有没有传导到融资利率和风险资产？",
         section="liquidity",
         required_concepts=("liquidity:fed_assets", "liquidity:sofr"),
         optional_concepts=("liquidity:reserve_balances", "liquidity:on_rrp", "liquidity:tga"),
@@ -246,7 +272,9 @@ _MODULE_CONFIGS = {
     "volatility": MacroModuleConfig(
         module_id="volatility",
         route_path="/macro/volatility",
-        title="Volatility",
+        title="波动率压力",
+        subtitle="VIX 与缺失的期限结构确认",
+        question="波动率是在容忍风险，还是开始给风险资产定价压力？",
         section="volatility",
         required_concepts=("vol:vix",),
         optional_concepts=(),
@@ -258,7 +286,9 @@ _MODULE_CONFIGS = {
     "credit": MacroModuleConfig(
         module_id="credit",
         route_path="/macro/credit",
-        title="Credit",
+        title="信用压力",
+        subtitle="IG/HY OAS 与信用 ETF 确认",
+        question="信用利差是在确认风险偏好，还是预警去杠杆？",
         section="credit",
         required_concepts=("credit:hy_oas", "credit:ig_oas"),
         optional_concepts=("asset:hyg", "asset:lqd"),

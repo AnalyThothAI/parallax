@@ -50,7 +50,6 @@ export type {
   MacroIndicator,
   MacroFeatureSnapshot,
   MacroModuleChart,
-  MacroModuleSignal,
   MacroModuleSnapshot,
   MacroModuleTable,
   MacroModuleTile,

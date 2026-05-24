@@ -46,9 +46,10 @@ export function MacroLineChartFigure({
   const chartRef = useRef<IChartApi | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const visibleSeries = useMemo(
-    () => model.series.filter((series) => series.points.length > 0),
+    () => model.series.filter((series) => series.points.length >= 2),
     [model.series],
   );
+  const stateLabel = useMemo(() => chartStateLabel(model), [model]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -105,11 +106,25 @@ export function MacroLineChartFigure({
           className="macro-chart-state-panel"
           role="status"
         >
-          chart_series_missing
+          {stateLabel}
         </div>
       )}
     </figure>
   );
+}
+
+function chartStateLabel(model: MacroTimeSeriesModel): string {
+  if (
+    model.status === "insufficient_history" ||
+    model.series.some((series) => series.status === "insufficient_history")
+  ) {
+    return (
+      model.statusLabel ??
+      model.series.find((series) => series.status === "insufficient_history")?.statusLabel ??
+      "历史样本不足"
+    );
+  }
+  return model.statusLabel ?? "暂无可绘制序列";
 }
 
 function ChartLegend({

@@ -33,7 +33,10 @@ describe("MacroAssetCorrelationPage", () => {
     expect(screen.getByText("+0.92")).toBeInTheDocument();
     expect(screen.getByText("SPY / TLT")).toBeInTheDocument();
     expect(screen.getAllByText("-0.61").length).toBeGreaterThan(0);
-    expect(screen.getByText("insufficient_overlap: ETH / TLT")).toBeInTheDocument();
+    expect(screen.getAllByText("Yahoo").length).toBeGreaterThan(0);
+    expect(screen.getByText("重叠样本不足：ETH / TLT")).toBeInTheDocument();
+    expect(screen.queryByText(/insufficient_overlap/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/asset:spy|asset:qqq|asset:tlt|crypto:eth|yahoo/)).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
         params: { window: "60d" },

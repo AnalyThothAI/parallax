@@ -142,7 +142,7 @@ function CorrelationMatrix({
         <tbody>
           {data.matrix.map((row) => (
             <tr key={row.concept_key}>
-              <th scope="row">{titleByKey[row.concept_key] ?? row.concept_key}</th>
+              <th scope="row">{assetLabel(row.concept_key, titleByKey)}</th>
               {data.assets.map((asset) => {
                 const value = row.correlations[asset.concept_key];
                 return (
@@ -175,7 +175,7 @@ function PairList({
         <article className="macro-correlation-pair" key={`${pair.left}:${pair.right}`}>
           <span>
             <b>
-              {titleByKey[pair.left] ?? pair.left} / {titleByKey[pair.right] ?? pair.right}
+              {assetLabel(pair.left, titleByKey)} / {assetLabel(pair.right, titleByKey)}
             </b>
             <small>
               样本={pair.sample_size} · {pair.start_date ?? "-"} 至 {pair.end_date ?? "-"}
@@ -197,13 +197,15 @@ function AssetCoverage({ data }: { data: MacroAssetCorrelationData }) {
         <article className="macro-correlation-feature-row" key={asset.concept_key}>
           <span>
             <b>{asset.title}</b>
-            <small>{asset.concept_key}</small>
+            <small>
+              收益样本 {asset.return_count} / 观测 {asset.observations_count}
+            </small>
           </span>
           <strong>{asset.return_count}</strong>
           <span className="macro-correlation-feature-deltas">
             <small>{asset.start_date ?? "-"}</small>
             <small>{asset.latest_observed_at ?? "-"}</small>
-            <small>{asset.sources.join(" / ") || "暂无数据源"}</small>
+            <small>{asset.sources.map(sourceLabel).join(" / ") || "暂无数据源"}</small>
           </span>
         </article>
       ))}
@@ -260,15 +262,31 @@ function gapLabel(
   gap: MacroAssetCorrelationData["data_gaps"][number],
   titleByKey: Record<string, string>,
 ): string {
+  if (gap.label) {
+    return gap.label;
+  }
+  const prefix = CORRELATION_GAP_LABELS[gap.code] ?? "相关性样本不足";
   if (gap.left || gap.right) {
-    return `${gap.code}: ${gap.left ? (titleByKey[gap.left] ?? gap.left) : "-"} / ${
-      gap.right ? (titleByKey[gap.right] ?? gap.right) : "-"
+    return `${prefix}：${gap.left ? (titleByKey[gap.left] ?? "资产") : "资产"} / ${
+      gap.right ? (titleByKey[gap.right] ?? "资产") : "资产"
     }`;
   }
   if (gap.concept_key) {
-    return `${gap.code}: ${titleByKey[gap.concept_key] ?? gap.concept_key}`;
+    return `${prefix}：${titleByKey[gap.concept_key] ?? "资产"}`;
   }
-  return gap.code;
+  return prefix;
+}
+
+function assetLabel(conceptKey: string, titleByKey: Record<string, string>): string {
+  return titleByKey[conceptKey] ?? "资产";
+}
+
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? (looksInternalSource(source) ? "数据源" : source);
+}
+
+function looksInternalSource(value: string): boolean {
+  return /^[a-z][a-z0-9_:.-]*$/.test(value);
 }
 
 function matrixCorrelationLabel(value: number | null | undefined): string {
@@ -285,6 +303,18 @@ function signedCorrelationLabel(value: number | null | undefined): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}`;
 }
+
+const CORRELATION_GAP_LABELS: Record<string, string> = {
+  insufficient_history: "历史样本不足",
+  insufficient_overlap: "重叠样本不足",
+  missing_observations: "观测缺失",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  fred: "FRED",
+  nyfed: "NY Fed",
+  yahoo: "Yahoo",
+};
 
 function correlationTone(value: number | null | undefined): string {
   if (typeof value !== "number") {

@@ -142,9 +142,13 @@ export type MacroModuleSnapshot = {
   module_id: string;
   route_path: string;
   title: string;
+  asof_label?: string | null;
+  question?: string | null;
   section?: string | null;
   projection_version?: string | null;
   status?: string | null;
+  status_label?: string | null;
+  subtitle?: string | null;
   asof_date?: string | null;
   source_snapshot_id?: string | null;
   source_projection_version?: string | null;
@@ -154,46 +158,64 @@ export type MacroModuleSnapshot = {
 
 export type MacroModuleTile = {
   concept_key?: string | null;
+  description?: string | null;
+  delta_label?: string | null;
+  display_value?: string | null;
+  history_points?: number | null;
   label?: string | null;
-  latest?: number | string | null;
+  observed_at?: string | null;
+  observed_at_label?: string | null;
+  quality?: string | null;
+  quality_label?: string | null;
+  score_participation?: boolean | null;
+  short_label?: string | null;
+  source_label?: string | null;
   unit?: string | null;
-  freshness_days?: number | null;
+  unit_label?: string | null;
+  value?: number | string | null;
   data_gaps?: unknown[];
   [key: string]: unknown;
 };
 
 export type MacroModuleChart = {
-  chart_id: string;
+  id: string;
+  kind?: string | null;
+  min_points?: number | null;
   status?: string | null;
+  status_label?: string | null;
+  subtitle?: string | null;
+  title?: string | null;
   missing_concept_keys?: string[];
   series?: MacroSemanticRecord[];
   [key: string]: unknown;
 };
 
 export type MacroModuleTable = {
-  table_id: string;
+  id: string;
+  columns?: MacroSemanticRecord[];
+  source?: MacroSemanticRecord;
   status?: string | null;
+  title?: string | null;
   missing_concept_keys?: string[];
   rows?: MacroSemanticRecord[];
   [key: string]: unknown;
 };
 
-export type MacroModuleSignal = {
-  code?: string | null;
-  description?: string | null;
-  [key: string]: unknown;
+export type MacroRelatedRoute = {
+  href: string;
+  label: string;
 };
 
 export type MacroModuleView = {
   snapshot: MacroModuleSnapshot;
   tiles: MacroModuleTile[];
-  charts: MacroModuleChart[];
+  primary_chart: MacroModuleChart;
   tables: MacroModuleTable[];
-  current_read: MacroSemanticRecord;
-  signals: MacroModuleSignal[];
+  read: MacroSemanticRecord;
+  evidence: Record<string, MacroSemanticRecord[]>;
   provenance: MacroSemanticRecord;
-  data_gaps: unknown[];
-  related_routes: string[];
+  data_gaps: MacroSemanticRecord[];
+  related_routes: MacroRelatedRoute[];
   [key: string]: unknown;
 };
 
@@ -252,6 +274,7 @@ export type MacroAssetCorrelationPair = {
 export type MacroAssetCorrelationGap = {
   code: string;
   concept_key?: string | null;
+  label?: string | null;
   left?: string | null;
   right?: string | null;
   sample_size?: number | null;

@@ -1796,6 +1796,14 @@ export interface components {
         };
         /** NewsSourceStatusData */
         NewsSourceStatusData: {
+            /** Provider Capabilities */
+            provider_capabilities?: {
+                [key: string]: unknown;
+            };
+            /** Source Hygiene */
+            source_hygiene?: {
+                [key: string]: unknown;
+            };
             /** Sources */
             sources?: {
                 [key: string]: unknown;
@@ -3352,7 +3360,10 @@ export interface operations {
                 trust_tier?: string;
                 coverage_tag?: string;
                 content_class?: string;
+                content_tag?: string;
+                decision_class?: string;
                 q?: string;
+                include_unprojected?: boolean;
             };
             header?: never;
             path?: never;

@@ -11,13 +11,15 @@ from gmgn_twitter_intel.app.surfaces.api.exceptions import (
 )
 from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 
 
 def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
+    data_gaps = build_macro_data_gaps(["insufficient_history:20d", "missing:asset:spx"])
     repo = FakeMacroIntelRepository(
         snapshot={
-            "snapshot_id": "macro-view:macro_regime_v3:1",
-            "projection_version": "macro_regime_v3",
+            "snapshot_id": "macro-view:macro_regime_v4:1",
+            "projection_version": "macro_regime_v4",
             "asof_date": "2026-05-20",
             "status": "partial",
             "regime": "funding_stress",
@@ -25,12 +27,40 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
             "panels_json": {"liquidity": {"score": 8.0, "regime": "funding_stress"}},
             "indicators_json": {"sofr_iorb_spread_bps": {"value": 15.0}},
             "triggers_json": [{"code": "sofr_above_iorb"}],
-            "data_gaps_json": ["missing:asset:spx"],
-            "source_coverage_json": {"observed_concept_count": 10},
+            "data_gaps_json": data_gaps,
+            "source_coverage_json": {
+                "latest_coverage_ratio": 1.0,
+                "history_coverage_ratio": 0.0,
+                "required_concept_count": len(MACRO_CORE_CONCEPTS),
+                "observed_concept_count": len(MACRO_CORE_CONCEPTS),
+                "required_history_concept_count": len(MACRO_CORE_CONCEPTS),
+                "history_ready_concept_count": 0,
+                "concepts_below_min_history": ["rates:dgs10"],
+                "latest_observed_at": "2026-05-20",
+            },
             "features_json": {
                 "rates:dgs10": {
+                    "concept_key": "rates:dgs10",
+                    "label": "10年期美债收益率",
+                    "short_label": "10Y",
+                    "description": "美国长期无风险利率基准",
+                    "unit": "percent",
+                    "unit_label": "%",
                     "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                    "freshness_days": 0,
+                    "history_points": 1,
+                    "history_windows": {
+                        "20d": {"point_count": 1, "status": "insufficient_history"},
+                        "60d": {"point_count": 1, "status": "insufficient_history"},
+                        "252d": {"point_count": 1, "status": "insufficient_history"},
+                    },
                     "delta": {"5d": 0.1, "20d": 0.35, "60d": None},
+                    "zscore": None,
+                    "percentile": None,
+                    "score_participation": False,
+                    "data_quality": "ok",
+                    "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
+                    "source": {"name": "fred", "series_key": "fred:DGS10"},
                 }
             },
             "chain_json": {
@@ -52,9 +82,10 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
             },
             "scorecard_json": {
-                "projection_version": "macro_regime_v3",
+                "projection_version": "macro_regime_v4",
                 "chain_average": 7.8,
                 "observed_concept_count": 10,
+                "history_coverage_ratio": 0.0,
             },
             "computed_at_ms": 1_779_000_000_000,
         }
@@ -65,13 +96,13 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
         response = client.get("/api/macro", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert repo.calls == [("latest_snapshot", "macro_regime_v3")]
+    assert repo.calls == [("latest_snapshot", "macro_regime_v4")]
     assert response.json() == {
         "ok": True,
         "data": {
             "snapshot": {
-                "snapshot_id": "macro-view:macro_regime_v3:1",
-                "projection_version": "macro_regime_v3",
+                "snapshot_id": "macro-view:macro_regime_v4:1",
+                "projection_version": "macro_regime_v4",
                 "asof_date": "2026-05-20",
                 "status": "partial",
                 "regime": "funding_stress",
@@ -81,12 +112,40 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
             "panels": {"liquidity": {"score": 8.0, "regime": "funding_stress"}},
             "indicators": {"sofr_iorb_spread_bps": {"value": 15.0}},
             "triggers": [{"code": "sofr_above_iorb"}],
-            "data_gaps": ["missing:asset:spx"],
-            "source_coverage": {"observed_concept_count": 10},
+            "data_gaps": data_gaps,
+            "source_coverage": {
+                "latest_coverage_ratio": 1.0,
+                "history_coverage_ratio": 0.0,
+                "required_concept_count": len(MACRO_CORE_CONCEPTS),
+                "observed_concept_count": len(MACRO_CORE_CONCEPTS),
+                "required_history_concept_count": len(MACRO_CORE_CONCEPTS),
+                "history_ready_concept_count": 0,
+                "concepts_below_min_history": ["rates:dgs10"],
+                "latest_observed_at": "2026-05-20",
+            },
             "features": {
                 "rates:dgs10": {
+                    "concept_key": "rates:dgs10",
+                    "label": "10年期美债收益率",
+                    "short_label": "10Y",
+                    "description": "美国长期无风险利率基准",
+                    "unit": "percent",
+                    "unit_label": "%",
                     "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
+                    "freshness_days": 0,
+                    "history_points": 1,
+                    "history_windows": {
+                        "20d": {"point_count": 1, "status": "insufficient_history"},
+                        "60d": {"point_count": 1, "status": "insufficient_history"},
+                        "252d": {"point_count": 1, "status": "insufficient_history"},
+                    },
                     "delta": {"5d": 0.1, "20d": 0.35, "60d": None},
+                    "zscore": None,
+                    "percentile": None,
+                    "score_participation": False,
+                    "data_quality": "ok",
+                    "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
+                    "source": {"name": "fred", "series_key": "fred:DGS10"},
                 }
             },
             "chain": {
@@ -108,9 +167,10 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
                 "trade_map": [{"expression": "risk_down_credit_sensitive", "time_window": "1w"}],
             },
             "scorecard": {
-                "projection_version": "macro_regime_v3",
+                "projection_version": "macro_regime_v4",
                 "chain_average": 7.8,
                 "observed_concept_count": 10,
+                "history_coverage_ratio": 0.0,
             },
         },
     }
@@ -128,7 +188,7 @@ def test_macro_api_returns_data_gap_when_snapshot_missing() -> None:
         "panels": {},
         "indicators": {},
         "triggers": [],
-        "data_gaps": ["macro_view_snapshot_missing"],
+        "data_gaps": build_macro_data_gaps(["macro_view_snapshot_missing"]),
         "source_coverage": {
             "observed_concept_count": 0,
             "required_concept_count": len(MACRO_CORE_CONCEPTS),
@@ -193,27 +253,35 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
             "snapshot_id": "snapshot-1",
-            "projection_version": "macro_regime_v3",
+            "projection_version": "macro_regime_v4",
             "asof_date": "2026-05-20",
             "status": "partial",
             "regime": "tightening",
             "computed_at_ms": 1_779_000_000_000,
             "features_json": {
                 "rates:dgs2": {
+                    "label": "2年期美债收益率",
+                    "short_label": "2Y",
                     "latest": {"value": 3.9, "observed_at": "2026-05-20", "unit": "percent"},
                     "freshness_days": 1,
-                    "data_gaps": [],
+                    "history_points": 1,
+                    "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
+                    "source": {"name": "fred"},
                 },
                 "rates:dgs10": {
+                    "label": "10年期美债收益率",
+                    "short_label": "10Y",
                     "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
                     "freshness_days": 1,
-                    "data_gaps": [],
+                    "history_points": 1,
+                    "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
+                    "source": {"name": "fred"},
                 },
             },
             "chain_json": {"rates": {"regime": "tightening"}},
             "scenario_json": {"current_regime": "tightening", "watch_triggers": [{"code": "higher_real_rates"}]},
-            "source_coverage_json": {"coverage_ratio": 0.5},
-            "data_gaps_json": [],
+            "source_coverage_json": {"latest_coverage_ratio": 1.0, "history_coverage_ratio": 0.0},
+            "data_gaps_json": build_macro_data_gaps(["insufficient_history:20d"]),
         },
         observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
         import_run={"run_id": "macro-import-1", "status": "partial", "reason_codes_json": ["fred_key_missing"]},
@@ -224,7 +292,7 @@ def test_macro_module_api_returns_backend_module_view() -> None:
         response = client.get("/api/macro/modules/rates", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert repo.calls == [("latest_snapshot", "macro_regime_v3"), ("latest_import_run", None)]
+    assert repo.calls == [("latest_snapshot", "macro_regime_v4"), ("latest_import_run", None)]
     assert repo.latest_observations_call == {
         "concept_keys": (
             "rates:dgs2",
@@ -240,8 +308,25 @@ def test_macro_module_api_returns_backend_module_view() -> None:
     payload = response.json()
     assert payload["ok"] is True
     assert payload["data"]["snapshot"]["module_id"] == "rates"
-    assert payload["data"]["charts"][0]["status"] == "partial"
-    assert payload["data"]["provenance"]["latest_import_run"]["run_id"] == "macro-import-1"
+    assert payload["data"]["snapshot"]["projection_version"] == "macro_module_view_v2"
+    assert payload["data"]["snapshot"]["source_projection_version"] == "macro_regime_v4"
+    assert payload["data"]["primary_chart"]["status"] == "partial"
+    assert payload["data"]["primary_chart"]["series"][0]["status"] == "insufficient_history"
+    assert payload["data"]["provenance"]["rows"][-1] == {
+        "source": "宏观导入",
+        "status": "partial",
+        "status_label": "部分可用",
+        "latest_observed_at": None,
+        "concept_count": None,
+        "notes": "FRED 凭证缺失",
+    }
+    assert "macro_import" not in str(payload["data"]["provenance"])
+    assert "macro-import-1" not in str(payload["data"]["provenance"])
+    assert "charts" not in payload["data"]
+    assert "current_read" not in payload["data"]
+    assert "signals" not in payload["data"]
+    assert "latest_import_run" not in payload["data"]["provenance"]
+    assert all(isinstance(gap, dict) for gap in payload["data"]["data_gaps"])
 
 
 def test_macro_module_api_rejects_unsupported_module() -> None:
@@ -258,7 +343,7 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
             "snapshot_id": "snapshot-1",
-            "projection_version": "macro_regime_v3",
+            "projection_version": "macro_regime_v4",
             "asof_date": "2026-05-20",
             "status": "partial",
             "regime": "tightening",
@@ -272,7 +357,7 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
             },
             "chain_json": {"assets": {"regime": "risk_on"}},
             "scenario_json": {"current_regime": "risk_on", "watch_triggers": []},
-            "source_coverage_json": {"coverage_ratio": 0.5},
+            "source_coverage_json": {"latest_coverage_ratio": 0.5, "history_coverage_ratio": 0.0},
             "data_gaps_json": [],
         },
         observations=[],
@@ -318,29 +403,27 @@ def test_macro_module_api_compacts_crypto_derivatives_cex_rows() -> None:
 
     assert response.status_code == 200
     assert cex_repo.latest_board_call == {"limit": 20}
-    cex_table = next(
-        table for table in response.json()["data"]["tables"] if table["table_id"] == "cex_perp_board"
-    )
+    cex_table = next(table for table in response.json()["data"]["tables"] if table["id"] == "cex_perp_board")
     row = cex_table["rows"][0]
     assert row == {
-        "rank": 1,
-        "symbol": "BTC",
-        "native_market_id": "BTCUSDT",
-        "quote_symbol": "USDT",
-        "open_interest_usd": 12_500_000_000,
-        "funding_rate": 0.0001,
-        "volume_24h_usd": 31_000_000_000,
-        "mark_price": 110_100.0,
-        "score": 91.2,
-        "observed_at_ms": 1_779_000_100_000,
-        "computed_at_ms": 1_779_000_150_000,
-        "degraded_reasons": ["coinglass_partial"],
+        "row_id": "BTCUSDT",
+        "row_quality": "partial",
+        "source_state": {"label": "CEX OI Radar", "status": "partial"},
+        "cells": {
+            "symbol": {"display_value": "BTC", "sort_value": "BTC"},
+            "open_interest": {"display_value": "12.50B", "sort_value": 12_500_000_000.0},
+            "funding": {"display_value": "0.0100%", "sort_value": 0.0001},
+            "volume_24h": {"display_value": "31.00B", "sort_value": 31_000_000_000.0},
+            "score": {"display_value": "91.20", "sort_value": 91.2},
+        },
     }
-    assert "row_id" not in row
     assert "run_id" not in row
     assert "target_id" not in row
     assert "pricefeed_id" not in row
     assert "score_components_json" not in row
+    assert "rank" not in row
+    assert "native_market_id" not in row
+    assert "mark_price" not in row
 
 
 def test_macro_series_api_returns_bounded_concept_series() -> None:
@@ -367,6 +450,8 @@ def test_macro_series_api_returns_bounded_concept_series() -> None:
     }
     payload = response.json()
     assert payload["ok"] is True
+    assert payload["data"]["series"]["rates:dgs10"]["status"] == "ok"
+    assert payload["data"]["series"]["rates:dgs10"]["data_gaps"] == []
     assert payload["data"]["series"]["rates:dgs10"]["points"] == [
         {"observed_at": "2026-05-19", "value": 4.6, "source_name": "yahoo", "data_quality": "ok"},
         {"observed_at": "2026-05-20", "value": 4.7, "source_name": "yahoo", "data_quality": "ok"},
@@ -389,6 +474,18 @@ def test_macro_series_api_accepts_query_token_auth() -> None:
         "lookback_days": 90,
         "limit_per_series": 90,
     }
+    payload = response.json()
+    assert payload["data"]["series"]["rates:dgs10"]["status"] == "insufficient_history"
+    assert payload["data"]["series"]["rates:dgs10"]["data_gaps"] == [
+        {
+            "code": "insufficient_history_2_points",
+            "label": "历史样本不足：至少需要 2 个点才能绘图",
+            "severity": "warning",
+            "score_participation": False,
+            "concept_key": "rates:dgs10",
+        }
+    ]
+    assert payload["data"]["data_gaps"] == payload["data"]["series"]["rates:dgs10"]["data_gaps"]
 
 
 def test_macro_series_api_rejects_provider_series_keys() -> None:

@@ -43,17 +43,73 @@ describe("Macro chart primitives", () => {
     render(<MacroTimeSeriesChart chart={chartFixture()} seriesData={seriesFixture()} title="Equity trend" />);
 
     const figure = screen.getByRole("figure", { name: "Equity trend" });
-    expect(within(figure).getByText("asset:spx")).toBeInTheDocument();
+    expect(within(figure).getByText("S&P 500")).toBeInTheDocument();
     expect(within(figure).getByText("110")).toBeInTheDocument();
+    expect(figure).not.toHaveTextContent("asset:spx");
     expect(chartMocks.createChart).toHaveBeenCalledTimes(1);
     expect(chartMocks.lineSeries.setData).toHaveBeenCalled();
   });
 
   it("keeps an empty chart state accessible without requiring canvas pixels", () => {
-    render(<MacroTimeSeriesChart chart={{ chart_id: "empty_chart", series: [] }} title="Empty chart" />);
+    render(<MacroTimeSeriesChart chart={{ id: "empty_chart", series: [] }} title="Empty chart" />);
 
     expect(screen.getByRole("figure", { name: "Empty chart" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Empty chart state" })).toHaveTextContent("chart_series_missing");
+    expect(screen.getByRole("status", { name: "Empty chart state" })).toHaveTextContent("暂无可绘制序列");
+    expect(screen.getByRole("status", { name: "Empty chart state" })).not.toHaveTextContent("chart_series_missing");
+    expect(chartMocks.createChart).not.toHaveBeenCalled();
+  });
+
+  it("renders insufficient-history state instead of drawing one-point series", () => {
+    render(
+      <MacroTimeSeriesChart
+        chart={{
+          id: "equity_proxy_performance",
+          status: "insufficient_history",
+          series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, point_count: 1 }],
+        }}
+        seriesData={{
+          window: "60d",
+          data_gaps: [
+            { code: "insufficient_history:60d", label: "历史样本不足：无法计算 60 日变化" },
+          ],
+          series: {
+            "asset:spx": {
+              concept_key: "asset:spx",
+              status: "insufficient_history",
+              points: [{ observed_at: "2026-05-20", value: 110 }],
+            },
+          },
+        }}
+        title="History check"
+      />,
+    );
+
+    const figure = screen.getByRole("figure", { name: "History check" });
+    expect(within(figure).getByRole("status", { name: "History check state" })).toHaveTextContent(
+      "历史样本不足",
+    );
+    expect(figure).not.toHaveTextContent("insufficient_history:60d");
+    expect(figure).not.toHaveTextContent("insufficient_history");
+    expect(chartMocks.createChart).not.toHaveBeenCalled();
+  });
+
+  it("uses backend chart min_points before drawing a sparse series", () => {
+    render(
+      <MacroTimeSeriesChart
+        chart={{
+          id: "strict_history_chart",
+          min_points: 3,
+          status_label: "需要至少 3 个观测点",
+          series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, point_count: 2 }],
+        }}
+        seriesData={seriesFixture()}
+        title="Strict history"
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "Strict history state" })).toHaveTextContent(
+      "需要至少 3 个观测点",
+    );
     expect(chartMocks.createChart).not.toHaveBeenCalled();
   });
 
@@ -74,7 +130,7 @@ describe("Macro chart primitives", () => {
     render(
       <MacroYieldCurveChart
         chart={{
-          chart_id: "yield_curve",
+          id: "yield_curve",
           series: [
             { concept_key: "rates:dgs10", latest: 4.2, unit: "percent" },
             { concept_key: "rates:dgs2", latest: 3.8, unit: "percent" },
@@ -93,6 +149,28 @@ describe("Macro chart primitives", () => {
       "10Y4.2%",
       "30Y4.7%",
     ]);
+  });
+
+  it("renders localized chart empty states for yield curves and heatmaps", () => {
+    const { rerender } = render(
+      <MacroYieldCurveChart chart={{ id: "yield_curve", series: [] }} title="Yield curve" />,
+    );
+
+    expect(screen.getByRole("status", { name: "Yield curve state" })).toHaveTextContent(
+      "暂无收益率曲线数据",
+    );
+    expect(screen.getByRole("status", { name: "Yield curve state" })).not.toHaveTextContent(
+      "yield_curve_points_missing",
+    );
+
+    rerender(<MacroHeatmap caption="Asset correlation heatmap" rows={[]} />);
+
+    expect(
+      screen.getByRole("status", { name: "Asset correlation heatmap state" }),
+    ).toHaveTextContent("暂无相关性矩阵数据");
+    expect(
+      screen.getByRole("status", { name: "Asset correlation heatmap state" }),
+    ).not.toHaveTextContent("heatmap_rows_missing");
   });
 
   it("renders a heatmap as an accessible table with raw numeric labels", () => {
@@ -118,8 +196,8 @@ describe("Macro chart primitives", () => {
 
 function chartFixture(chartId = "equity_proxy_performance"): MacroModuleChart {
   return {
-    chart_id: chartId,
-    series: [{ concept_key: "asset:spx", label: "asset:spx", latest: 110, unit: "index" }],
+    id: chartId,
+    series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
   };
 }
 

@@ -43,6 +43,24 @@ UI flows that genuinely cannot be exercised by `make check-all` (subjective UX,
 animations, real-network behaviour) must be exercised manually and recorded under
 `Other commands run` in the verification template.
 
+Macro hard-cut UI/API changes need an additional targeted smoke before final
+review when `make check-all` cannot exercise operator data:
+
+```bash
+uv run gmgn-twitter-intel config
+uv run gmgn-twitter-intel db health
+uv run gmgn-twitter-intel macro status
+```
+
+Record only redacted paths, booleans, migration status, history readiness,
+coverage, and data-gap summaries. Do not paste full config JSON, handles,
+tokens, provider URLs with credentials, API keys, or secret-bearing DSNs.
+Manual macro page verification should cover `/macro`, `/macro/assets`,
+`/macro/rates`, `/macro/fed`, `/macro/liquidity`, `/macro/volatility`,
+`/macro/credit`, and `/macro/assets/crypto-derivatives`, with checks that raw
+concept keys, raw gap codes, JSON provenance, and old v1/v3 field names are not
+visible.
+
 ## Worker inventory
 
 Cross-domain runtime worker inventory (fact writes, wake channels, catch-up

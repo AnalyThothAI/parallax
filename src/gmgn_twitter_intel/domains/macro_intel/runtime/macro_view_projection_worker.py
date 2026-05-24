@@ -45,6 +45,10 @@ class MacroViewProjectionWorker(WorkerBase):
                 "projection_version": str(snapshot["projection_version"]),
                 "status": str(snapshot["status"]),
                 "regime": str(snapshot["regime"]),
+                "history_coverage_ratio": str(
+                    (snapshot.get("source_coverage_json") or {}).get("history_coverage_ratio", 0.0)
+                ),
+                "data_gap_count": str(len(snapshot.get("data_gaps_json") or [])),
             },
         )
 

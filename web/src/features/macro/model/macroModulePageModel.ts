@@ -7,15 +7,27 @@ export function chartConceptKeys(chart: MacroModuleChart): string[] {
 }
 
 export function tableCaption(table: MacroModuleTable): string {
-  return TITLE_BY_ID[table.table_id] ?? labelFromIdentifier(table.table_id);
+  return stringValue(table.title) ?? TITLE_BY_ID[tableIdentifier(table)] ?? labelFromIdentifier(tableIdentifier(table));
+}
+
+export function chartCaption(chart: MacroModuleChart): string {
+  return stringValue(chart.title) ?? TITLE_BY_ID[chartIdentifier(chart)] ?? labelFromIdentifier(chartIdentifier(chart));
+}
+
+export function chartIdentifier(chart: MacroModuleChart): string {
+  return stringValue(chart.id) ?? "unknown_chart";
+}
+
+export function tableIdentifier(table: MacroModuleTable): string {
+  return stringValue(table.id) ?? "unknown_table";
 }
 
 export function emptyChart(chartId: string): MacroModuleChart {
-  return { chart_id: chartId, series: [], status: "missing" };
+  return { id: chartId, series: [], status: "missing" };
 }
 
 export function emptyTable(tableId: string): MacroModuleTable {
-  return { table_id: tableId, rows: [], status: "missing" };
+  return { id: tableId, rows: [], status: "missing" };
 }
 
 const TITLE_BY_ID: Record<string, string> = {
@@ -36,6 +48,10 @@ function labelFromIdentifier(value: string): string {
     .filter(Boolean)
     .map((part) => WORD_LABELS[part] ?? part)
     .join(" ");
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 const WORD_LABELS: Record<string, string> = {

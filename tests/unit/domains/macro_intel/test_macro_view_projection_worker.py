@@ -45,8 +45,11 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     result = worker.run_once_sync()
 
     assert result.processed == 1
-    assert result.notes["projection_version"] == "macro_regime_v3"
+    assert result.notes["projection_version"] == "macro_regime_v4"
     assert result.notes["status"] == "partial"
+    assert result.notes["history_coverage_ratio"] == "0.0"
+    assert "data_gap_count" in result.notes
+    assert int(result.notes["data_gap_count"]) > 0
     assert db.sessions == ["macro_view_projection"]
     assert repo.observations_for_series_call == {
         "concept_keys": MACRO_CORE_CONCEPTS,
@@ -54,7 +57,7 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         "limit_per_series": 99,
     }
     assert len(repo.snapshots) == 1
-    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v3:1779000000000"
+    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v4:1779000000000"
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
 
 

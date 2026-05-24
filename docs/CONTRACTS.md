@@ -313,29 +313,41 @@ Macro contract:
 
 - `/api/macro` is authenticated and read-only. It performs no provider IO;
   it reads the latest `macro_view_snapshots` row written by
-  `MacroViewProjectionWorker`.
+  `MacroViewProjectionWorker`. The hard-cut projection is
+  `macro_regime_v4`; there is no `macro_regime_v3` compatibility read path.
 - When no snapshot exists, the endpoint returns `ok: true` with
   `data.snapshot = null`, empty `panels`, `indicators`, and `triggers`, plus
-  `data_gaps = ["macro_view_snapshot_missing"]`, empty `features`, `chain`,
-  `scenario`, and `scorecard`, with `source_coverage.observed_concept_count = 0`
-  and `source_coverage.required_concept_count` set to the macro-core concept count.
+  structured `data_gaps` including `macro_view_snapshot_missing`, empty
+  `features`, `chain`, `scenario`, and `scorecard`, with
+  `source_coverage.observed_concept_count = 0` and
+  `source_coverage.required_concept_count` set to the macro-core concept count.
 - When a snapshot exists, the response exposes `snapshot` summary fields,
   `panels`, `indicators`, `triggers`, `data_gaps`, `source_coverage`,
   `features`, `chain`, `scenario`, and `scorecard` directly from the read
-  model. `features` contains concept-keyed latest/delta/z-score/percentile and
-  freshness diagnostics; `chain` is the seven-node regime transmission chain;
-  `scenario` carries current regime, confirmations, contradictions, trade map,
-  validation indicators, and watch triggers; `scorecard` carries
-  `macro_regime_v3` concept coverage and chain-summary diagnostics. Clients
+  model. `features` contains concept-keyed semantic labels, latest value,
+  freshness, history point counts, `20d` / `60d` / `252d` history windows,
+  deltas, z-score, percentile, score participation, source, quality, and
+  structured data gaps. `source_coverage` includes latest and history coverage,
+  required/current concept counts, concepts below minimum history, and latest
+  observed date. `ready` requires usable current facts and required history
+  quality; one-point-per-concept snapshots are `partial`, not `ready`. Clients
   must not recompute regime or score fields locally.
+- A macro page may claim `ready` only when the relevant required concepts meet
+  the history threshold, `concepts_below_min_history` is empty for that page's
+  concept set, and source coverage has no blocking freshness or quality gaps.
+  Missing or slow FRED public CSV responses, or a missing optional FRED API key,
+  are source-health diagnostics represented as structured data gaps; they are
+  not a frontend fallback condition.
 - Cross-asset features are canonical concepts. Yahoo-backed bundle members are
   exposed as `asset:spy`, `asset:qqq`, `asset:iwm`, `asset:tlt`, `asset:hyg`,
   `asset:lqd`, `asset:gld`, `asset:uso`, `fx:dxy`, `crypto:btc`, and
   `crypto:eth`; clients must not look up raw provider symbols.
 - `/api/macro/modules/{module_id}` is authenticated and read-only. It returns a
-  first-class page view for the macro workbench module catalog, including
-  `snapshot`, `tiles`, `charts`, `tables`, `current_read`, `signals`,
-  `provenance`, `data_gaps`, and `related_routes`. Supported module ids include
+  first-class `macro_module_view_v2` page view for the macro workbench module
+  catalog, including `snapshot`, `tiles`, `primary_chart`, `tables`, `read`,
+  `evidence`, summarized `provenance`, structured `data_gaps`, and
+  `related_routes`. There is no `macro_module_view_v1` compatibility path.
+  Supported module ids include
   `overview`, `assets`, asset subpages (`assets/equities`, `assets/bonds`,
   `assets/commodities`, `assets/fx`, `assets/crypto`,
   `assets/crypto-derivatives`), `rates`, rates subpages
@@ -344,18 +356,19 @@ Macro contract:
   return `400 {"error":"unsupported_macro_module","field":"module_id"}`.
 - The `assets/crypto-derivatives` module may attach a `cex_perp_board` table
   sourced from the persisted `cex_oi_radar_board` read model. Rows are compact
-  public market facts only: rank/symbol/market, open interest, persisted
-  open-interest deltas, volume, funding, mark price, score, timestamps, and
-  degraded reasons. Optional richer derivatives facts are exposed only when
-  persisted read models add them; internal audit and join fields such as
-  `row_id`, `run_id`, `target_id`, `pricefeed_id`, and
-  `score_components_json` are not part of the macro module contract.
+  display-table rows with labeled cells for symbol, open interest, funding,
+  24h volume, and score. Optional richer derivatives facts are exposed only
+  when persisted read models add them through the v2 table-cell contract;
+  internal audit and join fields such as raw run ids, target ids, pricefeed ids,
+  and score component JSON are not part of the macro module contract.
 - `/api/macro/series` is authenticated and read-only. It accepts
   `concept_keys=<comma-separated canonical macro concepts>` and
   `window=20d|60d|120d|1y|3y` and returns grouped observation points for chart
   hydration. Query-token auth uses the shared `token` parameter. Provider-native
   series keys such as `fred:DGS10` or `yahoo:SPY` are rejected; frontend clients
-  must request canonical concept keys only.
+  must request canonical concept keys only. Series with fewer than two usable
+  points return `status = "insufficient_history"` plus a structured data gap;
+  drawable multi-point series return `status = "ok"` with usable points.
 
 Watchlist handle intel contract:
 
@@ -501,15 +514,28 @@ Macro one-shot CLI commands are operator surfaces, not background workers:
 `macro import-bundle --file <json>` or `--stdin` imports a macrodata-cli
 `macro-core` bundle into `macro_observations` and records a
 `macro_import_runs` audit row; `macro project-once` reads persisted
-observations, builds the `macro_regime_v3` snapshot, and writes
+observations, builds the `macro_regime_v4` snapshot, and writes
 `macro_view_snapshots`; `macro status` reports migration readiness,
-observation/concept counts, the latest import run, and the latest snapshot.
+observation/concept counts, history readiness, concepts below minimum history,
+the latest import run, and the latest snapshot.
 Docker builds install the `AnalyThothAI/macrodata-cli` `v0.1.5` Git dependency,
 whose executable is `macrodata`, so remote operators can pipe
 `macrodata bundle macro-core --asof <date>` into `macro import-bundle --stdin`
 without mounting a local source checkout.
+For chart-ready history, operators backfill with:
+
+```bash
+macrodata bundle history macro-core --start <YYYY-MM-DD> --end <YYYY-MM-DD> \
+  | uv run gmgn-twitter-intel macro import-bundle --stdin
+uv run gmgn-twitter-intel macro project-once
+```
+
 These commands may report partial coverage and data gaps; they must not print
 provider secrets, raw WebSocket tokens, or API keys.
+Before running them against real data, operators must first run
+`uv run gmgn-twitter-intel config` and confirm the active
+`config_path` / `workers_config_path` are the operator-owned files under
+`~/.gmgn-twitter-intel/`.
 
 ## Token Radar Factor Snapshot Discipline
 

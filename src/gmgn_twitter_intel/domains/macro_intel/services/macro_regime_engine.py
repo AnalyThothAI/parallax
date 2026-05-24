@@ -5,8 +5,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS, MACRO_VIEW_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CORE_CONCEPTS,
+    MACRO_VIEW_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macro_feature_engine import build_macro_features
+from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import build_macro_scenario
 
 CORE_REQUIRED_CONCEPTS = MACRO_CORE_CONCEPTS
@@ -25,19 +29,21 @@ def build_macro_view_snapshot(
     panels, indicators, triggers, panel_gaps = _build_panels(latest)
     chain = _build_chain(latest=latest, panels=panels, features=features)
     core_gaps = [f"missing:{series_key}" for series_key in CORE_REQUIRED_CONCEPTS if series_key not in latest]
-    data_gaps = _unique([*core_gaps, *panel_gaps])
+    feature_gap_codes = _feature_gap_codes(features)
+    internal_data_gaps = _unique([*core_gaps, *panel_gaps, *feature_gap_codes])
+    public_data_gaps = _structured_gaps(internal_data_gaps)
     available_scores = [float(panel["score"]) for panel in panels.values() if panel.get("score") is not None]
     overall_score = round(sum(available_scores) / len(available_scores), 2) if available_scores else None
-    status = _snapshot_status(latest=latest, data_gaps=data_gaps)
+    coverage = _source_coverage(latest=latest, features=features)
+    status = _snapshot_status(latest=latest, features=features, coverage=coverage, data_gaps=internal_data_gaps)
     asof_date = _asof_date(latest=latest, computed_at_ms=computed_at_ms)
     scenario = build_macro_scenario(
         chain=chain,
         panels=panels,
         features=features,
         triggers=triggers,
-        data_gaps=data_gaps,
+        data_gaps=internal_data_gaps,
     )
-    coverage = _source_coverage(latest)
     return {
         "snapshot_id": f"macro-view:{MACRO_VIEW_PROJECTION_VERSION}:{int(computed_at_ms)}",
         "projection_version": MACRO_VIEW_PROJECTION_VERSION,
@@ -45,19 +51,19 @@ def build_macro_view_snapshot(
         "status": status,
         "regime": _overall_regime(panels=panels, status=status, overall_score=overall_score),
         "overall_score": overall_score,
-        "panels_json": panels,
+        "panels_json": _with_structured_data_gaps(panels),
         "indicators_json": indicators,
         "triggers_json": triggers,
-        "data_gaps_json": data_gaps,
+        "data_gaps_json": public_data_gaps,
         "source_coverage_json": coverage,
         "features_json": features,
-        "chain_json": chain,
+        "chain_json": _with_structured_data_gaps(chain),
         "scenario_json": scenario,
         "scorecard_json": _scorecard(
             overall_score=overall_score,
             chain=chain,
             coverage=coverage,
-            data_gaps=data_gaps,
+            data_gaps=public_data_gaps,
         ),
         "computed_at_ms": int(computed_at_ms),
     }
@@ -713,7 +719,7 @@ def _scorecard(
     overall_score: float | None,
     chain: Mapping[str, Mapping[str, Any]],
     coverage: Mapping[str, Any],
-    data_gaps: Sequence[str],
+    data_gaps: Sequence[Any],
 ) -> dict[str, Any]:
     chain_scores = [
         float(node["score"])
@@ -727,7 +733,9 @@ def _scorecard(
         "chain_average": chain_average,
         "observed_concept_count": int(coverage.get("observed_concept_count") or 0),
         "required_concept_count": int(coverage.get("required_concept_count") or len(CORE_REQUIRED_CONCEPTS)),
-        "coverage_ratio": float(coverage.get("coverage_ratio") or 0.0),
+        "coverage_ratio": float(coverage.get("latest_coverage_ratio") or 0.0),
+        "latest_coverage_ratio": float(coverage.get("latest_coverage_ratio") or 0.0),
+        "history_coverage_ratio": float(coverage.get("history_coverage_ratio") or 0.0),
         "data_gap_count": len([gap for gap in data_gaps if gap]),
         "chain_regimes": {node_key: str(node.get("regime") or "") for node_key, node in chain.items()},
     }
@@ -858,7 +866,7 @@ def _overall_regime(
     status: str,
     overall_score: float | None,
 ) -> str:
-    if status == "empty" or overall_score is None:
+    if status == "missing" or overall_score is None:
         return "data_gap"
     if panels["liquidity"]["regime"] == "funding_stress":
         return "funding_stress"
@@ -873,25 +881,102 @@ def _overall_regime(
     return "neutral"
 
 
-def _snapshot_status(*, latest: Mapping[str, Mapping[str, Any]], data_gaps: Sequence[str]) -> str:
+def _snapshot_status(
+    *,
+    latest: Mapping[str, Mapping[str, Any]],
+    features: Mapping[str, Any],
+    coverage: Mapping[str, Any],
+    data_gaps: Sequence[str],
+) -> str:
     if not latest:
-        return "empty"
-    if data_gaps:
+        return "missing"
+    if _has_stale_required_features(features):
+        return "stale"
+    if float(coverage.get("latest_coverage_ratio") or 0.0) < 1.0:
+        return "partial"
+    if float(coverage.get("history_coverage_ratio") or 0.0) < 1.0:
+        return "partial"
+    if _has_data_quality_gaps(data_gaps):
         return "partial"
     return "ready"
 
 
-def _source_coverage(latest: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+def _source_coverage(*, latest: Mapping[str, Mapping[str, Any]], features: Mapping[str, Any]) -> dict[str, Any]:
     observed_core = sum(1 for series_key in CORE_REQUIRED_CONCEPTS if series_key in latest)
+    history_ready = [
+        series_key
+        for series_key in CORE_REQUIRED_CONCEPTS
+        if isinstance(features.get(series_key), Mapping) and features[series_key].get("score_participation") is True
+    ]
+    concepts_below_min_history = [
+        series_key for series_key in CORE_REQUIRED_CONCEPTS if series_key not in history_ready
+    ]
     latest_observed_at = None
     if latest:
         latest_observed_at = max(str(observation.get("observed_at") or "") for observation in latest.values())
     return {
         "observed_concept_count": observed_core,
         "required_concept_count": len(CORE_REQUIRED_CONCEPTS),
-        "coverage_ratio": round(observed_core / len(CORE_REQUIRED_CONCEPTS), 4),
+        "latest_coverage_ratio": round(observed_core / len(CORE_REQUIRED_CONCEPTS), 4),
+        "history_coverage_ratio": round(len(history_ready) / len(CORE_REQUIRED_CONCEPTS), 4),
+        "required_history_concept_count": len(CORE_REQUIRED_CONCEPTS),
+        "history_ready_concept_count": len(history_ready),
+        "concepts_below_min_history": concepts_below_min_history,
         "latest_observed_at": latest_observed_at,
     }
+
+
+def _feature_gap_codes(features: Mapping[str, Any]) -> list[str]:
+    codes: list[str] = []
+    for feature in features.values():
+        if not isinstance(feature, Mapping):
+            continue
+        data_gaps = feature.get("data_gaps")
+        if not isinstance(data_gaps, Sequence) or isinstance(data_gaps, str):
+            continue
+        for gap in data_gaps:
+            if not isinstance(gap, Mapping):
+                continue
+            code = str(gap.get("code") or "").strip()
+            if code:
+                codes.append(code)
+    return _unique(codes)
+
+
+def _has_stale_required_features(features: Mapping[str, Any]) -> bool:
+    for concept_key in CORE_REQUIRED_CONCEPTS:
+        feature = features.get(concept_key)
+        if not isinstance(feature, Mapping):
+            continue
+        freshness_days = _int_or_none(feature.get("freshness_days"))
+        if freshness_days is not None and freshness_days > 7:
+            return True
+    return False
+
+
+def _has_data_quality_gaps(data_gaps: Sequence[str]) -> bool:
+    quality_gap_codes = {"missing_numeric_history", "missing_latest_observed_at"}
+    return any(
+        gap_code.startswith("non_numeric_values")
+        or gap_code.startswith("data_quality_")
+        or gap_code in quality_gap_codes
+        for gap_code in data_gaps
+    )
+
+
+def _structured_gaps(raw_codes: Sequence[str]) -> list[dict[str, Any]]:
+    return build_macro_data_gaps(raw_codes)
+
+
+def _with_structured_data_gaps(values: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    structured: dict[str, dict[str, Any]] = {}
+    for key, value in values.items():
+        item = dict(value)
+        raw_data_gaps = item.get("data_gaps")
+        if isinstance(raw_data_gaps, Sequence) and not isinstance(raw_data_gaps, str):
+            item["data_gaps"] = _structured_gaps([str(gap) for gap in raw_data_gaps if str(gap)])
+        structured[key] = item
+    return structured
 
 
 def _latest_by_concept(observations: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
@@ -945,6 +1030,13 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _usd_millions(observation: Mapping[str, Any] | None) -> float | None:

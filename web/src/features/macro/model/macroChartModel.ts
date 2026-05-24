@@ -17,12 +17,18 @@ export type MacroChartSeriesModel = {
   conceptKey: string;
   label: string;
   latest: number | null;
+  pointCount: number;
   points: MacroChartPoint[];
+  status: string;
+  statusLabel: string | null;
   unit: string | null;
 };
 
 export type MacroTimeSeriesModel = {
   chartId: string;
+  minPoints: number;
+  status: string;
+  statusLabel: string | null;
   series: MacroChartSeriesModel[];
 };
 
@@ -81,15 +87,22 @@ const TENOR_YEARS_BY_CONCEPT: Record<string, number> = {
   "rates:dgs30": 30,
 };
 
+export const MACRO_MIN_CHART_POINTS = 2;
+
 export function buildMacroTimeSeriesModel(
   chart: MacroModuleChart,
   seriesData?: MacroSeriesData | null,
 ): MacroTimeSeriesModel {
   const chartSeries = Array.isArray(chart.series) ? chart.series : [];
   return {
-    chartId: chart.chart_id,
+    chartId: chartId(chart),
+    minPoints: chartMinPoints(chart),
+    status: statusValue(chart.status),
+    statusLabel: stringValue(chart.status_label),
     series: chartSeries
-      .map((series) => buildSeriesModel(series, seriesData?.series[conceptKey(series)]))
+      .map((series) =>
+        buildSeriesModel(series, seriesData?.series[conceptKey(series)], chartMinPoints(chart)),
+      )
       .filter((series): series is MacroChartSeriesModel => Boolean(series)),
   };
 }
@@ -101,6 +114,9 @@ export function buildMacroNormalizedReturnModel(
   const model = buildMacroTimeSeriesModel(chart, seriesData);
   return {
     chartId: model.chartId,
+    minPoints: model.minPoints,
+    status: model.status,
+    statusLabel: model.statusLabel,
     series: model.series.map((series) => ({
       ...series,
       points: normalizeReturnPoints(series.points),
@@ -121,7 +137,7 @@ export function buildMacroYieldCurveModel(chart: MacroModuleChart): MacroYieldCu
       }
       return {
         conceptKey: key,
-        label: `${tenorYears}Y`,
+        label: displayLabel(series) ?? `${tenorYears}Y`,
         tenorYears,
         unit: stringValue(series.unit),
         value,
@@ -129,7 +145,7 @@ export function buildMacroYieldCurveModel(chart: MacroModuleChart): MacroYieldCu
     })
     .filter((point): point is MacroYieldCurvePoint => Boolean(point))
     .sort((left, right) => left.tenorYears - right.tenorYears);
-  return { chartId: chart.chart_id, points };
+  return { chartId: chartId(chart), points };
 }
 
 export function buildMacroHeatmapMatrix(rows: MacroSemanticRecord[]): MacroHeatmapMatrix {
@@ -141,7 +157,7 @@ export function buildMacroHeatmapMatrix(rows: MacroSemanticRecord[]): MacroHeatm
       }
       return {
         key,
-        label: stringValue(row.label) ?? key,
+        label: displayLabel(row) ?? "未命名指标",
         row,
       };
     })
@@ -183,17 +199,25 @@ export function formatMacroChartValue(value: number, unit?: string | null): stri
 function buildSeriesModel(
   series: MacroSemanticRecord,
   payload?: MacroSeriesPayload,
+  minPoints = MACRO_MIN_CHART_POINTS,
 ): MacroChartSeriesModel | null {
   const key = conceptKey(series);
   if (!isCanonicalMacroConceptKey(key)) {
     return null;
   }
-  const points = normalizeSeriesPoints(payload?.points ?? []);
+  const payloadPoints = normalizeSeriesPoints(payload?.points ?? []);
+  const inlinePoints = payloadPoints.length > 0 ? [] : normalizeSeriesPoints(inlineSeriesPoints(series));
+  const normalizedPoints = payloadPoints.length > 0 ? payloadPoints : inlinePoints;
+  const pointCount = integerValue(series.point_count) ?? normalizedPoints.length;
+  const status = seriesStatus(series, payload, normalizedPoints.length, minPoints);
   return {
     conceptKey: key,
-    label: stringValue(series.label) ?? key,
+    label: displayLabel(series) ?? "未命名指标",
     latest: numericValue(series.latest),
-    points,
+    pointCount,
+    points: normalizedPoints.length >= minPoints ? normalizedPoints : [],
+    status,
+    statusLabel: stringValue(series.status_label) ?? stringValue(payload?.status_label),
     unit: stringValue(series.unit ?? payload?.unit),
   };
 }
@@ -217,6 +241,10 @@ function normalizeSeriesPoints(points: MacroSeriesPoint[]): MacroChartPoint[] {
     .sort((left, right) => left.time.localeCompare(right.time));
 }
 
+function inlineSeriesPoints(series: MacroSemanticRecord): MacroSeriesPoint[] {
+  return Array.isArray(series.points) ? (series.points as MacroSeriesPoint[]) : [];
+}
+
 function normalizeReturnPoints(points: MacroChartPoint[]): MacroChartPoint[] {
   const base = points.find((point) => point.value !== 0)?.value;
   if (!base) {
@@ -230,6 +258,35 @@ function normalizeReturnPoints(points: MacroChartPoint[]): MacroChartPoint[] {
 
 function conceptKey(series: MacroSemanticRecord): string {
   return stringValue(series.concept_key) ?? "";
+}
+
+function chartId(chart: MacroModuleChart): string {
+  return stringValue(chart.id) ?? "unknown_chart";
+}
+
+function chartMinPoints(chart: MacroModuleChart): number {
+  return Math.max(MACRO_MIN_CHART_POINTS, integerValue(chart.min_points) ?? MACRO_MIN_CHART_POINTS);
+}
+
+function displayLabel(record: MacroSemanticRecord): string | null {
+  return stringValue(record.label) ?? stringValue(record.short_label) ?? stringValue(record.title);
+}
+
+function statusValue(value: unknown): string {
+  return stringValue(value) ?? "unknown";
+}
+
+function seriesStatus(
+  series: MacroSemanticRecord,
+  payload: MacroSeriesPayload | undefined,
+  usablePointCount: number,
+  minPoints: number,
+): string {
+  const explicit = stringValue(series.status) ?? stringValue(payload?.status);
+  if (usablePointCount < minPoints) {
+    return "insufficient_history";
+  }
+  return explicit ?? "ok";
 }
 
 function isCanonicalMacroConceptKey(key: string): boolean {
@@ -246,6 +303,11 @@ function numericValue(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function integerValue(value: unknown): number | null {
+  const numeric = numericValue(value);
+  return numeric === null ? null : Math.trunc(numeric);
 }
 
 function stringValue(value: unknown): string | null {

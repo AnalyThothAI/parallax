@@ -25,7 +25,6 @@ export function MacroWorkbenchRoute({
 
   return (
     <section className="macro-module-route" aria-label="宏观">
-      <h1>宏观</h1>
       {query.isLoading ? <PageState.Loading layout="route" label="加载宏观模块" /> : null}
       {query.isError ? <PageState.Error error={query.error} /> : null}
       {module ? (

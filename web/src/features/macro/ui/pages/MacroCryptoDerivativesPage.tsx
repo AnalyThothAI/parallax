@@ -1,6 +1,6 @@
 import type { MacroModuleTable, MacroSemanticRecord } from "@lib/types";
 
-import { emptyTable, tableCaption } from "../../model/macroModulePageModel";
+import { emptyTable, tableCaption, tableIdentifier } from "../../model/macroModulePageModel";
 import { macroRouteLabel } from "../../model/macroRoutes";
 import { MacroDataTable } from "../tables/MacroDataTable";
 import { MacroSourceTable } from "../tables/MacroSourceTable";
@@ -9,11 +9,11 @@ import { MacroModulePageFrame, type MacroModulePageProps } from "./MacroModulePa
 
 export function MacroCryptoDerivativesPage(props: MacroModulePageProps) {
   const cexTable =
-    props.module.tables.find((table) => table.table_id === "cex_perp_board") ??
+    props.module.tables.find((table) => tableIdentifier(table) === "cex_perp_board") ??
     emptyTable("cex_perp_board");
   const frameModule = {
     ...props.module,
-    tables: props.module.tables.filter((table) => table.table_id !== "cex_perp_board"),
+    tables: props.module.tables.filter((table) => tableIdentifier(table) !== "cex_perp_board"),
   };
   return (
     <div className="macro-crypto-derivatives-page">
@@ -34,7 +34,8 @@ export function MacroCryptoDerivativesPage(props: MacroModulePageProps) {
 }
 
 function tableSource(table: MacroModuleTable): MacroSemanticRecord {
-  return table.source && typeof table.source === "object"
-    ? (table.source as MacroSemanticRecord)
-    : { status: table.status ?? "missing" };
+  if (table.source && typeof table.source === "object") {
+    return { rows: [table.source as MacroSemanticRecord] };
+  }
+  return { rows: [{ source_label: "CEX OI Radar", status: table.status ?? "missing" }] };
 }

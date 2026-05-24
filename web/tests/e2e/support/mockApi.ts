@@ -1356,8 +1356,8 @@ function watchlistHandleTimelineData(handle: string) {
 function macroData() {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v3:e2e",
-      projection_version: "macro_regime_v3",
+      snapshot_id: "macro-view:macro_regime_v4:e2e",
+      projection_version: "macro_regime_v4",
       asof_date: "2026-05-20",
       status: "partial",
       regime: "funding_stress",
@@ -1389,7 +1389,14 @@ function macroData() {
       },
     },
     triggers: [{ code: "sofr_above_iorb", description: "SOFR is above IORB", value: 15 }],
-    data_gaps: ["missing:asset:spx"],
+    data_gaps: [
+      {
+        code: "missing_required_concept",
+        label: "标普500 数据缺失",
+        severity: "warning",
+        score_participation: false,
+      },
+    ],
     source_coverage: {
       observed_concept_count: 10,
       required_concept_count: 10,
@@ -1455,7 +1462,7 @@ function macroData() {
       ],
     },
     scorecard: {
-      projection_version: "macro_regime_v3",
+      projection_version: "macro_regime_v4",
       modules: {
         liquidity: { score: 9, regime: "funding_stress", evidence: [], data_gaps: [] },
       },
@@ -1472,7 +1479,7 @@ function macroModuleData(path: string) {
       module_id: moduleId,
       route_path: moduleId === "overview" ? "/macro" : `/macro/${moduleId}`,
       section: moduleId.split("/")[0] || "overview",
-      title: moduleId === "overview" ? "Overview" : base.snapshot.title,
+      title: moduleId === "overview" ? "总览" : base.snapshot.title,
     },
   });
 }

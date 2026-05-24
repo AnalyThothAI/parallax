@@ -6,10 +6,22 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CONCEPT_METADATA,
+    MACRO_REQUIRED_DELTA_POINTS,
+    MACRO_REQUIRED_STAT_POINTS,
+)
+from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
+
 DELTA_HORIZONS = (5, 20, 60)
 HISTORY_POINTS = 252
 STAT_LOOKBACK = 252
 STALE_FRESHNESS_DAYS = 7
+HISTORY_WINDOWS = {
+    "20d": MACRO_REQUIRED_DELTA_POINTS["20d"],
+    "60d": MACRO_REQUIRED_DELTA_POINTS["60d"],
+    "252d": MACRO_REQUIRED_STAT_POINTS,
+}
 
 
 def build_macro_features(
@@ -25,12 +37,21 @@ def build_macro_features(
         grouped.setdefault(concept_key, []).append(observation)
 
     return {
-        concept_key: _features_for_series(series_observations, computed_at_ms=computed_at_ms)
+        concept_key: _features_for_series(
+            concept_key,
+            series_observations,
+            computed_at_ms=computed_at_ms,
+        )
         for concept_key, series_observations in sorted(grouped.items())
     }
 
 
-def _features_for_series(observations: Sequence[Mapping[str, Any]], *, computed_at_ms: int) -> dict[str, Any]:
+def _features_for_series(
+    concept_key: str,
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    computed_at_ms: int,
+) -> dict[str, Any]:
     ordered_observations = _deduped_observations(observations)
     numeric_observations = [_numeric_observation(observation) for observation in ordered_observations]
     usable_observations = [observation for observation in numeric_observations if observation is not None]
@@ -43,19 +64,28 @@ def _features_for_series(observations: Sequence[Mapping[str, Any]], *, computed_
         if non_numeric_count:
             data_gaps.append(f"non_numeric_values:{non_numeric_count}")
         data_gaps.append("missing_numeric_history")
-        return {
-            "latest": {
-                "value": None,
-                "observed_at": _date_text(latest_observation.get("observed_at")) if latest_observation else None,
-                "unit": latest_observation.get("unit") if latest_observation else None,
+        data_quality = _series_data_quality(ordered_observations)
+        if data_quality != "ok":
+            data_gaps.append(f"data_quality:{data_quality}")
+        return _with_semantics(
+            concept_key=concept_key,
+            latest_observation=latest_observation,
+            history_points=0,
+            data_quality=data_quality,
+            feature={
+                "latest": {
+                    "value": None,
+                    "observed_at": _date_text(latest_observation.get("observed_at")) if latest_observation else None,
+                    "unit": latest_observation.get("unit") if latest_observation else None,
+                },
+                "freshness_days": _freshness_days(latest_date=latest_date, computed_at_ms=computed_at_ms),
+                "delta": {f"{horizon}d": None for horizon in DELTA_HORIZONS},
+                "zscore": {"lookback": STAT_LOOKBACK, "value": None},
+                "percentile": {"lookback": STAT_LOOKBACK, "value": None},
+                "history": [],
+                "data_gaps": build_macro_data_gaps(data_gaps),
             },
-            "freshness_days": _freshness_days(latest_date=latest_date, computed_at_ms=computed_at_ms),
-            "delta": {f"{horizon}d": None for horizon in DELTA_HORIZONS},
-            "zscore": {"lookback": STAT_LOOKBACK, "value": None},
-            "percentile": {"lookback": STAT_LOOKBACK, "value": None},
-            "history": [],
-            "data_gaps": _unique(data_gaps),
-        }
+        )
 
     latest = usable_observations[0]
     freshness_days = _freshness_days(latest_date=latest["observed_date"], computed_at_ms=computed_at_ms)
@@ -82,19 +112,29 @@ def _features_for_series(observations: Sequence[Mapping[str, Any]], *, computed_
         data_gaps.append("insufficient_history:percentile")
     if non_numeric_count:
         data_gaps.append(f"non_numeric_values:{non_numeric_count}")
+    data_quality = _series_data_quality([observation["raw"] for observation in usable_observations])
+    if data_quality != "ok":
+        data_gaps.append(f"data_quality:{data_quality}")
 
-    return {
-        "latest": {"value": _round(latest["value"]), "observed_at": latest["observed_at"], "unit": latest["unit"]},
-        "freshness_days": freshness_days,
-        "delta": delta,
-        "zscore": {"lookback": STAT_LOOKBACK, "value": None if zscore_value is None else _round(zscore_value)},
-        "percentile": {
-            "lookback": STAT_LOOKBACK,
-            "value": None if percentile_value is None else _round(percentile_value),
+    history_points = len(usable_observations)
+    return _with_semantics(
+        concept_key=concept_key,
+        latest_observation=latest["raw"],
+        history_points=history_points,
+        data_quality=data_quality,
+        feature={
+            "latest": {"value": _round(latest["value"]), "observed_at": latest["observed_at"], "unit": latest["unit"]},
+            "freshness_days": freshness_days,
+            "delta": delta,
+            "zscore": {"lookback": STAT_LOOKBACK, "value": None if zscore_value is None else _round(zscore_value)},
+            "percentile": {
+                "lookback": STAT_LOOKBACK,
+                "value": None if percentile_value is None else _round(percentile_value),
+            },
+            "history": _history_points(usable_observations),
+            "data_gaps": build_macro_data_gaps(data_gaps),
         },
-        "history": _history_points(usable_observations),
-        "data_gaps": _unique(data_gaps),
-    }
+    )
 
 
 def _history_points(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -140,6 +180,7 @@ def _numeric_observation(observation: Mapping[str, Any]) -> dict[str, Any] | Non
         "observed_at": _date_text(observation.get("observed_at")),
         "observed_date": observed_date,
         "unit": observation.get("unit"),
+        "raw": observation,
     }
 
 
@@ -227,6 +268,53 @@ def _round(value: float) -> float:
 
 def _unique(values: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
+
+
+def _with_semantics(
+    *,
+    concept_key: str,
+    latest_observation: Mapping[str, Any],
+    history_points: int,
+    data_quality: str,
+    feature: dict[str, Any],
+) -> dict[str, Any]:
+    metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
+    unit = str(feature.get("latest", {}).get("unit") or "")
+    semantic_fields = {
+        "concept_key": concept_key,
+        "label": str(metadata.get("label") or concept_key),
+        "short_label": str(metadata.get("short_label") or metadata.get("label") or concept_key),
+        "description": str(metadata.get("description") or ""),
+        "unit_label": str(metadata.get("unit_label") or unit),
+        "history_points": history_points,
+        "history_windows": _history_windows(history_points),
+        "score_participation": history_points >= MACRO_REQUIRED_STAT_POINTS,
+        "data_quality": data_quality,
+        "source": {
+            "name": str(latest_observation.get("source_name") or ""),
+            "series_key": str(latest_observation.get("series_key") or ""),
+        },
+    }
+    return {**semantic_fields, **feature}
+
+
+def _history_windows(history_points: int) -> dict[str, dict[str, Any]]:
+    return {
+        window: {
+            "points": history_points,
+            "required_points": required_points,
+            "ready": history_points >= required_points,
+        }
+        for window, required_points in HISTORY_WINDOWS.items()
+    }
+
+
+def _series_data_quality(observations: Sequence[Mapping[str, Any]]) -> str:
+    for observation in observations:
+        data_quality = str(observation.get("data_quality") or "").strip().lower()
+        if data_quality and data_quality != "ok":
+            return data_quality
+    return "ok"
 
 
 __all__ = ["build_macro_features"]

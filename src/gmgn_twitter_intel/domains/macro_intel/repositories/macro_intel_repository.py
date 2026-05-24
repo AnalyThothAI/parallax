@@ -175,6 +175,52 @@ class MacroIntelRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def concept_history_counts(
+        self,
+        concept_keys: Sequence[str],
+        lookback_days: int,
+    ) -> list[dict[str, Any]]:
+        bounded_lookback_days = max(1, int(lookback_days))
+        rows = self.conn.execute(
+            """
+            WITH requested AS (
+              SELECT unnest(%s::text[]) AS concept_key
+            ),
+            deduped AS (
+              SELECT concept_key,
+                     observed_at,
+                     source_name,
+                     row_number() OVER (
+                       PARTITION BY concept_key, observed_at
+                       ORDER BY source_priority DESC, ingested_at_ms DESC
+                     ) AS dedupe_rn
+              FROM macro_observations
+              JOIN requested USING (concept_key)
+              WHERE observed_at >= CURRENT_DATE - %s::int
+            ),
+            aggregated AS (
+              SELECT concept_key,
+                     COUNT(*)::int AS points,
+                     MAX(observed_at) AS latest_observed_at,
+                     MIN(observed_at) AS oldest_observed_at,
+                     array_remove(array_agg(DISTINCT source_name ORDER BY source_name), NULL) AS sources
+              FROM deduped
+              WHERE dedupe_rn = 1
+              GROUP BY concept_key
+            )
+            SELECT requested.concept_key,
+                   COALESCE(aggregated.points, 0) AS points,
+                   aggregated.latest_observed_at,
+                   aggregated.oldest_observed_at,
+                   COALESCE(aggregated.sources, ARRAY[]::text[]) AS sources
+            FROM requested
+            LEFT JOIN aggregated ON aggregated.concept_key = requested.concept_key
+            ORDER BY requested.concept_key ASC
+            """,
+            (list(concept_keys), bounded_lookback_days),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def insert_snapshot(self, snapshot: Mapping[str, Any]) -> None:
         self.conn.execute(
             """

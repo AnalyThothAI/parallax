@@ -29,23 +29,27 @@ export function MacroPageHeader({
   const activeSection = macroActiveSection(moduleId);
   const primaryTabs = macroPrimaryTabRoutes();
   const secondaryTabs = macroSecondaryTabRoutes(activeSection);
+  const question = stringValue(module.snapshot.question) ?? stringValue(module.snapshot.subtitle);
   return (
     <header className="macro-shell-header">
       <MacroBreadcrumb moduleId={moduleId} />
       <div className="macro-shell-heading-row">
         <div>
           <span className="macro-shell-kicker">宏观工作台</span>
-          <h2>{macroModuleTitle(moduleId, module)}</h2>
+          <h1>{macroModuleTitle(moduleId, module)}</h1>
+          {question ? <p>{question}</p> : null}
         </div>
         <div className="macro-shell-state" aria-label="模块状态">
-          <span>{macroAsOfLabel(module)}</span>
+          <span>状态</span>
           <strong>{macroStatusLabel(module)}</strong>
+          <span>{macroAsOfLabel(module)}</span>
+          <strong>{historyReadinessLabel(module)}</strong>
         </div>
       </div>
       {gaps.length > 0 ? (
         <div className="macro-shell-gap-strip" aria-label="数据缺口">
-          {gaps.map((gap) => (
-            <span key={gapLabel(gap)}>{gapLabel(gap)}</span>
+          {gaps.map((gap, index) => (
+            <span key={`${index}:${gapLabel(gap)}`}>{gapLabel(gap)}</span>
           ))}
         </div>
       ) : null}
@@ -68,6 +72,45 @@ export function MacroPageHeader({
       <Separator className="macro-shell-separator" />
     </header>
   );
+}
+
+function historyReadinessLabel(module: MacroModuleView): string {
+  const requiredPoints = numberValue(module.primary_chart.min_points) ?? 2;
+  const pointCounts = chartPointCounts(module);
+  if (pointCounts.length > 0 && Math.min(...pointCounts) < requiredPoints) {
+    return "历史样本不足";
+  }
+  if (module.primary_chart.status === "insufficient_history") {
+    return "历史样本不足";
+  }
+  return "历史样本就绪";
+}
+
+function chartPointCounts(module: MacroModuleView): number[] {
+  const counts = (module.primary_chart.series ?? [])
+    .map((series) => numberValue(series.point_count))
+    .filter((count): count is number => count !== null);
+  if (counts.length > 0) {
+    return counts;
+  }
+  return module.tiles
+    .map((tile) => numberValue(tile.history_points))
+    .filter((count): count is number => count !== null);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function MacroTabLink({ active, route }: { active: boolean; route: MacroNavigationRoute }) {

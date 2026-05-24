@@ -15,7 +15,7 @@ export function MacroHeatmap({
   if (matrix.rows.length === 0) {
     return (
       <div aria-label={`${caption} state`} className="macro-chart-state-panel" role="status">
-        heatmap_rows_missing
+        暂无相关性矩阵数据
       </div>
     );
   }

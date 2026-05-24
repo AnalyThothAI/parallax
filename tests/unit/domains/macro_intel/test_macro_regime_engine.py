@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
 from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import (
     build_macro_view_snapshot,
@@ -11,8 +13,8 @@ NOW_MS = 1_779_000_000_000
 def test_empty_observations_emit_degraded_snapshot() -> None:
     snapshot = build_macro_view_snapshot([], computed_at_ms=NOW_MS)
 
-    assert snapshot["projection_version"] == "macro_regime_v3"
-    assert snapshot["status"] == "empty"
+    assert snapshot["projection_version"] == "macro_regime_v4"
+    assert snapshot["status"] == "missing"
     assert snapshot["regime"] == "data_gap"
     assert snapshot["overall_score"] is None
     assert set(snapshot["panels_json"]) == {"liquidity", "rates", "volatility", "credit", "cross_asset"}
@@ -27,13 +29,23 @@ def test_empty_observations_emit_degraded_snapshot() -> None:
     }
     assert snapshot["features_json"] == {}
     assert snapshot["scenario_json"]["current_regime"] == "data_gap"
-    assert snapshot["scorecard_json"]["projection_version"] == "macro_regime_v3"
-    assert "missing:liquidity:fed_assets" in snapshot["data_gaps_json"]
-    assert "missing:liquidity:sofr" in snapshot["data_gaps_json"]
+    assert snapshot["scorecard_json"]["projection_version"] == "macro_regime_v4"
+    assert any(gap["code"] == "missing_liquidity_fed_assets" for gap in snapshot["data_gaps_json"])
+    assert any(gap["code"] == "missing_liquidity_sofr" for gap in snapshot["data_gaps_json"])
+    assert any(
+        gap["code"] == "missing_liquidity_fed_assets" for gap in snapshot["panels_json"]["liquidity"]["data_gaps"]
+    )
+    assert any(
+        gap["code"] == "missing_liquidity_fed_assets" for gap in snapshot["chain_json"]["liquidity"]["data_gaps"]
+    )
     assert snapshot["source_coverage_json"] == {
         "observed_concept_count": 0,
         "required_concept_count": len(MACRO_CORE_CONCEPTS),
-        "coverage_ratio": 0.0,
+        "latest_coverage_ratio": 0.0,
+        "history_coverage_ratio": 0.0,
+        "required_history_concept_count": len(MACRO_CORE_CONCEPTS),
+        "history_ready_concept_count": 0,
+        "concepts_below_min_history": list(MACRO_CORE_CONCEPTS),
         "latest_observed_at": None,
     }
 
@@ -83,11 +95,11 @@ def test_representative_observations_emit_scores_and_triggers() -> None:
         "vix_elevated",
         "hy_oas_stress",
     }.issubset(trigger_codes)
-    assert "missing:asset:spx" in snapshot["data_gaps_json"]
+    assert any(gap["code"] == "missing_asset_spx" for gap in snapshot["data_gaps_json"])
     assert snapshot["source_coverage_json"]["observed_concept_count"] == 10
 
 
-def test_regime_v3_emits_chain_and_scenario_for_funding_stress() -> None:
+def test_regime_v4_emits_chain_and_scenario_for_funding_stress() -> None:
     snapshot = build_macro_view_snapshot(
         [
             _obs("liquidity:fed_assets", 7_500_000, unit="millions_usd", series_key="fred:WALCL"),
@@ -113,12 +125,62 @@ def test_regime_v3_emits_chain_and_scenario_for_funding_stress() -> None:
         computed_at_ms=NOW_MS,
     )
 
-    assert snapshot["projection_version"] == "macro_regime_v3"
+    assert snapshot["projection_version"] == "macro_regime_v4"
     assert snapshot["chain_json"]["liquidity"]["regime"] in {"tightening", "funding_stress"}
     assert snapshot["scenario_json"]["current_regime"] in {"funding_stress", "tightening"}
     assert snapshot["scenario_json"]["confirmations"]
     assert snapshot["scenario_json"]["watch_triggers"]
     assert "trade_map" in snapshot["scenario_json"]
+
+
+def test_one_point_per_required_concept_is_partial_with_history_coverage_below_ready() -> None:
+    snapshot = build_macro_view_snapshot(
+        [
+            _obs(concept_key, float(index + 1), unit="index", series_key=f"test:{index}")
+            for index, concept_key in enumerate(MACRO_CORE_CONCEPTS)
+        ],
+        computed_at_ms=NOW_MS,
+    )
+
+    coverage = snapshot["source_coverage_json"]
+    assert snapshot["status"] == "partial"
+    assert coverage["latest_coverage_ratio"] == 1.0
+    assert coverage["history_coverage_ratio"] < 1.0
+    assert coverage["history_ready_concept_count"] == 0
+    assert len(coverage["concepts_below_min_history"]) == len(MACRO_CORE_CONCEPTS)
+    assert all(feature["history_points"] == 1 for feature in snapshot["features_json"].values())
+    assert all(feature["score_participation"] is False for feature in snapshot["features_json"].values())
+    assert any(gap["code"] == "insufficient_history_20d" for gap in snapshot["data_gaps_json"])
+
+
+def test_full_history_with_degraded_required_concept_is_not_ready() -> None:
+    observations: list[dict[str, object]] = []
+    for concept_index, concept_key in enumerate(MACRO_CORE_CONCEPTS):
+        observations.extend(
+            _history_obs(
+                concept_key,
+                start=date(2025, 11, 16),
+                values=[float(concept_index + day_index + 1) for day_index in range(186)],
+                series_key=f"test:{concept_index}",
+                data_quality="ok",
+            )
+        )
+    observations[-1]["data_quality"] = "degraded"
+
+    snapshot = build_macro_view_snapshot(observations, computed_at_ms=NOW_MS)
+
+    degraded_concept_key = MACRO_CORE_CONCEPTS[-1]
+    assert snapshot["source_coverage_json"]["latest_coverage_ratio"] == 1.0
+    assert snapshot["source_coverage_json"]["history_coverage_ratio"] == 1.0
+    assert snapshot["features_json"][degraded_concept_key]["data_quality"] == "degraded"
+    assert snapshot["status"] == "partial"
+    feature_gap = next(
+        gap
+        for gap in snapshot["features_json"][degraded_concept_key]["data_gaps"]
+        if gap["code"] == "data_quality_degraded"
+    )
+    snapshot_gap = next(gap for gap in snapshot["data_gaps_json"] if gap["code"] == "data_quality_degraded")
+    assert snapshot_gap == feature_gap
 
 
 def _obs(
@@ -128,6 +190,7 @@ def _obs(
     unit: str,
     series_key: str,
     observed_at: str = "2026-05-20",
+    data_quality: str = "ok",
 ) -> dict[str, object]:
     return {
         "source_name": series_key.split(":", 1)[0],
@@ -138,6 +201,27 @@ def _obs(
         "value_numeric": value,
         "unit": unit,
         "frequency": "daily",
-        "data_quality": "ok",
+        "data_quality": data_quality,
         "source_ts": observed_at,
     }
+
+
+def _history_obs(
+    concept_key: str,
+    *,
+    start: date,
+    values: list[float],
+    series_key: str,
+    data_quality: str,
+) -> list[dict[str, object]]:
+    return [
+        _obs(
+            concept_key,
+            value,
+            unit="index",
+            series_key=series_key,
+            observed_at=(start + timedelta(days=index)).isoformat(),
+            data_quality=data_quality,
+        )
+        for index, value in enumerate(values)
+    ]

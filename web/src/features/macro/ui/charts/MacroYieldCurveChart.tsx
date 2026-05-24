@@ -80,7 +80,7 @@ export function MacroYieldCurveChart({
           className="macro-chart-state-panel"
           role="status"
         >
-          yield_curve_points_missing
+          暂无收益率曲线数据
         </div>
       )}
     </figure>

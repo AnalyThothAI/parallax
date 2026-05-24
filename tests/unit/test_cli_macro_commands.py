@@ -174,9 +174,9 @@ def test_macro_project_once_builds_snapshot_from_bounded_history(monkeypatch) ->
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert payload["ok"] is True
-    assert payload["data"]["projection_version"] == "macro_regime_v3"
+    assert payload["data"]["projection_version"] == "macro_regime_v4"
     assert payload["data"]["status"] == "partial"
-    assert payload["data"]["snapshot_id"] == "macro-view:macro_regime_v3:1779000000000"
+    assert payload["data"]["snapshot_id"] == "macro-view:macro_regime_v4:1779000000000"
     assert repo.observations_for_concepts_calls == [
         {
             "concept_keys": MACRO_CORE_CONCEPTS,
@@ -226,11 +226,69 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "migration_ready": True,
             "observations_count": 0,
             "concept_count": 0,
+            "history_ready": True,
+            "history_coverage": {
+                "required_points": 126,
+                "required_concept_count": len(MACRO_CORE_CONCEPTS),
+                "ready_concept_count": len(MACRO_CORE_CONCEPTS),
+                "coverage_ratio": 1.0,
+                "lookback_days": 1095,
+            },
+            "concepts_below_min_history": [],
             "latest_import_run": {"run_id": "run-1", "bundle_name": "macro-core", "completed_at_ms": NOW_MS},
             "latest_snapshot": {"snapshot_id": "snapshot-1", "status": "partial", "computed_at_ms": NOW_MS},
         },
     }
-    assert repo.latest_snapshot_projection_versions == ["macro_regime_v3"]
+    assert repo.latest_snapshot_projection_versions == ["macro_regime_v4"]
+
+
+def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+
+    repo = FakeMacroIntelRepository(
+        concept_history=[
+            {
+                "concept_key": "asset:spx",
+                "points": 1,
+                "latest_observed_at": "2026-05-21",
+                "oldest_observed_at": "2026-05-21",
+                "sources": ["fred"],
+            }
+        ]
+    )
+    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    stdout = io.StringIO()
+
+    code = main(["macro", "status"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["data"]["history_ready"] is False
+    assert payload["data"]["history_coverage"] == {
+        "required_points": 126,
+        "required_concept_count": len(MACRO_CORE_CONCEPTS),
+        "ready_concept_count": len(MACRO_CORE_CONCEPTS) - 1,
+        "coverage_ratio": round((len(MACRO_CORE_CONCEPTS) - 1) / len(MACRO_CORE_CONCEPTS), 6),
+        "lookback_days": 1095,
+    }
+    assert payload["data"]["concepts_below_min_history"] == [
+        {
+            "concept_key": "asset:spx",
+            "label": "标普500",
+            "short_label": "SPX",
+            "points": 1,
+            "required_points": 126,
+            "latest_observed_at": "2026-05-21",
+            "oldest_observed_at": "2026-05-21",
+            "sources": ["fred"],
+        }
+    ]
+    assert repo.concept_history_count_calls == [
+        {
+            "concept_keys": MACRO_CORE_CONCEPTS,
+            "lookback_days": 1095,
+        }
+    ]
 
 
 def _patch_macro_dependencies(monkeypatch, macro_module, repo: FakeMacroIntelRepository) -> None:
@@ -256,17 +314,20 @@ class FakeMacroIntelRepository:
         self,
         *,
         observations: list[dict[str, object]] | None = None,
+        concept_history: list[dict[str, object]] | None = None,
         fail_record_run: bool = False,
         fail_latest_observations: bool = False,
         fail_observations_for_series: bool = False,
     ) -> None:
         self.conn = FakeConnection()
         self.source_observations = observations or []
+        self.source_concept_history = concept_history
         self.observations: list[dict[str, object]] = []
         self.import_runs: list[dict[str, object]] = []
         self.snapshots: list[dict[str, object]] = []
         self.latest_observation_limits: list[int] = []
         self.observations_for_concepts_calls: list[dict[str, object]] = []
+        self.concept_history_count_calls: list[dict[str, object]] = []
         self.latest_import: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
         self.latest_snapshot_projection_versions: list[str | None] = []
@@ -307,6 +368,46 @@ class FakeMacroIntelRepository:
             }
         )
         return self.source_observations
+
+    def concept_history_counts(
+        self,
+        *,
+        concept_keys: tuple[str, ...],
+        lookback_days: int,
+    ) -> list[dict[str, object]]:
+        self.concept_history_count_calls.append(
+            {
+                "concept_keys": concept_keys,
+                "lookback_days": lookback_days,
+            }
+        )
+        if self.source_concept_history is not None:
+            explicit = {str(row["concept_key"]): row for row in self.source_concept_history}
+            return [
+                dict(
+                    explicit.get(
+                        concept_key,
+                        {
+                            "concept_key": concept_key,
+                            "points": 126,
+                            "latest_observed_at": "2026-05-21",
+                            "oldest_observed_at": "2026-01-01",
+                            "sources": ["fixture"],
+                        },
+                    )
+                )
+                for concept_key in concept_keys
+            ]
+        return [
+            {
+                "concept_key": concept_key,
+                "points": 126,
+                "latest_observed_at": "2026-05-21",
+                "oldest_observed_at": "2026-01-01",
+                "sources": ["fixture"],
+            }
+            for concept_key in concept_keys
+        ]
 
     def insert_snapshot(self, snapshot: dict[str, object]) -> None:
         self.snapshots.append(snapshot)

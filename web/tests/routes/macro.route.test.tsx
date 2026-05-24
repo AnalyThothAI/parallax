@@ -50,7 +50,7 @@ describe("macro route", () => {
                 ...macroModuleFixture().snapshot,
                 module_id: "overview",
                 route_path: "/macro",
-                title: "Overview",
+                title: "总览",
                 section: "overview",
               },
             }),
@@ -72,8 +72,8 @@ describe("macro route", () => {
     async () => {
       renderAppRoute("/macro");
 
-      expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
       expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
       const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
       const macroLink = within(navigation).getByRole("link", { name: "宏观" });
       expect(macroLink).toHaveAttribute("data-active", "true");
@@ -120,9 +120,9 @@ describe("macro route", () => {
   it("opens a routed backend macro module", async () => {
     renderAppRoute("/macro/assets/equities");
 
-    expect(await screen.findByRole("heading", { name: "宏观" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "美股" })).toBeInTheDocument();
-    expect(screen.getByText("Backend says equity leadership is constructive.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
+    expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
         token: "secret",
@@ -153,4 +153,26 @@ describe("macro route", () => {
       }),
     );
   });
+
+  it.each([
+    [390, 844],
+    [834, 1194],
+  ])("keeps the macro route shell readable at %ipx", async (width, height) => {
+    setViewport(width, height);
+
+    renderAppRoute("/macro/assets/equities");
+
+    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.getByLabelText("宏观工作台")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "宏观主模块" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "宏观模块" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
+    expect(document.querySelector(".live-task-nav")).not.toBeInTheDocument();
+  });
 });
+
+function setViewport(width: number, height: number) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+  window.dispatchEvent(new Event("resize"));
+}

@@ -60,6 +60,27 @@ paths or `NULL`. Provider blocks, rate limits, unsupported image types, and
 missing mirror rows should surface as explicit diagnostic results or fallback
 marks, not as fake public profile facts.
 
+Macro live-data debugging starts the same way: first run
+`uv run gmgn-twitter-intel config` and confirm `config_path` /
+`workers_config_path` point at `~/.gmgn-twitter-intel/`. Report only paths,
+booleans, and diagnostic command status; do not paste WebSocket tokens, API
+keys, provider passwords, or full config payloads into docs or chat.
+
+Chart-ready macro pages require history, not just a single as-of bundle:
+
+```bash
+uv run macrodata bundle history macro-core --start YYYY-MM-DD --end YYYY-MM-DD \
+  | uv run gmgn-twitter-intel macro import-bundle --stdin
+uv run gmgn-twitter-intel macro project-once
+uv run gmgn-twitter-intel macro status
+```
+
+A good macro status has `history_ready=true`, a history coverage ratio above
+the configured threshold, no required concept below minimum history for pages
+claiming `ready`, and a latest snapshot using `macro_regime_v4`. FRED public
+CSV timeouts or a missing optional FRED API key are source-health gaps; they
+should appear as partial coverage/data gaps and are not frontend defects.
+
 The full CLI surface is documented by `uv run gmgn-twitter-intel --help`.
 Treat that output as the source of truth — do not enumerate commands
 here. A snapshot lives at `generated/cli-help.md`.

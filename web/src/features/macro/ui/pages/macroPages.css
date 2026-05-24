@@ -13,9 +13,9 @@
     gap: 10px;
     grid-column: span 6;
     min-width: 0;
-    padding: 14px;
+    padding: 12px;
     border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.22));
-    background: rgba(15, 23, 42, 0.35);
+    background: rgba(2, 6, 23, 0.28);
   }
 
   .macro-page-panel-current,
@@ -60,7 +60,7 @@
   .macro-page-summary {
     margin: 0;
     color: var(--text-primary, #f8fafc);
-    font-size: 1rem;
+    font-size: 1.05rem;
     line-height: 1.45;
   }
 
@@ -120,10 +120,45 @@
   }
 
   .macro-page-semantic-list,
-  .macro-page-signal-list {
+  .macro-page-signal-list,
+  .macro-page-evidence-grid {
     display: grid;
     gap: 8px;
     min-width: 0;
+  }
+
+  .macro-page-evidence-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .macro-page-evidence-group {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .macro-page-evidence-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 26px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  }
+
+  .macro-page-evidence-group h4 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.8rem;
+    letter-spacing: 0;
+  }
+
+  .macro-page-evidence-group-head span,
+  .macro-page-evidence-empty {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.72rem;
   }
 
   .macro-page-semantic-row {
@@ -172,8 +207,40 @@
       grid-column: 1 / -1;
     }
 
+    .macro-page-evidence-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .macro-page-semantic-row {
       grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .macro-page-layout,
+    .macro-crypto-derivatives-page {
+      gap: 8px;
+    }
+
+    .macro-page-panel {
+      padding: 10px;
+    }
+
+    .macro-page-kpi-strip,
+    .macro-page-evidence-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .macro-page-kpi {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+    }
+
+    .macro-page-kpi strong {
+      text-align: left;
+      white-space: normal;
     }
   }
 }

@@ -20,6 +20,7 @@ from gmgn_twitter_intel.domains.macro_intel.services.macro_asset_correlation imp
     build_macro_asset_correlation,
     correlation_query_bounds,
 )
+from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 from gmgn_twitter_intel.domains.macro_intel.services.macro_module_catalog import (
     UnsupportedMacroModuleError,
     get_macro_module_config,
@@ -134,7 +135,7 @@ def _public_macro(snapshot: dict[str, Any] | None) -> dict[str, Any]:
             "panels": {},
             "indicators": {},
             "triggers": [],
-            "data_gaps": ["macro_view_snapshot_missing"],
+            "data_gaps": build_macro_data_gaps(["macro_view_snapshot_missing"]),
             "source_coverage": {
                 "observed_concept_count": 0,
                 "required_concept_count": len(MACRO_CORE_CONCEPTS),

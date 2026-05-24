@@ -2586,6 +2586,16 @@
       "NewsSourceStatusData": {
         "additionalProperties": true,
         "properties": {
+          "provider_capabilities": {
+            "additionalProperties": true,
+            "title": "Provider Capabilities",
+            "type": "object"
+          },
+          "source_hygiene": {
+            "additionalProperties": true,
+            "title": "Source Hygiene",
+            "type": "object"
+          },
           "sources": {
             "items": {
               "additionalProperties": true,
@@ -6655,12 +6665,42 @@
           },
           {
             "in": "query",
+            "name": "content_tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Content Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "decision_class",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Decision Class",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "q",
             "required": false,
             "schema": {
               "default": "",
               "title": "Q",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_unprojected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Unprojected",
+              "type": "boolean"
             }
           }
         ],

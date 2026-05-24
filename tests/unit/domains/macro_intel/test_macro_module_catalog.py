@@ -33,7 +33,7 @@ EXPECTED_MODULE_IDS = (
 
 
 def test_macro_module_view_version_is_exported() -> None:
-    assert MACRO_MODULE_VIEW_VERSION == "macro_module_view_v1"
+    assert MACRO_MODULE_VIEW_VERSION == "macro_module_view_v2"
 
 
 def test_catalog_exposes_exact_supported_module_ids() -> None:
@@ -46,7 +46,9 @@ def test_catalog_configs_have_stable_contract_fields() -> None:
 
     assert equities.module_id == "assets/equities"
     assert equities.route_path == "/macro/assets/equities"
-    assert equities.title == "Equities"
+    assert equities.title == "美股风险"
+    assert equities.subtitle == "SPX / QQQ / IWM 风险偏好确认"
+    assert equities.question == "美股领导力是在确认加密 beta，还是开始拖累风险资产？"
     assert equities.section == "assets"
     assert equities.required_concepts == ("asset:spx",)
     assert "asset:spy" in equities.optional_concepts

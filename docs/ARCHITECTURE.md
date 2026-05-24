@@ -28,15 +28,24 @@ versioned Git source (`v0.1.5`) and uses its `macrodata` executable; it must not
 depend on a host-local checkout path.
 
 ```text
-macrodata bundle macro-core
+macrodata bundle history macro-core
   -> macro-core JSON bundle
   -> gmgn macro importer CLI
   -> macro_observations / macro_import_runs
   -> feature engine and regime state machine
-  -> macro_view_snapshots
+  -> macro_regime_v4 in macro_view_snapshots
   -> /api/macro
   -> web /macro
 ```
+
+Single-asof `macrodata bundle macro-core --asof <date>` imports are valid for
+current facts, but they are not chart-ready by themselves. Operators backfill
+history with `macrodata bundle history macro-core --start <YYYY-MM-DD> --end
+<YYYY-MM-DD>` piped into `uv run gmgn-twitter-intel macro import-bundle
+--stdin`, then run `uv run gmgn-twitter-intel macro project-once`.
+`macro_regime_v4` readiness requires both latest coverage and required history
+coverage; one-point history is projected as `partial` with structured gaps
+rather than `ready`.
 
 This repository is the system of record for agent work: if a production
 decision changes, update the nearest architecture / contract / reliability
@@ -254,7 +263,7 @@ own maps next to the code they describe, and this file links to them.
 | CEX market intelligence | [`src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 | News intelligence | [`src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, story grouping, fact candidates, and the News page read model. |
-| Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | Macrodata-cli bundle import, macro observation facts, deterministic v2 feature/regime/scenario scoring, and Macro projection ownership. |
+| Macro intelligence | [`src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md) | Macrodata-cli bundle/history import, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v2 views, and Macro projection ownership. |
 
 When a subsystem needs more than a short row here, add
 `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this

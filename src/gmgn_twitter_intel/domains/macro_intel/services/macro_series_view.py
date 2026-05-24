@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CONCEPT_METADATA,
+    MACRO_CORE_CONCEPTS,
+    MACRO_MIN_CHART_POINTS,
+)
 
 
 class UnsupportedMacroConceptError(ValueError):
@@ -84,10 +88,16 @@ def _series_payload(concept_key: str, observations: Sequence[Mapping[str, Any]])
     sorted_observations = sorted(observations, key=lambda observation: str(observation.get("observed_at") or ""))
     points = [_point(observation) for observation in sorted_observations]
     data_gaps: list[dict[str, Any]] = []
+    status = "ok"
     if not points:
-        data_gaps.append({"code": "series_missing", "concept_key": concept_key})
+        status = "missing"
+        data_gaps.append(_series_gap("series_missing", concept_key))
+    elif len(points) < MACRO_MIN_CHART_POINTS:
+        status = "insufficient_history"
+        data_gaps.append(_series_gap(f"insufficient_history_{MACRO_MIN_CHART_POINTS}_points", concept_key))
     return {
         "concept_key": concept_key,
+        "status": status,
         "unit": _first_present(sorted_observations, "unit"),
         "sources": _sources(sorted_observations),
         "latest_observed_at": points[-1]["observed_at"] if points else None,
@@ -95,6 +105,27 @@ def _series_payload(concept_key: str, observations: Sequence[Mapping[str, Any]])
         "points": points,
         "data_gaps": data_gaps,
     }
+
+
+def _series_gap(code: str, concept_key: str) -> dict[str, Any]:
+    if code == "series_missing":
+        label = f"缺少序列数据：{_concept_label(concept_key)}"
+        severity = "error"
+    else:
+        label = f"历史样本不足：至少需要 {MACRO_MIN_CHART_POINTS} 个点才能绘图"
+        severity = "warning"
+    return {
+        "code": code,
+        "label": label,
+        "severity": severity,
+        "score_participation": False,
+        "concept_key": concept_key,
+    }
+
+
+def _concept_label(concept_key: str) -> str:
+    metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
+    return str(metadata.get("short_label") or metadata.get("label") or "未命名指标")
 
 
 def _point(observation: Mapping[str, Any]) -> dict[str, Any]:

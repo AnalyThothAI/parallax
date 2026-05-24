@@ -25,6 +25,7 @@ def test_build_macro_series_view_returns_concept_keyed_series_with_provenance() 
     assert tuple(view["series"]) == ("rates:dgs10", "crypto:btc")
     assert view["series"]["rates:dgs10"] == {
         "concept_key": "rates:dgs10",
+        "status": "ok",
         "unit": "percent",
         "sources": ["fred"],
         "latest_observed_at": "2026-05-20",
@@ -36,7 +37,25 @@ def test_build_macro_series_view_returns_concept_keyed_series_with_provenance() 
         "data_gaps": [],
     }
     assert view["series"]["crypto:btc"]["sources"] == ["yahoo"]
-    assert view["data_gaps"] == []
+    assert view["series"]["crypto:btc"]["status"] == "insufficient_history"
+    assert view["series"]["crypto:btc"]["data_gaps"] == [
+        {
+            "code": "insufficient_history_2_points",
+            "label": "历史样本不足：至少需要 2 个点才能绘图",
+            "severity": "warning",
+            "score_participation": False,
+            "concept_key": "crypto:btc",
+        }
+    ]
+    assert view["data_gaps"] == [
+        {
+            "code": "insufficient_history_2_points",
+            "label": "历史样本不足：至少需要 2 个点才能绘图",
+            "severity": "warning",
+            "score_participation": False,
+            "concept_key": "crypto:btc",
+        }
+    ]
 
 
 def test_build_macro_series_view_reports_missing_concept_series() -> None:
@@ -47,8 +66,25 @@ def test_build_macro_series_view_reports_missing_concept_series() -> None:
     )
 
     assert view["series"]["rates:dgs10"]["points"] == []
-    assert view["series"]["rates:dgs10"]["data_gaps"] == [{"code": "series_missing", "concept_key": "rates:dgs10"}]
-    assert view["data_gaps"] == [{"code": "series_missing", "concept_key": "rates:dgs10"}]
+    assert view["series"]["rates:dgs10"]["status"] == "missing"
+    assert view["series"]["rates:dgs10"]["data_gaps"] == [
+        {
+            "code": "series_missing",
+            "label": "缺少序列数据：10Y",
+            "severity": "error",
+            "score_participation": False,
+            "concept_key": "rates:dgs10",
+        }
+    ]
+    assert view["data_gaps"] == [
+        {
+            "code": "series_missing",
+            "label": "缺少序列数据：10Y",
+            "severity": "error",
+            "score_participation": False,
+            "concept_key": "rates:dgs10",
+        }
+    ]
 
 
 def test_macro_series_view_rejects_provider_series_keys() -> None:

@@ -28,17 +28,17 @@ export type MacroTableModel = {
 
 export function buildMacroTableModel(table: MacroModuleTable): MacroTableModel {
   const rows = Array.isArray(table.rows) ? table.rows : [];
-  const columnIds = orderedColumnIds(rows);
+  const columns = columnModels(table);
   return {
-    columns: columnIds.map((id) => ({ id, label: labelFromKey(id) })),
+    columns,
     rows: rows.map((row, rowIndex) => ({
       id: rowId(row, rowIndex),
       raw: row,
       cells: Object.fromEntries(
-        columnIds.map((columnId) => [columnId, buildMacroTableCell(row[columnId])]),
+        columns.map((column) => [column.id, buildMacroTableCell(tableCell(row, column.id))]),
       ),
     })),
-    tableId: table.table_id,
+    tableId: tableId(table),
   };
 }
 
@@ -90,10 +90,24 @@ export function formatMacroTableValue(value: unknown): string {
   if (typeof value === "string") {
     return VALUE_LABELS[value] ?? value;
   }
-  return JSON.stringify(value);
+  const display = displayValue(value);
+  if (display !== null) {
+    return display;
+  }
+  return "暂无";
 }
 
 function buildMacroTableCell(value: unknown): MacroTableCellModel {
+  if (isDisplayCell(value)) {
+    const sortValue = scalarValue(value.sort_value);
+    const rawValue = sortValue ?? scalarValue(value.display_value);
+    return {
+      displayValue: formatMacroTableValue(value.display_value),
+      isNumeric: typeof sortValue === "number",
+      rawValue,
+      sortValue,
+    };
+  }
   const numeric = numericValue(value);
   if (numeric !== null) {
     return {
@@ -112,20 +126,27 @@ function buildMacroTableCell(value: unknown): MacroTableCellModel {
   };
 }
 
-function orderedColumnIds(rows: MacroSemanticRecord[]): string[] {
-  const seen = new Set<string>();
-  for (const row of rows) {
-    for (const key of Object.keys(row)) {
-      if (!seen.has(key)) {
-        seen.add(key);
+function columnModels(table: MacroModuleTable): MacroTableColumnModel[] {
+  const columns = Array.isArray(table.columns) ? table.columns : [];
+  return columns
+    .map((column) => {
+      if (!column || typeof column !== "object") {
+        return null;
       }
-    }
-  }
-  return [...seen];
+      const record = column as Record<string, unknown>;
+      const id = stringValue(record.key);
+      const label = stringValue(record.label);
+      if (!id || !label) {
+        return null;
+      }
+      return { id, label };
+    })
+    .filter((column): column is MacroTableColumnModel => Boolean(column));
 }
 
 function rowId(row: MacroSemanticRecord, rowIndex: number): string {
   const stable =
+    stringValue(row.row_id) ??
     stringValue(row.concept_key) ??
     stringValue(row.symbol) ??
     stringValue(row.label) ??
@@ -133,64 +154,36 @@ function rowId(row: MacroSemanticRecord, rowIndex: number): string {
   return stable ? `${stable}:${rowIndex}` : `row:${rowIndex}`;
 }
 
-function labelFromKey(key: string): string {
-  if (COLUMN_LABELS[key]) {
-    return COLUMN_LABELS[key];
+function tableCell(row: MacroSemanticRecord, columnId: string): unknown {
+  const cells = row.cells;
+  if (cells && typeof cells === "object" && !Array.isArray(cells)) {
+    return (cells as Record<string, unknown>)[columnId];
   }
-  return key
-    .split("_")
-    .filter(Boolean)
-    .map((part) => WORD_LABELS[part] ?? part)
-    .join(" ");
+  return undefined;
 }
 
-const COLUMN_LABELS: Record<string, string> = {
-  basis: "基差",
-  code: "代码",
-  concept_key: "指标",
-  degraded_reasons: "降级原因",
-  field: "字段",
-  funding_rate: "资金费率",
-  id: "ID",
-  label: "名称",
-  latest: "最新值",
-  open_interest_usd: "未平仓量(美元)",
-  reason: "原因",
-  status: "状态",
-  symbol: "标的",
-  unit: "单位",
-  value: "值",
-};
+function tableId(table: MacroModuleTable): string {
+  return stringValue(table.id) ?? "unknown_table";
+}
 
-const WORD_LABELS: Record<string, string> = {
-  asset: "资产",
-  assets: "资产",
-  chain: "链路",
-  coinglass: "Coinglass",
-  count: "数量",
-  credit: "信用",
-  curve: "曲线",
-  days: "天数",
-  fed: "美联储",
-  flow: "流量",
-  flows: "资金流",
-  fx: "外汇",
-  liquidity: "流动性",
-  observed: "观测",
-  percent: "百分比",
-  rate: "利率",
-  rates: "利率",
-  real: "实际",
-  return: "回报",
-  returns: "回报",
-  score: "分数",
-  source: "数据源",
-  sources: "数据源",
-  transmission: "传导",
-  usd: "美元",
-  volatility: "波动率",
-  yield: "收益率",
-};
+function displayValue(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    stringValue(record.display_value) ??
+    stringValue(record.label) ??
+    stringValue(record.title) ??
+    null
+  );
+}
+
+function isDisplayCell(
+  value: unknown,
+): value is { display_value?: unknown; sort_value?: unknown } {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && "display_value" in value);
+}
 
 const VALUE_LABELS: Record<string, string> = {
   degraded: "降级",
