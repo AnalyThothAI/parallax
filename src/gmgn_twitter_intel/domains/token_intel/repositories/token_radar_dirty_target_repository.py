@@ -319,6 +319,7 @@ class TokenRadarDirtyTargetRepository:
               SELECT
                 token_intent_resolutions.target_type AS target_type_key,
                 token_intent_resolutions.target_id AS identity_id,
+                MAX(events.received_at_ms) AS source_max_received_at_ms,
                 array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
               FROM token_intent_resolutions
               JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
@@ -333,6 +334,44 @@ class TokenRadarDirtyTargetRepository:
                        token_intent_resolutions.target_type ASC,
                        token_intent_resolutions.target_id ASC
               LIMIT %(limit)s
+            ),
+            latest_feature AS (
+              SELECT
+                features.target_type_key,
+                features.identity_id,
+                MAX(features.latest_event_received_at_ms) AS latest_event_received_at_ms
+              FROM token_radar_target_features features
+              JOIN recent
+                ON recent.target_type_key = features.target_type_key
+               AND recent.identity_id = features.identity_id
+              WHERE features.projection_version = %(projection_version)s
+              GROUP BY features.target_type_key, features.identity_id
+            ),
+            target_coverage AS (
+              SELECT
+                coverage.target_type_key,
+                coverage.identity_id,
+                MAX(coverage.last_projected_at_ms) AS last_projected_at_ms
+              FROM token_radar_target_projection_coverage coverage
+              JOIN recent
+                ON recent.target_type_key = coverage.target_type_key
+               AND recent.identity_id = coverage.identity_id
+              WHERE coverage.projection_version = %(projection_version)s
+              GROUP BY coverage.target_type_key, coverage.identity_id
+            ),
+            eligible AS (
+              SELECT recent.*
+              FROM recent
+              LEFT JOIN latest_feature
+                ON latest_feature.target_type_key = recent.target_type_key
+               AND latest_feature.identity_id = recent.identity_id
+              LEFT JOIN target_coverage
+                ON target_coverage.target_type_key = recent.target_type_key
+               AND target_coverage.identity_id = recent.identity_id
+              WHERE GREATEST(
+                COALESCE(latest_feature.latest_event_received_at_ms, 0),
+                COALESCE(target_coverage.last_projected_at_ms, 0)
+              ) < recent.source_max_received_at_ms
             )
             INSERT INTO token_radar_dirty_targets(
               target_type_key,
@@ -349,10 +388,16 @@ class TokenRadarDirtyTargetRepository:
               source_event_ids_json
             )
             SELECT
-              recent.target_type_key,
-              recent.identity_id,
+              eligible.target_type_key,
+              eligible.identity_id,
               %(dirty_reason)s,
-              md5(recent.target_type_key || ':' || recent.identity_id || ':' || %(dirty_reason)s || ':' || %(now_ms)s),
+              md5(
+                eligible.target_type_key || ':' ||
+                eligible.identity_id || ':' ||
+                %(dirty_reason)s || ':' ||
+                eligible.source_max_received_at_ms::text || ':' ||
+                array_to_string(eligible.source_event_ids, ',')
+              ),
               %(now_ms)s,
               NULL,
               NULL,
@@ -360,12 +405,24 @@ class TokenRadarDirtyTargetRepository:
               NULL,
               %(now_ms)s,
               %(now_ms)s,
-              to_jsonb(recent.source_event_ids)
-            FROM recent
+              to_jsonb(eligible.source_event_ids)
+            FROM eligible
             ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
               dirty_reason = EXCLUDED.dirty_reason,
               payload_hash = EXCLUDED.payload_hash,
               due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = CASE
+                WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                  OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                  THEN NULL
+                ELSE token_radar_dirty_targets.leased_until_ms
+              END,
+              lease_owner = CASE
+                WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                  OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                  THEN NULL
+                ELSE token_radar_dirty_targets.lease_owner
+              END,
               last_error = NULL,
               first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
               updated_at_ms = EXCLUDED.updated_at_ms,
@@ -375,12 +432,23 @@ class TokenRadarDirtyTargetRepository:
                   token_radar_dirty_targets.source_event_ids_json || EXCLUDED.source_event_ids_json
                 ) AS source_ids(source_id)
               )
+            WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+               OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+               OR (
+                 token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
+                 AND (
+                   token_radar_dirty_targets.leased_until_ms IS NULL
+                   OR token_radar_dirty_targets.leased_until_ms <= %(now_ms)s
+                 )
+               )
+               OR token_radar_dirty_targets.last_error IS NOT NULL
             """,
             {
                 "since_ms": int(since_ms),
                 "now_ms": int(now_ms),
                 "limit": max(0, int(limit)),
                 "dirty_reason": str(reason),
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
             },
         )
         if commit:

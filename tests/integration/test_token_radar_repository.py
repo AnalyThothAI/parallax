@@ -500,6 +500,57 @@ def test_empty_target_projection_marks_market_freshness_to_debounce_market_ticks
     assert dirty_count["count"] == 0
 
 
+def test_recent_resolved_catch_up_is_stable_and_skips_projected_targets(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _insert_token_intent(conn, intent_id="intent-catch-up-1", event_id="event-catch-up-1")
+        _insert_token_resolution(
+            conn,
+            resolution_id="resolution-catch-up-1",
+            intent_id="intent-catch-up-1",
+            event_id="event-catch-up-1",
+            target_type="Asset",
+            target_id="asset-1",
+        )
+        dirty_repo = TokenRadarDirtyTargetRepository(conn)
+        first_count = dirty_repo.enqueue_recent_resolved_targets(
+            since_ms=1_777_999_000_000,
+            now_ms=1_778_000_060_000,
+            limit=10,
+            reason="projection_catch_up",
+        )
+        second_count = dirty_repo.enqueue_recent_resolved_targets(
+            since_ms=1_777_999_000_000,
+            now_ms=1_778_000_120_000,
+            limit=10,
+            reason="projection_catch_up",
+        )
+        dirty_after_replay = conn.execute("SELECT count(*) AS count FROM token_radar_dirty_targets").fetchone()
+
+        conn.execute("DELETE FROM token_radar_dirty_targets")
+        TokenRadarRepository(conn).mark_target_projection_coverage(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            target_type_key="Asset",
+            identity_id="asset-1",
+            latest_market_observed_at_ms=1_778_000_001_000,
+            projected_at_ms=1_778_000_001_000,
+        )
+        covered_count = dirty_repo.enqueue_recent_resolved_targets(
+            since_ms=1_777_999_000_000,
+            now_ms=1_778_000_180_000,
+            limit=10,
+            reason="projection_catch_up",
+        )
+    finally:
+        conn.close()
+
+    assert first_count == 1
+    assert second_count == 0
+    assert dirty_after_replay["count"] == 1
+    assert covered_count == 0
+
+
 def test_publish_rows_removes_exited_current_rows_and_audits_rank_exit(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     first = _valid_factor_row()
@@ -727,6 +778,43 @@ def _insert_token_intent(conn, *, intent_id: str, event_id: str) -> None:
         ON CONFLICT(intent_id) DO NOTHING
         """,
         (intent_id, event_id, f"symbol:BOV:{intent_id}", 1_778_000_000_000, 1_778_000_000_000),
+    )
+
+
+def _insert_token_resolution(
+    conn,
+    *,
+    resolution_id: str,
+    intent_id: str,
+    event_id: str,
+    target_type: str,
+    target_id: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO token_intent_resolutions(
+          resolution_id, intent_id, event_id, resolution_status, identity_status,
+          confidence, resolver_policy_version, reasons_json, risks_json,
+          decision_time_ms, created_at_ms, target_type, target_id, pricefeed_id,
+          reason_codes_json, candidate_ids_json, lookup_keys_json, registry_version,
+          record_status, is_current
+        )
+        VALUES (
+          %s, %s, %s, 'resolved', 'identified', 1.0, 'test_fixture',
+          '[]'::jsonb, '[]'::jsonb, %s, %s, %s, %s, NULL,
+          '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 'test_fixture', 'current', true
+        )
+        ON CONFLICT(resolution_id) DO NOTHING
+        """,
+        (
+            resolution_id,
+            intent_id,
+            event_id,
+            1_778_000_000_000,
+            1_778_000_000_000,
+            target_type,
+            target_id,
+        ),
     )
 
 

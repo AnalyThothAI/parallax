@@ -187,7 +187,7 @@ def test_enqueue_market_targets_uses_stable_hash_and_coalesces_fresh_targets() -
     assert conn.params[-1]["market_dirty_min_interval_ms"] == 60_000
 
 
-def test_enqueue_recent_resolved_targets_is_bounded_catch_up_without_projection_scan() -> None:
+def test_enqueue_recent_resolved_targets_is_bounded_freshness_gated_catch_up() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 10
 
@@ -205,10 +205,18 @@ def test_enqueue_recent_resolved_targets_is_bounded_catch_up_without_projection_
     assert "LIMIT %(limit)s" in sql
     assert "token_intent_resolutions.target_type IN ('Asset', 'CexToken')" in sql
     assert "token_intent_resolutions.target_id IS NOT NULL" in sql
-    assert "source_rows" not in sql
+    assert "MAX(events.received_at_ms) AS source_max_received_at_ms" in sql
+    assert "token_radar_target_features" in sql
+    assert "token_radar_target_projection_coverage" in sql
+    assert "MAX(features.latest_event_received_at_ms)" in sql
+    assert "MAX(coverage.last_projected_at_ms)" in sql
+    assert "eligible.source_max_received_at_ms::text" in sql
+    assert "payload_hash IS DISTINCT FROM EXCLUDED.payload_hash" in sql
+    assert "token_radar_dirty_targets.last_error IS NOT NULL" in sql
     assert conn.params[-1]["since_ms"] == 1_700_000_000_000
     assert conn.params[-1]["now_ms"] == 1_700_000_060_000
     assert conn.params[-1]["limit"] == 10
+    assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
 
 
 def test_repository_session_exposes_token_radar_dirty_targets() -> None:
