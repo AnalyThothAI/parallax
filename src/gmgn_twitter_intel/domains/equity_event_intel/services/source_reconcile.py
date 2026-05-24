@@ -52,7 +52,6 @@ def build_source_reconcile_payloads(
                         "identity_status": identity_status,
                         "universe": universe,
                         "company_name": company_name,
-                        "reconciled_at_ms": int(now_ms),
                     },
                 }
             )
