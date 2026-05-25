@@ -296,7 +296,7 @@ class OpenAIAgentsPulseDecisionClient:
         if stage_plan is not None and not stage_plan.run_risk_portfolio_judge:
             final = _stage_failure_abstain_decision(
                 route=route,
-                reason="deepseek_judge_not_required",
+                reason="public_judge_not_required",
                 evidence_packet=evidence_packet,
                 abstain_reason="cost_guard_research_only",
             )
@@ -753,7 +753,6 @@ def _is_model_contract_stage_failure(step: StageRunAudit) -> bool:
         for marker in (
             "validation error",
             "modelbehaviorerror",
-            "instructorretryexception",
             "trading execution language",
             "invalid json",
             "schema_invalid",
@@ -783,7 +782,7 @@ def _stage_failure_summary(abstain_reason: str) -> str:
 
 def _stage_failure_thesis(abstain_reason: str) -> str:
     if abstain_reason == "cost_guard_research_only":
-        return "确定性成本门控判定该样本不需要 DeepSeek 最终判断；系统保留 Qwen 研究审计并等待下一轮公开资格确认。"
+        return "确定性成本门控判定该样本不需要公开最终判断；系统保留研究审计并等待下一轮公开资格确认。"
     if abstain_reason == "stage_timeout":
         return "LLM 阶段超过实时预算，没有形成可验证的完整结论；本次仅记录超时并等待下一轮有效证据综合。"
     if abstain_reason == "invalid_model_output":

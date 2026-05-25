@@ -11,7 +11,6 @@ from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway impor
 from gmgn_twitter_intel.integrations.openai_agents.equity_event_brief_agent_client import (
     OpenAIAgentsEquityEventBriefClient,
 )
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.integrations.openai_agents.narrative_intel_agent_client import OpenAIAgentsNarrativeIntelClient
 from gmgn_twitter_intel.integrations.openai_agents.news_item_brief_agent_client import (
     OpenAIAgentsNewsItemBriefClient,
@@ -222,32 +221,14 @@ def build_agent_execution_gateway(
 ) -> AgentExecutionGateway:
     gateway = _require_llm_gateway(llm_gateway)
     policy = AgentRuntimePolicy.model_validate(settings.workers.agent_runtime.model_dump(mode="json"))
-    safety_net = _build_safety_net(settings, model=_safety_net_model(settings))
     return AgentExecutionGateway(
         llm_gateway=gateway,
         base_url=settings.llm_base_url,
         trace_enabled=settings.llm_trace_enabled,
         trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
         policy=policy,
-        safety_net=safety_net,
         telemetry=telemetry,
     )
-
-
-def _build_safety_net(settings: Settings, *, model: str) -> InstructorSafetyNet | None:
-    if not settings.llm.instructor_safety_net_enabled:
-        return None
-    return InstructorSafetyNet(
-        base_url=settings.llm_base_url,
-        api_key=settings.llm_api_key or "",
-        model=model,
-        max_retries=int(settings.llm.instructor_max_retries),
-        enabled=True,
-    )
-
-
-def _safety_net_model(settings: Settings) -> str:
-    return settings.agent_runtime_default_model
 
 
 def _agent_runtime_lane_timeout_seconds(settings: Settings, lane: str) -> float:

@@ -153,8 +153,10 @@ const SOURCE_LABELS: Record<string, string> = {
   cex_market_intel: "CEX OI Radar",
   cex_oi_radar_board: "CEX OI Radar",
   coinglass: "Coinglass",
+  cftc: "CFTC",
   fred: "FRED",
   nyfed: "NY Fed",
+  treasury_fiscal: "US Treasury",
   yahoo: "Yahoo",
 };
 

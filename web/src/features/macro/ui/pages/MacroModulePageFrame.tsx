@@ -54,6 +54,7 @@ export function MacroModulePageFrame({
 }) {
   const primaryChart = module.primary_chart;
   const supportingTable = module.tables[0] ?? emptyTable(`${moduleId}_supporting_table`);
+  const extraTables = module.tables.slice(1);
   const seriesConceptKeys = chartConceptKeys(primaryChart);
   const shouldFetchSeries = seriesConceptKeys.length > 0 && !isYieldCurveChart(primaryChart);
   const seriesQuery = useMacroSeriesQuery({
@@ -71,16 +72,16 @@ export function MacroModulePageFrame({
     <div className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
       <section
         className="macro-page-panel macro-page-panel-current macro-page-decision"
-        aria-label="当前解读"
+        aria-label="数据状态"
       >
-        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="当前解读" />
+        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="数据状态" />
         <p className="macro-page-summary">{macroReadSummary(module)}</p>
         <ReadDetails record={currentRead} />
         <RelatedRoutes routes={module.related_routes} />
       </section>
 
-      <section className="macro-page-panel macro-page-transmission" aria-label="宏观传导图">
-        <SectionHead icon={GitBranch} meta={moduleLabel} title="宏观传导图" />
+      <section className="macro-page-panel macro-page-transmission" aria-label="结构地图">
+        <SectionHead icon={GitBranch} meta={moduleLabel} title="结构地图" />
         <TransmissionMap module={module} record={currentRead} />
       </section>
 
@@ -99,7 +100,7 @@ export function MacroModulePageFrame({
         aria-label="图表与市场板"
         data-has-table={hasSupportingTable ? "true" : "false"}
       >
-        <SectionHead icon={BarChart3} meta={chartStatusLabel(primaryChart)} title="图表与市场板" />
+        <SectionHead icon={BarChart3} meta={chartStatusLabel(primaryChart)} title="图表与表格" />
         <div className="macro-page-chart-table-grid">
           <div className="macro-page-chart-slot">
             <PrimaryChart
@@ -123,9 +124,9 @@ export function MacroModulePageFrame({
 
       <section
         className="macro-page-panel macro-page-evidence-panel"
-        aria-label="交易员证据"
+        aria-label="规则证据"
       >
-        <SectionHead icon={ListChecks} meta={`${String(evidenceCount)} 条`} title="交易员证据" />
+        <SectionHead icon={ListChecks} meta={`${String(evidenceCount)} 条`} title="规则证据" />
         {evidenceCount > 0 ? (
           <div className="macro-page-evidence-grid">
             {evidenceGroups.map((group) => (
@@ -136,6 +137,21 @@ export function MacroModulePageFrame({
           <PageState label="module_evidence_missing" />
         )}
       </section>
+
+      {extraTables.length > 0 ? (
+        <section className="macro-page-panel macro-page-extra-tables" aria-label="数据可用性与代理说明">
+          <SectionHead icon={Table2} meta={String(extraTables.length)} title="数据可用性 / 代理说明" />
+          <div className="macro-page-extra-table-grid">
+            {extraTables.map((table) => (
+              <MacroDataTable
+                caption={tableCaption(table)}
+                key={String(table.id ?? tableCaption(table))}
+                table={table}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="macro-page-quality-grid" aria-label="数据质量">
         <section className="macro-page-panel macro-page-source-panel" aria-label="数据源">
@@ -447,7 +463,7 @@ function stringValue(value: unknown): string | null {
 
 const PAGE_STATE_LABELS: Record<string, string> = {
   module_data_gaps_clear: "暂无数据缺口",
-  module_evidence_missing: "暂无证据",
+  module_evidence_missing: "暂无规则证据",
   module_tiles_missing: "暂无关键指标",
   related_routes_missing: "暂无相关页面",
 };
@@ -455,16 +471,16 @@ const PAGE_STATE_LABELS: Record<string, string> = {
 const READ_FIELDS = [
   { key: "regime_label", label: "宏观状态" },
   { key: "regime", label: "宏观状态" },
-  { key: "confidence_label", label: "置信度" },
-  { key: "crypto_read", label: "加密影响" },
-  { key: "token_impact", label: "代币影响" },
+  { key: "confidence_label", label: "规则覆盖" },
+  { key: "data_note", label: "数据说明" },
+  { key: "methodology_note", label: "方法说明" },
 ] as const;
 
 const TRANSMISSION_FIELDS = [
   { keys: ["regime_label", "regime"], label: "宏观状态" },
-  { keys: ["confidence_label", "confidence"], label: "置信度" },
-  { keys: ["crypto_read"], label: "加密影响" },
-  { keys: ["token_impact"], label: "代币影响" },
+  { keys: ["confidence_label", "confidence"], label: "规则覆盖" },
+  { keys: ["data_note"], label: "数据说明" },
+  { keys: ["methodology_note"], label: "方法说明" },
 ] as const;
 
 type EvidenceGroupModel = {

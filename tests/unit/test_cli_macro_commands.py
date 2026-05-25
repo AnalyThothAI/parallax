@@ -7,7 +7,10 @@ from types import TracebackType
 
 from gmgn_twitter_intel.app.surfaces.cli.parser import build_parser
 from gmgn_twitter_intel.cli import main
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CORE_CONCEPTS,
+    MACRO_HISTORY_REQUIRED_CONCEPTS,
+)
 
 NOW_MS = 1_779_000_000_000
 
@@ -96,11 +99,12 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
         stdout = json.dumps(ENVELOPE)
         stderr = f"warning without {secret}"
 
-    def fake_run(command, *, env, capture_output, text, check):
+    def fake_run(command, *, env, cwd, capture_output, text, check):
         calls.append(
             {
                 "command": command,
                 "env_fred_api_key": env.get("FRED_API_KEY"),
+                "cwd": cwd,
                 "capture_output": capture_output,
                 "text": text,
                 "check": check,
@@ -133,6 +137,7 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
                 "2026-05-21",
             ],
             "env_fred_api_key": secret,
+            "cwd": None,
             "capture_output": True,
             "text": True,
             "check": False,
@@ -143,6 +148,7 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
         "fred_api_key_env": "APP_FRED_KEY",
         "fred_api_key_configured": True,
         "command": calls[0]["command"],
+        "cli_project_dir": None,
         "returncode": 0,
     }
     assert secret not in rendered
@@ -162,8 +168,8 @@ def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
         stdout = json.dumps(ENVELOPE)
         stderr = ""
 
-    def fake_run(command, *, env, capture_output, text, check):
-        calls.append({"command": command, "env_has_fred": "FRED_API_KEY" in env})
+    def fake_run(command, *, env, cwd, capture_output, text, check):
+        calls.append({"command": command, "env_has_fred": "FRED_API_KEY" in env, "cwd": cwd})
         return Completed()
 
     monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
@@ -177,7 +183,72 @@ def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
 
     assert result.diagnostics["fred_api_key_env"] == "FINANCE_FRED_API_KEY"
     assert result.diagnostics["fred_api_key_configured"] is False
+    assert result.diagnostics["cli_project_dir"] is None
     assert calls[0]["env_has_fred"] is False
+
+
+def test_macrodata_runner_uses_configured_cli_project_dir(monkeypatch, tmp_path) -> None:
+    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+
+    calls: list[dict[str, object]] = []
+
+    class Settings:
+        macrodata_fred_api_key_env = None
+        macrodata_cli_project_dir = str(tmp_path)
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps(ENVELOPE)
+        stderr = ""
+
+    def fake_run(command, *, env, cwd, capture_output, text, check):
+        calls.append({"command": command, "cwd": cwd, "capture_output": capture_output, "text": text, "check": check})
+        return Completed()
+
+    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-05-21",
+    )
+
+    assert result.diagnostics["cli_project_dir"] == str(tmp_path)
+    assert calls[0]["cwd"] == str(tmp_path)
+
+
+def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_missing(monkeypatch) -> None:
+    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+
+    stale_secret = "dummy-stale-fred-secret"
+    calls: list[dict[str, object]] = []
+
+    class Settings:
+        macrodata_fred_api_key_env = "APP_FRED_KEY"
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps(ENVELOPE)
+        stderr = ""
+
+    def fake_run(command, *, env, cwd, capture_output, text, check):
+        calls.append({"env_has_fred": "FRED_API_KEY" in env, "env_fred_api_key": env.get("FRED_API_KEY")})
+        return Completed()
+
+    monkeypatch.setenv("FRED_API_KEY", stale_secret)
+    monkeypatch.delenv("APP_FRED_KEY", raising=False)
+    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-05-21",
+    )
+
+    assert result.diagnostics["fred_api_key_env"] == "APP_FRED_KEY"
+    assert result.diagnostics["fred_api_key_configured"] is False
+    assert calls == [{"env_has_fred": False, "env_fred_api_key": None}]
+    assert stale_secret not in json.dumps(result.diagnostics)
 
 
 def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypatch) -> None:
@@ -420,11 +491,12 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "fred_api_key_configured": True,
             "observations_count": 0,
             "concept_count": 0,
+            "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
             "history_ready": True,
             "history_coverage": {
                 "required_points": 126,
-                "required_concept_count": len(MACRO_CORE_CONCEPTS),
-                "ready_concept_count": len(MACRO_CORE_CONCEPTS),
+                "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
+                "ready_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
                 "coverage_ratio": 1.0,
                 "lookback_days": 1095,
             },
@@ -460,9 +532,9 @@ def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> Non
     assert payload["data"]["history_ready"] is False
     assert payload["data"]["history_coverage"] == {
         "required_points": 126,
-        "required_concept_count": len(MACRO_CORE_CONCEPTS),
-        "ready_concept_count": len(MACRO_CORE_CONCEPTS) - 1,
-        "coverage_ratio": round((len(MACRO_CORE_CONCEPTS) - 1) / len(MACRO_CORE_CONCEPTS), 6),
+        "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
+        "ready_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS) - 1,
+        "coverage_ratio": round((len(MACRO_HISTORY_REQUIRED_CONCEPTS) - 1) / len(MACRO_HISTORY_REQUIRED_CONCEPTS), 6),
         "lookback_days": 1095,
     }
     assert payload["data"]["concepts_below_min_history"] == [
@@ -479,7 +551,7 @@ def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> Non
     ]
     assert repo.concept_history_count_calls == [
         {
-            "concept_keys": MACRO_CORE_CONCEPTS,
+            "concept_keys": MACRO_HISTORY_REQUIRED_CONCEPTS,
             "lookback_days": 1095,
         }
     ]

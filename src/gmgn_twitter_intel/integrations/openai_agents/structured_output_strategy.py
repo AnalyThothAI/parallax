@@ -5,20 +5,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from agents import Agent, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.integrations.openai_agents.agent_model_settings import (
-    default_agent_model_settings,
-)
 from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
-    InstructorSafetyNet,
-    extract_sdk_usage,
-)
+from gmgn_twitter_intel.integrations.openai_agents.agent_usage import extract_sdk_usage
 from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile, AgentRequestOptions
-from gmgn_twitter_intel.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
+from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,13 +19,7 @@ class StructuredOutputContext:
     stage: AgentStageSpec
     model_name: str
     timeout_seconds: float
-    defaults: AgentRuntimeDefaultsPolicy
     capability_profile: AgentCapabilityProfile
-    trace_metadata: dict[str, Any]
-    trace_id: str = ""
-    group_id: str = ""
-    trace_enabled: bool = False
-    trace_include_sensitive_data: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,70 +31,6 @@ class StructuredOutputOutcome:
 
 class StructuredOutputStrategy(Protocol):
     async def run(self, context: StructuredOutputContext) -> StructuredOutputOutcome: ...
-
-
-class AgentsJsonSchemaStrategy:
-    def __init__(
-        self,
-        *,
-        model_factory: Callable[[str, float], Any],
-        runner: Any | None = None,
-        safety_net: InstructorSafetyNet | None = None,
-    ) -> None:
-        self._model_factory = model_factory
-        self._runner = runner or Runner
-        self._safety_net = safety_net
-
-    async def run(self, context: StructuredOutputContext) -> StructuredOutputOutcome:
-        output_schema = StrictJsonOutputSchema(context.stage.output_type)
-        model = self._model_factory(context.model_name, context.timeout_seconds)
-        agent = Agent(
-            name=context.stage.agent_name,
-            instructions=context.stage.instructions,
-            output_type=output_schema,
-            tools=context.stage.tools,
-            model=model,
-            model_settings=default_agent_model_settings(
-                disable_thinking=context.defaults.disable_thinking,
-                include_usage=context.defaults.include_usage,
-            ),
-        )
-        run_config = RunConfig(
-            workflow_name=context.stage.workflow_name,
-            trace_id=context.trace_id,
-            group_id=context.group_id,
-            trace_include_sensitive_data=context.trace_include_sensitive_data,
-            tracing_disabled=not context.trace_enabled,
-            trace_metadata=context.trace_metadata,
-        )
-        runner_input = runner_input_payload(context.stage.input_payload)
-        if self._safety_net is not None:
-            final_output, audit_extra, raw_result = await self._safety_net.run_with_safety_net(
-                agent=agent,
-                input_payload=runner_input,
-                run_config=run_config,
-                pydantic_output_type=getattr(output_schema, "output_type", context.stage.output_type),
-                context=None,
-                max_turns=context.stage.max_turns,
-                return_result=True,
-            )
-            return StructuredOutputOutcome(final_output, raw_result, dict(audit_extra))
-        raw_result = await self._runner.run(
-            agent,
-            runner_input,
-            max_turns=context.stage.max_turns,
-            run_config=run_config,
-        )
-        return StructuredOutputOutcome(
-            getattr(raw_result, "final_output", None),
-            raw_result,
-            {
-                "safety_net_used": False,
-                "safety_net_retries": 0,
-                "parse_mode": "strict",
-                "usage": extract_sdk_usage(raw_result),
-            },
-        )
 
 
 class ChatJsonObjectStrategy:
@@ -220,7 +143,6 @@ def _chat_completion_request_options(request_options: AgentRequestOptions) -> di
 
 
 __all__ = [
-    "AgentsJsonSchemaStrategy",
     "ChatJsonObjectStrategy",
     "StructuredOutputContext",
     "StructuredOutputOutcome",

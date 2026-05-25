@@ -5,25 +5,16 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from agents import Runner
 from agents.exceptions import ModelBehaviorError
-from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from aiolimiter import AsyncLimiter
 from pydantic import ValidationError
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_output_schema import StrictJsonOutputSchema
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import (
-    InstructorSafetyNet,
-    SafetyNetExhausted,
-    extract_sdk_usage,
-)
+from gmgn_twitter_intel.integrations.openai_agents.agent_usage import extract_sdk_usage
 from gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy import (
-    AgentsJsonSchemaStrategy,
     ChatJsonObjectStrategy,
     StructuredOutputContext,
-    StructuredOutputStrategy,
 )
-from gmgn_twitter_intel.platform.agent_capabilities import AgentOutputStrategy
 from gmgn_twitter_intel.platform.agent_execution import (
     RUNTIME_VERSION,
     AgentCapacityReservation,
@@ -71,8 +62,6 @@ class AgentExecutionGateway:
         trace_enabled: bool,
         trace_include_sensitive_data: bool,
         policy: AgentRuntimePolicy,
-        runner: Any | None = None,
-        safety_net: InstructorSafetyNet | None = None,
         telemetry: Any | None = None,
     ) -> None:
         if llm_gateway is None:
@@ -82,16 +71,8 @@ class AgentExecutionGateway:
         self._trace_enabled = bool(trace_enabled and getattr(llm_gateway, "trace_export_enabled", False))
         self._trace_include_sensitive_data = bool(trace_include_sensitive_data)
         self._policy = policy
-        self._runner = runner or Runner
-        self._safety_net = safety_net
         self._telemetry = telemetry
-        self._model_cache: dict[tuple[str, str, float], Any] = {}
         self._chat_client_cache: dict[tuple[str, str, float], Any] = {}
-        self._json_schema_strategy = AgentsJsonSchemaStrategy(
-            model_factory=lambda model_name, timeout_s: self._model_for(model_name, timeout_s=timeout_s),
-            runner=self._runner,
-            safety_net=self._safety_net,
-        )
         self._json_object_strategy = ChatJsonObjectStrategy(
             openai_client_factory=lambda model, timeout_s: self._chat_client_for(model=model, timeout_s=timeout_s),
         )
@@ -119,8 +100,8 @@ class AgentExecutionGateway:
         artifact_version_hash = artifact_hash_for(
             model=model_name,
             provider_family=capability_profile.provider_family.value,
-            output_strategy=capability_profile.output_strategy.value,
-            schema_enforcement=capability_profile.schema_enforcement.value,
+            output_strategy="json_object",
+            schema_enforcement="client_validate",
             request_options_hash=request_options_hash,
             prompt_version=stage.prompt_version,
             schema_version=stage.schema_version,
@@ -133,8 +114,8 @@ class AgentExecutionGateway:
                 "stage": stage.stage,
                 "model": model_name,
                 "provider_family": capability_profile.provider_family.value,
-                "output_strategy": capability_profile.output_strategy.value,
-                "schema_enforcement": capability_profile.schema_enforcement.value,
+                "output_strategy": "json_object",
+                "schema_enforcement": "client_validate",
                 "request_options_hash": request_options_hash,
                 "workflow_name": stage.workflow_name,
                 "agent_name": stage.agent_name,
@@ -369,29 +350,6 @@ class AgentExecutionGateway:
             ) from exc
         except AgentExecutionError:
             raise
-        except SafetyNetExhausted as exc:
-            self.record_lane_failure(stage.lane)
-            audit_extra = exc.audit_extra
-            failed = self._failed_audit(
-                audit,
-                started=started,
-                error_class=AgentExecutionErrorClass.SCHEMA_INVALID,
-                message=str(exc),
-                execution_started=True,
-                audit_extra=audit_extra,
-            )
-            self._record_execution_call(
-                stage,
-                status=failed.status,
-                error_class=failed.error_class,
-                started=started,
-            )
-            raise AgentExecutionError(
-                AgentExecutionErrorClass.SCHEMA_INVALID,
-                str(exc),
-                audit=failed,
-                execution_started=True,
-            ) from exc
         except (ModelBehaviorError, ValidationError) as exc:
             self.record_lane_failure(stage.lane)
             failed = self._failed_audit(
@@ -459,8 +417,8 @@ class AgentExecutionGateway:
             lanes[lane] = {
                 "model": self.model_for_lane(lane),
                 "provider_family": capability_profile.provider_family.value,
-                "output_strategy": capability_profile.output_strategy.value,
-                "schema_enforcement": capability_profile.schema_enforcement.value,
+                "output_strategy": "json_object",
+                "schema_enforcement": "client_validate",
                 "priority_label": lane_state.policy.priority,
                 "rpm_limit": lane_state.policy.rpm_limit,
                 "max_concurrency": lane_state.policy.max_concurrency,
@@ -485,8 +443,7 @@ class AgentExecutionGateway:
         }
 
     async def aclose(self) -> None:
-        if self._safety_net is not None:
-            await self._safety_net.aclose()
+        return None
 
     async def _run_stage(
         self,
@@ -499,28 +456,15 @@ class AgentExecutionGateway:
         model_name = self.model_for_lane(stage.lane)
         capability_profile = self._policy.capability_for_lane(stage.lane)
         runner_entered["value"] = True
-        outcome = await self._strategy_for(capability_profile).run(
+        outcome = await self._json_object_strategy.run(
             StructuredOutputContext(
                 stage=stage,
                 model_name=model_name,
                 timeout_seconds=float(lane_policy.timeout_seconds),
-                defaults=self._policy.defaults,
                 capability_profile=capability_profile,
-                trace_metadata=audit.trace_metadata,
-                trace_id=audit.sdk_trace_id,
-                group_id=stage.group_id,
-                trace_enabled=self._trace_enabled,
-                trace_include_sensitive_data=self._trace_include_sensitive_data,
             )
         )
         return outcome.final_output, outcome.raw_result, dict(outcome.audit_extra)
-
-    def _strategy_for(self, profile: Any) -> StructuredOutputStrategy:
-        if profile.output_strategy == AgentOutputStrategy.JSON_SCHEMA:
-            return self._json_schema_strategy
-        if profile.output_strategy == AgentOutputStrategy.JSON_OBJECT:
-            return self._json_object_strategy
-        raise ValueError(f"unsupported agent output strategy: {profile.output_strategy}")
 
     def _lane_state(self, lane: str) -> _LaneState:
         lane_key = str(lane)
@@ -620,22 +564,6 @@ class AgentExecutionGateway:
             raise ValueError("parent reservation scope must be 'parent'")
         if stage.lane not in reservation.child_lanes:
             raise ValueError(f"parent reservation for {reservation.lane!r} does not allow child lane {stage.lane!r}")
-
-    def _model_for(self, model_name: str, *, timeout_s: float) -> Any:
-        key = (str(model_name), self._base_url, float(timeout_s))
-        cached = self._model_cache.get(key)
-        if cached is not None:
-            return cached
-        model = OpenAIChatCompletionsModel(
-            model=model_name,
-            openai_client=self._llm_gateway.openai_client(
-                model=model_name,
-                base_url=self._base_url,
-                timeout_s=float(timeout_s),
-            ),
-        )
-        self._model_cache[key] = model
-        return model
 
     def _chat_client_for(self, *, model: str, timeout_s: float) -> Any:
         key = (str(model), self._base_url, float(timeout_s))

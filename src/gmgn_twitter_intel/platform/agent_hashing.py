@@ -41,8 +41,8 @@ def artifact_hash_for(
     runtime_version: str,
     output_schema_hash: str,
     provider_family: str = "openai_compatible",
-    output_strategy: str = "json_schema",
-    schema_enforcement: str = "provider",
+    output_strategy: str = "json_object",
+    schema_enforcement: str = "client_validate",
     request_options_hash: str | None = None,
 ) -> str:
     return json_sha256(

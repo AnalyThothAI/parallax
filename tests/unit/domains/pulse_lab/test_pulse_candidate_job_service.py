@@ -393,8 +393,8 @@ def test_source_quality_hidden_path_does_not_call_deepseek() -> None:
     assert client.stage_plans[0].run_bear_case is True
     assert client.stage_plans[0].run_risk_portfolio_judge is False
     stored_run = repos.pulse_runs.agent_runs[0]
-    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "qwen_research_only"
-    assert stored_run["request_json"]["cost_guard"]["decision"]["deepseek_allowed"] is False
+    assert stored_run["request_json"]["cost_guard"]["decision"]["action"] == "research_only"
+    assert stored_run["request_json"]["cost_guard"]["decision"]["public_judge_allowed"] is False
     assert any(row["stage"] == "signal_analyst" for row in repos.pulse_runs.agent_run_steps)
     assert any(row["stage"] == "bear_case" for row in repos.pulse_runs.agent_run_steps)
     assert not any(row["stage"] == "risk_portfolio_judge" for row in repos.pulse_runs.agent_run_steps)

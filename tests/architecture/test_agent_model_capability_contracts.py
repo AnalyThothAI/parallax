@@ -24,7 +24,7 @@ pytestmark = pytest.mark.architecture
 
 
 def test_domains_and_provider_wiring_do_not_own_concrete_model_or_provider_tokens() -> None:
-    forbidden_tokens = ("qwen", "deepseek", "response_format", "litellm")
+    forbidden_tokens = ("qwen", "deepseek", "litellm")
     violations: list[str] = []
 
     for path in _production_python_files(DOMAINS, *PROVIDER_WIRING_ROOTS):
@@ -69,6 +69,32 @@ def test_litellm_is_not_introduced_in_src_or_project_metadata() -> None:
 
     if "litellm" in PYPROJECT.read_text(encoding="utf-8").lower():
         violations.append(PYPROJECT.relative_to(ROOT).as_posix())
+
+    assert violations == []
+
+
+def test_agent_runtime_has_single_json_object_output_path() -> None:
+    forbidden_tokens = (
+        '"json_schema"',
+        "'json_schema'",
+        "schema_enforcement: str = \"provider\"",
+        "schema_enforcement=provider",
+        "AgentOutputStrategy.JSON_SCHEMA",
+        "AgentSchemaEnforcement.PROVIDER",
+        "AgentsJsonSchemaStrategy",
+    )
+    allowlist = {
+        SRC / "integrations" / "openai_agents" / "agent_output_schema.py",
+    }
+    violations: list[str] = []
+
+    for path in _production_python_files(SRC):
+        if path in allowlist:
+            continue
+        text = path.read_text(encoding="utf-8")
+        violations.extend(
+            f"{path.relative_to(ROOT)} contains {token!r}" for token in forbidden_tokens if token in text
+        )
 
     assert violations == []
 

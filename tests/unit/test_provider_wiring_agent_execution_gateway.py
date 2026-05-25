@@ -46,7 +46,6 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
         llm={
             "api_key": "sk-test",
             "base_url": "https://example.com/v1",
-            "instructor_safety_net_enabled": False,
         },
         workers={
             "agent_runtime": {
@@ -71,19 +70,17 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
     assert snapshot["lanes"]["pulse.risk_portfolio_judge"]["timeout_seconds"] == 90
 
 
-def test_build_agent_execution_gateway_uses_news_item_brief_model_for_news_only_safety_net() -> None:
+def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
     settings = Settings(
         llm={
             "api_key": "sk-test",
-            "instructor_safety_net_enabled": True,
         },
         workers={"agent_runtime": {"defaults": {"model": "gpt-news"}}},
     )
 
     gateway = build_agent_execution_gateway(settings, llm_gateway=FakeLLMGateway())
 
-    assert gateway._safety_net is not None
-    assert gateway._safety_net._model == "gpt-news"
+    assert not hasattr(gateway, "_safety_net")
 
 
 def test_wire_providers_passes_one_agent_execution_gateway_to_openai_factories(monkeypatch) -> None:

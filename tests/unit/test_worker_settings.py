@@ -516,8 +516,6 @@ def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
     settings = WorkersSettings()
 
     assert settings.agent_runtime.defaults.provider_family is None
-    assert settings.agent_runtime.defaults.output_strategy is None
-    assert settings.agent_runtime.defaults.schema_enforcement is None
     assert settings.agent_runtime.defaults.client_validation_retries is None
 
 
@@ -528,8 +526,6 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
     profile = policy.capability_for_lane("pulse.signal_analyst")
 
     assert profile.provider_family == "openai_compatible"
-    assert profile.output_strategy == "json_object"
-    assert profile.schema_enforcement == "client_validate"
     assert profile.request_options.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
@@ -539,8 +535,6 @@ def test_agent_runtime_lane_accepts_capability_overrides() -> None:
             "lanes": {
                 "news.item_brief": {
                     "provider_family": "deepseek",
-                    "output_strategy": "json_object",
-                    "schema_enforcement": "client_validate",
                     "client_validation_retries": 2,
                 }
             }
@@ -549,12 +543,10 @@ def test_agent_runtime_lane_accepts_capability_overrides() -> None:
 
     lane = settings.agent_runtime.lanes["news.item_brief"]
     assert lane.provider_family == "deepseek"
-    assert lane.output_strategy == "json_object"
-    assert lane.schema_enforcement == "client_validate"
     assert lane.client_validation_retries == 2
 
 
-def test_agent_runtime_rejects_unknown_output_strategy() -> None:
+def test_agent_runtime_rejects_legacy_output_strategy_field() -> None:
     with pytest.raises(ValidationError, match="output_strategy"):
         WorkersSettings(
             agent_runtime={

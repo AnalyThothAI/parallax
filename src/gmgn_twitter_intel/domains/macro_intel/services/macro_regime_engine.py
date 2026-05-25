@@ -7,13 +7,16 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
+    MACRO_HISTORY_REQUIRED_CONCEPTS,
+    MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
+    MACRO_REQUIRED_STAT_POINTS,
     MACRO_VIEW_PROJECTION_VERSION,
 )
 from gmgn_twitter_intel.domains.macro_intel.services.macro_feature_engine import build_macro_features
 from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import build_macro_scenario
 
-CORE_REQUIRED_CONCEPTS = MACRO_CORE_CONCEPTS
+CORE_REQUIRED_CONCEPTS = MACRO_HISTORY_REQUIRED_CONCEPTS
 OPTIONAL_CONFIRMATION_CONCEPTS = ("asset:spx", "fx:broad_dollar", "commodity:wti")
 PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
 CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
@@ -904,9 +907,7 @@ def _snapshot_status(
 def _source_coverage(*, latest: Mapping[str, Mapping[str, Any]], features: Mapping[str, Any]) -> dict[str, Any]:
     observed_core = sum(1 for series_key in CORE_REQUIRED_CONCEPTS if series_key in latest)
     history_ready = [
-        series_key
-        for series_key in CORE_REQUIRED_CONCEPTS
-        if isinstance(features.get(series_key), Mapping) and features[series_key].get("score_participation") is True
+        series_key for series_key in CORE_REQUIRED_CONCEPTS if _feature_has_required_history(features, series_key)
     ]
     concepts_below_min_history = [
         series_key for series_key in CORE_REQUIRED_CONCEPTS if series_key not in history_ready
@@ -952,6 +953,15 @@ def _has_stale_required_features(features: Mapping[str, Any]) -> bool:
         if freshness_days is not None and freshness_days > 7:
             return True
     return False
+
+
+def _feature_has_required_history(features: Mapping[str, Any], concept_key: str) -> bool:
+    feature = features.get(concept_key)
+    if not isinstance(feature, Mapping):
+        return False
+    required_points = MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT.get(concept_key, MACRO_REQUIRED_STAT_POINTS)
+    history_points = _int_or_none(feature.get("history_points")) or 0
+    return history_points >= required_points
 
 
 def _has_data_quality_gaps(data_gaps: Sequence[str]) -> bool:

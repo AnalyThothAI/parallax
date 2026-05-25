@@ -24,8 +24,7 @@ settings. It must not contain worker runtime knobs.
 - `api` — FastAPI bind address and replay settings.
 - `storage.postgres` — DSN, password file, pool, timeout.
 - `llm` — optional LLM provider config: credentials, provider/base URL,
-  timeout, instructor safety-net, and tracing/export settings. It does not
-  own model selection.
+  timeout, and tracing/export settings. It does not own model selection.
 - Optional market-related groups (OKX, GMGN OpenAPI, Binance, macrodata-cli) for
   identity discovery, route sync, profile source refresh, market tick capture,
   cache-only live price fan-out, and request-time US equity quote snapshots.
@@ -69,17 +68,13 @@ summaries, future News fact-candidate extraction, and `news.item_brief`.
 Each lane may override `model`; otherwise it inherits
 `agent_runtime.defaults.model`.
 
-Agent runtime also declares structured-output capability policy. The
-default `output_strategy=json_schema` means provider-enforced schema via
-the OpenAI Agents SDK. `output_strategy=json_object` means provider JSON
-mode plus application-side Pydantic validation before domain validation.
-When using `json_object`, set `schema_enforcement=client_validate`; when
-using `json_schema`, set `schema_enforcement=provider`. Agent execution
-audit includes `provider_family`, `output_strategy`, and
-`schema_enforcement` so readers can distinguish provider-enforced schema
-from client-validated JSON. Lane status and backpressure counters are
-operational signals only; they are not product readiness and are not
-business facts.
+Agent runtime uses one structured-output path: provider JSON object mode
+plus application-side Pydantic validation before domain validation. There
+is no provider-enforced schema branch or compatibility fallback. Agent
+execution audit reports `provider_family`, `output_strategy=json_object`,
+and `schema_enforcement=client_validate` for observability. Lane status
+and backpressure counters are operational signals only; they are not
+product readiness and are not business facts.
 
 ## WebSocket at `/ws`
 

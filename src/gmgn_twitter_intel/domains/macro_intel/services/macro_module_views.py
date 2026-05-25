@@ -44,6 +44,7 @@ def build_macro_module_view(
     tables = [_table(spec, feature_map) for spec in config.table_specs if spec.table_id != "cex_perp_board"]
     if config.module_id == "assets/crypto-derivatives":
         tables.append(_cex_table(cex_board))
+    tables.append(_availability_table(config=config, feature_map=feature_map, concept_keys=concept_keys, data_gaps=data_gaps))
 
     tiles = [_tile(concept_key, feature_map[concept_key]) for concept_key in concept_keys if concept_key in feature_map]
     return _ordered_payload(
@@ -100,13 +101,14 @@ def _missing_view(
         tables=[
             _cex_table(cex_board) if spec.table_id == "cex_perp_board" else _missing_table(spec)
             for spec in config.table_specs
-        ],
+        ]
+        + [_availability_table(config=config, feature_map={}, concept_keys=_module_concept_keys(config), data_gaps=gaps)],
         read={
             "headline": f"{config.title}：缺少快照",
             "regime_label": "数据缺口",
             "confidence_label": "低置信度 0%",
-            "crypto_read": "宏观快照缺失，不能给出加密 beta 判断。",
-            "token_impact": "等待宏观投影恢复后再评估代币暴露。",
+            "data_note": "宏观快照缺失，页面只展示可用性和缺口。",
+            "methodology_note": "运行 macro sync 回填历史并重新投影后恢复图表。",
         },
         evidence={"confirmations": [], "contradictions": [], "watch_triggers": [], "invalidations": []},
         provenance=_provenance(
@@ -277,6 +279,103 @@ def _table_row(concept_key: str, feature: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _availability_table(
+    *,
+    config: MacroModuleConfig,
+    feature_map: Mapping[str, Any],
+    concept_keys: Sequence[str],
+    data_gaps: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for concept_key in concept_keys:
+        metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
+        feature = _mapping(feature_map.get(concept_key))
+        status = "ok" if feature else "missing"
+        latest = _mapping(feature.get("latest"))
+        source = _mapping(feature.get("source"))
+        history_points = _int_or_none(feature.get("history_points"))
+        required_points = _int_or_none(feature.get("required_history_points"))
+        rows.append(
+            {
+                "row_id": f"concept:{concept_key}",
+                "row_quality": status,
+                "source_state": {"label": _source_label(source), "status": status},
+                "cells": {
+                    "item": {
+                        "display_value": metadata.get("label") or concept_key,
+                        "sort_value": metadata.get("short_label") or concept_key,
+                    },
+                    "status": {
+                        "display_value": "已入库" if feature else "缺少观测",
+                        "sort_value": status,
+                    },
+                    "latest": {
+                        "display_value": _observed_label(latest.get("observed_at")) if feature else "观测于 --",
+                        "sort_value": latest.get("observed_at"),
+                    },
+                    "coverage": {
+                        "display_value": _history_coverage_label(history_points, required_points),
+                        "sort_value": history_points,
+                    },
+                    "notes": {
+                        "display_value": _availability_note(concept_key, feature),
+                        "sort_value": concept_key,
+                    },
+                },
+            }
+        )
+    for gap in data_gaps:
+        code = str(gap.get("code") or "")
+        if not code:
+            continue
+        rows.append(
+            {
+                "row_id": f"gap:{code}",
+                "row_quality": str(gap.get("severity") or "warning"),
+                "source_state": {"label": "数据可用性", "status": gap.get("severity")},
+                "cells": {
+                    "item": {"display_value": gap.get("label") or code, "sort_value": code},
+                    "status": {"display_value": gap.get("severity") or "warning", "sort_value": gap.get("severity")},
+                    "latest": {"display_value": "n/a", "sort_value": None},
+                    "coverage": {"display_value": "计分排除", "sort_value": 0},
+                    "notes": {
+                        "display_value": gap.get("remediation_hint") or "补齐数据源后重新投影。",
+                        "sort_value": gap.get("remediation_hint"),
+                    },
+                },
+            }
+        )
+    if not rows:
+        rows.append(
+            {
+                "row_id": f"{config.module_id}:available",
+                "row_quality": "ok",
+                "source_state": {"label": "数据可用性", "status": "ok"},
+                "cells": {
+                    "item": {"display_value": config.title, "sort_value": config.module_id},
+                    "status": {"display_value": "无显式缺口", "sort_value": "ok"},
+                    "latest": {"display_value": "n/a", "sort_value": None},
+                    "coverage": {"display_value": "可用", "sort_value": 1},
+                    "notes": {"display_value": "当前模块没有配置级缺口。", "sort_value": "ok"},
+                },
+            }
+        )
+    return {
+        "id": "availability_proxy_notes",
+        "title": "数据可用性 / 代理说明",
+        "status": "ok" if not data_gaps else "partial",
+        "status_label": "可用" if not data_gaps else "部分可用",
+        "columns": [
+            {"key": "item", "label": "项目"},
+            {"key": "status", "label": "状态"},
+            {"key": "latest", "label": "最新观测"},
+            {"key": "coverage", "label": "历史覆盖"},
+            {"key": "notes", "label": "说明"},
+        ],
+        "rows": rows,
+    }
+
+
 def _read(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> dict[str, Any]:
     scenario = _mapping(snapshot.get("scenario_json"))
     regime = str(scenario.get("current_regime") or snapshot.get("regime") or "data_gap")
@@ -285,8 +384,8 @@ def _read(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> dict[str, A
         "headline": f"{config.title}：{_regime_label(regime)}",
         "regime_label": _regime_label(regime),
         "confidence_label": _confidence_label(confidence),
-        "crypto_read": _crypto_read(regime),
-        "token_impact": _token_impact(regime),
+        "data_note": "本页只展示已入库的真实观测、规则状态和可用性说明。",
+        "methodology_note": f"{config.title} 使用模块配置中的 required/optional 概念生成图表和表格。",
     }
 
 
@@ -581,9 +680,11 @@ def _source_label(source: Mapping[str, Any]) -> str:
 def _provider_label(value: str) -> str:
     return {
         "coinglass": "Coinglass",
+        "cftc": "CFTC",
         "fred": "FRED",
         "macro_import": "宏观导入",
         "nyfed": "NY Fed",
+        "treasury_fiscal": "US Treasury",
         "yahoo": "Yahoo",
     }.get(value.strip().lower(), "未知来源")
 
@@ -724,6 +825,26 @@ def _delta_label(value: float | None) -> str:
 
 def _display_number(value: float | None) -> str:
     return "缺失" if value is None else f"{value:.2f}"
+
+
+def _history_coverage_label(points: int | None, required_points: int | None) -> str:
+    if points is None:
+        return "历史缺失"
+    if required_points is None:
+        return f"{points} 点"
+    return f"{points}/{required_points} 点"
+
+
+def _availability_note(concept_key: str, feature: Mapping[str, Any]) -> str:
+    if not feature:
+        return "未在最新宏观投影中出现；检查 macrodata bundle 和 importer 映射。"
+    source = _mapping(feature.get("source"))
+    source_name = _source_label(source)
+    series_key = str(source.get("series_key") or "")
+    if series_key:
+        return f"{source_name} {series_key}"
+    metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
+    return str(metadata.get("description") or "已入库观测。")
 
 
 def _pct_value(value: float | None) -> str:
@@ -867,13 +988,33 @@ _ROUTE_LABELS = {
     "/macro/assets/crypto": "加密资产",
     "/macro/assets/crypto-derivatives": "加密衍生品",
     "/macro/rates": "利率定价",
+    "/macro/rates/fed-funds": "联邦基金",
     "/macro/rates/yield-curve": "收益率曲线",
+    "/macro/rates/auctions": "国债拍卖",
     "/macro/rates/real-rates": "实际利率",
+    "/macro/rates/expectations": "政策预期",
     "/macro/fed": "美联储走廊",
+    "/macro/fed/statements": "FOMC 声明",
+    "/macro/fed/speeches": "美联储讲话",
     "/macro/liquidity": "美元流动性",
     "/macro/liquidity/transmission-chain": "流动性传导链",
+    "/macro/liquidity/fed-balance-sheet": "资产负债表",
+    "/macro/liquidity/operations": "公开市场操作",
+    "/macro/liquidity/rrp-tga": "RRP / TGA",
+    "/macro/liquidity/reserves": "银行准备金",
+    "/macro/liquidity/global-dollar": "全球美元",
+    "/macro/liquidity/subsurface": "资金面暗流",
+    "/macro/economy": "经济数据",
+    "/macro/economy/gdp": "GDP",
+    "/macro/economy/employment": "就业",
+    "/macro/economy/inflation": "通胀",
+    "/macro/economy/consumer": "消费",
     "/macro/volatility": "波动率压力",
+    "/macro/volatility/dashboard": "波动率 Dashboard",
+    "/macro/volatility/vix": "VIX 结构",
     "/macro/credit": "信用压力",
+    "/macro/credit/cds": "CDS 代理",
+    "/macro/credit/stress": "信用压力分解",
 }
 
 _CHART_TITLES = {
@@ -883,15 +1024,35 @@ _CHART_TITLES = {
     "bond_proxy_performance": "债券代理走势",
     "commodity_proxy_performance": "商品代理走势",
     "credit_spreads": "信用利差走势",
+    "credit_stress_stack": "信用压力堆栈",
+    "cds_public_proxy": "CDS 公共代理走势",
+    "auction_curve_proxy": "拍卖供给曲线代理",
+    "consumer_dashboard": "消费与信心走势",
     "crypto_derivative_context": "加密衍生品背景",
     "crypto_proxy_performance": "加密资产走势",
+    "economy_four_pillar": "经济四象限走势",
     "equity_proxy_performance": "美股代理走势",
+    "employment_dashboard": "就业市场走势",
     "fed_corridor": "美联储政策走廊",
+    "fed_funds_corridor": "联邦基金走廊",
+    "fed_statement_policy_proxy": "FOMC 文本政策代理",
+    "fed_speeches_market_proxy": "讲话市场代理",
+    "fed_balance_sheet": "美联储资产负债表",
     "fx_proxy_performance": "美元代理走势",
+    "global_dollar_pressure": "全球美元压力",
+    "inflation_dashboard": "通胀数据走势",
     "liquidity_stack": "美元流动性堆栈",
+    "nyfed_operations": "NY Fed 操作量",
+    "policy_expectations_proxy": "政策预期代理",
+    "real_gdp_history": "实际 GDP 历史",
     "real_rates": "实际利率走势",
+    "reserve_balances": "银行准备金走势",
+    "rrp_tga_stack": "RRP / TGA 堆栈",
+    "subsurface_funding": "资金面暗流",
     "transmission_chain": "流动性传导链",
     "volatility_context": "波动率背景",
+    "volatility_risk_matrix": "波动率风险矩阵",
+    "vix_term_proxy": "VIX 期限代理",
     "yield_curve": "收益率曲线",
 }
 
@@ -903,15 +1064,37 @@ _TABLE_TITLES = {
     "cex_perp_board": "CEX 合约杠杆板",
     "commodity_proxy_snapshot": "商品资产快照",
     "credit_snapshot": "信用压力快照",
+    "credit_oas_ladder": "OAS 分层表",
+    "credit_stress_table": "信用压力表",
+    "cds_proxy_table": "CDS 公共代理表",
+    "auction_rate_proxy_table": "拍卖曲线代理表",
+    "availability_proxy_notes": "数据可用性 / 代理说明",
+    "consumer_table": "消费数据表",
     "crypto_proxy_snapshot": "加密资产快照",
     "curve_spreads": "曲线利差快照",
+    "economy_four_pillar_table": "经济四象限表",
     "equity_proxy_snapshot": "美股资产快照",
+    "employment_table": "就业数据表",
     "fed_corridor_snapshot": "政策走廊快照",
+    "fed_funds_snapshot": "联邦基金快照",
+    "fed_statement_proxy_table": "FOMC 文本代理表",
+    "fed_speeches_proxy_table": "美联储讲话代理表",
+    "fed_balance_sheet_table": "资产负债表",
     "fx_proxy_snapshot": "美元压力快照",
+    "global_dollar_table": "全球美元表",
+    "inflation_table": "通胀数据表",
     "liquidity_snapshot": "流动性快照",
+    "nyfed_operations_table": "公开市场操作表",
+    "policy_expectations_table": "政策预期表",
+    "real_gdp_table": "GDP 数据表",
     "real_rates_snapshot": "实际利率快照",
+    "reserve_balances_table": "准备金表",
+    "rrp_tga_table": "RRP / TGA 表",
+    "subsurface_funding_table": "资金面暗流表",
     "transmission_nodes": "传导节点快照",
+    "volatility_risk_table": "波动率风险表",
     "volatility_snapshot": "波动率快照",
+    "vix_term_proxy_table": "VIX 期限代理表",
 }
 
 

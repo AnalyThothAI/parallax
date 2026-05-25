@@ -17,7 +17,7 @@ LANE_MODELS = {
 }
 
 
-def test_cost_guard_hard_block_finalizes_without_deepseek() -> None:
+def test_cost_guard_hard_block_finalizes_without_public_judge() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=False, hard_blocked=True, blocked_reason="blocked_market_contract"),
@@ -34,11 +34,11 @@ def test_cost_guard_hard_block_finalizes_without_deepseek() -> None:
     assert decision.action == "no_llm_finalize"
     assert decision.reason == "deterministic_evidence_block"
     assert decision.public_eligible is False
-    assert decision.deepseek_allowed is False
+    assert decision.public_judge_allowed is False
     assert decision.stage_plan.run_risk_portfolio_judge is False
 
 
-def test_cost_guard_source_quality_hidden_uses_qwen_research_only() -> None:
+def test_cost_guard_source_quality_hidden_uses_research_only() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=True),
@@ -52,17 +52,17 @@ def test_cost_guard_source_quality_hidden_uses_qwen_research_only() -> None:
         now_ms=1_000,
     )
 
-    assert decision.action == "qwen_research_only"
+    assert decision.action == "research_only"
     assert decision.reason == "source_quality_hidden"
     assert decision.public_eligible is False
-    assert decision.qwen_allowed is True
-    assert decision.deepseek_allowed is False
+    assert decision.research_allowed is True
+    assert decision.public_judge_allowed is False
     assert decision.stage_plan.signal_model == "qwen3.6"
     assert decision.stage_plan.bear_model == "qwen3.6"
     assert decision.stage_plan.judge_model is None
 
 
-def test_cost_guard_public_trade_candidate_uses_qwen_research_and_deepseek_judge() -> None:
+def test_cost_guard_public_trade_candidate_uses_research_and_public_judge() -> None:
     decision = decide_pulse_agent_cost(
         context=_context(),
         evidence_gate=_evidence_gate(public_allowed=True),
@@ -76,11 +76,11 @@ def test_cost_guard_public_trade_candidate_uses_qwen_research_and_deepseek_judge
         now_ms=1_000,
     )
 
-    assert decision.action == "qwen_research_deepseek_judge"
-    assert decision.reason == "deepseek_public_judge"
+    assert decision.action == "research_with_public_judge"
+    assert decision.reason == "public_judge"
     assert decision.public_eligible is True
-    assert decision.qwen_allowed is True
-    assert decision.deepseek_allowed is True
+    assert decision.research_allowed is True
+    assert decision.public_judge_allowed is True
     assert decision.stage_plan.run_signal_analyst is True
     assert decision.stage_plan.run_bear_case is True
     assert decision.stage_plan.run_risk_portfolio_judge is True
@@ -106,7 +106,7 @@ def test_cost_guard_duplicate_fingerprint_reuses_terminal_run() -> None:
     assert decision.fingerprint.candidate_id == "candidate-1"
     assert decision.fingerprint.trigger_signature == "trigger-a"
     assert decision.fingerprint.timeline_signature == "timeline-a"
-    assert decision.deepseek_allowed is False
+    assert decision.public_judge_allowed is False
 
 
 def test_cost_guard_provider_cooldown_suppresses_model_work() -> None:
@@ -126,8 +126,8 @@ def test_cost_guard_provider_cooldown_suppresses_model_work() -> None:
     assert decision.action == "provider_cooldown"
     assert decision.reason == "provider_cooldown_active"
     assert decision.cooldown_until_ms == 60_000
-    assert decision.qwen_allowed is False
-    assert decision.deepseek_allowed is False
+    assert decision.research_allowed is False
+    assert decision.public_judge_allowed is False
     assert decision.stage_plan.run_signal_analyst is False
     assert decision.stage_plan.run_risk_portfolio_judge is False
 

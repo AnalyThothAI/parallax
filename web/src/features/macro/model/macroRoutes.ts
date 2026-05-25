@@ -8,13 +8,33 @@ export type MacroModuleId =
   | "assets/crypto"
   | "assets/crypto-derivatives"
   | "rates"
+  | "rates/fed-funds"
   | "rates/yield-curve"
+  | "rates/auctions"
   | "rates/real-rates"
+  | "rates/expectations"
   | "fed"
+  | "fed/statements"
+  | "fed/speeches"
   | "liquidity"
   | "liquidity/transmission-chain"
+  | "liquidity/fed-balance-sheet"
+  | "liquidity/operations"
+  | "liquidity/rrp-tga"
+  | "liquidity/reserves"
+  | "liquidity/global-dollar"
+  | "liquidity/subsurface"
+  | "economy"
+  | "economy/gdp"
+  | "economy/employment"
+  | "economy/inflation"
+  | "economy/consumer"
   | "volatility"
-  | "credit";
+  | "volatility/dashboard"
+  | "volatility/vix"
+  | "credit"
+  | "credit/cds"
+  | "credit/stress";
 
 export type MacroRouteSection =
   | "overview"
@@ -22,6 +42,7 @@ export type MacroRouteSection =
   | "rates"
   | "fed"
   | "liquidity"
+  | "economy"
   | "volatility"
   | "credit";
 
@@ -83,10 +104,22 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] = [
   },
   { moduleId: "rates", label: "利率", section: "rates", href: "/macro/rates" },
   {
+    moduleId: "rates/fed-funds",
+    label: "联邦基金",
+    section: "rates",
+    href: "/macro/rates/fed-funds",
+  },
+  {
     moduleId: "rates/yield-curve",
     label: "收益率曲线",
     section: "rates",
     href: "/macro/rates/yield-curve",
+  },
+  {
+    moduleId: "rates/auctions",
+    label: "拍卖",
+    section: "rates",
+    href: "/macro/rates/auctions",
   },
   {
     moduleId: "rates/real-rates",
@@ -94,7 +127,25 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] = [
     section: "rates",
     href: "/macro/rates/real-rates",
   },
+  {
+    moduleId: "rates/expectations",
+    label: "政策预期",
+    section: "rates",
+    href: "/macro/rates/expectations",
+  },
   { moduleId: "fed", label: "美联储", section: "fed", href: "/macro/fed" },
+  {
+    moduleId: "fed/statements",
+    label: "FOMC 声明",
+    section: "fed",
+    href: "/macro/fed/statements",
+  },
+  {
+    moduleId: "fed/speeches",
+    label: "讲话",
+    section: "fed",
+    href: "/macro/fed/speeches",
+  },
   { moduleId: "liquidity", label: "流动性", section: "liquidity", href: "/macro/liquidity" },
   {
     moduleId: "liquidity/transmission-chain",
@@ -103,12 +154,82 @@ export const MACRO_MODULE_ROUTES: MacroModuleRoute[] = [
     href: "/macro/liquidity/transmission-chain",
   },
   {
+    moduleId: "liquidity/fed-balance-sheet",
+    label: "资产负债表",
+    section: "liquidity",
+    href: "/macro/liquidity/fed-balance-sheet",
+  },
+  {
+    moduleId: "liquidity/operations",
+    label: "公开市场操作",
+    section: "liquidity",
+    href: "/macro/liquidity/operations",
+  },
+  {
+    moduleId: "liquidity/rrp-tga",
+    label: "RRP/TGA",
+    section: "liquidity",
+    href: "/macro/liquidity/rrp-tga",
+  },
+  {
+    moduleId: "liquidity/reserves",
+    label: "准备金",
+    section: "liquidity",
+    href: "/macro/liquidity/reserves",
+  },
+  {
+    moduleId: "liquidity/global-dollar",
+    label: "全球美元",
+    section: "liquidity",
+    href: "/macro/liquidity/global-dollar",
+  },
+  {
+    moduleId: "liquidity/subsurface",
+    label: "暗流",
+    section: "liquidity",
+    href: "/macro/liquidity/subsurface",
+  },
+  { moduleId: "economy", label: "经济", section: "economy", href: "/macro/economy" },
+  { moduleId: "economy/gdp", label: "GDP", section: "economy", href: "/macro/economy/gdp" },
+  {
+    moduleId: "economy/employment",
+    label: "就业",
+    section: "economy",
+    href: "/macro/economy/employment",
+  },
+  {
+    moduleId: "economy/inflation",
+    label: "通胀",
+    section: "economy",
+    href: "/macro/economy/inflation",
+  },
+  {
+    moduleId: "economy/consumer",
+    label: "消费",
+    section: "economy",
+    href: "/macro/economy/consumer",
+  },
+  {
     moduleId: "volatility",
     label: "波动率",
     section: "volatility",
     href: "/macro/volatility",
   },
+  {
+    moduleId: "volatility/dashboard",
+    label: "Dashboard",
+    section: "volatility",
+    href: "/macro/volatility/dashboard",
+  },
+  {
+    moduleId: "volatility/vix",
+    label: "VIX",
+    section: "volatility",
+    href: "/macro/volatility/vix",
+  },
   { moduleId: "credit", label: "信用", section: "credit", href: "/macro/credit" },
+  { moduleId: "credit/cds", label: "CDS 代理", section: "credit", href: "/macro/credit/cds" },
+  { moduleId: "credit/stress", label: "压力", section: "credit", href: "/macro/credit/stress" },
 ];
 
 const ROUTES_BY_ID = new Map(MACRO_MODULE_ROUTES.map((route) => [route.moduleId, route]));
@@ -119,6 +240,7 @@ const PRIMARY_ROUTE_IDS: MacroModuleId[] = [
   "rates",
   "fed",
   "liquidity",
+  "economy",
   "volatility",
   "credit",
 ];

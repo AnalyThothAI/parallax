@@ -68,13 +68,13 @@ def test_hard_blocked_packet_does_not_require_llm_stages() -> None:
     assert result["status"] == "pass"
 
 
-def test_cost_guard_qwen_research_only_does_not_require_deepseek_judge_stage() -> None:
+def test_cost_guard_research_only_does_not_require_public_judge_stage() -> None:
     case = _case(
         final=_abstain_decision(),
         stages=("evidence_pack", "evidence_completeness_gate", "signal_analyst", "bear_case"),
     )
     case["input_json"]["context"]["cost_guard"] = {
-        "decision": {"action": "qwen_research_only"},
+        "decision": {"action": "research_only"},
         "stage_plan": {
             "run_signal_analyst": True,
             "run_bear_case": True,

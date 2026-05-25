@@ -12,6 +12,8 @@ from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CONCEPT_METADATA,
     MACRO_CORE_CONCEPTS,
+    MACRO_HISTORY_REQUIRED_CONCEPTS,
+    MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
     MACRO_REQUIRED_STAT_POINTS,
     MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
@@ -87,7 +89,7 @@ def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
             "ok": True,
             "data": {
                 **_fred_payload_from_diagnostics(run_result.diagnostics),
-                "import": summary,
+                "import": _sync_import_summary(summary),
                 "projection": projection,
                 "runner": _runner_diagnostics_payload(run_result.diagnostics),
             },
@@ -118,7 +120,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
     try:
         with repositories(settings) as repos:
             history = repos.macro_intel.concept_history_counts(
-                concept_keys=MACRO_CORE_CONCEPTS,
+                concept_keys=MACRO_HISTORY_REQUIRED_CONCEPTS,
                 lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
             )
             data = {
@@ -126,6 +128,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 **fred_state,
                 "observations_count": repos.macro_intel.observations_count(),
                 "concept_count": repos.macro_intel.concept_count(),
+                "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
                 **_history_readiness_payload(history),
                 "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
                 "latest_snapshot": _json_ready(
@@ -143,7 +146,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
             "history_ready": False,
             "history_coverage": {
                 "required_points": MACRO_REQUIRED_STAT_POINTS,
-                "required_concept_count": len(MACRO_CORE_CONCEPTS),
+                "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
                 "ready_concept_count": 0,
                 "coverage_ratio": 0.0,
                 "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
@@ -185,14 +188,27 @@ def _runner_diagnostics_payload(diagnostics: Mapping[str, Any]) -> dict[str, Any
     }
 
 
+def _sync_import_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    imported_ids = list(summary.get("imported_observation_ids") or [])
+    return {
+        key: _json_ready(value)
+        for key, value in summary.items()
+        if key != "imported_observation_ids"
+    } | {
+        "imported_observation_count": len(imported_ids),
+        "imported_observation_sample": _edge_sample(imported_ids),
+    }
+
+
 def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     rows_by_concept = {str(row.get("concept_key")): row for row in history_rows}
     below_min: list[dict[str, Any]] = []
     ready_count = 0
-    for concept_key in MACRO_CORE_CONCEPTS:
+    for concept_key in MACRO_HISTORY_REQUIRED_CONCEPTS:
         row = rows_by_concept.get(concept_key, {})
         points = int(row.get("points") or 0)
-        if points >= MACRO_REQUIRED_STAT_POINTS:
+        required_points = MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT.get(concept_key, MACRO_REQUIRED_STAT_POINTS)
+        if points >= required_points:
             ready_count += 1
             continue
         metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
@@ -202,14 +218,14 @@ def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dic
                 "label": metadata.get("label") or concept_key,
                 "short_label": metadata.get("short_label") or concept_key,
                 "points": points,
-                "required_points": MACRO_REQUIRED_STAT_POINTS,
+                "required_points": required_points,
                 "latest_observed_at": _json_ready(row.get("latest_observed_at")),
                 "oldest_observed_at": _json_ready(row.get("oldest_observed_at")),
                 "sources": list(row.get("sources") or []),
             }
         )
 
-    required_count = len(MACRO_CORE_CONCEPTS)
+    required_count = len(MACRO_HISTORY_REQUIRED_CONCEPTS)
     coverage_ratio = round(ready_count / required_count, 6) if required_count else 1.0
     return {
         "history_ready": not below_min,
@@ -222,6 +238,12 @@ def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dic
         },
         "concepts_below_min_history": below_min,
     }
+
+
+def _edge_sample(values: Sequence[Any], *, edge_count: int = 3) -> list[Any]:
+    if len(values) <= edge_count * 2:
+        return list(values)
+    return [*values[:edge_count], "...", *values[-edge_count:]]
 
 
 def _error_payload(error: str, exc: Exception) -> dict[str, Any]:

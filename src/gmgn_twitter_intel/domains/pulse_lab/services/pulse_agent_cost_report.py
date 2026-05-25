@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-DEEPSEEK_MODEL_MARKERS = ("deepseek",)
 PUBLIC_DISPLAY_STATUSES = ("display_trade_candidate", "display_token_watch")
-DEFAULT_DRY_RUN_POLICY = {"skip_deepseek_display_status_prefixes": ("hidden_",)}
+FINAL_JUDGE_STAGE = "risk_portfolio_judge"
+DEFAULT_DRY_RUN_POLICY = {"skip_final_judge_display_status_prefixes": ("hidden_",)}
 
 
 def build_signal_pulse_agent_cost_report(
@@ -52,11 +52,11 @@ def summarize_signal_pulse_agent_cost_rows(
     since_ms = _since_ms(now_ms=now_ms, lookback_hours=lookback_hours)
     runs_by_id = {str(row.get("run_id") or ""): row for row in run_rows}
     steps_with_runs = [dict(step, _run=runs_by_id.get(str(step.get("run_id") or ""), {})) for step in step_rows]
-    deepseek_steps = [step for step in steps_with_runs if _is_deepseek_model(step.get("model"))]
-    deepseek_tokens_before = sum(_usage_tokens(step.get("usage_json")) for step in deepseek_steps)
+    final_judge_steps = [step for step in steps_with_runs if _is_final_judge_stage(step.get("stage"))]
+    final_judge_tokens_before = sum(_usage_tokens(step.get("usage_json")) for step in final_judge_steps)
     hidden_invalid_tokens = sum(
         _usage_tokens(step.get("usage_json"))
-        for step in deepseek_steps
+        for step in final_judge_steps
         if _display_status(step) == "hidden_invalid_output"
     )
     public_display = Counter(
@@ -71,8 +71,8 @@ def summarize_signal_pulse_agent_cost_rows(
     }
     after_tokens = sum(
         _usage_tokens(step.get("usage_json"))
-        for step in deepseek_steps
-        if not _dry_run_skips_deepseek(step, dry_run_policy=dry_run_policy)
+        for step in final_judge_steps
+        if not _dry_run_skips_final_judge(step, dry_run_policy=dry_run_policy)
     )
     steps_by_stage_model_status = _steps_by_stage_model_status(step_rows)
     tokens_by_display_status = _tokens_by_display_status(steps_with_runs)
@@ -83,10 +83,10 @@ def summarize_signal_pulse_agent_cost_rows(
     return {
         "window": {"lookback_hours": int(lookback_hours), "since_ms": since_ms, "now_ms": int(now_ms)},
         "runs": runs,
-        "deepseek": {
-            "steps": len(deepseek_steps),
-            "total_tokens": deepseek_tokens_before,
-            "stage_counts": _counter_dict(_count_values(deepseek_steps, "stage")),
+        "final_judge": {
+            "steps": len(final_judge_steps),
+            "total_tokens": final_judge_tokens_before,
+            "stage_counts": _counter_dict(_count_values(final_judge_steps, "stage")),
         },
         "hidden_invalid_output": {"runs": runs["hidden_invalid_output"], "total_tokens": hidden_invalid_tokens},
         "public_display": public_candidate_delta.copy(),
@@ -96,9 +96,12 @@ def summarize_signal_pulse_agent_cost_rows(
         "duplicate_fingerprints": _duplicate_fingerprints(run_rows),
         "public_candidate_delta": public_candidate_delta,
         "predicted_savings": {
-            "deepseek_tokens_before": deepseek_tokens_before,
-            "deepseek_tokens_after": after_tokens,
-            "deepseek_token_reduction_ratio": _ratio(deepseek_tokens_before - after_tokens, deepseek_tokens_before),
+            "final_judge_tokens_before": final_judge_tokens_before,
+            "final_judge_tokens_after": after_tokens,
+            "final_judge_token_reduction_ratio": _ratio(
+                final_judge_tokens_before - after_tokens,
+                final_judge_tokens_before,
+            ),
         },
     }
 
@@ -112,7 +115,7 @@ def render_signal_pulse_agent_cost_report(
 ) -> str:
     window = _mapping(report.get("window"))
     runs = _mapping(report.get("runs"))
-    deepseek = _mapping(report.get("deepseek"))
+    final_judge = _mapping(report.get("final_judge"))
     predicted = _mapping(report.get("predicted_savings"))
     duplicates = _mapping(report.get("duplicate_fingerprints"))
     public_delta = _mapping(report.get("public_candidate_delta"))
@@ -140,10 +143,13 @@ def render_signal_pulse_agent_cost_report(
         f"- runs_total: {_int(runs.get('total'))}",
         f"- backpressure_circuit_open_runs: {_int(runs.get('backpressure_circuit_open'))}",
         f"- hidden_invalid_output_runs: {_int(runs.get('hidden_invalid_output'))}",
-        f"- deepseek_total_tokens: {_int(deepseek.get('total_tokens'))}",
+        f"- final_judge_total_tokens: {_int(final_judge.get('total_tokens'))}",
         f"- hidden_invalid_output_tokens: {_int(_mapping(report.get('hidden_invalid_output')).get('total_tokens'))}",
-        f"- predicted_deepseek_tokens_after: {_int(predicted.get('deepseek_tokens_after'))}",
-        f"- predicted_deepseek_reduction_ratio: {float(predicted.get('deepseek_token_reduction_ratio') or 0.0):.4f}",
+        f"- predicted_final_judge_tokens_after: {_int(predicted.get('final_judge_tokens_after'))}",
+        (
+            "- predicted_final_judge_reduction_ratio: "
+            f"{float(predicted.get('final_judge_token_reduction_ratio') or 0.0):.4f}"
+        ),
         f"- duplicate_success_fingerprint_groups: {_int(duplicates.get('duplicate_success_fingerprint_groups'))}",
         f"- extra_success_runs_same_fingerprint: {_int(duplicates.get('extra_success_runs_same_fingerprint'))}",
         f"- display_trade_candidate: {_int(public_delta.get('display_trade_candidate'))}",
@@ -247,10 +253,10 @@ def _duplicate_fingerprints(run_rows: list[Mapping[str, Any]]) -> dict[str, int]
     }
 
 
-def _dry_run_skips_deepseek(step: Mapping[str, Any], *, dry_run_policy: Mapping[str, Any] | None) -> bool:
+def _dry_run_skips_final_judge(step: Mapping[str, Any], *, dry_run_policy: Mapping[str, Any] | None) -> bool:
     policy = dict(DEFAULT_DRY_RUN_POLICY if dry_run_policy is None else dry_run_policy)
-    statuses = set(str(value) for value in policy.get("skip_deepseek_display_statuses") or ())
-    prefixes = tuple(str(value) for value in policy.get("skip_deepseek_display_status_prefixes") or ())
+    statuses = set(str(value) for value in policy.get("skip_final_judge_display_statuses") or ())
+    prefixes = tuple(str(value) for value in policy.get("skip_final_judge_display_status_prefixes") or ())
     display_status = _display_status(step)
     return display_status in statuses or any(display_status.startswith(prefix) for prefix in prefixes)
 
@@ -271,9 +277,8 @@ def _usage_tokens(value: Any) -> int:
     )
 
 
-def _is_deepseek_model(value: Any) -> bool:
-    model = str(value or "").lower()
-    return any(marker in model for marker in DEEPSEEK_MODEL_MARKERS)
+def _is_final_judge_stage(value: Any) -> bool:
+    return str(value or "") == FINAL_JUDGE_STAGE
 
 
 def _is_circuit_open_run(row: Mapping[str, Any]) -> bool:

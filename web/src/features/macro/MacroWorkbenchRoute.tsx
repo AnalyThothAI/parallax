@@ -6,6 +6,7 @@ import { MacroAssetClassPage } from "./ui/pages/MacroAssetClassPage";
 import { MacroAssetsLandingPage } from "./ui/pages/MacroAssetsLandingPage";
 import { MacroCreditPage } from "./ui/pages/MacroCreditPage";
 import { MacroCryptoDerivativesPage } from "./ui/pages/MacroCryptoDerivativesPage";
+import { MacroEconomyPage } from "./ui/pages/MacroEconomyPage";
 import { MacroFedPage } from "./ui/pages/MacroFedPage";
 import { MacroLiquidityPage } from "./ui/pages/MacroLiquidityPage";
 import { MacroOverviewPage } from "./ui/pages/MacroOverviewPage";
@@ -62,13 +63,16 @@ function MacroModuleContent({
   if (moduleId.startsWith("rates")) {
     return <MacroRatesPage module={module} moduleId={moduleId} token={token} />;
   }
-  if (moduleId === "fed") {
+  if (moduleId.startsWith("fed")) {
     return <MacroFedPage module={module} moduleId={moduleId} token={token} />;
   }
   if (moduleId.startsWith("liquidity")) {
     return <MacroLiquidityPage module={module} moduleId={moduleId} token={token} />;
   }
-  if (moduleId === "volatility") {
+  if (moduleId.startsWith("economy")) {
+    return <MacroEconomyPage module={module} moduleId={moduleId} token={token} />;
+  }
+  if (moduleId.startsWith("volatility")) {
     return <MacroVolatilityPage module={module} moduleId={moduleId} token={token} />;
   }
   return <MacroCreditPage module={module} moduleId={moduleId} token={token} />;

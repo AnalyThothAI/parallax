@@ -262,8 +262,6 @@ class LlmConfig(BaseModel):
     trace_enabled: bool = True
     trace_api_key: str | None = None
     trace_include_sensitive_data: bool = False
-    instructor_safety_net_enabled: bool = True
-    instructor_max_retries: int = 2
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -533,10 +531,11 @@ class MacrodataProviderConfig(BaseModel):
     quote_timeout_seconds: float = Field(default=5.0, gt=0)
     quote_cache_ttl_seconds: float = Field(default=30.0, ge=0)
     fred_api_key_env: str | None = "FINANCE_FRED_API_KEY"
+    cli_project_dir: str | None = None
 
-    @field_validator("fred_api_key_env", mode="before")
+    @field_validator("fred_api_key_env", "cli_project_dir", mode="before")
     @classmethod
-    def parse_optional_env_name(cls, value: Any) -> str | None:
+    def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
             return None
         normalized = str(value).strip()
@@ -767,8 +766,6 @@ class AgentLaneSettings(BaseModel):
 
     model: str | None = None
     provider_family: Literal["openai_compatible", "deepseek"] | None = None
-    output_strategy: Literal["json_schema", "json_object"] | None = None
-    schema_enforcement: Literal["provider", "client_validate"] | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
     priority: Literal["high", "normal", "bulk", "low"] = "normal"
     max_concurrency: int = Field(default=1, ge=1)
@@ -784,18 +781,13 @@ class AgentLaneSettings(BaseModel):
         normalized = str(value).strip()
         return normalized or None
 
-    @field_validator("provider_family", "output_strategy", "schema_enforcement", mode="before")
+    @field_validator("provider_family", mode="before")
     @classmethod
     def parse_optional_capability_label(cls, value: Any) -> str | None:
         if value is None:
             return None
         normalized = str(value).strip().lower()
         return normalized or None
-
-    @model_validator(mode="after")
-    def validate_capability_pair(self) -> AgentLaneSettings:
-        _validate_agent_capability_pair(self.output_strategy, self.schema_enforcement)
-        return self
 
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
@@ -839,8 +831,6 @@ class AgentRuntimeDefaultsSettings(BaseModel):
 
     model: str = "qwen3.6"
     provider_family: Literal["openai_compatible", "deepseek"] | None = None
-    output_strategy: Literal["json_schema", "json_object"] | None = None
-    schema_enforcement: Literal["provider", "client_validate"] | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
     disable_thinking: bool = True
     include_usage: bool = True
@@ -853,18 +843,13 @@ class AgentRuntimeDefaultsSettings(BaseModel):
             raise ValueError("agent_runtime.defaults.model is required")
         return normalized
 
-    @field_validator("provider_family", "output_strategy", "schema_enforcement", mode="before")
+    @field_validator("provider_family", mode="before")
     @classmethod
     def parse_capability_label(cls, value: Any) -> str | None:
         if value is None:
             return None
         normalized = str(value or "").strip().lower()
         return normalized or None
-
-    @model_validator(mode="after")
-    def validate_capability_pair(self) -> AgentRuntimeDefaultsSettings:
-        _validate_agent_capability_pair(self.output_strategy, self.schema_enforcement)
-        return self
 
 
 class AgentRuntimeSettings(BaseModel):
@@ -898,14 +883,6 @@ class AgentRuntimeSettings(BaseModel):
             else:
                 raise ValueError(f"agent_runtime.lanes.{key} must be a mapping")
         return merged
-
-
-def _validate_agent_capability_pair(output_strategy: str | None, schema_enforcement: str | None) -> None:
-    if output_strategy == "json_schema" and schema_enforcement not in {None, "provider"}:
-        raise ValueError("json_schema output_strategy requires provider schema_enforcement")
-    if output_strategy == "json_object" and schema_enforcement not in {None, "client_validate"}:
-        raise ValueError("json_object output_strategy requires client_validate schema_enforcement")
-
 
 class PerWorkerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -1690,6 +1667,10 @@ class Settings(BaseModel):
         return self.providers.macrodata.fred_api_key_env
 
     @property
+    def macrodata_cli_project_dir(self) -> str | None:
+        return self.providers.macrodata.cli_project_dir
+
+    @property
     def macrodata_fred_api_key_configured(self) -> bool:
         env_name = self.macrodata_fred_api_key_env
         if not env_name:
@@ -1846,6 +1827,7 @@ providers:
     quote_timeout_seconds: 5
     quote_cache_ttl_seconds: 30
     fred_api_key_env: "FINANCE_FRED_API_KEY"
+    cli_project_dir:
 
 {_default_news_intel_yaml()}
 

@@ -8,8 +8,6 @@ def test_qwen_profile_uses_json_object_with_client_validation() -> None:
     profile = resolve_agent_capability_profile(model="qwen3.6")
 
     assert profile.provider_family == "openai_compatible"
-    assert profile.output_strategy == "json_object"
-    assert profile.schema_enforcement == "client_validate"
     assert profile.request_options.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
@@ -19,8 +17,6 @@ def test_deepseek_profile_uses_json_object_with_client_validation() -> None:
     profile = resolve_agent_capability_profile(model="deepseek-v4-flash")
 
     assert profile.provider_family == "deepseek"
-    assert profile.output_strategy == "json_object"
-    assert profile.schema_enforcement == "client_validate"
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
@@ -32,8 +28,6 @@ def test_explicit_profile_override_wins_for_arbitrary_model() -> None:
 
     override = AgentCapabilityProfile(
         provider_family="openai_compatible",
-        output_strategy="json_object",
-        schema_enforcement="client_validate",
         client_validation_retries=2,
     )
 
@@ -50,8 +44,6 @@ def test_registered_model_profile_preserves_request_options_when_overriding_capa
 
     override = AgentCapabilityProfile(
         provider_family="deepseek",
-        output_strategy="json_object",
-        schema_enforcement="client_validate",
         client_validation_retries=2,
     )
 
@@ -61,12 +53,11 @@ def test_registered_model_profile_preserves_request_options_when_overriding_capa
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
-def test_profile_rejects_json_schema_with_client_validation() -> None:
+def test_profile_rejects_legacy_output_strategy_fields() -> None:
     from gmgn_twitter_intel.platform.agent_capabilities import AgentCapabilityProfile
 
-    with pytest.raises(ValidationError, match="json_schema"):
+    with pytest.raises(ValidationError, match="output_strategy"):
         AgentCapabilityProfile(
             provider_family="openai_compatible",
-            output_strategy="json_schema",
-            schema_enforcement="client_validate",
+            output_strategy="legacy",
         )

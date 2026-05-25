@@ -25,7 +25,8 @@
   .macro-page-panel-primary,
   .macro-page-panel-derivatives,
   .macro-page-market-board,
-  .macro-page-evidence-panel {
+  .macro-page-evidence-panel,
+  .macro-page-extra-tables {
     grid-column: 1 / -1;
   }
 
@@ -59,6 +60,13 @@
 
   .macro-page-quality-grid > .macro-page-panel {
     grid-column: auto;
+  }
+
+  .macro-page-extra-table-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+    gap: 12px;
+    min-width: 0;
   }
 
   .macro-page-section-head {

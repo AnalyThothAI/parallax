@@ -7,7 +7,7 @@ from agents.agent_output import AgentOutputSchema, AgentOutputSchemaBase
 
 
 class StrictJsonOutputSchema(AgentOutputSchemaBase):
-    """qwen3.6 + llama.cpp compatible structured-output wrapper."""
+    """OpenAI-compatible structured-output wrapper."""
 
     def __init__(self, output_type: type[Any]) -> None:
         self._output_type = output_type
@@ -21,7 +21,7 @@ class StrictJsonOutputSchema(AgentOutputSchemaBase):
 
     @property
     def output_type(self) -> type[Any]:
-        """Expose underlying Pydantic class for InstructorSafetyNet fallback."""
+        """Expose underlying Pydantic class for application-side validation."""
         return self._output_type
 
     def is_plain_text(self) -> bool:

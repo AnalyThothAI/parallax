@@ -11,12 +11,10 @@ from gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy im
 )
 from gmgn_twitter_intel.platform.agent_capabilities import (
     AgentCapabilityProfile,
-    AgentOutputStrategy,
     AgentProviderFamily,
-    AgentSchemaEnforcement,
     resolve_agent_capability_profile,
 )
-from gmgn_twitter_intel.platform.agent_execution import AgentRuntimeDefaultsPolicy, AgentStageSpec
+from gmgn_twitter_intel.platform.agent_execution import AgentStageSpec
 
 
 class Payload(BaseModel):
@@ -92,8 +90,6 @@ def test_json_object_strategy_reasks_within_same_strategy_after_validation_failu
             _context(
                 capability_profile=AgentCapabilityProfile(
                     provider_family=AgentProviderFamily.DEEPSEEK,
-                    output_strategy=AgentOutputStrategy.JSON_OBJECT,
-                    schema_enforcement=AgentSchemaEnforcement.CLIENT_VALIDATE,
                     client_validation_retries=1,
                 )
             )
@@ -124,9 +120,7 @@ def _context(*, capability_profile: AgentCapabilityProfile | None = None) -> Str
         ),
         model_name="deepseek-v4-flash",
         timeout_seconds=30.0,
-        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
         capability_profile=profile,
-        trace_metadata={},
     )
 
 

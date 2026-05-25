@@ -10,7 +10,6 @@ SRC = ROOT / "src" / "gmgn_twitter_intel"
 OPENAI_AGENTS = SRC / "integrations" / "openai_agents"
 GATEWAY_FILES = {
     OPENAI_AGENTS / "agent_execution_gateway.py",
-    OPENAI_AGENTS / "instructor_safety_net.py",
     OPENAI_AGENTS / "structured_output_strategy.py",
 }
 
@@ -102,10 +101,9 @@ def test_openai_agents_sdk_execution_only_in_gateway() -> None:
     assert violations == []
 
 
-def test_async_openai_constructed_only_by_llm_gateway_or_safety_net() -> None:
+def test_async_openai_constructed_only_by_llm_gateway() -> None:
     allowlist = {
         SRC / "app" / "runtime" / "llm_gateway.py",
-        OPENAI_AGENTS / "instructor_safety_net.py",
     }
     violations: list[str] = []
     for path in _py_files(SRC):

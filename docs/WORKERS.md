@@ -321,10 +321,11 @@ Adding a wake channel requires all of these in one change:
 ## Agent Execution Plane
 
 LLM-backed workers use one shared `AgentExecutionGateway` per process.
-The gateway is an operational control plane only: it owns OpenAI Agents
-SDK execution, lane bulkheads, request/result audit envelopes, timeout,
-circuit breaker, safety-net fallback, and ops status. It does not claim
-domain jobs, write domain queues, or persist product read models.
+The gateway is an operational control plane only: it owns lane bulkheads,
+request/result audit envelopes, timeout, circuit breaker, structured JSON
+object execution, application-side validation, and ops status. It does
+not claim domain jobs, write domain queues, or persist product read
+models.
 
 The low-level `LLMGateway` is transport-only. It owns OpenAI client
 construction, trace export configuration, and cleanup. It does not expose
@@ -341,15 +342,13 @@ inherits that default. Current lanes are `pulse.pipeline`, `pulse.signal_analyst
 reserve capacity before claiming DB work:
 
 `agent_runtime.defaults.model` and lane `model` select the registered model
-capability profile. The profile owns provider family, structured-output mode,
-schema enforcement, client-validation retry count, and provider request
-options such as DeepSeek thinking-mode disablement. `json_schema` means
-provider-enforced schema through the Agents SDK. `json_object` means provider
-JSON mode plus application-side Pydantic validation. Lane overrides may set
-`provider_family`, `output_strategy`, `schema_enforcement`, and
-`client_validation_retries` for an unregistered or experimental model; they
-merge with the registered profile when the model is known. Example DeepSeek
-lane override:
+capability profile. The profile owns provider family, client-validation
+retry count, and provider request options such as DeepSeek thinking-mode
+disablement. Structured output has a single runtime path: provider JSON
+object mode plus application-side Pydantic validation. Lane overrides may
+set `provider_family` and `client_validation_retries` for an unregistered
+or experimental model; they merge with the registered profile when the
+model is known. Example DeepSeek lane override:
 
 ```yaml
 agent_runtime:

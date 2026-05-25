@@ -10,9 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gmgn_twitter_intel.platform.agent_capabilities import (
     AgentCapabilityProfile,
-    AgentOutputStrategy,
     AgentProviderFamily,
-    AgentSchemaEnforcement,
     resolve_agent_capability_profile,
 )
 from gmgn_twitter_intel.platform.agent_hashing import json_sha256
@@ -54,8 +52,6 @@ class AgentLanePolicy(BaseModel):
 
     model: str | None = None
     provider_family: AgentProviderFamily | None = None
-    output_strategy: AgentOutputStrategy | None = None
-    schema_enforcement: AgentSchemaEnforcement | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
     priority: str = "normal"
     max_concurrency: int = Field(default=1, ge=1)
@@ -77,8 +73,6 @@ class AgentRuntimeDefaultsPolicy(BaseModel):
 
     model: str = "qwen3.6"
     provider_family: AgentProviderFamily | None = None
-    output_strategy: AgentOutputStrategy | None = None
-    schema_enforcement: AgentSchemaEnforcement | None = None
     client_validation_retries: int | None = Field(default=None, ge=0)
     disable_thinking: bool = True
     include_usage: bool = True
@@ -115,8 +109,6 @@ class AgentRuntimePolicy(BaseModel):
                 model=model,
                 override=_capability_profile_from_parts(
                     provider_family=lane_policy.provider_family or self.defaults.provider_family,
-                    output_strategy=lane_policy.output_strategy or self.defaults.output_strategy,
-                    schema_enforcement=lane_policy.schema_enforcement or self.defaults.schema_enforcement,
                     client_validation_retries=_first_non_none(
                         lane_policy.client_validation_retries,
                         self.defaults.client_validation_retries,
@@ -128,8 +120,6 @@ class AgentRuntimePolicy(BaseModel):
                 model=model,
                 override=_capability_profile_from_parts(
                     provider_family=self.defaults.provider_family,
-                    output_strategy=self.defaults.output_strategy,
-                    schema_enforcement=self.defaults.schema_enforcement,
                     client_validation_retries=self.defaults.client_validation_retries,
                 ),
             )
@@ -164,8 +154,8 @@ class AgentExecutionRequestAudit(BaseModel):
     provider: str = "openai"
     backend: str = "openai_agents_sdk"
     provider_family: str = "openai_compatible"
-    output_strategy: str = "json_schema"
-    schema_enforcement: str = "provider"
+    output_strategy: str = "json_object"
+    schema_enforcement: str = "client_validate"
     request_options_hash: str = Field(default_factory=lambda: json_sha256({}))
     model: str
     lane: str
@@ -207,8 +197,8 @@ class AgentExecutionRequestAudit(BaseModel):
             "backend": "openai_agents_sdk",
             "model": model,
             "provider_family": profile.provider_family.value,
-            "output_strategy": profile.output_strategy.value,
-            "schema_enforcement": profile.schema_enforcement.value,
+            "output_strategy": "json_object",
+            "schema_enforcement": "client_validate",
             "request_options_hash": request_options_hash,
             "request_option_keys": profile.request_options.option_keys(),
             "lane": stage.lane,
@@ -221,8 +211,8 @@ class AgentExecutionRequestAudit(BaseModel):
         }
         return cls(
             provider_family=profile.provider_family.value,
-            output_strategy=profile.output_strategy.value,
-            schema_enforcement=profile.schema_enforcement.value,
+            output_strategy="json_object",
+            schema_enforcement="client_validate",
             request_options_hash=request_options_hash,
             model=model,
             lane=stage.lane,
@@ -287,8 +277,6 @@ ReleaseCallback = Callable[[], None | Awaitable[None]]
 def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
     return (
         lane_policy.provider_family is not None
-        or lane_policy.output_strategy is not None
-        or lane_policy.schema_enforcement is not None
         or lane_policy.client_validation_retries is not None
     )
 
@@ -296,8 +284,6 @@ def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
 def _defaults_have_capability_override(defaults: AgentRuntimeDefaultsPolicy) -> bool:
     return (
         defaults.provider_family is not None
-        or defaults.output_strategy is not None
-        or defaults.schema_enforcement is not None
         or defaults.client_validation_retries is not None
     )
 
@@ -305,17 +291,11 @@ def _defaults_have_capability_override(defaults: AgentRuntimeDefaultsPolicy) -> 
 def _capability_profile_from_parts(
     *,
     provider_family: AgentProviderFamily | None,
-    output_strategy: AgentOutputStrategy | None,
-    schema_enforcement: AgentSchemaEnforcement | None,
     client_validation_retries: int | None,
 ) -> AgentCapabilityProfile:
     payload: dict[str, Any] = {}
     if provider_family is not None:
         payload["provider_family"] = provider_family
-    if output_strategy is not None:
-        payload["output_strategy"] = output_strategy
-    if schema_enforcement is not None:
-        payload["schema_enforcement"] = schema_enforcement
     if client_validation_retries is not None:
         payload["client_validation_retries"] = client_validation_retries
     return AgentCapabilityProfile(**payload)

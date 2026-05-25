@@ -8,6 +8,7 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CONCEPT_METADATA,
+    MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
     MACRO_REQUIRED_DELTA_POINTS,
     MACRO_REQUIRED_STAT_POINTS,
 )
@@ -16,7 +17,12 @@ from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import b
 DELTA_HORIZONS = (5, 20, 60)
 HISTORY_POINTS = 252
 STAT_LOOKBACK = 252
-STALE_FRESHNESS_DAYS = 7
+STALE_FRESHNESS_DAYS_BY_FREQUENCY = {
+    "daily": 7,
+    "weekly": 21,
+    "monthly": 65,
+    "quarterly": 140,
+}
 HISTORY_WINDOWS = {
     "20d": MACRO_REQUIRED_DELTA_POINTS["20d"],
     "60d": MACRO_REQUIRED_DELTA_POINTS["60d"],
@@ -61,6 +67,7 @@ def _features_for_series(
     if not usable_observations:
         latest_observation = ordered_observations[0] if ordered_observations else {}
         latest_date = _date_value(latest_observation.get("observed_at")) if latest_observation else None
+        freshness_days = _freshness_days(latest_date=latest_date, computed_at_ms=computed_at_ms)
         if non_numeric_count:
             data_gaps.append(f"non_numeric_values:{non_numeric_count}")
         data_gaps.append("missing_numeric_history")
@@ -78,7 +85,8 @@ def _features_for_series(
                     "observed_at": _date_text(latest_observation.get("observed_at")) if latest_observation else None,
                     "unit": latest_observation.get("unit") if latest_observation else None,
                 },
-                "freshness_days": _freshness_days(latest_date=latest_date, computed_at_ms=computed_at_ms),
+                "freshness_days": freshness_days,
+                "stale_after_days": _stale_after_days(latest_observation),
                 "delta": {f"{horizon}d": None for horizon in DELTA_HORIZONS},
                 "zscore": {"lookback": STAT_LOOKBACK, "value": None},
                 "percentile": {"lookback": STAT_LOOKBACK, "value": None},
@@ -88,10 +96,11 @@ def _features_for_series(
         )
 
     latest = usable_observations[0]
+    stale_after_days = _stale_after_days(latest["raw"])
     freshness_days = _freshness_days(latest_date=latest["observed_date"], computed_at_ms=computed_at_ms)
     if freshness_days is None:
         data_gaps.append("missing_latest_observed_at")
-    elif freshness_days > STALE_FRESHNESS_DAYS:
+    elif freshness_days > stale_after_days:
         data_gaps.append(f"stale_latest:{freshness_days}d")
 
     delta: dict[str, float | None] = {}
@@ -125,6 +134,7 @@ def _features_for_series(
         feature={
             "latest": {"value": _round(latest["value"]), "observed_at": latest["observed_at"], "unit": latest["unit"]},
             "freshness_days": freshness_days,
+            "stale_after_days": stale_after_days,
             "delta": delta,
             "zscore": {"lookback": STAT_LOOKBACK, "value": None if zscore_value is None else _round(zscore_value)},
             "percentile": {
@@ -235,6 +245,11 @@ def _freshness_days(*, latest_date: date | None, computed_at_ms: int) -> int | N
     return max(0, (computed_date - latest_date).days)
 
 
+def _stale_after_days(observation: Mapping[str, Any]) -> int:
+    frequency = str(observation.get("frequency") or "").strip().lower()
+    return STALE_FRESHNESS_DAYS_BY_FREQUENCY.get(frequency, STALE_FRESHNESS_DAYS_BY_FREQUENCY["daily"])
+
+
 def _date_value(value: Any) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -280,6 +295,7 @@ def _with_semantics(
 ) -> dict[str, Any]:
     metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
     unit = str(feature.get("latest", {}).get("unit") or "")
+    required_points = MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT.get(concept_key, MACRO_REQUIRED_STAT_POINTS)
     semantic_fields = {
         "concept_key": concept_key,
         "label": str(metadata.get("label") or concept_key),
@@ -288,7 +304,8 @@ def _with_semantics(
         "unit_label": str(metadata.get("unit_label") or unit),
         "history_points": history_points,
         "history_windows": _history_windows(history_points),
-        "score_participation": history_points >= MACRO_REQUIRED_STAT_POINTS,
+        "required_history_points": required_points,
+        "score_participation": history_points >= required_points,
         "data_quality": data_quality,
         "source": {
             "name": str(latest_observation.get("source_name") or ""),

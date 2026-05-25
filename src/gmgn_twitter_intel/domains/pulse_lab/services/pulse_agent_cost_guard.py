@@ -16,8 +16,8 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_candidate_context import P
 PulseCostGuardAction = Literal[
     "no_llm_finalize",
     "reuse_terminal_run",
-    "qwen_research_only",
-    "qwen_research_deepseek_judge",
+    "research_only",
+    "research_with_public_judge",
     "provider_cooldown",
 ]
 
@@ -54,8 +54,8 @@ class PulseCostGuardDecision:
     action: PulseCostGuardAction
     reason: str
     public_eligible: bool
-    qwen_allowed: bool
-    deepseek_allowed: bool
+    research_allowed: bool
+    public_judge_allowed: bool
     fingerprint: PulseRunFingerprint
     stage_plan: PulseStagePlan
     cooldown_until_ms: int | None = None
@@ -66,8 +66,8 @@ class PulseCostGuardDecision:
             "action": self.action,
             "reason": self.reason,
             "public_eligible": bool(self.public_eligible),
-            "qwen_allowed": bool(self.qwen_allowed),
-            "deepseek_allowed": bool(self.deepseek_allowed),
+            "research_allowed": bool(self.research_allowed),
+            "public_judge_allowed": bool(self.public_judge_allowed),
             "fingerprint": self.fingerprint.to_json(),
             "stage_plan": self.stage_plan.to_json(),
             "cooldown_until_ms": self.cooldown_until_ms,
@@ -101,8 +101,8 @@ def decide_pulse_agent_cost(
             action="no_llm_finalize",
             reason="deterministic_evidence_block",
             public_eligible=False,
-            qwen_allowed=False,
-            deepseek_allowed=False,
+            research_allowed=False,
+            public_judge_allowed=False,
             context=context,
             route=route,
             evidence_packet_hash=evidence_packet_hash,
@@ -119,8 +119,8 @@ def decide_pulse_agent_cost(
             action="reuse_terminal_run",
             reason="duplicate_fingerprint",
             public_eligible=public_eligible,
-            qwen_allowed=False,
-            deepseek_allowed=False,
+            research_allowed=False,
+            public_judge_allowed=False,
             context=context,
             route=route,
             evidence_packet_hash=evidence_packet_hash,
@@ -138,8 +138,8 @@ def decide_pulse_agent_cost(
             action="provider_cooldown",
             reason="provider_cooldown_active",
             public_eligible=public_eligible,
-            qwen_allowed=False,
-            deepseek_allowed=False,
+            research_allowed=False,
+            public_judge_allowed=False,
             context=context,
             route=route,
             evidence_packet_hash=evidence_packet_hash,
@@ -154,11 +154,11 @@ def decide_pulse_agent_cost(
 
     if public_eligible:
         return _decision(
-            action="qwen_research_deepseek_judge",
-            reason="deepseek_public_judge",
+            action="research_with_public_judge",
+            reason="public_judge",
             public_eligible=True,
-            qwen_allowed=True,
-            deepseek_allowed=True,
+            research_allowed=True,
+            public_judge_allowed=True,
             context=context,
             route=route,
             evidence_packet_hash=evidence_packet_hash,
@@ -173,11 +173,11 @@ def decide_pulse_agent_cost(
     research_plan = _stage_plan(public_judge=False, lane_models=lane_models)
     reason = "source_quality_hidden" if not bool(source_quality.public_allowed) else "not_public_eligible"
     return _decision(
-        action="qwen_research_only",
+        action="research_only",
         reason=reason,
         public_eligible=False,
-        qwen_allowed=True,
-        deepseek_allowed=False,
+        research_allowed=True,
+        public_judge_allowed=False,
         context=context,
         route=route,
         evidence_packet_hash=evidence_packet_hash,
@@ -195,8 +195,8 @@ def _decision(
     action: PulseCostGuardAction,
     reason: str,
     public_eligible: bool,
-    qwen_allowed: bool,
-    deepseek_allowed: bool,
+    research_allowed: bool,
+    public_judge_allowed: bool,
     context: PulseCandidateContext,
     route: str,
     evidence_packet_hash: str,
@@ -221,8 +221,8 @@ def _decision(
         action=action,
         reason=reason,
         public_eligible=public_eligible,
-        qwen_allowed=qwen_allowed,
-        deepseek_allowed=deepseek_allowed,
+        research_allowed=research_allowed,
+        public_judge_allowed=public_judge_allowed,
         fingerprint=fingerprint,
         stage_plan=stage_plan,
         cooldown_until_ms=cooldown_until_ms,
@@ -257,9 +257,9 @@ def _stage_plan(
     lane_models: Mapping[str, str],
     no_llm: bool = False,
 ) -> PulseStagePlan:
-    signal_model = _lane_model(lane_models, "pulse.signal_analyst", default="qwen3.6")
-    bear_model = _lane_model(lane_models, "pulse.bear_case", default="qwen3.6")
-    judge_model = _lane_model(lane_models, "pulse.risk_portfolio_judge", default="deepseek-v4-flash")
+    signal_model = _lane_model(lane_models, "pulse.signal_analyst", default="")
+    bear_model = _lane_model(lane_models, "pulse.bear_case", default="")
+    judge_model = _lane_model(lane_models, "pulse.risk_portfolio_judge", default="")
     if no_llm:
         return PulseStagePlan(
             run_signal_analyst=False,

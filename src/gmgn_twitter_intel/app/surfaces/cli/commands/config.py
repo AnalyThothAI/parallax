@@ -96,6 +96,7 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                         "quote_cache_ttl_seconds": settings.macrodata_quote_cache_ttl_seconds,
                         "fred_api_key_env": settings.macrodata_fred_api_key_env,
                         "fred_api_key_configured": settings.macrodata_fred_api_key_configured,
+                        "cli_project_dir_configured": bool(settings.macrodata_cli_project_dir),
                     },
                 },
                 "notifications": {

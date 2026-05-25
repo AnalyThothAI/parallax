@@ -7,9 +7,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from gmgn_twitter_intel.platform.agent_capabilities import (
-    AgentOutputStrategy,
     AgentProviderFamily,
-    AgentSchemaEnforcement,
     resolve_agent_capability_profile,
 )
 from gmgn_twitter_intel.platform.agent_execution import (
@@ -81,8 +79,6 @@ def test_artifact_hash_changes_when_request_options_change() -> None:
         runtime_version="r1",
         output_schema_hash="schema-hash",
         provider_family="deepseek",
-        output_strategy="json_object",
-        schema_enforcement="client_validate",
         request_options_hash=json_sha256({}),
     )
     changed = artifact_hash_for(
@@ -92,8 +88,6 @@ def test_artifact_hash_changes_when_request_options_change() -> None:
         runtime_version="r1",
         output_schema_hash="schema-hash",
         provider_family="deepseek",
-        output_strategy="json_object",
-        schema_enforcement="client_validate",
         request_options_hash=json_sha256({"extra_body": {"thinking": {"type": "disabled"}}}),
     )
 
@@ -213,8 +207,6 @@ def test_runtime_policy_resolves_model_capability_profiles() -> None:
             "override.lane": AgentLanePolicy(
                 model="local-model",
                 provider_family="deepseek",
-                output_strategy="json_object",
-                schema_enforcement="client_validate",
                 client_validation_retries=2,
             ),
         },
@@ -223,8 +215,6 @@ def test_runtime_policy_resolves_model_capability_profiles() -> None:
     deepseek = policy.capability_for_lane("deepseek.lane")
     override = policy.capability_for_lane("override.lane")
 
-    assert deepseek.output_strategy == AgentOutputStrategy.JSON_OBJECT
-    assert deepseek.schema_enforcement == AgentSchemaEnforcement.CLIENT_VALIDATE
     assert deepseek.request_options.extra_body == {"thinking": {"type": "disabled"}}
     assert override.provider_family == AgentProviderFamily.DEEPSEEK
     assert override.client_validation_retries == 2
@@ -237,8 +227,6 @@ def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model
     profile = policy.capability_for_lane("pulse.signal_analyst")
 
     assert profile.provider_family == AgentProviderFamily.DEEPSEEK
-    assert profile.output_strategy == AgentOutputStrategy.JSON_OBJECT
-    assert profile.schema_enforcement == AgentSchemaEnforcement.CLIENT_VALIDATE
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 

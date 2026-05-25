@@ -70,20 +70,30 @@ export type MacroHeatmapMatrix = {
 const CANONICAL_CONCEPT_PREFIXES = new Set([
   "asset",
   "commodity",
+  "consumer",
   "credit",
   "crypto",
+  "economy",
   "fed",
   "fx",
   "inflation",
+  "labor",
   "liquidity",
   "rates",
   "vol",
 ]);
 
 const TENOR_YEARS_BY_CONCEPT: Record<string, number> = {
+  "rates:dgs1mo": 1 / 12,
+  "rates:dgs3mo": 0.25,
+  "rates:dgs6mo": 0.5,
+  "rates:dgs1": 1,
   "rates:dgs2": 2,
+  "rates:dgs3": 3,
   "rates:dgs5": 5,
+  "rates:dgs7": 7,
   "rates:dgs10": 10,
+  "rates:dgs20": 20,
   "rates:dgs30": 30,
 };
 

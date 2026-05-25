@@ -7,7 +7,6 @@ import pytest
 from pydantic import BaseModel
 
 from gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway import AgentExecutionGateway
-from gmgn_twitter_intel.integrations.openai_agents.instructor_safety_net import InstructorSafetyNet
 from gmgn_twitter_intel.platform.agent_execution import (
     AgentCapacityReservation,
     AgentExecutionCancelled,
@@ -25,117 +24,68 @@ class Payload(BaseModel):
     value: str
 
 
-class FakeAgent:
-    def __init__(self, **kwargs: Any) -> None:
-        self.kwargs = kwargs
-        self.name = kwargs.get("name")
-        self.instructions = kwargs.get("instructions")
+class FakeJsonMessage:
+    def __init__(self, content: str = '{"value":"json-object"}') -> None:
+        self.content = content
 
 
-class FakeModel:
-    def __init__(self, **kwargs: Any) -> None:
-        self.kwargs = kwargs
+class FakeJsonChoice:
+    def __init__(self, content: str = '{"value":"json-object"}') -> None:
+        self.message = FakeJsonMessage(content)
 
 
-class FakeResult:
-    def __init__(self, final_output: Any) -> None:
-        self.final_output = final_output
-        self.usage = {"input_tokens": 3, "output_tokens": 4}
+class FakeJsonResponse:
+    def __init__(self, content: str = '{"value":"json-object"}') -> None:
+        self.choices = [FakeJsonChoice(content)]
+        self.usage = {"prompt_tokens": 3, "completion_tokens": 2}
 
 
-class FakeRunner:
+class FakeJsonCompletions:
     def __init__(
         self,
         *,
+        content: str = '{"value":"json-object"}',
         delay_seconds: float = 0,
         exception: BaseException | None = None,
         entered: asyncio.Event | None = None,
     ) -> None:
-        self.calls = 0
+        self.calls: list[dict[str, Any]] = []
+        self.content = content
         self.delay_seconds = delay_seconds
         self.exception = exception
         self.entered = entered
-        self.run_configs: list[Any] = []
-        self.input_payloads: list[Any] = []
 
-    async def run(self, agent: Any, input_payload: Any, *, max_turns: int, run_config: Any) -> FakeResult:
-        _ = agent, max_turns
-        self.calls += 1
-        self.input_payloads.append(input_payload)
-        self.run_configs.append(run_config)
+    async def create(self, **kwargs: Any) -> FakeJsonResponse:
+        self.calls.append(kwargs)
         if self.entered is not None:
             self.entered.set()
         if self.delay_seconds:
             await asyncio.sleep(self.delay_seconds)
         if self.exception is not None:
             raise self.exception
-        return FakeResult(Payload(value="ok"))
+        return FakeJsonResponse(self.content)
+
+
+class FakeJsonChat:
+    def __init__(self, completions: FakeJsonCompletions) -> None:
+        self.completions = completions
+
+
+class FakeJsonClient:
+    def __init__(self, completions: FakeJsonCompletions | None = None) -> None:
+        self.chat = FakeJsonChat(completions or FakeJsonCompletions())
 
 
 class FakeLLMGateway:
     trace_export_enabled = False
 
-    def __init__(self) -> None:
+    def __init__(self, *, completions: FakeJsonCompletions | None = None) -> None:
         self.openai_client_calls: list[dict[str, Any]] = []
-
-    def openai_client(self, *, model: str, base_url: str, timeout_s: float) -> object:
-        self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
-        return object()
-
-
-class FakeJsonMessage:
-    content = '{"value":"json-object"}'
-
-
-class FakeJsonChoice:
-    message = FakeJsonMessage()
-
-
-class FakeJsonResponse:
-    def __init__(self) -> None:
-        self.choices = [FakeJsonChoice()]
-        self.usage = {"prompt_tokens": 3, "completion_tokens": 2}
-
-
-class FakeJsonCompletions:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    async def create(self, **kwargs: Any) -> FakeJsonResponse:
-        self.calls.append(kwargs)
-        return FakeJsonResponse()
-
-
-class FakeJsonChat:
-    def __init__(self) -> None:
-        self.completions = FakeJsonCompletions()
-
-
-class FakeJsonClient:
-    def __init__(self) -> None:
-        self.chat = FakeJsonChat()
-
-
-class FakeJsonLLMGateway(FakeLLMGateway):
-    def __init__(self) -> None:
-        super().__init__()
-        self.client = FakeJsonClient()
+        self.client = FakeJsonClient(completions)
 
     def openai_client(self, *, model: str, base_url: str, timeout_s: float) -> object:
         self.openai_client_calls.append({"model": model, "base_url": base_url, "timeout_s": timeout_s})
         return self.client
-
-
-@pytest.fixture(autouse=True)
-def _patch_sdk_constructors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.structured_output_strategy.Agent",
-        FakeAgent,
-    )
-    monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.agent_execution_gateway.OpenAIChatCompletionsModel",
-        FakeModel,
-    )
 
 
 def _spec(lane: str = "test.lane") -> AgentStageSpec:
@@ -156,7 +106,7 @@ def _spec(lane: str = "test.lane") -> AgentStageSpec:
 
 def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="local-schema-model"),
+        defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
         global_max_concurrency=1,
         global_rpm_limit=1000,
         lanes={
@@ -175,7 +125,7 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
 
 def _pulse_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="local-schema-model"),
+        defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
         global_max_concurrency=1,
         global_rpm_limit=1000,
         lanes={
@@ -189,7 +139,7 @@ def _pulse_policy() -> AgentRuntimePolicy:
 
 def _lane_rpm_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="local-schema-model"),
+        defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
         global_max_concurrency=2,
         global_rpm_limit=1000,
         lanes={
@@ -202,7 +152,7 @@ def _lane_rpm_policy() -> AgentRuntimePolicy:
     )
 
 
-def _json_object_policy() -> AgentRuntimePolicy:
+def _deepseek_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
         defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
         global_max_concurrency=1,
@@ -211,8 +161,6 @@ def _json_object_policy() -> AgentRuntimePolicy:
             "test.lane": AgentLanePolicy(
                 model="deepseek-v4-flash",
                 provider_family="deepseek",
-                output_strategy="json_object",
-                schema_enforcement="client_validate",
                 max_concurrency=1,
                 timeout_seconds=10,
             )
@@ -220,33 +168,40 @@ def _json_object_policy() -> AgentRuntimePolicy:
     )
 
 
-def test_execute_returns_normalized_audit_using_fake_runner() -> None:
+def _gateway(
+    *,
+    llm_gateway: FakeLLMGateway | None = None,
+    policy: AgentRuntimePolicy | None = None,
+) -> AgentExecutionGateway:
+    return AgentExecutionGateway(
+        llm_gateway=llm_gateway or FakeLLMGateway(),
+        base_url="https://example.com/v1",
+        trace_enabled=False,
+        trace_include_sensitive_data=False,
+        policy=policy or _policy(),
+    )
+
+
+def test_execute_returns_normalized_audit_using_json_object_client() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
         llm_gateway = FakeLLMGateway()
-        gateway = AgentExecutionGateway(
-            llm_gateway=llm_gateway,
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        gateway = _gateway(llm_gateway=llm_gateway)
 
         result = await gateway.execute(_spec())
 
-        assert isinstance(result.final_output, Payload)
+        assert result.final_output == Payload(value="json-object")
         assert result.audit.status is AgentExecutionStatus.DONE
         assert result.audit.execution_started is True
-        assert result.audit.usage == {"input_tokens": 3, "output_tokens": 4}
-        assert result.audit.parse_mode == "strict"
+        assert result.audit.usage == {"prompt_tokens": 3, "completion_tokens": 2}
+        assert result.audit.parse_mode == "json_object_client_validate"
         assert result.audit.safety_net == {"safety_net_used": False, "safety_net_retries": 0}
         assert result.audit.output_hash is not None
         assert result.audit.trace_metadata["source"] == "unit"
-        assert runner.calls == 1
-        assert runner.input_payloads == ['{"x": 1}']
+        assert result.audit.trace_metadata["output_strategy"] == "json_object"
+        assert result.audit.trace_metadata["schema_enforcement"] == "client_validate"
+        assert len(llm_gateway.client.chat.completions.calls) == 1
         assert llm_gateway.openai_client_calls == [
-            {"model": "local-schema-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+            {"model": "local-json-object-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
         ]
 
     asyncio.run(scenario())
@@ -254,14 +209,7 @@ def test_execute_returns_normalized_audit_using_fake_runner() -> None:
 
 def test_try_reserve_denies_when_lane_full_and_releases_idempotently() -> None:
     async def scenario() -> None:
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=FakeRunner(),
-        )
+        gateway = _gateway()
 
         first = gateway.try_reserve("test.lane")
         second = gateway.try_reserve("test.lane")
@@ -283,15 +231,8 @@ def test_try_reserve_denies_when_lane_full_and_releases_idempotently() -> None:
 
 def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway)
         reservation = gateway.try_reserve("test.lane")
 
         try:
@@ -303,7 +244,7 @@ def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity(
             await reservation.release()
 
         assert result.audit.status is AgentExecutionStatus.DONE
-        assert runner.calls == 1
+        assert len(llm_gateway.client.chat.completions.calls) == 1
         snapshot_after_release = gateway.status_snapshot()
         assert snapshot_after_release["global_in_flight"] == 0
         assert snapshot_after_release["lanes"]["test.lane"]["in_flight"] == 0
@@ -313,15 +254,8 @@ def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity(
 
 def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_pulse_policy(),
-            runner=runner,
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_pulse_policy())
         parent = gateway.try_reserve(
             "pulse.pipeline",
             child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
@@ -343,22 +277,15 @@ def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> Non
         assert snapshot["global_in_flight"] == 0
         assert snapshot["lanes"]["pulse.pipeline"]["in_flight"] == 0
         assert snapshot["lanes"]["pulse.signal_analyst"]["in_flight"] == 0
-        assert runner.calls == 1
+        assert len(llm_gateway.client.chat.completions.calls) == 1
 
     asyncio.run(scenario())
 
 
 def test_lane_rpm_limit_applies_even_when_global_rpm_is_high() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_lane_rpm_policy(),
-            runner=runner,
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_lane_rpm_policy())
 
         first = await gateway.execute(_spec())
         assert first.audit.status is AgentExecutionStatus.DONE
@@ -368,7 +295,7 @@ def test_lane_rpm_limit_applies_even_when_global_rpm_is_high() -> None:
 
         assert err.value.error_class is AgentExecutionErrorClass.RATE_LIMITED
         assert err.value.execution_started is False
-        assert runner.calls == 1
+        assert len(llm_gateway.client.chat.completions.calls) == 1
         snapshot = gateway.status_snapshot()
         lane = snapshot["lanes"]["test.lane"]
         assert snapshot["global_in_flight"] == 0
@@ -381,23 +308,13 @@ def test_lane_rpm_limit_applies_even_when_global_rpm_is_high() -> None:
     asyncio.run(scenario())
 
 
-def test_execute_rejects_invalid_reservation_before_provider_call() -> None:
+def test_execute_rejects_invalid_reservations_before_provider_call() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway)
 
         with pytest.raises(ValueError, match="reservation lane"):
-            await gateway.execute(
-                _spec(),
-                reservation=AgentCapacityReservation(lane="other.lane", acquired=True),
-            )
+            await gateway.execute(_spec(), reservation=AgentCapacityReservation(lane="other.lane", acquired=True))
 
         with pytest.raises(ValueError, match="acquired reservation"):
             await gateway.execute(
@@ -409,75 +326,24 @@ def test_execute_rejects_invalid_reservation_before_provider_call() -> None:
                 ),
             )
 
-        assert runner.calls == 0
-
-    asyncio.run(scenario())
-
-
-def test_execute_rejects_released_reservation_before_provider_call() -> None:
-    async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
         reservation = gateway.try_reserve("test.lane")
         await reservation.release()
-
         with pytest.raises(ValueError, match="active acquired reservation"):
             await gateway.execute(_spec(), reservation=reservation)
 
-        assert runner.calls == 0
-
-    asyncio.run(scenario())
-
-
-def test_execute_rejects_manual_acquired_reservation_before_provider_call() -> None:
-    async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
-
         with pytest.raises(ValueError, match="not issued by this gateway"):
-            await gateway.execute(
-                _spec(),
-                reservation=AgentCapacityReservation(lane="test.lane", acquired=True),
-            )
+            await gateway.execute(_spec(), reservation=AgentCapacityReservation(lane="test.lane", acquired=True))
 
-        assert runner.calls == 0
+        assert llm_gateway.client.chat.completions.calls == []
 
     asyncio.run(scenario())
 
 
 def test_execute_rejects_other_gateway_reservation_before_provider_call() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
-        other_gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=FakeRunner(),
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway)
+        other_gateway = _gateway()
         reservation = other_gateway.try_reserve("test.lane")
 
         try:
@@ -486,50 +352,34 @@ def test_execute_rejects_other_gateway_reservation_before_provider_call() -> Non
         finally:
             await reservation.release()
 
-        assert runner.calls == 0
+        assert llm_gateway.client.chat.completions.calls == []
 
     asyncio.run(scenario())
 
 
-def test_execute_reuses_model_client_for_same_stage_policy() -> None:
+def test_execute_reuses_chat_client_for_same_stage_policy() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
         llm_gateway = FakeLLMGateway()
-        gateway = AgentExecutionGateway(
-            llm_gateway=llm_gateway,
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        gateway = _gateway(llm_gateway=llm_gateway)
 
         await gateway.execute(_spec())
         await gateway.execute(_spec())
 
-        assert runner.calls == 2
+        assert len(llm_gateway.client.chat.completions.calls) == 2
         assert llm_gateway.openai_client_calls == [
-            {"model": "local-schema-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+            {"model": "local-json-object-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
         ]
 
     asyncio.run(scenario())
 
 
-def test_execute_uses_json_object_strategy_for_lane_capability() -> None:
+def test_execute_uses_registered_model_request_options() -> None:
     async def scenario() -> None:
-        llm_gateway = FakeJsonLLMGateway()
-        gateway = AgentExecutionGateway(
-            llm_gateway=llm_gateway,
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_json_object_policy(),
-            runner=FakeRunner(),
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_deepseek_policy())
 
         result = await gateway.execute(_spec())
 
-        assert result.final_output == Payload(value="json-object")
         assert result.audit.model == "deepseek-v4-flash"
         assert result.audit.provider_family == "deepseek"
         assert result.audit.output_strategy == "json_object"
@@ -546,48 +396,10 @@ def test_execute_uses_json_object_strategy_for_lane_capability() -> None:
     asyncio.run(scenario())
 
 
-def test_safety_net_path_uses_injected_runner_and_returns_safety_metadata() -> None:
+def test_circuit_open_fails_fast_without_provider_call() -> None:
     async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-            safety_net=InstructorSafetyNet(
-                base_url="https://example.com/v1",
-                api_key="test-key",
-                model="qwen3.6",
-                runner=runner,
-            ),
-        )
-
-        result = await gateway.execute(_spec())
-
-        assert isinstance(result.final_output, Payload)
-        assert runner.calls == 1
-        assert runner.input_payloads == ['{"x": 1}']
-        assert result.audit.parse_mode == "strict"
-        assert result.audit.safety_net == {"safety_net_used": False, "safety_net_retries": 0}
-        assert result.audit.trace_metadata["safety_net_used"] is False
-        assert result.audit.trace_metadata["parse_mode"] == "strict"
-
-    asyncio.run(scenario())
-
-
-def test_circuit_open_fails_fast_without_runner_call_after_threshold_one_failure() -> None:
-    async def scenario() -> None:
-        runner = FakeRunner()
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(failure_threshold=1),
-            runner=runner,
-        )
+        llm_gateway = FakeLLMGateway()
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_policy(failure_threshold=1))
         gateway.record_lane_failure("test.lane")
 
         with pytest.raises(AgentExecutionError) as err:
@@ -597,22 +409,16 @@ def test_circuit_open_fails_fast_without_runner_call_after_threshold_one_failure
         assert err.value.execution_started is False
         assert err.value.audit is not None
         assert err.value.audit.execution_started is False
-        assert runner.calls == 0
+        assert llm_gateway.client.chat.completions.calls == []
 
     asyncio.run(scenario())
 
 
 def test_timeout_maps_to_execution_error_with_started_audit() -> None:
     async def scenario() -> None:
-        runner = FakeRunner(delay_seconds=2)
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(timeout_seconds=1),
-            runner=runner,
-        )
+        completions = FakeJsonCompletions(delay_seconds=2)
+        llm_gateway = FakeLLMGateway(completions=completions)
+        gateway = _gateway(llm_gateway=llm_gateway, policy=_policy(timeout_seconds=1))
 
         with pytest.raises(AgentExecutionError) as err:
             await gateway.execute(_spec())
@@ -623,21 +429,14 @@ def test_timeout_maps_to_execution_error_with_started_audit() -> None:
         assert err.value.audit.status is AgentExecutionStatus.FAILED
         assert err.value.audit.execution_started is True
         assert err.value.audit.error_class is AgentExecutionErrorClass.TIMEOUT
-        assert runner.calls == 1
+        assert len(completions.calls) == 1
 
     asyncio.run(scenario())
 
 
 def test_status_snapshot_includes_lane_counters() -> None:
     async def scenario() -> None:
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(failure_threshold=1),
-            runner=FakeRunner(),
-        )
+        gateway = _gateway(policy=_policy(failure_threshold=1))
 
         reservation = gateway.try_reserve("test.lane")
         denied = gateway.try_reserve("test.lane")
@@ -650,6 +449,8 @@ def test_status_snapshot_includes_lane_counters() -> None:
         assert snapshot["global_in_flight"] == 1
         assert snapshot["lanes"]["test.lane"]["max_concurrency"] == 1
         assert snapshot["lanes"]["test.lane"]["timeout_seconds"] == 10.0
+        assert snapshot["lanes"]["test.lane"]["output_strategy"] == "json_object"
+        assert snapshot["lanes"]["test.lane"]["schema_enforcement"] == "client_validate"
         assert snapshot["lanes"]["test.lane"]["in_flight"] == 1
         assert snapshot["lanes"]["test.lane"]["circuit_state"] == "open"
         assert snapshot["lanes"]["test.lane"]["capacity_denied_total"] == 1
@@ -662,35 +463,27 @@ def test_status_snapshot_includes_lane_counters() -> None:
 
 
 @pytest.mark.parametrize(
-    ("runner", "expected_error"),
+    ("exception", "expected_error"),
     [
-        (FakeRunner(), None),
+        (None, None),
         (
-            FakeRunner(
-                exception=AgentExecutionError(
-                    AgentExecutionErrorClass.PROVIDER_ERROR,
-                    "provider failed",
-                    execution_started=True,
-                )
+            AgentExecutionError(
+                AgentExecutionErrorClass.PROVIDER_ERROR,
+                "provider failed",
+                execution_started=True,
             ),
             AgentExecutionError,
         ),
-        (FakeRunner(exception=RuntimeError("boom")), AgentExecutionError),
+        (RuntimeError("boom"), AgentExecutionError),
     ],
 )
 def test_execute_releases_internal_reservation_after_success_and_errors(
-    runner: FakeRunner,
+    exception: BaseException | None,
     expected_error: type[BaseException] | None,
 ) -> None:
     async def scenario() -> None:
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        llm_gateway = FakeLLMGateway(completions=FakeJsonCompletions(exception=exception))
+        gateway = _gateway(llm_gateway=llm_gateway)
 
         if expected_error is None:
             await gateway.execute(_spec())
@@ -708,20 +501,13 @@ def test_execute_releases_internal_reservation_after_success_and_errors(
 def test_execute_releases_internal_reservation_after_cancellation() -> None:
     async def scenario() -> None:
         entered = asyncio.Event()
-        runner = FakeRunner(delay_seconds=60, entered=entered)
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        completions = FakeJsonCompletions(delay_seconds=60, entered=entered)
+        gateway = _gateway(llm_gateway=FakeLLMGateway(completions=completions))
 
         task = asyncio.create_task(gateway.execute(_spec()))
         await asyncio.wait_for(entered.wait(), timeout=1)
         task.cancel()
-        with pytest.raises(asyncio.CancelledError):
+        with pytest.raises(AgentExecutionCancelled):
             await task
 
         snapshot = gateway.status_snapshot()
@@ -734,15 +520,8 @@ def test_execute_releases_internal_reservation_after_cancellation() -> None:
 def test_gateway_supervisor_cancellation_records_cancelled_audit_and_releases_reservation() -> None:
     async def scenario() -> None:
         entered = asyncio.Event()
-        runner = FakeRunner(delay_seconds=60, entered=entered)
-        gateway = AgentExecutionGateway(
-            llm_gateway=FakeLLMGateway(),
-            base_url="https://example.com/v1",
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
-            policy=_policy(),
-            runner=runner,
-        )
+        completions = FakeJsonCompletions(delay_seconds=60, entered=entered)
+        gateway = _gateway(llm_gateway=FakeLLMGateway(completions=completions))
 
         task = asyncio.create_task(gateway.execute(_spec()))
         await asyncio.wait_for(entered.wait(), timeout=1)
@@ -752,10 +531,6 @@ def test_gateway_supervisor_cancellation_records_cancelled_audit_and_releases_re
         assert running_snapshot["lanes"]["test.lane"]["provider_running"] == 1
 
         task.cancel()
-        exceptions = await asyncio.gather(task, return_exceptions=True)
-
-        assert len(exceptions) == 1
-        assert isinstance(exceptions[0], asyncio.CancelledError)
         with pytest.raises(AgentExecutionCancelled) as err:
             await task
         exc = err.value

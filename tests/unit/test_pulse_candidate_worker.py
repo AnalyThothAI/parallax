@@ -1964,7 +1964,7 @@ class FakeClient:
                 abstain_reason="cost_guard_research_only",
                 summary_zh="成本门控仅完成研究阶段，本次不进入付费最终判断。",
                 narrative_archetype="unclear",
-                narrative_thesis_zh="确定性成本门控判定该样本不需要 DeepSeek 最终判断。",
+                narrative_thesis_zh="确定性成本门控判定该样本不需要公开最终判断；系统保留研究审计并等待下一轮公开资格确认。",
                 bull_view=BullBearView(strength="absent"),
                 bear_view=BullBearView(strength="absent"),
                 playbook=TradePlaybook(

@@ -192,7 +192,7 @@ def test_json_output_schema_enables_strict_and_flattens_refs() -> None:
     serialized = json.dumps(flat)
     assert "$ref" not in serialized
     assert "$defs" not in serialized
-    # Expose underlying Pydantic class for InstructorSafetyNet fallback path.
+    # Expose underlying Pydantic class for application-side validation.
     assert schema.output_type is SignalAnalystMemo
 
 
@@ -360,7 +360,7 @@ def test_pulse_client_routes_stages_through_gateway_and_preserves_stage_audit_fi
     assert result.stage_audits[2].output_hash == "sha256:output-risk_portfolio_judge"
 
 
-def test_pulse_client_stage_plan_qwen_research_only_skips_deepseek_judge() -> None:
+def test_pulse_client_stage_plan_research_only_skips_public_judge() -> None:
     gateway = _FakeAgentGateway(
         {
             "signal_analyst": _signal_analyst_raw(["event:event-1"]),

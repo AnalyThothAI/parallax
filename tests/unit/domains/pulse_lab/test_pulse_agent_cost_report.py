@@ -73,10 +73,10 @@ def test_summarize_signal_pulse_agent_cost_rows_counts_cost_leak_signals() -> No
         step_rows,
         now_ms=NOW_MS,
         lookback_hours=24,
-        dry_run_policy={"skip_deepseek_display_status_prefixes": ["hidden_"]},
+        dry_run_policy={"skip_final_judge_display_status_prefixes": ["hidden_"]},
     )
 
-    assert report["deepseek"]["total_tokens"] == 1_000
+    assert report["final_judge"]["total_tokens"] == 1_000
     assert report["hidden_invalid_output"]["total_tokens"] == 800
     assert report["public_display"]["display_token_watch"] == 1
     assert report["backpressure"]["circuit_open_runs"] == 2
@@ -85,9 +85,9 @@ def test_summarize_signal_pulse_agent_cost_rows_counts_cost_leak_signals() -> No
         "extra_success_runs_same_fingerprint": 1,
     }
     assert report["predicted_savings"] == {
-        "deepseek_tokens_before": 1_000,
-        "deepseek_tokens_after": 200,
-        "deepseek_token_reduction_ratio": 0.8,
+        "final_judge_tokens_before": 1_000,
+        "final_judge_tokens_after": 200,
+        "final_judge_token_reduction_ratio": 0.8,
     }
 
 
@@ -108,7 +108,7 @@ def test_build_signal_pulse_agent_cost_report_uses_read_only_selects() -> None:
 
     assert report["window"]["lookback_hours"] == 4
     assert report["window"]["since_ms"] == NOW_MS - (4 * 60 * 60 * 1000)
-    assert report["deepseek"]["total_tokens"] == 42
+    assert report["final_judge"]["total_tokens"] == 42
     assert report["public_candidate_delta"]["display_trade_candidate"] == 1
     assert conn.executed_sql
     assert all(sql.strip().split(maxsplit=1)[0].upper() in {"SELECT", "WITH"} for sql in conn.executed_sql)
