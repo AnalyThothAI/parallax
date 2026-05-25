@@ -6,7 +6,6 @@ from decimal import Decimal
 from typing import Any
 
 from gmgn_twitter_intel.domains.macro_intel._constants import (
-    MACRO_CORE_CONCEPTS,
     MACRO_HISTORY_REQUIRED_CONCEPTS,
     MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
     MACRO_REQUIRED_STAT_POINTS,

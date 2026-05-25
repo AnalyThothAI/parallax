@@ -70,21 +70,6 @@ export function MacroModulePageFrame({
 
   return (
     <div className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
-      <section
-        className="macro-page-panel macro-page-panel-current macro-page-decision"
-        aria-label="数据状态"
-      >
-        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="数据状态" />
-        <p className="macro-page-summary">{macroReadSummary(module)}</p>
-        <ReadDetails record={currentRead} />
-        <RelatedRoutes routes={module.related_routes} />
-      </section>
-
-      <section className="macro-page-panel macro-page-transmission" aria-label="结构地图">
-        <SectionHead icon={GitBranch} meta={moduleLabel} title="结构地图" />
-        <TransmissionMap module={module} record={currentRead} />
-      </section>
-
       <section className="macro-page-kpi-strip" aria-label="关键指标">
         {module.tiles.length > 0 ? (
           module.tiles.map((tile, index) => (
@@ -120,6 +105,21 @@ export function MacroModulePageFrame({
             </div>
           ) : null}
         </div>
+      </section>
+
+      <section
+        className="macro-page-panel macro-page-panel-current macro-page-decision"
+        aria-label="数据状态"
+      >
+        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="数据状态" />
+        <p className="macro-page-summary">{macroReadSummary(module)}</p>
+        <ReadDetails record={currentRead} />
+        <RelatedRoutes routes={module.related_routes} />
+      </section>
+
+      <section className="macro-page-panel macro-page-transmission" aria-label="结构地图">
+        <SectionHead icon={GitBranch} meta={moduleLabel} title="结构地图" />
+        <TransmissionMap module={module} record={currentRead} />
       </section>
 
       <section

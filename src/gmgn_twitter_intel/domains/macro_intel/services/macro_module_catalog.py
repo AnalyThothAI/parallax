@@ -309,7 +309,9 @@ _MODULE_CONFIGS = {
         section="rates",
         required_concepts=("rates:dgs2", "rates:dgs10", "rates:dgs30"),
         optional_concepts=("rates:dgs3", "rates:dgs7", "rates:dgs20", "rates:10y2y"),
-        chart_specs=(MacroChartSpec("auction_curve_proxy", ("rates:dgs2", "rates:dgs7", "rates:dgs10", "rates:dgs30")),),
+        chart_specs=(
+            MacroChartSpec("auction_curve_proxy", ("rates:dgs2", "rates:dgs7", "rates:dgs10", "rates:dgs30")),
+        ),
         table_specs=(
             MacroTableSpec("auction_rate_proxy_table", ("rates:dgs2", "rates:dgs7", "rates:dgs10", "rates:dgs30")),
         ),
@@ -384,9 +386,15 @@ _MODULE_CONFIGS = {
         required_concepts=("fed:target_upper", "fed:target_lower", "fed:effr"),
         optional_concepts=("fed:fedfunds", "rates:dgs2", "rates:dgs10"),
         chart_specs=(
-            MacroChartSpec("fed_statement_policy_proxy", ("fed:target_upper", "fed:target_lower", "fed:effr", "fed:fedfunds")),
+            MacroChartSpec(
+                "fed_statement_policy_proxy", ("fed:target_upper", "fed:target_lower", "fed:effr", "fed:fedfunds")
+            ),
         ),
-        table_specs=(MacroTableSpec("fed_statement_proxy_table", ("fed:target_upper", "fed:target_lower", "fed:effr", "rates:dgs2")),),
+        table_specs=(
+            MacroTableSpec(
+                "fed_statement_proxy_table", ("fed:target_upper", "fed:target_lower", "fed:effr", "rates:dgs2")
+            ),
+        ),
         gap_codes=("fed_statement_text_missing", "fomc_minutes_missing", "fomc_calendar_missing"),
         related_routes=("/macro/fed", "/macro/fed/speeches", "/macro/rates/expectations"),
     ),
@@ -436,7 +444,18 @@ _MODULE_CONFIGS = {
         required_concepts=("liquidity:fed_assets", "liquidity:sofr"),
         optional_concepts=("liquidity:reserve_balances", "liquidity:on_rrp", "liquidity:tga"),
         chart_specs=(MacroChartSpec("transmission_chain", ("liquidity:fed_assets", "liquidity:sofr")),),
-        table_specs=(MacroTableSpec("transmission_nodes", ()),),
+        table_specs=(
+            MacroTableSpec(
+                "transmission_nodes",
+                (
+                    "liquidity:fed_assets",
+                    "liquidity:reserve_balances",
+                    "liquidity:on_rrp",
+                    "liquidity:tga",
+                    "liquidity:sofr",
+                ),
+            ),
+        ),
         gap_codes=(),
         related_routes=("/macro/liquidity", "/macro/liquidity/subsurface", "/macro/fed", "/macro/rates"),
     ),
@@ -450,7 +469,12 @@ _MODULE_CONFIGS = {
         required_concepts=("liquidity:fed_assets", "liquidity:reserve_balances"),
         optional_concepts=("liquidity:on_rrp", "liquidity:tga"),
         chart_specs=(MacroChartSpec("fed_balance_sheet", ("liquidity:fed_assets", "liquidity:reserve_balances")),),
-        table_specs=(MacroTableSpec("fed_balance_sheet_table", ("liquidity:fed_assets", "liquidity:reserve_balances", "liquidity:on_rrp", "liquidity:tga")),),
+        table_specs=(
+            MacroTableSpec(
+                "fed_balance_sheet_table",
+                ("liquidity:fed_assets", "liquidity:reserve_balances", "liquidity:on_rrp", "liquidity:tga"),
+            ),
+        ),
         gap_codes=(),
         related_routes=("/macro/liquidity", "/macro/liquidity/reserves", "/macro/liquidity/rrp-tga"),
     ),
@@ -464,7 +488,11 @@ _MODULE_CONFIGS = {
         required_concepts=("liquidity:nyfed_rrp",),
         optional_concepts=("liquidity:srf", "liquidity:on_rrp", "liquidity:sofr", "fed:iorb"),
         chart_specs=(MacroChartSpec("nyfed_operations", ("liquidity:nyfed_rrp", "liquidity:srf", "liquidity:on_rrp")),),
-        table_specs=(MacroTableSpec("nyfed_operations_table", ("liquidity:nyfed_rrp", "liquidity:srf", "liquidity:sofr", "fed:iorb")),),
+        table_specs=(
+            MacroTableSpec(
+                "nyfed_operations_table", ("liquidity:nyfed_rrp", "liquidity:srf", "liquidity:sofr", "fed:iorb")
+            ),
+        ),
         gap_codes=(),
         related_routes=("/macro/liquidity/rrp-tga", "/macro/liquidity/subsurface", "/macro/fed"),
     ),
@@ -478,7 +506,9 @@ _MODULE_CONFIGS = {
         required_concepts=("liquidity:on_rrp", "liquidity:tga"),
         optional_concepts=("liquidity:fed_assets", "liquidity:sofr", "fed:iorb"),
         chart_specs=(MacroChartSpec("rrp_tga_stack", ("liquidity:on_rrp", "liquidity:tga", "liquidity:fed_assets")),),
-        table_specs=(MacroTableSpec("rrp_tga_table", ("liquidity:on_rrp", "liquidity:tga", "liquidity:sofr", "fed:iorb")),),
+        table_specs=(
+            MacroTableSpec("rrp_tga_table", ("liquidity:on_rrp", "liquidity:tga", "liquidity:sofr", "fed:iorb")),
+        ),
         gap_codes=(),
         related_routes=("/macro/liquidity", "/macro/liquidity/fed-balance-sheet", "/macro/liquidity/subsurface"),
     ),
@@ -492,7 +522,11 @@ _MODULE_CONFIGS = {
         required_concepts=("liquidity:reserve_balances",),
         optional_concepts=("liquidity:fed_assets", "liquidity:sofr", "fed:iorb"),
         chart_specs=(MacroChartSpec("reserve_balances", ("liquidity:reserve_balances", "liquidity:fed_assets")),),
-        table_specs=(MacroTableSpec("reserve_balances_table", ("liquidity:reserve_balances", "liquidity:fed_assets", "liquidity:sofr")),),
+        table_specs=(
+            MacroTableSpec(
+                "reserve_balances_table", ("liquidity:reserve_balances", "liquidity:fed_assets", "liquidity:sofr")
+            ),
+        ),
         gap_codes=(),
         related_routes=("/macro/liquidity", "/macro/liquidity/fed-balance-sheet", "/macro/liquidity/subsurface"),
     ),
@@ -505,7 +539,9 @@ _MODULE_CONFIGS = {
         section="liquidity",
         required_concepts=("fx:broad_dollar", "fx:dxy"),
         optional_concepts=("fx:eurusd", "fx:usdjpy", "liquidity:sofr"),
-        chart_specs=(MacroChartSpec("global_dollar_pressure", ("fx:broad_dollar", "fx:dxy", "fx:eurusd", "fx:usdjpy")),),
+        chart_specs=(
+            MacroChartSpec("global_dollar_pressure", ("fx:broad_dollar", "fx:dxy", "fx:eurusd", "fx:usdjpy")),
+        ),
         table_specs=(MacroTableSpec("global_dollar_table", ("fx:broad_dollar", "fx:dxy", "fx:eurusd", "fx:usdjpy")),),
         gap_codes=("cross_currency_basis_missing", "global_dollar_funding_missing"),
         related_routes=("/macro/liquidity", "/macro/assets/fx", "/macro/liquidity/subsurface"),
@@ -520,7 +556,11 @@ _MODULE_CONFIGS = {
         required_concepts=("liquidity:sofr", "fed:iorb"),
         optional_concepts=("fed:effr", "fed:sofr_30d", "liquidity:srf"),
         chart_specs=(MacroChartSpec("subsurface_funding", ("liquidity:sofr", "fed:iorb", "fed:effr", "fed:sofr_30d")),),
-        table_specs=(MacroTableSpec("subsurface_funding_table", ("liquidity:sofr", "fed:iorb", "fed:effr", "fed:sofr_30d", "liquidity:srf")),),
+        table_specs=(
+            MacroTableSpec(
+                "subsurface_funding_table", ("liquidity:sofr", "fed:iorb", "fed:effr", "fed:sofr_30d", "liquidity:srf")
+            ),
+        ),
         gap_codes=("repo_intraday_pressure_missing",),
         related_routes=("/macro/rates/fed-funds", "/macro/liquidity/operations", "/macro/fed"),
     ),
@@ -567,7 +607,9 @@ _MODULE_CONFIGS = {
         required_concepts=("economy:gdp_real",),
         optional_concepts=("consumer:retail_sales", "labor:payrolls", "rates:dgs10"),
         chart_specs=(MacroChartSpec("real_gdp_history", ("economy:gdp_real", "consumer:retail_sales")),),
-        table_specs=(MacroTableSpec("real_gdp_table", ("economy:gdp_real", "consumer:retail_sales", "labor:payrolls")),),
+        table_specs=(
+            MacroTableSpec("real_gdp_table", ("economy:gdp_real", "consumer:retail_sales", "labor:payrolls")),
+        ),
         gap_codes=("gdp_nowcast_missing",),
         related_routes=("/macro/economy", "/macro/economy/employment", "/macro/economy/consumer"),
     ),
@@ -580,8 +622,14 @@ _MODULE_CONFIGS = {
         section="economy",
         required_concepts=("labor:unemployment", "labor:payrolls", "labor:initial_claims"),
         optional_concepts=("fed:target_upper", "rates:dgs2"),
-        chart_specs=(MacroChartSpec("employment_dashboard", ("labor:unemployment", "labor:payrolls", "labor:initial_claims")),),
-        table_specs=(MacroTableSpec("employment_table", ("labor:unemployment", "labor:payrolls", "labor:initial_claims", "rates:dgs2")),),
+        chart_specs=(
+            MacroChartSpec("employment_dashboard", ("labor:unemployment", "labor:payrolls", "labor:initial_claims")),
+        ),
+        table_specs=(
+            MacroTableSpec(
+                "employment_table", ("labor:unemployment", "labor:payrolls", "labor:initial_claims", "rates:dgs2")
+            ),
+        ),
         gap_codes=("jolts_missing", "average_hourly_earnings_missing"),
         related_routes=("/macro/economy", "/macro/economy/inflation", "/macro/rates/expectations"),
     ),
@@ -603,7 +651,13 @@ _MODULE_CONFIGS = {
         table_specs=(
             MacroTableSpec(
                 "inflation_table",
-                ("inflation:cpi", "inflation:core_cpi", "inflation:ppi", "inflation:10y_breakeven", "inflation:5y5y_forward"),
+                (
+                    "inflation:cpi",
+                    "inflation:core_cpi",
+                    "inflation:ppi",
+                    "inflation:10y_breakeven",
+                    "inflation:5y5y_forward",
+                ),
             ),
         ),
         gap_codes=("inflation_yoy_transform_missing",),
@@ -618,8 +672,15 @@ _MODULE_CONFIGS = {
         section="economy",
         required_concepts=("consumer:retail_sales", "consumer:umich_sentiment"),
         optional_concepts=("labor:unemployment", "inflation:cpi", "asset:spx"),
-        chart_specs=(MacroChartSpec("consumer_dashboard", ("consumer:retail_sales", "consumer:umich_sentiment", "asset:spx")),),
-        table_specs=(MacroTableSpec("consumer_table", ("consumer:retail_sales", "consumer:umich_sentiment", "labor:unemployment", "inflation:cpi")),),
+        chart_specs=(
+            MacroChartSpec("consumer_dashboard", ("consumer:retail_sales", "consumer:umich_sentiment", "asset:spx")),
+        ),
+        table_specs=(
+            MacroTableSpec(
+                "consumer_table",
+                ("consumer:retail_sales", "consumer:umich_sentiment", "labor:unemployment", "inflation:cpi"),
+            ),
+        ),
         gap_codes=("personal_spending_missing", "consumer_credit_missing"),
         related_routes=("/macro/economy", "/macro/economy/gdp", "/macro/assets/equities"),
     ),
@@ -635,7 +696,12 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("volatility_context", ("vol:vix", "vol:vix3m", "asset:vixy")),),
         table_specs=(MacroTableSpec("volatility_snapshot", ("vol:vix", "vol:vix3m", "asset:vixy", "asset:spx")),),
         gap_codes=("options_iv_rv_missing",),
-        related_routes=("/macro/volatility/dashboard", "/macro/volatility/vix", "/macro/assets/equities", "/macro/credit"),
+        related_routes=(
+            "/macro/volatility/dashboard",
+            "/macro/volatility/vix",
+            "/macro/assets/equities",
+            "/macro/credit",
+        ),
     ),
     "volatility/dashboard": MacroModuleConfig(
         module_id="volatility/dashboard",
@@ -647,7 +713,11 @@ _MODULE_CONFIGS = {
         required_concepts=("vol:vix", "vol:vix3m"),
         optional_concepts=("asset:vixy", "credit:hy_oas", "asset:spx", "asset:qqq"),
         chart_specs=(MacroChartSpec("volatility_risk_matrix", ("vol:vix", "vol:vix3m", "credit:hy_oas", "asset:spx")),),
-        table_specs=(MacroTableSpec("volatility_risk_table", ("vol:vix", "vol:vix3m", "asset:vixy", "credit:hy_oas", "asset:spx")),),
+        table_specs=(
+            MacroTableSpec(
+                "volatility_risk_table", ("vol:vix", "vol:vix3m", "asset:vixy", "credit:hy_oas", "asset:spx")
+            ),
+        ),
         gap_codes=("options_iv_rv_missing", "skew_surface_missing"),
         related_routes=("/macro/volatility/vix", "/macro/credit/stress", "/macro/assets/equities"),
     ),
@@ -673,8 +743,17 @@ _MODULE_CONFIGS = {
         question="信用利差是在确认风险偏好，还是预警去杠杆？",
         section="credit",
         required_concepts=("credit:hy_oas", "credit:ig_oas"),
-        optional_concepts=("credit:bbb_oas", "credit:hy_bb_oas", "credit:hy_b_oas", "credit:hy_ccc_oas", "asset:hyg", "asset:lqd"),
-        chart_specs=(MacroChartSpec("credit_spreads", ("credit:ig_oas", "credit:bbb_oas", "credit:hy_oas", "credit:hy_ccc_oas")),),
+        optional_concepts=(
+            "credit:bbb_oas",
+            "credit:hy_bb_oas",
+            "credit:hy_b_oas",
+            "credit:hy_ccc_oas",
+            "asset:hyg",
+            "asset:lqd",
+        ),
+        chart_specs=(
+            MacroChartSpec("credit_spreads", ("credit:ig_oas", "credit:bbb_oas", "credit:hy_oas", "credit:hy_ccc_oas")),
+        ),
         table_specs=(
             MacroTableSpec(
                 "credit_oas_ladder",
@@ -691,7 +770,12 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=(),
-        related_routes=("/macro/credit/stress", "/macro/credit/cds", "/macro/volatility/dashboard", "/macro/assets/bonds"),
+        related_routes=(
+            "/macro/credit/stress",
+            "/macro/credit/cds",
+            "/macro/volatility/dashboard",
+            "/macro/assets/bonds",
+        ),
     ),
     "credit/cds": MacroModuleConfig(
         module_id="credit/cds",
@@ -702,8 +786,15 @@ _MODULE_CONFIGS = {
         section="credit",
         required_concepts=("credit:ig_oas", "credit:hy_oas"),
         optional_concepts=("credit:bbb_oas", "credit:hy_bb_oas", "asset:hyg", "asset:lqd"),
-        chart_specs=(MacroChartSpec("cds_public_proxy", ("credit:ig_oas", "credit:hy_oas", "credit:bbb_oas", "asset:hyg")),),
-        table_specs=(MacroTableSpec("cds_proxy_table", ("credit:ig_oas", "credit:hy_oas", "credit:bbb_oas", "credit:hy_bb_oas", "asset:hyg", "asset:lqd")),),
+        chart_specs=(
+            MacroChartSpec("cds_public_proxy", ("credit:ig_oas", "credit:hy_oas", "credit:bbb_oas", "asset:hyg")),
+        ),
+        table_specs=(
+            MacroTableSpec(
+                "cds_proxy_table",
+                ("credit:ig_oas", "credit:hy_oas", "credit:bbb_oas", "credit:hy_bb_oas", "asset:hyg", "asset:lqd"),
+            ),
+        ),
         gap_codes=("single_name_cds_paid_missing", "cdx_markit_paid_missing"),
         related_routes=("/macro/credit", "/macro/credit/stress", "/macro/volatility/dashboard"),
     ),
@@ -716,11 +807,21 @@ _MODULE_CONFIGS = {
         section="credit",
         required_concepts=("credit:hy_oas", "credit:ig_oas", "credit:hy_ccc_oas"),
         optional_concepts=("credit:hy_yield", "credit:ig_yield", "asset:hyg", "asset:lqd", "vol:vix"),
-        chart_specs=(MacroChartSpec("credit_stress_stack", ("credit:ig_oas", "credit:hy_oas", "credit:hy_ccc_oas", "vol:vix")),),
+        chart_specs=(
+            MacroChartSpec("credit_stress_stack", ("credit:ig_oas", "credit:hy_oas", "credit:hy_ccc_oas", "vol:vix")),
+        ),
         table_specs=(
             MacroTableSpec(
                 "credit_stress_table",
-                ("credit:ig_oas", "credit:hy_oas", "credit:hy_ccc_oas", "credit:ig_yield", "credit:hy_yield", "asset:hyg", "asset:lqd"),
+                (
+                    "credit:ig_oas",
+                    "credit:hy_oas",
+                    "credit:hy_ccc_oas",
+                    "credit:ig_yield",
+                    "credit:hy_yield",
+                    "asset:hyg",
+                    "asset:lqd",
+                ),
             ),
         ),
         gap_codes=("sloos_missing", "loan_quality_missing", "dealer_inventory_missing"),

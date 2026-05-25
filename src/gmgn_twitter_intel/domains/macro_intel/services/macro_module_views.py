@@ -44,7 +44,9 @@ def build_macro_module_view(
     tables = [_table(spec, feature_map) for spec in config.table_specs if spec.table_id != "cex_perp_board"]
     if config.module_id == "assets/crypto-derivatives":
         tables.append(_cex_table(cex_board))
-    tables.append(_availability_table(config=config, feature_map=feature_map, concept_keys=concept_keys, data_gaps=data_gaps))
+    tables.append(
+        _availability_table(config=config, feature_map=feature_map, concept_keys=concept_keys, data_gaps=data_gaps)
+    )
 
     tiles = [_tile(concept_key, feature_map[concept_key]) for concept_key in concept_keys if concept_key in feature_map]
     return _ordered_payload(
@@ -102,7 +104,11 @@ def _missing_view(
             _cex_table(cex_board) if spec.table_id == "cex_perp_board" else _missing_table(spec)
             for spec in config.table_specs
         ]
-        + [_availability_table(config=config, feature_map={}, concept_keys=_module_concept_keys(config), data_gaps=gaps)],
+        + [
+            _availability_table(
+                config=config, feature_map={}, concept_keys=_module_concept_keys(config), data_gaps=gaps
+            )
+        ],
         read={
             "headline": f"{config.title}：缺少快照",
             "regime_label": "数据缺口",

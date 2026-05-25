@@ -190,11 +190,7 @@ def _runner_diagnostics_payload(diagnostics: Mapping[str, Any]) -> dict[str, Any
 
 def _sync_import_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
     imported_ids = list(summary.get("imported_observation_ids") or [])
-    return {
-        key: _json_ready(value)
-        for key, value in summary.items()
-        if key != "imported_observation_ids"
-    } | {
+    return {key: _json_ready(value) for key, value in summary.items() if key != "imported_observation_ids"} | {
         "imported_observation_count": len(imported_ids),
         "imported_observation_sample": _edge_sample(imported_ids),
     }
