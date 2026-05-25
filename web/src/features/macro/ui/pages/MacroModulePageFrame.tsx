@@ -4,6 +4,17 @@ import type {
   MacroModuleView,
   MacroSemanticRecord,
 } from "@lib/types";
+import {
+  Activity,
+  BarChart3,
+  Database,
+  GitBranch,
+  ListChecks,
+  ShieldAlert,
+  Table2,
+  type LucideIcon,
+} from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { useMacroSeriesQuery } from "../../api/useMacroSeriesQuery";
 import {
@@ -54,16 +65,23 @@ export function MacroModulePageFrame({
   const currentRead = readRecord(module);
   const evidenceGroups = groupedEvidence(module);
   const evidenceCount = evidenceGroups.reduce((count, group) => count + group.items.length, 0);
+  const hasSupportingTable = showSupportingTable && Boolean(supportingTable.rows?.length);
 
   return (
     <div className="macro-page-layout" aria-label={`${moduleLabel}模块页面`}>
-      <section className="macro-page-panel macro-page-panel-current" aria-label="当前解读">
-        <div className="macro-page-section-head">
-          <h3>当前解读</h3>
-          <span>{macroStatusLabel(module)}</span>
-        </div>
+      <section
+        className="macro-page-panel macro-page-panel-current macro-page-decision"
+        aria-label="当前解读"
+      >
+        <SectionHead icon={Activity} meta={macroStatusLabel(module)} title="当前解读" />
         <p className="macro-page-summary">{macroReadSummary(module)}</p>
         <ReadDetails record={currentRead} />
+        <RelatedRoutes routes={module.related_routes} />
+      </section>
+
+      <section className="macro-page-panel macro-page-transmission" aria-label="宏观传导图">
+        <SectionHead icon={GitBranch} meta={moduleLabel} title="宏观传导图" />
+        <TransmissionMap module={module} record={currentRead} />
       </section>
 
       <section className="macro-page-kpi-strip" aria-label="关键指标">
@@ -76,30 +94,38 @@ export function MacroModulePageFrame({
         )}
       </section>
 
-      <section className="macro-page-panel macro-page-panel-primary" aria-label="核心图表">
-        <div className="macro-page-section-head">
-          <h3>核心图表</h3>
-          <span>{chartStatusLabel(primaryChart)}</span>
+      <section
+        className="macro-page-panel macro-page-panel-primary macro-page-market-board"
+        aria-label="图表与市场板"
+        data-has-table={hasSupportingTable ? "true" : "false"}
+      >
+        <SectionHead icon={BarChart3} meta={chartStatusLabel(primaryChart)} title="图表与市场板" />
+        <div className="macro-page-chart-table-grid">
+          <div className="macro-page-chart-slot">
+            <PrimaryChart
+              chart={primaryChart}
+              moduleId={moduleId}
+              seriesData={seriesQuery.data}
+              seriesLoading={shouldFetchSeries && seriesQuery.isLoading}
+            />
+          </div>
+          {showSupportingTable ? (
+            <div className="macro-page-table-slot">
+              <div className="macro-page-table-title">
+                <Table2 aria-hidden="true" />
+                <span>{tableCaption(supportingTable)}</span>
+              </div>
+              <MacroDataTable caption={tableCaption(supportingTable)} table={supportingTable} />
+            </div>
+          ) : null}
         </div>
-        <PrimaryChart
-          chart={primaryChart}
-          moduleId={moduleId}
-          seriesData={seriesQuery.data}
-          seriesLoading={shouldFetchSeries && seriesQuery.isLoading}
-        />
       </section>
 
-      {showSupportingTable ? (
-        <section className="macro-page-panel" aria-label="支撑表格">
-          <MacroDataTable caption={tableCaption(supportingTable)} table={supportingTable} />
-        </section>
-      ) : null}
-
-      <section className="macro-page-panel" aria-label="证据板">
-        <div className="macro-page-section-head">
-          <h3>证据板</h3>
-          <span>{String(evidenceCount)}</span>
-        </div>
+      <section
+        className="macro-page-panel macro-page-evidence-panel"
+        aria-label="交易员证据"
+      >
+        <SectionHead icon={ListChecks} meta={`${String(evidenceCount)} 条`} title="交易员证据" />
         {evidenceCount > 0 ? (
           <div className="macro-page-evidence-grid">
             {evidenceGroups.map((group) => (
@@ -111,26 +137,30 @@ export function MacroModulePageFrame({
         )}
       </section>
 
-      <section className="macro-page-panel" aria-label="数据源">
-        <MacroSourceTable caption="数据源" source={module.provenance} />
-      </section>
+      <section className="macro-page-quality-grid" aria-label="数据质量">
+        <section className="macro-page-panel macro-page-source-panel" aria-label="数据源">
+          <SectionHead icon={Database} meta={module.snapshot.projection_version} title="数据源" />
+          <MacroSourceTable caption="数据源" source={module.provenance} />
+        </section>
 
-      <section className="macro-page-panel" aria-label="数据缺口">
-        <div className="macro-page-section-head">
-          <h3>数据缺口</h3>
-          <span>{String(module.data_gaps.length)}</span>
-        </div>
-        {module.data_gaps.length > 0 ? (
-          <div className="macro-page-chip-list">
-            {module.data_gaps.map((gap, index) => (
-              <span className="macro-page-chip" key={`${index}:${formatMacroScalar(gap)}`}>
-                {formatMacroScalar(gap)}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <PageState label="module_data_gaps_clear" />
-        )}
+        <section className="macro-page-panel macro-page-gap-panel" aria-label="数据缺口">
+          <SectionHead
+            icon={ShieldAlert}
+            meta={String(module.data_gaps.length)}
+            title="数据缺口"
+          />
+          {module.data_gaps.length > 0 ? (
+            <div className="macro-page-chip-list">
+              {module.data_gaps.map((gap, index) => (
+                <span className="macro-page-chip" key={`${index}:${formatMacroScalar(gap)}`}>
+                  {formatMacroScalar(gap)}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <PageState label="module_data_gaps_clear" />
+          )}
+        </section>
       </section>
     </div>
   );
@@ -191,7 +221,7 @@ function KpiTile({ tile }: { tile: MacroModuleTile }) {
     stringValue(tile.quality_label) ??
     stringValue(tile.delta_label);
   return (
-    <div className="macro-page-kpi">
+    <div className="macro-page-kpi" data-quality={stringValue(tile.quality) ?? undefined}>
       <span>
         <small>{eyebrow}</small>
         <b>{title}</b>
@@ -201,6 +231,26 @@ function KpiTile({ tile }: { tile: MacroModuleTile }) {
         {unitLabel ? <em>{unitLabel}</em> : null}
       </strong>
       {footer ? <small>{footer}</small> : null}
+    </div>
+  );
+}
+
+function SectionHead({
+  icon: Icon,
+  meta,
+  title,
+}: {
+  icon: LucideIcon;
+  meta?: unknown;
+  title: string;
+}) {
+  return (
+    <div className="macro-page-section-head">
+      <h3>
+        <Icon aria-hidden="true" />
+        {title}
+      </h3>
+      {hasMacroValue(meta) ? <span>{formatMacroScalar(meta)}</span> : null}
     </div>
   );
 }
@@ -221,6 +271,41 @@ function ReadDetails({ record }: { record: MacroSemanticRecord }) {
           <span>{label}</span>
           <b>{formatMacroScalar(value)}</b>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function TransmissionMap({
+  module,
+  record,
+}: {
+  module: MacroModuleView;
+  record: MacroSemanticRecord;
+}) {
+  const nodes = transmissionNodes(module, record);
+  return (
+    <ol className="macro-page-transmission-map">
+      {nodes.map((node, index) => (
+        <li className="macro-page-transmission-node" key={`${node.label}:${index}`}>
+          <span>{node.label}</span>
+          <b>{node.value}</b>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function RelatedRoutes({ routes }: { routes: MacroModuleView["related_routes"] }) {
+  if (routes.length === 0) {
+    return null;
+  }
+  return (
+    <div className="macro-page-related-routes" aria-label="相关页面">
+      {routes.slice(0, 4).map((route) => (
+        <Link key={`${route.href}:${route.label}`} to={route.href}>
+          {route.label}
+        </Link>
       ))}
     </div>
   );
@@ -312,6 +397,42 @@ function hasMacroValue(value: unknown): boolean {
   return false;
 }
 
+function transmissionNodes(
+  module: MacroModuleView,
+  record: MacroSemanticRecord,
+): Array<{ label: string; value: string }> {
+  const nodes = TRANSMISSION_FIELDS.reduce<Array<{ label: string; value: string }>>(
+    (items, field) => {
+      const value = firstFormattedValue(record, field.keys);
+      if (value) {
+        items.push({ label: field.label, value });
+      }
+      return items;
+    },
+    [],
+  );
+  if (nodes.length > 0) {
+    return nodes;
+  }
+  return [
+    {
+      label: "模块状态",
+      value:
+        stringValue(module.snapshot.status_label) ??
+        stringValue(module.snapshot.status) ??
+        "状态待更新",
+    },
+  ];
+}
+
+function firstFormattedValue(
+  record: MacroSemanticRecord,
+  keys: ReadonlyArray<string>,
+): string | null {
+  const value = keys.map((key) => record[key]).find(hasMacroValue);
+  return value === undefined ? null : formatMacroScalar(value);
+}
+
 function PageState({ label }: { label: string }) {
   return (
     <div className="macro-page-state" role="status">
@@ -337,6 +458,13 @@ const READ_FIELDS = [
   { key: "confidence_label", label: "置信度" },
   { key: "crypto_read", label: "加密影响" },
   { key: "token_impact", label: "代币影响" },
+] as const;
+
+const TRANSMISSION_FIELDS = [
+  { keys: ["regime_label", "regime"], label: "宏观状态" },
+  { keys: ["confidence_label", "confidence"], label: "置信度" },
+  { keys: ["crypto_read"], label: "加密影响" },
+  { keys: ["token_impact"], label: "代币影响" },
 ] as const;
 
 type EvidenceGroupModel = {

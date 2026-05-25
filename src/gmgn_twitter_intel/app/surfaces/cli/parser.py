@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     macro_import_bundle = macro_subcommands.add_parser("import-bundle", help="import a macrodata-cli bundle envelope")
     macro_import_bundle.add_argument("--file", default=None, help="path to macrodata-cli JSON envelope")
     macro_import_bundle.add_argument("--stdin", action="store_true", help="read macrodata-cli JSON envelope from stdin")
+    macro_sync = macro_subcommands.add_parser("sync", help="fetch and import a macrodata-cli history bundle")
+    macro_sync.add_argument("--bundle", required=True, help="macrodata bundle name")
+    macro_sync.add_argument("--start", required=True, help="history start date (YYYY-MM-DD)")
+    macro_sync.add_argument("--end", required=True, help="history end date (YYYY-MM-DD)")
+    macro_sync.add_argument("--project", action="store_true", help="rebuild the macro view snapshot after import")
     macro_subcommands.add_parser("project-once", help="rebuild the latest macro view snapshot once")
     macro_subcommands.add_parser("status", help="print macro import and projection status")
 

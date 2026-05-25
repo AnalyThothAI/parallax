@@ -1,5 +1,7 @@
 # Macro Workbench Hard-Cut Root Fix Implementation Plan
 
+> **Superseded (2026-05-25):** Replaced by `docs/superpowers/specs/active/2026-05-25-macro-terminal-hard-cut-spec-cn.md` and `docs/superpowers/plans/active/2026-05-25-macro-terminal-hard-cut-plan-cn.md`. Kept for historical context; do not use as the current execution source.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Hard-cut `/macro` from a debug-like module shell into a readable macro terminal backed by real history readiness, semantic backend contracts, and non-compat frontend rendering.

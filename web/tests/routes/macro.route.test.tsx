@@ -123,6 +123,10 @@ describe("macro route", () => {
     expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
     expect(screen.getByText("美股风险：等待小盘确认")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "宏观传导图" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "图表与市场板" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "交易员证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据质量" })).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
         token: "secret",

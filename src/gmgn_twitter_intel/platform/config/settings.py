@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import secrets
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -531,6 +532,15 @@ class MacrodataProviderConfig(BaseModel):
     enabled: bool = True
     quote_timeout_seconds: float = Field(default=5.0, gt=0)
     quote_cache_ttl_seconds: float = Field(default=30.0, ge=0)
+    fred_api_key_env: str | None = "FINANCE_FRED_API_KEY"
+
+    @field_validator("fred_api_key_env", mode="before")
+    @classmethod
+    def parse_optional_env_name(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class ProvidersConfig(BaseModel):
@@ -1676,6 +1686,17 @@ class Settings(BaseModel):
         return self.providers.macrodata.quote_cache_ttl_seconds
 
     @property
+    def macrodata_fred_api_key_env(self) -> str | None:
+        return self.providers.macrodata.fred_api_key_env
+
+    @property
+    def macrodata_fred_api_key_configured(self) -> bool:
+        env_name = self.macrodata_fred_api_key_env
+        if not env_name:
+            return False
+        return bool(os.environ.get(env_name, "").strip())
+
+    @property
     def upstream_chains(self) -> tuple[str, ...]:
         return self.upstream.chains
 
@@ -1820,6 +1841,11 @@ providers:
     cex_universe_quote_symbol: "USDT"
     cex_universe_contract_type: "PERPETUAL"
     timeout_seconds: 15
+  macrodata:
+    enabled: true
+    quote_timeout_seconds: 5
+    quote_cache_ttl_seconds: 30
+    fred_api_key_env: "FINANCE_FRED_API_KEY"
 
 {_default_news_intel_yaml()}
 

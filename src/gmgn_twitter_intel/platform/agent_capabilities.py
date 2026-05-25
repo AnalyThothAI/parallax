@@ -82,6 +82,13 @@ class AgentCapabilityProfile(BaseModel):
 
 
 _MODEL_CAPABILITY_DEFAULTS: dict[str, AgentCapabilityProfile] = {
+    "qwen3.6": AgentCapabilityProfile(
+        provider_family=AgentProviderFamily.OPENAI_COMPATIBLE,
+        output_strategy=AgentOutputStrategy.JSON_OBJECT,
+        schema_enforcement=AgentSchemaEnforcement.CLIENT_VALIDATE,
+        client_validation_retries=1,
+        request_options=AgentRequestOptions(extra_body={"chat_template_kwargs": {"enable_thinking": False}}),
+    ),
     "deepseek-v4-flash": AgentCapabilityProfile(
         provider_family=AgentProviderFamily.DEEPSEEK,
         output_strategy=AgentOutputStrategy.JSON_OBJECT,

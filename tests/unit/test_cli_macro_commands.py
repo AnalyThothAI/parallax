@@ -69,6 +69,117 @@ def test_macro_project_once_and_status_parsers() -> None:
     assert status.macro_command == "status"
 
 
+def test_macro_sync_parser_accepts_history_args() -> None:
+    args = build_parser().parse_args(
+        ["macro", "sync", "--bundle", "macro-core", "--start", "2026-01-01", "--end", "2026-05-21", "--project"]
+    )
+
+    assert args.command == "macro"
+    assert args.macro_command == "sync"
+    assert args.bundle == "macro-core"
+    assert args.start == "2026-01-01"
+    assert args.end == "2026-05-21"
+    assert args.project is True
+
+
+def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) -> None:
+    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+
+    secret = "dummy-fred-secret"
+    calls: list[dict[str, object]] = []
+
+    class Settings:
+        macrodata_fred_api_key_env = "APP_FRED_KEY"
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps(ENVELOPE)
+        stderr = f"warning without {secret}"
+
+    def fake_run(command, *, env, capture_output, text, check):
+        calls.append(
+            {
+                "command": command,
+                "env_fred_api_key": env.get("FRED_API_KEY"),
+                "capture_output": capture_output,
+                "text": text,
+                "check": check,
+            }
+        )
+        return Completed()
+
+    monkeypatch.setenv("APP_FRED_KEY", secret)
+    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-05-21",
+    )
+
+    assert result.envelope == ENVELOPE
+    assert calls == [
+        {
+            "command": [
+                "uv",
+                "run",
+                "macrodata",
+                "bundle",
+                "history",
+                "macro-core",
+                "--start",
+                "2026-01-01",
+                "--end",
+                "2026-05-21",
+            ],
+            "env_fred_api_key": secret,
+            "capture_output": True,
+            "text": True,
+            "check": False,
+        }
+    ]
+    rendered = json.dumps(result.diagnostics)
+    assert result.diagnostics == {
+        "fred_api_key_env": "APP_FRED_KEY",
+        "fred_api_key_configured": True,
+        "command": calls[0]["command"],
+        "returncode": 0,
+    }
+    assert secret not in rendered
+    assert secret not in " ".join(calls[0]["command"])
+
+
+def test_macrodata_runner_uses_default_fred_env_when_unset(monkeypatch) -> None:
+    from gmgn_twitter_intel.integrations.macrodata.runner import MacrodataBundleRunner
+
+    calls: list[dict[str, object]] = []
+
+    class Settings:
+        macrodata_fred_api_key_env = None
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps(ENVELOPE)
+        stderr = ""
+
+    def fake_run(command, *, env, capture_output, text, check):
+        calls.append({"command": command, "env_has_fred": "FRED_API_KEY" in env})
+        return Completed()
+
+    monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
+    monkeypatch.setattr("gmgn_twitter_intel.integrations.macrodata.runner.subprocess.run", fake_run)
+
+    result = MacrodataBundleRunner(settings=Settings()).history_bundle(
+        bundle="macro-core",
+        start="2026-01-01",
+        end="2026-05-21",
+    )
+
+    assert result.diagnostics["fred_api_key_env"] == "FINANCE_FRED_API_KEY"
+    assert result.diagnostics["fred_api_key_configured"] is False
+    assert calls[0]["env_has_fred"] is False
+
+
 def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
 
@@ -91,6 +202,84 @@ def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypa
     assert repo.observations[0]["source_priority"] == 100
     assert repo.conn.commits == 0
     assert repo.transaction_events == ["commit"]
+
+
+def test_macro_sync_imports_runner_envelope_without_projection(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+
+    repo = FakeMacroIntelRepository()
+    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+
+    class FakeRunner:
+        def __init__(self, *, settings: object) -> None:
+            self.settings = settings
+
+        def history_bundle(self, *, bundle: str, start: str, end: str):
+            assert (bundle, start, end) == ("macro-core", "2026-01-01", "2026-05-21")
+            return macro_module.MacrodataBundleRunResult(
+                envelope=ENVELOPE,
+                diagnostics={
+                    "fred_api_key_env": "APP_FRED_KEY",
+                    "fred_api_key_configured": True,
+                    "command": ["uv", "run", "macrodata"],
+                    "returncode": 0,
+                },
+            )
+
+    monkeypatch.setattr(macro_module, "MacrodataBundleRunner", FakeRunner)
+    stdout = io.StringIO()
+
+    code = main(
+        ["macro", "sync", "--bundle", "macro-core", "--start", "2026-01-01", "--end", "2026-05-21"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["data"]["import"]["bundle_name"] == "macro-core"
+    assert payload["data"]["projection"] is None
+    assert payload["data"]["fred_api_key_env"] == "APP_FRED_KEY"
+    assert payload["data"]["fred_api_key_configured"] is True
+    assert repo.observations[0]["series_key"] == "nyfed:SOFR"
+    assert repo.snapshots == []
+
+
+def test_macro_sync_optionally_projects_after_import(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import macro as macro_module
+
+    repo = FakeMacroIntelRepository()
+    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+
+    class FakeRunner:
+        def __init__(self, *, settings: object) -> None:
+            self.settings = settings
+
+        def history_bundle(self, *, bundle: str, start: str, end: str):
+            return macro_module.MacrodataBundleRunResult(
+                envelope=ENVELOPE,
+                diagnostics={
+                    "fred_api_key_env": "FINANCE_FRED_API_KEY",
+                    "fred_api_key_configured": False,
+                    "command": ["uv", "run", "macrodata"],
+                    "returncode": 0,
+                },
+            )
+
+    monkeypatch.setattr(macro_module, "MacrodataBundleRunner", FakeRunner)
+    stdout = io.StringIO()
+
+    code = main(
+        ["macro", "sync", "--bundle", "macro-core", "--start", "2026-01-01", "--end", "2026-05-21", "--project"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["data"]["projection"]["projection_version"] == "macro_regime_v4"
+    assert payload["data"]["projection"]["snapshot_id"] == "macro-view:macro_regime_v4:1779000000000"
+    assert len(repo.snapshots) == 1
 
 
 def test_macro_import_bundle_from_stdin_dispatches_to_importer(monkeypatch) -> None:
@@ -214,16 +403,21 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     repo = FakeMacroIntelRepository()
     repo.latest_import = {"run_id": "run-1", "bundle_name": "macro-core", "completed_at_ms": NOW_MS}
     repo.latest = {"snapshot_id": "snapshot-1", "status": "partial", "computed_at_ms": NOW_MS}
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
+    monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
     stdout = io.StringIO()
 
     code = main(["macro", "status"], stdout=stdout)
 
+    output = stdout.getvalue()
     assert code == 0
-    assert json.loads(stdout.getvalue()) == {
+    assert "dummy-fred-secret" not in output
+    assert json.loads(output) == {
         "ok": True,
         "data": {
             "migration_ready": True,
+            "fred_api_key_env": "APP_FRED_KEY",
+            "fred_api_key_configured": True,
             "observations_count": 0,
             "concept_count": 0,
             "history_ready": True,
@@ -291,14 +485,25 @@ def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> Non
     ]
 
 
-def _patch_macro_dependencies(monkeypatch, macro_module, repo: FakeMacroIntelRepository) -> None:
+def _patch_macro_dependencies(
+    monkeypatch,
+    macro_module,
+    repo: FakeMacroIntelRepository,
+    *,
+    settings: object | None = None,
+) -> None:
     @contextmanager
     def fake_repositories(_settings: object):
         yield FakeRepositorySession(repo)
 
-    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: object())
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings or FakeSettings())
     monkeypatch.setattr(macro_module, "repositories", fake_repositories)
     monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
+
+
+class FakeSettings:
+    def __init__(self, *, fred_env: str | None = None) -> None:
+        self.macrodata_fred_api_key_env = fred_env
 
 
 class FakeConnection:

@@ -156,7 +156,7 @@ def _spec(lane: str = "test.lane") -> AgentStageSpec:
 
 def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
+        defaults=AgentRuntimeDefaultsPolicy(model="local-schema-model"),
         global_max_concurrency=1,
         global_rpm_limit=1000,
         lanes={
@@ -175,7 +175,7 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
 
 def _pulse_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
+        defaults=AgentRuntimeDefaultsPolicy(model="local-schema-model"),
         global_max_concurrency=1,
         global_rpm_limit=1000,
         lanes={
@@ -189,7 +189,7 @@ def _pulse_policy() -> AgentRuntimePolicy:
 
 def _lane_rpm_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
+        defaults=AgentRuntimeDefaultsPolicy(model="local-schema-model"),
         global_max_concurrency=2,
         global_rpm_limit=1000,
         lanes={
@@ -246,7 +246,7 @@ def test_execute_returns_normalized_audit_using_fake_runner() -> None:
         assert runner.calls == 1
         assert runner.input_payloads == ['{"x": 1}']
         assert llm_gateway.openai_client_calls == [
-            {"model": "qwen3.6", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+            {"model": "local-schema-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
         ]
 
     asyncio.run(scenario())
@@ -509,7 +509,7 @@ def test_execute_reuses_model_client_for_same_stage_policy() -> None:
 
         assert runner.calls == 2
         assert llm_gateway.openai_client_calls == [
-            {"model": "qwen3.6", "base_url": "https://example.com/v1", "timeout_s": 10.0}
+            {"model": "local-schema-model", "base_url": "https://example.com/v1", "timeout_s": 10.0}
         ]
 
     asyncio.run(scenario())

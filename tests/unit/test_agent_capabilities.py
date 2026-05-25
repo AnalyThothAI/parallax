@@ -2,14 +2,15 @@ import pytest
 from pydantic import ValidationError
 
 
-def test_default_qwen_profile_uses_provider_enforced_json_schema() -> None:
+def test_qwen_profile_uses_json_object_with_client_validation() -> None:
     from gmgn_twitter_intel.platform.agent_capabilities import resolve_agent_capability_profile
 
     profile = resolve_agent_capability_profile(model="qwen3.6")
 
     assert profile.provider_family == "openai_compatible"
-    assert profile.output_strategy == "json_schema"
-    assert profile.schema_enforcement == "provider"
+    assert profile.output_strategy == "json_object"
+    assert profile.schema_enforcement == "client_validate"
+    assert profile.request_options.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def test_deepseek_profile_uses_json_object_with_client_validation() -> None:

@@ -1,5 +1,7 @@
 # Spec — Macro Workbench Hard-Cut Root Fix
 
+> **Superseded (2026-05-25):** Replaced by `docs/superpowers/specs/active/2026-05-25-macro-terminal-hard-cut-spec-cn.md` and `docs/superpowers/plans/active/2026-05-25-macro-terminal-hard-cut-plan-cn.md`. Kept for historical context; do not use as the current execution source.
+
 **Status**: Draft
 **Date**: 2026-05-24
 **Owner**: Codex
