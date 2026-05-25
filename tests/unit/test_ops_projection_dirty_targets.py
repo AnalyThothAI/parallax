@@ -18,13 +18,14 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
         domain="all",
         execute=False,
         now_ms=NOW_MS,
+        projection="all",
         source_quality_windows=("4h", "24h"),
     )
 
     assert result["execute"] is False
-    assert result["equity"]["company_event_targets"] == 8
+    assert result["equity"]["company_event_targets"] == 10
     assert result["equity"]["expected_event_targets"] == 1
-    assert result["news"]["news_item_targets"] == 4
+    assert result["news"]["news_item_targets"] == 6
     assert result["news"]["source_quality_targets"] == 4
     assert repos.equity_dirty.enqueued == []
     assert repos.news_dirty.enqueued == []
@@ -39,6 +40,8 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
         domain="all",
         execute=True,
         now_ms=NOW_MS,
+        projection="all",
+        since_ms=NOW_MS - 24 * 60 * 60 * 1000,
         source_quality_windows=("4h", "24h"),
     )
 
@@ -49,23 +52,107 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
         "ops_projection_dirty_repair",
     ]
     assert repos.equity_dirty.enqueued[0]["rows"] == [
-        {"projection_name": "story", "target_kind": "company_event", "target_id": "event-1"},
-        {"projection_name": "page", "target_kind": "company_event", "target_id": "event-1"},
-        {"projection_name": "timeline", "target_kind": "company_event", "target_id": "event-1"},
-        {"projection_name": "alert", "target_kind": "company_event", "target_id": "event-1"},
-        {"projection_name": "story", "target_kind": "company_event", "target_id": "event-2"},
-        {"projection_name": "page", "target_kind": "company_event", "target_id": "event-2"},
-        {"projection_name": "timeline", "target_kind": "company_event", "target_id": "event-2"},
-        {"projection_name": "alert", "target_kind": "company_event", "target_id": "event-2"},
+        {
+            "projection_name": "story",
+            "target_kind": "company_event",
+            "target_id": "event-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "company_event",
+            "target_id": "event-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "company_event",
+            "target_id": "event-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "timeline",
+            "target_kind": "company_event",
+            "target_id": "event-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "alert",
+            "target_kind": "company_event",
+            "target_id": "event-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "story",
+            "target_kind": "company_event",
+            "target_id": "event-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "company_event",
+            "target_id": "event-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "company_event",
+            "target_id": "event-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "timeline",
+            "target_kind": "company_event",
+            "target_id": "event-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "alert",
+            "target_kind": "company_event",
+            "target_id": "event-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
     ]
     assert repos.equity_dirty.enqueued[1]["rows"] == [
         {"projection_name": "calendar", "target_kind": "expected_event", "target_id": "expected-1"}
     ]
     assert repos.news_dirty.enqueued[0]["rows"] == [
-        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
-        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-2"},
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-2"},
+        {
+            "projection_name": "story",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "story",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+        {
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
     ]
     assert repos.news_dirty.enqueued[1]["rows"] == [
         {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "4h"},
@@ -76,13 +163,77 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
 
 
 def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> None:
-    args = build_parser().parse_args(["ops", "enqueue-projection-dirty-targets", "--domain", "news", "--dry-run"])
+    args = build_parser().parse_args(
+        [
+            "ops",
+            "enqueue-projection-dirty-targets",
+            "--domain",
+            "news",
+            "--projection",
+            "brief_input",
+            "--since-hours",
+            "24",
+            "--dry-run",
+        ]
+    )
 
     assert args.command == "ops"
     assert args.ops_command == "enqueue-projection-dirty-targets"
     assert args.domain == "news"
+    assert args.projection == "brief_input"
+    assert args.since_hours == 24
     assert args.dry_run is True
     assert args.execute is False
+
+
+def test_enqueue_projection_dirty_targets_execute_requires_bounded_brief_repair() -> None:
+    repos = FakeRepos()
+
+    try:
+        enqueue_projection_dirty_targets(
+            repos,
+            domain="all",
+            execute=True,
+            now_ms=NOW_MS,
+            projection="all",
+            source_quality_windows=("4h", "24h"),
+        )
+    except ValueError as exc:
+        assert "--since-hours" in str(exc)
+    else:
+        raise AssertionError("expected unbounded brief_input repair to fail")
+
+
+def test_enqueue_projection_dirty_targets_can_scope_brief_input_repair() -> None:
+    repos = FakeRepos()
+
+    result = enqueue_projection_dirty_targets(
+        repos,
+        domain="news",
+        execute=True,
+        now_ms=NOW_MS,
+        projection="brief_input",
+        since_ms=NOW_MS - 24 * 60 * 60 * 1000,
+        source_quality_windows=("4h", "24h"),
+    )
+
+    assert result["projection"] == "brief_input"
+    assert result["news"]["news_item_targets"] == 2
+    assert repos.equity_dirty.enqueued == []
+    assert repos.news_dirty.enqueued[0]["rows"] == [
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-1",
+            "source_watermark_ms": NOW_MS - 1_000,
+        },
+        {
+            "projection_name": "brief_input",
+            "target_kind": "news_item",
+            "target_id": "news-2",
+            "source_watermark_ms": NOW_MS - 2_000,
+        },
+    ]
 
 
 class FakeRepos:
@@ -98,13 +249,23 @@ class FakeConn:
     def __init__(self) -> None:
         self.transactions = 0
 
-    def execute(self, sql: str) -> FakeCursor:
+    def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
         if "FROM equity_company_events" in sql:
-            return FakeCursor([{"company_event_id": "event-1"}, {"company_event_id": "event-2"}])
+            return FakeCursor(
+                [
+                    {"company_event_id": "event-1", "source_watermark_ms": NOW_MS - 1_000},
+                    {"company_event_id": "event-2", "source_watermark_ms": NOW_MS - 2_000},
+                ]
+            )
         if "FROM equity_expected_events" in sql:
             return FakeCursor([{"expected_event_id": "expected-1"}])
         if "FROM news_items" in sql:
-            return FakeCursor([{"news_item_id": "news-1"}, {"news_item_id": "news-2"}])
+            return FakeCursor(
+                [
+                    {"news_item_id": "news-1", "source_watermark_ms": NOW_MS - 1_000},
+                    {"news_item_id": "news-2", "source_watermark_ms": NOW_MS - 2_000},
+                ]
+            )
         if "FROM news_sources" in sql:
             return FakeCursor([{"source_id": "source-1"}, {"source_id": "source-2"}])
         raise AssertionError(f"unexpected SQL: {sql}")

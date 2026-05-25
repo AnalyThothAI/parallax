@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
@@ -56,55 +56,82 @@ class EquityEventBriefWorker(WorkerBase):
             model=str(self.provider.model),
             artifact_version_hash=str(self.provider.artifact_version_hash),
         )
-        with self._repository_session() as repos:
-            candidates = repos.equity_events.list_events_for_brief(
-                limit=self._batch_size(),
-                now_ms=now,
-                backpressure_cooldown_ms=self._backpressure_cooldown_ms(),
-                artifact_version_hash=agent_config.artifact_version_hash,
-                max_attempts=self._max_attempts(),
-            )
-        if not candidates:
-            return WorkerResult(skipped=1, notes={"reason": "no_events_for_brief"})
+        claimed = await asyncio.to_thread(self._claim_targets, now_ms=now)
+        if not claimed:
+            return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets"})
+        try:
+            candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed)
+        except Exception as exc:
+            await asyncio.to_thread(self._mark_targets_error, claimed, error=exc, retry_ms=self._retry_ms(), now_ms=now)
+            return WorkerResult(failed=len(claimed), notes={"claimed": len(claimed), "load_failed": 1})
+
+        candidates_by_id = {
+            str(candidate.get("event", {}).get("company_event_id") or ""): candidate
+            for candidate in candidates
+            if isinstance(candidate.get("event"), Mapping)
+        }
 
         notes = {
-            "claimed": len(candidates),
+            "claimed": len(claimed),
             "ready": 0,
             "insufficient": 0,
             "failed": 0,
             "backpressure": 0,
             "validation_failed": 0,
             "no_official_evidence": 0,
+            "missing_target": 0,
         }
         skipped = 0
         current_updates = 0
 
-        for candidate in candidates:
-            packet = _packet_from_candidate(candidate, agent_config=agent_config)
-            if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
+        for target in claimed:
+            target_id = str(target.get("target_id") or "")
+            candidate = candidates_by_id.get(target_id)
+            if candidate is None:
+                notes["missing_target"] += 1
+                await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                 skipped += 1
                 continue
-            if not _has_official_evidence(packet):
-                outcome = self._record_no_official_evidence(
+
+            try:
+                packet = _packet_from_candidate(candidate, agent_config=agent_config)
+                if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
+                    await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                    skipped += 1
+                    continue
+                if not _has_official_evidence(packet):
+                    outcome = await self._record_no_official_evidence(
+                        packet=packet,
+                        agent_config=agent_config,
+                        source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
+                    )
+                    for key, value in outcome.notes.items():
+                        notes[key] = int(notes.get(key, 0)) + int(value)
+                    current_updates += outcome.current_updates
+                    notes["no_official_evidence"] += 1
+                    await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
+                    continue
+
+                outcome = await self._process_candidate(
                     packet=packet,
                     agent_config=agent_config,
+                    now_ms=now,
                     source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
                 )
-                for key, value in outcome.notes.items():
-                    notes[key] = int(notes.get(key, 0)) + int(value)
-                current_updates += outcome.current_updates
-                notes["no_official_evidence"] += 1
+            except Exception as exc:
+                notes["failed"] += 1
+                await asyncio.to_thread(
+                    self._mark_targets_error,
+                    [target],
+                    error=exc,
+                    retry_ms=self._retry_ms(),
+                    now_ms=now,
+                )
                 continue
-
-            outcome = await self._process_candidate(
-                packet=packet,
-                agent_config=agent_config,
-                now_ms=now,
-                source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
-            )
             for key, value in outcome.notes.items():
                 notes[key] = int(notes.get(key, 0)) + int(value)
             current_updates += outcome.current_updates
+            await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
 
         if current_updates > 0 and self.wake_bus is not None:
             self.wake_bus.notify_equity_event_brief_updated(count=current_updates)
@@ -139,7 +166,7 @@ class EquityEventBriefWorker(WorkerBase):
                 agent_config=agent_config,
                 provider=provider,
             )
-            return self._record_provider_failure(
+            return await self._record_provider_failure(
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
@@ -152,7 +179,7 @@ class EquityEventBriefWorker(WorkerBase):
         try:
             reservation = provider.try_reserve_execution(EQUITY_EVENT_BRIEF_LANE)
         except Exception as exc:
-            return self._record_provider_failure(
+            return await self._record_provider_failure(
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
@@ -163,7 +190,8 @@ class EquityEventBriefWorker(WorkerBase):
             )
         if not reservation.acquired:
             outcome = _backpressure_outcome(reservation)
-            self._insert_run(
+            await asyncio.to_thread(
+                self._insert_run,
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
@@ -179,13 +207,18 @@ class EquityEventBriefWorker(WorkerBase):
                 validation_errors=[],
                 execution_started=False,
             )
-            return _CandidateOutcome(notes={"backpressure": 1, outcome: 1}, current_updates=0)
+            return _CandidateOutcome(
+                notes={"backpressure": 1, outcome: 1},
+                current_updates=0,
+                retry_ms=self._backpressure_cooldown_ms(),
+                retry_reason=outcome,
+            )
 
         try:
             result = await provider.brief_event(run_id=run_id, packet=packet, reservation=reservation)
         except Exception as exc:
             if _is_no_start_backpressure_error(exc):
-                return self._record_execute_backpressure(
+                return await self._record_execute_backpressure(
                     run_id=run_id,
                     packet=packet,
                     agent_config=agent_config,
@@ -193,7 +226,7 @@ class EquityEventBriefWorker(WorkerBase):
                     error=exc,
                     started_at_ms=started_at_ms,
                 )
-            return self._record_provider_failure(
+            return await self._record_provider_failure(
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
@@ -208,8 +241,9 @@ class EquityEventBriefWorker(WorkerBase):
         audit = _audit_dict(result.get("agent_run_audit") if isinstance(result, Mapping) else None) or request_audit
         validation = validate_equity_event_brief_output(payload=payload, packet=packet, audit=audit)
         finished_at_ms = self.clock_ms()
-        current_source_updated_at_ms = self._current_source_updated_at_ms(
-            company_event_id=packet.current_event.company_event_id
+        current_source_updated_at_ms = await asyncio.to_thread(
+            self._current_source_updated_at_ms,
+            company_event_id=packet.current_event.company_event_id,
         )
         if current_source_updated_at_ms > int(source_updated_at_ms):
             errors = [
@@ -221,7 +255,8 @@ class EquityEventBriefWorker(WorkerBase):
                     ),
                 }
             ]
-            self._insert_run(
+            await asyncio.to_thread(
+                self._insert_run,
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
@@ -238,16 +273,23 @@ class EquityEventBriefWorker(WorkerBase):
                 execution_started=True,
                 output_hash=validation.output_hash or _output_hash(payload),
             )
-            self._upsert_failed_current(
+            await asyncio.to_thread(
+                self._upsert_failed_current,
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
                 errors=errors,
                 computed_at_ms=int(source_updated_at_ms),
             )
-            return _CandidateOutcome(notes={"failed": 1, "source_changed_before_publish": 1}, current_updates=1)
+            return _CandidateOutcome(
+                notes={"failed": 1, "source_changed_before_publish": 1},
+                current_updates=1,
+                retry_ms=self._retry_ms(),
+                retry_reason="source_changed_before_publish",
+            )
         if not validation.publishable:
-            self._insert_run(
+            await asyncio.to_thread(
+                self._insert_run,
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
@@ -264,17 +306,25 @@ class EquityEventBriefWorker(WorkerBase):
                 execution_started=True,
                 output_hash=_output_hash(payload),
             )
-            self._upsert_failed_current(
+            await asyncio.to_thread(
+                self._upsert_failed_current,
                 run_id=run_id,
                 packet=packet,
                 agent_config=agent_config,
                 errors=validation.errors,
                 computed_at_ms=finished_at_ms,
             )
-            return _CandidateOutcome(notes={"failed": 1, "validation_failed": 1}, current_updates=1)
+            return _CandidateOutcome(
+                notes={"failed": 1, "validation_failed": 1},
+                current_updates=1,
+                retry_ms=self._retry_ms(),
+                retry_reason="domain_validation_failed",
+                retry_attempt_limited=True,
+            )
 
         payload_dict = validation.payload or {}
-        self._insert_run(
+        await asyncio.to_thread(
+            self._insert_run,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
@@ -291,7 +341,8 @@ class EquityEventBriefWorker(WorkerBase):
             execution_started=True,
             output_hash=validation.output_hash,
         )
-        self._upsert_current(
+        await asyncio.to_thread(
+            self._upsert_current,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
@@ -302,7 +353,7 @@ class EquityEventBriefWorker(WorkerBase):
         status = str(validation.status)
         return _CandidateOutcome(notes={status: 1}, current_updates=1)
 
-    def _record_no_official_evidence(
+    async def _record_no_official_evidence(
         self,
         *,
         packet: EquityEventBriefInputPacket,
@@ -322,7 +373,8 @@ class EquityEventBriefWorker(WorkerBase):
             provider=provider,
         )
         payload = _insufficient_no_official_evidence_brief(packet)
-        self._insert_run(
+        await asyncio.to_thread(
+            self._insert_run,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
@@ -339,7 +391,8 @@ class EquityEventBriefWorker(WorkerBase):
             execution_started=False,
             output_hash=json_sha256(payload),
         )
-        self._upsert_current(
+        await asyncio.to_thread(
+            self._upsert_current,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
@@ -349,7 +402,7 @@ class EquityEventBriefWorker(WorkerBase):
         )
         return _CandidateOutcome(notes={"insufficient": 1}, current_updates=1)
 
-    def _record_provider_failure(
+    async def _record_provider_failure(
         self,
         *,
         run_id: str,
@@ -365,7 +418,8 @@ class EquityEventBriefWorker(WorkerBase):
             bool(execution_started) if execution_started is not None else _provider_execution_started(error)
         )
         finished_at_ms = self.clock_ms()
-        self._insert_run(
+        await asyncio.to_thread(
+            self._insert_run,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
@@ -381,16 +435,23 @@ class EquityEventBriefWorker(WorkerBase):
             validation_errors=[],
             execution_started=resolved_execution_started,
         )
-        self._upsert_failed_current(
+        await asyncio.to_thread(
+            self._upsert_failed_current,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
             errors=[{"code": _provider_error_class(error), "message": str(error)[:500]}],
             computed_at_ms=finished_at_ms,
         )
-        return _CandidateOutcome(notes={"failed": 1}, current_updates=1)
+        return _CandidateOutcome(
+            notes={"failed": 1},
+            current_updates=1,
+            retry_ms=self._retry_ms(),
+            retry_reason=_provider_error_class(error),
+            retry_attempt_limited=resolved_execution_started,
+        )
 
-    def _record_execute_backpressure(
+    async def _record_execute_backpressure(
         self,
         *,
         run_id: str,
@@ -403,7 +464,8 @@ class EquityEventBriefWorker(WorkerBase):
         audit = _provider_error_audit(error) or dict(request_audit)
         outcome = _backpressure_outcome_for_reason(getattr(error, "error_class", None))
         finished_at_ms = self.clock_ms()
-        self._insert_run(
+        await asyncio.to_thread(
+            self._insert_run,
             run_id=run_id,
             packet=packet,
             agent_config=agent_config,
@@ -419,7 +481,64 @@ class EquityEventBriefWorker(WorkerBase):
             validation_errors=[],
             execution_started=False,
         )
-        return _CandidateOutcome(notes={"backpressure": 1, outcome: 1}, current_updates=0)
+        return _CandidateOutcome(
+            notes={"backpressure": 1, outcome: 1},
+            current_updates=0,
+            retry_ms=self._backpressure_cooldown_ms(),
+            retry_reason=outcome,
+        )
+
+    def _claim_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
+        with self._repository_session() as repos:
+            return repos.equity_projection_dirty_targets.claim_due(
+                limit=self._batch_size(),
+                lease_ms=self._lease_ms(),
+                now_ms=now_ms,
+                lease_owner=self.name,
+                projection_name="brief_input",
+                target_kind="company_event",
+            )
+
+    def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        company_event_ids = _target_ids(claimed)
+        if not company_event_ids:
+            return []
+        with self._repository_session() as repos:
+            return repos.equity_events.load_events_for_brief_targets(company_event_ids=company_event_ids)
+
+    def _complete_claimed_target(
+        self,
+        target: Mapping[str, Any],
+        *,
+        outcome: _CandidateOutcome,
+        now_ms: int,
+    ) -> None:
+        if outcome.retry_ms is not None and (
+            not outcome.retry_attempt_limited or int(target.get("attempt_count") or 0) < self._max_attempts()
+        ):
+            self._mark_targets_error([target], error=outcome.retry_reason, retry_ms=outcome.retry_ms, now_ms=now_ms)
+            return
+        self._mark_targets_done([target], now_ms=now_ms)
+
+    def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
+        with self._repository_session() as repos:
+            repos.equity_projection_dirty_targets.mark_done(targets, now_ms=now_ms)
+
+    def _mark_targets_error(
+        self,
+        targets: Iterable[Mapping[str, Any]],
+        *,
+        error: Exception | str,
+        retry_ms: int,
+        now_ms: int,
+    ) -> None:
+        with self._repository_session() as repos:
+            repos.equity_projection_dirty_targets.mark_error(
+                targets,
+                error=str(error),
+                retry_ms=retry_ms,
+                now_ms=now_ms,
+            )
 
     def _insert_run(
         self,
@@ -546,6 +665,12 @@ class EquityEventBriefWorker(WorkerBase):
     def _max_attempts(self) -> int:
         return max(1, int(getattr(self.settings, "max_attempts", 3)))
 
+    def _lease_ms(self) -> int:
+        return max(1, int(getattr(self.settings, "lease_ms", 120_000)))
+
+    def _retry_ms(self) -> int:
+        return max(1, int(getattr(self.settings, "retry_ms", self._backpressure_cooldown_ms())))
+
     def _backpressure_cooldown_ms(self) -> int:
         return max(1, int(getattr(self.settings, "backpressure_cooldown_ms", 60_000)))
 
@@ -555,9 +680,43 @@ class EquityEventBriefWorker(WorkerBase):
 
 
 class _CandidateOutcome:
-    def __init__(self, *, notes: Mapping[str, int], current_updates: int) -> None:
+    def __init__(
+        self,
+        *,
+        notes: Mapping[str, int],
+        current_updates: int,
+        retry_ms: int | None = None,
+        retry_reason: str = "",
+        retry_attempt_limited: bool = False,
+    ) -> None:
         self.notes = dict(notes)
         self.current_updates = int(current_updates)
+        self.retry_ms = int(retry_ms) if retry_ms is not None else None
+        self.retry_reason = retry_reason or "agent_brief_retry"
+        self.retry_attempt_limited = bool(retry_attempt_limited)
+
+
+def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
+    return _unique_values(
+        [
+            str(row.get("target_id") or "")
+            for row in rows
+            if str(row.get("projection_name") or "") == "brief_input"
+            and str(row.get("target_kind") or "") == "company_event"
+        ]
+    )
+
+
+def _unique_values(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def _packet_from_candidate(

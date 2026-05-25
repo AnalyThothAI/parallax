@@ -52,11 +52,11 @@ def test_claimed_story_targets_load_only_claimed_company_event_ids_and_enqueue_d
     assert dirty_repo.errors == []
     assert dirty_repo.enqueue_commits == [False]
     assert {(row["projection_name"], row["target_kind"], row["target_id"]) for row in dirty_repo.enqueued} == {
+        ("brief_input", "company_event", event_id),
         ("page", "company_event", event_id),
         ("timeline", "company_event", event_id),
         ("alert", "company_event", event_id),
     }
-    assert not any(row["projection_name"] == "brief_input" for row in dirty_repo.enqueued)
 
 
 def test_claimed_story_target_with_existing_membership_refreshes_existing_story_without_regrouping() -> None:
@@ -208,12 +208,10 @@ def test_process_worker_enqueues_story_page_timeline_alert_and_matching_calendar
     assert equity_repo.conn.commits == 1
     assert dirty_repo.enqueue_commits == [False]
     target_keys = {(row["projection_name"], row["target_kind"], row["target_id"]) for row in dirty_repo.enqueued}
-    for projection_name in ("story", "page", "timeline", "alert"):
+    for projection_name in ("story", "brief_input", "page", "timeline", "alert"):
         assert (projection_name, "company_event", event_id) in target_keys
         assert (projection_name, "company_event", "old-event-1") in target_keys
     assert ("calendar", "expected_event", "expected-1") in target_keys
-    assert ("brief_input", "company_event", event_id) not in target_keys
-    assert ("brief_input", "company_event", "old-event-1") not in target_keys
 
 
 def test_story_repository_loader_filters_by_explicit_ids_without_missing_story_predicate() -> None:
@@ -353,6 +351,14 @@ class _FakeStoryEquityRepository:
             )
 
         self.conn.record_write(write)
+
+    def list_company_event_ids_for_stories(self, *, story_ids: list[str]) -> list[str]:
+        wanted = set(story_ids)
+        return [
+            str(row["company_event_id"])
+            for row in self.added_story_member_rows
+            if str(row.get("story_id") or "") in wanted
+        ]
 
 
 class _FakeProcessEquityRepository:

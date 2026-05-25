@@ -1789,18 +1789,22 @@ class EquityEventRepository:
             )
         return payloads
 
-    def list_events_for_brief(
-        self,
-        *,
-        limit: int,
-        now_ms: int,
-        backpressure_cooldown_ms: int,
-        artifact_version_hash: str,
-        max_attempts: int,
-    ) -> list[dict[str, Any]]:
+    def load_events_for_brief_targets(self, *, company_event_ids: Sequence[str]) -> list[dict[str, Any]]:
+        scoped_ids = [
+            str(company_event_id)
+            for company_event_id in dict.fromkeys(company_event_ids)
+            if str(company_event_id)
+        ]
+        if not scoped_ids:
+            return []
         rows = self.conn.execute(
             """
+            WITH target_ids(company_event_id, ordinal) AS (
+              SELECT company_event_id, ordinal
+                FROM unnest(%s::text[]) WITH ORDINALITY AS ids(company_event_id, ordinal)
+            )
             SELECT events.*,
+                   target_ids.ordinal,
                    universe.company_name,
                    stories.story_id,
                    stories.event_count,
@@ -1821,7 +1825,9 @@ class EquityEventRepository:
                    COALESCE(run_state.failed_attempts, 0) AS failed_attempts,
                    run_state.latest_status AS latest_run_status,
                    run_state.latest_finished_at_ms AS latest_run_finished_at_ms
-              FROM equity_company_events AS events
+              FROM target_ids
+              JOIN equity_company_events AS events
+                ON events.company_event_id = target_ids.company_event_id
               LEFT JOIN equity_event_universe_members AS universe
                 ON universe.company_id = events.company_id
               LEFT JOIN equity_event_story_members AS members
@@ -1850,7 +1856,6 @@ class EquityEventRepository:
                 SELECT COUNT(*) FILTER (
                          WHERE runs.status = 'failed'
                            AND runs.execution_started = true
-                           AND runs.artifact_version_hash = %s
                            AND runs.started_at_ms >= COALESCE(source_state.source_updated_at_ms, events.updated_at_ms)
                        )::integer AS failed_attempts,
                        (ARRAY_AGG(runs.status ORDER BY runs.finished_at_ms DESC, runs.run_id DESC))[1] AS latest_status,
@@ -1859,37 +1864,9 @@ class EquityEventRepository:
                  WHERE runs.company_event_id = events.company_event_id
               ) AS run_state ON true
              WHERE events.validation_status <> 'rejected'
-               AND events.lifecycle_status IN ('raw', 'processed', 'brief_ready', 'brief_stale')
-               AND COALESCE(run_state.failed_attempts, 0) < %s
-               AND (
-                 run_state.latest_status IS DISTINCT FROM 'backpressure'
-                 OR COALESCE(run_state.latest_finished_at_ms, 0) <= %s
-               )
-               AND (
-                 briefs.company_event_id IS NULL
-                 OR briefs.status = 'failed'
-                 OR briefs.artifact_version_hash <> %s
-                 OR briefs.computed_at_ms < COALESCE(source_state.source_updated_at_ms, events.updated_at_ms)
-               )
-             ORDER BY CASE
-                        WHEN briefs.company_event_id IS NULL THEN 0
-                        WHEN briefs.artifact_version_hash <> %s THEN 1
-                        WHEN briefs.status = 'failed' THEN 2
-                        ELSE 3
-                      END ASC,
-                      events.event_time_ms DESC,
-                      events.company_event_id ASC
-             LIMIT %s
-             FOR UPDATE OF events SKIP LOCKED
+             ORDER BY target_ids.ordinal ASC
             """,
-            (
-                str(artifact_version_hash),
-                max(1, int(max_attempts)),
-                int(now_ms) - max(1, int(backpressure_cooldown_ms)),
-                str(artifact_version_hash),
-                str(artifact_version_hash),
-                max(0, int(limit)),
-            ),
+            (scoped_ids,),
         ).fetchall()
         payloads: list[dict[str, Any]] = []
         for row in rows:
@@ -1940,6 +1917,21 @@ class EquityEventRepository:
         if row is None:
             return 0
         return int(row["source_updated_at_ms"] or 0)
+
+    def list_company_event_ids_for_stories(self, *, story_ids: Sequence[str]) -> list[str]:
+        scoped_ids = [str(story_id) for story_id in dict.fromkeys(story_ids) if str(story_id)]
+        if not scoped_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT company_event_id
+              FROM equity_event_story_members
+             WHERE story_id = ANY(%s::text[])
+             ORDER BY story_id ASC, company_event_id ASC
+            """,
+            (scoped_ids,),
+        ).fetchall()
+        return [str(row["company_event_id"]) for row in rows]
 
     def insert_equity_event_agent_run(
         self,

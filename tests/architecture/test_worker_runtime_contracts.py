@@ -346,10 +346,12 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "equity_event_projection_dirty_targets": {
         SRC / "domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
+        SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
     },
     "news_projection_dirty_targets": {
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
+        SRC / "platform/db/alembic/versions/20260525_0097_agent_brief_dirty_targets.py",
     },
     "market_tick_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",

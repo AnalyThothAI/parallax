@@ -24,7 +24,7 @@ NOW_MS = 1_779_000_000_000
 ARTIFACT_HASH = "artifact-hash-brief-v1"
 
 
-def test_list_items_for_brief_selects_processed_missing_brief_only(tmp_path) -> None:
+def test_load_items_for_brief_targets_selects_processed_targets_only(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -32,7 +32,7 @@ def test_list_items_for_brief_selects_processed_missing_brief_only(tmp_path) -> 
         processed_id = _insert_source_provider_and_item(repo, suffix="processed", processed=True)
         raw_id = _insert_source_provider_and_item(repo, suffix="raw", processed=False)
 
-        rows = _list_items_for_brief(repo)
+        rows = _load_items_for_brief_targets(repo, news_item_ids=[processed_id, raw_id])
     finally:
         conn.close()
 
@@ -41,7 +41,7 @@ def test_list_items_for_brief_selects_processed_missing_brief_only(tmp_path) -> 
     assert raw_id not in selected_ids
 
 
-def test_list_items_for_brief_prioritizes_newest_missing_briefs_for_front_page(tmp_path) -> None:
+def test_load_items_for_brief_targets_preserves_claim_order(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -68,15 +68,14 @@ def test_list_items_for_brief_prioritizes_newest_missing_briefs_for_front_page(t
             now_ms=NOW_MS,
         )
 
-        rows = _list_items_for_brief(repo, limit=2, now_ms=NOW_MS + 1_000)
+        rows = _load_items_for_brief_targets(repo, news_item_ids=[newest_id, middle_id, oldest_id])
     finally:
         conn.close()
 
-    assert [row["item"]["news_item_id"] for row in rows] == [newest_id, middle_id]
-    assert oldest_id not in [row["item"]["news_item_id"] for row in rows]
+    assert [row["item"]["news_item_id"] for row in rows] == [newest_id, middle_id, oldest_id]
 
 
-def test_list_items_for_brief_deprioritizes_cooled_backpressure_retry_for_same_publish_time(tmp_path) -> None:
+def test_load_items_for_brief_targets_includes_backpressure_audit_rows(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -107,19 +106,16 @@ def test_list_items_for_brief_deprioritizes_cooled_backpressure_retry_for_same_p
             finished_at_ms=NOW_MS - 80,
         )
 
-        rows = _list_items_for_brief(
-            repo,
-            limit=2,
-            now_ms=NOW_MS + 1_000,
-            backpressure_cooldown_ms=100,
-        )
+        rows = _load_items_for_brief_targets(repo, news_item_ids=[fresh_id, cooled_backpressure_id])
     finally:
         conn.close()
 
     assert [row["item"]["news_item_id"] for row in rows] == [fresh_id, cooled_backpressure_id]
+    assert rows[1]["latest_run"]["status"] == "backpressure"
+    assert rows[1]["latest_run"]["execution_started"] is False
 
 
-def test_list_items_for_brief_skips_fresh_current_and_selects_fact_changed_current(tmp_path) -> None:
+def test_load_items_for_brief_targets_returns_current_and_changed_fact_inputs(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -153,15 +149,16 @@ def test_list_items_for_brief_skips_fresh_current_and_selects_fact_changed_curre
             ],
         )
 
-        rows = _list_items_for_brief(repo)
+        rows = _load_items_for_brief_targets(repo, news_item_ids=[fresh_id, changed_id])
     finally:
         conn.close()
 
-    assert [row["item"]["news_item_id"] for row in rows] == [changed_id]
-    assert rows[0]["fact_candidates"][0]["fact_candidate_id"] == "fact-changed"
+    assert [row["item"]["news_item_id"] for row in rows] == [fresh_id, changed_id]
+    assert rows[0]["current_brief"]["agent_run_id"] == "run-fresh"
+    assert rows[1]["fact_candidates"][0]["fact_candidate_id"] == "fact-changed"
 
 
-def test_list_items_for_brief_backpressure_cooldown_and_attempt_count_are_separate(tmp_path) -> None:
+def test_load_items_for_brief_targets_returns_recent_backpressure_attempt(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -178,18 +175,16 @@ def test_list_items_for_brief_backpressure_cooldown_and_attempt_count_are_separa
             started_at_ms=NOW_MS + 10,
             finished_at_ms=NOW_MS + 20,
         )
-        recent_rows = _list_items_for_brief(repo, now_ms=NOW_MS + 30, backpressure_cooldown_ms=100)
-        cooled_rows = _list_items_for_brief(repo, now_ms=NOW_MS + 200, backpressure_cooldown_ms=100, max_attempts=1)
+        rows = _load_items_for_brief_targets(repo, news_item_ids=[news_item_id])
     finally:
         conn.close()
 
-    assert recent_rows == []
-    assert [row["item"]["news_item_id"] for row in cooled_rows] == [news_item_id]
-    assert cooled_rows[0]["latest_run"]["run_id"] == "run-recent-backpressure"
-    assert cooled_rows[0]["latest_run"]["execution_started"] is False
+    assert [row["item"]["news_item_id"] for row in rows] == [news_item_id]
+    assert rows[0]["latest_run"]["run_id"] == "run-recent-backpressure"
+    assert rows[0]["latest_run"]["execution_started"] is False
 
 
-def test_list_items_for_brief_retries_failed_current_until_started_attempt_limit(tmp_path) -> None:
+def test_load_items_for_brief_targets_returns_failed_current_attempt_state(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -210,14 +205,16 @@ def test_list_items_for_brief_retries_failed_current_until_started_attempt_limit
             finished_at_ms=NOW_MS + 110,
         )
 
-        rows = _list_items_for_brief(repo, max_attempts=2)
+        rows = _load_items_for_brief_targets(repo, news_item_ids=[retry_id, exhausted_id])
     finally:
         conn.close()
 
-    assert [row["item"]["news_item_id"] for row in rows] == [retry_id]
+    assert [row["item"]["news_item_id"] for row in rows] == [retry_id, exhausted_id]
+    assert rows[0]["current_brief"]["status"] == "failed"
+    assert rows[1]["latest_run"]["run_id"] == "run-exhausted-2"
 
 
-def test_list_items_for_brief_payload_contains_packet_inputs_and_audit_rows(tmp_path) -> None:
+def test_load_items_for_brief_targets_payload_contains_packet_inputs_and_audit_rows(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -269,7 +266,7 @@ def test_list_items_for_brief_payload_contains_packet_inputs_and_audit_rows(tmp_
             now_ms=NOW_MS + 2,
         )
 
-        row = _list_items_for_brief(repo)[0]
+        row = _load_items_for_brief_targets(repo, news_item_ids=[news_item_id])[0]
         packet = build_news_item_brief_input_packet(
             item=row["item"],
             story=row["story"],
@@ -454,22 +451,12 @@ def test_upsert_news_item_agent_brief_replaces_current_row_for_item(tmp_path) ->
     assert updated["artifact_version_hash"] == "artifact-2"
 
 
-def _list_items_for_brief(
+def _load_items_for_brief_targets(
     repo: NewsRepository,
     *,
-    limit: int = 10,
-    now_ms: int = NOW_MS + 1_000,
-    backpressure_cooldown_ms: int = 500,
-    artifact_version_hash: str = ARTIFACT_HASH,
-    max_attempts: int = 3,
+    news_item_ids: list[str],
 ) -> list[dict[str, object]]:
-    return repo.list_items_for_brief(
-        limit=limit,
-        now_ms=now_ms,
-        backpressure_cooldown_ms=backpressure_cooldown_ms,
-        artifact_version_hash=artifact_version_hash,
-        max_attempts=max_attempts,
-    )
+    return repo.load_items_for_brief_targets(news_item_ids=news_item_ids)
 
 
 def _insert_ready_current(

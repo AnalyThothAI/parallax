@@ -69,8 +69,15 @@ class NewsStoryProjectionWorker(WorkerBase):
 
                     try:
                         with _transaction(repos.conn):
-                            story_rows = _write_story_rows(repos=repos, items=items, now_ms=now)
-                            downstream_targets = _page_dirty_targets(items, source_watermark_ms=now)
+                            story_result = _write_story_rows(repos=repos, items=items, now_ms=now)
+                            story_rows = story_result.story_rows
+                            story_member_ids = repos.news.list_news_item_ids_for_stories(
+                                story_ids=story_result.story_ids
+                            )
+                            downstream_targets = _downstream_targets(
+                                news_item_ids=story_member_ids or _item_ids(items),
+                                source_watermark_ms=now,
+                            )
                             if downstream_targets:
                                 repos.news_projection_dirty_targets.enqueue_targets(
                                     downstream_targets,
@@ -134,8 +141,15 @@ class NewsStoryProjectionWorker(WorkerBase):
         return max(1, int(getattr(self.settings, "retry_ms", 30_000)))
 
 
-def _write_story_rows(*, repos: Any, items: Iterable[Mapping[str, Any]], now_ms: int) -> int:
+class _StoryWriteResult:
+    def __init__(self, *, story_rows: int, story_ids: Iterable[str]) -> None:
+        self.story_rows = int(story_rows)
+        self.story_ids = _unique_values(story_ids)
+
+
+def _write_story_rows(*, repos: Any, items: Iterable[Mapping[str, Any]], now_ms: int) -> _StoryWriteResult:
     story_rows = 0
+    story_ids: list[str] = []
     for item in items:
         item_payload = dict(item)
         candidates = repos.news.find_story_candidates_for_item(item_payload)
@@ -164,19 +178,25 @@ def _write_story_rows(*, repos: Any, items: Iterable[Mapping[str, Any]], now_ms:
             commit=False,
         )
         story_rows += 1
-    return story_rows
+        story_ids.append(story_id)
+    return _StoryWriteResult(story_rows=story_rows, story_ids=story_ids)
 
 
-def _page_dirty_targets(items: Iterable[Mapping[str, Any]], *, source_watermark_ms: int) -> list[dict[str, Any]]:
+def _downstream_targets(*, news_item_ids: Iterable[str], source_watermark_ms: int) -> list[dict[str, Any]]:
     return [
         {
-            "projection_name": "page",
+            "projection_name": projection_name,
             "target_kind": "news_item",
-            "target_id": str(item["news_item_id"]),
+            "target_id": news_item_id,
             "source_watermark_ms": int(source_watermark_ms),
         }
-        for item in items
+        for news_item_id in _unique_values(str(item_id) for item_id in news_item_ids)
+        for projection_name in ("page", "brief_input")
     ]
+
+
+def _item_ids(items: Iterable[Mapping[str, Any]]) -> list[str]:
+    return _unique_values(str(item.get("news_item_id") or "") for item in items)
 
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:

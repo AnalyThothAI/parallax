@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
@@ -41,6 +42,24 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert result.failed == 0
     assert result.notes["ready"] == 1
     assert result.notes["claimed"] == 1
+
+
+def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
+    asyncio.run(_test_worker_claims_dirty_targets_off_event_loop_thread())
+
+
+async def _test_worker_claims_dirty_targets_off_event_loop_thread() -> None:
+    db = FakeDB([])
+    provider = FakeBriefProvider()
+    worker = _worker(db=db, provider=provider)
+    event_loop_thread_id = threading.get_ident()
+
+    result = await worker.run_once()
+
+    assert result.skipped == 1
+    assert db.dirty.claim_thread_ids
+    assert db.dirty.claim_thread_ids[0] != event_loop_thread_id
+    assert db.news.loaded_target_ids == []
 
 
 def test_worker_no_start_backpressure_does_not_execute_provider_or_upsert_current() -> None:
@@ -370,7 +389,20 @@ class FakeDB:
     def __init__(self, candidates: list[dict[str, Any]]) -> None:
         self.news = FakeNewsRepository(candidates)
         self.conn = FakeConn()
-        self.dirty = FakeDirtyRepository()
+        self.dirty = FakeDirtyRepository(
+            [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": str(candidate["item"]["news_item_id"]),
+                    "window": "",
+                    "payload_hash": f"payload:{candidate['item']['news_item_id']}",
+                    "lease_owner": "news_item_brief",
+                    "attempt_count": 1,
+                }
+                for candidate in candidates
+            ]
+        )
         self.in_session = False
 
     def worker_session(self, worker_name: str, statement_timeout_seconds: float | None = None) -> FakeSession:
@@ -398,9 +430,12 @@ class FakeNewsRepository:
         self.candidates = candidates
         self.runs: list[dict[str, Any]] = []
         self.briefs: list[dict[str, Any]] = []
+        self.loaded_target_ids: list[list[str]] = []
 
-    def list_items_for_brief(self, **kwargs: Any) -> list[dict[str, Any]]:
-        return self.candidates
+    def load_items_for_brief_targets(self, *, news_item_ids: list[str]) -> list[dict[str, Any]]:
+        self.loaded_target_ids.append(list(news_item_ids))
+        by_id = {str(candidate["item"]["news_item_id"]): candidate for candidate in self.candidates}
+        return [by_id[item_id] for item_id in news_item_ids if item_id in by_id]
 
     def insert_news_item_agent_run(self, **payload: Any) -> dict[str, Any]:
         self.runs.append(dict(payload))
@@ -416,8 +451,27 @@ class FakeNewsRepository:
 
 
 class FakeDirtyRepository:
-    def __init__(self) -> None:
+    def __init__(self, targets: list[dict[str, Any]] | None = None) -> None:
+        self.targets = [dict(target) for target in targets or []]
         self.enqueued: list[dict[str, Any]] = []
+        self.done: list[dict[str, Any]] = []
+        self.errors: list[dict[str, Any]] = []
+        self.claim_thread_ids: list[int] = []
+
+    def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.claim_thread_ids.append(threading.get_ident())
+        limit = int(kwargs.get("limit") or len(self.targets) or 1)
+        claimed = self.targets[:limit]
+        self.targets = self.targets[limit:]
+        return [dict(target) for target in claimed]
+
+    def mark_done(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
+        self.done.extend(dict(key) for key in keys)
+        return len(keys)
+
+    def mark_error(self, keys: list[dict[str, Any]], **kwargs: Any) -> int:
+        self.errors.extend(dict(key) for key in keys)
+        return len(keys)
 
     def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:
         self.enqueued.append(

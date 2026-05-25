@@ -101,6 +101,7 @@ class NewsItemProcessWorker(WorkerBase):
                         [
                             {"projection_name": "story", "target_kind": "news_item", "target_id": news_item_id},
                             {"projection_name": "page", "target_kind": "news_item", "target_id": news_item_id},
+                            {"projection_name": "brief_input", "target_kind": "news_item", "target_id": news_item_id},
                             *[
                                 {
                                     "projection_name": "source_quality",

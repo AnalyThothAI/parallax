@@ -179,7 +179,7 @@ def _company_event_dirty_targets(*, company_event_ids: list[str], source_waterma
             "source_watermark_ms": int(source_watermark_ms),
         }
         for company_event_id in company_event_ids
-        for projection_name in ("story", "page", "timeline", "alert")
+        for projection_name in ("story", "brief_input", "page", "timeline", "alert")
     ]
 
 

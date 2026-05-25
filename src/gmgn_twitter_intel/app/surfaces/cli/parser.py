@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 
+from gmgn_twitter_intel.app.ops.projection_dirty_targets import PROJECTION_CHOICES
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOWS
 
 
@@ -172,6 +173,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="enqueue dirty targets for rebuildable Equity and News projections",
     )
     enqueue_projection_dirty_targets.add_argument("--domain", choices=("all", "equity", "news"), default="all")
+    enqueue_projection_dirty_targets.add_argument("--projection", choices=PROJECTION_CHOICES, default="all")
+    enqueue_projection_dirty_targets.add_argument("--since-hours", type=float, default=None)
     enqueue_projection_dirty_targets_mode = enqueue_projection_dirty_targets.add_mutually_exclusive_group(required=True)
     enqueue_projection_dirty_targets_mode.add_argument("--dry-run", action="store_true")
     enqueue_projection_dirty_targets_mode.add_argument("--execute", action="store_true")

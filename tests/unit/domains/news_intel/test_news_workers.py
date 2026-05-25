@@ -797,6 +797,14 @@ class FakeStoryProjectionRepository:
     def add_story_member(self, **payload):
         self.story_members.append(payload)
 
+    def list_news_item_ids_for_stories(self, *, story_ids):
+        wanted = set(story_ids)
+        return [
+            str(member["news_item_id"])
+            for member in self.story_members
+            if str(member.get("story_id") or "") in wanted
+        ]
+
 
 class FakePageProjectionRepository:
     def __init__(self) -> None:

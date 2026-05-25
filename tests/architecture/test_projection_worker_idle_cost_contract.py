@@ -23,6 +23,8 @@ ALLOWED_PROJECTION_REPOSITORY_CALLS = {
     "find_story_candidates_for_event",
     "find_story_candidates_for_item",
     "list_news_item_ids_for_sources",
+    "list_news_item_ids_for_stories",
+    "list_company_event_ids_for_stories",
     "list_source_quality_inputs_for_targets",
     "load_event_page_projection_payloads",
     "load_events_for_story_projection",
@@ -61,6 +63,14 @@ EQUITY_PROJECTION_WORKERS = {
     SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
     SRC / "domains/equity_event_intel/runtime/equity_event_story_projection_worker.py",
 }
+AGENT_BRIEF_WORKERS = {
+    SRC / "domains/news_intel/runtime/news_item_brief_worker.py",
+    SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
+}
+BANNED_AGENT_BRIEF_DISCOVERY_CALLS = {
+    "list_items_for_brief",
+    "list_events_for_brief",
+}
 
 
 @pytest.mark.architecture
@@ -91,10 +101,28 @@ def test_dirty_target_claim_and_completion_are_projection_worker_owned() -> None
             if method_name not in CLAIM_MARK_METHODS:
                 continue
             chain = _attribute_chain(call.func)
-            if "news_projection_dirty_targets" in chain and path not in NEWS_PROJECTION_WORKERS:
+            if "news_projection_dirty_targets" in chain and path not in NEWS_PROJECTION_WORKERS | AGENT_BRIEF_WORKERS:
                 violations.append(f"{_rel(path)} calls news dirty target {method_name}")
-            if "equity_projection_dirty_targets" in chain and path not in EQUITY_PROJECTION_WORKERS:
+            if (
+                "equity_projection_dirty_targets" in chain
+                and path not in EQUITY_PROJECTION_WORKERS | AGENT_BRIEF_WORKERS
+            ):
                 violations.append(f"{_rel(path)} calls equity dirty target {method_name}")
+
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_agent_brief_workers_claim_dirty_targets_instead_of_scanning_candidates() -> None:
+    violations: list[str] = []
+    for path in sorted(AGENT_BRIEF_WORKERS):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        calls = [_call_method_name(call) for call in ast.walk(tree) if isinstance(call, ast.Call)]
+        banned = sorted(str(name) for name in calls if name in BANNED_AGENT_BRIEF_DISCOVERY_CALLS)
+        if banned:
+            violations.append(f"{_rel(path)} calls broad agent brief discovery methods: {', '.join(banned)}")
+        if "claim_due" not in calls:
+            violations.append(f"{_rel(path)} does not claim dirty targets")
 
     assert violations == []
 

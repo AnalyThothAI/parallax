@@ -53,11 +53,11 @@ def upgrade() -> None:
           first_dirty_at_ms BIGINT NOT NULL,
           updated_at_ms BIGINT NOT NULL,
           PRIMARY KEY (projection_name, target_kind, target_id, "window"),
-          CHECK (projection_name IN ('story', 'page', 'source_quality')),
+          CHECK (projection_name IN ('story', 'brief_input', 'page', 'source_quality')),
           CHECK (target_kind IN ('news_item', 'source')),
           CHECK (
             (projection_name = 'source_quality' AND target_kind = 'source' AND "window" <> '')
-            OR (projection_name <> 'source_quality' AND target_kind = 'news_item' AND "window" = '')
+            OR (projection_name IN ('story', 'brief_input', 'page') AND target_kind = 'news_item' AND "window" = '')
           )
         )
         """

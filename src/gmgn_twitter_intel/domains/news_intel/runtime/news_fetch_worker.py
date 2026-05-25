@@ -266,12 +266,19 @@ class NewsFetchWorker(WorkerBase):
             reason="news_item_written",
             now_ms=fetched_at_ms,
         )
-        self._persist_context_observations(
+        context_parent_ids = self._persist_context_observations(
             repository,
             source_id=source_id,
             parent_ids_by_source_key=parent_ids_by_source_key,
             context_observations=context_observations,
             fetched_at_ms=fetched_at_ms,
+        )
+        _enqueue_news_item_dirty_targets(
+            repos,
+            news_item_ids=context_parent_ids,
+            projection_names=("page", "brief_input"),
+            reason="news_context_written",
+            now_ms=fetched_at_ms,
         )
         return counts
 
@@ -283,7 +290,8 @@ class NewsFetchWorker(WorkerBase):
         parent_ids_by_source_key: Mapping[str, str],
         context_observations: list[NewsProviderContextObservation],
         fetched_at_ms: int,
-    ) -> None:
+    ) -> list[str]:
+        dirty_parent_ids: list[str] = []
         for context in context_observations:
             parent_news_item_id = parent_ids_by_source_key.get(context.parent_source_item_key)
             repository.upsert_news_context_item(
@@ -301,6 +309,9 @@ class NewsFetchWorker(WorkerBase):
                 created_at_ms=fetched_at_ms,
                 commit=False,
             )
+            if parent_news_item_id:
+                dirty_parent_ids.append(parent_news_item_id)
+        return list(dict.fromkeys(dirty_parent_ids))
 
     def _mark_source_failed(self, *, source_id: str, fetch_run_id: str, now_ms: int, error: Exception) -> None:
         if not fetch_run_id:

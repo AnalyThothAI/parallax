@@ -334,6 +334,7 @@ def test_process_worker_enqueues_story_page_and_source_quality_dirty_in_same_tra
             "rows": [
                 {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
                 {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
+                {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "news-1"},
                 {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "4h"},
                 {
                     "projection_name": "source_quality",

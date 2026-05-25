@@ -262,11 +262,19 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return (0 if data.get("ok") else 1), {"ok": bool(data.get("ok")), "data": data}
 
         if args.ops_command == "enqueue-projection-dirty-targets":
+            now_ms = _now_ms()
+            since_ms = (
+                now_ms - int(float(args.since_hours) * 60 * 60 * 1000)
+                if args.since_hours is not None
+                else None
+            )
             data = enqueue_projection_dirty_targets(
                 repos,
                 domain=args.domain,
                 execute=bool(args.execute),
-                now_ms=_now_ms(),
+                now_ms=now_ms,
+                projection=args.projection,
+                since_ms=since_ms,
                 source_quality_windows=settings.workers.news_source_quality_projection.windows,
             )
             return 0, {"ok": True, "data": data}

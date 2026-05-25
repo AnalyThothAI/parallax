@@ -234,6 +234,21 @@ class NewsRepository:
         ).fetchall()
         return [str(row["source_id"]) for row in rows]
 
+    def list_news_item_ids_for_stories(self, *, story_ids: Sequence[str]) -> list[str]:
+        normalized_ids = list(dict.fromkeys(str(story_id) for story_id in story_ids if str(story_id)))
+        if not normalized_ids:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT news_item_id
+              FROM news_story_members
+             WHERE story_id = ANY(%s::text[])
+             ORDER BY story_id ASC, news_item_id ASC
+            """,
+            (normalized_ids,),
+        ).fetchall()
+        return [str(row["news_item_id"]) for row in rows]
+
     def claim_due_sources(
         self,
         *,
@@ -1453,21 +1468,20 @@ class NewsRepository:
             for row in rows
         ]
 
-    def list_items_for_brief(
-        self,
-        *,
-        limit: int,
-        now_ms: int,
-        backpressure_cooldown_ms: int,
-        artifact_version_hash: str,
-        max_attempts: int,
-    ) -> list[dict[str, Any]]:
-        recent_backpressure_after_ms = int(now_ms) - max(1, int(backpressure_cooldown_ms))
+    def load_items_for_brief_targets(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
+        target_ids = [str(item_id) for item_id in dict.fromkeys(news_item_ids) if str(item_id)]
+        if not target_ids:
+            return []
         rows = self.conn.execute(
             """
-            WITH candidates AS (
+            WITH target_ids(news_item_id, ordinal) AS (
+              SELECT news_item_id, ordinal
+                FROM unnest(%s::text[]) WITH ORDINALITY AS ids(news_item_id, ordinal)
+            ),
+            candidates AS (
               SELECT
                 items.news_item_id,
+                target_ids.ordinal,
                 member.story_id,
                 items.published_at_ms,
                 GREATEST(
@@ -1477,15 +1491,9 @@ class NewsRepository:
                   COALESCE(fact_updates.updated_at_ms, 0),
                   COALESCE(context_updates.updated_at_ms, 0),
                   COALESCE(story_member_updates.updated_at_ms, 0)
-                ) AS source_updated_at_ms,
-                current_brief.status AS current_status,
-                current_brief.computed_at_ms AS current_computed_at_ms,
-                current_brief.input_hash AS current_input_hash,
-                current_brief.artifact_version_hash AS current_artifact_version_hash,
-                COALESCE(started_attempts.attempt_count, 0) AS started_attempt_count,
-                (current_brief.news_item_id IS NULL) AS missing_current_brief,
-                COALESCE(latest_attempt.backpressure_retry_priority, 0) AS backpressure_retry_priority
-              FROM news_items AS items
+                ) AS source_updated_at_ms
+              FROM target_ids
+              JOIN news_items AS items ON items.news_item_id = target_ids.news_item_id
               LEFT JOIN LATERAL (
                 SELECT story_id
                   FROM news_story_members
@@ -1494,8 +1502,6 @@ class NewsRepository:
                  LIMIT 1
               ) AS member ON true
               LEFT JOIN news_story_groups AS stories ON stories.story_id = member.story_id
-              LEFT JOIN news_item_agent_briefs AS current_brief
-                ON current_brief.news_item_id = items.news_item_id
               LEFT JOIN LATERAL (
                 SELECT MAX(created_at_ms) AS updated_at_ms
                   FROM news_token_mentions
@@ -1516,56 +1522,7 @@ class NewsRepository:
                   FROM news_story_members
                  WHERE story_id = member.story_id
               ) AS story_member_updates ON true
-              LEFT JOIN LATERAL (
-                SELECT COUNT(*)::int AS attempt_count
-                  FROM news_item_agent_runs AS runs
-                 WHERE runs.news_item_id = items.news_item_id
-                   AND runs.artifact_version_hash = %s
-                   AND runs.execution_started = true
-              ) AS started_attempts ON true
-              LEFT JOIN LATERAL (
-                SELECT CASE
-                         WHEN runs.execution_started = false
-                          AND runs.status = 'backpressure'
-                         THEN 1
-                         ELSE 0
-                       END AS backpressure_retry_priority
-                  FROM news_item_agent_runs AS runs
-                 WHERE runs.news_item_id = items.news_item_id
-                 ORDER BY runs.finished_at_ms DESC, runs.run_id DESC
-                 LIMIT 1
-              ) AS latest_attempt ON true
               WHERE items.lifecycle_status = 'processed'
-                AND NOT EXISTS (
-                  SELECT 1
-                    FROM news_item_agent_runs AS recent_runs
-                   WHERE recent_runs.news_item_id = items.news_item_id
-                     AND recent_runs.execution_started = false
-                     AND recent_runs.status = 'backpressure'
-                     AND recent_runs.finished_at_ms >= %s
-                )
-                AND (
-                  current_brief.news_item_id IS NULL
-                  OR current_brief.artifact_version_hash <> %s
-                  OR current_brief.computed_at_ms < GREATEST(
-                       items.updated_at_ms,
-                       COALESCE(stories.updated_at_ms, 0),
-                       COALESCE(mention_updates.updated_at_ms, 0),
-                       COALESCE(fact_updates.updated_at_ms, 0),
-                       COALESCE(context_updates.updated_at_ms, 0),
-                       COALESCE(story_member_updates.updated_at_ms, 0)
-                     )
-                  OR (
-                    current_brief.status = 'failed'
-                    AND COALESCE(started_attempts.attempt_count, 0) < %s
-                  )
-                )
-              ORDER BY (current_brief.news_item_id IS NULL) DESC,
-                       items.published_at_ms DESC,
-                       COALESCE(latest_attempt.backpressure_retry_priority, 0) ASC,
-                       source_updated_at_ms DESC,
-                       items.news_item_id DESC
-              LIMIT %s
             )
             SELECT
               to_jsonb(items.*)
@@ -1630,19 +1587,9 @@ class NewsRepository:
                 JOIN news_items AS member_items ON member_items.news_item_id = members.news_item_id
                WHERE members.story_id = candidates.story_id
             ) AS story_member_rows ON true
-            ORDER BY candidates.missing_current_brief DESC,
-                     candidates.published_at_ms DESC,
-                     candidates.backpressure_retry_priority ASC,
-                     candidates.source_updated_at_ms DESC,
-                     items.news_item_id DESC
+            ORDER BY candidates.ordinal ASC
             """,
-            (
-                str(artifact_version_hash),
-                recent_backpressure_after_ms,
-                str(artifact_version_hash),
-                max(1, int(max_attempts)),
-                max(0, int(limit)),
-            ),
+            (target_ids,),
         ).fetchall()
         results: list[dict[str, Any]] = []
         for row in rows:

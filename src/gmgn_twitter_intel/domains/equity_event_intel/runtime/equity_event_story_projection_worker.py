@@ -76,8 +76,15 @@ class EquityEventStoryProjectionWorker(WorkerBase):
 
                     try:
                         with _transaction(repos.conn):
-                            story_rows = _write_story_rows(repos=repos, events=events, now_ms=now)
-                            downstream_targets = _downstream_targets(events, source_watermark_ms=now)
+                            story_result = _write_story_rows(repos=repos, events=events, now_ms=now)
+                            story_rows = story_result.story_rows
+                            story_member_ids = repos.equity_events.list_company_event_ids_for_stories(
+                                story_ids=story_result.story_ids
+                            )
+                            downstream_targets = _downstream_targets(
+                                company_event_ids=story_member_ids or _event_ids(events),
+                                source_watermark_ms=now,
+                            )
                             if downstream_targets:
                                 repos.equity_projection_dirty_targets.enqueue_targets(
                                     downstream_targets,
@@ -143,8 +150,15 @@ class EquityEventStoryProjectionWorker(WorkerBase):
         return max(1, int(getattr(self.settings, "retry_ms", 30_000)))
 
 
-def _write_story_rows(*, repos: Any, events: Iterable[Mapping[str, Any]], now_ms: int) -> int:
+class _StoryWriteResult:
+    def __init__(self, *, story_rows: int, story_ids: Iterable[str]) -> None:
+        self.story_rows = int(story_rows)
+        self.story_ids = _unique_values(story_ids)
+
+
+def _write_story_rows(*, repos: Any, events: Iterable[Mapping[str, Any]], now_ms: int) -> _StoryWriteResult:
     story_rows = 0
+    story_ids: list[str] = []
     for event in events:
         event_payload = dict(event)
         current_story_id = str(event_payload.get("current_story_id") or "")
@@ -193,20 +207,25 @@ def _write_story_rows(*, repos: Any, events: Iterable[Mapping[str, Any]], now_ms
             commit=False,
         )
         story_rows += 1
-    return story_rows
+        story_ids.append(story_id)
+    return _StoryWriteResult(story_rows=story_rows, story_ids=story_ids)
 
 
-def _downstream_targets(events: Iterable[Mapping[str, Any]], *, source_watermark_ms: int) -> list[dict[str, Any]]:
+def _downstream_targets(*, company_event_ids: Iterable[str], source_watermark_ms: int) -> list[dict[str, Any]]:
     return [
         {
             "projection_name": projection_name,
             "target_kind": "company_event",
-            "target_id": str(event["company_event_id"]),
+            "target_id": company_event_id,
             "source_watermark_ms": int(source_watermark_ms),
         }
-        for event in events
-        for projection_name in ("page", "timeline", "alert")
+        for company_event_id in _unique_values(str(event_id) for event_id in company_event_ids)
+        for projection_name in ("brief_input", "page", "timeline", "alert")
     ]
+
+
+def _event_ids(events: Iterable[Mapping[str, Any]]) -> list[str]:
+    return _unique_values(str(event.get("company_event_id") or "") for event in events)
 
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
