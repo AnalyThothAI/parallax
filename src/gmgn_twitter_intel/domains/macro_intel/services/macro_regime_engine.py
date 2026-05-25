@@ -16,6 +16,18 @@ from gmgn_twitter_intel.domains.macro_intel.services.macro_gap_payloads import b
 from gmgn_twitter_intel.domains.macro_intel.services.macro_scenario_engine import build_macro_scenario
 
 CORE_REQUIRED_CONCEPTS = MACRO_HISTORY_REQUIRED_CONCEPTS
+FRESHNESS_CRITICAL_CONCEPTS = (
+    "liquidity:fed_assets",
+    "liquidity:on_rrp",
+    "liquidity:tga",
+    "liquidity:sofr",
+    "rates:dgs2",
+    "rates:dgs10",
+    "vol:vix",
+    "credit:hy_oas",
+    "credit:ig_oas",
+    "asset:spx",
+)
 OPTIONAL_CONFIRMATION_CONCEPTS = ("asset:spx", "fx:broad_dollar", "commodity:wti")
 PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
 CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
@@ -944,12 +956,13 @@ def _feature_gap_codes(features: Mapping[str, Any]) -> list[str]:
 
 
 def _has_stale_required_features(features: Mapping[str, Any]) -> bool:
-    for concept_key in CORE_REQUIRED_CONCEPTS:
+    for concept_key in FRESHNESS_CRITICAL_CONCEPTS:
         feature = features.get(concept_key)
         if not isinstance(feature, Mapping):
             continue
         freshness_days = _int_or_none(feature.get("freshness_days"))
-        if freshness_days is not None and freshness_days > 7:
+        stale_after_days = _int_or_none(feature.get("stale_after_days")) or 7
+        if freshness_days is not None and freshness_days > stale_after_days:
             return True
     return False
 
@@ -966,9 +979,7 @@ def _feature_has_required_history(features: Mapping[str, Any], concept_key: str)
 def _has_data_quality_gaps(data_gaps: Sequence[str]) -> bool:
     quality_gap_codes = {"missing_numeric_history", "missing_latest_observed_at"}
     return any(
-        gap_code.startswith("non_numeric_values")
-        or gap_code.startswith("data_quality_")
-        or gap_code in quality_gap_codes
+        gap_code.startswith("data_quality_") or gap_code in quality_gap_codes
         for gap_code in data_gaps
     )
 

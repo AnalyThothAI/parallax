@@ -75,7 +75,7 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
     assert view["primary_chart"]["status"] == "partial"
     assert view["primary_chart"]["status_label"] == "部分可用"
     assert view["primary_chart"]["min_points"] == 2
-    assert view["primary_chart"]["missing_concept_keys"] == ["rates:dgs5", "rates:dgs30"]
+    assert view["primary_chart"]["missing_concept_keys"] == ["rates:dgs3mo", "rates:dgs5", "rates:dgs30"]
     assert view["primary_chart"]["series"][0]["label"] == "2年期美债收益率"
     assert view["primary_chart"]["series"][0]["point_count"] == 1
     assert view["tables"][0]["columns"] == [
@@ -94,8 +94,8 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
         "headline": "利率定价：紧缩压力",
         "regime_label": "紧缩压力",
         "confidence_label": "中等置信度 64%",
-        "crypto_read": "宏观链条偏紧，加密 beta 需要等待流动性或信用确认。",
-        "token_impact": "优先降低高 beta 山寨暴露，等待 BTC/ETH 与信用压力背离修复。",
+        "data_note": "本页只展示已入库的真实观测、规则状态和可用性说明。",
+        "methodology_note": "利率定价 使用模块配置中的 required/optional 概念生成图表和表格。",
     }
     assert view["evidence"]["confirmations"][0]["label"] == "期限溢价压力"
     assert view["evidence"]["confirmations"][0]["description"] == "10Y yield pressure"
@@ -142,7 +142,7 @@ def test_build_macro_module_view_projects_v2_display_contract() -> None:
         for gap in view["data_gaps"]
     )
     assert "coverage" not in view["provenance"]
-    assert view["related_routes"][0] == {"href": "/macro/rates/yield-curve", "label": "收益率曲线"}
+    assert view["related_routes"][0] == {"href": "/macro/rates/fed-funds", "label": "联邦基金"}
 
 
 def test_build_macro_module_view_returns_missing_v2_status_when_snapshot_is_absent() -> None:

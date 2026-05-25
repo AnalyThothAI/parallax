@@ -342,13 +342,20 @@ Macro contract:
   catalog, including `snapshot`, `tiles`, `primary_chart`, `tables`, `read`,
   `evidence`, summarized `provenance`, structured `data_gaps`, and
   `related_routes`. There is no `macro_module_view_v1` compatibility path.
-  Supported module ids include
-  `overview`, `assets`, asset subpages (`assets/equities`, `assets/bonds`,
-  `assets/commodities`, `assets/fx`, `assets/crypto`,
-  `assets/crypto-derivatives`), `rates`, rates subpages
-  (`rates/yield-curve`, `rates/real-rates`), `fed`, `liquidity`,
-  `liquidity/transmission-chain`, `volatility`, and `credit`. Unsupported ids
-  return `400 {"error":"unsupported_macro_module","field":"module_id"}`.
+  Supported module ids include `overview`; `assets` plus asset subpages
+  (`assets/equities`, `assets/bonds`, `assets/commodities`, `assets/fx`,
+  `assets/crypto`, `assets/crypto-derivatives`); `rates` plus rates subpages
+  (`rates/fed-funds`, `rates/yield-curve`, `rates/auctions`,
+  `rates/real-rates`, `rates/expectations`); `fed` plus Fed subpages
+  (`fed/statements`, `fed/speeches`); `liquidity` plus liquidity subpages
+  (`liquidity/transmission-chain`, `liquidity/fed-balance-sheet`,
+  `liquidity/operations`, `liquidity/rrp-tga`, `liquidity/reserves`,
+  `liquidity/global-dollar`, `liquidity/subsurface`); `economy` plus economy
+  subpages (`economy/gdp`, `economy/employment`, `economy/inflation`,
+  `economy/consumer`); `volatility` plus volatility subpages
+  (`volatility/dashboard`, `volatility/vix`); and `credit` plus credit
+  subpages (`credit/cds`, `credit/stress`). Unsupported ids return
+  `400 {"error":"unsupported_macro_module","field":"module_id"}`.
 - The `assets/crypto-derivatives` module may attach a `cex_perp_board` table
   sourced from the persisted `cex_oi_radar_board` read model. Rows are compact
   display-table rows with labeled cells for symbol, open interest, funding,

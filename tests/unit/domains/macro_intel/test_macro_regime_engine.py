@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from gmgn_twitter_intel.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
+from gmgn_twitter_intel.domains.macro_intel._constants import (
+    MACRO_CORE_CONCEPTS,
+    MACRO_HISTORY_REQUIRED_CONCEPTS,
+)
 from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import (
     build_macro_view_snapshot,
 )
@@ -40,12 +43,12 @@ def test_empty_observations_emit_degraded_snapshot() -> None:
     )
     assert snapshot["source_coverage_json"] == {
         "observed_concept_count": 0,
-        "required_concept_count": len(MACRO_CORE_CONCEPTS),
+        "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
         "latest_coverage_ratio": 0.0,
         "history_coverage_ratio": 0.0,
-        "required_history_concept_count": len(MACRO_CORE_CONCEPTS),
+        "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
         "history_ready_concept_count": 0,
-        "concepts_below_min_history": list(MACRO_CORE_CONCEPTS),
+        "concepts_below_min_history": list(MACRO_HISTORY_REQUIRED_CONCEPTS),
         "latest_observed_at": None,
     }
 
@@ -147,9 +150,13 @@ def test_one_point_per_required_concept_is_partial_with_history_coverage_below_r
     assert coverage["latest_coverage_ratio"] == 1.0
     assert coverage["history_coverage_ratio"] < 1.0
     assert coverage["history_ready_concept_count"] == 0
-    assert len(coverage["concepts_below_min_history"]) == len(MACRO_CORE_CONCEPTS)
+    assert len(coverage["concepts_below_min_history"]) == len(MACRO_HISTORY_REQUIRED_CONCEPTS)
     assert all(feature["history_points"] == 1 for feature in snapshot["features_json"].values())
-    assert all(feature["score_participation"] is False for feature in snapshot["features_json"].values())
+    assert all(
+        feature["score_participation"] is False
+        for concept_key, feature in snapshot["features_json"].items()
+        if concept_key in MACRO_HISTORY_REQUIRED_CONCEPTS
+    )
     assert any(gap["code"] == "insufficient_history_20d" for gap in snapshot["data_gaps_json"])
 
 
@@ -165,11 +172,13 @@ def test_full_history_with_degraded_required_concept_is_not_ready() -> None:
                 data_quality="ok",
             )
         )
-    observations[-1]["data_quality"] = "degraded"
+    degraded_concept_key = MACRO_HISTORY_REQUIRED_CONCEPTS[-1]
+    for observation in observations:
+        if observation["concept_key"] == degraded_concept_key:
+            observation["data_quality"] = "degraded"
 
     snapshot = build_macro_view_snapshot(observations, computed_at_ms=NOW_MS)
 
-    degraded_concept_key = MACRO_CORE_CONCEPTS[-1]
     assert snapshot["source_coverage_json"]["latest_coverage_ratio"] == 1.0
     assert snapshot["source_coverage_json"]["history_coverage_ratio"] == 1.0
     assert snapshot["features_json"][degraded_concept_key]["data_quality"] == "degraded"

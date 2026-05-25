@@ -846,11 +846,9 @@ def _availability_note(concept_key: str, feature: Mapping[str, Any]) -> str:
         return "未在最新宏观投影中出现；检查 macrodata bundle 和 importer 映射。"
     source = _mapping(feature.get("source"))
     source_name = _source_label(source)
-    series_key = str(source.get("series_key") or "")
-    if series_key:
-        return f"{source_name} {series_key}"
     metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
-    return str(metadata.get("description") or "已入库观测。")
+    description = str(metadata.get("description") or "").strip()
+    return f"{source_name}；{description}" if description else source_name
 
 
 def _pct_value(value: float | None) -> str:

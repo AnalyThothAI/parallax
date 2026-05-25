@@ -131,7 +131,7 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
                 "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
                 **_history_readiness_payload(history),
                 "latest_import_run": _json_ready(repos.macro_intel.latest_import_run()),
-                "latest_snapshot": _json_ready(
+                "latest_snapshot": _snapshot_status_summary(
                     repos.macro_intel.latest_snapshot(
                         projection_version=MACRO_VIEW_PROJECTION_VERSION,
                     )
@@ -196,6 +196,65 @@ def _sync_import_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if snapshot is None:
+        return None
+    heavy_keys = {
+        "chain_json",
+        "data_gaps_json",
+        "features_json",
+        "indicators_json",
+        "panels_json",
+        "scenario_json",
+        "scorecard_json",
+        "source_coverage_json",
+    }
+    if not any(key in snapshot for key in heavy_keys):
+        return _json_ready(snapshot)
+
+    panels = _object_map(snapshot.get("panels_json")) or _object_map(snapshot.get("chain_json"))
+    features = _object_map(snapshot.get("features_json"))
+    indicators = _object_map(snapshot.get("indicators_json"))
+    data_gaps = _sequence(snapshot.get("data_gaps_json"))
+    scorecard = _mapping(snapshot.get("scorecard_json"))
+    source_coverage = _mapping(snapshot.get("source_coverage_json"))
+    return {
+        "snapshot_id": snapshot.get("snapshot_id"),
+        "projection_version": snapshot.get("projection_version"),
+        "asof_date": _json_ready(snapshot.get("asof_date")),
+        "status": snapshot.get("status"),
+        "regime": snapshot.get("regime"),
+        "overall_score": snapshot.get("overall_score"),
+        "computed_at_ms": snapshot.get("computed_at_ms"),
+        "feature_count": len(features),
+        "indicator_count": len(indicators),
+        "data_gap_count": len(data_gaps),
+        "data_gap_codes": _edge_sample([str(gap.get("code")) for gap in data_gaps if isinstance(gap, Mapping)]),
+        "coverage": {
+            "latest_coverage_ratio": source_coverage.get("latest_coverage_ratio")
+            or scorecard.get("latest_coverage_ratio"),
+            "history_coverage_ratio": source_coverage.get("history_coverage_ratio")
+            or scorecard.get("history_coverage_ratio"),
+            "observed_concept_count": source_coverage.get("observed_concept_count")
+            or scorecard.get("observed_concept_count"),
+            "required_concept_count": source_coverage.get("required_concept_count")
+            or scorecard.get("required_concept_count"),
+            "history_ready_concept_count": source_coverage.get("history_ready_concept_count"),
+            "required_history_concept_count": source_coverage.get("required_history_concept_count"),
+            "concepts_below_min_history": list(source_coverage.get("concepts_below_min_history") or []),
+        },
+        "panels": {
+            str(panel_id): {
+                "score": panel.get("score"),
+                "regime": panel.get("regime"),
+                "evidence_count": len(_sequence(panel.get("evidence"))),
+                "data_gap_count": len(_sequence(panel.get("data_gaps"))),
+            }
+            for panel_id, panel in panels.items()
+        },
+    }
+
+
 def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     rows_by_concept = {str(row.get("concept_key")): row for row in history_rows}
     below_min: list[dict[str, Any]] = []
@@ -240,6 +299,22 @@ def _edge_sample(values: Sequence[Any], *, edge_count: int = 3) -> list[Any]:
     if len(values) <= edge_count * 2:
         return list(values)
     return [*values[:edge_count], "...", *values[-edge_count:]]
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _object_map(value: object) -> dict[str, Mapping[str, Any]]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): item for key, item in value.items() if isinstance(item, Mapping)}
+
+
+def _sequence(value: object) -> Sequence[Any]:
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return value
+    return ()
 
 
 def _error_payload(error: str, exc: Exception) -> dict[str, Any]:
