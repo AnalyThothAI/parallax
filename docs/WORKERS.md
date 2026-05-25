@@ -39,7 +39,9 @@ run()
 ```
 
 Correctness must not depend on `NOTIFY` delivery. Every listener has a
-bounded `interval_seconds` catch-up from `workers.yaml`.
+bounded `interval_seconds` loop from `workers.yaml`, but that loop must
+claim durable queues or read bounded read models. It must not run broad
+fact-table scans when the dirty queue is empty.
 
 ## Truth Categories
 
@@ -48,8 +50,8 @@ Review workers by separating four categories:
 | Category | Meaning | Examples | Rule |
 |----------|---------|----------|------|
 | Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
-| Read models | Rebuildable projections for reads and product workflows | `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
-| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
+| Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `watchlist_handle_signal_stats`, watchlist summaries | Exactly one runtime writer. |
+| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, projection dirty targets, `pulse_agent_jobs`, notification deliveries | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 | Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
 
@@ -85,7 +87,7 @@ persisted facts.
 ## Worker Inventory
 
 <!-- worker-inventory-keys:
-collector, token_capture_tier, market_tick_stream, market_tick_poll,
+collector, token_capture_tier, market_tick_stream, market_tick_poll, market_tick_current_projection,
 event_anchor_backfill, live_price_gateway, resolution_refresh,
 asset_profile_refresh, token_image_mirror, token_radar_projection, token_profile_current,
 narrative_admission, mention_semantics, token_discussion_digest,
@@ -104,12 +106,13 @@ notification_delivery
 | `token_capture_tier` (`TokenCaptureTierWorker`) | `asset_market` | `domains/asset_market/runtime/token_capture_tier_worker.py` | active Token Radar live market targets | `token_capture_tier` | poll | none | `interval_seconds` |
 | `market_tick_stream` (`MarketTickStreamWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_stream_worker.py` | `token_capture_tier(tier=1)`, OKX DEX WS | `market_ticks(source_tier='tier1_ws')` | provider-driven (WS) | `market_tick_written` | bounded stream cycle |
 | `market_tick_poll` (`MarketTickPollWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_poll_worker.py` | `token_capture_tier(tier=2)`, OKX DEX and Binance USD-M CEX REST quotes | `market_ticks(source_tier='tier2_poll')` | poll | `market_tick_written` | `interval_seconds` |
+| `market_tick_current_projection` (`MarketTickCurrentProjectionWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_current_projection_worker.py` | due `market_tick_current_dirty_targets`, append-only `market_ticks` | `market_tick_current`, `token_radar_dirty_targets` for changed market current rows | `market_tick_written` | `market_tick_current_updated` after successful current changes | `interval_seconds` |
 | `event_anchor_backfill` (`EventAnchorBackfillWorker`) | `asset_market` | `domains/asset_market/runtime/event_anchor_backfill_worker.py` | due `event_anchor_backfill_jobs`, event-adjacent `market_ticks`, quote providers inside the lag budget | `market_ticks`, narrow `enriched_events` lifecycle transition, `event_anchor_backfill_jobs` status | poll | `market_tick_written` | `interval_seconds` |
 | `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | latest `market_ticks` per target | in-process latest cache and WebSocket fan-out only | poll | none | `interval_seconds` |
-| `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
+| `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | due `token_discovery_dirty_lookup_keys`, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results`, queue completion/reschedule state | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, configured DEX profile sources | `asset_profiles` | poll | none | `interval_seconds` |
 | `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | provider logo URLs from `asset_profiles`, exact identity evidence, `cex_token_profiles`, current/recent targets | `token_image_assets`, local cache files | poll | none | `interval_seconds` |
-| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_dirty_targets`; target-scoped facts via `token_radar_target_feature_query`, `market_tick_current`, `enriched_events`, `asset_identity_current` | `token_radar_target_features`, `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
+| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_dirty_targets`; target-scoped facts via `token_radar_target_feature_query`, `market_tick_current`, `enriched_events`, `asset_identity_current` | `token_radar_target_features`, `token_radar_current_rows`, `token_radar_rank_history`, `token_radar_snapshot_audit`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_current_updated`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | `asset_profiles`, `token_image_assets`, `cex_token_profiles`, exact GMGN stream evidence, exact OKX DEX evidence, current Radar targets | `token_profile_current` | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | current `token_radar_current_rows` frontier, `events`, current `token_intent_resolutions` | `narrative_admissions` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | due `narrative_admissions` source sets, `events`, queued semantics | `token_mention_semantics`, `narrative_model_runs` | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
@@ -204,8 +207,10 @@ epoch-policy deferral is separate from provider capacity.
 `token_radar_snapshot_audit`, and `token_radar_target_first_seen`. The compact
 first-seen read model preserves `listed_at_ms` while current rows stay small.
 `ops reset-token-radar-postgres-hard-cut` is an explicit operator maintenance
-command for the clean-slate derived-storage reset; it is never called by HTTP
-handlers, WebSocket paths, or normal worker catch-up.
+command for the clean-slate derived-storage reset; `ops
+enqueue-token-radar-dirty-targets` is the explicit repair path for missed dirty
+target enqueue. Neither command is called by HTTP handlers, WebSocket paths, or
+normal worker catch-up.
 
 `EnrichmentWorker` is the runtime writer for
 `watchlist_handle_signal_events` and `watchlist_handle_signal_stats`.
@@ -246,6 +251,11 @@ not a read model.
   only `chain_token` targets from `token_capture_tier(tier=1)`.
 - `market_tick_poll` owns Tier 2 REST capture for DEX and CEX targets.
   It is the steady-state REST quote worker.
+- `market_tick_current_projection` is the single runtime writer for
+  `market_tick_current`. It claims durable dirty targets, selects the
+  latest append-only tick by `(observed_at_ms, received_at_ms, tick_id)`,
+  and enqueues Token Radar market dirty work only when the visible
+  current row changes.
 - `event_anchor_backfill` owns short-lived event-anchor catch-up. It
   consumes `event_anchor_backfill_jobs`, attaches a persisted nearby tick
   first, calls providers only inside the configured lag budget, and then
@@ -258,7 +268,8 @@ not a read model.
 
 | Channel | Emitter | Listener | Hint payload |
 |---------|---------|----------|--------------|
-| `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker`, `EventAnchorBackfillWorker` | `TokenRadarProjectionWorker` | `{target_type, target_id}` |
+| `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker`, `EventAnchorBackfillWorker` | `MarketTickCurrentProjectionWorker` | `{target_type, target_id}` |
+| `market_tick_current_updated` | `MarketTickCurrentProjectionWorker` | `TokenRadarProjectionWorker` | `{target_type, target_id}` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` | `{lookup_keys: [...]}` |
 | `token_radar_updated` | `TokenRadarProjectionWorker` | `MentionSemanticsWorker`, `TokenDiscussionDigestWorker`, `PulseCandidateWorker` | `{window, scope}` |
 | `narrative_semantics_updated` | `MentionSemanticsWorker` | `TokenDiscussionDigestWorker` | `{window, scope, target_count}` |
@@ -306,6 +317,12 @@ Adding a wake channel requires all of these in one change:
   `timeout_seconds` is a provider execution boundary inside
   `AgentExecutionGateway`. `statement_timeout_seconds` is the final SQL
   guard for synchronous DB work.
+- Wake waiters use a dedicated single-thread executor for PostgreSQL
+  `LISTEN` waits and are closed through `WorkerBase.aclose()`. They do
+  not share the event loop default executor with other `to_thread` work.
+- WebSocket fan-out is presentation-only and bounded per client. A slow
+  subscriber can be dropped, but it must not block worker publish paths
+  or other subscribers.
 - Non-continuous workers must have a finite `hard_timeout_seconds`.
   `collector` is the only zero-hard-timeout worker because it is a
   continuous stream lifecycle with its own snapshot gate and watchdog.

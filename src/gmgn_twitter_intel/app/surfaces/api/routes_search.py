@@ -98,7 +98,7 @@ def search_inspect(
             targets=repos.token_targets,
             profiles=profiles,
             live_price_gateway=_worker_object(runtime, "live_price_gateway"),
-            market_candles=_market_candles_service(runtime),
+            market_candles=_market_candles_service(),
         ).inspect(
             q,
             window=parsed_window,
@@ -143,7 +143,7 @@ def token_case(
                 targets=repos.token_targets,
                 profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
                 live_price_gateway=_worker_object(runtime, "live_price_gateway"),
-                market_candles=_market_candles_service(runtime),
+                market_candles=_market_candles_service(),
                 cex_detail_snapshots=repos.cex_detail_snapshots,
             ).dossier(
                 target_type=parsed_target_type,
@@ -236,7 +236,7 @@ def target_social_timeline(
         with runtime.repositories() as repos:
             data = TokenTargetSocialTimelineService(
                 targets=repos.token_targets,
-                market_candles=_market_candles_service(runtime),
+                market_candles=_market_candles_service(),
             ).timeline(
                 target_type=parsed_target_type,
                 target_id=target_id,
@@ -250,12 +250,8 @@ def target_social_timeline(
     return _json({"ok": True, "data": data})
 
 
-def _market_candles_service(runtime: object) -> MarketCandlesService:
-    providers = getattr(getattr(runtime, "providers", None), "asset_market", None)
-    return MarketCandlesService(
-        cex_market=getattr(providers, "cex_market", None),
-        dex_candle_market=getattr(providers, "dex_candle_market", None),
-    )
+def _market_candles_service() -> MarketCandlesService:
+    return MarketCandlesService()
 
 
 def _narrative_read_model(repos: Any) -> Any:

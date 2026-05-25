@@ -62,6 +62,7 @@ def reprocess_recent_token_intents(
     reprocessed = 0
     resolved = 0
     dirty_targets: list[dict[str, Any]] = []
+    discovery_lookup_keys: set[str] = set()
     for intent in intents:
         evidence = repos.token_evidence.evidence_for_intent(str(intent["intent_id"]))
         decision = resolver.resolve(
@@ -82,9 +83,20 @@ def reprocess_recent_token_intents(
         reprocessed += 1
         if decision.target_type and decision.target_id:
             resolved += 1
+        else:
+            discovery_lookup_keys.update(
+                key for key in decision.lookup_keys if str(key).startswith(("symbol:", "address:"))
+            )
         dirty_target = _dirty_target_for_decision(decision)
         if dirty_target is not None:
             dirty_targets.append(dirty_target)
+    if discovery_lookup_keys:
+        repos.discovery.enqueue_lookup_keys(
+            sorted(discovery_lookup_keys),
+            reason="resolution_refresh_unresolved",
+            now_ms=now_ms,
+            commit=False,
+        )
     dirty_repo = getattr(repos, "token_radar_dirty_targets", None)
     if dirty_targets and dirty_repo is not None:
         dirty_repo.enqueue_targets(

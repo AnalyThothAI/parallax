@@ -5,6 +5,9 @@ from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
+from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker import (
+    MarketTickCurrentProjectionWorker,
+)
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
@@ -18,6 +21,7 @@ WORKER_KEYS = frozenset(
         "asset_profile_refresh",
         "event_anchor_backfill",
         "live_price_gateway",
+        "market_tick_current_projection",
         "market_tick_poll",
         "market_tick_stream",
         "resolution_refresh",
@@ -82,6 +86,16 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             providers=asset_market,
             wake_emitter=ctx.wake_bus,
             batch_size=workers.market_tick_poll.batch_size,
+        )
+    if workers.market_tick_current_projection.enabled:
+        worker_name = "market_tick_current_projection"
+        constructed[worker_name] = MarketTickCurrentProjectionWorker(
+            name=worker_name,
+            settings=workers.market_tick_current_projection,
+            db=ctx.db,
+            telemetry=ctx.telemetry,
+            wake_emitter=ctx.wake_bus,
+            wake_waiter=ctx.db.wake_listener(worker_name, workers.market_tick_current_projection.wakes_on),
         )
     if workers.event_anchor_backfill.enabled and (cex_market is not None or dex_quote_market is not None):
         constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(

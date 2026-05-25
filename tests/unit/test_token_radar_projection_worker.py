@@ -34,7 +34,7 @@ class FakeDirtyTargets:
 
     def enqueue_recent_resolved_targets(self, **kwargs):
         self.catch_up_calls.append(kwargs)
-        return 0
+        raise AssertionError("token radar runtime worker must not run recent resolved catch-up")
 
 
 class FakeSession:
@@ -393,7 +393,7 @@ def _settings(**overrides):
         "batch_size": 100,
         "statement_timeout_seconds": 120.0,
         "advisory_lock_key": 2026051501,
-        "wakes_on": ("market_tick_written", "resolution_updated"),
+        "wakes_on": ("market_tick_current_updated", "resolution_updated"),
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),
         "hot_windows": ("5m",),
@@ -447,7 +447,7 @@ def _worker(
     return worker
 
 
-def test_projection_worker_enqueues_bounded_catch_up_when_no_dirty_claims(monkeypatch) -> None:
+def test_projection_worker_does_not_enqueue_catch_up_when_no_dirty_claims(monkeypatch) -> None:
     class _FakeProjection:
         def __init__(self, *, repos):
             self.repos = repos
@@ -475,10 +475,10 @@ def test_projection_worker_enqueues_bounded_catch_up_when_no_dirty_claims(monkey
 
     assert result["status"] == "idle"
     assert result["catch_up_enqueued"] == 0
-    assert db.sessions[-1].repos.token_radar_dirty_targets.catch_up_calls[-1]["limit"] == 7
+    assert db.sessions[-1].repos.token_radar_dirty_targets.catch_up_calls == []
 
 
-def test_projection_worker_does_not_run_window_scan_after_catch_up() -> None:
+def test_projection_worker_does_not_run_window_scan_or_runtime_catch_up_when_idle() -> None:
     worker = _worker(
         windows=("5m", "1h"),
         scopes=("all",),

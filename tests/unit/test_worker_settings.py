@@ -40,6 +40,10 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.market_tick_poll.interval_seconds == 15
     assert settings.market_tick_poll.batch_size == 100
     assert settings.market_tick_poll.concurrency == 4
+    assert settings.market_tick_current_projection.interval_seconds == 5
+    assert settings.market_tick_current_projection.batch_size == 100
+    assert settings.market_tick_current_projection.advisory_lock_key == 2026052401
+    assert settings.market_tick_current_projection.wakes_on == ("market_tick_written",)
     assert settings.event_anchor_backfill.interval_seconds == 1
     assert settings.event_anchor_backfill.batch_size == 50
     assert settings.event_anchor_backfill.concurrency == 8
@@ -62,7 +66,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_profile_current.batch_size == 500
     assert settings.token_capture_tier.advisory_lock_key == 2026051503
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
-    assert settings.token_radar_projection.wakes_on == ("market_tick_written", "resolution_updated")
+    assert settings.token_radar_projection.wakes_on == ("market_tick_current_updated", "resolution_updated")
     assert settings.narrative_admission.interval_seconds == 60
     assert settings.narrative_admission.soft_timeout_seconds == 180
     assert settings.narrative_admission.hard_timeout_seconds == 300

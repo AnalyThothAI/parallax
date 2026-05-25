@@ -18,6 +18,15 @@ class WakeBus:
             },
         )
 
+    def notify_market_tick_current_updated(self, *, target_type: str, target_id: str) -> None:
+        self._notify(
+            "market_tick_current_updated",
+            {
+                "target_type": str(target_type),
+                "target_id": str(target_id),
+            },
+        )
+
     def notify_resolution_updated(self, *, lookup_keys: Sequence[str]) -> None:
         self._notify("resolution_updated", {"lookup_keys": [str(item) for item in lookup_keys]})
 

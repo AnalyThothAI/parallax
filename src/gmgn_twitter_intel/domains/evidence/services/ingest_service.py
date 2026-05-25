@@ -11,6 +11,7 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_TWEET_CONTRACT_MENTION,
+    DiscoveryRepository,
     EnrichedEventCapture,
     EnrichedEventRepository,
     EventAnchorBackfillJobRepository,
@@ -18,6 +19,10 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     MarketTickRepository,
     RegistryRepository,
 )
+from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
+    MarketTickCurrentDirtyTargetRepository,
+)
+from gmgn_twitter_intel.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from gmgn_twitter_intel.domains.evidence.interfaces import (
     TextSurface,
     TwitterEvent,
@@ -70,12 +75,15 @@ class IngestService:
         token_evidence: TokenEvidenceRepository | None = None,
         token_intents: TokenIntentRepository | None = None,
         intent_resolutions: IntentResolutionRepository | None = None,
+        discovery: DiscoveryRepository | None = None,
         market_ticks: MarketTickRepository | None = None,
+        market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository | None = None,
         enriched_events: EnrichedEventRepository | None = None,
         event_anchor_jobs: EventAnchorBackfillJobRepository | None = None,
         token_radar_dirty_targets: Any | None = None,
         event_anchor_active_window_ms: int = DEFAULT_EVENT_ANCHOR_ACTIVE_WINDOW_MS,
     ) -> None:
+        self.conn = evidence.conn
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
@@ -86,7 +94,11 @@ class IngestService:
         self.token_evidence = token_evidence or TokenEvidenceRepository(evidence.conn)
         self.token_intents = token_intents or TokenIntentRepository(evidence.conn)
         self.intent_resolutions = intent_resolutions or IntentResolutionRepository(evidence.conn)
+        self.discovery = discovery or DiscoveryRepository(evidence.conn)
         self.market_ticks = market_ticks or MarketTickRepository(evidence.conn)
+        self.market_tick_current_dirty_targets = (
+            market_tick_current_dirty_targets or MarketTickCurrentDirtyTargetRepository(evidence.conn)
+        )
         self.enriched_events = enriched_events or EnrichedEventRepository(evidence.conn)
         self.event_anchor_jobs = event_anchor_jobs or EventAnchorBackfillJobRepository(evidence.conn)
         self.token_radar_dirty_targets = token_radar_dirty_targets
@@ -208,6 +220,14 @@ class IngestService:
                     created_at_ms=prepared.event_ms,
                     commit=False,
                 )
+            discovery_lookup_keys = _discovery_lookup_keys_for_resolutions(resolutions)
+            if discovery_lookup_keys:
+                self.discovery.enqueue_lookup_keys(
+                    discovery_lookup_keys,
+                    reason="intent_resolution_unresolved",
+                    now_ms=prepared.event_ms,
+                    commit=False,
+                )
             dirty_targets = _dirty_targets_for_resolutions(resolutions)
             if dirty_targets and self.token_radar_dirty_targets is not None:
                 self.token_radar_dirty_targets.enqueue_targets(
@@ -216,11 +236,15 @@ class IngestService:
                     now_ms=prepared.event_ms,
                     commit=False,
                 )
+            capture_ticks = [tick for item in captures if (tick := getattr(item, "tick", None)) is not None]
+            if capture_ticks:
+                MarketTickPersistenceService(self).insert_ticks_and_enqueue_current_dirty(
+                    capture_ticks,
+                    reason="event_capture_tick_inserted",
+                    now_ms=prepared.event_ms,
+                )
             for item in captures:
-                tick = getattr(item, "tick", None)
                 capture = getattr(item, "capture", item)
-                if tick is not None:
-                    self.market_ticks.insert_tick(tick)
                 self.enriched_events.insert_capture(capture)
                 self.event_anchor_jobs.enqueue_for_capture(
                     capture,
@@ -528,6 +552,21 @@ def _dirty_targets_for_resolutions(resolutions: list[Any]) -> list[dict[str, Any
                 }
             )
     return dirty_targets
+
+
+def _discovery_lookup_keys_for_resolutions(resolutions: list[Any]) -> list[str]:
+    lookup_keys: set[str] = set()
+    for decision in resolutions:
+        status = str(_decision_value(decision, "resolution_status") or "")
+        target_type = _decision_value(decision, "target_type")
+        target_id = _decision_value(decision, "target_id")
+        if status not in {"NIL", "AMBIGUOUS"} and target_type and target_id:
+            continue
+        for key in _decision_value(decision, "lookup_keys") or []:
+            text = str(key or "").strip()
+            if text.startswith(("symbol:", "address:")):
+                lookup_keys.add(text)
+    return sorted(lookup_keys)
 
 
 def _unavailable_capture(

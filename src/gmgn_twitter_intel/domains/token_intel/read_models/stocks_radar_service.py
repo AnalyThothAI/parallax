@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.queries.stocks_radar_query import StocksRadarQuery
 
 from .asset_flow_service import WINDOW_MS
-
-DEFAULT_QUOTE_TIMEOUT_SECONDS = 2.0
-DEFAULT_QUOTE_MAX_WORKERS = 8
 
 
 class StocksRadarService:
@@ -16,18 +12,9 @@ class StocksRadarService:
         self,
         *,
         conn: Any,
-        quote_provider: Any | None = None,
-        quote_timeout_seconds: float | None = None,
-        quote_max_workers: int = DEFAULT_QUOTE_MAX_WORKERS,
         stock_rows_query: Any | None = None,
     ) -> None:
         self.stock_rows_query = stock_rows_query or StocksRadarQuery(conn)
-        self.quote_provider = quote_provider
-        self.quote_timeout_seconds = _positive_float(
-            quote_timeout_seconds,
-            default=DEFAULT_QUOTE_TIMEOUT_SECONDS,
-        )
-        self.quote_max_workers = max(1, int(quote_max_workers))
 
     def stocks_radar(
         self,
@@ -80,33 +67,7 @@ class StocksRadarService:
                 seen.add(normalized)
         if not unique_symbols:
             return {}
-        if self.quote_provider is None:
-            return {symbol: _unavailable_quote("provider_not_configured") for symbol in unique_symbols}
-        quote_provider = self.quote_provider
-
-        def quote_one(symbol: str) -> tuple[str, dict[str, Any]]:
-            try:
-                quote = _mapping(quote_provider.quote(symbol))
-                return symbol, _normalized_quote(quote)
-            except Exception as exc:
-                return symbol, _unavailable_quote(type(exc).__name__)
-
-        results: dict[str, dict[str, Any]] = {}
-        executor = ThreadPoolExecutor(max_workers=min(self.quote_max_workers, len(unique_symbols)))
-        futures = {executor.submit(quote_one, symbol): symbol for symbol in unique_symbols}
-        try:
-            for future in as_completed(futures, timeout=self.quote_timeout_seconds):
-                symbol, quote = future.result()
-                results[symbol] = quote
-        except TimeoutError:
-            pass
-        finally:
-            for future, symbol in futures.items():
-                if symbol not in results:
-                    future.cancel()
-                    results[symbol] = _unavailable_quote("quote_timeout")
-            executor.shutdown(wait=False, cancel_futures=True)
-        return results
+        return {symbol: _unavailable_quote("read_model_unavailable") for symbol in unique_symbols}
 
 
 def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]:
@@ -138,33 +99,6 @@ def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def _normalized_quote(payload: dict[str, Any]) -> dict[str, Any]:
-    status = str(payload.get("status") or "").strip()
-    price = _float_or_none(payload.get("price"))
-    reference_close_price = _float_or_none(payload.get("reference_close_price"))
-    change_pct = _float_or_none(payload.get("change_pct"))
-    if change_pct is None and price is not None and reference_close_price:
-        change_pct = (price - reference_close_price) / reference_close_price
-    if not status:
-        status = "ready" if price is not None else "unavailable"
-    return {
-        "status": status,
-        "price": price,
-        "reference_close_price": reference_close_price,
-        "change_pct": change_pct,
-        "asof": _str_or_none(payload.get("asof")),
-        "provider": _str_or_none(payload.get("provider")),
-        "provider_symbol": _str_or_none(payload.get("provider_symbol")),
-        "latency_class": _str_or_none(
-            payload.get("latency_class") or _mapping(payload.get("meta")).get("freshness_class")
-        ),
-        "freshness_class": _str_or_none(
-            _mapping(payload.get("meta")).get("freshness_class") or payload.get("freshness_class")
-        ),
-        "error": _str_or_none(payload.get("error")) if status != "ready" else None,
-    }
-
-
 def _unavailable_quote(error: str) -> dict[str, Any]:
     return {
         "status": "unavailable",
@@ -180,19 +114,6 @@ def _unavailable_quote(error: str) -> dict[str, Any]:
     }
 
 
-def _mapping(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
@@ -200,18 +121,3 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _str_or_none(value: Any) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    return normalized or None
-
-
-def _positive_float(value: Any, *, default: float) -> float:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed > 0 else default

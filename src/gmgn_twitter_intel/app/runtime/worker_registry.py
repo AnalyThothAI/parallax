@@ -9,6 +9,10 @@ CANONICAL_WORKER_CLASSES = {
         "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
     ),
     "market_tick_poll": "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
+    "market_tick_current_projection": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker."
+        "MarketTickCurrentProjectionWorker"
+    ),
     "event_anchor_backfill": (
         "gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
     ),
@@ -94,6 +98,7 @@ WORKER_START_PRIORITY = {
     "market_tick_stream": 30,
     "market_tick_poll": 40,
     "event_anchor_backfill": 45,
+    "market_tick_current_projection": 75,
     "live_price_gateway": 50,
     "resolution_refresh": 60,
     "asset_profile_refresh": 70,

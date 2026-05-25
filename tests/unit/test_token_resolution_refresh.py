@@ -82,6 +82,14 @@ def test_reprocess_enqueues_dirty_targets_for_incremental_token_radar(monkeypatc
             "commit": False,
         }
     ]
+    assert repos.discovery.enqueues == [
+        {
+            "lookup_keys": ["symbol:TWO"],
+            "reason": "resolution_refresh_unresolved",
+            "now_ms": 1_778_162_003_774,
+            "commit": False,
+        }
+    ]
 
 
 def test_refresh_recent_token_state_defers_projection_to_worker(monkeypatch):
@@ -133,6 +141,7 @@ class FakeRepos:
         self.registry = object()
         self.intent_resolutions = object()
         self.token_radar_dirty_targets = FakeDirtyTargets()
+        self.discovery = FakeDiscovery()
         self.conn = FakeConn()
 
 
@@ -149,6 +158,21 @@ class FakeDirtyTargets:
         self.enqueues.append(
             {
                 "rows": list(rows),
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+
+
+class FakeDiscovery:
+    def __init__(self):
+        self.enqueues = []
+
+    def enqueue_lookup_keys(self, lookup_keys, *, reason, now_ms, commit):
+        self.enqueues.append(
+            {
+                "lookup_keys": list(lookup_keys),
                 "reason": reason,
                 "now_ms": now_ms,
                 "commit": commit,

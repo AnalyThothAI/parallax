@@ -201,6 +201,30 @@ def test_radar_feature_builder_sets_cex_tradeability_features():
     assert features.tradeability["volume_24h"] == 100_000_000
 
 
+def test_feature_builder_does_not_fallback_to_legacy_numeric_confidence():
+    now_ms = 1_700_000_000_000
+    source = row(
+        "event-legacy-confidence",
+        received_at_ms=now_ms - 60_000,
+        resolution_status="UNKNOWN",
+        intent_confidence=1.0,
+        confidence=1.0,
+        followers=20_000,
+        gmgn_user_tags=["kol"],
+    )
+
+    features = build_radar_features(
+        window_rows=[source],
+        context_rows=[source],
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=5 * 60_000,
+        total_window_events=1,
+    )
+
+    assert features.heat["weighted_mentions"] == 0.0
+
+
 def row(
     event_id: str,
     *,

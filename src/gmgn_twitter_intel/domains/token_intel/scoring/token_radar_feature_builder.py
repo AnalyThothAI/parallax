@@ -322,13 +322,7 @@ def _post_score(row: dict[str, Any]) -> int:
 
 
 def _confidence(row: dict[str, Any]) -> float:
-    # resolution_status is the authoritative enum from the deterministic
-    # resolver; intent_confidence is the legacy numeric shadow kept for fallback.
-    status_conf = mention_confidence_from_status(row.get("resolution_status"))
-    if status_conf > 0:
-        return status_conf
-    fallback = row.get("intent_confidence") or row.get("confidence") or 0.0
-    return float(fallback)
+    return mention_confidence_from_status(row.get("resolution_status"))
 
 
 def _atomic_quality(row: dict[str, Any]) -> float:

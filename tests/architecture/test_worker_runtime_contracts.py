@@ -36,6 +36,10 @@ EXPECTED_WORKERS = {
         "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
     ),
     "market_tick_poll": "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
+    "market_tick_current_projection": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker."
+        "MarketTickCurrentProjectionWorker"
+    ),
     "event_anchor_backfill": (
         "gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
     ),
@@ -122,6 +126,7 @@ OLD_READYZ_WORKER_KEYS = {
     "collector",
     "market_tick_stream",
     "market_tick_poll",
+    "market_tick_current_projection",
     "event_anchor_backfill",
     "token_capture_tier",
     "live_price_gateway",
@@ -209,6 +214,12 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/asset_market/runtime/token_profile_current_worker.py",
         SRC / "platform/db/alembic/versions/20260517_0052_token_profile_current.py",
         SRC / "platform/db/alembic/versions/20260521_0079_token_profile_local_logo_hard_cut.py",
+    },
+    "market_tick_current": {
+        SRC / "domains/asset_market/repositories/market_tick_current_repository.py",
+        SRC / "domains/asset_market/runtime/market_tick_current_projection_worker.py",
+        SRC / "domains/asset_market/services/market_tick_current_rebuild.py",
+        SRC / "platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py",
     },
     "token_image_assets": {
         SRC / "domains/asset_market/repositories/token_image_asset_repository.py",
@@ -339,6 +350,14 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "news_projection_dirty_targets": {
         SRC / "domains/news_intel/repositories/news_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",
+    },
+    "market_tick_current_dirty_targets": {
+        SRC / "domains/asset_market/repositories/market_tick_current_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260524_0095_market_tick_current_dirty_targets.py",
+    },
+    "token_discovery_dirty_lookup_keys": {
+        SRC / "domains/asset_market/repositories/discovery_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0096_token_discovery_dirty_lookup_keys.py",
     },
 }
 
@@ -657,6 +676,14 @@ def test_dirty_target_control_plane_tables_are_not_read_models() -> None:
 
 
 @pytest.mark.architecture
+def test_resolution_refresh_dirty_lookup_queue_is_control_plane() -> None:
+    assert CONTROL_PLANE_TABLES["token_discovery_dirty_lookup_keys"] == {
+        SRC / "domains/asset_market/repositories/discovery_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0096_token_discovery_dirty_lookup_keys.py",
+    }
+
+
+@pytest.mark.architecture
 @pytest.mark.parametrize("table_name", sorted(CONTROL_PLANE_TABLES))
 def test_dirty_target_control_plane_sql_is_repository_owned(table_name: str) -> None:
     allowlist = CONTROL_PLANE_TABLES[table_name]
@@ -680,6 +707,28 @@ def test_token_radar_runtime_has_no_full_window_source_query() -> None:
     violations = [_rel(path) for path in SRC.rglob("*.py") if path != old_query_path and old_module in path.read_text()]
 
     assert not old_query_path.exists()
+    assert violations == []
+
+
+@pytest.mark.architecture
+def test_runtime_dirty_workers_do_not_run_broad_fact_catchups() -> None:
+    banned_by_path = {
+        SRC / "domains/token_intel/runtime/token_radar_projection_worker.py": (
+            "_enqueue_recent_dirty_targets",
+            "enqueue_recent_resolved_targets",
+        ),
+        SRC / "domains/asset_market/runtime/resolution_refresh_worker.py": (
+            ".due_lookup_keys(",
+            "recent_refresh_candidates",
+        ),
+    }
+    violations = [
+        f"{_rel(path)} contains runtime catch-up token `{token}`"
+        for path, banned_tokens in banned_by_path.items()
+        for token in banned_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
     assert violations == []
 
 

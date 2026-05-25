@@ -39,6 +39,7 @@ class FakeWakeWaiter:
     def __init__(self) -> None:
         self.waits: list[float] = []
         self.wake_count = 0
+        self.close_count = 0
         self._event = asyncio.Event()
 
     async def async_wait(self, timeout: float) -> bool:
@@ -53,6 +54,9 @@ class FakeWakeWaiter:
     def wake(self) -> None:
         self.wake_count += 1
         self._event.set()
+
+    def close(self) -> None:
+        self.close_count += 1
 
 
 class FakeAdvisoryLock:
@@ -379,6 +383,25 @@ def test_worker_base_stop_wakes_waiter() -> None:
         await worker.stop()
 
         assert waiter.wake_count == 1
+
+    asyncio.run(scenario())
+
+
+def test_worker_base_aclose_closes_wake_waiter() -> None:
+    async def scenario() -> None:
+        waiter = FakeWakeWaiter()
+        worker = CountingWorker(
+            name="wake_close",
+            settings=worker_settings(),
+            db=FakeDB(),
+            telemetry=FakeTelemetry(),
+            wake_waiter=waiter,
+        )
+
+        await worker.aclose()
+        await worker.aclose()
+
+        assert waiter.close_count == 1
 
     asyncio.run(scenario())
 

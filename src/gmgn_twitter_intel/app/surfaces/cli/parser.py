@@ -126,6 +126,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reset_token_radar_postgres_hard_cut_mode.add_argument("--dry-run", action="store_true")
     reset_token_radar_postgres_hard_cut_mode.add_argument("--execute", action="store_true")
+    rebuild_market_tick_current = ops_subcommands.add_parser(
+        "rebuild-market-tick-current",
+        help="rebuild market_tick_current from append-only market_ticks",
+    )
+    rebuild_market_tick_current_mode = rebuild_market_tick_current.add_mutually_exclusive_group(required=True)
+    rebuild_market_tick_current_mode.add_argument("--dry-run", action="store_true")
+    rebuild_market_tick_current_mode.add_argument("--execute", action="store_true")
+    enqueue_token_radar_dirty_targets = ops_subcommands.add_parser(
+        "enqueue-token-radar-dirty-targets",
+        help="enqueue Token Radar dirty targets from persisted facts",
+    )
+    enqueue_token_radar_dirty_targets.add_argument("--source", choices=("events", "market-current"), required=True)
+    enqueue_token_radar_dirty_targets.add_argument("--since-ms", type=int, default=0)
+    enqueue_token_radar_dirty_targets.add_argument("--limit", type=int, default=5000)
+    enqueue_token_radar_dirty_targets_mode = enqueue_token_radar_dirty_targets.add_mutually_exclusive_group(
+        required=True
+    )
+    enqueue_token_radar_dirty_targets_mode.add_argument("--dry-run", action="store_true")
+    enqueue_token_radar_dirty_targets_mode.add_argument("--execute", action="store_true")
     ensure_postgres_partitions = ops_subcommands.add_parser(
         "ensure-postgres-partitions",
         help="ensure current and next Token Radar PostgreSQL history/audit partitions",

@@ -28,7 +28,7 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
 
     assert result["query"]["result_kind"] == "token_result"
     assert result["resolver"]["selected_target"]["target_id"] == "cex_token:BTC"
-    assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "market_live"]
+    assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "market_live", "cex_detail"]
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
     assert result["token_result"]["timeline"]["market_candles"]["target_type"] == "CexToken"
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"

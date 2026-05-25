@@ -10,7 +10,7 @@ from loguru import logger
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
+from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_SCOPES = ("all", "matched")
@@ -140,33 +140,12 @@ class TokenRadarProjectionWorker(WorkerBase):
         if str(result.get("status") or "") == "failed":
             self.last_error = self.last_error or str(result.get("error") or "token radar projection failed")
 
-        if int(result.get("claimed") or 0) <= 0 and str(result.get("status") or "") != "failed":
-            result["catch_up_enqueued"] = self._enqueue_recent_dirty_targets(computed_at_ms=computed_at_ms)
-
         for key, window_result in result["windows"].items():
             if str(window_result.get("status") or "") != "ready" or self.wake_bus is None:
                 continue
             window, scope = str(key).split(":", 1)
             self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
         return result
-
-    def _enqueue_recent_dirty_targets(self, *, computed_at_ms: int) -> int:
-        lookback_ms = max((WINDOW_MS.get(window, 0) for window in self.windows), default=0)
-        if lookback_ms <= 0:
-            lookback_ms = 60 * 60 * 1000
-        with self._repository_session() as repos:
-            dirty_repo = getattr(repos, "token_radar_dirty_targets", None)
-            if dirty_repo is None:
-                return 0
-            return int(
-                dirty_repo.enqueue_recent_resolved_targets(
-                    since_ms=max(0, int(computed_at_ms) - lookback_ms),
-                    now_ms=int(computed_at_ms),
-                    limit=self.limit,
-                    reason="projection_catch_up",
-                    commit=True,
-                )
-            )
 
     def _next_work_items(
         self,

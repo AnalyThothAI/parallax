@@ -141,6 +141,7 @@ def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
         "resolution_refresh",
         "resolution_refresh",
         "resolution_refresh",
+        "resolution_refresh",
     ]
 
 
@@ -213,8 +214,21 @@ class FakeRefreshConn:
 
 
 class FakeRefreshDiscovery:
+    def claim_due_lookup_keys(self, **kwargs):
+        return [
+            {
+                "lookup_key": "symbol:ABC",
+                "lookup_type": "dex_symbol_lookup",
+                "error_count": 0,
+                "payload_hash": "hash-abc",
+                "lease_owner": kwargs.get("lease_owner", "resolution_refresh"),
+                "attempt_count": 1,
+                "latest_seen_ms": 1_778_200_000_000,
+            }
+        ]
+
     def due_lookup_keys(self, **kwargs):
-        return [{"lookup_key": "symbol:ABC", "lookup_type": "dex_symbol_lookup", "error_count": 0}]
+        raise AssertionError("resolution_refresh runtime must claim dirty lookup queue, not scan recent facts")
 
     def start_lookup(self, **kwargs):
         return {}
@@ -224,6 +238,12 @@ class FakeRefreshDiscovery:
 
     def fail_lookup(self, **kwargs):
         return {}
+
+    def mark_lookup_done(self, claims, **kwargs):
+        return len(list(claims))
+
+    def reschedule_lookup_claims(self, claims, **kwargs):
+        return len(list(claims))
 
     def counts(self):
         return {"found": 1}

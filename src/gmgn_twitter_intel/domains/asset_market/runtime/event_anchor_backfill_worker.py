@@ -23,6 +23,7 @@ from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
 )
+from gmgn_twitter_intel.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture, MarketTick
 
 if TYPE_CHECKING:
@@ -61,6 +62,10 @@ class _RescheduleOutcome:
 
 
 _BackfillOutcome = _AttachOutcome | _TerminalOutcome | _RescheduleOutcome
+
+
+class _AttachSkipped(Exception):
+    pass
 
 
 class EventAnchorBackfillWorker(WorkerBase):
@@ -327,18 +332,34 @@ class EventAnchorBackfillWorker(WorkerBase):
     ) -> tuple[int, list[MarketTick], int, int]:
         if not attaches and not terminals and not reschedules:
             return 0, [], 0, 0
-        with self.db.worker_session(self.name) as repos:
-            insert_ticks = [outcome.tick for outcome in attaches if outcome.insert_tick]
-            inserted = int(repos.market_ticks.insert_ticks(insert_ticks)) if insert_ticks else 0
+        with self.db.worker_transaction(self.name) as repos:
+            persistence = MarketTickPersistenceService(repos)
+            inserted = 0
             attached_ticks: list[MarketTick] = []
             for attach in attaches:
-                if repos.enriched_events.attach_backfill_capture(attach.capture):
-                    repos.event_anchor_jobs.mark_done(
-                        event_id=str(attach.row["event_id"]),
-                        intent_id=str(attach.row["intent_id"]),
-                        now_ms=now_ms,
-                    )
-                    attached_ticks.append(attach.tick)
+                try:
+                    with repos.transaction():
+                        tick_inserted = 0
+                        if attach.insert_tick:
+                            tick_result = persistence.insert_ticks_and_enqueue_current_dirty(
+                                [attach.tick],
+                                reason="event_anchor_backfill_attached",
+                                now_ms=now_ms,
+                            )
+                            tick_inserted = tick_result.inserted
+                        if not repos.enriched_events.attach_backfill_capture(attach.capture):
+                            raise _AttachSkipped
+                        marked_done = repos.event_anchor_jobs.mark_done(
+                            event_id=str(attach.row["event_id"]),
+                            intent_id=str(attach.row["intent_id"]),
+                            now_ms=now_ms,
+                        )
+                        if not marked_done:
+                            raise _AttachSkipped
+                except _AttachSkipped:
+                    continue
+                inserted += tick_inserted
+                attached_ticks.append(attach.tick)
             terminal_count = 0
             for terminal in terminals:
                 repos.enriched_events.mark_backfill_terminal(
@@ -364,15 +385,6 @@ class EventAnchorBackfillWorker(WorkerBase):
                     next_run_at_ms=reschedule.next_run_at_ms,
                 ):
                     rescheduled_count += 1
-            dirty_targets = getattr(repos, "token_radar_dirty_targets", None)
-            if attached_ticks and dirty_targets is not None:
-                dirty_targets.enqueue_market_targets(
-                    _dedupe_tick_targets(attached_ticks),
-                    reason="event_anchor_backfill_attached",
-                    now_ms=now_ms,
-                    commit=False,
-                )
-            _commit_if_supported(repos)
         return inserted, attached_ticks, terminal_count, rescheduled_count
 
 
@@ -400,10 +412,6 @@ def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
     if notify is None:
         return
     notify(target_type=target_type, target_id=target_id)
-
-
-def _dedupe_tick_targets(ticks: Sequence[MarketTick]) -> list[tuple[str, str]]:
-    return list(dict.fromkeys((tick.target_type, tick.target_id) for tick in ticks))
 
 
 def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick:

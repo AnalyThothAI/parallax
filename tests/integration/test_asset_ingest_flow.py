@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from decimal import Decimal
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import CaptureResult
+from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture, MarketTick, market_tick_id
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from tests.factories import make_event
@@ -121,3 +124,124 @@ def test_ingest_unknown_chain_ca_is_retained_as_unresolved_asset(tmp_path):
     assert result.token_intents[0]["address_hint"] == "0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
     assert result.token_resolutions[0]["resolution_status"] == "NIL"
     assert result.token_resolutions[0]["target_id"] is None
+
+
+def test_ingest_capture_tick_enqueues_market_tick_current_dirty_target(tmp_path):
+    conn, repos, ingest = open_ingest(tmp_path)
+    event = make_event(
+        "event-capture-dirty",
+        text="https://gmgn.ai/eth/token/0x6982508145454ce325ddbe47a25d4ec3d2311933 captured",
+        received_at_ms=1_800_000_000_000,
+    )
+    try:
+        prepared, resolutions, capture_result = _prepared_capture(ingest, event)
+        result = ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[capture_result])
+        dirty_row = repos.market_tick_current_dirty_targets.get(
+            capture_result.tick.target_type,
+            capture_result.tick.target_id,
+        )
+    finally:
+        conn.close()
+
+    assert result.inserted is True
+    assert dirty_row is not None
+    assert dirty_row["dirty_reason"] == "event_capture_tick_inserted"
+
+
+def test_ingest_capture_tick_and_dirty_target_roll_back_with_event_transaction(tmp_path):
+    conn, repos, ingest = open_ingest(tmp_path)
+    event = make_event(
+        "event-capture-rollback",
+        text="https://gmgn.ai/eth/token/0x6982508145454ce325ddbe47a25d4ec3d2311933 rollback",
+        received_at_ms=1_800_000_010_000,
+    )
+    try:
+        prepared, resolutions, capture_result = _prepared_capture(ingest, event)
+        ingest.event_anchor_jobs = _FailingEventAnchorJobs()
+        try:
+            ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[capture_result])
+        except RuntimeError as exc:
+            assert str(exc) == "event_anchor_enqueue_failed_for_test"
+        else:
+            raise AssertionError("expected ingest commit to fail after capture tick persistence")
+
+        event_row = conn.execute("SELECT * FROM events WHERE event_id = %s", (event.event_id,)).fetchone()
+        tick_row = repos.market_ticks.latest_at_or_before(
+            target_type=capture_result.tick.target_type,
+            target_id=capture_result.tick.target_id,
+            at_ms=capture_result.tick.observed_at_ms,
+            max_lag_ms=1,
+        )
+        dirty_row = repos.market_tick_current_dirty_targets.get(
+            capture_result.tick.target_type,
+            capture_result.tick.target_id,
+        )
+    finally:
+        conn.close()
+
+    assert event_row is None
+    assert tick_row is None
+    assert dirty_row is None
+
+
+def _prepared_capture(ingest: IngestService, event):
+    prepared = ingest.prepare_event(event, is_watched=True)
+    ingest.prepare_registry_for_resolution(prepared)
+    resolutions = ingest.resolve_prepared(prepared, persist=False)
+    market_resolution = next(
+        item for decision in resolutions if (item := ingest.market_resolution_for_decision(decision)) is not None
+    )
+    tick = _capture_tick(market_resolution, observed_at_ms=event.received_at_ms)
+    capture = EnrichedEventCapture(
+        event_id=event.event_id,
+        intent_id=str(market_resolution["intent_id"]),
+        resolution_id=str(market_resolution["resolution_id"]),
+        target_type=tick.target_type,
+        target_id=tick.target_id,
+        t_event_ms=event.received_at_ms,
+        tick_observed_at_ms=tick.observed_at_ms,
+        tick_id=tick.tick_id,
+        tick_lag_ms=0,
+        capture_method="tier3_inline",
+        capture_reason="inline_quote",
+        created_at_ms=event.received_at_ms,
+    )
+    return prepared, resolutions, CaptureResult(tick=tick, capture=capture)
+
+
+def _capture_tick(market_resolution: dict[str, object], *, observed_at_ms: int) -> MarketTick:
+    target_type = str(market_resolution["target_type"])
+    target_id = str(market_resolution["target_id"])
+    source_provider = "gmgn_dex_quote"
+    return MarketTick(
+        tick_id=market_tick_id(
+            target_type=target_type,
+            target_id=target_id,
+            source_provider=source_provider,
+            observed_at_ms=observed_at_ms,
+        ),
+        target_type=target_type,  # type: ignore[arg-type]
+        target_id=target_id,
+        chain=str(market_resolution.get("chain_id") or ""),
+        token_address=str(market_resolution.get("token_address") or ""),
+        exchange=None,
+        instrument=None,
+        pricefeed_id=None,
+        source_tier="tier3_inline",
+        source_provider=source_provider,
+        observed_at_ms=observed_at_ms,
+        received_at_ms=observed_at_ms,
+        price_usd=Decimal("1.23"),
+        liquidity_usd=Decimal("1000"),
+        volume_24h_usd=Decimal("5000"),
+        open_interest_usd=None,
+        market_cap_usd=Decimal("1000000"),
+        holders=None,
+        created_at_ms=observed_at_ms,
+        raw_payload_json={"source": "ingest-test"},
+    )
+
+
+class _FailingEventAnchorJobs:
+    def enqueue_for_capture(self, *args, **kwargs) -> None:
+        raise RuntimeError("event_anchor_enqueue_failed_for_test")

@@ -455,6 +455,172 @@ class TokenRadarDirtyTargetRepository:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
 
+    def count_recent_resolved_target_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
+        row = self.conn.execute(
+            """
+            WITH recent AS (
+              SELECT
+                token_intent_resolutions.target_type AS target_type_key,
+                token_intent_resolutions.target_id AS identity_id,
+                MAX(events.received_at_ms) AS source_max_received_at_ms,
+                array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
+              FROM token_intent_resolutions
+              JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
+              JOIN events ON events.event_id = token_intents.event_id
+              WHERE events.received_at_ms >= %(since_ms)s
+                AND events.received_at_ms <= %(now_ms)s
+                AND token_intent_resolutions.is_current = true
+                AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
+                AND token_intent_resolutions.target_id IS NOT NULL
+              GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
+              ORDER BY MAX(events.received_at_ms) DESC,
+                       token_intent_resolutions.target_type ASC,
+                       token_intent_resolutions.target_id ASC
+              LIMIT %(limit)s
+            )
+            SELECT COUNT(*) AS count
+            FROM recent
+            """,
+            {
+                "since_ms": int(since_ms),
+                "now_ms": int(now_ms),
+                "limit": max(0, int(limit)),
+            },
+        ).fetchone()
+        return _count(row)
+
+    def count_recent_resolved_target_enqueue_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
+        row = self.conn.execute(
+            """
+            WITH recent AS (
+              SELECT
+                token_intent_resolutions.target_type AS target_type_key,
+                token_intent_resolutions.target_id AS identity_id,
+                MAX(events.received_at_ms) AS source_max_received_at_ms,
+                array_agg(DISTINCT events.event_id ORDER BY events.event_id) AS source_event_ids
+              FROM token_intent_resolutions
+              JOIN token_intents ON token_intents.intent_id = token_intent_resolutions.intent_id
+              JOIN events ON events.event_id = token_intents.event_id
+              WHERE events.received_at_ms >= %(since_ms)s
+                AND events.received_at_ms <= %(now_ms)s
+                AND token_intent_resolutions.is_current = true
+                AND token_intent_resolutions.target_type IN ('Asset', 'CexToken')
+                AND token_intent_resolutions.target_id IS NOT NULL
+              GROUP BY token_intent_resolutions.target_type, token_intent_resolutions.target_id
+              ORDER BY MAX(events.received_at_ms) DESC,
+                       token_intent_resolutions.target_type ASC,
+                       token_intent_resolutions.target_id ASC
+              LIMIT %(limit)s
+            ),
+            latest_feature AS (
+              SELECT
+                features.target_type_key,
+                features.identity_id,
+                MAX(features.latest_event_received_at_ms) AS latest_event_received_at_ms
+              FROM token_radar_target_features features
+              JOIN recent
+                ON recent.target_type_key = features.target_type_key
+               AND recent.identity_id = features.identity_id
+              WHERE features.projection_version = %(projection_version)s
+              GROUP BY features.target_type_key, features.identity_id
+            ),
+            target_coverage AS (
+              SELECT
+                coverage.target_type_key,
+                coverage.identity_id,
+                MAX(coverage.last_projected_at_ms) AS last_projected_at_ms
+              FROM token_radar_target_projection_coverage coverage
+              JOIN recent
+                ON recent.target_type_key = coverage.target_type_key
+               AND recent.identity_id = coverage.identity_id
+              WHERE coverage.projection_version = %(projection_version)s
+              GROUP BY coverage.target_type_key, coverage.identity_id
+            ),
+            eligible AS (
+              SELECT recent.*
+              FROM recent
+              LEFT JOIN latest_feature
+                ON latest_feature.target_type_key = recent.target_type_key
+               AND latest_feature.identity_id = recent.identity_id
+              LEFT JOIN target_coverage
+                ON target_coverage.target_type_key = recent.target_type_key
+               AND target_coverage.identity_id = recent.identity_id
+              WHERE GREATEST(
+                COALESCE(latest_feature.latest_event_received_at_ms, 0),
+                COALESCE(target_coverage.last_projected_at_ms, 0)
+              ) < recent.source_max_received_at_ms
+            )
+            SELECT COUNT(*) AS count
+            FROM eligible
+            """,
+            {
+                "since_ms": int(since_ms),
+                "now_ms": int(now_ms),
+                "limit": max(0, int(limit)),
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+            },
+        ).fetchone()
+        return _count(row)
+
+    def count_market_current_target_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
+        row = self.conn.execute(
+            """
+            WITH market_current_candidates AS (
+              SELECT
+                current_row.target_type,
+                current_row.target_id,
+                GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) AS watermark_ms
+              FROM market_tick_current current_row
+              WHERE GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) >= %(since_ms)s
+                AND GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) <= %(now_ms)s
+              ORDER BY watermark_ms DESC, current_row.target_type ASC, current_row.target_id ASC
+              LIMIT %(limit)s
+            )
+            SELECT COUNT(*) AS count
+            FROM market_current_candidates
+            """,
+            {
+                "since_ms": int(since_ms),
+                "now_ms": int(now_ms),
+                "limit": max(0, int(limit)),
+            },
+        ).fetchone()
+        return _count(row)
+
+    def count_market_current_target_enqueue_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
+        row = self.conn.execute(
+            _MARKET_CURRENT_ELIGIBLE_COUNT_SQL,
+            _market_current_params(
+                since_ms=since_ms,
+                now_ms=now_ms,
+                limit=limit,
+                reason="ops_market_current_repair",
+            ),
+        ).fetchone()
+        return _count(row)
+
+    def enqueue_market_current_targets(
+        self,
+        *,
+        since_ms: int,
+        now_ms: int,
+        limit: int,
+        reason: str,
+        commit: bool = True,
+    ) -> int:
+        cursor = self.conn.execute(
+            _MARKET_CURRENT_ENQUEUE_SQL,
+            _market_current_params(
+                since_ms=since_ms,
+                now_ms=now_ms,
+                limit=limit,
+                reason=reason,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def mark_done(
         self,
         keys: Iterable[Mapping[str, Any]],
@@ -541,6 +707,197 @@ class TokenRadarDirtyTargetRepository:
         if commit:
             self.conn.commit()
         return int(getattr(cursor, "rowcount", 0) or 0)
+
+
+_MARKET_CURRENT_ELIGIBLE_CTES = """
+WITH market_current_candidates AS (
+  SELECT
+    current_row.target_type,
+    current_row.target_id,
+    GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) AS watermark_ms
+  FROM market_tick_current current_row
+  WHERE GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) >= %(since_ms)s
+    AND GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) <= %(now_ms)s
+  ORDER BY watermark_ms DESC, current_row.target_type ASC, current_row.target_id ASC
+  LIMIT %(limit)s
+),
+mapped AS (
+  SELECT DISTINCT
+    'Asset'::text AS target_type_key,
+    registry_assets.asset_id AS identity_id,
+    MAX(market_current_candidates.watermark_ms) AS market_current_watermark_ms
+  FROM market_current_candidates
+  JOIN registry_assets
+    ON market_current_candidates.target_type = 'chain_token'
+   AND lower(registry_assets.chain_id || ':' || registry_assets.address) = lower(market_current_candidates.target_id)
+  GROUP BY registry_assets.asset_id
+  UNION
+  SELECT DISTINCT
+    'CexToken'::text AS target_type_key,
+    price_feeds.subject_id AS identity_id,
+    MAX(market_current_candidates.watermark_ms) AS market_current_watermark_ms
+  FROM market_current_candidates
+  JOIN price_feeds
+    ON market_current_candidates.target_type = 'cex_symbol'
+   AND price_feeds.subject_type = 'CexToken'
+   AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(market_current_candidates.target_id)
+  GROUP BY price_feeds.subject_id
+),
+latest_feature AS (
+  SELECT
+    features.target_type_key,
+    features.identity_id,
+    MAX(features.latest_market_observed_at_ms) AS latest_market_observed_at_ms
+  FROM token_radar_target_features features
+  JOIN mapped
+    ON mapped.target_type_key = features.target_type_key
+   AND mapped.identity_id = features.identity_id
+  WHERE features.projection_version = %(projection_version)s
+  GROUP BY features.target_type_key, features.identity_id
+),
+target_coverage AS (
+  SELECT
+    target_coverage.target_type_key,
+    target_coverage.identity_id,
+    MAX(target_coverage.latest_market_observed_at_ms) AS latest_market_observed_at_ms
+  FROM token_radar_target_projection_coverage target_coverage
+  JOIN mapped
+    ON mapped.target_type_key = target_coverage.target_type_key
+   AND mapped.identity_id = target_coverage.identity_id
+  WHERE target_coverage.projection_version = %(projection_version)s
+  GROUP BY target_coverage.target_type_key, target_coverage.identity_id
+),
+eligible AS (
+  SELECT mapped.*
+  FROM mapped
+  LEFT JOIN latest_feature
+    ON latest_feature.target_type_key = mapped.target_type_key
+   AND latest_feature.identity_id = mapped.identity_id
+  LEFT JOIN target_coverage
+    ON target_coverage.target_type_key = mapped.target_type_key
+   AND target_coverage.identity_id = mapped.identity_id
+  WHERE mapped.identity_id IS NOT NULL
+    AND mapped.market_current_watermark_ms >= %(since_ms)s
+    AND (
+      (
+        latest_feature.latest_market_observed_at_ms IS NULL
+        AND target_coverage.latest_market_observed_at_ms IS NULL
+      )
+      OR GREATEST(
+        COALESCE(latest_feature.latest_market_observed_at_ms, 0),
+        COALESCE(target_coverage.latest_market_observed_at_ms, 0)
+      ) <= %(now_ms)s - %(market_dirty_min_interval_ms)s
+    )
+)
+"""
+
+
+_MARKET_CURRENT_ELIGIBLE_COUNT_SQL = (
+    _MARKET_CURRENT_ELIGIBLE_CTES
+    + """
+SELECT COUNT(*) AS count
+FROM eligible
+"""
+)
+
+
+_MARKET_CURRENT_ENQUEUE_SQL = (
+    _MARKET_CURRENT_ELIGIBLE_CTES
+    + """
+INSERT INTO token_radar_dirty_targets(
+  target_type_key,
+  identity_id,
+  dirty_reason,
+  payload_hash,
+  due_at_ms,
+  leased_until_ms,
+  lease_owner,
+  attempt_count,
+  last_error,
+  first_dirty_at_ms,
+  updated_at_ms,
+  source_event_ids_json
+)
+SELECT
+  eligible.target_type_key,
+  eligible.identity_id,
+  %(dirty_reason)s,
+  md5(
+    eligible.target_type_key || ':' ||
+    eligible.identity_id || ':' ||
+    %(dirty_reason)s || ':' ||
+    eligible.market_current_watermark_ms::text
+  ),
+  %(now_ms)s,
+  NULL,
+  NULL,
+  0,
+  NULL,
+  %(now_ms)s,
+  %(now_ms)s,
+  '[]'::jsonb
+FROM eligible
+ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
+  dirty_reason = EXCLUDED.dirty_reason,
+  payload_hash = CASE
+    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
+      THEN md5(
+        EXCLUDED.payload_hash || ':claimed:' ||
+        token_radar_dirty_targets.attempt_count::text || ':' ||
+        token_radar_dirty_targets.payload_hash
+      )
+    WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+     AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
+      THEN token_radar_dirty_targets.payload_hash
+    ELSE EXCLUDED.payload_hash
+  END,
+  due_at_ms = LEAST(token_radar_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+  leased_until_ms = CASE
+    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
+    ELSE token_radar_dirty_targets.leased_until_ms
+  END,
+  lease_owner = CASE
+    WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL THEN NULL
+    ELSE token_radar_dirty_targets.lease_owner
+  END,
+  last_error = NULL,
+  first_dirty_at_ms = token_radar_dirty_targets.first_dirty_at_ms,
+  updated_at_ms = EXCLUDED.updated_at_ms
+WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM CASE
+        WHEN token_radar_dirty_targets.leased_until_ms IS NOT NULL
+          THEN md5(
+            EXCLUDED.payload_hash || ':claimed:' ||
+            token_radar_dirty_targets.attempt_count::text || ':' ||
+            token_radar_dirty_targets.payload_hash
+          )
+        WHEN token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+         AND token_radar_dirty_targets.dirty_reason IS NOT DISTINCT FROM EXCLUDED.dirty_reason
+          THEN token_radar_dirty_targets.payload_hash
+        ELSE EXCLUDED.payload_hash
+      END
+   OR token_radar_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+   OR token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms
+   OR token_radar_dirty_targets.leased_until_ms IS NOT NULL
+   OR token_radar_dirty_targets.last_error IS NOT NULL
+"""
+)
+
+
+def _market_current_params(*, since_ms: int, now_ms: int, limit: int, reason: str) -> dict[str, Any]:
+    return {
+        "since_ms": int(since_ms),
+        "now_ms": int(now_ms),
+        "limit": max(0, int(limit)),
+        "dirty_reason": str(reason),
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
+    }
+
+
+def _count(row: Mapping[str, Any] | None) -> int:
+    if not row:
+        return 0
+    return int(row.get("count") or 0)
 
 
 def _dirty_records(

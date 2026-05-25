@@ -316,6 +316,7 @@ def _ingest_service_for_repos(
         token_intents=getattr(repos, "token_intents", None),
         intent_resolutions=getattr(repos, "intent_resolutions", None),
         market_ticks=getattr(repos, "market_ticks", None),
+        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
         enriched_events=getattr(repos, "enriched_events", None),
         event_anchor_jobs=getattr(repos, "event_anchor_jobs", None),
         token_radar_dirty_targets=getattr(repos, "token_radar_dirty_targets", None),

@@ -112,3 +112,17 @@ def test_async_wait_wraps_blocking_wait() -> None:
     waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
 
     assert asyncio.run(waiter.async_wait(timeout=1)) is True
+
+
+def test_async_wait_uses_dedicated_executor_not_default_threadpool(monkeypatch) -> None:
+    async def forbidden_to_thread(*_args, **_kwargs):
+        raise AssertionError("wake waits must not use asyncio default executor")
+
+    monkeypatch.setattr(asyncio, "to_thread", forbidden_to_thread)
+    conn = FakeConn(notifications=[object()])
+    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+
+    try:
+        assert asyncio.run(waiter.async_wait(timeout=1)) is True
+    finally:
+        waiter.close()
