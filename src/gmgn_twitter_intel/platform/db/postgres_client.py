@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from psycopg import Connection, conninfo
+from psycopg import Connection, conninfo, pq
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -159,6 +159,18 @@ def connect_postgres(dsn: str, *, connect_timeout_seconds: float = 5.0) -> Conne
 def transaction(conn: Connection) -> Iterator[None]:
     with conn.transaction():
         yield
+
+
+def require_transaction(conn: Any, *, operation: str) -> None:
+    info = getattr(conn, "info", None)
+    if info is None:
+        return
+    try:
+        status = info.transaction_status
+    except Exception:
+        return
+    if status == pq.TransactionStatus.IDLE:
+        raise RuntimeError(f"{operation}_requires_explicit_transaction")
 
 
 def postgres_health_check(conn: Any, *, expected_migration_version: str | None = None) -> dict[str, object]:

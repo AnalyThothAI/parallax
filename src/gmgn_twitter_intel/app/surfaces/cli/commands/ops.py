@@ -18,6 +18,9 @@ from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker import (
+    MarketTickCurrentProjectionWorker,
+)
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
@@ -27,6 +30,9 @@ from gmgn_twitter_intel.domains.asset_market.services.cex_binance_hard_cut_clean
     cleanup_cex_binance_hard_cut,
 )
 from gmgn_twitter_intel.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
+from gmgn_twitter_intel.domains.asset_market.services.market_tick_current_rebuild import (
+    MarketTickCurrentRebuildService,
+)
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
@@ -95,6 +101,15 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             settings,
             limit=args.limit,
             reprocess_limit=args.reprocess_limit,
+            now_ms=_now_ms(),
+        )
+        return 0, {"ok": True, "data": data}
+
+    if args.ops_command == "rebuild-market-tick-current":
+        data = _run_market_tick_current_rebuild(
+            settings,
+            dry_run=bool(args.dry_run),
+            execute=bool(args.execute),
             now_ms=_now_ms(),
         )
         return 0, {"ok": True, "data": data}
@@ -211,6 +226,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
                 max_batches=args.max_batches,
                 after_cursor=args.after_cursor,
                 dry_run=bool(args.dry_run),
+            )
+            return 0, {"ok": True, "data": data}
+
+        if args.ops_command == "enqueue-token-radar-dirty-targets":
+            data = _enqueue_token_radar_dirty_targets(
+                repos,
+                source=args.source,
+                since_ms=args.since_ms,
+                limit=args.limit,
+                dry_run=bool(args.dry_run),
+                execute=bool(args.execute),
+                now_ms=_now_ms(),
             )
             return 0, {"ok": True, "data": data}
 
@@ -394,6 +421,190 @@ def _backfill_watchlist_signal_stats(
         "last_event_id": after_event_id,
         "dry_run": bool(dry_run),
     }
+
+
+def _run_market_tick_current_rebuild(
+    settings: object,
+    *,
+    dry_run: bool,
+    execute: bool,
+    now_ms: int,
+) -> dict[str, Any]:
+    telemetry = TelemetryRegistry()
+    db = None
+    advisory_lock = None
+    worker_name = "market_tick_current_projection"
+    lock_key = _market_tick_current_projection_lock_key(settings)
+    mode = "execute" if execute else "dry_run"
+    try:
+        db = DBPoolBundle.create(settings, telemetry=telemetry)
+        if execute:
+            try:
+                advisory_lock = db.acquire_advisory_lock_connection(worker_name, lock_key)
+            except RuntimeError as exc:
+                if "advisory_lock_unavailable" not in str(exc):
+                    raise
+                return {
+                    "mode": mode,
+                    "dry_run": bool(dry_run),
+                    "execute": bool(execute),
+                    "status": "skipped",
+                    "skipped": 1,
+                    "scanned": 0,
+                    "changed": 0,
+                    "estimated_rows": 0,
+                    "counts_by_target_type": {},
+                    "notes": {
+                        "reason": "advisory_lock_unavailable",
+                        "worker_name": worker_name,
+                        "lock_key": lock_key,
+                    },
+                }
+        worker_settings = getattr(getattr(settings, "workers", SimpleNamespace()), worker_name, SimpleNamespace())
+        with db.worker_session(
+            worker_name,
+            statement_timeout_seconds=getattr(worker_settings, "statement_timeout_seconds", None),
+        ) as repos:
+            estimate = _market_tick_current_rebuild_estimate(repos.conn)
+            if dry_run:
+                return {
+                    "mode": mode,
+                    "dry_run": True,
+                    "execute": False,
+                    "scanned": int(estimate["scanned"]),
+                    "estimated_rows": int(estimate["estimated_rows"]),
+                    "changed": 0,
+                    "counts_by_target_type": dict(estimate["counts_by_target_type"]),
+                }
+            result = MarketTickCurrentRebuildService(repos).rebuild_all(now_ms=now_ms)
+            return {
+                "mode": mode,
+                "dry_run": False,
+                "execute": True,
+                "scanned": int(result.get("scanned") or 0),
+                "changed": int(result.get("changed") or 0),
+                "estimated_rows": int(estimate["estimated_rows"]),
+                "counts_by_target_type": dict(estimate["counts_by_target_type"]),
+            }
+    finally:
+        if advisory_lock is not None:
+            _release_advisory_lock_connection(advisory_lock)
+        if db is not None:
+            _close_db_bundle(db)
+
+
+def _market_tick_current_rebuild_estimate(conn: object) -> dict[str, Any]:
+    scanned_row = conn.execute("SELECT COUNT(*) AS scanned FROM market_ticks").fetchall()
+    scanned = int(scanned_row[0]["scanned"]) if scanned_row else 0
+    rows = conn.execute(
+        """
+        SELECT target_type, COUNT(*) AS estimated_rows
+        FROM (
+          SELECT DISTINCT target_type, target_id
+          FROM market_ticks
+        ) latest
+        GROUP BY target_type
+        ORDER BY target_type ASC
+        """
+    ).fetchall()
+    counts_by_target_type = {str(row["target_type"]): int(row["estimated_rows"]) for row in rows}
+    return {
+        "scanned": scanned,
+        "estimated_rows": sum(counts_by_target_type.values()),
+        "counts_by_target_type": counts_by_target_type,
+    }
+
+
+def _market_tick_current_projection_lock_key(settings: object) -> int:
+    worker_settings = getattr(getattr(settings, "workers", SimpleNamespace()), "market_tick_current_projection", None)
+
+    class _LockProbe:
+        SINGLE_WRITER_KEY = MarketTickCurrentProjectionWorker.SINGLE_WRITER_KEY
+
+        def __init__(self, config: object) -> None:
+            self.name = "market_tick_current_projection"
+            self.settings = config
+
+        def _advisory_lock_key(self) -> int:
+            settings_key = getattr(self.settings, "advisory_lock_key", None)
+            return int(settings_key) if settings_key is not None else int(self.SINGLE_WRITER_KEY)
+
+    return _effective_worker_advisory_lock_key(_LockProbe(worker_settings or SimpleNamespace()))
+
+
+def _enqueue_token_radar_dirty_targets(
+    repos: object,
+    *,
+    source: str,
+    since_ms: int,
+    limit: int,
+    dry_run: bool,
+    execute: bool,
+    now_ms: int,
+) -> dict[str, Any]:
+    parsed_since_ms = max(0, int(since_ms))
+    parsed_limit = max(0, int(limit))
+    repository = repos.token_radar_dirty_targets
+    data: dict[str, Any] = {
+        "source": str(source),
+        "since_ms": parsed_since_ms,
+        "limit": parsed_limit,
+        "dry_run": bool(dry_run),
+        "execute": bool(execute),
+    }
+    if source == "events":
+        candidates = repository.count_recent_resolved_target_candidates(
+            since_ms=parsed_since_ms,
+            now_ms=now_ms,
+            limit=parsed_limit,
+        )
+        data["candidates"] = int(candidates)
+        if dry_run:
+            data["would_enqueue"] = int(
+                repository.count_recent_resolved_target_enqueue_candidates(
+                    since_ms=parsed_since_ms,
+                    now_ms=now_ms,
+                    limit=parsed_limit,
+                )
+            )
+            return data
+        data["enqueued"] = int(
+            repository.enqueue_recent_resolved_targets(
+                since_ms=parsed_since_ms,
+                now_ms=now_ms,
+                limit=parsed_limit,
+                reason="ops_events_repair",
+                commit=True,
+            )
+        )
+        return data
+    if source == "market-current":
+        candidates = repository.count_market_current_target_candidates(
+            since_ms=parsed_since_ms,
+            now_ms=now_ms,
+            limit=parsed_limit,
+        )
+        data["candidates"] = int(candidates)
+        if dry_run:
+            data["would_enqueue"] = int(
+                repository.count_market_current_target_enqueue_candidates(
+                    since_ms=parsed_since_ms,
+                    now_ms=now_ms,
+                    limit=parsed_limit,
+                )
+            )
+            return data
+        data["enqueued"] = int(
+            repository.enqueue_market_current_targets(
+                since_ms=parsed_since_ms,
+                now_ms=now_ms,
+                limit=parsed_limit,
+                reason="ops_market_current_repair",
+                commit=True,
+            )
+        )
+        return data
+    raise ValueError(f"unknown token radar dirty target source: {source}")
 
 
 def _cursor_mapping(raw: str) -> dict[str, Any]:

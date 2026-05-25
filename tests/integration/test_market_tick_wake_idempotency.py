@@ -6,6 +6,9 @@ from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
+    MarketTickCurrentDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
@@ -73,6 +76,64 @@ def test_market_tick_stream_worker_persist_ticks_wakes_only_inserted_targets(tmp
         conn.close()
 
 
+def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    target = ("chain_token", "eip155:1:0x2222222222222222222222222222222222222222")
+    try:
+        migrate(conn)
+        repo = MarketTickCurrentDirtyTargetRepository(conn)
+        repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS, commit=True)
+
+        old_claim = repo.claim_due(
+            limit=1,
+            now_ms=NOW_MS + 1,
+            lease_ms=60_000,
+            lease_owner="worker-a",
+            commit=True,
+        )[0]
+        repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS + 2, commit=True)
+
+        assert repo.mark_done([old_claim], now_ms=NOW_MS + 3, commit=True) == 0
+        assert repo.mark_error([old_claim], error="stale", retry_ms=30_000, now_ms=NOW_MS + 4, commit=True) == 0
+
+        successor_claim = repo.claim_due(
+            limit=1,
+            now_ms=NOW_MS + 5,
+            lease_ms=60_000,
+            lease_owner="worker-b",
+            commit=True,
+        )[0]
+        assert successor_claim["attempt_count"] == old_claim["attempt_count"] + 1
+        assert repo.mark_error(
+            [successor_claim],
+            error="retry later",
+            retry_ms=30_000,
+            now_ms=NOW_MS + 6,
+            commit=True,
+        ) == 1
+        assert repo.claim_due(
+            limit=1,
+            now_ms=NOW_MS + 7,
+            lease_ms=60_000,
+            lease_owner="worker-c",
+            commit=True,
+        ) == []
+        assert repo.claim_due(
+            limit=1,
+            now_ms=NOW_MS + 30_006,
+            lease_ms=60_000,
+            lease_owner="worker-c",
+            commit=True,
+        )
+    finally:
+        conn.execute(
+            "DELETE FROM market_tick_current_dirty_targets WHERE target_type = %s AND target_id = %s",
+            target,
+        )
+        conn.commit()
+        conn.close()
+
+
 class _DB:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -80,6 +141,11 @@ class _DB:
     @contextmanager
     def worker_session(self, name: str, **_: Any):
         yield repositories_for_connection(self.conn)
+
+    @contextmanager
+    def worker_transaction(self, name: str, **_: Any):
+        with self.conn.transaction():
+            yield repositories_for_connection(self.conn)
 
 
 class _RecordingWakeEmitter:

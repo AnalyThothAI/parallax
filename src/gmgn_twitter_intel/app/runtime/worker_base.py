@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -175,6 +176,7 @@ class WorkerBase(ABC):
             await self.on_close()
         finally:
             self._release_advisory_lock()
+            await self._close_wake_waiter()
 
     def status_payload(self) -> dict[str, Any]:
         return WorkerStatus(
@@ -452,6 +454,14 @@ class WorkerBase(ABC):
                 releaser()
         finally:
             self._advisory_lock_connection = None
+
+    async def _close_wake_waiter(self) -> None:
+        close = getattr(self.wake_waiter, "close", None)
+        if close is None:
+            return
+        result = close()
+        if inspect.isawaitable(result):
+            await result
 
 
 def _worker_result_payload(result: WorkerResult | None) -> dict[str, Any] | None:

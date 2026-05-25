@@ -23,7 +23,7 @@ from ..identity_evidence_policy import (
     EVIDENCE_OKX_DEX_EXACT_ADDRESS,
     EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
 )
-from ..repositories.discovery_repository import DISCOVERY_PROVIDER
+from ..repositories.discovery_repository import DISCOVERY_PROVIDER, RUNNING_LOOKUP_TIMEOUT_MS
 
 DEFAULT_DISCOVERY_LIMIT = 50
 FOUND_SYMBOL_REFRESH_MS = 15 * 60 * 1000
@@ -73,17 +73,19 @@ class ResolutionRefreshWorker(WorkerBase):
 
     def _run_refresh_once(self, now_ms: int) -> dict[str, Any]:
         result = _empty_result(now_ms)
-        since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
         with self.db.worker_session(self.name) as repos:
-            lookups = repos.discovery.due_lookup_keys(
-                since_ms=since_ms,
+            lookups = repos.discovery.claim_due_lookup_keys(
                 now_ms=now_ms,
                 limit=max(1, int(getattr(self.settings, "batch_size", DEFAULT_DISCOVERY_LIMIT))),
+                lease_ms=RUNNING_LOOKUP_TIMEOUT_MS,
+                lease_owner=self.name,
                 hot_since_ms=int(now_ms) - HOT_LOOKBACK_MS,
                 hot_not_found_retry_ms=HOT_NOT_FOUND_RETRY_MS,
             )
         result["lookups_selected"] = len(lookups)
         affected_lookup_keys: set[str] = set()
+        processed_claims: list[dict[str, Any]] = []
+        queue_due_by_lookup_key: dict[str, int] = {}
         for lookup in lookups:
             lookup_key = str(lookup.get("lookup_key") or "")
             lookup_type = str(lookup.get("lookup_type") or "")
@@ -107,6 +109,7 @@ class ResolutionRefreshWorker(WorkerBase):
                     _persist_lookup_provider_result(repos=repos, lookup_result=lookup_result, now_ms=now_ms)
                     candidate_ids = sorted(set(lookup_result["candidate_ids"]))
                     status = "found" if candidate_ids else "not_found"
+                    next_refresh_at_ms = now_ms + _refresh_ms(lookup_key=lookup_key, status=status)
                     repos.discovery.finish_lookup(
                         provider=DISCOVERY_PROVIDER,
                         lookup_key=lookup_key,
@@ -114,33 +117,50 @@ class ResolutionRefreshWorker(WorkerBase):
                         status=status,
                         candidate_ids=candidate_ids,
                         result_hash=_result_hash(candidate_ids),
-                        next_refresh_at_ms=now_ms + _refresh_ms(lookup_key=lookup_key, status=status),
+                        next_refresh_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         commit=False,
                     )
                     repos.conn.commit()
+                processed_claims.append(dict(lookup))
+                queue_due_by_lookup_key[lookup_key] = _next_queue_due_at_ms(
+                    lookup=lookup,
+                    status=status,
+                    next_refresh_at_ms=next_refresh_at_ms,
+                    now_ms=now_ms,
+                )
                 _merge_lookup_result(result, lookup_result)
                 result["lookups_done"] += 1
                 if lookup_result["affected_lookup_keys"]:
                     affected_lookup_keys.update(lookup_result["affected_lookup_keys"])
             except Exception as exc:
+                retry_due_at_ms = now_ms + _refresh_ms(
+                    lookup_key=lookup_key,
+                    status="error",
+                    error_count=int(lookup.get("error_count") or 0),
+                )
                 with self.db.worker_session(self.name) as repos:
                     repos.discovery.fail_lookup(
                         provider=DISCOVERY_PROVIDER,
                         lookup_key=lookup_key,
                         lookup_type=lookup_type or _lookup_type(lookup_key),
                         last_error=str(exc),
-                        next_refresh_at_ms=now_ms
-                        + _refresh_ms(
-                            lookup_key=lookup_key,
-                            status="error",
-                            error_count=int(lookup.get("error_count") or 0),
-                        ),
+                        next_refresh_at_ms=retry_due_at_ms,
                         now_ms=now_ms,
+                        commit=False,
                     )
+                    repos.discovery.reschedule_lookup_claims(
+                        [lookup],
+                        due_at_ms=retry_due_at_ms,
+                        now_ms=now_ms,
+                        last_error=str(exc),
+                        commit=False,
+                    )
+                    repos.conn.commit()
                 result["lookups_failed"] += 1
                 result["provider_errors"] += 1
                 result["errors"].append({"lookup_key": lookup_key, "error": str(exc)})
+        resolved_lookup_keys: set[str] = set()
         if affected_lookup_keys:
             sorted_lookup_keys = sorted(affected_lookup_keys)
             result["affected_lookup_keys"] = sorted_lookup_keys
@@ -156,6 +176,16 @@ class ResolutionRefreshWorker(WorkerBase):
             result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
             if reprocess_result["resolved_intents"]:
                 result["resolution_wake_lookup_keys"] = sorted_lookup_keys
+                resolved_lookup_keys.update(sorted_lookup_keys)
+        if processed_claims:
+            _complete_lookup_claims(
+                db=self.db,
+                worker_name=self.name,
+                claims=processed_claims,
+                resolved_lookup_keys=resolved_lookup_keys,
+                due_by_lookup_key=queue_due_by_lookup_key,
+                now_ms=now_ms,
+            )
         with self.db.worker_session(self.name) as repos:
             result["discovery_result_counts"] = repos.discovery.counts()
         return result
@@ -173,16 +203,18 @@ def run_resolution_refresh_once(
     wake_bus: Any | None = None,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
-    since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
-    lookups = repos.discovery.due_lookup_keys(
-        since_ms=since_ms,
+    lookups = repos.discovery.claim_due_lookup_keys(
         now_ms=now_ms,
         limit=lookup_limit,
+        lease_ms=RUNNING_LOOKUP_TIMEOUT_MS,
+        lease_owner="resolution_refresh",
         hot_since_ms=int(now_ms) - HOT_LOOKBACK_MS,
         hot_not_found_retry_ms=HOT_NOT_FOUND_RETRY_MS,
     )
     result["lookups_selected"] = len(lookups)
     affected_lookup_keys: set[str] = set()
+    processed_claims: list[dict[str, Any]] = []
+    queue_due_by_lookup_key: dict[str, int] = {}
     for lookup in lookups:
         lookup_key = str(lookup.get("lookup_key") or "")
         lookup_type = str(lookup.get("lookup_type") or "")
@@ -206,6 +238,7 @@ def run_resolution_refresh_once(
             _merge_lookup_result(result, lookup_result)
             candidate_ids = sorted(set(lookup_result["candidate_ids"]))
             status = "found" if candidate_ids else "not_found"
+            next_refresh_at_ms = now_ms + _refresh_ms(lookup_key=lookup_key, status=status)
             repos.discovery.finish_lookup(
                 provider=DISCOVERY_PROVIDER,
                 lookup_key=lookup_key,
@@ -213,32 +246,49 @@ def run_resolution_refresh_once(
                 status=status,
                 candidate_ids=candidate_ids,
                 result_hash=_result_hash(candidate_ids),
-                next_refresh_at_ms=now_ms + _refresh_ms(lookup_key=lookup_key, status=status),
+                next_refresh_at_ms=next_refresh_at_ms,
                 now_ms=now_ms,
                 commit=False,
             )
             repos.conn.commit()
+            processed_claims.append(dict(lookup))
+            queue_due_by_lookup_key[lookup_key] = _next_queue_due_at_ms(
+                lookup=lookup,
+                status=status,
+                next_refresh_at_ms=next_refresh_at_ms,
+                now_ms=now_ms,
+            )
             result["lookups_done"] += 1
             if lookup_result["affected_lookup_keys"]:
                 affected_lookup_keys.update(lookup_result["affected_lookup_keys"])
         except Exception as exc:
             repos.conn.rollback()
+            retry_due_at_ms = now_ms + _refresh_ms(
+                lookup_key=lookup_key,
+                status="error",
+                error_count=int(lookup.get("error_count") or 0),
+            )
             repos.discovery.fail_lookup(
                 provider=DISCOVERY_PROVIDER,
                 lookup_key=lookup_key,
                 lookup_type=lookup_type or _lookup_type(lookup_key),
                 last_error=str(exc),
-                next_refresh_at_ms=now_ms
-                + _refresh_ms(
-                    lookup_key=lookup_key,
-                    status="error",
-                    error_count=int(lookup.get("error_count") or 0),
-                ),
+                next_refresh_at_ms=retry_due_at_ms,
                 now_ms=now_ms,
+                commit=False,
             )
+            repos.discovery.reschedule_lookup_claims(
+                [lookup],
+                due_at_ms=retry_due_at_ms,
+                now_ms=now_ms,
+                last_error=str(exc),
+                commit=False,
+            )
+            repos.conn.commit()
             result["lookups_failed"] += 1
             result["provider_errors"] += 1
             result["errors"].append({"lookup_key": lookup_key, "error": str(exc)})
+    resolved_lookup_keys: set[str] = set()
     if affected_lookup_keys:
         sorted_lookup_keys = sorted(affected_lookup_keys)
         result["affected_lookup_keys"] = sorted_lookup_keys
@@ -253,6 +303,16 @@ def run_resolution_refresh_once(
         result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
         if reprocess_result["resolved_intents"] and wake_bus is not None:
             wake_bus.notify_resolution_updated(lookup_keys=sorted_lookup_keys)
+        if reprocess_result["resolved_intents"]:
+            resolved_lookup_keys.update(sorted_lookup_keys)
+    if processed_claims:
+        _finish_lookup_claims(
+            repos=repos,
+            claims=processed_claims,
+            resolved_lookup_keys=resolved_lookup_keys,
+            due_by_lookup_key=queue_due_by_lookup_key,
+            now_ms=now_ms,
+        )
     result["discovery_result_counts"] = repos.discovery.counts()
     return result
 
@@ -576,6 +636,62 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "discovery_result_counts": {},
         "errors": [],
     }
+
+
+def _complete_lookup_claims(
+    *,
+    db: Any,
+    worker_name: str,
+    claims: list[dict[str, Any]],
+    resolved_lookup_keys: set[str],
+    due_by_lookup_key: dict[str, int],
+    now_ms: int,
+) -> None:
+    with db.worker_session(worker_name) as repos:
+        _finish_lookup_claims(
+            repos=repos,
+            claims=claims,
+            resolved_lookup_keys=resolved_lookup_keys,
+            due_by_lookup_key=due_by_lookup_key,
+            now_ms=now_ms,
+        )
+
+
+def _finish_lookup_claims(
+    *,
+    repos: Any,
+    claims: list[dict[str, Any]],
+    resolved_lookup_keys: set[str],
+    due_by_lookup_key: dict[str, int],
+    now_ms: int,
+) -> None:
+    done = [claim for claim in claims if str(claim.get("lookup_key") or "") in resolved_lookup_keys]
+    if done:
+        repos.discovery.mark_lookup_done(done, now_ms=now_ms, commit=False)
+    for claim in claims:
+        lookup_key = str(claim.get("lookup_key") or "")
+        if lookup_key in resolved_lookup_keys:
+            continue
+        repos.discovery.reschedule_lookup_claims(
+            [claim],
+            due_at_ms=due_by_lookup_key.get(lookup_key, now_ms + HOT_NOT_FOUND_RETRY_MS),
+            now_ms=now_ms,
+            commit=False,
+        )
+    repos.conn.commit()
+
+
+def _next_queue_due_at_ms(
+    *,
+    lookup: dict[str, Any],
+    status: str,
+    next_refresh_at_ms: int,
+    now_ms: int,
+) -> int:
+    latest_seen_ms = int(lookup.get("latest_seen_ms") or 0)
+    if status == "not_found" and latest_seen_ms >= int(now_ms) - HOT_LOOKBACK_MS:
+        return int(now_ms) + HOT_NOT_FOUND_RETRY_MS
+    return int(next_refresh_at_ms)
 
 
 def _lookup_result(

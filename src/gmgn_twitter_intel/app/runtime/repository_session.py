@@ -17,6 +17,12 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
+from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
+    MarketTickCurrentDirtyTargetRepository,
+)
+from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_repository import (
+    MarketTickCurrentRepository,
+)
 from gmgn_twitter_intel.domains.asset_market.repositories.token_image_asset_repository import (
     TokenImageAssetRepository,
 )
@@ -93,6 +99,8 @@ class RepositorySession:
     identity_evidence: IdentityEvidenceRepository
     discovery: DiscoveryRepository
     market_ticks: MarketTickRepository
+    market_tick_current: MarketTickCurrentRepository
+    market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository
     enriched_events: EnrichedEventRepository
     event_anchor_jobs: EventAnchorBackfillJobRepository
     token_capture_tiers: TokenCaptureTierRepository
@@ -128,6 +136,9 @@ class RepositorySession:
     def unit_of_work(self):
         return transaction(self.conn)
 
+    def transaction(self):
+        return self.unit_of_work()
+
 
 def repositories_for_connection(conn: Any) -> RepositorySession:
     return RepositorySession(
@@ -146,6 +157,8 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         identity_evidence=IdentityEvidenceRepository(conn),
         discovery=DiscoveryRepository(conn),
         market_ticks=MarketTickRepository(conn),
+        market_tick_current=MarketTickCurrentRepository(conn),
+        market_tick_current_dirty_targets=MarketTickCurrentDirtyTargetRepository(conn),
         enriched_events=EnrichedEventRepository(conn),
         event_anchor_jobs=EventAnchorBackfillJobRepository(conn),
         token_capture_tiers=TokenCaptureTierRepository(conn),

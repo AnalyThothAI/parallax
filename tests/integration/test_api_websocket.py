@@ -212,6 +212,28 @@ def test_websocket_repeated_subscribe_replaces_market_targets():
     assert client.market_targets == {("CexToken", "cex-token:binance:two")}
 
 
+def test_websocket_publish_is_bounded_when_a_client_send_hangs():
+    async def scenario() -> None:
+        hub = PublicWebSocketHub(
+            token="secret",
+            repository_session=_empty_repository_session,
+            send_timeout_seconds=0.01,
+        )
+        slow = ClientSubscription(websocket=_HangingWebSocket())
+        fast_socket = _DummyWebSocket()
+        fast = ClientSubscription(websocket=fast_socket)
+        hub._clients.add(slow)
+        hub._clients.add(fast)
+
+        await hub.publish({"type": "event", "event": {"event_id": "event-1", "author_handle": "alice"}})
+
+        assert len(fast_socket.messages) == 1
+        assert fast in hub._clients
+        assert slow not in hub._clients
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=0.1))
+
+
 def test_websocket_symbol_filter_matches_token_intents_without_entities():
     hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
     client = ClientSubscription(websocket=None, symbols={"MIRROR"})
@@ -325,6 +347,11 @@ class _DummyWebSocket:
 
     async def send_text(self, message: str) -> None:
         self.messages.append(message)
+
+
+class _HangingWebSocket:
+    async def send_text(self, _message: str) -> None:
+        await asyncio.sleep(60)
 
 
 @contextmanager

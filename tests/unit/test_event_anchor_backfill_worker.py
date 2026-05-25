@@ -406,11 +406,9 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
     result = asyncio.run(worker.run_once())
 
     assert result.processed == 1
-    assert len(db.inserted_ticks) == 2
-    assert [capture.target_id for capture in db.attached_captures] == [
-        "solana:FIRST",
-        "solana:SECOND",
-    ]
+    assert len(db.inserted_ticks) == 1
+    assert db.inserted_ticks[0].target_id == "solana:SECOND"
+    assert [capture.target_id for capture in db.attached_captures] == ["solana:SECOND"]
     assert wake.emitted == [("chain_token", "solana:SECOND")]
     assert db.dirty_target_enqueues == [
         {
@@ -529,16 +527,31 @@ class _FakeDB:
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
 
+    def worker_transaction(self, name: str, statement_timeout_seconds: float | None = None):
+        return _FakeWorkerSession(self)
+
 
 class _FakeWorkerSession:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
+        self._snapshot: dict[str, int] = {}
 
     def __enter__(self) -> _FakeRepos:
+        self._snapshot = {
+            "inserted_ticks": len(self._db.inserted_ticks),
+            "attached_captures": len(self._db.attached_captures),
+            "terminal_captures": len(self._db.terminal_captures),
+            "terminal_jobs": len(self._db.terminal_jobs),
+            "rescheduled_jobs": len(self._db.rescheduled_jobs),
+            "done_jobs": len(self._db.done_jobs),
+            "dirty_target_enqueues": len(self._db.dirty_target_enqueues),
+        }
         return _FakeRepos(self._db)
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        return None
+        if exc_type is not None:
+            for name, size in self._snapshot.items():
+                del getattr(self._db, name)[size:]
 
 
 class _FakeRepos:
@@ -547,8 +560,11 @@ class _FakeRepos:
         self.enriched_events = _FakeEnrichedEventRepo(db)
         self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
         self.market_ticks = _FakeMarketTickRepo(db)
-        self.token_radar_dirty_targets = _FakeDirtyTargets(db)
+        self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
         self.conn = SimpleNamespace(commit=lambda: None)
+
+    def transaction(self):
+        return _FakeWorkerSession(self._db)
 
 
 class _FakeEnrichedEventRepo:
@@ -616,17 +632,17 @@ class _FakeMarketTickRepo:
     def nearest_around(self, **_: Any) -> dict[str, Any] | None:
         return None
 
-    def insert_ticks(self, ticks: Any) -> int:
+    def insert_ticks_returning_ids(self, ticks: Any) -> list[str]:
         materialized = list(ticks)
         self._db.inserted_ticks.extend(materialized)
-        return len(materialized)
+        return [str(tick.tick_id) for tick in materialized]
 
 
 class _FakeDirtyTargets:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
 
-    def enqueue_market_targets(self, rows: Any, *, reason: str, now_ms: int, commit: bool) -> int:
+    def enqueue_targets(self, rows: Any, *, reason: str, now_ms: int, commit: bool) -> int:
         materialized = list(rows)
         self._db.dirty_target_enqueues.append(
             {

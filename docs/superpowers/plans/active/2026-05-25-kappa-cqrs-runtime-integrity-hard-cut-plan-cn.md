@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft
+**Status:** Implemented locally and merged
 **Date:** 2026-05-25
 **Owning spec:** `docs/superpowers/specs/active/2026-05-25-kappa-cqrs-runtime-integrity-hard-cut-cn.md`
 **Recommended worktree:** `.worktrees/kappa-cqrs-runtime-integrity-hard-cut`
@@ -992,3 +992,31 @@ Expected:
 5. Confirm `/readyz` shows `market_tick_current_projection` and
    `token_radar_projection` draining queues.
 6. Do not add compatibility flags or old fallback paths if any step fails.
+
+## Implementation Result
+
+Implemented on branch `codex/kappa-cqrs-runtime-integrity-hard-cut` and merged
+to `main` on 2026-05-25.
+
+Completed:
+
+- explicit worker transaction primitives and rollback tests;
+- atomic market tick persistence with `market_tick_current_dirty_targets`;
+- `market_tick_current` single-owner projection and rebuild command;
+- explicit Token Radar dirty repair command;
+- removal of Token Radar runtime dirty-empty catch-up scans;
+- resolution refresh via `token_discovery_dirty_lookup_keys`;
+- removal of legacy numeric confidence fallback;
+- provider-free API/read paths for candles and stock quotes;
+- bounded WebSocket fan-out;
+- dedicated wake waiter executor and lifecycle cleanup;
+- architecture tests for provider-free reads, dirty queue ownership, and broad
+  runtime catch-up bans.
+
+Verification:
+
+- `uv run ruff check src/gmgn_twitter_intel tests` -> passed.
+- Market tick/current/transaction suite -> `80 passed`.
+- Resolution refresh, Token Radar, API/WebSocket, wake, and worker lifecycle
+  suite -> `84 passed`.
+- Architecture, CLI, and worker wiring suite -> `168 passed`.

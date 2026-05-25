@@ -762,28 +762,12 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
     assert payload["provider"] == "test_live"
 
 
-def test_stocks_radar_returns_us_equity_market_instruments_with_partial_quotes(tmp_path):
-    class FakeStockQuoteProvider:
-        def quote(self, symbol: str):
-            if symbol == "RKLB":
-                raise RuntimeError("quote unavailable")
-            return {
-                "status": "ready",
-                "price": 291.87,
-                "reference_close_price": 293.257,
-                "change_pct": (291.87 - 293.257) / 293.257,
-                "asof": "2026-05-12T08:45:45+00:00",
-                "provider": "yahoo",
-                "provider_symbol": symbol,
-                "latency_class": "delayed_15m",
-            }
-
+def test_stocks_radar_returns_us_equity_market_instruments_without_quote_provider_io(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
     now_ms = int(time.time() * 1000)
 
     with TestClient(app) as client:
         runtime = client.app.state.service
-        runtime.stock_quote_provider = FakeStockQuoteProvider()
         with runtime.repositories() as repos:
             repos.registry.upsert_us_equity_symbol(
                 symbol="AAPL",
@@ -845,15 +829,16 @@ def test_stocks_radar_returns_us_equity_market_instruments_with_partial_quotes(t
     assert "PEPE" not in symbols
     assert data["health"] == {
         "returned_count": 2,
-        "quote_ready_count": 1,
-        "quote_unavailable_count": 1,
+        "quote_ready_count": 0,
+        "quote_unavailable_count": 2,
     }
     by_symbol = {row["target"]["symbol"]: row for row in rows}
     assert by_symbol["AAPL"]["attention"]["mentions"] == 2
     assert by_symbol["AAPL"]["attention"]["unique_authors"] == 2
-    assert by_symbol["AAPL"]["quote"]["price"] == 291.87
-    assert by_symbol["AAPL"]["quote"]["provider"] == "yahoo"
+    assert by_symbol["AAPL"]["quote"]["status"] == "unavailable"
+    assert by_symbol["AAPL"]["quote"]["error"] == "read_model_unavailable"
     assert by_symbol["RKLB"]["quote"]["status"] == "unavailable"
+    assert by_symbol["RKLB"]["quote"]["error"] == "read_model_unavailable"
     assert by_symbol["RKLB"]["row_health"] == ["quote_unavailable"]
 
 

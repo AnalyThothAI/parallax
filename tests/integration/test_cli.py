@@ -196,6 +196,17 @@ class CliTests(unittest.TestCase):
             ["ops", "sync-us-equity-symbols"],
             ["ops", "rebuild-token-profiles", "--limit", "5"],
             ["ops", "reset-token-radar-postgres-hard-cut", "--dry-run"],
+            ["ops", "rebuild-market-tick-current", "--dry-run"],
+            ["ops", "enqueue-token-radar-dirty-targets", "--source", "events", "--since-ms", "0", "--dry-run"],
+            [
+                "ops",
+                "enqueue-token-radar-dirty-targets",
+                "--source",
+                "market-current",
+                "--since-ms",
+                "0",
+                "--execute",
+            ],
             ["ops", "ensure-postgres-partitions", "--execute"],
             ["ops", "drop-expired-postgres-partitions", "--execute"],
         ]
@@ -248,10 +259,20 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[23].limit, 5)
         self.assertEqual(parsed[24].ops_command, "reset-token-radar-postgres-hard-cut")
         self.assertTrue(parsed[24].dry_run)
-        self.assertEqual(parsed[25].ops_command, "ensure-postgres-partitions")
-        self.assertTrue(parsed[25].execute)
-        self.assertEqual(parsed[26].ops_command, "drop-expired-postgres-partitions")
-        self.assertTrue(parsed[26].execute)
+        self.assertEqual(parsed[25].ops_command, "rebuild-market-tick-current")
+        self.assertTrue(parsed[25].dry_run)
+        self.assertEqual(parsed[26].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[26].source, "events")
+        self.assertEqual(parsed[26].since_ms, 0)
+        self.assertEqual(parsed[26].limit, 5000)
+        self.assertTrue(parsed[26].dry_run)
+        self.assertEqual(parsed[27].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[27].source, "market-current")
+        self.assertTrue(parsed[27].execute)
+        self.assertEqual(parsed[28].ops_command, "ensure-postgres-partitions")
+        self.assertTrue(parsed[28].execute)
+        self.assertEqual(parsed[29].ops_command, "drop-expired-postgres-partitions")
+        self.assertTrue(parsed[29].execute)
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1018,9 +1039,12 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
             return False
 
     class FakeDiscovery:
-        def due_lookup_keys(self, **kwargs):
-            captured["due_lookup_kwargs"] = kwargs
+        def claim_due_lookup_keys(self, **kwargs):
+            captured["claim_due_lookup_kwargs"] = kwargs
             return []
+
+        def due_lookup_keys(self, **kwargs):
+            raise AssertionError("run-resolution-refresh must claim discovery dirty lookup queue")
 
         def counts(self):
             return {"found": 0}
@@ -1047,7 +1071,7 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
     assert code == 0
     assert captured["start_collector"] is True
     assert captured["session_names"] == ["resolution_refresh", "resolution_refresh"]
-    assert captured["due_lookup_kwargs"]["limit"] == 3
+    assert captured["claim_due_lookup_kwargs"]["limit"] == 3
     assert payload["data"]["lookups_selected"] == 0
 
 

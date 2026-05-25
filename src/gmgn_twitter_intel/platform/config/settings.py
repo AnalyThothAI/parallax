@@ -925,6 +925,19 @@ class MarketTickPollWorkerSettings(PerWorkerSettings):
     concurrency: int = Field(default=4, ge=1)
 
 
+class MarketTickCurrentProjectionWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=5.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    retry_ms: int = Field(default=30_000, ge=1)
+    advisory_lock_key: int = 2026052401
+    wakes_on: tuple[str, ...] = ("market_tick_written",)
+
+    @field_validator("wakes_on", mode="before")
+    @classmethod
+    def parse_wakes_on(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
 class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=1.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
@@ -983,7 +996,7 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=100, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026051501
-    wakes_on: tuple[str, ...] = ("market_tick_written", "resolution_updated")
+    wakes_on: tuple[str, ...] = ("market_tick_current_updated", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
     scopes: tuple[str, ...] = ("all", "matched")
     hot_windows: tuple[str, ...] = ("5m",)
@@ -1360,6 +1373,9 @@ class WorkersSettings(BaseModel):
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
     market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
     market_tick_poll: MarketTickPollWorkerSettings = Field(default_factory=MarketTickPollWorkerSettings)
+    market_tick_current_projection: MarketTickCurrentProjectionWorkerSettings = Field(
+        default_factory=MarketTickCurrentProjectionWorkerSettings
+    )
     event_anchor_backfill: EventAnchorBackfillWorkerSettings = Field(default_factory=EventAnchorBackfillWorkerSettings)
     token_capture_tier: TokenCaptureTierWorkerSettings = Field(default_factory=TokenCaptureTierWorkerSettings)
     live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
@@ -1987,6 +2003,13 @@ market_tick_poll:
   interval_seconds: 15.0
   batch_size: 100
   concurrency: 4
+market_tick_current_projection:
+  enabled: true
+  interval_seconds: 5.0
+  batch_size: 100
+  retry_ms: 30000
+  advisory_lock_key: 2026052401
+  wakes_on: ["market_tick_written"]
 event_anchor_backfill:
   enabled: true
   interval_seconds: 1.0
@@ -2030,7 +2053,7 @@ token_radar_projection:
   batch_size: 100
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026051501
-  wakes_on: ["market_tick_written", "resolution_updated"]
+  wakes_on: ["market_tick_current_updated", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]
   scopes: ["all", "matched"]
   hot_windows: ["5m"]

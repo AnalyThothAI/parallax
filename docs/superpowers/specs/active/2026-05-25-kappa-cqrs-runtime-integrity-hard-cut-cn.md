@@ -1,6 +1,6 @@
 # Spec — Kappa/CQRS Runtime Integrity Hard Cut
 
-**Status**: Draft
+**Status**: Implemented locally and merged
 **Date**: 2026-05-25
 **Owner**: Codex
 **Related**:
@@ -429,3 +429,14 @@ This is a hard cut. Rollout order:
 
 Rollback is previous app revision plus database restore or a forward repair
 command. Do not add runtime compatibility branches.
+
+## Implementation Result
+
+Implemented on branch `codex/kappa-cqrs-runtime-integrity-hard-cut` and merged
+to `main` on 2026-05-25.
+
+The shipped hard cut removes runtime broad catch-up scans from Token Radar,
+moves resolution refresh to durable lookup-key dirty targets, cuts
+provider-backed API/read paths, bounds WebSocket fan-out, and gives wake
+listeners a dedicated executor with worker lifecycle cleanup. Architecture tests
+now guard those contracts.

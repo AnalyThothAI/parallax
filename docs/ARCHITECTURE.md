@@ -127,10 +127,15 @@ are wrong too.
    `macro_view_snapshots` is written only by
    `MacroViewProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
-   (`market_tick_written`, `resolution_updated`,
-   `token_radar_updated`) carry hint payloads only; consumers re-read DB on
-   wake. Every listener must have a bounded `interval_seconds` catch-up so
-   a missed `NOTIFY` cannot stall the pipeline.
+   (`market_tick_written`, `market_tick_current_updated`,
+   `resolution_updated`, `token_radar_updated`) carry hint payloads only;
+   consumers re-read DB on wake. Market tick writers wake
+   `MarketTickCurrentProjectionWorker`, which emits
+   `market_tick_current_updated` after `market_tick_current` changes; Token
+   Radar listens to that current-ready channel. Every listener must have a
+   bounded `interval_seconds` loop that re-reads durable queues or bounded
+   read models so a missed `NOTIFY` cannot stall the pipeline. Runtime workers
+   must not compensate for missed wakes by scanning large fact windows.
 7. **No runtime compatibility layer.** Hard cuts delete the old runtime
    path. No `_overlay_*`, no `fallback_to_v2_snapshot`, no "if missing fall
    back to the old field". Migration code and rollback docs may reference

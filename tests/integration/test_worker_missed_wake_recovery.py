@@ -26,7 +26,7 @@ EVENT_MS = FIXED_NOW_MS - 10 * 60 * 1000
 ASSET_ADDRESS = "0x2222222222222222222222222222222222222222"
 
 
-def test_token_radar_projection_worker_catches_up_from_db_without_wake(tmp_path) -> None:
+def test_token_radar_projection_worker_requires_explicit_repair_after_missed_dirty_enqueue(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -40,12 +40,23 @@ def test_token_radar_projection_worker_catches_up_from_db_without_wake(tmp_path)
             telemetry=object(),
         )
 
-        catch_up_result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
+        idle_result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
+        row_before_repair = conn.execute(
+            """
+            SELECT count(*) AS count
+            FROM token_radar_current_rows
+            WHERE "window" = '1h' AND scope = 'all'
+            """,
+        ).fetchone()
+
+        repair_enqueued = _enqueue_token_radar_repair(conn)
         result = asyncio.run(worker.run_once(now_ms=FIXED_NOW_MS))
 
-        assert catch_up_result.failed == 0
-        assert catch_up_result.processed == 0
-        assert catch_up_result.notes["catch_up_enqueued"] >= 1
+        assert idle_result.failed == 0
+        assert idle_result.processed == 0
+        assert idle_result.notes["catch_up_enqueued"] == 0
+        assert row_before_repair["count"] == 0
+        assert repair_enqueued >= 1
         assert result.failed == 0
         assert result.processed >= 1
         assert result.notes["source_rows"] >= 1
@@ -84,9 +95,11 @@ def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wa
             db=_DB(conn),
             telemetry=object(),
         )
-        catch_up_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
+        idle_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
+        repair_enqueued = _enqueue_token_radar_repair(conn)
         radar_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
-        assert catch_up_result.notes["catch_up_enqueued"] >= 1
+        assert idle_result.notes["catch_up_enqueued"] == 0
+        assert repair_enqueued >= 1
         assert radar_result.notes["rows_written"] >= 1
 
         pulse_worker = PulseCandidateWorker(
@@ -147,6 +160,19 @@ class _FakeDecisionClient:
     async def decide(self, *_: Any, **__: Any) -> Any:
         type(self).calls += 1
         raise AssertionError("scan_triggers_once should not call the decision client")
+
+
+def _enqueue_token_radar_repair(conn: Any) -> int:
+    repos = repositories_for_connection(conn)
+    return int(
+        repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+            since_ms=FIXED_NOW_MS - 60 * 60 * 1000,
+            now_ms=FIXED_NOW_MS,
+            limit=10,
+            reason="ops_repair",
+            commit=True,
+        )
+    )
 
 
 def _radar_settings() -> SimpleNamespace:

@@ -10,7 +10,7 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_discovery_results_select_recent_unresolved_lookup_keys_without_enqueue(tmp_path):
+def test_discovery_results_claim_only_explicitly_enqueued_unresolved_lookup_keys(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -25,6 +25,12 @@ def test_discovery_results_select_recent_unresolved_lookup_keys_without_enqueue(
             created_at_ms=1_000,
         )
 
+        not_enqueued = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
+        enqueued = discovery.enqueue_lookup_keys(
+            ["symbol:UPEG", "cex_token:UPEG"],
+            reason="intent_unresolved",
+            now_ms=2_000,
+        )
         due = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
         discovery.start_lookup(
             provider="okx_dex_search",
@@ -58,6 +64,8 @@ def test_discovery_results_select_recent_unresolved_lookup_keys_without_enqueue(
     finally:
         conn.close()
 
+    assert not_enqueued == []
+    assert enqueued == 1
     assert [item["lookup_key"] for item in due] == ["symbol:UPEG"]
     assert suppressed == []
     assert [item["lookup_key"] for item in stale] == ["symbol:UPEG"]
@@ -111,13 +119,25 @@ def test_discovery_refreshes_ambiguous_lookup_after_nil_backlog(tmp_path):
             WHERE resolution_id = 'resolution-ambiguous'
             """
         )
-        conn.commit()
+        discovery = DiscoveryRepository(conn)
+        discovery.enqueue_lookup_keys(
+            ["symbol:NILCOIN"],
+            reason="intent_resolution_unresolved",
+            now_ms=1_000,
+            latest_seen_ms=1_000,
+        )
+        discovery.enqueue_lookup_keys(
+            ["symbol:MAYBE"],
+            reason="intent_resolution_unresolved",
+            now_ms=100_000,
+            latest_seen_ms=100_000,
+        )
 
-        due = DiscoveryRepository(conn).due_lookup_keys(since_ms=0, now_ms=120_000, limit=2)
+        due = discovery.due_lookup_keys(since_ms=0, now_ms=120_000, limit=2)
     finally:
         conn.close()
 
-    assert [item["lookup_key"] for item in due] == ["symbol:NILCOIN", "symbol:MAYBE"]
+    assert [item["lookup_key"] for item in due] == ["symbol:MAYBE", "symbol:NILCOIN"]
 
 
 def test_discovery_prioritizes_recent_due_lookup_over_old_never_seen_backlog(tmp_path):
@@ -158,6 +178,18 @@ def test_discovery_prioritizes_recent_due_lookup_over_old_never_seen_backlog(tmp
             created_at_ms=100_000,
         )
         discovery = DiscoveryRepository(conn)
+        discovery.enqueue_lookup_keys(
+            ["symbol:OLD"],
+            reason="intent_resolution_unresolved",
+            now_ms=1_000,
+            latest_seen_ms=1_000,
+        )
+        discovery.enqueue_lookup_keys(
+            ["symbol:RECENT"],
+            reason="intent_resolution_unresolved",
+            now_ms=100_000,
+            latest_seen_ms=100_000,
+        )
         discovery.finish_lookup(
             provider="okx_dex_search",
             lookup_key="symbol:RECENT",
@@ -214,6 +246,18 @@ def test_discovery_retries_hot_not_found_before_old_backlog(tmp_path):
             created_at_ms=100_000,
         )
         discovery = DiscoveryRepository(conn)
+        discovery.enqueue_lookup_keys(
+            ["symbol:OLD"],
+            reason="intent_resolution_unresolved",
+            now_ms=1_000,
+            latest_seen_ms=1_000,
+        )
+        discovery.enqueue_lookup_keys(
+            ["symbol:HOT"],
+            reason="intent_resolution_unresolved",
+            now_ms=100_000,
+            latest_seen_ms=100_000,
+        )
         discovery.finish_lookup(
             provider="okx_dex_search",
             lookup_key="symbol:HOT",
@@ -298,6 +342,12 @@ def test_due_lookup_keys_includes_error_count_for_backoff(tmp_path):
             created_at_ms=1_000,
         )
         discovery = DiscoveryRepository(conn)
+        discovery.enqueue_lookup_keys(
+            ["symbol:RATE"],
+            reason="intent_resolution_unresolved",
+            now_ms=1_000,
+            latest_seen_ms=1_000,
+        )
         discovery.fail_lookup(
             provider="okx_dex_search",
             lookup_key="symbol:RATE",

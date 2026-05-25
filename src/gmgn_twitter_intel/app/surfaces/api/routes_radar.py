@@ -51,7 +51,6 @@ def stocks_radar(
     with runtime.repositories() as repos:
         data = StocksRadarService(
             conn=repos.conn,
-            quote_provider=getattr(runtime, "stock_quote_provider", None),
         ).stocks_radar(
             window=parsed_window,
             limit=_limit(limit),

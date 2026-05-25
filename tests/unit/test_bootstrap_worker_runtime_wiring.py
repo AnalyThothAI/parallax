@@ -11,6 +11,9 @@ from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactorySpec, c
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
+from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker import (
+    MarketTickCurrentProjectionWorker,
+)
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
@@ -71,6 +74,10 @@ def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_legacy_anchor_worker(
     assert workers["market_tick_poll"].providers is providers.asset_market
     assert workers["market_tick_poll"].wake_emitter is db.wake
     assert workers["market_tick_poll"].batch_size == 100
+    assert isinstance(workers["market_tick_current_projection"], MarketTickCurrentProjectionWorker)
+    assert workers["market_tick_current_projection"].wake_emitter is db.wake
+    assert workers["market_tick_current_projection"].wake_waiter.channels == ("market_tick_written",)
+    assert workers["market_tick_current_projection"].settings.advisory_lock_key == 2026052401
 
     assert isinstance(workers["event_anchor_backfill"], EventAnchorBackfillWorker)
     assert workers["event_anchor_backfill"].wake_emitter is db.wake
@@ -112,6 +119,7 @@ def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_prov
     assert not isinstance(workers["market_tick_stream"], MarketTickStreamWorker)
     assert not isinstance(workers["market_tick_poll"], MarketTickPollWorker)
     assert not isinstance(workers["event_anchor_backfill"], EventAnchorBackfillWorker)
+    assert isinstance(workers["market_tick_current_projection"], MarketTickCurrentProjectionWorker)
 
 
 def test_worker_factory_preserves_enabled_collector_injection() -> None:
@@ -370,6 +378,7 @@ def _settings(
             "collector": {"enabled": collector_enabled},
             "market_tick_stream": {"enabled": True},
             "market_tick_poll": {"enabled": True},
+            "market_tick_current_projection": {"enabled": True},
             "event_anchor_backfill": {"enabled": True},
             "token_capture_tier": {"enabled": True},
             "live_price_gateway": {"enabled": True},

@@ -13,6 +13,8 @@ from starlette.websockets import WebSocketDisconnect, WebSocketState
 from gmgn_twitter_intel.domains.evidence.services.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
 from gmgn_twitter_intel.domains.ingestion.services.subscriptions import normalize_handles
 
+DEFAULT_SEND_TIMEOUT_SECONDS = 0.25
+
 
 @dataclass(eq=False)
 class ClientSubscription:
@@ -35,10 +37,12 @@ class PublicWebSocketHub:
         token: str,
         repository_session: Callable[[], AbstractContextManager[Any]],
         default_replay_limit: int = 100,
+        send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
     ):
         self.token = token
         self.repository_session = repository_session
         self.default_replay_limit = default_replay_limit
+        self.send_timeout_seconds = max(0.001, float(send_timeout_seconds))
         self._clients: set[ClientSubscription] = set()
 
     async def publish(self, payload: dict[str, Any]) -> None:
@@ -46,19 +50,26 @@ class PublicWebSocketHub:
             return
 
         message = _json_message(payload)
-        stale_clients = []
-        for client in list(self._clients):
-            if not self._payload_matches_subscription(payload, client):
-                continue
-            try:
-                await client.websocket.send_text(message)
-            except WebSocketDisconnect:
-                stale_clients.append(client)
-            except RuntimeError:
-                stale_clients.append(client)
+        send_targets = [client for client in list(self._clients) if self._payload_matches_subscription(payload, client)]
+        results = await asyncio.gather(
+            *(self._send_with_timeout(client, message) for client in send_targets),
+            return_exceptions=True,
+        )
+        stale_clients = [
+            client
+            for client, result in zip(send_targets, results, strict=True)
+            if isinstance(result, BaseException) or result is False
+        ]
 
         for client in stale_clients:
             self._clients.discard(client)
+
+    async def _send_with_timeout(self, client: ClientSubscription, message: str) -> bool:
+        try:
+            await asyncio.wait_for(client.websocket.send_text(message), timeout=self.send_timeout_seconds)
+            return True
+        except (TimeoutError, WebSocketDisconnect, RuntimeError):
+            return False
 
     async def handle(self, websocket: WebSocket) -> None:
         await websocket.accept()

@@ -151,6 +151,18 @@ class DBPoolBundle:
                 _discard_connection(self.worker_pool, conn)
             raise
 
+    @contextmanager
+    def worker_transaction(
+        self,
+        name: str,
+        statement_timeout_seconds: float | None = None,
+    ) -> Iterator[RepositorySession]:
+        with (
+            self.worker_session(name, statement_timeout_seconds=statement_timeout_seconds) as repos,
+            repos.unit_of_work(),
+        ):
+            yield repos
+
     def wake_emitter(self) -> WakeBus:
         return WakeBus(self.wake_pool.connection)
 

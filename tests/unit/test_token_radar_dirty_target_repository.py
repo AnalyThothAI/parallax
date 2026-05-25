@@ -219,6 +219,80 @@ def test_enqueue_recent_resolved_targets_is_bounded_freshness_gated_catch_up() -
     assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
 
 
+def test_recent_resolved_target_candidate_counts_reuse_bounded_fact_query() -> None:
+    conn = _ScriptedConnection([[{"count": 8}], [{"count": 5}]])
+
+    candidates = TokenRadarDirtyTargetRepository(conn).count_recent_resolved_target_candidates(
+        since_ms=1_700_000_000_000,
+        now_ms=1_700_000_060_000,
+        limit=10,
+    )
+    enqueueable = TokenRadarDirtyTargetRepository(conn).count_recent_resolved_target_enqueue_candidates(
+        since_ms=1_700_000_000_000,
+        now_ms=1_700_000_060_000,
+        limit=10,
+    )
+
+    assert candidates == 8
+    assert enqueueable == 5
+    assert "token_intent_resolutions.target_type IN ('Asset', 'CexToken')" in conn.sql[0]
+    assert "INSERT INTO token_radar_dirty_targets" not in conn.sql[0]
+    assert "latest_feature" not in conn.sql[0]
+    assert "latest_feature" in conn.sql[1]
+    assert "target_coverage" in conn.sql[1]
+    assert conn.params[0]["since_ms"] == 1_700_000_000_000
+    assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
+
+
+def test_market_current_target_enqueue_maps_persisted_current_rows_since_watermark() -> None:
+    conn = _ScriptedConnection([])
+    conn.rowcount = 4
+
+    enqueued = TokenRadarDirtyTargetRepository(conn).enqueue_market_current_targets(
+        since_ms=123,
+        now_ms=1_700_000_060_000,
+        limit=25,
+        reason="ops_market_current_repair",
+        commit=False,
+    )
+
+    sql = conn.sql[-1]
+    assert enqueued == 4
+    assert "FROM market_tick_current" in sql
+    assert "GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) >= %(since_ms)s" in sql
+    assert "JOIN registry_assets" in sql
+    assert "JOIN price_feeds" in sql
+    assert "INSERT INTO token_radar_dirty_targets" in sql
+    assert conn.params[-1]["since_ms"] == 123
+    assert conn.params[-1]["limit"] == 25
+    assert conn.params[-1]["dirty_reason"] == "ops_market_current_repair"
+
+
+def test_market_current_target_candidate_counts_are_read_only() -> None:
+    conn = _ScriptedConnection([[{"count": 6}], [{"count": 4}]])
+
+    candidates = TokenRadarDirtyTargetRepository(conn).count_market_current_target_candidates(
+        since_ms=123,
+        now_ms=1_700_000_060_000,
+        limit=25,
+    )
+    enqueueable = TokenRadarDirtyTargetRepository(conn).count_market_current_target_enqueue_candidates(
+        since_ms=123,
+        now_ms=1_700_000_060_000,
+        limit=25,
+    )
+
+    assert candidates == 6
+    assert enqueueable == 4
+    assert "FROM market_tick_current" in conn.sql[0]
+    assert "INSERT INTO token_radar_dirty_targets" not in conn.sql[0]
+    assert "latest_feature" not in conn.sql[0]
+    assert "latest_feature" in conn.sql[1]
+    assert "target_coverage" in conn.sql[1]
+    assert conn.params[0]["since_ms"] == 123
+    assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
+
+
 def test_repository_session_exposes_token_radar_dirty_targets() -> None:
     session = repositories_for_connection(_ScriptedConnection([]))
 
@@ -244,6 +318,10 @@ class _ScriptedConnection:
         result = self.results.pop(0)
         assert isinstance(result, list)
         return result
+
+    def fetchone(self) -> dict[str, Any] | None:
+        rows = self.fetchall()
+        return rows[0] if rows else None
 
     def commit(self) -> None:
         self.commits += 1

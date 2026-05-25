@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -12,6 +14,114 @@ class DiscoveryRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
+    def enqueue_lookup_keys(
+        self,
+        lookup_keys: Iterable[str],
+        *,
+        reason: str,
+        now_ms: int,
+        due_at_ms: int | None = None,
+        latest_seen_ms: int | None = None,
+        intent_count: int = 1,
+        commit: bool = True,
+    ) -> int:
+        records = _lookup_key_records(
+            lookup_keys,
+            reason=reason,
+            now_ms=now_ms,
+            due_at_ms=due_at_ms,
+            latest_seen_ms=latest_seen_ms,
+            intent_count=intent_count,
+        )
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            """
+            WITH incoming(
+              provider, lookup_key, lookup_type, dirty_reason, payload_hash,
+              due_at_ms, latest_seen_ms, intent_count, refresh_priority
+            ) AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(lookup_keys)s::text[],
+                %(lookup_types)s::text[],
+                %(dirty_reasons)s::text[],
+                %(payload_hashes)s::text[],
+                %(due_at_ms_values)s::bigint[],
+                %(latest_seen_ms_values)s::bigint[],
+                %(intent_counts)s::bigint[],
+                %(refresh_priorities)s::integer[]
+              )
+            )
+            INSERT INTO token_discovery_dirty_lookup_keys(
+              provider,
+              lookup_key,
+              lookup_type,
+              dirty_reason,
+              payload_hash,
+              due_at_ms,
+              latest_seen_ms,
+              intent_count,
+              refresh_priority,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms
+            )
+            SELECT
+              incoming.provider,
+              incoming.lookup_key,
+              incoming.lookup_type,
+              incoming.dirty_reason,
+              incoming.payload_hash,
+              incoming.due_at_ms,
+              incoming.latest_seen_ms,
+              incoming.intent_count,
+              incoming.refresh_priority,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s
+            FROM incoming
+            ON CONFLICT(provider, lookup_key) DO UPDATE SET
+              lookup_type = EXCLUDED.lookup_type,
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              due_at_ms = LEAST(token_discovery_dirty_lookup_keys.due_at_ms, EXCLUDED.due_at_ms),
+              latest_seen_ms = GREATEST(
+                token_discovery_dirty_lookup_keys.latest_seen_ms,
+                EXCLUDED.latest_seen_ms
+              ),
+              intent_count = GREATEST(token_discovery_dirty_lookup_keys.intent_count, EXCLUDED.intent_count),
+              refresh_priority = LEAST(
+                token_discovery_dirty_lookup_keys.refresh_priority,
+                EXCLUDED.refresh_priority
+              ),
+              leased_until_ms = NULL,
+              lease_owner = NULL,
+              last_error = NULL,
+              first_dirty_at_ms = token_discovery_dirty_lookup_keys.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE token_discovery_dirty_lookup_keys.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+               OR token_discovery_dirty_lookup_keys.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+               OR token_discovery_dirty_lookup_keys.due_at_ms > EXCLUDED.due_at_ms
+               OR token_discovery_dirty_lookup_keys.latest_seen_ms < EXCLUDED.latest_seen_ms
+               OR token_discovery_dirty_lookup_keys.intent_count < EXCLUDED.intent_count
+               OR token_discovery_dirty_lookup_keys.refresh_priority > EXCLUDED.refresh_priority
+               OR token_discovery_dirty_lookup_keys.leased_until_ms IS NOT NULL
+               OR token_discovery_dirty_lookup_keys.last_error IS NOT NULL
+            """,
+            _lookup_key_params(records, now_ms=now_ms),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
     def due_lookup_keys(
         self,
         *,
@@ -21,108 +131,246 @@ class DiscoveryRepository:
         hot_since_ms: int | None = None,
         hot_not_found_retry_ms: int | None = None,
     ) -> list[dict[str, Any]]:
-        hot_since = int(hot_since_ms) if hot_since_ms is not None else None
-        hot_retry = int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None
         rows = self.conn.execute(
             """
-            WITH recent_refresh_candidates AS (
-              SELECT
-                token_intent_lookup_keys.lookup_key,
-                MAX(events.received_at_ms) AS latest_seen_ms,
-                COUNT(DISTINCT token_intent_lookup_keys.intent_id) AS intent_count,
-                MIN(
-                  CASE
-                    WHEN current_resolution.resolution_id IS NULL THEN 0
-                    WHEN current_resolution.resolution_status = 'NIL' THEN 0
-                    WHEN current_resolution.resolution_status = 'AMBIGUOUS' THEN 1
-                    ELSE 9
-                  END
-                ) AS refresh_priority
-              FROM token_intent_lookup_keys
-              JOIN token_intents
-                ON token_intents.intent_id = token_intent_lookup_keys.intent_id
-              JOIN events
-                ON events.event_id = token_intents.event_id
-              LEFT JOIN token_intent_resolutions current_resolution
-                ON current_resolution.intent_id = token_intents.intent_id
-               AND current_resolution.is_current = true
-              WHERE events.received_at_ms >= %s
-                AND (
-                  current_resolution.resolution_id IS NULL
-                  OR current_resolution.resolution_status = 'NIL'
-                  OR current_resolution.resolution_status = 'AMBIGUOUS'
-                )
-                AND (
-                  token_intent_lookup_keys.lookup_key LIKE 'symbol:%%'
-                  OR token_intent_lookup_keys.lookup_key LIKE 'address:%%'
-                )
-              GROUP BY token_intent_lookup_keys.lookup_key
-            )
             SELECT
-              recent_refresh_candidates.lookup_key,
+              queue.lookup_key,
+              queue.lookup_type,
+              queue.provider,
+              queue.latest_seen_ms,
+              queue.intent_count,
+              queue.refresh_priority,
               CASE
-                WHEN recent_refresh_candidates.lookup_key LIKE 'symbol:%%' THEN 'dex_symbol_lookup'
-                ELSE 'address_lookup'
-              END AS lookup_type,
-              %s AS provider,
-              recent_refresh_candidates.latest_seen_ms,
-              recent_refresh_candidates.intent_count,
-              recent_refresh_candidates.refresh_priority,
-              CASE
-                WHEN %s::bigint IS NOT NULL AND recent_refresh_candidates.latest_seen_ms >= %s::bigint THEN 0
+                WHEN %(hot_since_ms)s::bigint IS NOT NULL AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint THEN 0
                 ELSE 1
               END AS hot_priority,
-              token_discovery_results.status,
-              token_discovery_results.result_hash,
-              token_discovery_results.next_refresh_at_ms,
-              COALESCE(token_discovery_results.error_count, 0) AS error_count
-            FROM recent_refresh_candidates
+              results.status,
+              results.result_hash,
+              results.next_refresh_at_ms,
+              COALESCE(results.error_count, 0) AS error_count
+            FROM token_discovery_dirty_lookup_keys queue
             LEFT JOIN token_discovery_results
-              ON token_discovery_results.provider = %s
-             AND token_discovery_results.lookup_key = recent_refresh_candidates.lookup_key
-            WHERE token_discovery_results.lookup_key IS NULL
-               OR token_discovery_results.next_refresh_at_ms <= %s
+              AS results
+              ON results.provider = queue.provider
+             AND results.lookup_key = queue.lookup_key
+            WHERE queue.provider = %(provider)s
+              AND queue.due_at_ms <= %(now_ms)s
+              AND (queue.leased_until_ms IS NULL OR queue.leased_until_ms <= %(now_ms)s)
+              AND (
+                results.lookup_key IS NULL
+                OR results.next_refresh_at_ms <= %(now_ms)s
                OR (
-                 token_discovery_results.status = 'running'
-                 AND token_discovery_results.updated_at_ms < %s
+                 results.status = 'running'
+                 AND results.updated_at_ms < %(running_expired_ms)s
                )
                OR (
-                 %s::bigint IS NOT NULL
-                 AND %s::bigint IS NOT NULL
-                 AND recent_refresh_candidates.latest_seen_ms >= %s::bigint
-                 AND token_discovery_results.status = 'not_found'
-                 AND token_discovery_results.last_lookup_at_ms <= %s::bigint - %s::bigint
+                 %(hot_since_ms)s::bigint IS NOT NULL
+                 AND %(hot_not_found_retry_ms)s::bigint IS NOT NULL
+                 AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
+                 AND results.status = 'not_found'
+                 AND results.last_lookup_at_ms <= %(now_ms)s::bigint - %(hot_not_found_retry_ms)s::bigint
                )
+              )
             ORDER BY
               hot_priority ASC,
-              recent_refresh_candidates.refresh_priority ASC,
-              recent_refresh_candidates.latest_seen_ms DESC,
+              queue.refresh_priority ASC,
+              queue.latest_seen_ms DESC,
               CASE
-                WHEN token_discovery_results.lookup_key IS NULL THEN 0
-                WHEN token_discovery_results.status = 'error' THEN 1
+                WHEN results.lookup_key IS NULL THEN 0
+                WHEN results.status = 'error' THEN 1
                 ELSE 2
               END,
-              recent_refresh_candidates.intent_count DESC,
-              recent_refresh_candidates.lookup_key ASC
-            LIMIT %s
+              queue.intent_count DESC,
+              queue.lookup_key ASC
+            LIMIT %(limit)s
             """,
-            (
-                int(since_ms),
-                DISCOVERY_PROVIDER,
-                hot_since,
-                hot_since,
-                DISCOVERY_PROVIDER,
-                int(now_ms),
-                int(now_ms) - RUNNING_LOOKUP_TIMEOUT_MS,
-                hot_since,
-                hot_retry,
-                hot_since,
-                int(now_ms),
-                hot_retry,
-                max(0, int(limit)),
+            _due_params(
+                now_ms=now_ms,
+                limit=limit,
+                hot_since_ms=hot_since_ms,
+                hot_not_found_retry_ms=hot_not_found_retry_ms,
             ),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def claim_due_lookup_keys(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        lease_ms: int,
+        lease_owner: str,
+        hot_since_ms: int | None = None,
+        hot_not_found_retry_ms: int | None = None,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        params = _due_params(
+            now_ms=now_ms,
+            limit=limit,
+            hot_since_ms=hot_since_ms,
+            hot_not_found_retry_ms=hot_not_found_retry_ms,
+        )
+        params.update(
+            {
+                "lease_owner": str(lease_owner),
+                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+            }
+        )
+        rows = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT queue.provider, queue.lookup_key
+              FROM token_discovery_dirty_lookup_keys queue
+              LEFT JOIN token_discovery_results AS results
+                ON results.provider = queue.provider
+               AND results.lookup_key = queue.lookup_key
+              WHERE queue.provider = %(provider)s
+                AND queue.due_at_ms <= %(now_ms)s
+                AND (queue.leased_until_ms IS NULL OR queue.leased_until_ms <= %(now_ms)s)
+                AND (
+                  results.lookup_key IS NULL
+                  OR results.next_refresh_at_ms <= %(now_ms)s
+                  OR (
+                    results.status = 'running'
+                    AND results.updated_at_ms < %(running_expired_ms)s
+                  )
+                  OR (
+                    %(hot_since_ms)s::bigint IS NOT NULL
+                    AND %(hot_not_found_retry_ms)s::bigint IS NOT NULL
+                    AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
+                    AND results.status = 'not_found'
+                    AND results.last_lookup_at_ms <= %(now_ms)s::bigint - %(hot_not_found_retry_ms)s::bigint
+                  )
+                )
+              ORDER BY
+                CASE
+                  WHEN %(hot_since_ms)s::bigint IS NOT NULL AND queue.latest_seen_ms >= %(hot_since_ms)s::bigint
+                    THEN 0
+                  ELSE 1
+                END ASC,
+                queue.refresh_priority ASC,
+                queue.latest_seen_ms DESC,
+                CASE
+                  WHEN results.lookup_key IS NULL THEN 0
+                  WHEN results.status = 'error' THEN 1
+                  ELSE 2
+                END,
+                queue.intent_count DESC,
+                queue.lookup_key ASC
+              LIMIT %(limit)s
+              FOR UPDATE OF queue SKIP LOCKED
+            )
+            UPDATE token_discovery_dirty_lookup_keys queue
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = queue.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            LEFT JOIN token_discovery_results AS results
+              ON results.provider = due.provider
+             AND results.lookup_key = due.lookup_key
+            WHERE queue.provider = due.provider
+              AND queue.lookup_key = due.lookup_key
+            RETURNING
+              queue.*,
+              results.status,
+              results.result_hash,
+              results.next_refresh_at_ms,
+              COALESCE(results.error_count, 0) AS error_count
+            """,
+            params,
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def mark_lookup_done(
+        self,
+        claims: Iterable[Mapping[str, Any]],
+        *,
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        records = _claim_records(claims)
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(lookup_keys)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+            )
+            DELETE FROM token_discovery_dirty_lookup_keys queue
+            USING done
+            WHERE queue.provider = done.provider
+              AND queue.lookup_key = done.lookup_key
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            """,
+            _claim_params(records),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def reschedule_lookup_claims(
+        self,
+        claims: Iterable[Mapping[str, Any]],
+        *,
+        due_at_ms: int,
+        now_ms: int,
+        last_error: str | None = None,
+        commit: bool = True,
+    ) -> int:
+        records = _claim_records(claims)
+        if not records:
+            return 0
+        params = _claim_params(records)
+        params.update(
+            {
+                "due_at_ms": int(due_at_ms),
+                "now_ms": int(now_ms),
+                "last_error": str(last_error)[:2048] if last_error else None,
+            }
+        )
+        cursor = self.conn.execute(
+            """
+            WITH rescheduled AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(lookup_keys)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS rescheduled(provider, lookup_key, payload_hash, lease_owner, attempt_count)
+            )
+            UPDATE token_discovery_dirty_lookup_keys queue
+            SET due_at_ms = %(due_at_ms)s,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                last_error = %(last_error)s,
+                updated_at_ms = %(now_ms)s
+            FROM rescheduled
+            WHERE queue.provider = rescheduled.provider
+              AND queue.lookup_key = rescheduled.lookup_key
+              AND queue.payload_hash = rescheduled.payload_hash
+              AND queue.lease_owner = rescheduled.lease_owner
+              AND queue.attempt_count = rescheduled.attempt_count
+            """,
+            params,
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def start_lookup(
         self,
@@ -283,3 +531,109 @@ class DiscoveryRepository:
             (provider, lookup_key),
         ).fetchone()
         return dict(row) if row else None
+
+
+def _lookup_key_records(
+    lookup_keys: Iterable[str],
+    *,
+    reason: str,
+    now_ms: int,
+    due_at_ms: int | None,
+    latest_seen_ms: int | None,
+    intent_count: int,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for raw_key in sorted({str(key).strip() for key in lookup_keys if str(key).strip()}):
+        lookup_type = _lookup_type(raw_key)
+        if lookup_type is None:
+            continue
+        latest = int(latest_seen_ms if latest_seen_ms is not None else now_ms)
+        record = {
+            "provider": DISCOVERY_PROVIDER,
+            "lookup_key": raw_key,
+            "lookup_type": lookup_type,
+            "dirty_reason": str(reason),
+            "payload_hash": _payload_hash(raw_key, reason=str(reason), latest_seen_ms=latest),
+            "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+            "latest_seen_ms": latest,
+            "intent_count": max(1, int(intent_count)),
+            "refresh_priority": 0 if raw_key.startswith("symbol:") else 1,
+        }
+        records.append(record)
+    return records
+
+
+def _lookup_type(lookup_key: str) -> str | None:
+    if lookup_key.startswith("symbol:"):
+        return "dex_symbol_lookup"
+    if lookup_key.startswith("address:"):
+        return "address_lookup"
+    return None
+
+
+def _payload_hash(lookup_key: str, *, reason: str, latest_seen_ms: int) -> str:
+    payload = f"{DISCOVERY_PROVIDER}:{lookup_key}:{reason}:{int(latest_seen_ms)}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _lookup_key_params(records: list[dict[str, Any]], *, now_ms: int) -> dict[str, Any]:
+    return {
+        "providers": [record["provider"] for record in records],
+        "lookup_keys": [record["lookup_key"] for record in records],
+        "lookup_types": [record["lookup_type"] for record in records],
+        "dirty_reasons": [record["dirty_reason"] for record in records],
+        "payload_hashes": [record["payload_hash"] for record in records],
+        "due_at_ms_values": [record["due_at_ms"] for record in records],
+        "latest_seen_ms_values": [record["latest_seen_ms"] for record in records],
+        "intent_counts": [record["intent_count"] for record in records],
+        "refresh_priorities": [record["refresh_priority"] for record in records],
+        "now_ms": int(now_ms),
+    }
+
+
+def _due_params(
+    *,
+    now_ms: int,
+    limit: int,
+    hot_since_ms: int | None,
+    hot_not_found_retry_ms: int | None,
+) -> dict[str, Any]:
+    return {
+        "provider": DISCOVERY_PROVIDER,
+        "now_ms": int(now_ms),
+        "running_expired_ms": int(now_ms) - RUNNING_LOOKUP_TIMEOUT_MS,
+        "hot_since_ms": int(hot_since_ms) if hot_since_ms is not None else None,
+        "hot_not_found_retry_ms": int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None,
+        "limit": max(0, int(limit)),
+    }
+
+
+def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for claim in claims:
+        provider = str(claim.get("provider") or DISCOVERY_PROVIDER)
+        lookup_key = str(claim.get("lookup_key") or "")
+        payload_hash = str(claim.get("payload_hash") or "")
+        lease_owner = str(claim.get("lease_owner") or "")
+        attempt_count = int(claim.get("attempt_count") or 0)
+        if provider and lookup_key and payload_hash and lease_owner and attempt_count > 0:
+            records.append(
+                {
+                    "provider": provider,
+                    "lookup_key": lookup_key,
+                    "payload_hash": payload_hash,
+                    "lease_owner": lease_owner,
+                    "attempt_count": attempt_count,
+                }
+            )
+    return records
+
+
+def _claim_params(records: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "providers": [record["provider"] for record in records],
+        "lookup_keys": [record["lookup_key"] for record in records],
+        "payload_hashes": [record["payload_hash"] for record in records],
+        "lease_owners": [record["lease_owner"] for record in records],
+        "attempt_counts": [record["attempt_count"] for record in records],
+    }

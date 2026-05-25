@@ -157,15 +157,24 @@ and inline-only capture assignment, but it is not a market fact.
 state and fan out WebSocket updates, but it must not write market facts or
 become a correctness dependency for projections.
 
+WebSocket fan-out must be bounded. Slow clients are stale subscribers to drop;
+they must not stall worker publish paths or other clients.
+
 ## Wake hints and catch-up
 
 PostgreSQL `NOTIFY` channels (`market_tick_written`,
-`resolution_updated`, `token_radar_updated`) are wake hints, not delivery
-guarantees. Every listener
-(`TokenRadarProjectionWorker`, `PulseCandidateWorker`, future workers) runs
-on a bounded `interval_seconds` catch-up loop from `workers.yaml` even
-when `NOTIFY` is healthy. A dropped `NOTIFY` recovers on the next
-interval; service correctness must not depend on `NOTIFY` delivery.
+`market_tick_current_updated`, `resolution_updated`, `token_radar_updated`)
+are wake hints, not delivery guarantees. Market tick writers wake
+`MarketTickCurrentProjectionWorker`; Token Radar wakes from
+`market_tick_current_updated` after the current market row changes. Every
+listener (`TokenRadarProjectionWorker`, `PulseCandidateWorker`, future
+workers) runs on a bounded `interval_seconds` loop from `workers.yaml`
+even when `NOTIFY` is healthy. The loop must claim durable dirty queues
+or read bounded read models; it must not scan broad fact windows just to
+prove no wake was missed. Token Radar repair uses the explicit
+`ops enqueue-token-radar-dirty-targets` command, and resolution refresh
+uses `token_discovery_dirty_lookup_keys`. Service correctness must not
+depend on `NOTIFY` delivery.
 
 ## One writer per read model
 
@@ -186,7 +195,9 @@ ids only. Runtime projection workers must not discover stale work by scanning
 material facts or read models, including missing-story scans, page-projection
 staleness scans, or source-quality all-source/window scans. Broad coverage
 discovery is allowed only in manual ops repair commands that enqueue dirty
-targets and do not write read-model rows.
+targets and do not write read-model rows. Normal worker idle paths must be
+proportional to queue depth, not to the size of `events`, `token_intents`,
+`token_intent_resolutions`, or market tick fact tables.
 
 ## Token Radar Clean Reset And Watchlist Summary Maintenance
 

@@ -26,7 +26,7 @@ or read-model projection.
 | DEX profile source refresh | `runtime/asset_profile_refresh_worker.py`, `services/asset_profile_refresh.py`, `repositories/asset_profile_repository.py` | `asset_profiles` | Resolved DEX assets are enriched through explicit profile sources such as GMGN OpenAPI and Binance Web3. `asset_profiles` is a provider source cache, not the public profile read model. |
 | Token image mirror | `runtime/token_image_mirror_worker.py`, `services/token_image_mirror.py`, `repositories/token_image_asset_repository.py`, `queries/token_image_source_query.py` | `token_image_assets`, local files under `cache/token-images` | Provider logo URLs from profile source caches and exact evidence are mirrored into local media. Only ready local rows may become public logo URLs; provider URLs are never served directly. |
 | Token profile current projection | `runtime/token_profile_current_worker.py`, `services/token_profile_current_projection.py`, `repositories/token_profile_current_repository.py`, `queries/token_profile_source_query.py` | `token_profile_current` | Public profile/icon facts are projected from persisted GMGN OpenAPI rows, Binance Web3 rows, GMGN stream exact snapshot evidence, OKX DEX exact-address evidence, `cex_token_profiles`, and ready `token_image_assets`. CEX profile absence is explicit `unsupported`; no symbol-only DEX icon matching; no remote logo URL fallback. |
-| Resolution refresh and discovery | `runtime/resolution_refresh_worker.py`, `repositories/discovery_repository.py` | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | Recent NIL / AMBIGUOUS lookup keys are refreshed through OKX DEX, then affected intents are reprocessed. Successful refresh emits `resolution_updated` so downstream readers wake; the worker itself does not run inline Token Radar projection. |
+| Resolution refresh and discovery | `runtime/resolution_refresh_worker.py`, `repositories/discovery_repository.py` | `token_discovery_dirty_lookup_keys`, refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | Intent writes and reprocess paths enqueue unresolved lookup keys. The worker claims due queue rows, refreshes them through OKX DEX, then reprocesses affected intents. It does not scan recent facts to find due lookup keys. Successful refresh emits `resolution_updated` so downstream readers wake; the worker itself does not run inline Token Radar projection. |
 | CEX route and profile sync | `services/asset_market_sync.py`, `services/cex_token_profile_sync.py` | `cex_tokens`, `price_feeds`, `cex_token_profiles` | Maintains token/feed routing without refreshing prices. Binance CEX profiles enrich existing routed CEX tokens through a separate source cache; they do not create CEX routes or call providers from public reads. |
 | US equity symbol sync | `services/us_equity_symbol_sync.py` | `registry_assets` (MarketInstrument rows) | Confirms US equity symbols so the deterministic resolver can elevate them above DEX same-symbol assets. |
 
@@ -96,11 +96,16 @@ receive provider protocols by injection and may not import
 
 | Channel | Emitter | Listener |
 |---------|---------|----------|
-| `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker` | `TokenRadarProjectionWorker` |
+| `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker`, `EventAnchorBackfillWorker` | `MarketTickCurrentProjectionWorker` |
+| `market_tick_current_updated` | `MarketTickCurrentProjectionWorker` | `TokenRadarProjectionWorker` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` |
 
-`market_tick_written` is a wake hint; listeners re-read the database and catch
-up by their configured interval. Wake mechanics are composed in
+Market tick writers append `market_ticks` and emit `market_tick_written`;
+`MarketTickCurrentProjectionWorker` owns `market_tick_current` and emits
+`market_tick_current_updated` only after the current row changes. Wake channels
+are hints; listeners re-read the database and catch up by their configured
+interval by claiming durable queues or reading bounded read models, not by
+scanning recent facts. Wake mechanics are composed in
 `app/runtime/bootstrap.py` through `DBPoolBundle.wake_emitter()` and
 `wake_listener()`. Asset Market workers receive wake dependencies by injection;
 they never call `pg_notify` directly. See `../../../../docs/WORKERS.md` for the

@@ -5,6 +5,7 @@ import re
 import threading
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from loguru import logger
@@ -18,12 +19,27 @@ class WakeWaiter:
         self._wake_pool = wake_pool
         self._channels = tuple(_normalize_channel(channel) for channel in channels if str(channel).strip())
         self._local_wake = threading.Event()
+        self._executor: ThreadPoolExecutor | None = None
+        self._closed = False
 
     def wake(self) -> None:
         self._local_wake.set()
 
     async def async_wait(self, timeout: float) -> bool:  # noqa: ASYNC109 - mirrors synchronous wait(timeout).
-        return await asyncio.to_thread(self.wait, timeout)
+        if self._closed:
+            return False
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor_for_wait(), self.wait, timeout)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self.wake()
+        executor = self._executor
+        self._executor = None
+        if executor is not None:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def wait(self, timeout: float) -> bool:
         deadline = time.monotonic() + max(0.0, float(timeout))
@@ -64,6 +80,11 @@ class WakeWaiter:
                     return False
                 for _notify in notifies(timeout=min(remaining, _NOTIFY_WAIT_SLICE_SECONDS), stop_after=1):
                     return True
+
+    def _executor_for_wait(self) -> ThreadPoolExecutor:
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wake-waiter")
+        return self._executor
 
 
 def _normalize_channel(channel: str) -> str:

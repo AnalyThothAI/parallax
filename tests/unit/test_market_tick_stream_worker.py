@@ -108,10 +108,10 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert stream.targets[0].pricefeed_id == "pf-1"
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 1
-    assert repos.token_radar_dirty_targets.enqueues == [
+    assert repos.market_tick_current_dirty_targets.enqueues == [
         {
             "rows": [("chain_token", "eip155:1:0xAbC")],
-            "reason": "market_tick_current_changed",
+            "reason": "market_tick_written",
             "now_ms": 1_800_000_000_100,
             "commit": False,
         }
@@ -405,7 +405,7 @@ class FakeRepos:
     def __init__(self, state: FakeSessionState, tier_rows: list[dict[str, object]]) -> None:
         self.token_capture_tiers = FakeTokenCaptureTiers(tier_rows)
         self.market_ticks = FakeMarketTicks(state)
-        self.token_radar_dirty_targets = FakeDirtyTargets()
+        self.market_tick_current_dirty_targets = FakeDirtyTargets()
         self.conn = FakeConn()
 
 
@@ -437,7 +437,7 @@ class FakeDirtyTargets:
     def __init__(self) -> None:
         self.enqueues: list[dict[str, object]] = []
 
-    def enqueue_market_targets(self, rows, *, reason, now_ms, commit) -> int:
+    def enqueue_targets(self, rows, *, reason, now_ms, commit) -> int:
         self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
         return len(self.enqueues[-1]["rows"])
 
@@ -460,6 +460,10 @@ class FakeDB:
         self.session_names.append(name)
         return FakeSession(self.state, self.repos)
 
+    def worker_transaction(self, name: str):
+        self.session_names.append(name)
+        return FakeTransactionSession(self.state, self.repos)
+
 
 class FakeSession:
     def __init__(self, state: FakeSessionState, repos: FakeRepos) -> None:
@@ -473,6 +477,14 @@ class FakeSession:
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         self.state.in_session = False
+        return False
+
+
+class FakeTransactionSession(FakeSession):
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self.state.in_session = False
+        if exc_type is None:
+            self.repos.conn.commit()
         return False
 
 

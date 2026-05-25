@@ -90,3 +90,62 @@ def test_ops_mirror_token_images_parser_accepts_limits() -> None:
     assert args.ops_command == "mirror-token-images"
     assert args.limit == 500
     assert args.source_limit == 5000
+
+
+def test_ops_rebuild_market_tick_current_parser_requires_explicit_mode() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(["ops", "rebuild-market-tick-current", "--dry-run"])
+    execute = parser.parse_args(["ops", "rebuild-market-tick-current", "--execute"])
+
+    assert dry_run.ops_command == "rebuild-market-tick-current"
+    assert dry_run.dry_run is True
+    assert dry_run.execute is False
+    assert execute.ops_command == "rebuild-market-tick-current"
+    assert execute.execute is True
+    assert execute.dry_run is False
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "rebuild-market-tick-current"])
+
+
+def test_ops_enqueue_token_radar_dirty_targets_parser_accepts_source_since_limit_and_mode() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(
+        [
+            "ops",
+            "enqueue-token-radar-dirty-targets",
+            "--source",
+            "events",
+            "--since-ms",
+            "0",
+            "--dry-run",
+        ]
+    )
+    execute = parser.parse_args(
+        [
+            "ops",
+            "enqueue-token-radar-dirty-targets",
+            "--source",
+            "market-current",
+            "--since-ms",
+            "123",
+            "--limit",
+            "25",
+            "--execute",
+        ]
+    )
+
+    assert dry_run.ops_command == "enqueue-token-radar-dirty-targets"
+    assert dry_run.source == "events"
+    assert dry_run.since_ms == 0
+    assert dry_run.limit == 5000
+    assert dry_run.dry_run is True
+    assert execute.source == "market-current"
+    assert execute.since_ms == 123
+    assert execute.limit == 25
+    assert execute.execute is True
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ops", "enqueue-token-radar-dirty-targets", "--source", "events"])
