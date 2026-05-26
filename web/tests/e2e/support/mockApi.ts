@@ -1,6 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import {
   macroAssetsModuleFixture,
+  macroCorrelationFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
   macroSeriesFixture,
@@ -76,6 +77,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
     }
     if (path === "/api/macro") return fulfill(route, macroData());
+    if (path === "/api/macro/assets/correlation") return fulfill(route, macroCorrelationData(url));
     if (path.startsWith("/api/macro/modules/")) return fulfill(route, macroModuleData(path));
     if (path === "/api/macro/series") return fulfill(route, macroSeriesData(url));
     if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsData());
@@ -1501,6 +1503,15 @@ function macroSeriesData(url: URL) {
     .map((conceptKey) => conceptKey.trim())
     .filter(Boolean);
   return macroSeriesFixture(conceptKeys.length > 0 ? conceptKeys : ["asset:spx"]);
+}
+
+function macroCorrelationData(url: URL) {
+  const fixture = macroCorrelationFixture();
+  const requestedWindow = url.searchParams.get("window");
+  if (requestedWindow === "20d" || requestedWindow === "60d" || requestedWindow === "120d") {
+    return { ...fixture, window: requestedWindow };
+  }
+  return fixture;
 }
 
 function opsDiagnosticsData() {
