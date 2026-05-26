@@ -44,10 +44,11 @@ describe("AppSidebar", () => {
     renderSidebar({ route: "/macro/assets/equities" });
 
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
-    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute(
-      "href",
-      "/macro/assets",
-    );
+    const assetLink = screen.getByRole("link", { name: "大类资产" });
+    expect(assetLink).toHaveAttribute("data-active", "true");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets");
+    expect(assetLink).not.toHaveAttribute("aria-current");
+
     expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute(
       "href",
       "/macro/assets/equities",
@@ -56,6 +57,21 @@ describe("AppSidebar", () => {
       "aria-current",
       "page",
     );
+    expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
+  });
+
+  it("marks an exact nested Macro section route current without marking child leaves current", () => {
+    renderSidebar({ route: "/macro/assets" });
+
+    expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
+
+    const assetLink = screen.getByRole("link", { name: "大类资产" });
+    expect(assetLink).toHaveAttribute("data-active", "true");
+    expect(assetLink).toHaveAttribute("href", "/macro/assets");
+    expect(assetLink).toHaveAttribute("aria-current", "page");
+
+    expect(screen.getByRole("link", { name: "美股" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "相关性" })).not.toHaveAttribute("aria-current");
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });
 

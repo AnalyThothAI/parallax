@@ -1,3 +1,4 @@
+import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "@features/macro";
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -9,11 +10,6 @@ import {
   Star,
   type LucideIcon,
 } from "lucide-react";
-
-import {
-  MACRO_NAVIGATION_TREE,
-  type MacroNavigationNode,
-} from "@features/macro/model/macroNavigationTree";
 
 export type AppNavigationItem = {
   children?: AppNavigationItem[];

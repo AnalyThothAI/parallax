@@ -15,7 +15,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@shared/ui/sidebar";
-import { Link, NavLink, useMatch } from "react-router-dom";
+import { NavLink, useMatch } from "react-router-dom";
 
 import { APP_NAVIGATION_GROUPS, type AppNavigationItem } from "./appNavigation";
 import "./AppSidebar.css";
@@ -78,10 +78,10 @@ function AppSidebarItem({ item }: { item: AppNavigationItem }) {
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
         {item.children?.length ? (
-          <Link onClick={closeSidebarOnNavigate} to={item.to}>
+          <NavLink end onClick={closeSidebarOnNavigate} to={item.to}>
             {Icon ? <Icon aria-hidden /> : null}
             <span>{item.label}</span>
-          </Link>
+          </NavLink>
         ) : (
           <NavLink end={item.end} onClick={closeSidebarOnNavigate} to={item.to}>
             {Icon ? <Icon aria-hidden /> : null}
@@ -113,9 +113,9 @@ function AppSidebarSubItem({ depth, item }: { depth: number; item: AppNavigation
         isActive={active}
       >
         {item.children?.length ? (
-          <Link onClick={closeSidebarOnNavigate} to={item.to}>
+          <NavLink end onClick={closeSidebarOnNavigate} to={item.to}>
             <span>{item.label}</span>
-          </Link>
+          </NavLink>
         ) : (
           <NavLink end={item.end} onClick={closeSidebarOnNavigate} to={item.to}>
             <span>{item.label}</span>
