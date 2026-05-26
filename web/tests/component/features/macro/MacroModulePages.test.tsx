@@ -1,5 +1,6 @@
 import {
   MacroAssetClassPage,
+  MacroAssetsLandingPage,
   MacroCryptoDerivativesPage,
   MacroOverviewPage,
   MacroRatesPage,
@@ -7,6 +8,7 @@ import {
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import {
   macroCryptoDerivativesModuleFixture,
+  macroAssetsModuleFixture,
   macroModuleFixture,
   macroSeriesFixture,
   macroYieldCurveModuleFixture,
@@ -139,6 +141,26 @@ describe("Macro module pages", () => {
 
     expect(screen.getByLabelText("美股模块页面")).toBeInTheDocument();
     expect(await screen.findByText("10%")).toBeInTheDocument();
+  });
+
+  it("renders assets landing as a terminal index", () => {
+    renderWithProviders(
+      <MacroAssetsLandingPage
+        module={macroAssetsModuleFixture()}
+        moduleId="assets"
+        token="test-token"
+      />,
+      { route: "/macro/assets" },
+    );
+
+    expect(screen.getByRole("region", { name: "大类资产索引" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "美股" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "债券" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看美股" })).toHaveAttribute(
+      "href",
+      "/macro/assets/equities",
+    );
+    expect(screen.queryByRole("region", { name: "模块判断" })).not.toBeInTheDocument();
   });
 
   it("keeps a stable chart loading state while backend series is pending", async () => {

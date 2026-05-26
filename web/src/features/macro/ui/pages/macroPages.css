@@ -1,10 +1,114 @@
 @layer app.features {
   .macro-page-layout,
+  .macro-assets-index,
   .macro-crypto-derivatives-page {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 14px;
     min-width: 0;
+  }
+
+  .macro-assets-index-board {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    grid-column: span 4;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.58), rgba(2, 6, 23, 0.18)),
+      rgba(2, 6, 23, 0.34);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  }
+
+  .macro-assets-index-board-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .macro-assets-index-board-head h2 {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 1rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .macro-assets-index-board-head span {
+    min-height: 22px;
+    max-width: 52%;
+    padding: 3px 8px;
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    border-radius: 999px;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.74rem;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .macro-assets-index-rows {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .macro-assets-index-row {
+    display: grid;
+    grid-template-columns: minmax(76px, 0.38fr) minmax(0, 0.62fr);
+    gap: 9px;
+    min-width: 0;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.14));
+  }
+
+  .macro-assets-index-row dt,
+  .macro-assets-index-row-empty,
+  .macro-assets-index-empty {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.74rem;
+    overflow-wrap: anywhere;
+  }
+
+  .macro-assets-index-row dd {
+    margin: 0;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.82rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .macro-assets-index-link {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    min-height: 28px;
+    padding: 5px 10px;
+    border: 1px solid rgba(125, 211, 252, 0.24);
+    border-radius: 8px;
+    color: #bae6fd;
+    background: rgba(14, 165, 233, 0.08);
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .macro-assets-index-link:hover,
+  .macro-assets-index-link:focus-visible {
+    border-color: rgba(125, 211, 252, 0.42);
+    color: var(--text-primary, #f8fafc);
+  }
+
+  .macro-assets-index-empty {
+    grid-column: 1 / -1;
+    min-height: 96px;
+    display: grid;
+    place-items: center;
   }
 
   .macro-page-panel {
@@ -388,6 +492,7 @@
   @media (max-width: 860px) {
     .macro-page-panel,
     .macro-page-panel-current,
+    .macro-assets-index-board,
     .macro-page-transmission,
     .macro-page-quality-grid {
       grid-column: 1 / -1;
@@ -413,23 +518,32 @@
 
   @media (max-width: 520px) {
     .macro-page-layout,
+    .macro-assets-index,
     .macro-crypto-derivatives-page {
       gap: 8px;
     }
 
+    .macro-assets-index-board,
     .macro-page-panel {
       padding: 10px;
     }
 
+    .macro-assets-index-board-head,
     .macro-page-section-head {
       align-items: flex-start;
       flex-direction: column;
       gap: 6px;
     }
 
+    .macro-assets-index-board-head span,
     .macro-page-section-head span {
       max-width: 100%;
       text-align: left;
+    }
+
+    .macro-assets-index-row {
+      grid-template-columns: 1fr;
+      gap: 3px;
     }
 
     .macro-page-kpi-strip,
