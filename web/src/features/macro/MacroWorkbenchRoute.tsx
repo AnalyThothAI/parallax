@@ -3,17 +3,10 @@ import * as PageState from "@shared/ui/PageState";
 
 import { useMacroModuleQuery } from "./api/useMacroModuleQuery";
 import type { MacroPageKind, MacroProductTier } from "./model/macroPageRegistry";
-import {
-  buildMacroBreadcrumbs,
-  type MacroModuleId,
-} from "./model/macroRoutes";
-import {
-  macroAsOfLabel,
-  macroModuleTitle,
-  macroStatusLabel,
-} from "./model/macroPageViewModel";
-import { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
+import { macroAsOfLabel, macroModuleTitle, macroStatusLabel } from "./model/macroPageViewModel";
+import { buildMacroBreadcrumbs, type MacroModuleId } from "./model/macroRoutes";
 import { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
+import { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
 import { MacroShell, type MacroShellHeaderModel } from "./ui/shell/MacroShell";
 
 type MacroWorkbenchRouteProps =

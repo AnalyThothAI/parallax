@@ -15,6 +15,7 @@ import {
   compareMacroTableSortValues,
   type MacroTableRowModel,
 } from "../../model/macroTableColumns";
+
 import { MacroTableFrame } from "./MacroTableFrame";
 import "./macroTables.css";
 

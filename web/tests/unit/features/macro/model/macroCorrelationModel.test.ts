@@ -1,6 +1,3 @@
-import type { MacroAssetCorrelationData } from "@lib/types";
-import { describe, expect, it } from "vitest";
-
 import {
   assetLabel,
   assetTitleByKey,
@@ -11,6 +8,8 @@ import {
   sourceLabel,
   strongestCorrelationPairs,
 } from "@features/macro";
+import type { MacroAssetCorrelationData } from "@lib/types";
+import { describe, expect, it } from "vitest";
 
 describe("macroCorrelationModel", () => {
   it("sorts available correlation pairs by direction and caps the result", () => {
@@ -25,12 +24,10 @@ describe("macroCorrelationModel", () => {
     });
 
     expect(strongestCorrelationPairs(data, "positive").map((item) => item.correlation)).toEqual([
-      0.9,
-      0.4,
+      0.9, 0.4,
     ]);
     expect(strongestCorrelationPairs(data, "negative").map((item) => item.correlation)).toEqual([
-      -0.6,
-      -0.2,
+      -0.6, -0.2,
     ]);
   });
 

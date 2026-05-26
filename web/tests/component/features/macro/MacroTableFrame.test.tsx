@@ -1,7 +1,8 @@
-import { MacroTableFrame } from "@features/macro/ui/tables/MacroTableFrame";
-import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { MacroTableFrame } from "@features/macro/ui/tables/MacroTableFrame";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 describe("MacroTableFrame", () => {

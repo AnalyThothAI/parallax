@@ -1,6 +1,7 @@
 import type { MacroSemanticRecord } from "@lib/types";
 
 import { formatMacroScalar } from "../../model/macroPageViewModel";
+
 import { MacroPanel } from "./MacroPanel";
 
 export function MacroReadPanel({

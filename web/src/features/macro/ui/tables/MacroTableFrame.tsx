@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- Table scrollers need keyboard focus for horizontal overflow. */
 import type { CSSProperties, ReactNode } from "react";
 import { useId } from "react";
 

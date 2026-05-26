@@ -11,8 +11,9 @@ import { MacroPageScaffold } from "../primitives/MacroPageScaffold";
 import { MacroReadPanel } from "../primitives/MacroReadPanel";
 import { MacroTransmissionPanel } from "../primitives/MacroTransmissionPanel";
 
-import { MacroMarketBoard, useMacroPrimarySeries } from "./MacroLeafModulePage";
+import { MacroMarketBoard } from "./MacroMarketBoard";
 import type { MacroModulePageProps } from "./MacroModulePageRenderer";
+import { useMacroPrimarySeries } from "./MacroPrimarySeries";
 
 export function MacroOverviewModulePage({ module, moduleId, token }: MacroModulePageProps) {
   const metrics = buildMacroMetrics({ tiles: module.tiles });

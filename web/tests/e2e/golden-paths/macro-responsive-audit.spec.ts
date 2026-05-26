@@ -1,3 +1,4 @@
+// @responsive-spec
 import { expect, test } from "@playwright/test";
 import { expectNoUnhandledApiRequests } from "@tests/e2e/support/layoutAssertions";
 import {
