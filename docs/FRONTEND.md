@@ -77,7 +77,7 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   module-adjacent endpoints such as `/api/macro/assets/correlation`. Macro
   shell/sidebar code owns macro navigation; module pages consume
   `macro_module_view_v3` payloads and render `module_read`, `module_evidence`,
-  `transmission`, `data_health`, and `section_boards` directly. Frontend macro
+  `transmission`, `data_health`, provenance, and related routes directly. Frontend macro
   code must not use retired module keys `read`, `evidence`, or top-level
   `data_gaps`, and must not recompute macro scoring or module reads from
   indicators, headlines, scenarios, or data-health records.

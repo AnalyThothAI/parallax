@@ -12,9 +12,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS content_class TEXT NOT NULL DEFAULT 'low_signal'")
-    op.execute(
-        "ALTER TABLE news_items ADD COLUMN IF NOT EXISTS content_tags_json JSONB NOT NULL DEFAULT '[]'::jsonb"
-    )
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS content_tags_json JSONB NOT NULL DEFAULT '[]'::jsonb")
     op.execute(
         """
         ALTER TABLE news_items

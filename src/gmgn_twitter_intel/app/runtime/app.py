@@ -163,9 +163,9 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
     _ = now_ms if now_ms is not None else _now_ms()
     collector_status = runtime.collector.status.to_dict()
     db_status = _db_status(runtime)
-    reasons = _unhealthy_reasons(runtime, db_status=db_status)
-    stream_dex_market = _stream_dex_market(runtime)
     worker_status = workers_status_payload(runtime)
+    reasons = _unhealthy_reasons(runtime, db_status=db_status, worker_status=worker_status)
+    stream_dex_market = _stream_dex_market(runtime)
     payload = {
         "ok": not reasons,
         "reasons": reasons,
@@ -209,11 +209,47 @@ def _agent_execution_status(runtime: Any) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else {"status": "unavailable"}
 
 
-def _unhealthy_reasons(runtime: Runtime, *, db_status: dict[str, object]) -> list[str]:
-    reasons = list(runtime.scheduler.unhealthy_reasons())
+def _unhealthy_reasons(
+    runtime: Runtime,
+    *,
+    db_status: dict[str, object],
+    worker_status: dict[str, Any],
+) -> list[str]:
+    reasons = [reason for reason in runtime.scheduler.unhealthy_reasons() if ":stopped" not in str(reason)]
     if not db_status.get("ok"):
         reasons.append("database_unhealthy")
+    reasons.extend(_queue_health_contract_reasons(worker_status))
     return reasons
+
+
+def _queue_health_contract_reasons(worker_status: dict[str, Any]) -> list[str]:
+    reason_by_error_code = {
+        "adapter_query_failure": "queue_health_adapter_query_failure",
+        "connection_context_enter_failure": "queue_health_adapter_query_failure",
+        "manifest_mismatch": "queue_health_manifest_mismatch",
+        "missing_connection": "queue_health_table_unavailable",
+        "queue_table_unavailable": "queue_health_table_unavailable",
+    }
+    reasons: set[str] = set()
+    workers = worker_status.get("workers", {})
+    if not isinstance(workers, dict):
+        return []
+    for status in workers.values():
+        if not isinstance(status, dict):
+            continue
+        health = status.get("queue_health", {})
+        if not isinstance(health, dict):
+            continue
+        tables = health.get("tables", {})
+        if not isinstance(tables, dict):
+            continue
+        for table_health in tables.values():
+            if not isinstance(table_health, dict):
+                continue
+            reason = reason_by_error_code.get(str(table_health.get("error_code")))
+            if reason is not None:
+                reasons.add(reason)
+    return sorted(reasons)
 
 
 def _db_status(runtime: Runtime) -> dict[str, object]:

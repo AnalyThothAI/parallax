@@ -387,9 +387,7 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS leased_until_ms BIGINT")
     op.execute("ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS lease_owner TEXT")
-    op.execute(
-        "ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0"
-    )
+    op.execute("ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0")
     op.execute("ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS claimed_at_ms BIGINT")
     op.execute("ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS last_error TEXT")
     op.execute(

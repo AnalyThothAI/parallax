@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
+from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
 
 PENDING_CAPTURE_REASON = "pending_backfill"
@@ -99,33 +101,6 @@ class EventAnchorBackfillJobRepository:
             ).fetchall()
         )
 
-    def mark_ready_jobs_done(self, *, limit: int, now_ms: int) -> int:
-        cursor = self._conn.execute(
-            """
-            WITH ready_jobs AS (
-              SELECT jobs.event_id, jobs.intent_id
-              FROM event_anchor_backfill_jobs jobs
-              JOIN enriched_events anchors
-                ON anchors.event_id = jobs.event_id
-               AND anchors.intent_id = jobs.intent_id
-              WHERE jobs.status <> 'done'
-                AND anchors.capture_method <> 'unavailable'
-                AND anchors.tick_id IS NOT NULL
-                AND anchors.tick_lag_ms IS NOT NULL
-              ORDER BY jobs.created_at_ms ASC, jobs.event_id ASC, jobs.intent_id ASC
-              LIMIT %(limit)s
-            )
-            UPDATE event_anchor_backfill_jobs jobs
-            SET status = 'done',
-                updated_at_ms = %(now_ms)s
-            FROM ready_jobs
-            WHERE jobs.event_id = ready_jobs.event_id
-              AND jobs.intent_id = ready_jobs.intent_id
-            """,
-            {"limit": max(1, int(limit)), "now_ms": int(now_ms)},
-        )
-        return int(getattr(cursor, "rowcount", 0) or 0)
-
     def mark_done(self, *, event_id: str, intent_id: str, now_ms: int) -> bool:
         cursor = self._conn.execute(
             """
@@ -143,25 +118,171 @@ class EventAnchorBackfillJobRepository:
     def mark_terminal(self, *, event_id: str, intent_id: str, status: str, reason: str, now_ms: int) -> bool:
         if status not in {"expired", "failed"}:
             raise ValueError("terminal event-anchor job status must be expired or failed")
-        cursor = self._conn.execute(
+        with _transaction(self._conn):
+            row = self._conn.execute(
+                """
+                UPDATE event_anchor_backfill_jobs
+                SET status = %(status)s,
+                    last_reason = %(reason)s,
+                    updated_at_ms = %(now_ms)s
+                WHERE event_id = %(event_id)s
+                  AND intent_id = %(intent_id)s
+                  AND status = 'pending'
+                RETURNING *
+                """,
+                {
+                    "event_id": event_id,
+                    "intent_id": intent_id,
+                    "status": status,
+                    "reason": reason,
+                    "now_ms": int(now_ms),
+                },
+            ).fetchone()
+            if row is None:
+                return False
+            source_row = dict(row)
+            terminalize_source_row(
+                self._conn,
+                worker_name="event_anchor_backfill",
+                source_table="event_anchor_backfill_jobs",
+                target_key=f"{event_id}:{intent_id}",
+                source_row=source_row,
+                final_status=status,
+                final_reason=reason,
+                now_ms=now_ms,
+                attempt_count=int(source_row.get("attempt_count") or 0),
+                first_seen_at_ms=_optional_int(source_row.get("created_at_ms")),
+                last_attempted_at_ms=now_ms,
+                commit=False,
+            )
+        return True
+
+    def retry_terminal_job_from_snapshot(
+        self,
+        source_row: dict[str, Any],
+        *,
+        now_ms: int,
+        reason: str,
+    ) -> dict[str, Any] | None:
+        event_id = str(source_row.get("event_id") or "")
+        intent_id = str(source_row.get("intent_id") or "")
+        if not event_id or not intent_id:
+            raise ValueError("event_anchor_terminal_source_required")
+        row = self._conn.execute(
             """
             UPDATE event_anchor_backfill_jobs
-            SET status = %(status)s,
+            SET status = 'pending',
+                attempt_count = 0,
                 last_reason = %(reason)s,
+                next_run_at_ms = %(now_ms)s,
+                active_until_ms = GREATEST(active_until_ms, %(now_ms)s),
                 updated_at_ms = %(now_ms)s
             WHERE event_id = %(event_id)s
               AND intent_id = %(intent_id)s
-              AND status = 'pending'
+              AND status IN ('failed', 'expired')
+            RETURNING *
             """,
             {
                 "event_id": event_id,
                 "intent_id": intent_id,
-                "status": status,
-                "reason": reason,
+                "reason": f"terminal_retry:{reason}"[:1000],
                 "now_ms": int(now_ms),
             },
-        )
-        return int(getattr(cursor, "rowcount", 0) or 0) == 1
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def reconcile_ready_historical_jobs(
+        self,
+        *,
+        limit: int,
+        now_ms: int,
+        execute: bool,
+    ) -> dict[str, Any]:
+        parsed_limit = max(1, int(limit))
+        explain = [
+            _explain_text(row)
+            for row in self._conn.execute(
+                """
+                EXPLAIN (FORMAT TEXT)
+                SELECT job.event_id, job.intent_id
+                FROM event_anchor_backfill_jobs job
+                JOIN enriched_events anchor
+                  ON anchor.event_id = job.event_id
+                 AND anchor.intent_id = job.intent_id
+                WHERE job.status = 'pending'
+                  AND anchor.capture_method <> 'unavailable'
+                  AND anchor.tick_id IS NOT NULL
+                  AND anchor.tick_lag_ms IS NOT NULL
+                ORDER BY job.created_at_ms ASC, job.event_id ASC, job.intent_id ASC
+                LIMIT %(limit)s
+                """,
+                {"limit": parsed_limit},
+            ).fetchall()
+        ]
+        candidates_before = self._ready_historical_job_count(limit=parsed_limit)
+        updated_rows: list[dict[str, Any]] = []
+        if execute and candidates_before:
+            updated_rows = [
+                dict(row)
+                for row in self._conn.execute(
+                    """
+                    WITH ready AS (
+                      SELECT job.event_id, job.intent_id
+                      FROM event_anchor_backfill_jobs job
+                      JOIN enriched_events anchor
+                        ON anchor.event_id = job.event_id
+                       AND anchor.intent_id = job.intent_id
+                      WHERE job.status = 'pending'
+                        AND anchor.capture_method <> 'unavailable'
+                        AND anchor.tick_id IS NOT NULL
+                        AND anchor.tick_lag_ms IS NOT NULL
+                      ORDER BY job.created_at_ms ASC, job.event_id ASC, job.intent_id ASC
+                      LIMIT %(limit)s
+                    )
+                    UPDATE event_anchor_backfill_jobs job
+                    SET status = 'done',
+                        last_reason = 'historical_ready_reconcile',
+                        updated_at_ms = %(now_ms)s
+                    FROM ready
+                    WHERE job.event_id = ready.event_id
+                      AND job.intent_id = ready.intent_id
+                    RETURNING job.event_id, job.intent_id
+                    """,
+                    {"limit": parsed_limit, "now_ms": int(now_ms)},
+                ).fetchall()
+            ]
+        remaining = self._ready_historical_job_count(limit=parsed_limit)
+        return {
+            "mode": "execute" if execute else "dry_run",
+            "execute": bool(execute),
+            "limit": parsed_limit,
+            "ready_pending_count": candidates_before,
+            "updated_count": len(updated_rows),
+            "remaining_ready_pending_count": remaining,
+            "explain": explain,
+            "updated": updated_rows[:20],
+        }
+
+    def _ready_historical_job_count(self, *, limit: int) -> int:
+        row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM (
+              SELECT 1
+              FROM event_anchor_backfill_jobs job
+              JOIN enriched_events anchor
+                ON anchor.event_id = job.event_id
+               AND anchor.intent_id = job.intent_id
+              WHERE job.status = 'pending'
+                AND anchor.capture_method <> 'unavailable'
+                AND anchor.tick_id IS NOT NULL
+                AND anchor.tick_lag_ms IS NOT NULL
+              LIMIT %(limit)s
+            ) ready
+            """,
+            {"limit": max(1, int(limit))},
+        ).fetchone()
+        return int((row or {}).get("count") or 0)
 
     def reschedule(
         self,
@@ -193,3 +314,25 @@ class EventAnchorBackfillJobRepository:
             },
         )
         return int(getattr(cursor, "rowcount", 0) or 0) == 1
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    transaction = getattr(conn, "transaction", None)
+    if callable(transaction):
+        return cast(AbstractContextManager[Any], transaction())
+    return nullcontext()
+
+
+def _explain_text(row: Any) -> str:
+    if isinstance(row, dict):
+        return str(row.get("QUERY PLAN") or row.get("QUERY_PLAN") or next(iter(row.values()), ""))
+    try:
+        return str(row[0])
+    except Exception:
+        return str(row)

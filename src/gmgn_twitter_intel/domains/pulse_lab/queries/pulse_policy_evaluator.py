@@ -582,10 +582,9 @@ def _snapshot(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
-    block = families.get(family) if isinstance(families.get(family), dict) else {}
-    facts = block.get("facts") if isinstance(block.get("facts"), dict) else {}
-    return facts
+    families = _dict(snapshot.get("families"))
+    block = _dict(families.get(family))
+    return _dict(block.get("facts"))
 
 
 def _count_values(rows: list[dict[str, Any]], field: str) -> dict[str, int]:
@@ -609,11 +608,11 @@ def _is_backpressure_job(row: dict[str, Any]) -> bool:
 
 
 def _recommendation(evaluation: dict[str, Any]) -> str:
-    radar = evaluation.get("radar", {}).get("policy_comparison", {}).get("proposed_primary", {})
-    runs = evaluation.get("runs", {}).get("policy_comparison", {}).get("proposed_primary", {})
-    jobs = evaluation.get("jobs", {}).get("policy_comparison", {}).get("proposed_primary", {})
+    radar = _dict(_dict(_dict(evaluation.get("radar")).get("policy_comparison")).get("proposed_primary"))
+    runs = _dict(_dict(_dict(evaluation.get("runs")).get("policy_comparison")).get("proposed_primary"))
+    jobs = _dict(_dict(_dict(evaluation.get("jobs")).get("policy_comparison")).get("proposed_primary"))
     total = int(radar.get("total_rows") or 0)
-    source_quality = radar.get("source_quality") if isinstance(radar.get("source_quality"), dict) else {}
+    source_quality = _dict(radar.get("source_quality"))
     if (
         total <= 0
         or float(runs.get("failure_rate") or 0.0) >= 0.5
@@ -630,10 +629,10 @@ def _recommendation(evaluation: dict[str, Any]) -> str:
 
 
 def _recommendation_rationale(evaluation: dict[str, Any], recommendation: str) -> str:
-    proposed_radar = evaluation.get("radar", {}).get("policy_comparison", {}).get("proposed_primary", {})
-    proposed_runs = evaluation.get("runs", {}).get("policy_comparison", {}).get("proposed_primary", {})
-    proposed_jobs = evaluation.get("jobs", {}).get("policy_comparison", {}).get("proposed_primary", {})
-    quality = proposed_radar.get("source_quality") if isinstance(proposed_radar.get("source_quality"), dict) else {}
+    proposed_radar = _dict(_dict(_dict(evaluation.get("radar")).get("policy_comparison")).get("proposed_primary"))
+    proposed_runs = _dict(_dict(_dict(evaluation.get("runs")).get("policy_comparison")).get("proposed_primary"))
+    proposed_jobs = _dict(_dict(_dict(evaluation.get("jobs")).get("policy_comparison")).get("proposed_primary"))
+    quality = _dict(proposed_radar.get("source_quality"))
     return (
         f"{recommendation} based on proposed 1h/all and 4h/all radar latest-snapshot sample size "
         f"{proposed_radar.get('total_rows', 0)}, ge3 author ratio {float(quality.get('ge3_author_ratio') or 0.0):.2f}, "
@@ -645,10 +644,10 @@ def _recommendation_rationale(evaluation: dict[str, Any], recommendation: str) -
 
 
 def _section_lines(title: str, summary: dict[str, Any]) -> list[str]:
-    comparison = summary.get("policy_comparison") if isinstance(summary.get("policy_comparison"), dict) else {}
-    overall = summary.get("overall") if isinstance(summary.get("overall"), dict) else {}
-    current = comparison.get("current") if isinstance(comparison.get("current"), dict) else {}
-    proposed = comparison.get("proposed_primary") if isinstance(comparison.get("proposed_primary"), dict) else {}
+    comparison = _dict(summary.get("policy_comparison"))
+    overall = _dict(summary.get("overall"))
+    current = _dict(comparison.get("current"))
+    proposed = _dict(comparison.get("proposed_primary"))
     lines = [f"### {title}", ""]
     if summary.get("sample_kind"):
         lines.append(
@@ -663,8 +662,8 @@ def _section_lines(title: str, summary: dict[str, Any]) -> list[str]:
 
 
 def _compact_metric_lines(label: str, payload: dict[str, Any]) -> list[str]:
-    quality = payload.get("source_quality") if isinstance(payload.get("source_quality"), dict) else {}
-    scope = payload.get("scope_quality") if isinstance(payload.get("scope_quality"), dict) else {}
+    quality = _dict(payload.get("source_quality"))
+    scope = _dict(payload.get("scope_quality"))
     return [
         (
             f"- {label}: total={int(payload.get('total_rows') or 0)}, "
@@ -687,6 +686,12 @@ def _compact_metric_lines(label: str, payload: dict[str, Any]) -> list[str]:
             f"due_pending_count={int(payload.get('due_pending_count') or 0)}"
         )
     ]
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items()}
+    return {}
 
 
 def _format_counts(value: Any) -> str:

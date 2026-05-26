@@ -129,9 +129,7 @@ def test_json_object_strategy_uses_registered_model_request_options_by_default()
         client = FakeClient()
         strategy = ChatJsonObjectStrategy(openai_client_factory=lambda **_: client)
 
-        await strategy.run(
-            _context(capability_profile=resolve_agent_capability_profile(model="deepseek-v4-flash"))
-        )
+        await strategy.run(_context(capability_profile=resolve_agent_capability_profile(model="deepseek-v4-flash")))
 
         call = client.chat.completions.calls[0]
         assert call["response_format"] == {"type": "json_object"}

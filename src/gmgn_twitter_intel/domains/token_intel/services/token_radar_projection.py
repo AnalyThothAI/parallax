@@ -4,7 +4,8 @@ import hashlib
 import json
 import time
 from collections.abc import Mapping
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.narrative_intel.interfaces import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.token_intel._constants import (
@@ -14,8 +15,12 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_RADAR_SOURCE_TABLE,
     WINDOW_MS,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import TokenRadarTargetFeatureQuery
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import (
+    TokenRadarSourceRequest,
+    TokenRadarTargetFeatureBatchQuery,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TOKEN_RADAR_RANK_INPUT_VERSION
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
     MIN_COHORT_SIZE,
     NORMALIZER_VERSION,
@@ -38,6 +43,7 @@ from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_
 
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
+STALE_RUNNING_CLEANUP_INTERVAL_MS = STALE_RUNNING_PROJECTION_MS
 MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
 DEX_DECISION_FLOORS = {
     "holders": 100,
@@ -61,6 +67,7 @@ class TokenRadarProjection:
         repos: Any,
     ) -> None:
         self.repos = repos
+        self._last_stale_cleanup_at_ms: dict[tuple[str, str], int] = {}
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
@@ -79,6 +86,23 @@ class TokenRadarProjection:
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         resolved_work_items = _resolve_work_items(windows=windows, scopes=scopes, work_items=work_items)
+        readiness = self.repos.token_radar.rank_input_readiness_for_work_items(
+            projection_version=PROJECTION_VERSION,
+            work_items=resolved_work_items,
+        )
+        if not readiness.ready:
+            return {
+                "computed_at_ms": computed_at_ms,
+                "rows_written": 0,
+                "source_rows": 0,
+                "claimed": 0,
+                "windows": {},
+                "status": "blocked",
+                "blocked_precondition": True,
+                "reason": "token_radar_rank_inputs_require_full_rebuild",
+                "stale_rank_input_count": int(readiness.stale_count),
+                "stale_rank_input_counts": _readiness_counts_by_key(readiness.stale_by_work_item),
+            }
         claims = self.repos.token_radar_dirty_targets.claim_due(
             limit=limit,
             lease_ms=DIRTY_TARGET_LEASE_MS,
@@ -97,22 +121,25 @@ class TokenRadarProjection:
         if not claims:
             return result
 
+        source_requests = _source_requests_for_targets(claims, resolved_work_items, now_ms=computed_at_ms)
+        rows_by_request = TokenRadarTargetFeatureBatchQuery(self.repos.conn).source_rows_for_requests(source_requests)
+        requests_by_target = _source_requests_by_target(source_requests)
         touched: set[tuple[str, str]] = set()
         successful_claims: list[dict[str, str | int]] = []
         failures = 0
         first_error: str | None = None
-        for claim in claims:
+        for claim_index, claim in enumerate(claims):
             claim_key = _claim_key(claim)
             try:
-                for window, scope in resolved_work_items:
-                    score_result = self.score_target_window(
+                for request in requests_by_target.get(claim_index, []):
+                    score_result = self._project_source_request(
+                        request=request,
                         target=claim,
-                        window=window,
-                        scope=scope,
+                        source_rows=rows_by_request.get(request.request_key, []),
                         now_ms=computed_at_ms,
                     )
                     result["source_rows"] += int(score_result.get("source_rows") or 0)
-                    touched.add((window, scope))
+                    touched.add((request.window, request.scope))
                 successful_claims.append(claim_key)
             except Exception as exc:
                 failures += 1
@@ -167,25 +194,94 @@ class TokenRadarProjection:
             self.repos.token_radar_dirty_targets.mark_done(successful_claims, now_ms=computed_at_ms, commit=True)
         return result
 
-    def score_target_window(
+    def rebuild_rank_inputs_full(
         self,
         *,
+        windows: tuple[str, ...],
+        scopes: tuple[str, ...],
+        now_ms: int | None = None,
+        batch_size: int = 5000,
+    ) -> dict[str, Any]:
+        computed_at_ms = int(now_ms or time.time() * 1000)
+        parsed_batch_size = max(1, int(batch_size))
+        legacy_rows_seen = 0
+        source_rows = 0
+        rows_written = 0
+        touched: set[tuple[str, str]] = set()
+        seen_keys: set[tuple[str, str, str, str, str]] = set()
+
+        while True:
+            rebuild_keys = self.repos.token_radar.list_rank_input_rebuild_keys(
+                projection_version=PROJECTION_VERSION,
+                windows=windows,
+                scopes=scopes,
+                limit=parsed_batch_size,
+            )
+            if not rebuild_keys:
+                break
+            legacy_rows_seen += len(rebuild_keys)
+            for key in rebuild_keys:
+                stable_key = (
+                    str(key.get("window") or ""),
+                    str(key.get("scope") or ""),
+                    str(key.get("lane") or ""),
+                    str(key.get("target_type_key") or ""),
+                    str(key.get("identity_id") or ""),
+                )
+                if stable_key in seen_keys:
+                    raise RuntimeError("rank input rebuild made no progress for legacy target feature")
+                seen_keys.add(stable_key)
+            source_requests = _source_requests_for_rank_rebuild_keys(rebuild_keys, now_ms=computed_at_ms)
+            rows_by_request = TokenRadarTargetFeatureBatchQuery(self.repos.conn).source_rows_for_requests(
+                source_requests
+            )
+            requests_by_key = {request.request_key: request for request in source_requests}
+            with _transaction_context(self.repos.conn):
+                for key in rebuild_keys:
+                    request = requests_by_key[_rank_rebuild_request_key(key)]
+                    score_result = self._project_source_request(
+                        request=request,
+                        target=key,
+                        source_rows=rows_by_request.get(request.request_key, []),
+                        now_ms=computed_at_ms,
+                    )
+                    source_rows += int(score_result.get("source_rows") or 0)
+                    rows_written += int(score_result.get("rows_written") or 0)
+                    touched.add((request.window, request.scope))
+
+        window_results: dict[str, dict[str, Any]] = {}
+        for window, scope in sorted(touched):
+            rank_result = self.refresh_rank_set(
+                window=window,
+                scope=scope,
+                now_ms=computed_at_ms,
+                limit=parsed_batch_size,
+            )
+            window_results[f"{window}:{scope}"] = rank_result
+            if str(rank_result.get("status") or "") != "ready":
+                raise RuntimeError(f"rank input rebuild refresh failed for {window}:{scope}")
+
+        return {
+            "status": "ready",
+            "computed_at_ms": computed_at_ms,
+            "legacy_rows_seen": legacy_rows_seen,
+            "source_rows": source_rows,
+            "rows_written": rows_written,
+            "windows": window_results,
+        }
+
+    def _project_source_request(
+        self,
+        *,
+        request: TokenRadarSourceRequest,
         target: dict[str, Any],
-        window: str,
-        scope: str,
+        source_rows: list[dict[str, Any]],
         now_ms: int,
     ) -> dict[str, Any]:
+        window = request.window
+        scope = request.scope
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
-        score_since_ms = int(now_ms) - window_ms
-        analysis_since_ms = _analysis_since_ms(computed_at_ms=int(now_ms), window_ms=window_ms)
-        source_rows = TokenRadarTargetFeatureQuery(self.repos.conn).source_rows(
-            target_type_key=str(target.get("target_type_key") or target.get("target_type") or ""),
-            identity_id=str(target.get("identity_id") or target.get("target_id") or ""),
-            since_ms=analysis_since_ms,
-            score_since_ms=score_since_ms,
-            scope=scope,
-            now_ms=int(now_ms),
-        )
+        score_since_ms = int(request.score_since_ms)
         total_window_events = len(
             {str(row["event_id"]) for row in source_rows if int(row.get("received_at_ms") or 0) >= score_since_ms}
         )
@@ -252,32 +348,21 @@ class TokenRadarProjection:
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms)
         try:
-            feature_rows = self.repos.token_radar.list_target_features_for_rank_set(
-                projection_version=PROJECTION_VERSION,
-                window=window,
-                scope=scope,
-            )
-            projected = self._apply_cross_section(feature_rows)
-            resolved = [row for row in projected if row["lane"] == "resolved"]
-            attention = [row for row in projected if row["lane"] == "attention"]
-            resolved.sort(key=_rank_key)
-            attention.sort(key=_rank_key)
-            rows = []
-            for lane_rows in (resolved, attention):
-                for rank, row in enumerate(lane_rows[:limit], start=1):
-                    rows.append({**row, "rank": rank})
+            rank_inputs, rows = self._rank_and_hydrate_selected_rows(window=window, scope=scope, limit=limit)
             source_max_received_at_ms = max(
                 (int(row.get("source_max_received_at_ms") or 0) for row in rows),
                 default=0,
             )
             projection_repo = ProjectionRepository(self.repos.conn)
             with _transaction_context(self.repos.conn):
-                projection_repo.mark_stale_running_runs(
+                self._maybe_mark_stale_running_runs(
+                    projection_repo,
                     projection_name=TOKEN_RADAR_PROJECTION_NAME,
                     projection_version=PROJECTION_VERSION,
+                    window=window,
+                    scope=scope,
                     stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
                     finished_at_ms=computed_at_ms,
-                    commit=False,
                 )
                 run = projection_repo.start_run(
                     projection_name=TOKEN_RADAR_PROJECTION_NAME,
@@ -300,7 +385,7 @@ class TokenRadarProjection:
                     projection_repo.finish_run(
                         run_id=str(run["run_id"]),
                         status="stale_skipped",
-                        rows_read=len(feature_rows),
+                        rows_read=len(rank_inputs),
                         rows_written=0,
                         dirty_ranges_written=0,
                         error="newer_projection_exists",
@@ -308,7 +393,7 @@ class TokenRadarProjection:
                     )
                     return {
                         "rows_written": 0,
-                        "source_rows": len(feature_rows),
+                        "source_rows": len(rank_inputs),
                         "computed_at_ms": computed_at_ms,
                         "status": "stale_skipped",
                     }
@@ -326,7 +411,7 @@ class TokenRadarProjection:
                 projection_repo.finish_run(
                     run_id=str(run["run_id"]),
                     status="ready",
-                    rows_read=len(feature_rows),
+                    rows_read=len(rank_inputs),
                     rows_written=len(rows),
                     dirty_ranges_written=0,
                     commit=False,
@@ -337,7 +422,7 @@ class TokenRadarProjection:
                     scope=scope,
                     status="ready",
                     reason=None,
-                    source_rows=len(feature_rows),
+                    source_rows=len(rank_inputs),
                     row_count=len(rows),
                     computed_at_ms=computed_at_ms,
                     started_at_ms=computed_at_ms,
@@ -347,7 +432,7 @@ class TokenRadarProjection:
                 )
             return {
                 "rows_written": len(rows),
-                "source_rows": len(feature_rows),
+                "source_rows": len(rank_inputs),
                 "computed_at_ms": computed_at_ms,
                 "status": "ready",
             }
@@ -367,6 +452,152 @@ class TokenRadarProjection:
                 commit=True,
             )
             raise
+
+    def _maybe_mark_stale_running_runs(
+        self,
+        projection_repo: ProjectionRepository,
+        *,
+        projection_name: str,
+        projection_version: str,
+        window: str,
+        scope: str,
+        stale_before_ms: int,
+        finished_at_ms: int,
+    ) -> int:
+        cleanup_key = (str(window), str(scope))
+        last_cleanup_ms = self._last_stale_cleanup_at_ms.get(cleanup_key)
+        if last_cleanup_ms is not None and int(finished_at_ms) - last_cleanup_ms < STALE_RUNNING_CLEANUP_INTERVAL_MS:
+            return 0
+        updated = projection_repo.mark_stale_running_runs(
+            projection_name=projection_name,
+            projection_version=projection_version,
+            stale_before_ms=int(stale_before_ms),
+            finished_at_ms=int(finished_at_ms),
+            commit=False,
+        )
+        self._last_stale_cleanup_at_ms[cleanup_key] = int(finished_at_ms)
+        return updated
+
+    def _rank_and_hydrate_selected_rows(
+        self,
+        *,
+        window: str,
+        scope: str,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        stale_rank_inputs = self.repos.token_radar.stale_rank_input_count(
+            projection_version=PROJECTION_VERSION,
+            window=window,
+            scope=scope,
+            limit=1,
+        )
+        if stale_rank_inputs:
+            raise RuntimeError("token_radar_rank_inputs_require_full_rebuild")
+        rank_inputs = self.repos.token_radar.list_rank_inputs_for_rank_set(
+            projection_version=PROJECTION_VERSION,
+            window=window,
+            scope=scope,
+            rank_input_version=TOKEN_RADAR_RANK_INPUT_VERSION,
+        )
+        ranked = self.rank_compact_inputs(rank_inputs)
+        selected_ranked = _select_top_ranked_by_lane(ranked, limit=limit)
+        try:
+            return rank_inputs, self._hydrate_ranked_rows(selected_ranked)
+        except RuntimeError as exc:
+            if "payload_hash changed" not in str(exc):
+                raise
+        rank_inputs = self.repos.token_radar.list_rank_inputs_for_rank_set(
+            projection_version=PROJECTION_VERSION,
+            window=window,
+            scope=scope,
+            rank_input_version=TOKEN_RADAR_RANK_INPUT_VERSION,
+        )
+        ranked = self.rank_compact_inputs(rank_inputs)
+        selected_ranked = _select_top_ranked_by_lane(ranked, limit=limit)
+        return rank_inputs, self._hydrate_ranked_rows(selected_ranked)
+
+    def _hydrate_ranked_rows(self, selected_ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not selected_ranked:
+            return []
+        hydrated_rows = self.repos.token_radar.load_target_feature_payloads_for_ranked_keys(selected_ranked)
+        hydrated_by_key = {_rank_payload_key(row): row for row in hydrated_rows}
+        rows: list[dict[str, Any]] = []
+        for ranked in selected_ranked:
+            hydrated = hydrated_by_key.get(_rank_payload_key(ranked))
+            if hydrated is None:
+                raise RuntimeError("Token Radar payload_hash changed during selected-row hydration")
+            rows.append(_patch_hydrated_rank_row(hydrated, ranked))
+        return rows
+
+    @staticmethod
+    def rank_compact_inputs(rank_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        factor_scores: dict[str, dict[str, float | None]] = {}
+        factor_weights: dict[str, dict[str, float]] = {}
+        cohort: set[str] = set()
+        cohort_metadata: dict[str, dict[str, Any]] = {}
+
+        for row in rank_inputs:
+            target_id = _compact_target_id(row)
+            if not target_id:
+                continue
+            factor_scores[target_id] = {
+                family: _compact_family_raw_score(row, family) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
+            factor_weights[target_id] = {
+                family: _compact_family_weight(row, family) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
+            high_conf = int(row.get("cohort_high_confidence_mentions") or 0)
+            kol_count = int(row.get("cohort_kol_mentions") or 0)
+            first_seen_global = row.get("cohort_first_seen_global_24h") is True
+            symbol = str(row.get("cohort_symbol") or "").upper()
+            if is_active_cohort_member(
+                target_id=target_id,
+                symbol=symbol,
+                high_confidence_mention_count=high_conf,
+                kol_mention_count=kol_count,
+                was_first_seen_global_24h=first_seen_global,
+            ):
+                cohort.add(target_id)
+            cohort_metadata[target_id] = {
+                "high_confidence_mentions": high_conf,
+                "kol_mentions": kol_count,
+                "public_followup_authors": int(row.get("cohort_public_followup_authors") or 0),
+                "first_seen_global_24h": first_seen_global,
+                "symbol": symbol,
+            }
+
+        cohort_status = _cohort_rank_status(factor_scores=factor_scores, cohort=cohort)
+        factor_ranks_by_id = rank_factors_within_cohort(factor_scores=factor_scores, cohort=cohort)
+        compact_rows: list[dict[str, Any]] = []
+        for row in rank_inputs:
+            target_id = _compact_target_id(row)
+            factor_ranks = factor_ranks_by_id.get(target_id) or {family: None for family in TOKEN_RADAR_FACTOR_FAMILIES}
+            weights = factor_weights.get(target_id) or {
+                family: _compact_family_weight(row, family) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
+            alpha_rank = weighted_rank_score(factor_ranks, weights)
+            rank_score = (
+                round(float(alpha_rank) * 100.0)
+                if alpha_rank is not None
+                else _display_score_from_value(row.get("raw_composite_score"))
+            )
+            decision = _decision_from_score_and_gates(rank_score, {"max_decision": row.get("gates_max_decision")})
+            compact_rows.append(
+                {
+                    **dict(row),
+                    "rank_score": rank_score,
+                    "recommended_decision": decision,
+                    "normalization_status": "ranked" if alpha_rank is not None else "no_signal",
+                    "cohort_status": cohort_status,
+                    "cohort_in_cohort": target_id in cohort,
+                    "cohort_size": len(cohort),
+                    "cohort_metadata": cohort_metadata.get(target_id, {}),
+                    "factor_ranks": factor_ranks,
+                    "alpha_rank": alpha_rank,
+                }
+            )
+        compact_rows.sort(key=_compact_rank_key)
+        return compact_rows
 
     def _enqueue_runtime_dirty_targets_for_rank_changes(
         self,
@@ -562,99 +793,6 @@ class TokenRadarProjection:
             grouped.setdefault(key, []).append(row)
         return grouped
 
-    @staticmethod
-    def _apply_cross_section(projected: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        factor_scores: dict[str, dict[str, float | None]] = {}
-        factor_weights: dict[str, dict[str, float]] = {}
-        cohort: set[str] = set()
-        cohort_metadata: dict[str, dict[str, Any]] = {}
-
-        for row in projected:
-            factor_snapshot = _factor_snapshot_or_raise(row)
-            target_id = str(row.get("target_id") or "")
-            if not target_id:
-                continue
-            families = factor_snapshot["families"]
-            factor_scores[target_id] = {
-                family: _family_raw_score(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
-            }
-            factor_weights[target_id] = {
-                family: _family_weight(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
-            }
-
-            high_conf = _count_high_conf(row)
-            kol_count = _count_kol_authors(row)
-            public_followup_count = _count_public_followup(row)
-            first_seen_global = _cohort_first_seen_global(row)
-            symbol = (
-                (row.get("target_json") or {}).get("symbol")
-                or (row.get("intent_json") or {}).get("display_symbol")
-                or ""
-            ).upper()
-            if is_active_cohort_member(
-                target_id=target_id,
-                symbol=symbol,
-                high_confidence_mention_count=high_conf,
-                kol_mention_count=kol_count,
-                was_first_seen_global_24h=first_seen_global,
-            ):
-                cohort.add(target_id)
-            cohort_metadata[target_id] = {
-                "high_confidence_mentions": high_conf,
-                "kol_mentions": kol_count,
-                "public_followup_authors": public_followup_count,
-                "first_seen_global_24h": first_seen_global,
-                "symbol": symbol,
-            }
-
-        cohort_status = _cohort_rank_status(factor_scores=factor_scores, cohort=cohort)
-        factor_ranks_by_id = rank_factors_within_cohort(factor_scores=factor_scores, cohort=cohort)
-
-        for row in projected:
-            target_id = str(row.get("target_id") or "")
-            factor_snapshot = _factor_snapshot_or_raise(row)
-            families = factor_snapshot["families"]
-            factor_ranks = factor_ranks_by_id.get(target_id) or {family: None for family in TOKEN_RADAR_FACTOR_FAMILIES}
-            weights = factor_weights.get(target_id) or {
-                family: _family_weight(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
-            }
-            alpha_rank = weighted_rank_score(factor_ranks, weights)
-            normalization_status = "ranked" if alpha_rank is not None else "no_signal"
-            for family in TOKEN_RADAR_FACTOR_FAMILIES:
-                rank = factor_ranks.get(family)
-                if rank is not None and isinstance(families.get(family), dict):
-                    families[family]["score"] = round(float(rank) * 100.0)
-            rank_score = (
-                round(float(alpha_rank) * 100.0) if alpha_rank is not None else _raw_composite_score(factor_snapshot)
-            )
-            decision = _decision_from_score_and_gates(rank_score, factor_snapshot["gates"])
-            family_scores = {
-                family: _family_display_score(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
-            }
-            factor_snapshot["normalization"] = {
-                "status": normalization_status,
-                "cohort_status": cohort_status,
-                "cohort": {
-                    "in_cohort": target_id in cohort,
-                    "size": len(cohort),
-                    "definition_version": COHORT_DEFINITION_VERSION,
-                    "normalizer_version": NORMALIZER_VERSION,
-                    **(cohort_metadata.get(target_id, {})),
-                },
-                "factor_ranks": factor_ranks,
-                "alpha_rank": alpha_rank,
-            }
-            factor_snapshot["composite"]["family_scores"] = family_scores
-            factor_snapshot["composite"]["rank_score"] = rank_score
-            factor_snapshot["composite"]["recommended_decision"] = decision
-            row["factor_snapshot_json"] = factor_snapshot
-            row["decision"] = decision
-            for key in list(row):
-                if str(key).startswith("_cohort_"):
-                    row.pop(key, None)
-
-        return projected
-
 
 def _cohort_rank_status(
     *,
@@ -688,6 +826,108 @@ def _resolve_work_items(
     if work_items is not None:
         return tuple(dict.fromkeys((str(window), str(scope)) for window, scope in work_items if window and scope))
     return tuple((window, scope) for window in windows for scope in scopes)
+
+
+def _source_requests_for_targets(
+    targets: list[dict[str, Any]],
+    work_items: tuple[tuple[str, str], ...],
+    *,
+    now_ms: int,
+) -> list[TokenRadarSourceRequest]:
+    requests: list[TokenRadarSourceRequest] = []
+    for target_index, target in enumerate(targets):
+        target_type_key = str(target.get("target_type_key") or target.get("target_type") or "")
+        identity_id = str(target.get("identity_id") or target.get("target_id") or "")
+        for window, scope in work_items:
+            window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+            score_since_ms = int(now_ms) - window_ms
+            requests.append(
+                TokenRadarSourceRequest(
+                    request_key=_target_source_request_key(
+                        target_index=target_index,
+                        target_type_key=target_type_key,
+                        identity_id=identity_id,
+                        window=window,
+                        scope=scope,
+                    ),
+                    target_type_key=target_type_key,
+                    identity_id=identity_id,
+                    window=window,
+                    scope=scope,
+                    analysis_since_ms=_analysis_since_ms(computed_at_ms=int(now_ms), window_ms=window_ms),
+                    score_since_ms=score_since_ms,
+                    now_ms=int(now_ms),
+                )
+            )
+    return requests
+
+
+def _source_requests_for_rank_rebuild_keys(
+    rebuild_keys: list[dict[str, Any]],
+    *,
+    now_ms: int,
+) -> list[TokenRadarSourceRequest]:
+    requests: list[TokenRadarSourceRequest] = []
+    for key in rebuild_keys:
+        window = str(key.get("window") or "")
+        scope = str(key.get("scope") or "")
+        target_type_key = str(key.get("target_type_key") or key.get("target_type") or "")
+        identity_id = str(key.get("identity_id") or key.get("target_id") or "")
+        window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+        requests.append(
+            TokenRadarSourceRequest(
+                request_key=_rank_rebuild_request_key(key),
+                target_type_key=target_type_key,
+                identity_id=identity_id,
+                window=window,
+                scope=scope,
+                analysis_since_ms=_analysis_since_ms(computed_at_ms=int(now_ms), window_ms=window_ms),
+                score_since_ms=int(now_ms) - window_ms,
+                now_ms=int(now_ms),
+            )
+        )
+    return requests
+
+
+def _source_requests_by_target(
+    requests: list[TokenRadarSourceRequest],
+) -> dict[int, list[TokenRadarSourceRequest]]:
+    grouped: dict[int, list[TokenRadarSourceRequest]] = {}
+    for request in requests:
+        parts = request.request_key.split(":", 1)
+        if not parts or not parts[0].startswith("target-"):
+            continue
+        target_index = int(parts[0].removeprefix("target-"))
+        grouped.setdefault(target_index, []).append(request)
+    return grouped
+
+
+def _target_source_request_key(
+    *,
+    target_index: int,
+    target_type_key: str,
+    identity_id: str,
+    window: str,
+    scope: str,
+) -> str:
+    stable = _stable_id("token-radar-source-request", str(target_index), target_type_key, identity_id, window, scope)
+    return f"target-{target_index}:{stable}"
+
+
+def _rank_rebuild_request_key(key: Mapping[str, Any]) -> str:
+    return _stable_id(
+        "token-radar-rank-rebuild-source-request",
+        str(key.get("window") or ""),
+        str(key.get("scope") or ""),
+        str(key.get("lane") or ""),
+        str(key.get("target_type_key") or key.get("target_type") or ""),
+        str(key.get("identity_id") or key.get("target_id") or ""),
+        str(key.get("payload_hash") or ""),
+    )
+
+
+def _readiness_counts_by_key(stale_by_work_item: Mapping[tuple[str, str], int]) -> dict[str, int]:
+    return {f"{window}:{scope}": int(count) for (window, scope), count in stale_by_work_item.items()}
 
 
 def _now_ms() -> int:
@@ -905,11 +1145,11 @@ def _stable_payload_hash(payload: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _transaction_context(conn: Any):
+def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if transaction is None:
         raise RuntimeError("token_radar_projection_requires_transactional_connection")
-    return transaction()
+    return cast(AbstractContextManager[Any], transaction())
 
 
 def _json_ready(value: Any) -> Any:
@@ -973,7 +1213,7 @@ def _project_group(
         computed_at_ms=now_ms,
     )
     decision = str(factor_snapshot["composite"]["recommended_decision"])
-    # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
+    # Cohort accounting fields are persisted as scalar rank inputs after each group settles.
     # These internal fields use the _cohort_* prefix and are stripped before persistence.
     cohort_high_conf_count = sum(
         1 for r in window_rows if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
@@ -1032,7 +1272,7 @@ def _project_group(
         },
         "source_event_ids_json": event_ids,
         "created_at_ms": now_ms,
-        # Internal cohort fields — NOT persisted (stripped in _apply_cross_section).
+        # Internal cohort fields are converted to scalar rank inputs before persistence.
         "_cohort_high_conf_count": cohort_high_conf_count,
         "_cohort_kol_count": cohort_kol_count,
         "_cohort_first_seen_global_24h": cohort_first_seen_global_24h,
@@ -1543,6 +1783,92 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         -int(attention.get("mentions_1h") or diffusion.get("mentions") or 0),
         -int(attention.get("latest_seen_ms") or 0),
     )
+
+
+def _compact_rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
+    decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
+    decision = row.get("recommended_decision") or "discard"
+    rank_score = _float_or_none(row.get("rank_score")) or 0.0
+    mentions_1h = int(row.get("social_heat_mentions_1h") or row.get("social_propagation_mentions") or 0)
+    return (
+        decision_priority.get(str(decision), 2),
+        -rank_score,
+        -int(row.get("social_heat_watched_mentions") or 0),
+        -mentions_1h,
+        -int(row.get("social_heat_latest_seen_ms") or 0),
+    )
+
+
+def _select_top_ranked_by_lane(ranked: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    lane_order = ("resolved", "attention")
+    for lane in lane_order:
+        lane_rows = [row for row in ranked if str(row.get("lane") or "") == lane]
+        for rank, row in enumerate(lane_rows[: max(0, int(limit))], start=1):
+            selected.append({**row, "rank": rank})
+    return selected
+
+
+def _rank_payload_key(row: dict[str, Any]) -> tuple[str, str, str, str, str, str, str]:
+    return (
+        str(row.get("projection_version") or ""),
+        str(row.get("window") or ""),
+        str(row.get("scope") or ""),
+        str(row.get("lane") or ""),
+        str(row.get("target_type_key") or ""),
+        str(row.get("identity_id") or ""),
+        str(row.get("payload_hash") or ""),
+    )
+
+
+def _patch_hydrated_rank_row(row: dict[str, Any], ranked: dict[str, Any]) -> dict[str, Any]:
+    patched = dict(row)
+    factor_snapshot = _factor_snapshot_or_raise(patched)
+    families = _dict(factor_snapshot.get("families"))
+    factor_ranks = _dict(ranked.get("factor_ranks"))
+    for family in TOKEN_RADAR_FACTOR_FAMILIES:
+        rank = factor_ranks.get(family)
+        if rank is not None and isinstance(families.get(family), dict):
+            families[family]["score"] = round(float(rank) * 100.0)
+    family_scores = {family: _family_display_score(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES}
+    factor_snapshot["normalization"] = {
+        "status": ranked.get("normalization_status") or "no_signal",
+        "cohort_status": ranked.get("cohort_status") or "not_ranked",
+        "cohort": {
+            "in_cohort": ranked.get("cohort_in_cohort") is True,
+            "size": int(ranked.get("cohort_size") or 0),
+            "definition_version": COHORT_DEFINITION_VERSION,
+            "normalizer_version": NORMALIZER_VERSION,
+            **_dict(ranked.get("cohort_metadata")),
+        },
+        "factor_ranks": factor_ranks,
+        "alpha_rank": ranked.get("alpha_rank"),
+    }
+    factor_snapshot["composite"]["family_scores"] = family_scores
+    factor_snapshot["composite"]["rank_score"] = ranked.get("rank_score")
+    factor_snapshot["composite"]["recommended_decision"] = ranked.get("recommended_decision")
+    patched["factor_snapshot_json"] = factor_snapshot
+    patched["decision"] = ranked.get("recommended_decision")
+    patched["rank"] = int(ranked.get("rank") or 0)
+    patched["source_max_received_at_ms"] = int(ranked.get("latest_event_received_at_ms") or 0)
+    return patched
+
+
+def _compact_target_id(row: dict[str, Any]) -> str:
+    return str(row.get("target_id") or "")
+
+
+def _compact_family_raw_score(row: dict[str, Any], family: str) -> float | None:
+    return _float_or_none(row.get(f"{family}_raw_score"))
+
+
+def _compact_family_weight(row: dict[str, Any], family: str) -> float:
+    return _float_or_none(row.get(f"{family}_weight")) or 0.0
+
+
+def _display_score_from_value(value: Any) -> int:
+    score = _float_or_none(value) or 0.0
+    return round(max(0.0, min(100.0, score)))
 
 
 def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:

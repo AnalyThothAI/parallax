@@ -105,9 +105,7 @@ def test_outside_packet_ref_is_rejected_without_repair() -> None:
     result = normalize_pulse_stage_output(
         output_type=SignalAnalystMemo,
         raw_output={
-            "bull_claims": [
-                {"claim": "社交证据支持扩散观察", "evidence_refs": ["event:event-999"], "stance": "bull"}
-            ],
+            "bull_claims": [{"claim": "社交证据支持扩散观察", "evidence_refs": ["event:event-999"], "stance": "bull"}],
             "what_changed_zh": "证据显示讨论在扩散，但需要继续观察。",
             "allowed_evidence_ref_ids": ["event:event-1"],
         },

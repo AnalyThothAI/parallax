@@ -46,9 +46,12 @@
 
   .macro-chart-legend-item b,
   .macro-yield-curve-points b {
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-muted, #94a3b8);
     font-size: 0.72rem;
-    overflow-wrap: anywhere;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .macro-chart-legend-item strong,

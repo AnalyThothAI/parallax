@@ -131,9 +131,7 @@ class FakeRuntime:
             upstream_client=None,
             status=SimpleNamespace(to_dict=lambda: {"frames_received": 0, "snapshot_gate_outcomes": {}}),
         )
-        self.providers = SimpleNamespace(
-            asset_market=SimpleNamespace(stream_dex_market=None, provider_health=())
-        )
+        self.providers = SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None, provider_health=()))
         self.scheduler = SimpleNamespace(
             unhealthy_reasons=lambda: [],
             status_payload=lambda: {},

@@ -152,7 +152,7 @@ class FakeConn:
                 ]
             )
         if "FROM narrative_model_runs" in sql:
-            assert 'stage <> \'discussion_digest\' OR ("window" = ANY(%s) AND scope = ANY(%s))' in sql
+            assert "stage <> 'discussion_digest' OR (\"window\" = ANY(%s) AND scope = ANY(%s))" in sql
             assert params == ("narrative_intel_v1", 0, ["1h"], ["all"])
             self.params_by_marker["runs"] = params
             return FakeCursor(

@@ -51,10 +51,7 @@ def wire_providers(
                 settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
-            if (
-                settings.workers.mention_semantics.enabled
-                or settings.workers.token_discussion_digest.enabled
-            )
+            if (settings.workers.mention_semantics.enabled or settings.workers.token_discussion_digest.enabled)
             and settings.narrative_intel_configured
             else None,
         ),

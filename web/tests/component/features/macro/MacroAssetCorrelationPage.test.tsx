@@ -1,18 +1,19 @@
-import { MacroAssetCorrelationPage } from "@features/macro";
-import type { MacroAssetCorrelationData } from "@lib/types";
-import { screen, waitFor } from "@testing-library/react";
+import { MacroMatrixPage } from "@features/macro";
+import type { MacroAssetCorrelationData, MacroAssetCorrelationWindow } from "@lib/types";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { ok } from "@tests/msw/fixtures";
 import { renderWithProviders } from "@tests/render/renderWithProviders";
 import { apiMock, setupAppRouteTest } from "@tests/routes/routeTestSetup";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-describe("MacroAssetCorrelationPage", () => {
+describe("MacroMatrixPage", () => {
   beforeEach(() => {
     setupAppRouteTest((mock) => {
       mock.getApiImpl = async (path, options) => {
         if (path === "/api/macro/assets/correlation") {
-          expect(options?.params).toEqual({ window: "60d" });
-          return ok(correlationFixture());
+          const window = options?.params?.window;
+          expect(["20d", "60d", "120d"]).toContain(window);
+          return ok(correlationFixture(window as MacroAssetCorrelationWindow));
         }
         throw new Error(`unexpected path ${path}`);
       };
@@ -23,10 +24,19 @@ describe("MacroAssetCorrelationPage", () => {
     document.body.replaceChildren();
   });
 
-  it("renders backend-fed matrix, strongest pairs, and data gaps", async () => {
-    renderWithProviders(<MacroAssetCorrelationPage token="test-token" />);
+  it("renders the correlation matrix inside macro shell grammar", async () => {
+    renderWithProviders(<MacroMatrixPage token="test-token" />, {
+      route: "/macro/assets/correlation",
+    });
 
     expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
+    expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
+    expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
+      "宏观/大类资产/相关性",
+    );
+    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "20d" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "60d" })).toHaveAttribute("aria-pressed", "true");
     expect(await screen.findByRole("columnheader", { name: "SPY" })).toBeInTheDocument();
     expect(await screen.findByRole("rowheader", { name: "QQQ" })).toBeInTheDocument();
     expect(screen.getByText("SPY / QQQ")).toBeInTheDocument();
@@ -36,7 +46,9 @@ describe("MacroAssetCorrelationPage", () => {
     expect(screen.getAllByText("Yahoo").length).toBeGreaterThan(0);
     expect(screen.getByText("重叠样本不足：ETH / TLT")).toBeInTheDocument();
     expect(screen.queryByText(/insufficient_overlap/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/asset:spy|asset:qqq|asset:tlt|crypto:eth|yahoo/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/asset:spy|asset:qqq|asset:tlt|crypto:eth|yahoo/),
+    ).not.toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
         params: { window: "60d" },
@@ -44,11 +56,33 @@ describe("MacroAssetCorrelationPage", () => {
       }),
     );
   });
+
+  it("switches the matrix window from the segmented header actions", async () => {
+    renderWithProviders(<MacroMatrixPage token="test-token" />, {
+      route: "/macro/assets/correlation",
+    });
+
+    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "20d" }));
+
+    expect(await screen.findByRole("table", { name: "20d 资产相关性矩阵" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "20d" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "60d" })).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {
+        params: { window: "20d" },
+        token: "test-token",
+      }),
+    );
+  });
 });
 
-export function correlationFixture(): MacroAssetCorrelationData {
+export function correlationFixture(
+  window: MacroAssetCorrelationWindow = "60d",
+): MacroAssetCorrelationData {
   return {
-    window: "60d",
+    window,
     asof_date: "2026-05-20",
     assets: [
       {

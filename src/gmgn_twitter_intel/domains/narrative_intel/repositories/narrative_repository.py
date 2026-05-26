@@ -4,10 +4,12 @@ import hashlib
 import json
 import time
 from collections.abc import Sequence
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
     label_fingerprint as build_label_fingerprint,
@@ -1046,71 +1048,28 @@ class NarrativeRepository:
         labeled = 0
         unavailable = 0
         failed = 0
-        for label in labels:
-            status = str(label.get("status") or "labeled")
-            is_unavailable = status == "semantic_unavailable"
-            if not is_unavailable:
-                status = "labeled"
-            cursor = self.conn.execute(
-                """
-                UPDATE token_mention_semantics
-                SET status = %s,
-                    trade_stance = %s,
-                    attention_valence = %s,
-                    narrative_cluster_key = %s,
-                    claim_type = %s,
-                    evidence_type = %s,
-                    semantic_confidence = %s,
-                    co_mentioned_targets_json = %s,
-                    evidence_refs_json = %s,
-                    raw_label_json = %s,
-                    model_run_id = %s,
-                    computed_at_ms = %s,
-                    error = NULL,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    claimed_at_ms = NULL,
-                    last_error = NULL
-                WHERE semantic_id = %s
-                  AND text_fingerprint = %s
-                  AND lease_owner = %s
-                  AND attempt_count = %s
-                """,
-                (
-                    status,
-                    str(label.get("trade_stance") or "unknown"),
-                    str(label.get("attention_valence") or "unknown"),
-                    label.get("narrative_cluster_key"),
-                    str(label.get("claim_type") or "other"),
-                    str(label.get("evidence_type") or "unknown"),
-                    float(label.get("semantic_confidence") or 0.0),
-                    _json(label.get("co_mentioned_targets") or []),
-                    _json(label.get("evidence_refs") or []),
-                    _json(label.get("raw_label") or label),
-                    run_id,
-                    now_ms,
-                    _required(label, "semantic_id"),
-                    _required(label, "text_fingerprint"),
-                    _required(label, "lease_owner"),
-                    _required_int(label, "attempt_count"),
-                ),
-            )
-            if int(getattr(cursor, "rowcount", 0) or 0) > 0:
-                if is_unavailable:
-                    unavailable += 1
-                else:
-                    labeled += 1
-        for failure in failures:
-            failure_status = str(failure.get("status") or "retryable_error")
-            if failure_status == "semantic_unavailable":
+        with _transaction(self.conn):
+            for label in labels:
+                status = str(label.get("status") or "labeled")
+                is_unavailable = status == "semantic_unavailable"
+                if not is_unavailable:
+                    status = "labeled"
                 cursor = self.conn.execute(
                     """
                     UPDATE token_mention_semantics
-                    SET status = 'semantic_unavailable',
-                        retry_count = retry_count + 1,
-                        next_retry_at_ms = 0,
+                    SET status = %s,
+                        trade_stance = %s,
+                        attention_valence = %s,
+                        narrative_cluster_key = %s,
+                        claim_type = %s,
+                        evidence_type = %s,
+                        semantic_confidence = %s,
+                        co_mentioned_targets_json = %s,
+                        evidence_refs_json = %s,
+                        raw_label_json = %s,
+                        model_run_id = %s,
                         computed_at_ms = %s,
-                        error = %s,
+                        error = NULL,
                         leased_until_ms = NULL,
                         lease_owner = NULL,
                         claimed_at_ms = NULL,
@@ -1119,47 +1078,139 @@ class NarrativeRepository:
                       AND text_fingerprint = %s
                       AND lease_owner = %s
                       AND attempt_count = %s
+                    RETURNING *
                     """,
                     (
+                        status,
+                        str(label.get("trade_stance") or "unknown"),
+                        str(label.get("attention_valence") or "unknown"),
+                        label.get("narrative_cluster_key"),
+                        str(label.get("claim_type") or "other"),
+                        str(label.get("evidence_type") or "unknown"),
+                        float(label.get("semantic_confidence") or 0.0),
+                        _json(label.get("co_mentioned_targets") or []),
+                        _json(label.get("evidence_refs") or []),
+                        _json(label.get("raw_label") or label),
+                        run_id,
                         now_ms,
-                        str(failure.get("error") or "provider_failure"),
-                        _required(failure, "semantic_id"),
-                        _required(failure, "text_fingerprint"),
-                        _required(failure, "lease_owner"),
-                        _required_int(failure, "attempt_count"),
+                        _required(label, "semantic_id"),
+                        _required(label, "text_fingerprint"),
+                        _required(label, "lease_owner"),
+                        _required_int(label, "attempt_count"),
                     ),
                 )
-                unavailable += int(getattr(cursor, "rowcount", 0) or 0)
-            else:
-                cursor = self.conn.execute(
-                    """
-                    UPDATE token_mention_semantics
-                    SET status = 'retryable_error',
-                        retry_count = retry_count + 1,
-                        next_retry_at_ms = %s,
-                        error = %s,
-                        leased_until_ms = NULL,
-                        lease_owner = NULL,
-                        claimed_at_ms = NULL,
-                        last_error = NULL
-                    WHERE semantic_id = %s
-                      AND text_fingerprint = %s
-                      AND lease_owner = %s
-                      AND attempt_count = %s
-                    """,
-                    (
-                        int(failure.get("next_retry_at_ms") or now_ms + 60_000),
-                        str(failure.get("error") or "provider_failure"),
-                        _required(failure, "semantic_id"),
-                        _required(failure, "text_fingerprint"),
-                        _required(failure, "lease_owner"),
-                        _required_int(failure, "attempt_count"),
-                    ),
-                )
-                failed += int(getattr(cursor, "rowcount", 0) or 0)
-        if commit:
+                updated = _optional_row(cursor.fetchone())
+                if updated is not None:
+                    if is_unavailable:
+                        _terminalize_mention_semantics(
+                            self.conn,
+                            row=updated,
+                            reason=str(label.get("error") or "semantic_unavailable"),
+                            now_ms=now_ms,
+                        )
+                        unavailable += 1
+                    else:
+                        labeled += 1
+            for failure in failures:
+                failure_status = str(failure.get("status") or "retryable_error")
+                if failure_status == "semantic_unavailable":
+                    cursor = self.conn.execute(
+                        """
+                        UPDATE token_mention_semantics
+                        SET status = 'semantic_unavailable',
+                            retry_count = retry_count + 1,
+                            next_retry_at_ms = 0,
+                            computed_at_ms = %s,
+                            error = %s,
+                            leased_until_ms = NULL,
+                            lease_owner = NULL,
+                            claimed_at_ms = NULL,
+                            last_error = NULL
+                        WHERE semantic_id = %s
+                          AND text_fingerprint = %s
+                          AND lease_owner = %s
+                          AND attempt_count = %s
+                        RETURNING *
+                        """,
+                        (
+                            now_ms,
+                            str(failure.get("error") or "provider_failure"),
+                            _required(failure, "semantic_id"),
+                            _required(failure, "text_fingerprint"),
+                            _required(failure, "lease_owner"),
+                            _required_int(failure, "attempt_count"),
+                        ),
+                    )
+                    updated = _optional_row(cursor.fetchone())
+                    if updated is not None:
+                        _terminalize_mention_semantics(
+                            self.conn,
+                            row=updated,
+                            reason=str(failure.get("error") or "provider_failure"),
+                            now_ms=now_ms,
+                        )
+                        unavailable += 1
+                else:
+                    cursor = self.conn.execute(
+                        """
+                        UPDATE token_mention_semantics
+                        SET status = 'retryable_error',
+                            retry_count = retry_count + 1,
+                            next_retry_at_ms = %s,
+                            error = %s,
+                            leased_until_ms = NULL,
+                            lease_owner = NULL,
+                            claimed_at_ms = NULL,
+                            last_error = NULL
+                        WHERE semantic_id = %s
+                          AND text_fingerprint = %s
+                          AND lease_owner = %s
+                          AND attempt_count = %s
+                        """,
+                        (
+                            int(failure.get("next_retry_at_ms") or now_ms + 60_000),
+                            str(failure.get("error") or "provider_failure"),
+                            _required(failure, "semantic_id"),
+                            _required(failure, "text_fingerprint"),
+                            _required(failure, "lease_owner"),
+                            _required_int(failure, "attempt_count"),
+                        ),
+                    )
+                    failed += int(getattr(cursor, "rowcount", 0) or 0)
+        if commit and not callable(getattr(self.conn, "transaction", None)):
             _commit_if_available(self.conn)
         return {"labeled": labeled, "semantic_unavailable": unavailable, "failed": failed}
+
+    def retry_terminal_mention_semantics_from_snapshot(
+        self,
+        source_row: dict[str, Any],
+        *,
+        now_ms: int,
+        reason: str,
+    ) -> dict[str, Any] | None:
+        semantic_id = str(source_row.get("semantic_id") or "")
+        text_hash = str(source_row.get("text_fingerprint") or "")
+        if not semantic_id or not text_hash:
+            raise ValueError("mention_semantics_terminal_source_required")
+        row = self.conn.execute(
+            """
+            UPDATE token_mention_semantics
+            SET status = 'queued',
+                retry_count = 0,
+                next_retry_at_ms = %s,
+                error = NULL,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                claimed_at_ms = NULL,
+                last_error = %s
+            WHERE semantic_id = %s
+              AND text_fingerprint = %s
+              AND status = 'semantic_unavailable'
+            RETURNING *
+            """,
+            (int(now_ms), f"terminal_retry:{reason}"[:1000], semantic_id, text_hash),
+        ).fetchone()
+        return _optional_row(row)
 
     def digest_dirty_targets_for_mention_semantics_claims(
         self,
@@ -1689,11 +1740,7 @@ class NarrativeRepository:
             schema_version=schema_version,
         )
         coverage_by_admission = self._semantic_coverage_for_admissions(
-            [
-                admission
-                for key, admission in admissions.items()
-                if key not in ready_digests and _is_admitted(admission)
-            ]
+            [admission for key, admission in admissions.items() if key not in ready_digests and _is_admitted(admission)]
         )
 
         for target in query_targets:
@@ -1939,7 +1986,11 @@ class NarrativeRepository:
         )
 
     def _not_ready_reason_for_admission(self, admission: dict[str, Any] | None) -> str:
-        coverage = self.semantic_coverage_for_admission(admission) if _is_admitted(admission) else None
+        coverage = (
+            self.semantic_coverage_for_admission(admission)
+            if admission is not None and _is_admitted(admission)
+            else None
+        )
         return self._not_ready_reason_from_coverage(admission, coverage)
 
     @staticmethod
@@ -2218,6 +2269,40 @@ def _row(row: Any) -> dict[str, Any]:
     if "source_event_ids_json" in decoded and "source_event_ids" not in decoded:
         decoded["source_event_ids"] = _json_list(decoded.get("source_event_ids_json"))
     return decoded
+
+
+def _optional_row(row: Any) -> dict[str, Any] | None:
+    return _row(row) if row is not None else None
+
+
+def _terminalize_mention_semantics(conn: Any, *, row: dict[str, Any], reason: str, now_ms: int) -> None:
+    terminalize_source_row(
+        conn,
+        worker_name="mention_semantics",
+        source_table="token_mention_semantics",
+        target_key=str(row.get("semantic_id") or ""),
+        source_row=row,
+        final_status="semantic_unavailable",
+        final_reason=str(reason or row.get("error") or "semantic_unavailable"),
+        now_ms=now_ms,
+        attempt_count=int(row.get("attempt_count") or row.get("retry_count") or 0),
+        first_seen_at_ms=_optional_int(row.get("queued_at_ms") or row.get("source_received_at_ms")),
+        last_attempted_at_ms=now_ms,
+        commit=False,
+    )
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
+    transaction = getattr(conn, "transaction", None)
+    if callable(transaction):
+        return cast(AbstractContextManager[Any], transaction())
+    return nullcontext()
 
 
 def _is_admitted(row: dict[str, Any] | None) -> bool:

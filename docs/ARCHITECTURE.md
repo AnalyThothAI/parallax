@@ -135,8 +135,8 @@ are wrong too.
    `equity_event_page_rows`, `equity_event_calendar_rows`,
    `equity_event_alert_candidates`, and `equity_company_timeline_rows` are
    written only by `EquityEventPageProjectionWorker`;
-   `macro_view_snapshots` is written only by
-   `MacroViewProjectionWorker`.
+   `macro_observation_series_rows` and `macro_view_snapshots` are written only
+   by `MacroViewProjectionWorker`.
 6. **Wake is not truth.** PostgreSQL `NOTIFY` channels
    (`market_tick_written`, `market_tick_current_updated`,
    `resolution_updated`, `token_radar_updated`) carry hint payloads only;

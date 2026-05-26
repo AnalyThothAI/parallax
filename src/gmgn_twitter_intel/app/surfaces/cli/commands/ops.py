@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
@@ -26,6 +27,7 @@ from gmgn_twitter_intel.app.runtime.token_radar_postgres_hard_reset import (
     reset_token_radar_postgres_hard_cut,
 )
 from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
+from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
@@ -69,7 +71,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worke
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import reprocess_recent_token_intents
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.binance.cex_profile_client import BinanceCexProfileClient
 from gmgn_twitter_intel.integrations.binance.usdm_futures_client import BinanceUsdmFuturesClient
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
@@ -165,6 +167,18 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         )
         return 0, {"ok": True, "data": data}
 
+    if args.ops_command == "rebuild-token-radar-rank-inputs":
+        reason = str(args.reason or "").strip()
+        if not bool(args.execute) or not reason:
+            return 1, {"ok": False, "error": "execute_and_reason_required"}
+        data = _rebuild_token_radar_rank_inputs_full(
+            settings=settings,
+            batch_size=args.limit,
+            now_ms=_now_ms(),
+            reason=reason,
+        )
+        return 0, {"ok": True, "data": data}
+
     if args.ops_command == "rebuild-narrative-intel":
         if not settings.narrative_intel_configured:
             return 1, {"ok": False, "error": "narrative_intel_not_configured"}
@@ -181,6 +195,20 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
         return 0, {"ok": True, "data": data}
 
     with repositories(settings) as repos:
+        if args.ops_command == "queue-inspect":
+            return queue_ops.handle_queue_inspect(args, repos)
+
+        if args.ops_command == "queue-resolve":
+            return queue_ops.handle_queue_resolve(args, repos, now_ms=_now_ms())
+
+        if args.ops_command == "reconcile-event-anchor-jobs":
+            data = repos.event_anchor_jobs.reconcile_ready_historical_jobs(
+                limit=args.limit,
+                now_ms=_now_ms(),
+                execute=bool(args.execute),
+            )
+            return 0, {"ok": True, "data": data}
+
         if args.ops_command == "factor-diagnostics":
             rows = repos.token_radar.latest_current_rows(
                 window=args.window,
@@ -287,11 +315,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
         if args.ops_command == "enqueue-projection-dirty-targets":
             now_ms = _now_ms()
-            since_ms = (
-                now_ms - int(float(args.since_hours) * 60 * 60 * 1000)
-                if args.since_hours is not None
-                else None
-            )
+            since_ms = now_ms - int(float(args.since_hours) * 60 * 60 * 1000) if args.since_hours is not None else None
             data = enqueue_projection_dirty_targets(
                 repos,
                 domain=args.domain,
@@ -413,9 +437,9 @@ def _backfill_watchlist_signal_stats(
     normalized_handles = 0
     has_more = False
     for _ in range(parsed_max_batches):
-        result = dict(
+        result = _object_dict(
             _call_with_supported_kwargs(
-                repository.backfill_signal_stats_batch,  # type: ignore[attr-defined]
+                repository.backfill_signal_stats_batch,
                 after_received_at_ms=after_received_at_ms,
                 after_event_id=after_event_id,
                 batch_size=parsed_batch_size,
@@ -635,7 +659,7 @@ def _cursor_json(value: dict[str, Any] | None) -> str | None:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _optional_int(value: object) -> int | None:
+def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -853,6 +877,23 @@ def _run_token_radar_projection_worker_once(
             _close_db_bundle(db)
 
 
+def _rebuild_token_radar_rank_inputs_full(
+    settings: object,
+    *,
+    batch_size: int,
+    now_ms: int,
+    reason: str,
+) -> dict[str, Any]:
+    with repositories(settings) as repos:
+        result = TokenRadarProjection(repos=repos).rebuild_rank_inputs_full(
+            windows=("5m", "1h", "4h", "24h"),
+            scopes=("all", "matched"),
+            now_ms=now_ms,
+            batch_size=batch_size,
+        )
+    return {"reason": reason, **result}
+
+
 def _run_narrative_intel_rebuild(
     settings: object,
     *,
@@ -998,7 +1039,7 @@ def _cleanup_narrative_backlog(
     realtime_scopes: tuple[str, ...] = ("all",),
 ) -> dict[str, int]:
     with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
-        return dict(
+        return _object_dict(
             _call_with_supported_kwargs(
                 repos.narratives.cleanup_narrative_current_hard_cut,
                 schema_version=NARRATIVE_SCHEMA_VERSION,
@@ -1035,16 +1076,20 @@ def _merge_int_counts(total: dict[str, int], item: dict[str, Any]) -> None:
             continue
 
 
-def _call_with_supported_kwargs(method: object, **kwargs: object) -> object:
+def _call_with_supported_kwargs(method: Callable[..., object], **kwargs: object) -> object:
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        return method(**kwargs)  # type: ignore[misc]
+        return method(**kwargs)
     parameters = signature.parameters.values()
     if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
-        return method(**kwargs)  # type: ignore[misc]
+        return method(**kwargs)
     supported = {key: value for key, value in kwargs.items() if key in signature.parameters}
-    return method(**supported)  # type: ignore[misc]
+    return method(**supported)
+
+
+def _object_dict(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
@@ -1066,14 +1111,14 @@ def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
     }
 
 
-def _positive_int(value: object, *, default: int) -> int:
+def _positive_int(value: Any, *, default: int) -> int:
     try:
         return max(1, int(value or default))
     except (TypeError, ValueError):
         return default
 
 
-def _nonnegative_int(value: object, *, default: int) -> int:
+def _nonnegative_int(value: Any, *, default: int) -> int:
     try:
         return max(0, int(value if value is not None else default))
     except (TypeError, ValueError):

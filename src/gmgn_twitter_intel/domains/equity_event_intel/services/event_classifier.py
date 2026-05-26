@@ -24,7 +24,7 @@ def classify_equity_event(document: Mapping[str, Any]) -> EquityCompanyEvent:
         ticker=_required_text(document, "ticker").upper(),
         primary_document_id=_required_text(document, "event_document_id"),
         event_type=event_type,
-        priority=cast(Priority, priority),
+        priority=priority,
         source_role=cast(SourceRole, _text(document.get("source_role")) or "observed_source"),
         fiscal_period=_optional_text(document.get("fiscal_period")),
         event_time_ms=_int_or(document.get("event_time_ms"), 0),
@@ -35,7 +35,7 @@ def classify_equity_event(document: Mapping[str, Any]) -> EquityCompanyEvent:
     )
 
 
-def _event_type_and_priority(*, form_type: str, title: str) -> tuple[str, str]:
+def _event_type_and_priority(*, form_type: str, title: str) -> tuple[str, Priority]:
     if form_type in {"10-Q", "10-Q/A"}:
         return "quarterly_report", "P0"
     if form_type in {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}:

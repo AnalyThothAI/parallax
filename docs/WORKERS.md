@@ -125,7 +125,7 @@ notification_delivery
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | due `narrative_admission_dirty_targets`; target-scoped Radar rows, `events`, current `token_intent_resolutions` | `narrative_admissions`, `discussion_digest_dirty_targets` | `token_radar_updated`, `resolution_updated` | none | `interval_seconds` |
 | `mention_semantics` (`MentionSemanticsWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/mention_semantics_worker.py` | leased due `token_mention_semantics` rows and exact source events | `token_mention_semantics`, `narrative_model_runs`, `discussion_digest_dirty_targets` on semantic completion | `token_radar_updated`, `resolution_updated` | `narrative_semantics_updated` | `interval_seconds` |
 | `token_discussion_digest` (`TokenDiscussionDigestWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/token_discussion_digest_worker.py` | due `discussion_digest_dirty_targets`; exact `narrative_admissions`, `token_mention_semantics`, market/profile facts | `token_discussion_digests`, `narrative_model_runs`, digest dirty target backoff | `token_radar_updated`, `narrative_semantics_updated`, `market_tick_written` | none | `interval_seconds` |
-| `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
+| `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with `provider_type`, `source_role`, `trust_tier`, `coverage_tags`, authority/fetch/context/cost policy, due `news_sources`, RSS/Atom/CryptoPanic feeds, bounded OpenNews WebSocket subscribe cycles | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items` | poll | `news_item_written` | `interval_seconds` |
 | `news_item_process` (`NewsItemProcessWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_process_worker.py` | unprocessed `news_items`, token identity interfaces | `news_item_entities`, `news_token_mentions`, `news_fact_candidates`, `news_items.content_class/content_tags_json/content_classification_json` | `news_item_written` | `news_item_processed` | `interval_seconds` |
 | `news_story_projection` (`NewsStoryProjectionWorker`) | `news_intel` | `domains/news_intel/runtime/news_story_projection_worker.py` | due `news_projection_dirty_targets(projection_name='story')`; target-scoped `news_items`, `news_token_mentions` | `news_story_groups`, `news_story_members` | `news_item_processed` | `news_story_updated` | `interval_seconds` |
 | `news_item_brief` (`NewsItemBriefWorker`) | `news_intel` | `domains/news_intel/runtime/news_item_brief_worker.py` | processed `news_items`, `news_story_groups`, current brief state | `news_item_agent_runs`, `news_item_agent_briefs` | `news_item_processed`, `news_story_updated` | `news_item_brief_updated` | `interval_seconds` |
@@ -149,7 +149,10 @@ notification_delivery
 
 News runtime provider support is intentionally smaller than the source
 classification vocabulary. The supported provider types are `rss`, `atom`,
-`json_feed`, and `cryptopanic`. `/api/news/sources/status` reports:
+`json_feed`, `cryptopanic`, and `opennews`. OpenNews uses a bounded
+WebSocket `news.subscribe` cycle inside `news_fetch`; each cycle persists
+provider pushes as normal `news_provider_items` / `news_items` facts.
+`/api/news/sources/status` reports:
 
 - `provider_capabilities.supported_provider_types`
 - `provider_capabilities.configured_provider_types`
@@ -170,9 +173,11 @@ copy provider credentials, cookies, tokens, proxy URLs, or API keys into logs or
 docs. Staged provider waves are:
 
 1. Enable `cryptopanic` when credentials exist, as aggregator/specialist media.
-2. Add official regulator, exchange, protocol, and issuer RSS/manual API feeds.
-3. Add OpenBB/macro/equity adapters only behind explicit ownership boundaries.
-4. Add social/community/developer context sources into `news_context_items`.
+2. Enable `opennews` when `news_intel.opennews.api_token` exists and an
+   `opennews://subscribe` source is intentionally enabled.
+3. Add official regulator, exchange, protocol, and issuer RSS/manual API feeds.
+4. Add OpenBB/macro/equity adapters only behind explicit ownership boundaries.
+5. Add social/community/developer context sources into `news_context_items`.
 
 ## Narrative Intel Hard-Cut Ownership
 

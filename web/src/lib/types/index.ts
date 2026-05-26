@@ -58,7 +58,6 @@ export type {
   MacroPanel,
   MacroScenario,
   MacroScorecard,
-  MacroSectionBoard,
   MacroSemanticRecord,
   MacroSeriesData,
   MacroSeriesPayload,

@@ -73,4 +73,3 @@ class MentionSemanticsBatchResult(BaseModel):
     failures: list[dict[str, Any]] = Field(default_factory=list)
     raw_response: dict[str, Any] = Field(default_factory=dict)
     agent_run_audit: dict[str, Any] = Field(default_factory=dict)
-

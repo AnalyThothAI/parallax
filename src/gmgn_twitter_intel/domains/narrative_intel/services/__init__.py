@@ -1,2 +1,1 @@
 """Narrative intelligence domain services."""
-

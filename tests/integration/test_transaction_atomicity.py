@@ -119,9 +119,10 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
         setup_conn.commit()
 
         bundle = DBPoolBundle(api_pool=None, worker_pool=pool, wake_pool=None)
-        with pytest.raises(RuntimeError, match="fail_after_ticks_for_test"), bundle.worker_transaction(
-            "market_tick_atomicity"
-        ) as repos:
+        with (
+            pytest.raises(RuntimeError, match="fail_after_ticks_for_test"),
+            bundle.worker_transaction("market_tick_atomicity") as repos,
+        ):
             dirty_recorder = DirtyTargetRecorder(repos.market_tick_current_dirty_targets)
             service = MarketTickPersistenceService(
                 SimpleNamespace(

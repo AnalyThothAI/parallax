@@ -41,7 +41,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 
 ### Backend Storage And Types
 
-- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0103_equity_event_evidence_hard_cut.py`
+- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py`
 - Modify `src/gmgn_twitter_intel/domains/equity_event_intel/types.py`
 - Modify `src/gmgn_twitter_intel/domains/equity_event_intel/providers.py`
 - Modify `src/gmgn_twitter_intel/domains/equity_event_intel/repositories/equity_event_repository.py`
@@ -170,7 +170,7 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 
 
   def test_equity_evidence_table_and_status_columns_exist_in_migration() -> None:
-      migration = SRC / "platform/db/alembic/versions/20260526_0103_equity_event_evidence_hard_cut.py"
+      migration = SRC / "platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py"
       text = migration.read_text()
       assert "CREATE TABLE IF NOT EXISTS equity_event_evidence_artifacts" in text
       assert "evidence_status" in text
@@ -298,13 +298,13 @@ The first useful backend milestone is: a SEC filing metadata row creates an even
 ## Task 2: Add Evidence And Readiness Schema
 
 **Files:**
-- Add: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0103_equity_event_evidence_hard_cut.py`
+- Add: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py`
 - Modify: `tests/integration/test_postgres_schema_runtime.py`
 - Modify: `tests/architecture/test_worker_runtime_contracts.py`
 
 - [ ] **Step 2.1: Create the migration**
 
-  Add `20260526_0103_equity_event_evidence_hard_cut.py` with `down_revision = "20260526_0102"`. The upgrade must:
+  Add `20260526_0104_equity_event_evidence_hard_cut.py` with `down_revision = "20260526_0103"`. The upgrade must:
 
   - Create `equity_event_evidence_artifacts`.
   - Create `equity_event_brief_states`.

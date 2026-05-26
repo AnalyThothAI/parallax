@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -379,12 +379,15 @@ class NewsItemBriefWorker(WorkerBase):
 
     def _claim_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
-            return repos.news_projection_dirty_targets.claim_due(
-                limit=self._batch_size(),
-                lease_ms=self._lease_ms(),
-                now_ms=now_ms,
-                lease_owner=self.name,
-                projection_name="brief_input",
+            return cast(
+                list[dict[str, Any]],
+                repos.news_projection_dirty_targets.claim_due(
+                    limit=self._batch_size(),
+                    lease_ms=self._lease_ms(),
+                    now_ms=now_ms,
+                    lease_owner=self.name,
+                    projection_name="brief_input",
+                ),
             )
 
     def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -392,7 +395,7 @@ class NewsItemBriefWorker(WorkerBase):
         if not news_item_ids:
             return []
         with self._repository_session() as repos:
-            return repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids)
+            return cast(list[dict[str, Any]], repos.news.load_items_for_brief_targets(news_item_ids=news_item_ids))
 
     def _complete_claimed_target(
         self,

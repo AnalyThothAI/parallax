@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from threading import Lock
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -165,10 +166,13 @@ class CexOiRadarBoardWorker(WorkerBase):
                 )
             raise
 
-    def _repository_session(self):
-        return self.db.worker_session(
-            self.name,
-            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+    def _repository_session(self) -> AbstractContextManager[Any]:
+        return cast(
+            AbstractContextManager[Any],
+            self.db.worker_session(
+                self.name,
+                statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+            ),
         )
 
     def _batch_size(self) -> int:

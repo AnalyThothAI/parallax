@@ -147,7 +147,7 @@ warn_return_any = false
 disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
 
 [[tool.mypy.overrides]]
-module = ["alembic.*", "loguru.*", "psycopg.*", "apprise.*", "curl_cffi.*", "websockets.*", "openai_agents.*", "solders.*", "eth_hash.*", "eth_utils.*", "testcontainers.*", "yaml"]
+module = ["alembic.*", "loguru.*", "psycopg.*", "apprise.*", "curl_cffi.*", "websockets.*", "openai_agents.*", "solders.*", "eth_hash.*", "eth_utils.*", "testcontainers.*", "yaml", "feedparser", "cryptopanic_cli.*", "coinglass_cli.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

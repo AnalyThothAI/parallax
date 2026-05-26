@@ -29,7 +29,7 @@ NARRATIVE_EPOCH_POLICY = SRC / "domains" / "narrative_intel" / "services" / "nar
 API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION = (
-    SRC / "platform/db/alembic/versions/20260526_0103_equity_event_evidence_hard_cut.py"
+    SRC / "platform/db/alembic/versions/20260526_0104_equity_event_evidence_hard_cut.py"
 )
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}

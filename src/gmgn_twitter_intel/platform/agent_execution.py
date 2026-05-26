@@ -275,17 +275,11 @@ ReleaseCallback = Callable[[], None | Awaitable[None]]
 
 
 def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
-    return (
-        lane_policy.provider_family is not None
-        or lane_policy.client_validation_retries is not None
-    )
+    return lane_policy.provider_family is not None or lane_policy.client_validation_retries is not None
 
 
 def _defaults_have_capability_override(defaults: AgentRuntimeDefaultsPolicy) -> bool:
-    return (
-        defaults.provider_family is not None
-        or defaults.client_validation_retries is not None
-    )
+    return defaults.provider_family is not None or defaults.client_validation_retries is not None
 
 
 def _capability_profile_from_parts(

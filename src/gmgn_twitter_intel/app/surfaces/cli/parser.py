@@ -194,6 +194,23 @@ def build_parser() -> argparse.ArgumentParser:
     drop_expired_postgres_partitions.add_argument("--execute", action="store_true", required=True)
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
+    queue_inspect = ops_subcommands.add_parser("queue-inspect", help="inspect worker queue terminal evidence")
+    queue_inspect.add_argument("--worker", default="")
+    queue_inspect.add_argument("--source-table", default="")
+    queue_inspect.add_argument("--status", choices=("terminal", "active"), default="terminal")
+    queue_inspect.add_argument("--reason-bucket", default="")
+    queue_inspect.add_argument("--limit", type=int, default=50)
+    queue_resolve = ops_subcommands.add_parser("queue-resolve", help="resolve worker queue terminal evidence")
+    queue_resolve.add_argument("--terminal-id", required=True)
+    queue_resolve.add_argument("--action", choices=("retry", "quarantine", "archive"), required=True)
+    queue_resolve.add_argument("--reason", required=True)
+    queue_resolve.add_argument("--execute", action="store_true")
+    reconcile_event_anchor = ops_subcommands.add_parser(
+        "reconcile-event-anchor-jobs",
+        help="one-shot reconcile of historical ready event-anchor backfill jobs",
+    )
+    reconcile_event_anchor.add_argument("--limit", type=int, default=1000)
+    reconcile_event_anchor.add_argument("--execute", action="store_true")
     validate_projections = ops_subcommands.add_parser(
         "validate-projections",
         help="validate projection read models against PostgreSQL facts",
@@ -281,6 +298,13 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     rebuild_token_radar.add_argument("--limit", type=int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
+    rebuild_token_radar_rank_inputs = ops_subcommands.add_parser(
+        "rebuild-token-radar-rank-inputs",
+        help="rewrite Token Radar target features through the rank-input owner path",
+    )
+    rebuild_token_radar_rank_inputs.add_argument("--execute", action="store_true", required=True)
+    rebuild_token_radar_rank_inputs.add_argument("--reason", required=True)
+    rebuild_token_radar_rank_inputs.add_argument("--limit", type=int, default=5000)
     rebuild_narrative_intel = ops_subcommands.add_parser(
         "rebuild-narrative-intel",
         help="rebuild and drain Narrative Intelligence read models",

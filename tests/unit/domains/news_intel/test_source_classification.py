@@ -17,6 +17,7 @@ def test_source_classification_literals_match_supported_taxonomy() -> None:
         "atom",
         "json_feed",
         "cryptopanic",
+        "opennews",
         "openbb",
         "telegram_public",
         "twitter_profile",

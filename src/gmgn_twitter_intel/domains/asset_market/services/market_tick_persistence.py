@@ -37,9 +37,9 @@ class MarketTickPersistenceService:
         tick_by_id = {tick.tick_id: tick for tick in materialized}
         inserted_ids = [str(tick_id) for tick_id in self.repos.market_ticks.insert_ticks_returning_ids(materialized)]
 
-        changed_targets = list(
+        changed_targets: list[tuple[str, str]] = list(
             dict.fromkeys(
-                (tick.target_type, tick.target_id)
+                (str(tick.target_type), str(tick.target_id))
                 for inserted_id in inserted_ids
                 if (tick := tick_by_id.get(inserted_id)) is not None
             )

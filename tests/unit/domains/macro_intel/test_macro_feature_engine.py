@@ -121,7 +121,7 @@ def test_feature_engine_marks_degraded_latest_data_quality_as_gap() -> None:
     } in dgs10["data_gaps"]
 
 
-def test_repository_observations_for_concepts_queries_deduped_bounded_history() -> None:
+def test_repository_observations_for_concepts_reads_projected_bounded_history() -> None:
     rows = [
         {
             "concept_key": "rates:dgs10",
@@ -143,14 +143,16 @@ def test_repository_observations_for_concepts_queries_deduped_bounded_history() 
 
     assert result == rows
     query, params = conn.executions[0]
+    assert "FROM macro_observation_series_rows" in query
+    assert "projection_version = %s" in query
     assert "concept_key = ANY(%s)" in query
     assert "observed_at >= CURRENT_DATE - %s::int" in query
-    assert "PARTITION BY concept_key, observed_at" in query
-    assert "ORDER BY source_priority DESC, ingested_at_ms DESC" in query
-    assert "PARTITION BY concept_key" in query
-    assert "ORDER BY concept_key ASC, observed_at DESC, source_priority DESC, ingested_at_ms DESC" in query
+    assert "series_rank <= %s" in query
+    assert "FROM macro_observations" not in query
+    assert "row_number() OVER" not in query
+    assert "ORDER BY concept_key ASC, observed_at DESC" in query
     assert "series_key = ANY(%s)" not in query
-    assert params == (["rates:dgs10", "liquidity:sofr"], 365, 252)
+    assert params == ("macro_regime_v4", ["rates:dgs10", "liquidity:sofr"], 365, 252)
 
 
 def test_repository_observations_for_concepts_bounds_positive_integer_inputs() -> None:
@@ -159,7 +161,7 @@ def test_repository_observations_for_concepts_bounds_positive_integer_inputs() -
 
     assert repo.observations_for_concepts(concept_keys=("rates:dgs10",), lookback_days=0, limit_per_series=0) == []
 
-    assert conn.executions[0][1] == (["rates:dgs10"], 1, 1)
+    assert conn.executions[0][1] == ("macro_regime_v4", ["rates:dgs10"], 1, 1)
 
 
 def test_repository_latest_snapshot_filters_current_projection_version_by_default() -> None:

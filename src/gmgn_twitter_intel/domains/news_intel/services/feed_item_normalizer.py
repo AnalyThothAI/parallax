@@ -4,7 +4,8 @@ import calendar
 import json
 import time
 from collections.abc import Mapping
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.news_intel.services.text_normalization import canonicalize_url, clean_news_text
 from gmgn_twitter_intel.domains.news_intel.types import NormalizedNewsItem
@@ -61,6 +62,10 @@ def _content_value(entry: Mapping[str, Any]) -> Any:
 
 
 def _entry_time_ms(entry: Mapping[str, Any], *, fetched_at_ms: int) -> int:
+    for key in ("published_at_ms", "published_ms", "ts"):
+        value = _epoch_ms(entry.get(key))
+        if value is not None:
+            return value
     for key in ("published_parsed", "updated_parsed"):
         parsed = entry.get(key)
         if isinstance(parsed, time.struct_time):
@@ -76,4 +81,35 @@ def _language(entry: Mapping[str, Any]) -> str:
 def _json_safe_payload(entry: Mapping[str, Any], *, source_domain: str) -> dict[str, Any]:
     payload = dict(entry)
     payload["source_domain"] = str(source_domain)
-    return json.loads(json.dumps(payload, default=str, ensure_ascii=False, sort_keys=True))
+    return cast(dict[str, Any], json.loads(json.dumps(payload, default=str, ensure_ascii=False, sort_keys=True)))
+
+
+def _epoch_ms(value: object) -> int | None:
+    if not isinstance(value, str | bytes | bytearray | int | float):
+        return _iso_epoch_ms(value)
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return _iso_epoch_ms(value)
+    if numeric <= 0:
+        return None
+    if numeric < 10_000_000_000:
+        numeric *= 1000
+    return int(numeric)
+
+
+def _iso_epoch_ms(value: object) -> int | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return int(parsed.timestamp() * 1000)

@@ -15,6 +15,8 @@ import {
   compareMacroTableSortValues,
   type MacroTableRowModel,
 } from "../../model/macroTableColumns";
+
+import { MacroTableFrame } from "./MacroTableFrame";
 import "./macroTables.css";
 
 export function MacroDataTable({
@@ -60,7 +62,7 @@ export function MacroDataTable({
   }
 
   return (
-    <div className="macro-data-table-wrap">
+    <MacroTableFrame caption={caption} minWidth={420} stickyFirstColumn>
       <table aria-label={caption} className="macro-data-table">
         <caption>{caption}</caption>
         <thead>
@@ -97,7 +99,7 @@ export function MacroDataTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </MacroTableFrame>
   );
 }
 

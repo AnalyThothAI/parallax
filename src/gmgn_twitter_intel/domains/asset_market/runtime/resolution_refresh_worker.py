@@ -58,6 +58,7 @@ class ResolutionRefreshWorker(WorkerBase):
         configured_chain_ids = chain_ids if chain_ids else getattr(settings, "chain_ids", ())
         self.chain_ids = tuple(str(item).strip() for item in configured_chain_ids if str(item).strip())
         self.wake_bus = wake_bus
+        self.max_attempts = max(1, int(getattr(settings, "max_attempts", 3) or 3))
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -149,13 +150,24 @@ class ResolutionRefreshWorker(WorkerBase):
                         now_ms=now_ms,
                         commit=False,
                     )
-                    repos.discovery.reschedule_lookup_claims(
-                        [lookup],
-                        due_at_ms=retry_due_at_ms,
-                        now_ms=now_ms,
-                        last_error=str(exc),
-                        commit=False,
-                    )
+                    if _claim_retry_budget_exhausted(lookup, max_attempts=self.max_attempts):
+                        terminal = repos.discovery.terminalize_lookup_claims(
+                            [lookup],
+                            worker_name=self.name,
+                            final_status="error",
+                            final_reason="provider_error_retry_budget_exhausted",
+                            now_ms=now_ms,
+                            commit=False,
+                        )
+                        result["lookups_terminalized"] += int(terminal.get("terminalized") or 0)
+                    else:
+                        repos.discovery.reschedule_lookup_claims(
+                            [lookup],
+                            due_at_ms=retry_due_at_ms,
+                            now_ms=now_ms,
+                            last_error=str(exc),
+                            commit=False,
+                        )
                     repos.conn.commit()
                 result["lookups_failed"] += 1
                 result["provider_errors"] += 1
@@ -185,6 +197,8 @@ class ResolutionRefreshWorker(WorkerBase):
                 resolved_lookup_keys=resolved_lookup_keys,
                 due_by_lookup_key=queue_due_by_lookup_key,
                 now_ms=now_ms,
+                max_attempts=self.max_attempts,
+                result=result,
             )
         with self.db.worker_session(self.name) as repos:
             result["discovery_result_counts"] = repos.discovery.counts()
@@ -200,6 +214,7 @@ def run_resolution_refresh_once(
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
+    max_attempts: int = 3,
     wake_bus: Any | None = None,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
@@ -277,13 +292,24 @@ def run_resolution_refresh_once(
                 now_ms=now_ms,
                 commit=False,
             )
-            repos.discovery.reschedule_lookup_claims(
-                [lookup],
-                due_at_ms=retry_due_at_ms,
-                now_ms=now_ms,
-                last_error=str(exc),
-                commit=False,
-            )
+            if _claim_retry_budget_exhausted(lookup, max_attempts=max_attempts):
+                terminal = repos.discovery.terminalize_lookup_claims(
+                    [lookup],
+                    worker_name="resolution_refresh",
+                    final_status="error",
+                    final_reason="provider_error_retry_budget_exhausted",
+                    now_ms=now_ms,
+                    commit=False,
+                )
+                result["lookups_terminalized"] += int(terminal.get("terminalized") or 0)
+            else:
+                repos.discovery.reschedule_lookup_claims(
+                    [lookup],
+                    due_at_ms=retry_due_at_ms,
+                    now_ms=now_ms,
+                    last_error=str(exc),
+                    commit=False,
+                )
             repos.conn.commit()
             result["lookups_failed"] += 1
             result["provider_errors"] += 1
@@ -312,6 +338,9 @@ def run_resolution_refresh_once(
             resolved_lookup_keys=resolved_lookup_keys,
             due_by_lookup_key=queue_due_by_lookup_key,
             now_ms=now_ms,
+            worker_name="resolution_refresh",
+            max_attempts=max_attempts,
+            result=result,
         )
     result["discovery_result_counts"] = repos.discovery.counts()
     return result
@@ -622,6 +651,7 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "lookups_selected": 0,
         "lookups_done": 0,
         "lookups_failed": 0,
+        "lookups_terminalized": 0,
         "provider_errors": 0,
         "search_requests": 0,
         "search_hits": 0,
@@ -646,6 +676,8 @@ def _complete_lookup_claims(
     resolved_lookup_keys: set[str],
     due_by_lookup_key: dict[str, int],
     now_ms: int,
+    max_attempts: int,
+    result: dict[str, Any],
 ) -> None:
     with db.worker_session(worker_name) as repos:
         _finish_lookup_claims(
@@ -654,6 +686,9 @@ def _complete_lookup_claims(
             resolved_lookup_keys=resolved_lookup_keys,
             due_by_lookup_key=due_by_lookup_key,
             now_ms=now_ms,
+            worker_name=worker_name,
+            max_attempts=max_attempts,
+            result=result,
         )
 
 
@@ -664,6 +699,9 @@ def _finish_lookup_claims(
     resolved_lookup_keys: set[str],
     due_by_lookup_key: dict[str, int],
     now_ms: int,
+    worker_name: str,
+    max_attempts: int,
+    result: dict[str, Any],
 ) -> None:
     done = [claim for claim in claims if str(claim.get("lookup_key") or "") in resolved_lookup_keys]
     if done:
@@ -672,6 +710,17 @@ def _finish_lookup_claims(
         lookup_key = str(claim.get("lookup_key") or "")
         if lookup_key in resolved_lookup_keys:
             continue
+        if _claim_retry_budget_exhausted(claim, max_attempts=max_attempts):
+            terminal = repos.discovery.terminalize_lookup_claims(
+                [claim],
+                worker_name=worker_name,
+                final_status="not_found",
+                final_reason="not_found_retry_budget_exhausted",
+                now_ms=now_ms,
+                commit=False,
+            )
+            result["lookups_terminalized"] += int(terminal.get("terminalized") or 0)
+            continue
         repos.discovery.reschedule_lookup_claims(
             [claim],
             due_at_ms=due_by_lookup_key.get(lookup_key, now_ms + HOT_NOT_FOUND_RETRY_MS),
@@ -679,6 +728,10 @@ def _finish_lookup_claims(
             commit=False,
         )
     repos.conn.commit()
+
+
+def _claim_retry_budget_exhausted(claim: dict[str, Any], *, max_attempts: int) -> bool:
+    return int(claim.get("attempt_count") or 0) >= max(1, int(max_attempts))
 
 
 def _next_queue_due_at_ms(

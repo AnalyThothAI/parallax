@@ -110,10 +110,7 @@ def test_valid_ready_payload_is_publishable_and_hashes_normalized_output() -> No
 
 def test_validation_rejects_payload_when_unsupported_asset_gap_exceeds_schema_cap() -> None:
     packet = _packet()
-    existing_gaps = [
-        {"description_zh": f"已有数据缺口 {index}", "severity": "low"}
-        for index in range(12)
-    ]
+    existing_gaps = [{"description_zh": f"已有数据缺口 {index}", "severity": "low"} for index in range(12)]
     payload = _ready_payload(
         affected_assets=[
             *_ready_payload()["affected_assets"],

@@ -104,20 +104,26 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
             commit=True,
         )[0]
         assert successor_claim["attempt_count"] == old_claim["attempt_count"] + 1
-        assert repo.mark_error(
-            [successor_claim],
-            error="retry later",
-            retry_ms=30_000,
-            now_ms=NOW_MS + 6,
-            commit=True,
-        ) == 1
-        assert repo.claim_due(
-            limit=1,
-            now_ms=NOW_MS + 7,
-            lease_ms=60_000,
-            lease_owner="worker-c",
-            commit=True,
-        ) == []
+        assert (
+            repo.mark_error(
+                [successor_claim],
+                error="retry later",
+                retry_ms=30_000,
+                now_ms=NOW_MS + 6,
+                commit=True,
+            )
+            == 1
+        )
+        assert (
+            repo.claim_due(
+                limit=1,
+                now_ms=NOW_MS + 7,
+                lease_ms=60_000,
+                lease_owner="worker-c",
+                commit=True,
+            )
+            == []
+        )
         assert repo.claim_due(
             limit=1,
             now_ms=NOW_MS + 30_006,

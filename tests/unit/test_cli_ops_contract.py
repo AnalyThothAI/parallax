@@ -27,9 +27,7 @@ def test_rebuild_narrative_intel_reports_cleanup_and_final_health(monkeypatch) -
     monkeypatch.setattr(
         ops,
         "wire_providers",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            narrative_intel=SimpleNamespace(narrative_provider=object())
-        ),
+        lambda *_args, **_kwargs: SimpleNamespace(narrative_intel=SimpleNamespace(narrative_provider=object())),
     )
     monkeypatch.setattr(ops, "_cleanup_provider_roots_sync", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ops, "NarrativeAdmissionWorker", _FakeWorker)

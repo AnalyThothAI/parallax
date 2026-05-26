@@ -330,7 +330,7 @@ def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, str | 
     return records
 
 
-def _claim_params(records: list[dict[str, str | int]]) -> dict[str, list[Any]]:
+def _claim_params(records: list[dict[str, str | int]]) -> dict[str, Any]:
     return {
         "target_types": [str(record["target_type"]) for record in records],
         "target_ids": [str(record["target_id"]) for record in records],

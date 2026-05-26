@@ -93,48 +93,142 @@ class MacroIntelRepository:
         *,
         limit: int = 250,
         concept_keys: Sequence[str] | None = None,
+        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
         bounded_limit = max(1, int(limit))
         if concept_keys:
             rows = self.conn.execute(
                 """
-                WITH ranked AS (
-                  SELECT *,
-                         row_number() OVER (
-                           PARTITION BY concept_key
-                           ORDER BY observed_at DESC, source_priority DESC, ingested_at_ms DESC
-                         ) AS rn
-                  FROM macro_observations
-                  WHERE concept_key = ANY(%s)
-                )
                 SELECT *
-                FROM ranked
-                WHERE rn = 1
+                FROM macro_observation_series_rows
+                WHERE projection_version = %s
+                  AND concept_key = ANY(%s)
+                  AND series_rank = 1
                 ORDER BY concept_key ASC
                 LIMIT %s
                 """,
-                (list(concept_keys), bounded_limit),
+                (projection_version, list(concept_keys), bounded_limit),
             ).fetchall()
         else:
             rows = self.conn.execute(
                 """
-                WITH ranked AS (
-                  SELECT *,
-                         row_number() OVER (
-                           PARTITION BY concept_key
-                           ORDER BY observed_at DESC, source_priority DESC, ingested_at_ms DESC
-                         ) AS rn
-                  FROM macro_observations
-                )
                 SELECT *
-                FROM ranked
-                WHERE rn = 1
+                FROM macro_observation_series_rows
+                WHERE projection_version = %s
+                  AND series_rank = 1
                 ORDER BY concept_key ASC
                 LIMIT %s
                 """,
-                (bounded_limit,),
+                (projection_version, bounded_limit),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def refresh_observation_series_rows(
+        self,
+        *,
+        projection_version: str,
+        now_ms: int,
+        lookback_days: int,
+        limit_per_series: int,
+    ) -> int:
+        bounded_lookback_days = max(1, int(lookback_days))
+        bounded_limit_per_series = max(1, int(limit_per_series))
+        cursor = self.conn.execute(
+            """
+            WITH deleted AS (
+              DELETE FROM macro_observation_series_rows
+              WHERE projection_version = %s
+            ),
+            source_ranked AS (
+              SELECT
+                concept_key,
+                observed_at,
+                value_numeric,
+                source_name,
+                series_key,
+                source_priority,
+                unit,
+                frequency,
+                data_quality,
+                source_ts,
+                raw_payload_json,
+                ingested_at_ms,
+                row_number() OVER (
+                  PARTITION BY concept_key, observed_at
+                  ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
+                ) AS dedupe_rank
+              FROM macro_observations
+              WHERE observed_at >= CURRENT_DATE - %s::int
+                AND value_numeric IS NOT NULL
+            ),
+            series_ranked AS (
+              SELECT
+                *,
+                row_number() OVER (
+                  PARTITION BY concept_key
+                  ORDER BY observed_at DESC
+                ) AS series_rank
+              FROM source_ranked
+              WHERE dedupe_rank = 1
+            )
+            INSERT INTO macro_observation_series_rows(
+              projection_version,
+              concept_key,
+              observed_at,
+              series_rank,
+              value_numeric,
+              source_name,
+              series_key,
+              source_priority,
+              unit,
+              frequency,
+              data_quality,
+              source_ts,
+              raw_payload_json,
+              ingested_at_ms,
+              projected_at_ms
+            )
+            SELECT
+              %s AS projection_version,
+              concept_key,
+              observed_at,
+              series_rank,
+              value_numeric,
+              source_name,
+              series_key,
+              source_priority,
+              unit,
+              frequency,
+              data_quality,
+              source_ts,
+              COALESCE(raw_payload_json, '{}'::jsonb) AS raw_payload_json,
+              ingested_at_ms,
+              %s AS projected_at_ms
+            FROM series_ranked
+            WHERE series_rank <= %s
+            ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET
+              series_rank = excluded.series_rank,
+              value_numeric = excluded.value_numeric,
+              source_name = excluded.source_name,
+              series_key = excluded.series_key,
+              source_priority = excluded.source_priority,
+              unit = excluded.unit,
+              frequency = excluded.frequency,
+              data_quality = excluded.data_quality,
+              source_ts = excluded.source_ts,
+              raw_payload_json = excluded.raw_payload_json,
+              ingested_at_ms = excluded.ingested_at_ms,
+              projected_at_ms = excluded.projected_at_ms
+            """,
+            (
+                projection_version,
+                bounded_lookback_days,
+                projection_version,
+                int(now_ms),
+                bounded_limit_per_series,
+            ),
+        )
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def observations_for_concepts(
         self,
@@ -142,36 +236,21 @@ class MacroIntelRepository:
         concept_keys: Sequence[str],
         lookback_days: int,
         limit_per_series: int,
+        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
         bounded_lookback_days = max(1, int(lookback_days))
         bounded_limit_per_series = max(1, int(limit_per_series))
         rows = self.conn.execute(
             """
-            WITH deduped AS (
-              SELECT *,
-                     row_number() OVER (
-                       PARTITION BY concept_key, observed_at
-                       ORDER BY source_priority DESC, ingested_at_ms DESC
-                     ) AS dedupe_rn
-              FROM macro_observations
-              WHERE concept_key = ANY(%s)
-                AND observed_at >= CURRENT_DATE - %s::int
-            ),
-            ranked AS (
-              SELECT *,
-                     row_number() OVER (
-                       PARTITION BY concept_key
-                       ORDER BY observed_at DESC, source_priority DESC, ingested_at_ms DESC
-                     ) AS series_rn
-              FROM deduped
-              WHERE dedupe_rn = 1
-            )
             SELECT *
-            FROM ranked
-            WHERE series_rn <= %s
-            ORDER BY concept_key ASC, observed_at DESC, source_priority DESC, ingested_at_ms DESC
+            FROM macro_observation_series_rows
+            WHERE projection_version = %s
+              AND concept_key = ANY(%s)
+              AND observed_at >= CURRENT_DATE - %s::int
+              AND series_rank <= %s
+            ORDER BY concept_key ASC, observed_at DESC, series_rank ASC
             """,
-            (list(concept_keys), bounded_lookback_days, bounded_limit_per_series),
+            (projection_version, list(concept_keys), bounded_lookback_days, bounded_limit_per_series),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -179,6 +258,7 @@ class MacroIntelRepository:
         self,
         concept_keys: Sequence[str],
         lookback_days: int,
+        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
         bounded_lookback_days = max(1, int(lookback_days))
         rows = self.conn.execute(
@@ -186,26 +266,16 @@ class MacroIntelRepository:
             WITH requested AS (
               SELECT unnest(%s::text[]) AS concept_key
             ),
-            deduped AS (
-              SELECT concept_key,
-                     observed_at,
-                     source_name,
-                     row_number() OVER (
-                       PARTITION BY concept_key, observed_at
-                       ORDER BY source_priority DESC, ingested_at_ms DESC
-                     ) AS dedupe_rn
-              FROM macro_observations
-              JOIN requested USING (concept_key)
-              WHERE observed_at >= CURRENT_DATE - %s::int
-            ),
             aggregated AS (
               SELECT concept_key,
                      COUNT(*)::int AS points,
                      MAX(observed_at) AS latest_observed_at,
                      MIN(observed_at) AS oldest_observed_at,
                      array_remove(array_agg(DISTINCT source_name ORDER BY source_name), NULL) AS sources
-              FROM deduped
-              WHERE dedupe_rn = 1
+              FROM macro_observation_series_rows
+              JOIN requested USING (concept_key)
+              WHERE projection_version = %s
+                AND observed_at >= CURRENT_DATE - %s::int
               GROUP BY concept_key
             )
             SELECT requested.concept_key,
@@ -217,7 +287,7 @@ class MacroIntelRepository:
             LEFT JOIN aggregated ON aggregated.concept_key = requested.concept_key
             ORDER BY requested.concept_key ASC
             """,
-            (list(concept_keys), bounded_lookback_days),
+            (list(concept_keys), projection_version, bounded_lookback_days),
         ).fetchall()
         return [dict(row) for row in rows]
 

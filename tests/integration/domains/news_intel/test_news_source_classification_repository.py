@@ -31,9 +31,7 @@ def test_reconcile_configured_sources_persists_classification_and_disables_remov
             refresh_interval_seconds=300,
             now_ms=NOW_MS,
         )
-        conn.execute(
-            "UPDATE news_sources SET source_quality_status = 'verified' WHERE source_id = 'configured-source'"
-        )
+        conn.execute("UPDATE news_sources SET source_quality_status = 'verified' WHERE source_id = 'configured-source'")
 
         rows = repo.reconcile_configured_sources(
             [
@@ -72,8 +70,7 @@ def test_reconcile_configured_sources_persists_classification_and_disables_remov
             now_ms=NOW_MS + 10,
         )
         stored = {
-            row["source_id"]: row
-            for row in conn.execute("SELECT * FROM news_sources ORDER BY source_id").fetchall()
+            row["source_id"]: row for row in conn.execute("SELECT * FROM news_sources ORDER BY source_id").fetchall()
         }
     finally:
         conn.close()

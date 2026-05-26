@@ -23,11 +23,11 @@ from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_servi
 from gmgn_twitter_intel.domains.narrative_intel.services.evidence_ref_validator import EvidenceRefValidator
 from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
     DEFAULT_THRESHOLDS,
-    EPOCH_POLICY_VERSION,
     NarrativeEpochPolicy,
     NarrativeEpochThreshold,
 )
 from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import EPOCH_POLICY_VERSION
 from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
 
 
@@ -205,9 +205,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 )
                 counts["pending"] += 1
                 deferred += 1
-                refresh_reasons["llm_cycle_budget_exhausted"] = (
-                    refresh_reasons.get("llm_cycle_budget_exhausted", 0) + 1
-                )
+                refresh_reasons["llm_cycle_budget_exhausted"] = refresh_reasons.get("llm_cycle_budget_exhausted", 0) + 1
                 continue
             if llm_failures >= self._max_llm_failures_per_cycle():
                 await asyncio.to_thread(
@@ -578,9 +576,7 @@ def _thresholds_from_settings(settings: Any) -> dict[str, NarrativeEpochThreshol
     for window, default in DEFAULT_THRESHOLDS.items():
         ttl_seconds = _int_or_none(ttl_by_window.get(window)) if isinstance(ttl_by_window, dict) else None
         max_epoch_age_ms = (
-            ttl_seconds * 1000
-            if ttl_seconds is not None and ttl_seconds > 0
-            else default.max_epoch_age_ms
+            ttl_seconds * 1000 if ttl_seconds is not None and ttl_seconds > 0 else default.max_epoch_age_ms
         )
         thresholds[window] = NarrativeEpochThreshold(
             min_new_sources=default.min_new_sources,
@@ -637,9 +633,7 @@ def _sealed_epoch_context(
 
 def _source_event_ids(*, target: dict[str, Any], context: dict[str, Any]) -> list[str]:
     value = (
-        context.get("source_event_ids")
-        or context.get("source_event_ids_json")
-        or target.get("source_event_ids_json")
+        context.get("source_event_ids") or context.get("source_event_ids_json") or target.get("source_event_ids_json")
     )
     if isinstance(value, str):
         try:

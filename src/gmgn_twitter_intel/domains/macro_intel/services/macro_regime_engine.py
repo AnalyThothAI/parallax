@@ -978,10 +978,7 @@ def _feature_has_required_history(features: Mapping[str, Any], concept_key: str)
 
 def _has_data_quality_gaps(data_gaps: Sequence[str]) -> bool:
     quality_gap_codes = {"missing_numeric_history", "missing_latest_observed_at"}
-    return any(
-        gap_code.startswith("data_quality_") or gap_code in quality_gap_codes
-        for gap_code in data_gaps
-    )
+    return any(gap_code.startswith("data_quality_") or gap_code in quality_gap_codes for gap_code in data_gaps)
 
 
 def _structured_gaps(raw_codes: Sequence[str]) -> list[dict[str, Any]]:

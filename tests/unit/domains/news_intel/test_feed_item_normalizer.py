@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
 from gmgn_twitter_intel.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
 
@@ -44,6 +45,38 @@ def test_normalize_feed_entry_falls_back_to_updated_time_and_link_key() -> None:
     assert item is not None
     assert item.source_item_key == "https://example.com/a"
     assert item.published_at_ms == 1_779_159_600_000
+
+
+def test_normalize_feed_entry_uses_provider_epoch_milliseconds_when_present() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "id": "opennews-1",
+            "link": "https://example.com/opennews-1",
+            "title": "BTC liquidation alert",
+            "published_at_ms": 1_779_000_000_000,
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is not None
+    assert item.published_at_ms == 1_779_000_000_000
+
+
+def test_normalize_feed_entry_uses_provider_iso_timestamp_when_present() -> None:
+    item = normalize_feed_entry(
+        "6551.io",
+        {
+            "id": "opennews-1",
+            "link": "https://example.com/opennews-1",
+            "title": "OpenNews token alert",
+            "ts": "2026-05-26T19:18:48.871+08:00",
+        },
+        fetched_at_ms=1_779_000_060_000,
+    )
+
+    assert item is not None
+    assert item.published_at_ms == int(datetime.fromisoformat("2026-05-26T19:18:48.871+08:00").timestamp() * 1000)
 
 
 def test_normalize_feed_entry_rejects_entries_without_title_or_url() -> None:

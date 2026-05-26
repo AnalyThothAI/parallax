@@ -84,7 +84,7 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
             provider="binance",
             subject_type="CexToken",
             subject_id=cex_token["cex_token_id"],
-                native_market_id="PEPEUSDC",
+            native_market_id="PEPEUSDC",
             base_cex_token_id=cex_token["cex_token_id"],
             base_symbol="PEPE",
             quote_symbol="USDC",

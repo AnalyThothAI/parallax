@@ -191,10 +191,7 @@ def test_token_images_rejects_invalid_image_ids(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        responses = [
-            client.get(f"/api/token-images/{image_id}")
-            for image_id in ("a" * 63, "A" * 64, "g" * 64)
-        ]
+        responses = [client.get(f"/api/token-images/{image_id}") for image_id in ("a" * 63, "A" * 64, "g" * 64)]
 
     assert [response.status_code for response in responses] == [404, 404, 404]
 

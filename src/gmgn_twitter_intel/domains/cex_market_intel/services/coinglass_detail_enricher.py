@@ -85,8 +85,11 @@ def _change_pct_from_points(payload: dict[str, Any], *, value_keys: tuple[str, .
 
 def _sum_delta(payload: dict[str, Any], *, value_key: str) -> float | None:
     points = _data_points(payload)
-    values = [_float_or_none(point.get(value_key)) for point in points]
-    values = [value for value in values if value is not None]
+    values: list[float] = []
+    for point in points:
+        value = _float_or_none(point.get(value_key))
+        if value is not None:
+            values.append(value)
     return round(sum(values), 6) if values else None
 
 

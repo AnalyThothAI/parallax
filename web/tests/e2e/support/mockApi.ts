@@ -1,6 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import {
-  macroAssetsModuleFixture,
+  macroCorrelationFixture,
   macroModuleFixture,
   macroOverviewModuleFixture,
   macroSeriesFixture,
@@ -76,7 +76,23 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
     }
     if (path === "/api/macro") return fulfill(route, macroData());
-    if (path.startsWith("/api/macro/modules/")) return fulfill(route, macroModuleData(path));
+    if (path === "/api/macro/assets/correlation") return fulfill(route, macroCorrelationData(url));
+    if (path.startsWith("/api/macro/modules/")) {
+      const moduleId = macroModuleIdFromPath(path);
+      if (isParentMacroModule(moduleId)) {
+        recordUnhandledApiRequest(page, url);
+        return route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "unsupported_macro_module",
+            field: "module_id",
+          }),
+        });
+      }
+      return fulfill(route, macroModuleData(moduleId));
+    }
     if (path === "/api/macro/series") return fulfill(route, macroSeriesData(url));
     if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsData());
     if (path.startsWith("/api/ops/queues/")) return fulfill(route, opsQueueData(path));
@@ -1482,13 +1498,19 @@ function macroData() {
   };
 }
 
-function macroModuleData(path: string) {
-  const moduleId = decodeURIComponent(path.replace("/api/macro/modules/", "")) || "overview";
+function macroModuleIdFromPath(path: string) {
+  return decodeURIComponent(path.replace("/api/macro/modules/", "")) || "overview";
+}
+
+function isParentMacroModule(moduleId: string) {
+  return new Set(["assets", "rates", "fed", "liquidity", "economy", "volatility", "credit"]).has(
+    moduleId,
+  );
+}
+
+function macroModuleData(moduleId: string) {
   if (moduleId === "overview") {
     return macroOverviewModuleFixture();
-  }
-  if (moduleId === "assets") {
-    return macroAssetsModuleFixture();
   }
   const base = macroModuleFixture();
   return macroModuleFixture({
@@ -1508,6 +1530,15 @@ function macroSeriesData(url: URL) {
     .map((conceptKey) => conceptKey.trim())
     .filter(Boolean);
   return macroSeriesFixture(conceptKeys.length > 0 ? conceptKeys : ["asset:spx"]);
+}
+
+function macroCorrelationData(url: URL) {
+  const fixture = macroCorrelationFixture();
+  const requestedWindow = url.searchParams.get("window");
+  if (requestedWindow === "20d" || requestedWindow === "60d" || requestedWindow === "120d") {
+    return { ...fixture, window: requestedWindow };
+  }
+  return fixture;
 }
 
 function opsDiagnosticsData() {

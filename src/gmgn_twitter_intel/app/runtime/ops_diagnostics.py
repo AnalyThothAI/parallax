@@ -429,9 +429,7 @@ def _queue_summary(conn: Any, descriptor: JobQueueDescriptor, *, now_ms: int) ->
 
 
 def _queue_counts(conn: Any, descriptor: JobQueueDescriptor) -> dict[str, int]:
-    rows = conn.execute(
-        f"SELECT status, COUNT(*) AS count FROM {descriptor.table} GROUP BY status"
-    ).fetchall()
+    rows = conn.execute(f"SELECT status, COUNT(*) AS count FROM {descriptor.table} GROUP BY status").fetchall()
     counts: dict[str, int] = {}
     for row in rows:
         item = dict(row)
@@ -675,13 +673,7 @@ def _agent_execution_payload(runtime: Any, *, now_ms: int) -> dict[str, Any]:
                 "counters": lane_counters,
             }
 
-    status = (
-        "blocked"
-        if "blocked" in statuses
-        else "degraded"
-        if "degraded" in statuses
-        else "ok"
-    )
+    status = "blocked" if "blocked" in statuses else "degraded" if "degraded" in statuses else "ok"
     return {
         "status": status,
         "policy": policy,
@@ -795,11 +787,7 @@ def _overall_payload(
     if database.get("status") != "ok":
         reasons.append(str(database.get("reason") or "database_not_ready"))
     status = (
-        "blocked"
-        if counts.get("blocked")
-        else "degraded"
-        if counts.get("degraded") or counts.get("unknown")
-        else "ok"
+        "blocked" if counts.get("blocked") else "degraded" if counts.get("degraded") or counts.get("unknown") else "ok"
     )
     return {
         "status": status,
@@ -860,11 +848,7 @@ def _object_payload(value: Any) -> dict[str, Any]:
         return dict(value)
     if is_dataclass(value):
         return asdict(value)
-    return {
-        key: item
-        for key, item in vars(value).items()
-        if not key.startswith("_") and not callable(item)
-    }
+    return {key: item for key, item in vars(value).items() if not key.startswith("_") and not callable(item)}
 
 
 def _error_type(value: Any) -> str | None:

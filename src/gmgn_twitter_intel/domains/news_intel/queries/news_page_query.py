@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.news_intel.repositories.news_repository import news_page_cursor
 
@@ -51,13 +51,13 @@ class NewsPageQuery:
         return {"items": rows, "next_cursor": next_cursor}
 
     def get_item(self, *, news_item_id: str) -> dict[str, Any] | None:
-        return self.repository.get_news_item_detail(news_item_id=news_item_id)
+        return cast(dict[str, Any] | None, self.repository.get_news_item_detail(news_item_id=news_item_id))
 
     def get_story(self, *, story_id: str) -> dict[str, Any] | None:
-        return self.repository.get_news_story_detail(story_id=story_id)
+        return cast(dict[str, Any] | None, self.repository.get_news_story_detail(story_id=story_id))
 
     def get_fact(self, *, fact_candidate_id: str) -> dict[str, Any] | None:
-        return self.repository.get_news_fact_detail(fact_candidate_id=fact_candidate_id)
+        return cast(dict[str, Any] | None, self.repository.get_news_fact_detail(fact_candidate_id=fact_candidate_id))
 
     def source_status(self) -> list[dict[str, Any]]:
-        return self.repository.list_source_status()
+        return cast(list[dict[str, Any]], self.repository.list_source_status())

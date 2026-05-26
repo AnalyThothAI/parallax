@@ -12,6 +12,7 @@ operator-maintained path.
 |--------|----------|----------------|
 | `macro_observations` | Fact | `gmgn-twitter-intel macro import-bundle` / operator maintenance path. Normal runtime projection does not mutate it. |
 | `macro_import_runs` | Import audit | `gmgn-twitter-intel macro import-bundle`. It records coverage and diagnostics; it is not the product truth. |
+| `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is rebuilt from `macro_observations` and owns request-path latest/history rows. |
 | `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. |
 
 ## Flow
@@ -22,6 +23,7 @@ macrodata bundle history macro-core
   -> app/surfaces/cli/commands/macro.py import-bundle
   -> macro_observations / macro_import_runs
   -> repositories/macro_intel_repository.py
+  -> macro_observation_series_rows
   -> services/macro_feature_engine.py
   -> services/macro_regime_engine.py
   -> services/macro_scenario_engine.py
@@ -35,7 +37,18 @@ macrodata bundle history macro-core
 The macro regime engine emits component scores with evidence and data gaps.
 The hard-cut public projection is `macro_regime_v4`. Runtime code does not
 fall back to `macro_regime_v3` or `macro_module_view_v1`. The
-`macro_regime_v4` snapshot stores:
+`macro_observation_series_rows` projection absorbs observation dedupe and
+per-concept history ranking before request time. Macro API/module/series
+request paths read that table for latest observations, bounded concept series,
+and history counts; they do not run `row_number()` over `macro_observations`
+and do not fall back to raw observations when projected rows are absent.
+
+`MacroViewProjectionWorker` refreshes `macro_observation_series_rows` before it
+builds and writes the `macro_regime_v4` snapshot. The refresh writer may use
+window functions over `macro_observations` because it is the single projection
+writer; request paths may not.
+
+The `macro_regime_v4` snapshot stores:
 
 - `features_json`: concept-keyed semantic label fields, latest value,
   freshness days, history point counts, `20d` / `60d` / `252d` history windows,
@@ -67,10 +80,10 @@ surface as `data_gap` / neutral scenario context, not as a false stress signal.
 Module pages consume only `macro_module_view_v3`, whose payload is
 display-ready: semantic snapshot headers, tiles, one primary chart with
 minimum-point status, typed display tables, `module_read`, `module_evidence`,
-`transmission`, `data_health`, `section_boards`, summarized provenance rows,
+`transmission`, `data_health`, summarized provenance rows,
 and related routes. Overview/global regime fields describe the whole macro
-state; module-local `data_health` and `section_boards` describe page readiness
-and section evidence without overriding global scores. Raw provider payloads,
+state; module-local `data_health` describes page readiness without overriding
+global scores. Raw provider payloads,
 old provenance JSON blobs, and old v1/v2 module fields are not public
 compatibility surfaces.
 

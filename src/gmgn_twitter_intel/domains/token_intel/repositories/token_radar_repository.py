@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -67,6 +68,14 @@ RADAR_ROW_INSERT_VALUES_SQL = """
   %(decision)s, %(data_health_json)s, %(source_event_ids_json)s, %(payload_hash)s,
   %(listed_at_ms)s, %(created_at_ms)s
 """
+TOKEN_RADAR_RANK_INPUT_VERSION = "token-radar-rank-input-v1"
+
+
+@dataclass(frozen=True)
+class TokenRadarRankInputReadiness:
+    ready: bool
+    stale_count: int
+    stale_by_work_item: dict[tuple[str, str], int]
 
 
 class TokenRadarRepository:
@@ -540,7 +549,14 @@ class TokenRadarRepository:
               target_type, target_id, pricefeed_id, latest_event_received_at_ms,
               latest_market_observed_at_ms, attention_score, market_score, credibility_score,
               rank_score, factor_snapshot_json, source_event_ids_json, source_intent_ids_json,
-              source_resolution_ids_json, payload_hash, last_scored_at_ms, created_at_ms, updated_at_ms
+              source_resolution_ids_json, payload_hash, last_scored_at_ms, created_at_ms, updated_at_ms,
+              social_heat_raw_score, social_heat_weight, social_propagation_raw_score,
+              social_propagation_weight, semantic_catalyst_raw_score, semantic_catalyst_weight,
+              timing_risk_raw_score, timing_risk_weight, cohort_high_confidence_mentions,
+              cohort_kol_mentions, cohort_public_followup_authors, cohort_first_seen_global_24h,
+              cohort_symbol, social_heat_watched_mentions, social_heat_mentions_1h,
+              social_propagation_mentions, social_heat_latest_seen_ms, raw_composite_score,
+              recommended_decision, gates_max_decision, rank_input_version
             )
             VALUES (
               %(projection_version)s, %(window)s, %(scope)s, %(lane)s, %(target_type_key)s, %(identity_id)s,
@@ -548,7 +564,16 @@ class TokenRadarRepository:
               %(latest_market_observed_at_ms)s, %(attention_score)s, %(market_score)s, %(credibility_score)s,
               %(rank_score)s, %(factor_snapshot_json)s, %(source_event_ids_json)s, %(source_intent_ids_json)s,
               %(source_resolution_ids_json)s, %(payload_hash)s, %(last_scored_at_ms)s, %(created_at_ms)s,
-              %(updated_at_ms)s
+              %(updated_at_ms)s, %(social_heat_raw_score)s, %(social_heat_weight)s,
+              %(social_propagation_raw_score)s, %(social_propagation_weight)s,
+              %(semantic_catalyst_raw_score)s, %(semantic_catalyst_weight)s,
+              %(timing_risk_raw_score)s, %(timing_risk_weight)s,
+              %(cohort_high_confidence_mentions)s, %(cohort_kol_mentions)s,
+              %(cohort_public_followup_authors)s, %(cohort_first_seen_global_24h)s,
+              %(cohort_symbol)s, %(social_heat_watched_mentions)s, %(social_heat_mentions_1h)s,
+              %(social_propagation_mentions)s, %(social_heat_latest_seen_ms)s,
+              %(raw_composite_score)s, %(recommended_decision)s, %(gates_max_decision)s,
+              %(rank_input_version)s
             )
             ON CONFLICT(projection_version, "window", scope, lane, target_type_key, identity_id)
             DO UPDATE SET
@@ -567,7 +592,28 @@ class TokenRadarRepository:
               source_resolution_ids_json = excluded.source_resolution_ids_json,
               payload_hash = excluded.payload_hash,
               last_scored_at_ms = excluded.last_scored_at_ms,
-              updated_at_ms = excluded.updated_at_ms
+              updated_at_ms = excluded.updated_at_ms,
+              social_heat_raw_score = excluded.social_heat_raw_score,
+              social_heat_weight = excluded.social_heat_weight,
+              social_propagation_raw_score = excluded.social_propagation_raw_score,
+              social_propagation_weight = excluded.social_propagation_weight,
+              semantic_catalyst_raw_score = excluded.semantic_catalyst_raw_score,
+              semantic_catalyst_weight = excluded.semantic_catalyst_weight,
+              timing_risk_raw_score = excluded.timing_risk_raw_score,
+              timing_risk_weight = excluded.timing_risk_weight,
+              cohort_high_confidence_mentions = excluded.cohort_high_confidence_mentions,
+              cohort_kol_mentions = excluded.cohort_kol_mentions,
+              cohort_public_followup_authors = excluded.cohort_public_followup_authors,
+              cohort_first_seen_global_24h = excluded.cohort_first_seen_global_24h,
+              cohort_symbol = excluded.cohort_symbol,
+              social_heat_watched_mentions = excluded.social_heat_watched_mentions,
+              social_heat_mentions_1h = excluded.social_heat_mentions_1h,
+              social_propagation_mentions = excluded.social_propagation_mentions,
+              social_heat_latest_seen_ms = excluded.social_heat_latest_seen_ms,
+              raw_composite_score = excluded.raw_composite_score,
+              recommended_decision = excluded.recommended_decision,
+              gates_max_decision = excluded.gates_max_decision,
+              rank_input_version = excluded.rank_input_version
             WHERE token_radar_target_features.payload_hash IS DISTINCT FROM excluded.payload_hash
             """,
             payload,
@@ -646,23 +692,244 @@ class TokenRadarRepository:
         if commit:
             self.conn.commit()
 
-    def list_target_features_for_rank_set(
+    def list_rank_inputs_for_rank_set(
         self,
         *,
         projection_version: str,
         window: str,
         scope: str,
+        rank_input_version: str = TOKEN_RADAR_RANK_INPUT_VERSION,
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            SELECT *
+            SELECT
+              projection_version,
+              "window",
+              scope,
+              lane,
+              target_type_key,
+              identity_id,
+              target_type,
+              target_id,
+              pricefeed_id,
+              latest_event_received_at_ms,
+              latest_market_observed_at_ms,
+              social_heat_raw_score,
+              social_heat_weight,
+              social_propagation_raw_score,
+              social_propagation_weight,
+              semantic_catalyst_raw_score,
+              semantic_catalyst_weight,
+              timing_risk_raw_score,
+              timing_risk_weight,
+              cohort_high_confidence_mentions,
+              cohort_kol_mentions,
+              cohort_public_followup_authors,
+              cohort_first_seen_global_24h,
+              cohort_symbol,
+              social_heat_watched_mentions,
+              social_heat_mentions_1h,
+              social_propagation_mentions,
+              social_heat_latest_seen_ms,
+              raw_composite_score,
+              recommended_decision,
+              gates_max_decision,
+              rank_input_version,
+              payload_hash,
+              last_scored_at_ms
             FROM token_radar_target_features
             WHERE projection_version = %s
               AND "window" = %s
               AND scope = %s
+              AND rank_input_version = %s
             ORDER BY lane DESC, rank_score DESC, latest_event_received_at_ms DESC, identity_id ASC
             """,
-            (projection_version, window, scope),
+            (projection_version, window, scope, rank_input_version),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_rank_input_rebuild_keys(
+        self,
+        *,
+        projection_version: str,
+        windows: tuple[str, ...],
+        scopes: tuple[str, ...],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              projection_version,
+              "window",
+              scope,
+              lane,
+              target_type_key,
+              identity_id,
+              target_type,
+              target_id,
+              payload_hash,
+              rank_input_version
+            FROM token_radar_target_features
+            WHERE projection_version = %s
+              AND "window" = ANY(%s::text[])
+              AND scope = ANY(%s::text[])
+              AND rank_input_version IS DISTINCT FROM %s
+            ORDER BY "window" ASC, scope ASC, lane ASC, latest_event_received_at_ms DESC, identity_id ASC
+            LIMIT %s
+            """,
+            (
+                projection_version,
+                [str(window) for window in windows],
+                [str(scope) for scope in scopes],
+                TOKEN_RADAR_RANK_INPUT_VERSION,
+                max(1, int(limit)),
+            ),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def stale_rank_input_count(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        limit: int = 1,
+    ) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM (
+              SELECT 1
+              FROM token_radar_target_features
+              WHERE projection_version = %s
+                AND "window" = %s
+                AND scope = %s
+                AND rank_input_version IS DISTINCT FROM %s
+              LIMIT %s
+            ) stale_rank_inputs
+            """,
+            (
+                projection_version,
+                window,
+                scope,
+                TOKEN_RADAR_RANK_INPUT_VERSION,
+                max(1, int(limit)),
+            ),
+        ).fetchone()
+        return int((row or {}).get("count") or 0)
+
+    def rank_input_readiness_for_work_items(
+        self,
+        *,
+        projection_version: str,
+        work_items: Sequence[tuple[str, str]],
+    ) -> TokenRadarRankInputReadiness:
+        requested = tuple(dict.fromkeys((str(window), str(scope)) for window, scope in work_items if window and scope))
+        if not requested:
+            return TokenRadarRankInputReadiness(ready=True, stale_count=0, stale_by_work_item={})
+        rows = self.conn.execute(
+            """
+            WITH requested("window", scope) AS (
+              SELECT *
+              FROM unnest(%s::text[], %s::text[]) AS requested_values("window", scope)
+            ),
+            stale AS (
+              SELECT
+                requested."window",
+                requested.scope,
+                COUNT(*) AS stale_count
+              FROM requested
+              JOIN token_radar_target_features features
+                ON features."window" = requested."window"
+               AND features.scope = requested.scope
+              WHERE features.projection_version = %s
+                AND features.rank_input_version IS DISTINCT FROM %s
+              GROUP BY requested."window", requested.scope
+            )
+            SELECT "window", scope, stale_count
+            FROM stale
+            """,
+            (
+                [window for window, _scope in requested],
+                [scope for _window, scope in requested],
+                projection_version,
+                TOKEN_RADAR_RANK_INPUT_VERSION,
+            ),
+        ).fetchall()
+        stale_by_work_item = {(str(row["window"]), str(row["scope"])): int(row.get("stale_count") or 0) for row in rows}
+        stale_count = sum(stale_by_work_item.values())
+        return TokenRadarRankInputReadiness(
+            ready=stale_count == 0,
+            stale_count=stale_count,
+            stale_by_work_item=stale_by_work_item,
+        )
+
+    def load_target_feature_payloads_for_ranked_keys(self, keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not keys:
+            return []
+        rows = self.conn.execute(
+            """
+            WITH requested(
+              projection_version, "window", scope, lane, target_type_key, identity_id, payload_hash
+            ) AS (
+              SELECT
+                requested_values.projection_version,
+                requested_values."window",
+                requested_values.scope,
+                requested_values.lane,
+                requested_values.target_type_key,
+                requested_values.identity_id,
+                requested_values.payload_hash
+              FROM unnest(
+                %s::text[],
+                %s::text[],
+                %s::text[],
+                %s::text[],
+                %s::text[],
+                %s::text[],
+                %s::text[]
+              ) AS requested_values(
+                projection_version, "window", scope, lane, target_type_key, identity_id, payload_hash
+              )
+            )
+            SELECT
+              target_features.projection_version,
+              target_features."window",
+              target_features.scope,
+              target_features.lane,
+              target_features.target_type_key,
+              target_features.identity_id,
+              target_features.target_type,
+              target_features.target_id,
+              target_features.pricefeed_id,
+              target_features.latest_event_received_at_ms,
+              target_features.latest_market_observed_at_ms,
+              target_features.factor_snapshot_json,
+              target_features.source_event_ids_json,
+              target_features.source_intent_ids_json,
+              target_features.source_resolution_ids_json,
+              target_features.payload_hash,
+              target_features.last_scored_at_ms,
+              target_features.updated_at_ms
+            FROM token_radar_target_features target_features
+            JOIN requested
+              ON target_features.projection_version = requested.projection_version
+             AND target_features."window" = requested."window"
+             AND target_features.scope = requested.scope
+             AND target_features.lane = requested.lane
+             AND target_features.target_type_key = requested.target_type_key
+             AND target_features.identity_id = requested.identity_id
+             AND target_features.payload_hash = requested.payload_hash
+            """,
+            (
+                [str(key.get("projection_version") or "") for key in keys],
+                [str(key.get("window") or "") for key in keys],
+                [str(key.get("scope") or "") for key in keys],
+                [str(key.get("lane") or "") for key in keys],
+                [str(key.get("target_type_key") or "") for key in keys],
+                [str(key.get("identity_id") or "") for key in keys],
+                [str(key.get("payload_hash") or "") for key in keys],
+            ),
         ).fetchall()
         return [_row_from_target_feature(dict(row)) for row in rows]
 
@@ -923,6 +1190,12 @@ def _target_feature_payload(
     social_heat = families.get("social_heat") if isinstance(families, dict) else {}
     social_propagation = families.get("social_propagation") if isinstance(families, dict) else {}
     semantic_catalyst = families.get("semantic_catalyst") if isinstance(families, dict) else {}
+    timing_risk = families.get("timing_risk") if isinstance(families, dict) else {}
+    social_heat_facts = social_heat.get("facts") if isinstance(social_heat, dict) else {}
+    social_propagation_facts = social_propagation.get("facts") if isinstance(social_propagation, dict) else {}
+    composite = factor_snapshot.get("composite") if isinstance(factor_snapshot, dict) else {}
+    gates = factor_snapshot.get("gates") if isinstance(factor_snapshot, dict) else {}
+    subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
     latest_market_observed_at_ms = _latest_market_observed_at_ms(factor_snapshot)
     payload = {
         "projection_version": projection_version,
@@ -947,6 +1220,43 @@ def _target_feature_payload(
         "last_scored_at_ms": int(computed_at_ms),
         "created_at_ms": int(row.get("created_at_ms") or computed_at_ms),
         "updated_at_ms": int(computed_at_ms),
+        "social_heat_raw_score": _family_raw_score(social_heat),
+        "social_heat_weight": _family_weight(social_heat),
+        "social_propagation_raw_score": _family_raw_score(social_propagation),
+        "social_propagation_weight": _family_weight(social_propagation),
+        "semantic_catalyst_raw_score": _family_raw_score(semantic_catalyst),
+        "semantic_catalyst_weight": _family_weight(semantic_catalyst),
+        "timing_risk_raw_score": _family_raw_score(timing_risk),
+        "timing_risk_weight": _family_weight(timing_risk),
+        "cohort_high_confidence_mentions": int(row.get("_cohort_high_conf_count") or 0),
+        "cohort_kol_mentions": int(row.get("_cohort_kol_count") or 0),
+        "cohort_public_followup_authors": int(row.get("_cohort_public_followup_count") or 0),
+        "cohort_first_seen_global_24h": row.get("_cohort_first_seen_global_24h") is True
+        or row.get("first_seen_global_24h") is True,
+        "cohort_symbol": str(
+            (subject.get("symbol") if isinstance(subject, dict) else None)
+            or (row.get("target_json") or {}).get("symbol")
+            or (row.get("intent_json") or {}).get("display_symbol")
+            or ""
+        ).upper(),
+        "social_heat_watched_mentions": _int_value(
+            social_heat_facts.get("watched_mentions") if isinstance(social_heat_facts, dict) else None
+        ),
+        "social_heat_mentions_1h": _int_value(
+            social_heat_facts.get("mentions_1h") if isinstance(social_heat_facts, dict) else None
+        ),
+        "social_propagation_mentions": _int_value(
+            social_propagation_facts.get("mentions") if isinstance(social_propagation_facts, dict) else None
+        ),
+        "social_heat_latest_seen_ms": _optional_int_value(
+            social_heat_facts.get("latest_seen_ms") if isinstance(social_heat_facts, dict) else None
+        ),
+        "raw_composite_score": _composite_score(composite if isinstance(composite, dict) else {}),
+        "recommended_decision": str(
+            (composite.get("recommended_decision") if isinstance(composite, dict) else None) or "discard"
+        ),
+        "gates_max_decision": str((gates.get("max_decision") if isinstance(gates, dict) else None) or "discard"),
+        "rank_input_version": TOKEN_RADAR_RANK_INPUT_VERSION,
     }
     payload["payload_hash"] = _target_feature_hash(payload)
     for key in (
@@ -1026,6 +1336,7 @@ def _row_from_target_feature(row: dict[str, Any]) -> dict[str, Any]:
             "alpha": (data_health or {}).get("alpha") if isinstance(data_health, dict) else None,
         },
         "source_event_ids_json": source_event_ids,
+        "payload_hash": str(row.get("payload_hash") or ""),
         "created_at_ms": int(row.get("last_scored_at_ms") or row.get("updated_at_ms") or _now_ms()),
     }
 
@@ -1145,8 +1456,45 @@ def _rank_score(factor_snapshot: Any) -> float | None:
     if not isinstance(composite, dict):
         return None
     value = composite.get("rank_score")
+    return _float_or_none(value)
+
+
+def _composite_score(composite: dict[str, Any]) -> float | None:
+    value = composite.get("rank_score")
+    if value is None:
+        value = composite.get("raw_alpha_score")
+    return _float_or_none(value)
+
+
+def _family_raw_score(family: Any) -> float | None:
+    if not isinstance(family, dict):
+        return None
+    raw_score = _float_or_none(family.get("raw_score"))
+    if raw_score is not None:
+        return raw_score
+    return _float_or_none(family.get("score"))
+
+
+def _family_weight(family: Any) -> float:
+    if not isinstance(family, dict):
+        return 0.0
+    return _float_or_none(family.get("weight")) or 0.0
+
+
+def _float_or_none(value: Any) -> float | None:
     try:
         return float(value) if value is not None else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _int_value(value: Any) -> int:
+    return _optional_int_value(value) or 0
+
+
+def _optional_int_value(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
     except (TypeError, ValueError, OverflowError):
         return None
 

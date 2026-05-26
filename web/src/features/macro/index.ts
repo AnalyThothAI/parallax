@@ -1,4 +1,3 @@
-export { MacroAssetCorrelationPage } from "./MacroAssetCorrelationPage";
 export { MacroWorkbenchRoute } from "./MacroWorkbenchRoute";
 export { useMacroAssetCorrelationQuery } from "./api/useMacroAssetCorrelationQuery";
 export { useMacroModuleQuery } from "./api/useMacroModuleQuery";
@@ -15,22 +14,26 @@ export {
   formatMacroTableValue,
   sortMacroTableRows,
 } from "./model/macroTableColumns";
+export {
+  assetLabel,
+  assetTitleByKey,
+  correlationGapLabel,
+  correlationTone,
+  matrixCorrelationLabel,
+  signedCorrelationLabel,
+  sourceLabel,
+  strongestCorrelationPairs,
+} from "./model/macroCorrelationModel";
 export { MACRO_NAVIGATION_TREE } from "./model/macroNavigationTree";
 export { parseMacroRouteTail } from "./model/macroRoutes";
 export { MacroHeatmap } from "./ui/charts/MacroHeatmap";
 export { MacroNormalizedReturnChart } from "./ui/charts/MacroNormalizedReturnChart";
 export { MacroTimeSeriesChart } from "./ui/charts/MacroTimeSeriesChart";
 export { MacroYieldCurveChart } from "./ui/charts/MacroYieldCurveChart";
-export { MacroAssetClassPage } from "./ui/pages/MacroAssetClassPage";
-export { MacroAssetsLandingPage } from "./ui/pages/MacroAssetsLandingPage";
-export { MacroCreditPage } from "./ui/pages/MacroCreditPage";
-export { MacroCryptoDerivativesPage } from "./ui/pages/MacroCryptoDerivativesPage";
-export { MacroFedPage } from "./ui/pages/MacroFedPage";
-export { MacroLiquidityPage } from "./ui/pages/MacroLiquidityPage";
-export { MacroOverviewPage } from "./ui/pages/MacroOverviewPage";
-export { MacroRatesPage } from "./ui/pages/MacroRatesPage";
-export { MacroVolatilityPage } from "./ui/pages/MacroVolatilityPage";
-export { MacroCorrelationMatrix } from "./ui/tables/MacroCorrelationMatrix";
+export { MacroLeafModulePage } from "./ui/pages/MacroLeafModulePage";
+export { MacroMatrixPage } from "./ui/pages/MacroMatrixPage";
+export { MacroModulePageRenderer } from "./ui/pages/MacroModulePageRenderer";
+export { MacroOverviewModulePage } from "./ui/pages/MacroOverviewModulePage";
 export { MacroDataTable } from "./ui/tables/MacroDataTable";
 export { MacroSourceTable } from "./ui/tables/MacroSourceTable";
 export type {

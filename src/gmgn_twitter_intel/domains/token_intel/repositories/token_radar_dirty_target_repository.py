@@ -959,7 +959,7 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]
     return records
 
 
-def _key_params(records: list[dict[str, str | int]]) -> dict[str, list[Any]]:
+def _key_params(records: list[dict[str, str | int]]) -> dict[str, Any]:
     return {
         "target_type_keys": [str(record["target_type_key"]) for record in records],
         "identity_ids": [str(record["identity_id"]) for record in records],
@@ -976,8 +976,8 @@ def _market_target_records(rows: Iterable[Mapping[str, Any] | tuple[str, str]]) 
         if isinstance(row, tuple):
             target_type, target_id = row
         else:
-            target_type = row.get("target_type")
-            target_id = row.get("target_id")
+            target_type = str(row.get("target_type") or "")
+            target_id = str(row.get("target_id") or "")
         key = (str(target_type or ""), str(target_id or ""))
         if not key[0] or not key[1] or key in seen:
             continue

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_manifest import worker_class_by_name
+from gmgn_twitter_intel.app.runtime.queue_health import queue_health_adapter_specs
+from gmgn_twitter_intel.app.runtime.worker_manifest import worker_class_by_name, worker_queue_health_tables
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
@@ -151,9 +152,7 @@ VALID_WORKER_CLASSIFICATIONS = frozenset(
     }
 )
 
-BROAD_DISCOVERY_CALLS = frozenset(
-    call for contract in RUNTIME_WORKER_CONTRACTS for call in contract.banned_calls
-)
+BROAD_DISCOVERY_CALLS = frozenset(call for contract in RUNTIME_WORKER_CONTRACTS for call in contract.banned_calls)
 
 CONTROL_PLANE_TABLES = frozenset(
     {
@@ -196,6 +195,13 @@ REPAIR_HANDLER_PATHS = {
     SRC / "app/runtime/runtime_worker_dirty_targets.py",
 }
 REPAIR_HANDLER_COMMAND = "enqueue-runtime-worker-dirty-targets"
+TOKEN_RADAR_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_radar_repository.py"
+TOKEN_RADAR_PROJECTION_SERVICE_PATH = SRC / "domains/token_intel/services/token_radar_projection.py"
+TOKEN_RADAR_PROJECTION_WORKER_PATH = SRC / "domains/token_intel/runtime/token_radar_projection_worker.py"
+EVENT_ANCHOR_WORKER_PATH = SRC / "domains/asset_market/runtime/event_anchor_backfill_worker.py"
+EVENT_ANCHOR_JOB_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/event_anchor_backfill_job_repository.py"
+MACRO_REPOSITORY_PATH = SRC / "domains/macro_intel/repositories/macro_intel_repository.py"
+MACRO_ROUTE_PATH = SRC / "app/surfaces/api/routes_macro.py"
 
 
 @pytest.mark.architecture
@@ -212,6 +218,88 @@ def test_every_registered_worker_has_runtime_constraint_classification() -> None
     assert missing == []
     assert extra == []
     assert invalid == {}
+
+
+@pytest.mark.architecture
+def test_queue_health_adapter_registry_covers_manifest_queue_tables_exactly_once() -> None:
+    manifest_table_users: dict[str, set[str]] = {}
+    for worker_name, tables in worker_queue_health_tables().items():
+        for table in tables:
+            manifest_table_users.setdefault(table, set()).add(worker_name)
+    specs = queue_health_adapter_specs()
+
+    missing_specs = sorted(set(manifest_table_users) - set(specs))
+    unused_specs = sorted(set(specs) - set(manifest_table_users))
+    duplicate_specs = sorted(table for table, spec in specs.items() if spec.table != table)
+
+    assert missing_specs == []
+    assert unused_specs == []
+    assert duplicate_specs == []
+    assert {spec.kind for spec in specs.values()} <= {"status_queue", "dirty_target", "terminal_projection"}
+
+
+@pytest.mark.architecture
+def test_token_radar_rank_path_has_no_old_wide_feature_loader() -> None:
+    token_intel_text = "\n".join(path.read_text() for path in (SRC / "domains/token_intel").rglob("*.py"))
+    repository_text = TOKEN_RADAR_REPOSITORY_PATH.read_text()
+
+    assert "list_target_features_for_rank_set" not in token_intel_text
+    assert re.search(r"SELECT\s+\*\s+FROM\s+token_radar_target_features", token_intel_text, re.IGNORECASE) is None
+    for forbidden in (
+        "wide_rank_path",
+        "legacy_rank_path",
+        "rank_set_fallback",
+        "use_wide_rank",
+        "TOKEN_RADAR_WIDE_RANK",
+    ):
+        assert forbidden not in repository_text
+
+
+@pytest.mark.architecture
+def test_token_radar_runtime_has_no_single_target_source_query() -> None:
+    runtime_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (TOKEN_RADAR_PROJECTION_SERVICE_PATH, TOKEN_RADAR_PROJECTION_WORKER_PATH)
+    )
+
+    for forbidden in (
+        "TokenRadarTargetFeatureQuery",
+        "WITH source_intents AS MATERIALIZED",
+        "source_rows(",
+    ):
+        assert forbidden not in runtime_text
+
+
+@pytest.mark.architecture
+def test_macro_request_path_has_no_observation_dedupe_window() -> None:
+    route_text = MACRO_ROUTE_PATH.read_text(encoding="utf-8")
+    repository_tree = _parse(MACRO_REPOSITORY_PATH)
+    request_method_text = "\n".join(
+        _function_source(MACRO_REPOSITORY_PATH, node)
+        for node in ast.walk(repository_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name in {"latest_observations", "observations_for_concepts", "concept_history_counts"}
+    )
+
+    for forbidden in (
+        "WITH deduped AS",
+        "row_number() OVER",
+        "PARTITION BY concept_key, observed_at",
+        "FROM macro_observations",
+    ):
+        assert forbidden not in route_text
+        assert forbidden not in request_method_text
+
+
+@pytest.mark.architecture
+def test_event_anchor_runtime_has_no_ready_fact_reconciliation_scan() -> None:
+    worker_text = EVENT_ANCHOR_WORKER_PATH.read_text(encoding="utf-8")
+    repository_text = EVENT_ANCHOR_JOB_REPOSITORY_PATH.read_text(encoding="utf-8")
+
+    assert "mark_ready_jobs_done" not in worker_text
+    assert "ready_jobs_reconciled" not in worker_text
+    assert "mark_ready_jobs_done" not in repository_text
+    assert "JOIN enriched_events anchors" not in repository_text
 
 
 @pytest.mark.architecture
@@ -315,11 +403,7 @@ def test_broad_discovery_calls_are_repair_only_outside_runtime_workers() -> None
 @pytest.mark.parametrize("path", BOUNDED_SCHEDULER_COUNTER_PATHS, ids=lambda path: path.name)
 def test_bounded_scheduler_tail_workers_expose_compact_cost_counters(path: Path) -> None:
     keys = _runtime_entrypoint_dict_keys(path)
-    missing = [
-        key
-        for key in ("source_rows_scanned", "targets_loaded", "rows_written")
-        if key not in keys
-    ]
+    missing = [key for key in ("source_rows_scanned", "targets_loaded", "rows_written") if key not in keys]
 
     assert missing == [], f"{_rel(path)} is missing compact worker cost counters: {missing}"
 
@@ -378,6 +462,12 @@ def test_repair_service_broad_scans_enqueue_control_rows_only() -> None:
 
 def _parse(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _function_source(path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    end_lineno = node.end_lineno or node.lineno
+    return "\n".join(lines[node.lineno - 1 : end_lineno])
 
 
 @dataclass(frozen=True)

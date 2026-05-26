@@ -51,11 +51,17 @@ ALTER TABLE worker_queue_terminal_events
 _BACKFILL_TERMINAL_REASON_BUCKET_SQL = """
 UPDATE worker_queue_terminal_events
 SET final_reason_bucket = CASE
-  WHEN final_reason ILIKE '%522%' THEN 'provider_llm_522'
+  WHEN final_reason ILIKE '%522%' THEN 'llm_provider_522'
+  WHEN final_reason ILIKE '%retry_budget_exhausted%'
+    OR final_reason ILIKE '%failed_exhausted%'
+    OR final_reason ILIKE '%max_attempt%' THEN 'retry_budget_exhausted'
   WHEN final_reason ILIKE '%provider_no_quote%' THEN 'provider_no_quote'
+  WHEN final_reason ILIKE '%provider_unavailable%'
+    OR final_reason ILIKE '%transport%'
+    OR final_reason ILIKE '%connection%' THEN 'provider_unavailable'
   WHEN final_reason ILIKE '%provider_error%' THEN 'provider_error'
   WHEN final_reason ILIKE '%no_market_data%' THEN 'no_market_data'
-  WHEN final_reason ILIKE '%stale%' THEN 'stale_window'
+  WHEN final_reason ILIKE '%stale%' THEN 'stale_window_ttl'
   WHEN final_reason ILIKE '%timeout%' THEN 'timeout'
   WHEN final_reason ILIKE '%not_found%' THEN 'not_found'
   WHEN final_reason ILIKE '%semantic%' THEN 'semantic_unavailable'

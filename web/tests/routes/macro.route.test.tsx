@@ -70,29 +70,25 @@ describe("macro route", () => {
     });
   });
 
-  it(
-    "renders macro inside the cockpit shell and marks the sidebar item active",
-    async () => {
-      renderAppRoute("/macro");
+  it("renders macro inside the cockpit shell and marks the sidebar item active", async () => {
+    renderAppRoute("/macro");
 
-      expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
-      const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
-      const macroLink = within(navigation).getByRole("link", { name: "宏观" });
-      expect(macroLink).toHaveAttribute("data-active", "true");
-      expect(macroLink).not.toHaveAttribute("aria-current");
-      expect(within(navigation).getByRole("link", { name: "总览" })).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
-      await waitFor(() =>
-        expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
-          token: "secret",
-        }),
-      );
-    },
-    10_000,
-  );
+    expect(await screen.findByRole("heading", { name: "总览" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "宏观" })).not.toBeInTheDocument();
+    const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
+    const macroLink = within(navigation).getByRole("link", { name: "宏观" });
+    expect(macroLink).toHaveAttribute("data-active", "true");
+    expect(macroLink).not.toHaveAttribute("aria-current");
+    expect(within(navigation).getByRole("link", { name: "总览" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/overview", {
+        token: "secret",
+      }),
+    );
+  }, 10_000);
 
   it("keeps macro cold loads scoped to macro and lightweight shell data", async () => {
     renderAppRoute("/macro");
@@ -139,12 +135,27 @@ describe("macro route", () => {
     );
   });
 
+  it("redirects macro parent aliases to their default child module", async () => {
+    renderAppRoute("/macro/assets");
+
+    expect(await screen.findByRole("heading", { name: "美股风险" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "大类资产索引" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/modules/assets/equities", {
+        token: "secret",
+      }),
+    );
+    expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/assets", {
+      token: "secret",
+    });
+  });
+
   it("renders an unsupported state for unknown macro routes", async () => {
     renderAppRoute("/macro/not-real");
 
-    expect(
-      await screen.findByRole("status", { name: "不支持的宏观页面" }),
-    ).toHaveTextContent("不支持的宏观页面");
+    expect(await screen.findByRole("status", { name: "不支持的宏观页面" })).toHaveTextContent(
+      "不支持的宏观页面",
+    );
     expect(apiMock.readApi).not.toHaveBeenCalledWith("/api/macro/modules/overview", {
       token: "secret",
     });
@@ -154,6 +165,11 @@ describe("macro route", () => {
     renderAppRoute("/macro/assets/correlation");
 
     expect(await screen.findByRole("heading", { name: "资产相关性" })).toBeInTheDocument();
+    expect(screen.getByLabelText("宏观工作台")).toHaveAttribute("data-page-kind", "matrix");
+    expect(screen.getByRole("navigation", { name: "宏观面包屑" })).toHaveTextContent(
+      "宏观/大类资产/相关性",
+    );
+    expect(await screen.findByRole("table", { name: "60d 资产相关性矩阵" })).toBeInTheDocument();
     expect(await screen.findByText("SPY / QQQ")).toBeInTheDocument();
     await waitFor(() =>
       expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/assets/correlation", {

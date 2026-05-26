@@ -12,6 +12,7 @@ from gmgn_twitter_intel.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
     MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
     MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+    MACRO_VIEW_PROJECTION_VERSION,
 )
 from gmgn_twitter_intel.domains.macro_intel.services.macro_regime_engine import (
     build_macro_view_snapshot,
@@ -32,6 +33,12 @@ class MacroViewProjectionWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
+            projected_rows_written = repos.macro_intel.refresh_observation_series_rows(
+                projection_version=MACRO_VIEW_PROJECTION_VERSION,
+                now_ms=now,
+                lookback_days=self._lookback_days(),
+                limit_per_series=self._limit_per_series(),
+            )
             observations = repos.macro_intel.observations_for_concepts(
                 concept_keys=MACRO_CORE_CONCEPTS,
                 lookback_days=self._lookback_days(),
@@ -47,6 +54,7 @@ class MacroViewProjectionWorker(WorkerBase):
                 "source_rows_scanned": len(observations),
                 "targets_loaded": len(MACRO_CORE_CONCEPTS),
                 "rows_written": 1,
+                "projected_rows_written": projected_rows_written,
                 "projection_version": str(snapshot["projection_version"]),
                 "status": str(snapshot["status"]),
                 "regime": str(snapshot["regime"]),

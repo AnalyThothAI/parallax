@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,8 +42,8 @@ def build_signal_pulse_agent_cost_report(
 
 
 def summarize_signal_pulse_agent_cost_rows(
-    run_rows: list[Mapping[str, Any]],
-    step_rows: list[Mapping[str, Any]],
+    run_rows: Sequence[Mapping[str, Any]],
+    step_rows: Sequence[Mapping[str, Any]],
     *,
     now_ms: int,
     lookback_hours: int,
@@ -209,7 +209,7 @@ def _fetch_optional_rows(conn: Any, sql: str, params: tuple[int, int]) -> list[d
     return [dict(row) for row in rows]
 
 
-def _steps_by_stage_model_status(step_rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _steps_by_stage_model_status(step_rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
     for step in step_rows:
         key = (
@@ -223,7 +223,7 @@ def _steps_by_stage_model_status(step_rows: list[Mapping[str, Any]]) -> list[dic
     return sorted(grouped.values(), key=lambda row: (row["stage"], row["model"], row["status"]))
 
 
-def _tokens_by_display_status(steps: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _tokens_by_display_status(steps: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     for step in steps:
         status = _display_status(step)
@@ -233,7 +233,7 @@ def _tokens_by_display_status(steps: list[Mapping[str, Any]]) -> list[dict[str, 
     return sorted(grouped.values(), key=lambda row: row["display_status"])
 
 
-def _duplicate_fingerprints(run_rows: list[Mapping[str, Any]]) -> dict[str, int]:
+def _duplicate_fingerprints(run_rows: Sequence[Mapping[str, Any]]) -> dict[str, int]:
     groups: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
     for row in run_rows:
         if not _is_success_run(row):
@@ -272,8 +272,7 @@ def _usage_tokens(value: Any) -> int:
     if explicit:
         return explicit
     return sum(
-        _int(usage.get(key))
-        for key in ("input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens")
+        _int(usage.get(key)) for key in ("input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens")
     )
 
 
@@ -293,7 +292,7 @@ def _is_success_run(row: Mapping[str, Any]) -> bool:
     return status in {"done", "ok", "succeeded", "completed"} and outcome == "completed"
 
 
-def _count_values(rows: list[Mapping[str, Any]], key: str) -> Counter[str]:
+def _count_values(rows: Sequence[Mapping[str, Any]], key: str) -> Counter[str]:
     return Counter(str(row.get(key) or "unknown") for row in rows)
 
 

@@ -12,7 +12,9 @@ describe("Macro table primitives", () => {
   it("renders backend table rows with formatted numeric display", () => {
     render(<MacroDataTable table={tableFixture()} caption="CEX 永续看板" />);
 
+    expect(screen.getByRole("region", { name: "CEX 永续看板，可横向滚动" })).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "CEX 永续看板" });
+    expect(within(table).getByText("CEX 永续看板")).toBeInTheDocument();
     expect(within(table).getByText("12.50B")).toBeInTheDocument();
     expect(within(table).getByText("0.0100%")).toBeInTheDocument();
     expect(table).not.toHaveTextContent("asset:spx");
@@ -80,9 +82,7 @@ describe("Macro table primitives", () => {
       "表格加载中",
     );
 
-    rerender(
-      <MacroDataTable table={{ id: "rates_snapshot", rows: [] }} caption="利率快照" />,
-    );
+    rerender(<MacroDataTable table={{ id: "rates_snapshot", rows: [] }} caption="利率快照" />);
 
     expect(screen.getByRole("status", { name: "利率快照空状态" })).toHaveTextContent("暂无表格行");
   });

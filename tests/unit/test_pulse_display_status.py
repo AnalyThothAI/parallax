@@ -17,10 +17,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types import (
 def test_display_status_maps_public_decisions_only_when_publish_allowed() -> None:
     assert display_status_from_decision("trade_candidate", "complete", True) == "display_trade_candidate"
     assert display_status_from_decision("token_watch", "partial", True) == "display_token_watch"
-    assert (
-        display_status_from_decision("risk_rejected_high_info", "partial", True)
-        == "display_risk_rejected_high_info"
-    )
+    assert display_status_from_decision("risk_rejected_high_info", "partial", True) == "display_risk_rejected_high_info"
 
     assert display_status_from_decision("trade_candidate", "insufficient", True) == "hidden_insufficient_evidence"
     assert display_status_from_decision("trade_candidate", "complete", False) == "hidden_hold_publish"

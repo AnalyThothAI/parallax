@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -148,7 +148,7 @@ class PulseEvidencePacket(BaseModel):
 
     def canonical_hash_payload(self) -> dict[str, Any]:
         payload = self.model_dump(mode="json", exclude={"evidence_packet_hash", "summary_json"})
-        return _canonical_json_value(payload)
+        return cast(dict[str, Any], _canonical_json_value(payload))
 
     def compute_packet_hash(self) -> str:
         payload = json.dumps(

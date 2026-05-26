@@ -101,12 +101,8 @@ def worker_lane_statuses(workers: dict[str, dict[str, Any]]) -> dict[str, dict[s
                 hard_timed_out_workers=sum(
                     1 for status in statuses if status.get("active_run_once_hard_timed_out_at_ms") is not None
                 ),
-                oldest_active_run_once_age_ms=_max_int(
-                    status.get("active_run_once_age_ms") for status in statuses
-                ),
-                iteration_duration_p99_ms=_max_float(
-                    status.get("iteration_duration_p99_ms") for status in statuses
-                ),
+                oldest_active_run_once_age_ms=_max_int(status.get("active_run_once_age_ms") for status in statuses),
+                iteration_duration_p99_ms=_max_float(status.get("iteration_duration_p99_ms") for status in statuses),
                 queue_depth=_sum_int_or_none(status.get("queue_depth") for status in statuses),
                 queue_health=_lane_queue_health(statuses),
             )
@@ -137,32 +133,53 @@ def _sum_int_or_none(values: object) -> int | None:
 
 
 def _lane_queue_health(statuses: list[dict[str, Any]]) -> dict[str, Any]:
-    queue_healths = [
-        status.get("queue_health") for status in statuses if (status.get("queue_health") or {}).get("table_count")
-    ]
+    queue_healths: list[dict[str, Any]] = []
+    for worker_status in statuses:
+        health = worker_status.get("queue_health")
+        if isinstance(health, dict) and health.get("table_count"):
+            queue_healths.append(health)
     if not queue_healths:
         return empty_queue_health()
-    blocked_count = sum(int(health.get("blocked_count") or 0) for health in queue_healths)
-    failed_count = sum(int(health.get("failed_count") or 0) for health in queue_healths)
-    unavailable_count = sum(int(health.get("unavailable_table_count") or 0) for health in queue_healths)
-    queue_depth = sum(int(health.get("queue_depth") or 0) for health in queue_healths)
+    blocked_count = _sum_health_int(queue_healths, "blocked_count")
+    failed_count = _sum_health_int(queue_healths, "failed_count")
+    unavailable_count = _sum_health_int(queue_healths, "unavailable_table_count")
+    contract_failure_count = _sum_health_int(queue_healths, "contract_failure_count")
+    adapter_error_count = _sum_health_int(queue_healths, "adapter_error_count")
+    manifest_mismatch_count = _sum_health_int(queue_healths, "manifest_mismatch_count")
+    queue_depth = _sum_health_int(queue_healths, "queue_depth")
     status = _lane_queue_status(queue_healths)
     return {
         "status": status,
-        "reason": _lane_queue_reason(status, unavailable_count=unavailable_count, blocked_count=blocked_count),
-        "table_count": sum(int(health.get("table_count") or 0) for health in queue_healths),
+        "reason": _lane_queue_reason(
+            status,
+            unavailable_count=unavailable_count,
+            blocked_count=blocked_count,
+            adapter_error_count=adapter_error_count,
+            manifest_mismatch_count=manifest_mismatch_count,
+        ),
+        "table_count": _sum_health_int(queue_healths, "table_count"),
         "unavailable_table_count": unavailable_count,
+        "contract_failure_count": contract_failure_count,
+        "adapter_error_count": adapter_error_count,
+        "manifest_mismatch_count": manifest_mismatch_count,
         "queue_depth": queue_depth,
-        "due_count": sum(int(health.get("due_count") or 0) for health in queue_healths),
-        "running_count": sum(int(health.get("running_count") or 0) for health in queue_healths),
+        "due_count": _sum_health_int(queue_healths, "due_count"),
+        "running_count": _sum_health_int(queue_healths, "running_count"),
         "failed_count": failed_count,
         "blocked_count": blocked_count,
+        "terminal_count": _sum_health_int(queue_healths, "terminal_count"),
+        "unresolved_terminal_count": _sum_health_int(queue_healths, "unresolved_terminal_count"),
         "oldest_due_age_ms": _max_int(health.get("oldest_due_age_ms") for health in queue_healths),
-        "oldest_running_age_ms": _max_int(
-            health.get("oldest_running_age_ms") for health in queue_healths
-        ),
+        "oldest_running_age_ms": _max_int(health.get("oldest_running_age_ms") for health in queue_healths),
         "max_attempt_count": _max_int(health.get("max_attempt_count") for health in queue_healths),
     }
+
+
+def _sum_health_int(queue_healths: list[dict[str, Any]], key: str) -> int:
+    total = 0
+    for health in queue_healths:
+        total += int(health.get(key) or 0)
+    return total
 
 
 def _lane_queue_status(queue_healths: list[dict[str, Any]]) -> str:
@@ -173,8 +190,19 @@ def _lane_queue_status(queue_healths: list[dict[str, Any]]) -> str:
     return "idle"
 
 
-def _lane_queue_reason(status: str, *, unavailable_count: int, blocked_count: int) -> str:
+def _lane_queue_reason(
+    status: str,
+    *,
+    unavailable_count: int,
+    blocked_count: int,
+    adapter_error_count: int,
+    manifest_mismatch_count: int,
+) -> str:
     if status == "unavailable" and unavailable_count > 0:
+        if manifest_mismatch_count > 0:
+            return "manifest_mismatch"
+        if adapter_error_count > 0:
+            return "adapter_query_failure"
         return "queue_table_unavailable"
     if status == "blocked" and blocked_count > 0:
         return "blocked_work_present"

@@ -304,7 +304,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ordering_keys=("event_id", "target_type", "target_id", "text_fingerprint"),
         writes_read_models=("token_mention_semantics",),
         writes_control_plane=("discussion_digest_dirty_targets",),
-        idempotency_evidence=("token_mention_semantics(event_id,target_type,target_id,schema_version,text_fingerprint)",),
+        idempotency_evidence=(
+            "token_mention_semantics(event_id,target_type,target_id,schema_version,text_fingerprint)",
+        ),
         side_effect_ledgers=("token_mention_semantics", "narrative_model_runs"),
         queue_health_tables=("token_mention_semantics",),
         advisory_lock_key="2026051801",
@@ -542,8 +544,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         lane=WorkerLane.AGENT,
         kind=WorkerKind.AGENT_SIDE_EFFECT,
         worker_class=(
-            "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker."
-            "EquityEventBriefWorker"
+            "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker.EquityEventBriefWorker"
         ),
         start_priority=100,
         input_contract=("equity_event_projection_dirty_targets:brief_input",),
@@ -593,8 +594,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         lane=WorkerLane.PROJECTION,
         kind=WorkerKind.PROJECTION,
         worker_class=(
-            "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker."
-            "CexOiRadarBoardWorker"
+            "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
         ),
         start_priority=95,
         input_contract=("cex market universe", "open interest providers"),
@@ -735,10 +735,7 @@ def require_worker_manifest(name: str) -> WorkerManifest:
 
 
 def manifests_by_lane() -> dict[WorkerLane, tuple[WorkerManifest, ...]]:
-    return {
-        lane: tuple(manifest for manifest in _WORKER_MANIFESTS if manifest.lane is lane)
-        for lane in WorkerLane
-    }
+    return {lane: tuple(manifest for manifest in _WORKER_MANIFESTS if manifest.lane is lane) for lane in WorkerLane}
 
 
 def manifest_names_for_factory(factory: str) -> frozenset[str]:
@@ -777,9 +774,7 @@ def worker_queue_health_tables() -> dict[str, tuple[str, ...]]:
 
 def worker_dirty_target_tables() -> dict[str, tuple[str, ...]]:
     return {
-        manifest.name: manifest.dirty_target_tables
-        for manifest in _WORKER_MANIFESTS
-        if manifest.dirty_target_tables
+        manifest.name: manifest.dirty_target_tables for manifest in _WORKER_MANIFESTS if manifest.dirty_target_tables
     }
 
 

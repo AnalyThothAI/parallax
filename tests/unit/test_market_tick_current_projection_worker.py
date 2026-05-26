@@ -108,9 +108,7 @@ def test_worker_passes_wake_waiter_and_statement_timeout_from_settings() -> None
 
     assert result.skipped == 1
     assert result.notes == {"claimed": 0, "changed": 0, "missing": 0, "failed": 0}
-    assert db.worker_sessions == [
-        {"name": "market_tick_current_projection", "statement_timeout_seconds": 30.0}
-    ]
+    assert db.worker_sessions == [{"name": "market_tick_current_projection", "statement_timeout_seconds": 30.0}]
 
 
 def _worker(
@@ -257,9 +255,7 @@ class _FakeRadarDirtyTargets:
 
     def enqueue_market_targets(self, rows, *, reason: str, now_ms: int, commit: bool = True):
         materialized = list(rows)
-        self.market_enqueues.append(
-            {"rows": materialized, "reason": reason, "now_ms": now_ms, "commit": commit}
-        )
+        self.market_enqueues.append({"rows": materialized, "reason": reason, "now_ms": now_ms, "commit": commit})
         return len(materialized)
 
 

@@ -23,14 +23,6 @@ class MacroTableSpec:
 
 
 @dataclass(frozen=True)
-class MacroSectionBoardSpec:
-    board_id: str
-    title: str
-    route_path: str
-    concept_keys: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class MacroModuleConfig:
     module_id: str
     route_path: str
@@ -44,28 +36,23 @@ class MacroModuleConfig:
     table_specs: tuple[MacroTableSpec, ...]
     gap_codes: tuple[str, ...]
     related_routes: tuple[str, ...]
-    section_board_specs: tuple[MacroSectionBoardSpec, ...] = ()
 
 
 MACRO_MODULE_IDS = (
     "overview",
-    "assets",
     "assets/equities",
     "assets/bonds",
     "assets/commodities",
     "assets/fx",
     "assets/crypto",
     "assets/crypto-derivatives",
-    "rates",
     "rates/fed-funds",
     "rates/yield-curve",
     "rates/auctions",
     "rates/real-rates",
     "rates/expectations",
-    "fed",
     "fed/statements",
     "fed/speeches",
-    "liquidity",
     "liquidity/transmission-chain",
     "liquidity/fed-balance-sheet",
     "liquidity/operations",
@@ -73,15 +60,12 @@ MACRO_MODULE_IDS = (
     "liquidity/reserves",
     "liquidity/global-dollar",
     "liquidity/subsurface",
-    "economy",
     "economy/gdp",
     "economy/employment",
     "economy/inflation",
     "economy/consumer",
-    "volatility",
     "volatility/dashboard",
     "volatility/vix",
-    "credit",
     "credit/cds",
     "credit/stress",
 )
@@ -100,43 +84,12 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("macro_regime", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),),
         table_specs=(MacroTableSpec("panel_scorecard", ("asset:spx", "rates:dgs10", "vol:vix", "credit:hy_oas")),),
         gap_codes=(),
-        related_routes=("/macro/assets", "/macro/rates", "/macro/liquidity", "/macro/volatility", "/macro/credit"),
-    ),
-    "assets": MacroModuleConfig(
-        module_id="assets",
-        route_path="/macro/assets",
-        title="资产联动",
-        subtitle="跨资产风险偏好与加密确认",
-        question="跨资产信号是在确认 risk-on，还是开始转向防守？",
-        section="assets",
-        required_concepts=(),
-        optional_concepts=("asset:spx", "asset:spy", "asset:qqq", "asset:iwm", "asset:tlt", "crypto:btc"),
-        chart_specs=(MacroChartSpec("asset_proxy_performance", ("asset:spy", "asset:qqq", "asset:tlt")),),
-        table_specs=(MacroTableSpec("asset_proxy_snapshot", ("asset:spy", "asset:qqq", "asset:tlt")),),
-        gap_codes=(),
         related_routes=(
             "/macro/assets/equities",
-            "/macro/assets/bonds",
-            "/macro/assets/commodities",
-            "/macro/assets/fx",
-            "/macro/assets/crypto",
-        ),
-        section_board_specs=(
-            MacroSectionBoardSpec(
-                "equities", "美股", "/macro/assets/equities", ("asset:spx", "asset:spy", "asset:qqq", "asset:iwm")
-            ),
-            MacroSectionBoardSpec("bonds", "债券", "/macro/assets/bonds", ("asset:tlt", "asset:hyg", "asset:lqd")),
-            MacroSectionBoardSpec(
-                "commodities", "商品", "/macro/assets/commodities", ("commodity:wti", "asset:gld", "asset:uso")
-            ),
-            MacroSectionBoardSpec("fx", "外汇", "/macro/assets/fx", ("fx:dxy", "fx:broad_dollar")),
-            MacroSectionBoardSpec("crypto", "加密", "/macro/assets/crypto", ("crypto:btc", "crypto:eth")),
-            MacroSectionBoardSpec(
-                "crypto_derivatives",
-                "加密衍生品",
-                "/macro/assets/crypto-derivatives",
-                ("crypto:btc", "crypto:eth"),
-            ),
+            "/macro/rates/fed-funds",
+            "/macro/liquidity/transmission-chain",
+            "/macro/volatility/dashboard",
+            "/macro/credit/cds",
         ),
     ),
     "assets/equities": MacroModuleConfig(
@@ -151,7 +104,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("equity_proxy_performance", ("asset:spx", "asset:spy", "asset:qqq", "asset:iwm")),),
         table_specs=(MacroTableSpec("equity_proxy_snapshot", ("asset:spx", "asset:spy", "asset:qqq", "asset:iwm")),),
         gap_codes=("equity_breadth_missing", "equity_options_gex_missing"),
-        related_routes=("/macro/assets", "/macro/assets/bonds", "/macro/volatility"),
+        related_routes=("/macro/assets/bonds", "/macro/assets/correlation", "/macro/volatility/dashboard"),
     ),
     "assets/bonds": MacroModuleConfig(
         module_id="assets/bonds",
@@ -165,7 +118,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("bond_proxy_performance", ("asset:tlt", "asset:hyg", "asset:lqd")),),
         table_specs=(MacroTableSpec("bond_proxy_snapshot", ("asset:tlt", "asset:hyg", "asset:lqd")),),
         gap_codes=("move_index_missing",),
-        related_routes=("/macro/assets", "/macro/rates", "/macro/credit"),
+        related_routes=("/macro/assets/equities", "/macro/rates/fed-funds", "/macro/credit/cds"),
     ),
     "assets/commodities": MacroModuleConfig(
         module_id="assets/commodities",
@@ -179,7 +132,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("commodity_proxy_performance", ("commodity:wti", "asset:gld", "asset:uso")),),
         table_specs=(MacroTableSpec("commodity_proxy_snapshot", ("commodity:wti", "asset:gld", "asset:uso")),),
         gap_codes=(),
-        related_routes=("/macro/assets", "/macro/assets/fx"),
+        related_routes=("/macro/assets/equities", "/macro/assets/fx"),
     ),
     "assets/fx": MacroModuleConfig(
         module_id="assets/fx",
@@ -193,7 +146,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("fx_proxy_performance", ("fx:dxy", "fx:broad_dollar")),),
         table_specs=(MacroTableSpec("fx_proxy_snapshot", ("fx:dxy", "fx:broad_dollar")),),
         gap_codes=(),
-        related_routes=("/macro/assets", "/macro/liquidity"),
+        related_routes=("/macro/assets/equities", "/macro/liquidity/transmission-chain"),
     ),
     "assets/crypto": MacroModuleConfig(
         module_id="assets/crypto",
@@ -207,7 +160,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("crypto_proxy_performance", ("crypto:btc", "crypto:eth")),),
         table_specs=(MacroTableSpec("crypto_proxy_snapshot", ("crypto:btc", "crypto:eth")),),
         gap_codes=("crypto_options_missing",),
-        related_routes=("/macro/assets", "/macro/assets/crypto-derivatives"),
+        related_routes=("/macro/assets/equities", "/macro/assets/crypto-derivatives"),
     ),
     "assets/crypto-derivatives": MacroModuleConfig(
         module_id="assets/crypto-derivatives",
@@ -221,36 +174,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("crypto_derivative_context", ("crypto:btc", "crypto:eth")),),
         table_specs=(MacroTableSpec("cex_perp_board", ()),),
         gap_codes=("crypto_options_missing", "basis_missing", "etf_flows_missing"),
-        related_routes=("/macro/assets/crypto", "/macro/assets"),
-    ),
-    "rates": MacroModuleConfig(
-        module_id="rates",
-        route_path="/macro/rates",
-        title="利率定价",
-        subtitle="曲线、实际利率与估值压力",
-        question="利率曲线是在释放风险偏好，还是继续压制估值？",
-        section="rates",
-        required_concepts=("rates:dgs2", "rates:dgs10"),
-        optional_concepts=(
-            "rates:dgs3mo",
-            "rates:dgs1",
-            "rates:dgs5",
-            "rates:dgs30",
-            "rates:10y2y",
-            "rates:10y3m",
-        ),
-        chart_specs=(
-            MacroChartSpec("rates_curve", ("rates:dgs3mo", "rates:dgs2", "rates:dgs5", "rates:dgs10", "rates:dgs30")),
-        ),
-        table_specs=(MacroTableSpec("rates_snapshot", ("rates:dgs2", "rates:dgs10", "rates:10y2y", "rates:10y3m")),),
-        gap_codes=("move_index_missing",),
-        related_routes=(
-            "/macro/rates/fed-funds",
-            "/macro/rates/yield-curve",
-            "/macro/rates/auctions",
-            "/macro/rates/expectations",
-            "/macro/rates/real-rates",
-        ),
+        related_routes=("/macro/assets/crypto", "/macro/assets/equities"),
     ),
     "rates/fed-funds": MacroModuleConfig(
         module_id="rates/fed-funds",
@@ -281,7 +205,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("fomc_calendar_missing",),
-        related_routes=("/macro/fed", "/macro/liquidity/subsurface", "/macro/rates/expectations"),
+        related_routes=("/macro/fed/statements", "/macro/liquidity/subsurface", "/macro/rates/expectations"),
     ),
     "rates/yield-curve": MacroModuleConfig(
         module_id="rates/yield-curve",
@@ -324,7 +248,7 @@ _MODULE_CONFIGS = {
         ),
         table_specs=(MacroTableSpec("curve_spreads", ("rates:10y2y", "rates:10y3m", "rates:dgs10", "rates:dgs30")),),
         gap_codes=(),
-        related_routes=("/macro/rates", "/macro/rates/real-rates", "/macro/rates/expectations"),
+        related_routes=("/macro/rates/fed-funds", "/macro/rates/real-rates", "/macro/rates/expectations"),
     ),
     "rates/auctions": MacroModuleConfig(
         module_id="rates/auctions",
@@ -342,7 +266,7 @@ _MODULE_CONFIGS = {
             MacroTableSpec("auction_rate_proxy_table", ("rates:dgs2", "rates:dgs7", "rates:dgs10", "rates:dgs30")),
         ),
         gap_codes=("treasury_auction_calendar_missing", "treasury_auction_results_missing"),
-        related_routes=("/macro/rates/yield-curve", "/macro/rates/expectations", "/macro/liquidity"),
+        related_routes=("/macro/rates/yield-curve", "/macro/rates/expectations", "/macro/liquidity/transmission-chain"),
     ),
     "rates/real-rates": MacroModuleConfig(
         module_id="rates/real-rates",
@@ -356,7 +280,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("real_rates", ("rates:real_10y", "inflation:10y_breakeven")),),
         table_specs=(MacroTableSpec("real_rates_snapshot", ("rates:real_10y", "inflation:10y_breakeven")),),
         gap_codes=(),
-        related_routes=("/macro/rates", "/macro/rates/yield-curve", "/macro/economy/inflation"),
+        related_routes=("/macro/rates/fed-funds", "/macro/rates/yield-curve", "/macro/economy/inflation"),
     ),
     "rates/expectations": MacroModuleConfig(
         module_id="rates/expectations",
@@ -380,27 +304,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("fed_funds_futures_missing", "fomc_probability_feed_missing"),
-        related_routes=("/macro/rates/fed-funds", "/macro/fed", "/macro/rates/yield-curve"),
-    ),
-    "fed": MacroModuleConfig(
-        module_id="fed",
-        route_path="/macro/fed",
-        title="美联储走廊",
-        subtitle="政策利率、EFFR、IORB 与 SOFR",
-        question="政策走廊是否稳定，还是隔夜融资开始出现压力？",
-        section="fed",
-        required_concepts=("fed:target_upper", "fed:target_lower", "fed:effr", "fed:iorb"),
-        optional_concepts=("liquidity:sofr",),
-        chart_specs=(
-            MacroChartSpec(
-                "fed_corridor", ("fed:target_upper", "fed:target_lower", "fed:effr", "fed:iorb", "liquidity:sofr")
-            ),
-        ),
-        table_specs=(
-            MacroTableSpec("fed_corridor_snapshot", ("fed:target_upper", "fed:target_lower", "fed:effr", "fed:iorb")),
-        ),
-        gap_codes=("fed_calendar_missing", "fed_speeches_missing", "fed_statement_text_missing"),
-        related_routes=("/macro/rates/fed-funds", "/macro/fed/statements", "/macro/fed/speeches", "/macro/liquidity"),
+        related_routes=("/macro/rates/fed-funds", "/macro/fed/statements", "/macro/rates/yield-curve"),
     ),
     "fed/statements": MacroModuleConfig(
         module_id="fed/statements",
@@ -422,7 +326,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("fed_statement_text_missing", "fomc_minutes_missing", "fomc_calendar_missing"),
-        related_routes=("/macro/fed", "/macro/fed/speeches", "/macro/rates/expectations"),
+        related_routes=("/macro/fed/speeches", "/macro/rates/expectations", "/macro/rates/fed-funds"),
     ),
     "fed/speeches": MacroModuleConfig(
         module_id="fed/speeches",
@@ -436,29 +340,7 @@ _MODULE_CONFIGS = {
         chart_specs=(MacroChartSpec("fed_speeches_market_proxy", ("rates:dgs2", "rates:dgs10", "vol:vix")),),
         table_specs=(MacroTableSpec("fed_speeches_proxy_table", ("fed:effr", "rates:dgs2", "rates:dgs10", "vol:vix")),),
         gap_codes=("fed_speeches_missing", "fed_speaker_calendar_missing"),
-        related_routes=("/macro/fed", "/macro/fed/statements", "/macro/rates/expectations"),
-    ),
-    "liquidity": MacroModuleConfig(
-        module_id="liquidity",
-        route_path="/macro/liquidity",
-        title="美元流动性",
-        subtitle="Fed 资产、RRP、TGA、准备金与 SOFR",
-        question="美元流动性是在扩张风险承载，还是抽走市场缓冲？",
-        section="liquidity",
-        required_concepts=("liquidity:fed_assets", "liquidity:on_rrp", "liquidity:tga"),
-        optional_concepts=("liquidity:reserve_balances", "liquidity:sofr"),
-        chart_specs=(MacroChartSpec("liquidity_stack", ("liquidity:fed_assets", "liquidity:on_rrp", "liquidity:tga")),),
-        table_specs=(
-            MacroTableSpec("liquidity_snapshot", ("liquidity:fed_assets", "liquidity:on_rrp", "liquidity:tga")),
-        ),
-        gap_codes=(),
-        related_routes=(
-            "/macro/liquidity/transmission-chain",
-            "/macro/liquidity/fed-balance-sheet",
-            "/macro/liquidity/rrp-tga",
-            "/macro/liquidity/reserves",
-            "/macro/liquidity/subsurface",
-        ),
+        related_routes=("/macro/fed/statements", "/macro/rates/expectations", "/macro/rates/fed-funds"),
     ),
     "liquidity/transmission-chain": MacroModuleConfig(
         module_id="liquidity/transmission-chain",
@@ -483,7 +365,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=(),
-        related_routes=("/macro/liquidity", "/macro/liquidity/subsurface", "/macro/fed", "/macro/rates"),
+        related_routes=("/macro/liquidity/subsurface", "/macro/fed/statements", "/macro/rates/fed-funds"),
     ),
     "liquidity/fed-balance-sheet": MacroModuleConfig(
         module_id="liquidity/fed-balance-sheet",
@@ -502,7 +384,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=(),
-        related_routes=("/macro/liquidity", "/macro/liquidity/reserves", "/macro/liquidity/rrp-tga"),
+        related_routes=("/macro/liquidity/transmission-chain", "/macro/liquidity/reserves", "/macro/liquidity/rrp-tga"),
     ),
     "liquidity/operations": MacroModuleConfig(
         module_id="liquidity/operations",
@@ -520,7 +402,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=(),
-        related_routes=("/macro/liquidity/rrp-tga", "/macro/liquidity/subsurface", "/macro/fed"),
+        related_routes=("/macro/liquidity/rrp-tga", "/macro/liquidity/subsurface", "/macro/fed/statements"),
     ),
     "liquidity/rrp-tga": MacroModuleConfig(
         module_id="liquidity/rrp-tga",
@@ -536,7 +418,11 @@ _MODULE_CONFIGS = {
             MacroTableSpec("rrp_tga_table", ("liquidity:on_rrp", "liquidity:tga", "liquidity:sofr", "fed:iorb")),
         ),
         gap_codes=(),
-        related_routes=("/macro/liquidity", "/macro/liquidity/fed-balance-sheet", "/macro/liquidity/subsurface"),
+        related_routes=(
+            "/macro/liquidity/transmission-chain",
+            "/macro/liquidity/fed-balance-sheet",
+            "/macro/liquidity/subsurface",
+        ),
     ),
     "liquidity/reserves": MacroModuleConfig(
         module_id="liquidity/reserves",
@@ -554,7 +440,11 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=(),
-        related_routes=("/macro/liquidity", "/macro/liquidity/fed-balance-sheet", "/macro/liquidity/subsurface"),
+        related_routes=(
+            "/macro/liquidity/transmission-chain",
+            "/macro/liquidity/fed-balance-sheet",
+            "/macro/liquidity/subsurface",
+        ),
     ),
     "liquidity/global-dollar": MacroModuleConfig(
         module_id="liquidity/global-dollar",
@@ -570,7 +460,7 @@ _MODULE_CONFIGS = {
         ),
         table_specs=(MacroTableSpec("global_dollar_table", ("fx:broad_dollar", "fx:dxy", "fx:eurusd", "fx:usdjpy")),),
         gap_codes=("cross_currency_basis_missing", "global_dollar_funding_missing"),
-        related_routes=("/macro/liquidity", "/macro/assets/fx", "/macro/liquidity/subsurface"),
+        related_routes=("/macro/liquidity/transmission-chain", "/macro/assets/fx", "/macro/liquidity/subsurface"),
     ),
     "liquidity/subsurface": MacroModuleConfig(
         module_id="liquidity/subsurface",
@@ -588,40 +478,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("repo_intraday_pressure_missing",),
-        related_routes=("/macro/rates/fed-funds", "/macro/liquidity/operations", "/macro/fed"),
-    ),
-    "economy": MacroModuleConfig(
-        module_id="economy",
-        route_path="/macro/economy",
-        title="经济数据",
-        subtitle="增长、就业、通胀与消费四象限",
-        question="经济数据是在支持软着陆，还是提示增长/通胀错配？",
-        section="economy",
-        required_concepts=("economy:gdp_real", "labor:unemployment", "inflation:cpi", "consumer:retail_sales"),
-        optional_concepts=("labor:payrolls", "labor:initial_claims", "inflation:core_cpi", "consumer:umich_sentiment"),
-        chart_specs=(
-            MacroChartSpec("economy_four_pillar", ("labor:unemployment", "inflation:cpi", "consumer:retail_sales")),
-        ),
-        table_specs=(
-            MacroTableSpec(
-                "economy_four_pillar_table",
-                (
-                    "economy:gdp_real",
-                    "labor:unemployment",
-                    "labor:payrolls",
-                    "labor:initial_claims",
-                    "inflation:cpi",
-                    "consumer:retail_sales",
-                ),
-            ),
-        ),
-        gap_codes=(),
-        related_routes=(
-            "/macro/economy/gdp",
-            "/macro/economy/employment",
-            "/macro/economy/inflation",
-            "/macro/economy/consumer",
-        ),
+        related_routes=("/macro/rates/fed-funds", "/macro/liquidity/operations", "/macro/fed/statements"),
     ),
     "economy/gdp": MacroModuleConfig(
         module_id="economy/gdp",
@@ -637,7 +494,7 @@ _MODULE_CONFIGS = {
             MacroTableSpec("real_gdp_table", ("economy:gdp_real", "consumer:retail_sales", "labor:payrolls")),
         ),
         gap_codes=("gdp_nowcast_missing",),
-        related_routes=("/macro/economy", "/macro/economy/employment", "/macro/economy/consumer"),
+        related_routes=("/macro/economy/employment", "/macro/economy/consumer", "/macro/rates/expectations"),
     ),
     "economy/employment": MacroModuleConfig(
         module_id="economy/employment",
@@ -657,7 +514,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("jolts_missing", "average_hourly_earnings_missing"),
-        related_routes=("/macro/economy", "/macro/economy/inflation", "/macro/rates/expectations"),
+        related_routes=("/macro/economy/gdp", "/macro/economy/inflation", "/macro/rates/expectations"),
     ),
     "economy/inflation": MacroModuleConfig(
         module_id="economy/inflation",
@@ -687,7 +544,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("inflation_yoy_transform_missing",),
-        related_routes=("/macro/economy", "/macro/rates/real-rates", "/macro/rates/expectations"),
+        related_routes=("/macro/economy/gdp", "/macro/rates/real-rates", "/macro/rates/expectations"),
     ),
     "economy/consumer": MacroModuleConfig(
         module_id="economy/consumer",
@@ -708,26 +565,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("personal_spending_missing", "consumer_credit_missing"),
-        related_routes=("/macro/economy", "/macro/economy/gdp", "/macro/assets/equities"),
-    ),
-    "volatility": MacroModuleConfig(
-        module_id="volatility",
-        route_path="/macro/volatility",
-        title="波动率压力",
-        subtitle="VIX、3个月 VIX 与可交易波动率代理",
-        question="波动率是在容忍风险，还是开始给风险资产定价压力？",
-        section="volatility",
-        required_concepts=("vol:vix",),
-        optional_concepts=("vol:vix3m", "asset:vixy", "asset:spx"),
-        chart_specs=(MacroChartSpec("volatility_context", ("vol:vix", "vol:vix3m", "asset:vixy")),),
-        table_specs=(MacroTableSpec("volatility_snapshot", ("vol:vix", "vol:vix3m", "asset:vixy", "asset:spx")),),
-        gap_codes=("options_iv_rv_missing",),
-        related_routes=(
-            "/macro/volatility/dashboard",
-            "/macro/volatility/vix",
-            "/macro/assets/equities",
-            "/macro/credit",
-        ),
+        related_routes=("/macro/economy/gdp", "/macro/assets/equities", "/macro/economy/employment"),
     ),
     "volatility/dashboard": MacroModuleConfig(
         module_id="volatility/dashboard",
@@ -761,48 +599,6 @@ _MODULE_CONFIGS = {
         gap_codes=("vix_futures_curve_missing",),
         related_routes=("/macro/volatility/dashboard", "/macro/credit/stress"),
     ),
-    "credit": MacroModuleConfig(
-        module_id="credit",
-        route_path="/macro/credit",
-        title="信用压力",
-        subtitle="IG/HY OAS、评级分层与信用 ETF 确认",
-        question="信用利差是在确认风险偏好，还是预警去杠杆？",
-        section="credit",
-        required_concepts=("credit:hy_oas", "credit:ig_oas"),
-        optional_concepts=(
-            "credit:bbb_oas",
-            "credit:hy_bb_oas",
-            "credit:hy_b_oas",
-            "credit:hy_ccc_oas",
-            "asset:hyg",
-            "asset:lqd",
-        ),
-        chart_specs=(
-            MacroChartSpec("credit_spreads", ("credit:ig_oas", "credit:bbb_oas", "credit:hy_oas", "credit:hy_ccc_oas")),
-        ),
-        table_specs=(
-            MacroTableSpec(
-                "credit_oas_ladder",
-                (
-                    "credit:ig_oas",
-                    "credit:bbb_oas",
-                    "credit:hy_oas",
-                    "credit:hy_bb_oas",
-                    "credit:hy_b_oas",
-                    "credit:hy_ccc_oas",
-                    "asset:hyg",
-                    "asset:lqd",
-                ),
-            ),
-        ),
-        gap_codes=(),
-        related_routes=(
-            "/macro/credit/stress",
-            "/macro/credit/cds",
-            "/macro/volatility/dashboard",
-            "/macro/assets/bonds",
-        ),
-    ),
     "credit/cds": MacroModuleConfig(
         module_id="credit/cds",
         route_path="/macro/credit/cds",
@@ -822,7 +618,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("single_name_cds_paid_missing", "cdx_markit_paid_missing"),
-        related_routes=("/macro/credit", "/macro/credit/stress", "/macro/volatility/dashboard"),
+        related_routes=("/macro/credit/stress", "/macro/volatility/dashboard", "/macro/assets/bonds"),
     ),
     "credit/stress": MacroModuleConfig(
         module_id="credit/stress",
@@ -851,7 +647,7 @@ _MODULE_CONFIGS = {
             ),
         ),
         gap_codes=("sloos_missing", "loan_quality_missing", "dealer_inventory_missing"),
-        related_routes=("/macro/credit", "/macro/credit/cds", "/macro/volatility/vix"),
+        related_routes=("/macro/credit/cds", "/macro/volatility/vix", "/macro/assets/bonds"),
     ),
 }
 
@@ -871,7 +667,6 @@ __all__ = [
     "MACRO_MODULE_IDS",
     "MacroChartSpec",
     "MacroModuleConfig",
-    "MacroSectionBoardSpec",
     "MacroTableSpec",
     "UnsupportedMacroModuleError",
     "get_macro_module_config",

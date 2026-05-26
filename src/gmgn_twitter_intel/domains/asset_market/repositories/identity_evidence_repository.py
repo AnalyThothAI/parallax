@@ -60,16 +60,20 @@ class IdentityEvidenceRepository:
         ).fetchone()
         if commit:
             self.conn.commit()
-        return dict(row) if row else {
-            "asset_id": asset_id,
-            "project_id": project_id,
-            "chain_id": normalized_chain,
-            "token_standard": standard,
-            "address": normalized_address,
-            "status": status,
-            "first_seen_at_ms": int(observed_at_ms),
-            "updated_at_ms": int(observed_at_ms),
-        }
+        return (
+            dict(row)
+            if row
+            else {
+                "asset_id": asset_id,
+                "project_id": project_id,
+                "chain_id": normalized_chain,
+                "token_standard": standard,
+                "address": normalized_address,
+                "status": status,
+                "first_seen_at_ms": int(observed_at_ms),
+                "updated_at_ms": int(observed_at_ms),
+            }
+        )
 
     def upsert_identity_evidence(
         self,

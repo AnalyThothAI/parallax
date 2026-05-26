@@ -118,7 +118,7 @@ def test_bootstrap_wires_live_price_gateway_as_db_only_worker_without_price_prov
     assert isinstance(workers["live_price_gateway"], LivePriceGateway)
     assert not isinstance(workers["market_tick_stream"], MarketTickStreamWorker)
     assert not isinstance(workers["market_tick_poll"], MarketTickPollWorker)
-    assert not isinstance(workers["event_anchor_backfill"], EventAnchorBackfillWorker)
+    assert isinstance(workers["event_anchor_backfill"], EventAnchorBackfillWorker)
     assert isinstance(workers["market_tick_current_projection"], MarketTickCurrentProjectionWorker)
 
 

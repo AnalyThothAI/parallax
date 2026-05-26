@@ -81,7 +81,7 @@ def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -
             "upserted": 2,
             "has_more": True,
             "last_cursor": {"received_at_ms": 1700000000123, "event_id": "event-3"},
-            "next_after_cursor": "{\"event_id\":\"event-3\",\"received_at_ms\":1700000000123}",
+            "next_after_cursor": '{"event_id":"event-3","received_at_ms":1700000000123}',
             "batches": 1,
             "signal_events": 2,
             "normalized_handles": 1,
@@ -201,6 +201,36 @@ def test_drop_expired_postgres_partitions_execute_is_explicit_noop_without_reten
     assert payload["data"]["executed"] is False
     assert payload["data"]["reason"] == "retention_not_configured"
     assert conn.sql == []
+
+
+def test_reconcile_event_anchor_jobs_dispatches_to_operator_repository(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    event_anchor_jobs = _FakeEventAnchorJobs()
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(event_anchor_jobs=event_anchor_jobs)
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_010_000)
+    stdout = io.StringIO()
+
+    code = main(["ops", "reconcile-event-anchor-jobs", "--limit", "250", "--execute"], stdout=stdout)
+
+    assert code == 0
+    assert event_anchor_jobs.calls == [
+        {
+            "limit": 250,
+            "now_ms": 1_700_000_010_000,
+            "execute": True,
+        }
+    ]
+    assert json.loads(stdout.getvalue()) == {
+        "ok": True,
+        "data": {"mode": "execute", "updated_count": 2},
+    }
 
 
 def test_rebuild_market_tick_current_dry_run_reports_estimate_without_mutation(monkeypatch) -> None:
@@ -369,6 +399,57 @@ def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_
     ]
 
 
+def test_rebuild_token_radar_rank_inputs_uses_full_rebuild_not_bounded_worker(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    settings = SimpleNamespace()
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: settings)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    monkeypatch.setattr(
+        ops_module,
+        "_run_token_radar_projection_worker_once",
+        lambda *_args, **_kwargs: calls.append(("bounded_worker", dict(_kwargs))) or {"status": "wrong"},
+    )
+    monkeypatch.setattr(
+        ops_module,
+        "_rebuild_token_radar_rank_inputs_full",
+        lambda *_args, **kwargs: (
+            calls.append(("full_rebuild", dict(kwargs))) or {"status": "ready", "legacy_rows_seen": 3}
+        ),
+    )
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "rebuild-token-radar-rank-inputs",
+            "--execute",
+            "--reason",
+            "post-migration",
+            "--limit",
+            "123",
+        ],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["data"]["status"] == "ready"
+    assert calls == [
+        (
+            "full_rebuild",
+            {
+                "settings": settings,
+                "batch_size": 123,
+                "now_ms": 1_700_000_100_000,
+                "reason": "post-migration",
+            },
+        )
+    ]
+
+
 def test_enqueue_runtime_worker_dirty_targets_dispatches_to_dedicated_handler(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
@@ -433,6 +514,9 @@ def test_enqueue_runtime_worker_dirty_targets_dispatches_to_dedicated_handler(mo
             "scope": "all",
             "since_hours": 4.0,
             "target_id": "",
+            "target_type": "",
+            "provider": "",
+            "source_url": "",
             "limit": None,
             "execute": False,
             "now_ms": 1_700_000_100_000,
@@ -488,6 +572,15 @@ class _FakeResetConn:
 
     def commit(self) -> None:
         self.commits += 1
+
+
+class _FakeEventAnchorJobs:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def reconcile_ready_historical_jobs(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        return {"mode": "execute" if kwargs.get("execute") else "dry_run", "updated_count": 2}
 
 
 def _market_settings() -> SimpleNamespace:

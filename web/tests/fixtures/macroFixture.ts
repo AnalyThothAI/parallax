@@ -105,10 +105,9 @@ export function macroModuleFixture(
       ],
     },
     related_routes: [
-      { href: "/macro/assets", label: "大类资产" },
-      { href: "/macro/volatility", label: "波动率" },
+      { href: "/macro/assets/equities", label: "大类资产" },
+      { href: "/macro/volatility/dashboard", label: "波动率" },
     ],
-    section_boards: [],
     ...overrides,
   };
 }
@@ -161,101 +160,7 @@ export function macroOverviewModuleFixture(
         { code: "macro_forward_calendar_missing", label: "未来宏观日历待接入" },
       ],
     },
-    section_boards: [],
     ...overrides,
-  });
-}
-
-export function macroAssetsModuleFixture(): MacroModuleView {
-  return macroModuleFixture({
-    snapshot: {
-      ...macroModuleFixture().snapshot,
-      module_id: "assets",
-      route_path: "/macro/assets",
-      section: "assets",
-      title: "大类资产",
-      subtitle: "跨资产风险偏好入口",
-      question: "哪些资产正在确认宏观风险偏好？",
-    },
-    module_read: {
-      headline: "大类资产：美股与加密代理等待更多确认",
-      regime_label: "资产信号部分可用",
-      confidence_label: "低置信度",
-    },
-    module_evidence: {
-      confirmations: [{ label: "美股代理有最新值" }],
-      contradictions: [],
-      watch_triggers: [{ label: "相关性样本补齐" }],
-      invalidations: [],
-    },
-    transmission: [],
-    data_health: {
-      summary_status: "partial",
-      summary_label: "资产模块部分可用",
-      module_gaps: [],
-      chart_gaps: [],
-      global_gaps: [],
-      future_integration_gaps: [],
-    },
-    section_boards: [
-      {
-        id: "assets-equities",
-        title: "美股",
-        href: "/macro/assets/equities",
-        status: "partial",
-        status_label: "历史不足",
-        rows: [
-          {
-            label: "代理",
-            value: "SPX / QQQ / IWM",
-          },
-          {
-            label: "状态",
-            value: "等待小盘确认",
-          },
-        ],
-      },
-      {
-        id: "assets-rates",
-        title: "债券",
-        href: "/macro/rates/yield-curve",
-        status: "partial",
-        status_label: "曲线待确认",
-        rows: [{ label: "代理", value: "2Y / 10Y / 30Y" }],
-      },
-      {
-        id: "assets-commodities",
-        title: "商品",
-        href: "/macro/assets/commodities",
-        status: "unknown",
-        status_label: "待接入",
-        rows: [{ label: "代理", value: "黄金 / 原油" }],
-      },
-      {
-        id: "assets-fx",
-        title: "外汇",
-        href: "/macro/assets/fx",
-        status: "unknown",
-        status_label: "待接入",
-        rows: [{ label: "代理", value: "DXY / CNH" }],
-      },
-      {
-        id: "assets-crypto",
-        title: "加密资产",
-        href: "/macro/assets/crypto",
-        status: "partial",
-        status_label: "部分可用",
-        rows: [{ label: "代理", value: "BTC / ETH" }],
-      },
-      {
-        id: "assets-crypto-derivatives",
-        title: "加密衍生品",
-        href: "/macro/assets/crypto-derivatives",
-        status: "partial",
-        status_label: "部分可用",
-        rows: [{ label: "代理", value: "CEX OI / 资金费率" }],
-      },
-    ],
   });
 }
 

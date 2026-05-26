@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
@@ -192,7 +192,7 @@ def _model_mapping(value: Any) -> dict[str, Any]:
         return {str(key): item for key, item in value.items()}
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
-        return model_dump(mode="json")
+        return cast(dict[str, Any], model_dump(mode="json"))
     if value is not None and hasattr(value, "__dict__"):
         return {str(key): item for key, item in vars(value).items()}
     return {}

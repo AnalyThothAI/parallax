@@ -25,7 +25,7 @@ PENDING_SEMANTIC_STATUSES = {"queued", "retryable_error", "stale"}
 class DigestRefreshDecision(BaseModel):
     should_refresh: bool
     reason: str
-    status_if_not_refresh: Literal["pending", "insufficient", "ready", "semantic_unavailable", "stale"]
+    status_if_not_refresh: Literal["pending", "insufficient", "semantic_unavailable", "stale"]
 
 
 class DiscussionDigestService:
@@ -135,9 +135,10 @@ class DiscussionDigestService:
     ) -> TokenDiscussionDigest:
         source_count = int(context.get("source_event_count") or len(context.get("mentions") or []))
         semantic_rows = list(context.get("semantic_rows") or context.get("mentions") or [])
-        labeled_count = int(
-            context.get("labeled_event_count")
-            if context.get("labeled_event_count") is not None
+        explicit_labeled_count = _int_or_none(context.get("labeled_event_count"))
+        labeled_count = (
+            explicit_labeled_count
+            if explicit_labeled_count is not None
             else sum(1 for row in semantic_rows if str(row.get("status") or "") == "labeled")
         )
         return TokenDiscussionDigest(
@@ -179,12 +180,8 @@ class DiscussionDigestService:
         schema_version: str = NARRATIVE_SCHEMA_VERSION,
         prompt_version: str = DISCUSSION_DIGEST_PROMPT_VERSION,
     ) -> DiscussionDigestRequest:
-        labeled_rows = [
-            row for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"
-        ]
-        mentions = [
-            _compact_mention(row) for row in labeled_rows[: self.max_mentions_per_digest]
-        ]
+        labeled_rows = [row for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"]
+        mentions = [_compact_mention(row) for row in labeled_rows[: self.max_mentions_per_digest]]
         allowed_refs = _compact_allowed_refs(list(context.get("allowed_refs") or []), mentions)
         return DiscussionDigestRequest(
             run_id=run_id,
@@ -211,9 +208,10 @@ class DiscussionDigestService:
         now_ms: int,
     ) -> TokenDiscussionDigest:
         source_count = int(context.get("source_event_count") or len(context.get("mentions") or []))
-        labeled_count = int(
-            context.get("labeled_event_count")
-            if context.get("labeled_event_count") is not None
+        explicit_labeled_count = _int_or_none(context.get("labeled_event_count"))
+        labeled_count = (
+            explicit_labeled_count
+            if explicit_labeled_count is not None
             else sum(1 for row in list(context.get("semantic_rows") or []) if str(row.get("status") or "") == "labeled")
         )
         payload = digest.model_dump(mode="json") if isinstance(digest, TokenDiscussionDigest) else dict(digest or {})
@@ -349,8 +347,10 @@ def _ensure_ready_public_claims(payload: dict[str, Any], *, context: dict[str, A
                 evidence_refs=refs[:2],
             ).model_dump(mode="json")
         ]
-    bull_view = payload.get("bull_view") if isinstance(payload.get("bull_view"), dict) else {}
-    bear_view = payload.get("bear_view") if isinstance(payload.get("bear_view"), dict) else {}
+    bull_candidate = payload.get("bull_view")
+    bear_candidate = payload.get("bear_view")
+    bull_view: dict[str, Any] = bull_candidate if isinstance(bull_candidate, dict) else {}
+    bear_view: dict[str, Any] = bear_candidate if isinstance(bear_candidate, dict) else {}
     if not bull_view.get("evidence_refs") and not bear_view.get("evidence_refs"):
         payload["bull_view"] = DigestArgument(
             summary_zh=_fallback_summary(context),

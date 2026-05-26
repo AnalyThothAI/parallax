@@ -192,9 +192,11 @@ News Intel contract:
   control-plane fetch status, redacted latest fetch errors,
   `source_quality_status`, provider capability summaries, source hygiene
   warnings, and the latest `news_source_quality_rows` payload when available.
-  Supported provider types are currently `rss`, `atom`, `json_feed`, and
-  `cryptopanic`; configured unsupported provider types are reported before an
-  operator expects data from them.
+  Supported provider types are currently `rss`, `atom`, `json_feed`,
+  `cryptopanic`, and `opennews`; configured unsupported provider types are
+  reported before an operator expects data from them. OpenNews credentials live
+  under `news_intel.opennews` in operator-owned `config.yaml`; provider tokens
+  are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
   the full current item brief and a sanitized latest run summary. It excludes
   raw provider request/response payloads from the public item-detail contract.
@@ -358,23 +360,23 @@ Macro contract:
   first-class `macro_module_view_v3` page view for the macro workbench module
   catalog. The payload includes `snapshot`, `tiles`, `primary_chart`, `tables`,
   `module_read`, `module_evidence`, `transmission`, `data_health`,
-  `section_boards`, summarized `provenance`, and `related_routes`. The retired
+  summarized `provenance`, and `related_routes`. The retired
   module key `read`, retired module key `evidence`, and retired top-level
   `data_gaps` field are not compatibility surfaces. Frontend module pages
   consume v3 directly and must not recompute scoring, readiness, or module
   reads locally. There is no v1 or v2 compatibility read path.
-  Supported module ids include `overview`; `assets` plus asset subpages
+  Supported module ids include `overview`; asset subpages
   (`assets/equities`, `assets/bonds`, `assets/commodities`, `assets/fx`,
-  `assets/crypto`, `assets/crypto-derivatives`); `rates` plus rates subpages
+  `assets/crypto`, `assets/crypto-derivatives`); rates subpages
   (`rates/fed-funds`, `rates/yield-curve`, `rates/auctions`,
-  `rates/real-rates`, `rates/expectations`); `fed` plus Fed subpages
-  (`fed/statements`, `fed/speeches`); `liquidity` plus liquidity subpages
+  `rates/real-rates`, `rates/expectations`); Fed subpages
+  (`fed/statements`, `fed/speeches`); liquidity subpages
   (`liquidity/transmission-chain`, `liquidity/fed-balance-sheet`,
   `liquidity/operations`, `liquidity/rrp-tga`, `liquidity/reserves`,
-  `liquidity/global-dollar`, `liquidity/subsurface`); `economy` plus economy
+  `liquidity/global-dollar`, `liquidity/subsurface`); economy
   subpages (`economy/gdp`, `economy/employment`, `economy/inflation`,
-  `economy/consumer`); `volatility` plus volatility subpages
-  (`volatility/dashboard`, `volatility/vix`); and `credit` plus credit
+  `economy/consumer`); volatility subpages
+  (`volatility/dashboard`, `volatility/vix`); and credit
   subpages (`credit/cds`, `credit/stress`). Unsupported ids return
   `400 {"error":"unsupported_macro_module","field":"module_id"}`.
 - The `assets/crypto-derivatives` module may attach a `cex_perp_board` table

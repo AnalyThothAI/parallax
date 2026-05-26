@@ -58,7 +58,31 @@ def test_macro_hard_cut_constants_and_core_concept_metadata_are_exported() -> No
     assert _constants.MACRO_CONCEPT_METADATA["vol:vix"]["unit_label"] == "点"
 
 
-def test_repository_concept_history_counts_returns_deduped_point_contract() -> None:
+def test_repository_latest_observations_reads_projected_rows() -> None:
+    rows = [
+        {
+            "concept_key": "asset:spx",
+            "observed_at": "2026-05-21",
+            "value_numeric": 2.0,
+            "source_name": "fred",
+        }
+    ]
+    conn = FakeConnection(rows)
+    repo = MacroIntelRepository(conn)
+
+    result = repo.latest_observations(limit=25, concept_keys=("asset:spx",))
+
+    assert result == rows
+    query, params = conn.executions[0]
+    assert "FROM macro_observation_series_rows" in query
+    assert "projection_version = %s" in query
+    assert "series_rank = 1" in query
+    assert "FROM macro_observations" not in query
+    assert "row_number() OVER" not in query
+    assert params == ("macro_regime_v4", ["asset:spx"], 25)
+
+
+def test_repository_concept_history_counts_returns_projected_point_contract() -> None:
     rows = [
         {
             "concept_key": "asset:spx",
@@ -76,26 +100,53 @@ def test_repository_concept_history_counts_returns_deduped_point_contract() -> N
     assert result == rows
     query, params = conn.executions[0]
     assert "WITH requested AS" in query
-    assert "PARTITION BY concept_key, observed_at" in query
-    assert "ORDER BY source_priority DESC, ingested_at_ms DESC" in query
+    assert "FROM macro_observation_series_rows" in query
+    assert "projection_version = %s" in query
+    assert "FROM macro_observations" not in query
+    assert "row_number() OVER" not in query
     assert "LEFT JOIN aggregated" in query
     assert "COALESCE(aggregated.points, 0)" in query
-    assert params == (["asset:spx"], 60)
+    assert params == (["asset:spx"], "macro_regime_v4", 60)
+
+
+def test_repository_refresh_observation_series_rows_writes_projected_read_model() -> None:
+    conn = FakeConnection([], rowcount=42)
+    repo = MacroIntelRepository(conn)
+
+    rows_written = repo.refresh_observation_series_rows(
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_000_000,
+        lookback_days=730,
+        limit_per_series=252,
+    )
+
+    assert rows_written == 42
+    assert len(conn.executions) == 1
+    query, params = conn.executions[0]
+    assert "DELETE FROM macro_observation_series_rows" in query
+    assert "INSERT INTO macro_observation_series_rows" in query
+    assert "FROM macro_observations" in query
+    assert "row_number() OVER" in query
+    assert "PARTITION BY concept_key, observed_at" in query
+    assert "PARTITION BY concept_key" in query
+    assert params == ("macro_regime_v4", 730, "macro_regime_v4", 1_779_000_000_000, 252)
 
 
 class FakeConnection:
-    def __init__(self, rows: list[dict[str, object]]) -> None:
+    def __init__(self, rows: list[dict[str, object]], *, rowcount: int = 0) -> None:
         self.rows = rows
+        self.rowcount = rowcount
         self.executions: list[tuple[str, tuple[object, ...]]] = []
 
     def execute(self, query: str, params: tuple[object, ...]) -> "FakeCursor":
         self.executions.append((query, params))
-        return FakeCursor(self.rows)
+        return FakeCursor(self.rows, rowcount=self.rowcount)
 
 
 class FakeCursor:
-    def __init__(self, rows: list[dict[str, object]]) -> None:
+    def __init__(self, rows: list[dict[str, object]], *, rowcount: int = 0) -> None:
         self.rows = rows
+        self.rowcount = rowcount
 
     def fetchall(self) -> list[dict[str, object]]:
         return self.rows

@@ -109,10 +109,7 @@ def build_macro_asset_correlation(
     matrix = [
         {
             "concept_key": concept_key,
-            "correlations": {
-                other: matrix_values.get((concept_key, other))
-                for other in included_assets
-            },
+            "correlations": {other: matrix_values.get((concept_key, other)) for other in included_assets},
         }
         for concept_key in included_assets
     ]

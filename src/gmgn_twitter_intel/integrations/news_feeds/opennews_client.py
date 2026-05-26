@@ -365,3 +365,6 @@ def _optional_text(value: Any) -> str | None:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+__all__ = ["DEFAULT_OPENNEWS_WSS_URL", "OpenNewsFeedClient"]
