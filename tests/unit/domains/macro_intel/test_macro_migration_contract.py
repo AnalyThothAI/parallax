@@ -74,7 +74,9 @@ def test_repository_latest_observations_reads_projected_rows() -> None:
 
     assert result == rows
     query, params = conn.executions[0]
-    assert "FROM macro_observation_series_rows" in query
+    assert "FROM macro_observation_series_rows AS rows" in query
+    assert "JOIN macro_observation_series_active_generation AS active" in query
+    assert "active.generation_id = rows.generation_id" in query
     assert "projection_version = %s" in query
     assert "series_rank = 1" in query
     assert "FROM macro_observations" not in query
@@ -100,7 +102,9 @@ def test_repository_concept_history_counts_returns_projected_point_contract() ->
     assert result == rows
     query, params = conn.executions[0]
     assert "WITH requested AS" in query
-    assert "FROM macro_observation_series_rows" in query
+    assert "FROM macro_observation_series_rows AS rows" in query
+    assert "JOIN macro_observation_series_active_generation AS active" in query
+    assert "active.generation_id = rows.generation_id" in query
     assert "projection_version = %s" in query
     assert "FROM macro_observations" not in query
     assert "row_number() OVER" not in query
@@ -109,8 +113,8 @@ def test_repository_concept_history_counts_returns_projected_point_contract() ->
     assert params == (["asset:spx"], "macro_regime_v4", 60)
 
 
-def test_repository_refresh_observation_series_rows_writes_projected_read_model() -> None:
-    conn = FakeConnection([], rowcount=42)
+def test_repository_refresh_observation_series_rows_writes_projected_read_model_generation() -> None:
+    conn = FakeRefreshConnection(row_count=42)
     repo = MacroIntelRepository(conn)
 
     rows_written = repo.refresh_observation_series_rows(
@@ -121,15 +125,23 @@ def test_repository_refresh_observation_series_rows_writes_projected_read_model(
     )
 
     assert rows_written == 42
-    assert len(conn.executions) == 1
-    query, params = conn.executions[0]
-    assert "DELETE FROM macro_observation_series_rows" in query
-    assert "INSERT INTO macro_observation_series_rows" in query
-    assert "FROM macro_observations" in query
-    assert "row_number() OVER" in query
-    assert "PARTITION BY concept_key, observed_at" in query
-    assert "PARTITION BY concept_key" in query
-    assert params == ("macro_regime_v4", 730, "macro_regime_v4", 1_779_000_000_000, 252)
+    assert len(conn.executions) == 6
+    queries = "\n".join(query for query, _params in conn.executions)
+    assert "INSERT INTO macro_observation_series_generations" in queries
+    assert "INSERT INTO macro_observation_series_active_generation" in queries
+    assert "INSERT INTO macro_observation_series_rows" in queries
+    assert "generation_id" in queries
+    assert "FROM macro_observations" in queries
+    assert "row_number() OVER" in queries
+    assert "PARTITION BY concept_key, observed_at" in queries
+    assert "PARTITION BY concept_key" in queries
+    assert "DELETE FROM macro_observation_series_rows WHERE projection_version" not in queries
+    assert "cleanup_candidates" in queries
+    insert_rows_query, insert_rows_params = conn.executions[1]
+    assert "WITH source_ranked AS" in insert_rows_query
+    assert insert_rows_params[0] == 730
+    assert insert_rows_params[1] == "macro_regime_v4"
+    assert insert_rows_params[3:] == (1_779_000_000_000, 252)
 
 
 class FakeConnection:
@@ -150,3 +162,27 @@ class FakeCursor:
 
     def fetchall(self) -> list[dict[str, object]]:
         return self.rows
+
+    def fetchone(self) -> dict[str, object] | None:
+        return self.rows[0] if self.rows else None
+
+
+class FakeRefreshConnection:
+    def __init__(self, *, row_count: int) -> None:
+        self.row_count = row_count
+        self.executions: list[tuple[str, tuple[object, ...]]] = []
+
+    def execute(self, query: str, params: tuple[object, ...]) -> FakeCursor:
+        self.executions.append((query, params))
+        generation_id = str(params[2] if "WITH source_ranked AS" in query else "")
+        return FakeCursor(
+            [
+                {
+                    "generation_id": generation_id,
+                    "row_count": self.row_count,
+                    "status": "active",
+                    "cleanup_rows_deleted": 0,
+                }
+            ],
+            rowcount=self.row_count,
+        )
