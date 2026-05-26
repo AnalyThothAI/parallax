@@ -39,20 +39,28 @@ export function macroRouteDescriptor(routeId: MacroRouteId): MacroRouteDescripto
   return ROUTE_DESCRIPTORS_BY_ID.get(routeId);
 }
 
-function flattenMacroRouteDescriptors(nodes: MacroNavigationNode[]): MacroRouteDescriptor[] {
+export function flattenMacroRouteDescriptors(
+  nodes: MacroNavigationNode[],
+): MacroRouteDescriptor[] {
   return nodes.flatMap((node) => {
-    const current =
-      node.routeId && node.pageKind && node.productTier
-        ? [
-            {
-              href: node.href,
-              label: node.label,
-              pageKind: node.pageKind,
-              productTier: node.productTier,
-              routeId: node.routeId,
-            },
-          ]
-        : [];
+    const hasRouteMetadata = Boolean(node.routeId || node.pageKind || node.productTier);
+    if (hasRouteMetadata && (!node.routeId || !node.pageKind || !node.productTier)) {
+      throw new Error(
+        `Macro route node is partially annotated: ${node.href} (${node.label}) requires routeId, pageKind, and productTier.`,
+      );
+    }
+
+    const current = hasRouteMetadata
+      ? [
+          {
+            href: node.href,
+            label: node.label,
+            pageKind: node.pageKind,
+            productTier: node.productTier,
+            routeId: node.routeId,
+          },
+        ]
+      : [];
 
     return [...current, ...flattenMacroRouteDescriptors(node.children ?? [])];
   });

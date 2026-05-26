@@ -1,4 +1,6 @@
 import {
+  HIDDEN_MACRO_NAV_LABELS,
+  flattenMacroRouteDescriptors,
   hiddenMacroDirectRoutes,
   macroRouteDescriptor,
   supportedMacroAuditRoutes,
@@ -18,6 +20,9 @@ describe("macroPageRegistry", () => {
   });
 
   it("keeps hidden-supported direct routes addressable but out of primary nav", () => {
+    expect(hiddenMacroDirectRoutes.map((route) => route.label)).toEqual([
+      ...HIDDEN_MACRO_NAV_LABELS,
+    ]);
     expect(hiddenMacroDirectRoutes.map((route) => route.href)).toEqual([
       "/macro/rates/auctions",
       "/macro/fed/statements",
@@ -25,5 +30,11 @@ describe("macroPageRegistry", () => {
       "/macro/volatility/dashboard",
       "/macro/credit/cds",
     ]);
+  });
+
+  it("throws when an addressable macro node is only partially annotated", () => {
+    expect(() =>
+      flattenMacroRouteDescriptors([{ label: "Bad", href: "/macro/bad", routeId: "overview" }]),
+    ).toThrow(/\/macro\/bad/);
   });
 });
