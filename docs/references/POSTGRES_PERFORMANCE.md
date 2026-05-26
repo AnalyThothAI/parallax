@@ -127,6 +127,32 @@ ROLLBACK;
 PostgreSQL actually executes a statement under `EXPLAIN ANALYZE`; the rollback
 is not optional for `INSERT`, `UPDATE`, `DELETE`, and `MERGE`.
 
+## Runtime Performance Root Fix Hard Cut
+
+Use `scripts/runtime_performance_root_fix_check.sh` after the runtime
+performance architecture hard cut is deployed. The script is intentionally
+read-only: it checks `/readyz`, Alembic head, `pg_stat_statements`, and worker
+state, but it does not reset statistics, enqueue jobs, mutate rows, or change
+database settings. It exits non-zero when a hard gate is over its configured
+threshold.
+
+Hard gates enforced by the check:
+
+- Old Token Radar `WITH request_targets AS (` calls must not increase during
+  the validation window when `OLD_TOKEN_RADAR_CALLS_BEFORE` is supplied.
+- `token_radar_rank_source_events` query mean-time proxy must stay below
+  `TOKEN_RADAR_RANK_SOURCE_MAX_MS` (default `100`), with temp block writes at
+  or below `TOKEN_RADAR_TEMP_BLOCKS_MAX` (default `0`).
+- The largest Token Radar SQL fingerprint must stay below 10% of total
+  `pg_stat_statements.total_exec_time` for the window by default, configurable
+  with `TOKEN_RADAR_TOP_SQL_SHARE_MAX`.
+- Stale `equity_event_fetch_runs.status = 'running'` rows older than 15 minutes
+  must be at or below `STALE_EQUITY_FETCH_RUNS_MAX` (default `0`).
+
+The script also prints the current Alembic head. Runtime results are not
+accepted unless that head corresponds to the deployed runtime performance hard
+cut migration set.
+
 ## Query Design Rules
 
 ### Avoid Hot-Path Wide Reads
