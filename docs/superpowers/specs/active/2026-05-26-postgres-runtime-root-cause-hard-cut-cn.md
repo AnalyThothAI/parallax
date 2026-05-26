@@ -305,7 +305,7 @@ Changed arrows:
 - Normalized reason derived from terminal evidence.
 - Examples: `llm_provider_522`, `provider_no_quote`, `no_market_data`,
   `stale_window_ttl`, `provider_unavailable`, `timeout`,
-  `retry_budget_exhausted`, `stale_running_timeout`.
+  `retry_budget_exhausted`.
 - Used by `/readyz`, status, ops inspection, and reports.
 - Does not replace full `final_reason`; it makes high-cardinality errors
   aggregateable.
@@ -479,4 +479,3 @@ large append-only partitions such as Token Radar audit/history and market ticks.
 | Always | Check global rebuild prerequisites before expensive runtime work; claim bounded control rows before payload hydration; write terminal evidence through owner transitions; prove performance with PostgreSQL evidence. |
 | Ask first | Resetting `pg_stat_statements`; executing destructive retention/drop-partition commands; archiving or retrying large terminal batches; changing public API payloads. |
 | Never | Keep old SQL behind flags; run dual old/new readers; mutate facts to hide backlog; use ad hoc SQL to repair terminal rows; make `/readyz` green by suppressing known queue evidence; introduce a second queue/database for this fix. |
-

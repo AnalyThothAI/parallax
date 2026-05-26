@@ -272,8 +272,7 @@ def _usage_tokens(value: Any) -> int:
     if explicit:
         return explicit
     return sum(
-        _int(usage.get(key))
-        for key in ("input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens")
+        _int(usage.get(key)) for key in ("input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens")
     )
 
 

@@ -91,9 +91,7 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
         {"key": "source", "label": "来源"},
     ]
     ten_year_row = next(
-        row
-        for row in view["tables"][0]["rows"]
-        if row["cells"]["indicator"]["display_value"] == "10年期美债收益率"
+        row for row in view["tables"][0]["rows"] if row["cells"]["indicator"]["display_value"] == "10年期美债收益率"
     )
     assert ten_year_row["cells"]["latest"] == {"display_value": "4.70", "sort_value": 4.7}
     assert ten_year_row["row_quality"] == "ok"

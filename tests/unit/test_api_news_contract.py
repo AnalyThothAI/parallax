@@ -202,7 +202,7 @@ def test_news_api_source_status_includes_provider_diagnostics_without_postgres()
             "enabled": True,
             "source_quality_status": "degraded",
             "provider_health": {"status": "degraded"},
-        }
+        },
     ]
     app = _app(news)
 

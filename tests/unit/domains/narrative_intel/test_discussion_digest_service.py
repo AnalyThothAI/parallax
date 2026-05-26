@@ -117,8 +117,7 @@ def test_digest_request_default_prompt_budget_stays_small_for_realtime_latency()
         context={
             "mentions": mentions,
             "allowed_refs": [
-                {"ref_id": f"event:event-{index}", "kind": "event", "source_table": "events"}
-                for index in range(40)
+                {"ref_id": f"event:event-{index}", "kind": "event", "source_table": "events"} for index in range(40)
             ],
             "source_event_count": 40,
             "labeled_event_count": 40,
@@ -185,8 +184,7 @@ def test_refresh_decision_allows_bounded_pending_tail_when_coverage_passes() -> 
             "terminal_unavailable_count": 0,
             "labeled_event_count": 8,
             "independent_author_count": 5,
-            "semantic_rows": [{"status": "labeled"} for _ in range(8)]
-            + [{"status": "queued"}, {"status": "stale"}],
+            "semantic_rows": [{"status": "labeled"} for _ in range(8)] + [{"status": "queued"}, {"status": "stale"}],
         }
     )
 

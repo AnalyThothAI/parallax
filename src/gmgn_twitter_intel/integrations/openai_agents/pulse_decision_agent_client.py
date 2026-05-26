@@ -654,15 +654,11 @@ def _stage_audit_from_execution_error(
 
 
 def _is_no_start_agent_backpressure(exc: AgentExecutionError) -> bool:
-    return (
-        bool(getattr(exc, "execution_started", True)) is False
-        and exc.error_class
-        in {
-            AgentExecutionErrorClass.CAPACITY_DENIED,
-            AgentExecutionErrorClass.CIRCUIT_OPEN,
-            AgentExecutionErrorClass.RATE_LIMITED,
-        }
-    )
+    return bool(getattr(exc, "execution_started", True)) is False and exc.error_class in {
+        AgentExecutionErrorClass.CAPACITY_DENIED,
+        AgentExecutionErrorClass.CIRCUIT_OPEN,
+        AgentExecutionErrorClass.RATE_LIMITED,
+    }
 
 
 def _stage_audit(**kwargs: Any) -> StageRunAudit:

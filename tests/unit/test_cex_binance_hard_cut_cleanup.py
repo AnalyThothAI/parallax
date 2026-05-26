@@ -8,8 +8,8 @@ from gmgn_twitter_intel.domains.asset_market.services.cex_binance_hard_cut_clean
 )
 
 TOKEN_RADAR_CURRENT_ROWS_TABLE = "token_radar_current_rows"
-TOKEN_CAPTURE_TIER_TABLE = "token_capture_" "tier"
-LEGACY_PRICE_TABLE = "price_" "observations"
+TOKEN_CAPTURE_TIER_TABLE = "token_capture_tier"
+LEGACY_PRICE_TABLE = "price_observations"
 
 
 def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
@@ -112,9 +112,7 @@ def test_execute_supersedes_current_cex_resolutions_and_inserts_replacements() -
 
     assert result["mode"] == "execute"
     assert result["constraint_validated"] is True
-    lifecycle_sql = "\n".join(
-        sql for sql in conn.sqls if "token_intent_resolutions" in sql and "WITH clock AS" in sql
-    )
+    lifecycle_sql = "\n".join(sql for sql in conn.sqls if "token_intent_resolutions" in sql and "WITH clock AS" in sql)
     assert "to_repoint AS" in lifecycle_sql
     assert "cex_binance_hard_cut_repointed" in lifecycle_sql
     assert "to_remove AS" in lifecycle_sql

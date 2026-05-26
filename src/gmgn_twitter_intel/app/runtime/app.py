@@ -215,11 +215,7 @@ def _unhealthy_reasons(
     db_status: dict[str, object],
     worker_status: dict[str, Any],
 ) -> list[str]:
-    reasons = [
-        reason
-        for reason in runtime.scheduler.unhealthy_reasons()
-        if ":stopped" not in str(reason)
-    ]
+    reasons = [reason for reason in runtime.scheduler.unhealthy_reasons() if ":stopped" not in str(reason)]
     if not db_status.get("ok"):
         reasons.append("database_unhealthy")
     reasons.extend(_queue_health_contract_reasons(worker_status))

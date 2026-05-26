@@ -32,6 +32,13 @@ class _QueueHealthConn:
 
     def execute(self, sql: str, params: object = ()) -> _Rows:
         self.sql.append(sql)
+        if "GROUP BY final_reason_bucket" in sql:
+            return _Rows(
+                [
+                    {"final_reason_bucket": "llm_provider_522", "count": 3},
+                    {"final_reason_bucket": "stale_window_ttl", "count": 1},
+                ]
+            )
         if "FROM worker_queue_terminal_events" in sql:
             return _Rows([{"terminal_count": 5, "unresolved_terminal_count": 4}])
         if "GROUP BY status" in sql:
@@ -39,7 +46,6 @@ class _QueueHealthConn:
                 [
                     {"status": "pending", "count": 2},
                     {"status": "running", "count": 1},
-                    {"status": "dead", "count": 4},
                 ]
             )
         if "FROM pulse_agent_jobs" in sql:
@@ -52,7 +58,6 @@ class _QueueHealthConn:
                         "running_count": 1,
                         "failed_count": 0,
                         "blocked_count": 0,
-                        "source_terminal_count": 4,
                         "oldest_due_at_ms": 900,
                         "oldest_running_at_ms": 950,
                         "max_attempt_count": 3,
@@ -70,6 +75,8 @@ class _DirtyTargetConn:
     def execute(self, sql: str, params: object = ()) -> _Rows:
         self.sql.append(sql)
         self.params.append(params)
+        if "GROUP BY final_reason_bucket" in sql:
+            return _Rows([])
         if "FROM worker_queue_terminal_events" in sql:
             return _Rows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
         if "FROM token_radar_dirty_targets" in sql or "FROM news_projection_dirty_targets" in sql:
@@ -91,17 +98,18 @@ class _DirtyTargetConn:
         raise AssertionError(sql)
 
 
-def test_fetch_status_queue_health_counts_terminal_source_status_outside_active_depth() -> None:
+def test_fetch_status_queue_health_uses_terminal_projection_for_terminal_backlog() -> None:
     health = fetch_queue_table_health(_QueueHealthConn(), "pulse_agent_jobs", now_ms=1_000)
 
     assert health["available"] is True
     assert health["kind"] == "status_queue"
     assert health["status"] == "blocked"
-    assert health["counts_by_status"] == {"pending": 2, "running": 1, "dead": 4}
+    assert health["counts_by_status"] == {"pending": 2, "running": 1}
     assert health["queue_depth"] == 3
-    assert health["source_terminal_count"] == 4
+    assert health["source_terminal_count"] == 0
     assert health["terminal_count"] == 5
     assert health["unresolved_terminal_count"] == 4
+    assert health["reason_buckets"] == {"llm_provider_522": 3, "stale_window_ttl": 1}
     assert health["due_count"] == 2
     assert health["running_count"] == 1
     assert health["blocked_count"] == 4
@@ -148,6 +156,8 @@ def test_fetch_shared_dirty_target_health_filters_by_worker_projection_name() ->
 def test_fill_worker_queue_healths_attaches_all_manifest_queue_tables() -> None:
     class Conn:
         def execute(self, sql: str, params: object = ()) -> _Rows:
+            if "GROUP BY final_reason_bucket" in sql:
+                return _Rows([])
             if "FROM worker_queue_terminal_events" in sql:
                 return _Rows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
             if "GROUP BY status" in sql:
@@ -189,14 +199,14 @@ def test_fill_worker_queue_healths_attaches_all_manifest_queue_tables() -> None:
         "pulse_trigger_dirty_targets",
     }
     assert workers["event_anchor_backfill"]["queue_depth"] == 1
-    assert set(workers["event_anchor_backfill"]["queue_health"]["tables"]) == {
-        "event_anchor_backfill_jobs"
-    }
+    assert set(workers["event_anchor_backfill"]["queue_health"]["tables"]) == {"event_anchor_backfill_jobs"}
 
 
 def test_fill_worker_queue_healths_reuses_short_ttl_cache_without_db_query() -> None:
     class Conn:
         def execute(self, sql: str, params: object = ()) -> _Rows:
+            if "GROUP BY final_reason_bucket" in sql:
+                return _Rows([])
             if "FROM worker_queue_terminal_events" in sql:
                 return _Rows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
             if "GROUP BY status" in sql:
@@ -233,24 +243,19 @@ def test_fill_worker_queue_healths_reuses_short_ttl_cache_without_db_query() -> 
     second_workers = manifest_worker_statuses({manifest.name: {} for manifest in all_worker_manifests()})
 
     fill_worker_queue_healths(first_workers, runtime, now_ms=1_000)
-    first_workers["token_radar_projection"]["queue_health"]["tables"]["token_radar_dirty_targets"][
-        "queue_depth"
-    ] = 999
+    first_workers["token_radar_projection"]["queue_health"]["tables"]["token_radar_dirty_targets"]["queue_depth"] = 999
     fill_worker_queue_healths(second_workers, runtime, now_ms=1_500)
 
     assert ConnectionContext.enter_count == 1
     assert second_workers["token_radar_projection"]["queue_depth"] == 1
-    assert second_workers["token_radar_projection"]["queue_health"]["tables"]["token_radar_dirty_targets"][
-        "queue_depth"
-    ] == 1
+    assert (
+        second_workers["token_radar_projection"]["queue_health"]["tables"]["token_radar_dirty_targets"]["queue_depth"]
+        == 1
+    )
 
 
 def test_adapter_registry_declares_every_manifest_queue_table_without_fallback() -> None:
-    manifest_tables = {
-        table
-        for tables in worker_queue_health_tables().values()
-        for table in tables
-    }
+    manifest_tables = {table for tables in worker_queue_health_tables().values() for table in tables}
     specs = queue_health_adapter_specs()
 
     assert set(specs) == manifest_tables

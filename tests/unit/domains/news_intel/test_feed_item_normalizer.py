@@ -76,9 +76,7 @@ def test_normalize_feed_entry_uses_provider_iso_timestamp_when_present() -> None
     )
 
     assert item is not None
-    assert item.published_at_ms == int(
-        datetime.fromisoformat("2026-05-26T19:18:48.871+08:00").timestamp() * 1000
-    )
+    assert item.published_at_ms == int(datetime.fromisoformat("2026-05-26T19:18:48.871+08:00").timestamp() * 1000)
 
 
 def test_normalize_feed_entry_rejects_entries_without_title_or_url() -> None:

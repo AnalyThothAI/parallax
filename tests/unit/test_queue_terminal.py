@@ -6,8 +6,41 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.queue_terminal import (
     inspect_terminal_events,
     resolve_terminal_event,
+    terminal_reason_bucket,
     terminalize_source_row,
 )
+
+
+def test_terminal_reason_bucket_normalizes_operator_triage_reasons() -> None:
+    assert terminal_reason_bucket("deepseek provider 522 gateway", "dead") == "llm_provider_522"
+    assert terminal_reason_bucket("stale_running_timeout", "dead") == "stale_window_ttl"
+    assert terminal_reason_bucket("provider_error_retry_budget_exhausted", "dead") == "retry_budget_exhausted"
+    assert terminal_reason_bucket("provider_unavailable: transport failed", "dead") == "provider_unavailable"
+    assert terminal_reason_bucket("provider_no_quote:empty", "dead") == "provider_no_quote"
+    assert terminal_reason_bucket("semantic parse unavailable", "terminal") == "semantic_unavailable"
+    assert terminal_reason_bucket("unexpected", "dead") == "other"
+
+
+def test_terminalize_source_row_stores_final_reason_bucket() -> None:
+    conn = _FakeTerminalConnection()
+
+    row = terminalize_source_row(
+        conn,
+        worker_name="resolution_refresh",
+        source_table="token_discovery_dirty_lookup_keys",
+        target_key="okx_dex_search:bonk",
+        source_row={
+            "provider": "okx_dex_search",
+            "lookup_key": "bonk",
+            "attempt_count": 4,
+        },
+        final_status="dead",
+        final_reason="provider_error_retry_budget_exhausted",
+        now_ms=1_700_000_000_000,
+    )
+
+    assert row["final_reason_bucket"] == "retry_budget_exhausted"
+    assert conn.rows[0]["final_reason_bucket"] == "retry_budget_exhausted"
 
 
 def test_terminalize_source_row_is_idempotent_when_payload_hash_is_missing_or_empty() -> None:
@@ -48,6 +81,48 @@ def test_terminalize_source_row_is_idempotent_when_payload_hash_is_missing_or_em
     assert conn.rows[0]["payload_hash"] == ""
     assert conn.rows[0]["source_row_json"]["payload_hash"] == ""
     assert conn.rows[0]["source_row_hash"].startswith("sha256:")
+    assert conn.rows[0]["final_reason_bucket"] == "retry_budget_exhausted"
+
+
+def test_terminalize_source_row_keeps_bucket_stable_until_final_reason_changes() -> None:
+    conn = _FakeTerminalConnection()
+    first = terminalize_source_row(
+        conn,
+        worker_name="resolution_refresh",
+        source_table="token_discovery_dirty_lookup_keys",
+        target_key="okx_dex_search:bonk",
+        source_row={"provider": "okx_dex_search", "lookup_key": "bonk", "attempt_count": 2},
+        final_status="dead",
+        final_reason="retry_budget_exhausted",
+        final_reason_bucket="custom_bucket",
+        now_ms=1_700_000_000_000,
+    )
+
+    same_reason = terminalize_source_row(
+        conn,
+        worker_name="resolution_refresh",
+        source_table="token_discovery_dirty_lookup_keys",
+        target_key="okx_dex_search:bonk",
+        source_row={"provider": "okx_dex_search", "lookup_key": "bonk", "attempt_count": 3},
+        final_status="dead",
+        final_reason="retry_budget_exhausted",
+        final_reason_bucket="other",
+        now_ms=1_700_000_000_500,
+    )
+    changed_reason = terminalize_source_row(
+        conn,
+        worker_name="resolution_refresh",
+        source_table="token_discovery_dirty_lookup_keys",
+        target_key="okx_dex_search:bonk",
+        source_row={"provider": "okx_dex_search", "lookup_key": "bonk", "attempt_count": 4},
+        final_status="dead",
+        final_reason="provider_no_quote:empty",
+        now_ms=1_700_000_001_000,
+    )
+
+    assert first["final_reason_bucket"] == "custom_bucket"
+    assert same_reason["final_reason_bucket"] == "custom_bucket"
+    assert changed_reason["final_reason_bucket"] == "provider_no_quote"
 
 
 def test_terminalize_source_row_reopens_resolved_snapshot_on_new_terminal_attempt() -> None:
@@ -128,6 +203,39 @@ def test_inspect_terminal_events_filters_unresolved_terminal_rows() -> None:
     assert payload["status"] == "terminal"
     assert payload["count"] == 1
     assert [row["terminal_id"] for row in payload["items"]] == ["terminal-1"]
+
+
+def test_inspect_terminal_events_filters_by_reason_bucket() -> None:
+    conn = _FakeTerminalConnection()
+    conn.rows = [
+        _terminal_row(
+            "terminal-1",
+            worker_name="resolution_refresh",
+            source_table="lookup",
+            target_key="a",
+            final_reason_bucket="llm_provider_522",
+        ),
+        _terminal_row(
+            "terminal-2",
+            worker_name="resolution_refresh",
+            source_table="lookup",
+            target_key="b",
+            final_reason_bucket="timeout",
+        ),
+    ]
+
+    payload = inspect_terminal_events(
+        conn,
+        worker_name="resolution_refresh",
+        source_table="lookup",
+        status="terminal",
+        reason_bucket="llm_provider_522",
+        limit=10,
+    )
+
+    assert payload["reason_bucket"] == "llm_provider_522"
+    assert payload["count"] == 1
+    assert payload["items"][0]["terminal_id"] == "terminal-1"
 
 
 def test_inspect_terminal_events_excludes_quarantine_from_unresolved_terminal_rows() -> None:
@@ -273,6 +381,7 @@ def _terminal_row(
     target_key: str,
     source_row_json: dict[str, Any] | None = None,
     operator_action: str | None = None,
+    final_reason_bucket: str = "other",
 ) -> dict[str, Any]:
     return {
         "terminal_id": terminal_id,
@@ -283,6 +392,7 @@ def _terminal_row(
         "source_row_hash": f"sha256:{terminal_id}",
         "final_status": "dead",
         "final_reason": "retry_budget_exhausted",
+        "final_reason_bucket": final_reason_bucket,
         "attempt_count": 4,
         "payload_hash": "",
         "first_seen_at_ms": None,
@@ -361,6 +471,7 @@ class _FakeTerminalConnection:
                     "source_row_hash": params["source_row_hash"],
                     "final_status": params["final_status"],
                     "final_reason": params["final_reason"],
+                    "final_reason_bucket": params["final_reason_bucket"],
                     "attempt_count": params["attempt_count"],
                     "payload_hash": params["payload_hash"],
                     "first_seen_at_ms": params["first_seen_at_ms"],
@@ -380,10 +491,14 @@ class _FakeTerminalConnection:
                         "source_row_hash": params["source_row_hash"],
                         "final_status": params["final_status"],
                         "final_reason": params["final_reason"],
+                        "final_reason_bucket": (
+                            params["final_reason_bucket"]
+                            if existing["final_reason"] != params["final_reason"]
+                            else existing["final_reason_bucket"]
+                        ),
                         "attempt_count": max(existing["attempt_count"], params["attempt_count"]),
                         "payload_hash": params["payload_hash"],
-                        "last_attempted_at_ms": params["last_attempted_at_ms"]
-                        or existing["last_attempted_at_ms"],
+                        "last_attempted_at_ms": params["last_attempted_at_ms"] or existing["last_attempted_at_ms"],
                         "terminalized_at_ms": params["terminalized_at_ms"],
                     }
                 )
@@ -396,6 +511,8 @@ class _FakeTerminalConnection:
                 rows = [row for row in rows if row["worker_name"] == params["worker_name"]]
             if params.get("source_table"):
                 rows = [row for row in rows if row["source_table"] == params["source_table"]]
+            if params.get("reason_bucket"):
+                rows = [row for row in rows if row["final_reason_bucket"] == params["reason_bucket"]]
             if "operator_action is null" in normalized:
                 rows = [row for row in rows if row["operator_action"] is None]
             rows.sort(key=lambda row: (-int(row["terminalized_at_ms"]), row["terminal_id"]))

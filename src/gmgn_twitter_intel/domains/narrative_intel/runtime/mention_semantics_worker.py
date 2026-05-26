@@ -432,9 +432,7 @@ def _terminalize_failures_after_max_attempts(
     terminalized = []
     for failure in failures:
         item = dict(failure)
-        row = row_by_key.get(
-            (str(item.get("event_id")), str(item.get("target_type")), str(item.get("target_id")))
-        )
+        row = row_by_key.get((str(item.get("event_id")), str(item.get("target_type")), str(item.get("target_id"))))
         if row is not None and int(row.get("retry_count") or 0) + 1 >= max_attempts:
             item["status"] = "semantic_unavailable"
             item["next_retry_at_ms"] = 0

@@ -29,7 +29,7 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
             ws_token="secret",
             gmgn={"api_key": "gmgn-key"},
             providers={
-            "okx": {
+                "okx": {
                     "dex_api_key": "okx-key",
                     "dex_secret_key": "okx-secret",
                     "dex_passphrase": "okx-pass",

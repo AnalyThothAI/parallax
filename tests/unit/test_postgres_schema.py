@@ -122,16 +122,19 @@ RUNTIME_WORKER_DIRTY_TARGETS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py"
 )
 POSTGRES_PERFORMANCE_QUEUE_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260526_0099_postgres_performance_queue_hard_cut.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0099_postgres_performance_queue_hard_cut.py"
 )
 WORKER_QUEUE_TERMINAL_EVENTS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260526_0100_worker_queue_terminal_events.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0100_worker_queue_terminal_events.py"
 )
 POSTGRES_RUNTIME_ROOT_CAUSE_HARD_CUT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
-    "20260526_0101_postgres_runtime_root_cause_hard_cut.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py"
+)
+MACRO_OBSERVATION_SERIES_SOURCE_TS_TEXT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0102_macro_observation_series_source_ts_text.py"
+)
+NORMALIZE_TERMINAL_REASON_BUCKETS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0103_normalize_terminal_reason_buckets.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
@@ -256,7 +259,7 @@ def test_postgres_performance_queue_hard_cut_indexes() -> None:
     assert "ANALYZE token_radar_target_features" in text
     assert "DROP COLUMN IF EXISTS rank_input_version" in text
     assert (
-        "ON token_radar_target_features( projection_version, \"window\", scope, lane DESC, "
+        'ON token_radar_target_features( projection_version, "window", scope, lane DESC, '
         "rank_score DESC, latest_event_received_at_ms DESC, identity_id ASC )"
     ) in normalized_text
 
@@ -305,20 +308,24 @@ def test_postgres_runtime_root_cause_hard_cut_migration_contract() -> None:
         "observed_at TIMESTAMPTZ NOT NULL",
         "series_rank INTEGER NOT NULL",
         "value_numeric DOUBLE PRECISION NOT NULL",
+        "source_ts TEXT",
         "raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb",
         "projected_at_ms BIGINT NOT NULL",
         "PRIMARY KEY (projection_version, concept_key, observed_at)",
     ):
         assert column in text
     assert "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_rows_lookup" in text
-    assert (
-        "ON macro_observation_series_rows ( projection_version, concept_key, series_rank )"
-    ) in normalized_text
+    assert ("ON macro_observation_series_rows ( projection_version, concept_key, series_rank )") in normalized_text
     assert "ALTER TABLE worker_queue_terminal_events" in text
     assert "ADD COLUMN IF NOT EXISTS final_reason_bucket TEXT NOT NULL DEFAULT 'other'" in text
     assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_worker_queue_terminal_reason_bucket_unresolved" in text
     assert "WHERE operator_action IS NULL" in text
     assert "final_reason_bucket" in text
+    assert "THEN 'llm_provider_522'" in text
+    assert "THEN 'retry_budget_exhausted'" in text
+    assert "THEN 'provider_unavailable'" in text
+    assert "THEN 'stale_window_ttl'" in text
+    assert text.index("WHEN final_reason ILIKE '%stale%'") < text.index("WHEN final_reason ILIKE '%timeout%'")
     assert "NOT i.indisvalid" in text
     assert "RAISE EXCEPTION 'invalid indexes detected after postgres runtime hard cut migration" in text
     for table_name in (
@@ -330,6 +337,40 @@ def test_postgres_runtime_root_cause_hard_cut_migration_contract() -> None:
     ):
         assert f"ANALYZE {table_name}" in text
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_worker_queue_terminal_reason_bucket_unresolved" in text
+
+
+def test_macro_observation_series_source_ts_text_migration_contract() -> None:
+    text = MACRO_OBSERVATION_SERIES_SOURCE_TS_TEXT_MIGRATION.read_text()
+
+    assert 'revision = "20260526_0102"' in text
+    assert 'down_revision = "20260526_0101"' in text
+    assert "ALTER TABLE macro_observation_series_rows" in text
+    assert "ALTER COLUMN source_ts TYPE TEXT" in text
+    assert "USING source_ts::text" in text
+    assert "ANALYZE macro_observation_series_rows" in text
+
+
+def test_normalize_terminal_reason_buckets_migration_contract() -> None:
+    text = NORMALIZE_TERMINAL_REASON_BUCKETS_MIGRATION.read_text()
+
+    assert 'revision = "20260526_0103"' in text
+    assert 'down_revision = "20260526_0102"' in text
+    assert "UPDATE worker_queue_terminal_events" in text
+    for bucket in (
+        "llm_provider_522",
+        "retry_budget_exhausted",
+        "provider_no_quote",
+        "provider_unavailable",
+        "provider_error",
+        "no_market_data",
+        "stale_window_ttl",
+        "timeout",
+        "not_found",
+        "semantic_unavailable",
+    ):
+        assert bucket in text
+    assert text.index("WHEN final_reason ILIKE '%stale%'") < text.index("WHEN final_reason ILIKE '%timeout%'")
+    assert "ANALYZE worker_queue_terminal_events" in text
 
 
 def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:

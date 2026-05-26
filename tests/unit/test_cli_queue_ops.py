@@ -39,6 +39,48 @@ def test_queue_inspect_dispatches_through_ops_handler(monkeypatch) -> None:
     assert payload["data"]["items"][0]["terminal_id"] == "terminal-1"
 
 
+def test_queue_inspect_passes_reason_bucket_to_terminal_inspect(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+    from gmgn_twitter_intel.app.surfaces.cli.commands import queue_ops
+
+    calls: list[dict[str, Any]] = []
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(signals=SimpleNamespace(conn=object()))
+
+    def fake_inspect(conn: object, **kwargs: Any) -> dict[str, Any]:
+        calls.append({"conn": conn, **kwargs})
+        return {
+            "status": "terminal",
+            "reason_bucket": kwargs["reason_bucket"],
+            "count": 0,
+            "items": [],
+        }
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(queue_ops, "inspect_terminal_events", fake_inspect)
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "queue-inspect",
+            "--worker",
+            "resolution_refresh",
+            "--reason-bucket",
+            "llm_provider_522",
+        ],
+        stdout=stdout,
+    )
+
+    assert code == 0
+    assert calls[0]["reason_bucket"] == "llm_provider_522"
+    payload = json.loads(stdout.getvalue())
+    assert payload["data"]["reason_bucket"] == "llm_provider_522"
+
+
 def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> None:
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 

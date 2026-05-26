@@ -164,9 +164,7 @@ def _enqueue_pulse_trigger_dirty_targets(
 
     parsed_limit = _limit_value(limit, execute=execute, work="pulse_trigger")
     since_ms = (
-        int(now_ms) - int(normalized_since_hours * 60 * 60 * 1000)
-        if normalized_since_hours is not None
-        else None
+        int(now_ms) - int(normalized_since_hours * 60 * 60 * 1000) if normalized_since_hours is not None else None
     )
     queue_depths = _runtime_worker_queue_depths(
         repos.conn,
@@ -206,8 +204,7 @@ def _enqueue_pulse_trigger_dirty_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0
@@ -284,9 +281,7 @@ def _enqueue_narrative_admission_dirty_targets(
 
     parsed_limit = _limit_value(limit, execute=execute, work="narrative_admission")
     since_ms = (
-        int(now_ms) - int(normalized_since_hours * 60 * 60 * 1000)
-        if normalized_since_hours is not None
-        else None
+        int(now_ms) - int(normalized_since_hours * 60 * 60 * 1000) if normalized_since_hours is not None else None
     )
     queue_depths = _runtime_worker_queue_depths(
         repos.conn,
@@ -321,8 +316,7 @@ def _enqueue_narrative_admission_dirty_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0
@@ -405,9 +399,7 @@ def _enqueue_discussion_digest_dirty_targets(
 
     parsed_limit = _limit_value(limit, execute=execute, work="discussion_digest")
     since_ms = (
-        int(now_ms) - int(normalized_since_hours * 60 * 60 * 1000)
-        if normalized_since_hours is not None
-        else None
+        int(now_ms) - int(normalized_since_hours * 60 * 60 * 1000) if normalized_since_hours is not None else None
     )
     queue_depths = _runtime_worker_queue_depths(
         repos.conn,
@@ -442,8 +434,7 @@ def _enqueue_discussion_digest_dirty_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0
@@ -552,8 +543,7 @@ def _enqueue_profile_current_dirty_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0
@@ -649,8 +639,7 @@ def _enqueue_image_source_dirty_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0
@@ -733,8 +722,7 @@ def _enqueue_asset_profile_refresh_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0
@@ -792,8 +780,7 @@ def _enqueue_capture_tier_dirty_targets(
     )
     if execute and guardrail_violations:
         raise ValueError(
-            "runtime worker dirty target repair guardrail refused execution: "
-            + ", ".join(guardrail_violations)
+            "runtime worker dirty target repair guardrail refused execution: " + ", ".join(guardrail_violations)
         )
 
     enqueued_count = 0

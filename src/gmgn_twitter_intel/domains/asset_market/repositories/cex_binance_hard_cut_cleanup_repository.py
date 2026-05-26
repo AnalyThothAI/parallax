@@ -14,7 +14,7 @@ TOKEN_RADAR_CLEAN_RESET_ACTION = {
     "command": "ops reset-token-radar-postgres-hard-cut --execute",
     "reason": "Token Radar storage is owned by token_intel; reset it through the dedicated hard-cut command.",
 }
-TOKEN_CAPTURE_TIER_TABLE = "token_capture_" "tier"
+TOKEN_CAPTURE_TIER_TABLE = "token_capture_tier"
 
 
 class CexBinanceHardCutAbort(RuntimeError):
@@ -59,8 +59,7 @@ def cleanup_cex_binance_hard_cut(
         binance_feeds = before_counts["binance_canonical_usdt_perp_feeds"]
         if binance_feeds < min_binance_feeds:
             raise CexBinanceHardCutAbort(
-                "binance_canonical_usdt_perp_feeds "
-                f"{binance_feeds} below min_binance_feeds {min_binance_feeds}"
+                f"binance_canonical_usdt_perp_feeds {binance_feeds} below min_binance_feeds {min_binance_feeds}"
             )
 
         executed_counts = _execute_cleanup(conn, now_ms=now_ms)

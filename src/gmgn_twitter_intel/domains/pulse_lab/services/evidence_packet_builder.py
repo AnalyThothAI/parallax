@@ -191,11 +191,7 @@ class PulseEvidenceBuilder:
             freshness_status = str(
                 payload.get("freshness_status") or _freshness(now_ms, observed_at_ms, self._market_freshness_ms)
             )
-            market_row = {
-                key: payload[key]
-                for key in metric_names
-                if key in payload and payload.get(key) is not None
-            }
+            market_row = {key: payload[key] for key in metric_names if key in payload and payload.get(key) is not None}
             route = str(payload.get("route") or _route_from_market_type(payload.get("target_market_type")))
             native_market_id = _optional_str(payload.get("native_market_id"))
             source_table = str(payload.get("source_table") or "market_ticks")
@@ -625,11 +621,7 @@ def _freshness(now_ms: int, observed_at_ms: int, freshness_ms: int) -> str:
 
 def _summary(payload: dict[str, Any], *, fallback: str) -> str:
     return str(
-        payload.get("summary_zh")
-        or payload.get("summary")
-        or payload.get("text")
-        or payload.get("title")
-        or fallback
+        payload.get("summary_zh") or payload.get("summary") or payload.get("text") or payload.get("title") or fallback
     ).strip()
 
 

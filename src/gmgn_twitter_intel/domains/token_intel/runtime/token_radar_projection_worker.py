@@ -210,11 +210,7 @@ class TokenRadarProjectionWorker(WorkerBase):
                 if status == "ready":
                     continue
                 latest = item_coverage.get("computed_at_ms")
-                if (
-                    status == "failed"
-                    and latest is not None
-                    and computed_at_ms - int(latest) < self.cold_interval_ms
-                ):
+                if status == "failed" and latest is not None and computed_at_ms - int(latest) < self.cold_interval_ms:
                     continue
                 missing.append(item)
         return missing

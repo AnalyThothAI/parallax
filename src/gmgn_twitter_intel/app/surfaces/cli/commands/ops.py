@@ -314,11 +314,7 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
 
         if args.ops_command == "enqueue-projection-dirty-targets":
             now_ms = _now_ms()
-            since_ms = (
-                now_ms - int(float(args.since_hours) * 60 * 60 * 1000)
-                if args.since_hours is not None
-                else None
-            )
+            since_ms = now_ms - int(float(args.since_hours) * 60 * 60 * 1000) if args.since_hours is not None else None
             data = enqueue_projection_dirty_targets(
                 repos,
                 domain=args.domain,

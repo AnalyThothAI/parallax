@@ -26,6 +26,7 @@ def terminalize_source_row(
     source_row: Mapping[str, Any],
     final_status: str,
     final_reason: str,
+    final_reason_bucket: str | None = None,
     now_ms: int,
     attempt_count: int | None = None,
     payload_hash: str | None = None,
@@ -53,11 +54,15 @@ def terminalize_source_row(
     row_attempt_count = int(
         attempt_count if attempt_count is not None else _optional_int(normalized_row.get("attempt_count")) or 0
     )
-    row_first_seen_at_ms = first_seen_at_ms if first_seen_at_ms is not None else _optional_int(
-        normalized_row.get("first_dirty_at_ms") or normalized_row.get("created_at_ms")
+    row_first_seen_at_ms = (
+        first_seen_at_ms
+        if first_seen_at_ms is not None
+        else _optional_int(normalized_row.get("first_dirty_at_ms") or normalized_row.get("created_at_ms"))
     )
-    row_last_attempted_at_ms = last_attempted_at_ms if last_attempted_at_ms is not None else _optional_int(
-        normalized_row.get("updated_at_ms") or normalized_row.get("last_attempted_at_ms")
+    row_last_attempted_at_ms = (
+        last_attempted_at_ms
+        if last_attempted_at_ms is not None
+        else _optional_int(normalized_row.get("updated_at_ms") or normalized_row.get("last_attempted_at_ms"))
     )
     params = {
         "terminal_id": terminal_id,
@@ -68,6 +73,11 @@ def terminalize_source_row(
         "source_row_hash": source_row_hash,
         "final_status": _required_text(final_status, "final_status"),
         "final_reason": _required_text(final_reason, "final_reason"),
+        "final_reason_bucket": _reason_bucket(
+            final_reason_bucket,
+            final_reason=final_reason,
+            final_status=final_status,
+        ),
         "attempt_count": row_attempt_count,
         "payload_hash": normalized_payload_hash,
         "first_seen_at_ms": row_first_seen_at_ms,
@@ -86,6 +96,7 @@ def terminalize_source_row(
           source_row_hash,
           final_status,
           final_reason,
+          final_reason_bucket,
           attempt_count,
           payload_hash,
           first_seen_at_ms,
@@ -102,6 +113,7 @@ def terminalize_source_row(
           %(source_row_hash)s,
           %(final_status)s,
           %(final_reason)s,
+          %(final_reason_bucket)s,
           %(attempt_count)s,
           %(payload_hash)s,
           %(first_seen_at_ms)s,
@@ -117,6 +129,11 @@ def terminalize_source_row(
           source_row_hash = EXCLUDED.source_row_hash,
           final_status = EXCLUDED.final_status,
           final_reason = EXCLUDED.final_reason,
+          final_reason_bucket = CASE
+            WHEN worker_queue_terminal_events.final_reason IS DISTINCT FROM EXCLUDED.final_reason
+            THEN EXCLUDED.final_reason_bucket
+            ELSE worker_queue_terminal_events.final_reason_bucket
+          END,
           attempt_count = GREATEST(worker_queue_terminal_events.attempt_count, EXCLUDED.attempt_count),
           payload_hash = EXCLUDED.payload_hash,
           terminalized_at_ms = EXCLUDED.terminalized_at_ms,
@@ -139,6 +156,7 @@ def inspect_terminal_events(
     worker_name: str | None = None,
     source_table: str | None = None,
     status: str = "terminal",
+    reason_bucket: str | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
     normalized_status = _status(status)
@@ -151,6 +169,9 @@ def inspect_terminal_events(
     if source_table:
         where.append("source_table = %(source_table)s")
         params["source_table"] = str(source_table)
+    if reason_bucket:
+        where.append("final_reason_bucket = %(reason_bucket)s")
+        params["reason_bucket"] = _required_text(reason_bucket, "reason_bucket")
     if normalized_status == "terminal":
         where.append("operator_action IS NULL")
     rows = conn.execute(
@@ -168,10 +189,36 @@ def inspect_terminal_events(
         "status": normalized_status,
         "worker": worker_name or None,
         "source_table": source_table or None,
+        "reason_bucket": reason_bucket or None,
         "limit": parsed_limit,
         "count": len(items),
         "items": items,
     }
+
+
+def terminal_reason_bucket(final_reason: str | None, final_status: str | None) -> str:
+    reason = str(final_reason or "").lower()
+    if "522" in reason:
+        return "llm_provider_522"
+    if "retry_budget_exhausted" in reason or "failed_exhausted" in reason or "max_attempt" in reason:
+        return "retry_budget_exhausted"
+    if "provider_no_quote" in reason:
+        return "provider_no_quote"
+    if "provider_unavailable" in reason or "transport" in reason or "connection" in reason:
+        return "provider_unavailable"
+    if "provider_error" in reason:
+        return "provider_error"
+    if "no_market_data" in reason:
+        return "no_market_data"
+    if "stale" in reason:
+        return "stale_window_ttl"
+    if "timeout" in reason:
+        return "timeout"
+    if "not_found" in reason:
+        return "not_found"
+    if "semantic" in reason:
+        return "semantic_unavailable"
+    return "other"
 
 
 def resolve_terminal_event(
@@ -363,6 +410,13 @@ def _required_text(value: Any, name: str) -> str:
     if not text:
         raise ValueError(f"{name}_required")
     return text
+
+
+def _reason_bucket(value: str | None, *, final_reason: str | None, final_status: str | None) -> str:
+    text = str(value or "").strip()
+    if text:
+        return text
+    return terminal_reason_bucket(final_reason, final_status)
 
 
 def _action(value: str) -> str:

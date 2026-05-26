@@ -381,9 +381,7 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
         "token_profile_current_dirty_targets",
         "token_radar_dirty_targets",
     }
-    manifest_dirty_targets = {
-        table for dirty_tables in worker_dirty_target_tables().values() for table in dirty_tables
-    }
+    manifest_dirty_targets = {table for dirty_tables in worker_dirty_target_tables().values() for table in dirty_tables}
 
     assert expected_dirty_targets <= manifest_dirty_targets
 

@@ -1467,11 +1467,7 @@ class FakePulseTriggerDirtyTargets:
         if self.token_radar.rows_by_window_scope:
             row_sets = self.token_radar.rows_by_window_scope.items()
         else:
-            row_sets = [
-                ((window, scope), self.token_radar.rows)
-                for window in self.windows
-                for scope in self.scopes
-            ]
+            row_sets = [((window, scope), self.token_radar.rows) for window in self.windows for scope in self.scopes]
         for (window, scope), rows in row_sets:
             for row in rows:
                 target_type = str(row.get("target_type") or "")
@@ -1487,9 +1483,7 @@ class FakePulseTriggerDirtyTargets:
                         "payload_hash": f"pulse-trigger:{window}:{scope}:{target_type}:{target_id}",
                         "dirty_reason": "token_radar_changed",
                         "source_watermark_ms": int(
-                            row.get("source_max_received_at_ms")
-                            or row.get("computed_at_ms")
-                            or NOW_MS
+                            row.get("source_max_received_at_ms") or row.get("computed_at_ms") or NOW_MS
                         ),
                         "lease_owner": "pulse_candidate",
                         "attempt_count": 1,

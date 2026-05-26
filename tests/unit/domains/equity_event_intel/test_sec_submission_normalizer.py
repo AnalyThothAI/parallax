@@ -67,9 +67,7 @@ def test_normalize_sec_submission_documents_prefers_acceptance_time() -> None:
 
     assert len(docs) == 1
     assert docs[0].event_time_ms == int(datetime(2026, 4, 25, 14, 30, 15, tzinfo=UTC).timestamp() * 1000)
-    assert docs[0].document_url == (
-        "https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-8k.htm"
-    )
+    assert docs[0].document_url == ("https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-8k.htm")
 
 
 def test_normalize_sec_submission_documents_skips_rows_without_document_url() -> None:

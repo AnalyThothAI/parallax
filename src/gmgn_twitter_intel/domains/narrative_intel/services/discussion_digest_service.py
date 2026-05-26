@@ -179,12 +179,8 @@ class DiscussionDigestService:
         schema_version: str = NARRATIVE_SCHEMA_VERSION,
         prompt_version: str = DISCUSSION_DIGEST_PROMPT_VERSION,
     ) -> DiscussionDigestRequest:
-        labeled_rows = [
-            row for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"
-        ]
-        mentions = [
-            _compact_mention(row) for row in labeled_rows[: self.max_mentions_per_digest]
-        ]
+        labeled_rows = [row for row in list(context.get("mentions") or []) if str(row.get("status") or "") == "labeled"]
+        mentions = [_compact_mention(row) for row in labeled_rows[: self.max_mentions_per_digest]]
         allowed_refs = _compact_allowed_refs(list(context.get("allowed_refs") or []), mentions)
         return DiscussionDigestRequest(
             run_id=run_id,

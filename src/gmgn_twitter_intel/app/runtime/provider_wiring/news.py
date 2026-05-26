@@ -59,10 +59,7 @@ class RegistryBackedNewsSourceProvider:
             source=source.raw,
             limit=limit,
         )
-        observations = [
-            _observation_from_entry(source, entry)
-            for entry in feed_result.entries
-        ]
+        observations = [_observation_from_entry(source, entry) for entry in feed_result.entries]
         return NewsProviderFetchResult(
             status_code=feed_result.status_code,
             observations=[observation for observation in observations if observation is not None],

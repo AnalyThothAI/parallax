@@ -139,9 +139,11 @@ Current example:
 
 - Fixed: the old Token Radar rank-set `SELECT * FROM token_radar_target_features
   ... ORDER BY lane DESC, rank_score DESC ...` path is removed from runtime.
-- Remaining: `TokenRadarTargetFeatureQuery.source_rows()` is now the largest
-  query family after the rank-set fix. It still loads a wide per-target source
-  view with lateral market/enrichment joins.
+- Fixed in the follow-up hard cut: Token Radar source hydration now builds
+  bounded `TokenRadarSourceRequest` batches and uses
+  `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)`. Runtime
+  code no longer calls the single-target `source_rows(...)` path or the old
+  `WITH source_intents AS MATERIALIZED` query.
 
 ### Match Indexes To Real Predicates
 
@@ -303,12 +305,12 @@ work, and a few query shapes and maintenance gaps amplify it.
 
 | Area | Severity | Diagnosis |
 | --- | --- | --- |
-| Token Radar rebuild gate | P0 | Compact rank-input rebuild is incomplete. Normal dirty-target work still claims targets, runs expensive source hydration, then fails at rank publish with `token_radar_rank_inputs_require_full_rebuild`. |
-| Token Radar source hydration | P0 | `TokenRadarTargetFeatureQuery.source_rows()` is now the Top SQL family. The old wide rank-set read is gone, but runtime still performs per-target wide source reconstruction with a `MATERIALIZED` CTE and lateral market/enrichment joins. |
+| Token Radar rebuild gate | P0 | Compact rank-input rebuild was incomplete. Dirty-target work now checks rank-input readiness before claim, so stale rank inputs block without burning attempts. |
+| Token Radar source hydration | P0 | The old `TokenRadarTargetFeatureQuery.source_rows()` single-target family caused the Top SQL fingerprint. Runtime now uses batched source requests without the materialized CTE. |
 | Worker terminal backlog | P0/P1 | Most unresolved terminal rows are real provider/business outcomes, not DB lock symptoms. LLM `522`, no quote, no market data, stale TTL, and retry-budget exhaustion dominate. |
-| Worker state-machine contracts | P1 | `pulse_candidate` has a stale-running edge case: a `running` job at `attempt_count=max_attempts` is not reclaimable by the current claim predicate. Some workers also burn attempts before provider capacity is reserved. |
-| PostgreSQL maintenance hygiene | P1 | No invalid indexes exist, but several hot tables have stale statistics and high churn. `ANALYZE` is missing after the current rewrite/drain wave, and `20260526_0100` does not validate invalid concurrent indexes like `20260526_0099` does. |
-| Kappa/CQRS boundary | P1 | Core facts/read-model ownership is mostly intact, but Token Radar still rebuilds wide fact context one target at a time during runtime, and Macro still performs request-time dedupe with temp writes. Both are CQRS pressure smells. |
+| Worker state-machine contracts | P1 | `pulse_candidate` had a stale-running edge case. Exhausted stale running jobs now terminalize as `dead` with `stale_running_timeout` before new claims. |
+| PostgreSQL maintenance hygiene | P1 | No invalid indexes exist, but several hot tables have stale statistics and high churn. The follow-up migration validates its concurrent index and analyzes affected hot tables. |
+| Kappa/CQRS boundary | P1 | Macro request-time dedupe moved into `macro_observation_series_rows`, written by `MacroViewProjectionWorker`; request paths read the projected table only. |
 
 ### Fresh Evidence
 
@@ -445,9 +447,9 @@ GROUP BY dirty_reason;
 Do this in an operator window. It rewrites target features through the Token
 Radar owner path, which is exactly what the hard cut requires.
 
-### P0: The Top Query Moved To Token Radar Source Hydration
+### P0: Token Radar Source Hydration Was The Next Top Query
 
-Fresh `pg_stat_statements` Top 1:
+Pre-fix `pg_stat_statements` Top 1:
 
 ```text
 WITH source_intents AS MATERIALIZED (...)
@@ -466,36 +468,29 @@ TokenRadarTargetFeatureQuery.source_rows()
 
 Diagnosis:
 
-After removing the wide rank-set read, the next expensive shape is now
-per-target source hydration. It joins current resolutions, intents, events,
-account profiles, semantic extraction, asset identity, price feeds, enriched
-event capture, market tick facts, and current market rows. This is the real
-next Token Radar bottleneck.
+After removing the wide rank-set read, the next expensive shape was per-target
+source hydration. It joined current resolutions, intents, events, account
+profiles, semantic extraction, asset identity, price feeds, enriched event
+capture, market tick facts, and current market rows once per target/window/scope.
 
-Likely causes:
+Hard cut:
 
-- The query is called many times per projection cycle, once per target identity
-  rather than as a batched source extraction by window/scope.
-- The CTE is materialized, so the planner cannot freely push every later join
-  condition through the whole query.
-- Lateral joins are correct for single target inspection, but expensive at
-  projection cadence.
-- The current index set helps target/current lookup, but not necessarily the
-  full window/source hydration shape.
+- `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)` accepts a
+  bounded request set and hydrates source rows once per chunk.
+- `rebuild_dirty_targets()` and `rebuild_rank_inputs_full()` both use the batch
+  path.
+- The runtime source SQL no longer contains `WITH source_intents AS MATERIALIZED`.
+- Rank-input readiness runs before dirty-target claim; stale rank inputs return
+  `blocked_precondition=true` without incrementing `attempt_count`.
 
-Next move:
+Verification:
 
-1. Capture `EXPLAIN (ANALYZE, BUFFERS)` for a representative hot target.
-2. Prototype a batched source query keyed by the claimed dirty target set.
-3. Keep the source row output contract stable for the factor builder.
-4. Only after the plan is known, add or adjust indexes. Do not guess.
+```bash
+rg -n "WITH source_intents AS MATERIALIZED|TokenRadarTargetFeatureQuery|source_rows\\(" \
+  src/gmgn_twitter_intel/domains/token_intel
+```
 
-Candidate direction:
-
-- Claim dirty targets first.
-- Build a temporary or CTE input set of `(target_type_key, identity_id)`.
-- Join current resolutions/events once for the whole batch.
-- Hydrate market/enrichment payloads only for events that survive the window.
+Expected runtime result: no hits.
 
 ### P0: Queue Backlog Is Now Visible, Not Solved
 
@@ -661,13 +656,14 @@ Next move:
 ## Priority Order
 
 1. Finish Token Radar rank-input rebuild and verify `legacy_needs_rebuild=0`
-   for active publishable rows.
-2. Optimize `TokenRadarTargetFeatureQuery.source_rows()` using evidence from
-   `EXPLAIN (ANALYZE, BUFFERS)`.
-3. Drain and classify terminal queue evidence by reason; do not leave 4k+
+   for active publishable rows; dirty target workers should block before claim
+   while that rebuild is incomplete.
+2. Verify post-deploy pg_stat deltas show no new
+   `WITH source_intents AS MATERIALIZED` calls.
+3. Drain and classify terminal queue evidence by `final_reason_bucket`; do not leave 4k+
    unresolved terminal rows as background noise.
-4. Implement macro latest-row materialization to remove request-time temp
-   writes.
+4. Verify Macro API deltas show no request-time `row_number()` over
+   `macro_observations`; request paths should read `macro_observation_series_rows`.
 5. Schedule retention/partition review for Token Radar audit/history and
    market ticks.
 6. Vacuum/analyze high-churn control tables after the current live drain.

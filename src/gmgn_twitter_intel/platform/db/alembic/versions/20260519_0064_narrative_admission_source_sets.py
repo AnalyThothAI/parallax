@@ -14,13 +14,9 @@ def upgrade() -> None:
     op.execute("ALTER TABLE narrative_admissions ADD COLUMN IF NOT EXISTS projection_computed_at_ms BIGINT")
     op.execute("ALTER TABLE narrative_admissions ADD COLUMN IF NOT EXISTS source_window_start_ms BIGINT")
     op.execute("ALTER TABLE narrative_admissions ADD COLUMN IF NOT EXISTS source_window_end_ms BIGINT")
+    op.execute("ALTER TABLE narrative_admissions ADD COLUMN IF NOT EXISTS source_event_count BIGINT NOT NULL DEFAULT 0")
     op.execute(
-        "ALTER TABLE narrative_admissions "
-        "ADD COLUMN IF NOT EXISTS source_event_count BIGINT NOT NULL DEFAULT 0"
-    )
-    op.execute(
-        "ALTER TABLE narrative_admissions "
-        "ADD COLUMN IF NOT EXISTS independent_author_count BIGINT NOT NULL DEFAULT 0"
+        "ALTER TABLE narrative_admissions ADD COLUMN IF NOT EXISTS independent_author_count BIGINT NOT NULL DEFAULT 0"
     )
     op.execute("ALTER TABLE narrative_admissions ADD COLUMN IF NOT EXISTS admission_generation TEXT")
     op.execute(

@@ -154,11 +154,7 @@ class BinanceUsdmFuturesClient:
         payload = self._get_json(_OPEN_INTEREST_HIST_PATH, params=params)
         if not isinstance(payload, list):
             raise BinanceUsdmFuturesClientError("Binance openInterestHist returned invalid payload")
-        return [
-            _open_interest_hist_from_row(row, period=normalized_period)
-            for row in payload
-            if isinstance(row, dict)
-        ]
+        return [_open_interest_hist_from_row(row, period=normalized_period) for row in payload if isinstance(row, dict)]
 
     def ticker(self, symbol: str) -> BinanceUsdmTicker:
         payload = self._get_json(_TICKER_PRICE_PATH, params={"symbol": _symbol(symbol)})

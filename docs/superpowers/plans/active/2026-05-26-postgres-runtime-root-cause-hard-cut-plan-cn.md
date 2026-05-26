@@ -552,12 +552,14 @@ ALTER TABLE worker_queue_terminal_events
 
 UPDATE worker_queue_terminal_events
 SET final_reason_bucket = CASE
-    WHEN final_reason ILIKE '%522%' THEN 'provider_llm_522'
+    WHEN final_reason ILIKE '%522%' THEN 'llm_provider_522'
+    WHEN final_reason ILIKE '%retry_budget_exhausted%' THEN 'retry_budget_exhausted'
     WHEN final_reason ILIKE '%timeout%' THEN 'timeout'
     WHEN final_reason ILIKE '%provider_no_quote%' THEN 'provider_no_quote'
     WHEN final_reason ILIKE '%provider_error%' THEN 'provider_error'
     WHEN final_reason ILIKE '%no_market_data%' THEN 'no_market_data'
-    WHEN final_reason ILIKE '%stale%' THEN 'stale_window'
+    WHEN final_reason ILIKE '%provider_unavailable%' THEN 'provider_unavailable'
+    WHEN final_reason ILIKE '%stale%' THEN 'stale_window_ttl'
     WHEN final_reason ILIKE '%not_found%' THEN 'not_found'
     WHEN final_reason ILIKE '%semantic%' THEN 'semantic_unavailable'
     ELSE 'other'
@@ -579,7 +581,9 @@ Runtime helper:
 def terminal_reason_bucket(final_reason: str | None, final_status: str | None) -> str:
     reason = (final_reason or "").lower()
     if "522" in reason:
-        return "provider_llm_522"
+        return "llm_provider_522"
+    if "retry_budget_exhausted" in reason:
+        return "retry_budget_exhausted"
     if "timeout" in reason:
         return "timeout"
     if "provider_no_quote" in reason:
@@ -589,7 +593,7 @@ def terminal_reason_bucket(final_reason: str | None, final_status: str | None) -
     if "no_market_data" in reason:
         return "no_market_data"
     if "stale" in reason:
-        return "stale_window"
+        return "stale_window_ttl"
     if "not_found" in reason:
         return "not_found"
     if "semantic" in reason:
@@ -607,7 +611,7 @@ Queue health changes:
 CLI:
 
 ```bash
-uv run gmgn-twitter-intel queue inspect --reason-bucket provider_llm_522
+uv run gmgn-twitter-intel queue inspect --reason-bucket llm_provider_522
 ```
 
 Tests:
@@ -689,7 +693,7 @@ For each returned row, write terminal evidence with:
 - `source_table='pulse_agent_jobs'`
 - `final_status='dead'`
 - `final_reason='stale_running_timeout'`
-- `final_reason_bucket='stale_window'`
+- `final_reason_bucket='stale_window_ttl'`
 
 Worker integration:
 
@@ -700,7 +704,7 @@ Worker integration:
 Tests:
 
 - Exhausted stale running job becomes `dead`.
-- Terminal event is written with bucket `stale_window`.
+- Terminal event is written with bucket `stale_window_ttl`.
 - Non-exhausted stale running job remains eligible for normal reclaim.
 - Fresh running job is untouched.
 - No-start backpressure path leaves `attempt_count` unchanged.
@@ -721,9 +725,10 @@ uv run pytest \
 
 Add one hard-cut migration after current head `20260526_0100`.
 
-File:
+Files:
 
-- `src/gmgn_twitter_intel/storage/migrations/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py`
+- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0101_postgres_runtime_root_cause_hard_cut.py`
+- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0102_macro_observation_series_source_ts_text.py`
 
 Migration contents:
 
@@ -733,6 +738,7 @@ Migration contents:
 4. Create unresolved terminal reason bucket index concurrently.
 5. Add invalid-index assertion after concurrent index creation.
 6. Analyze affected tables.
+7. Keep `macro_observation_series_rows.source_ts` as text to match the source fact contract.
 
 Invalid index assertion:
 
@@ -879,7 +885,7 @@ curl -fsS http://127.0.0.1:8000/readyz | jq .
 Expected:
 
 - `postgres`, `migrate`, and `app` are healthy.
-- Alembic reaches `20260526_0101`.
+- Alembic reaches `20260526_0102`.
 - `/readyz.ok == true`.
 - Degraded queues, if any, report bounded active backlog and terminal reason buckets.
 
@@ -982,7 +988,7 @@ LIMIT 20;
 
 Expected:
 
-- buckets include concrete values such as `provider_llm_522`, `provider_no_quote`, `semantic_unavailable`, `stale_window`, `timeout`, or `other`.
+- buckets include concrete values such as `llm_provider_522`, `provider_no_quote`, `provider_unavailable`, `retry_budget_exhausted`, `semantic_unavailable`, `stale_window_ttl`, `timeout`, or `other`.
 
 Statistics refreshed:
 

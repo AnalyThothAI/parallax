@@ -1740,11 +1740,7 @@ class NarrativeRepository:
             schema_version=schema_version,
         )
         coverage_by_admission = self._semantic_coverage_for_admissions(
-            [
-                admission
-                for key, admission in admissions.items()
-                if key not in ready_digests and _is_admitted(admission)
-            ]
+            [admission for key, admission in admissions.items() if key not in ready_digests and _is_admitted(admission)]
         )
 
         for target in query_targets:

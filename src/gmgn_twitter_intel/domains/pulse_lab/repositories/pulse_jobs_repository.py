@@ -183,6 +183,52 @@ class PulseJobsRepository:
         ).fetchone()
         return _optional_row(row)
 
+    def terminalize_exhausted_stale_running_jobs(
+        self,
+        *,
+        now_ms: int,
+        stale_after_ms: int,
+        limit: int = 100,
+        commit: bool = True,
+    ) -> int:
+        now = int(now_ms)
+        stale_before_ms = now - max(0, int(stale_after_ms))
+        bounded_limit = max(1, min(500, int(limit)))
+        with _transaction(self.conn):
+            rows = self.conn.execute(
+                """
+                WITH candidates AS (
+                  SELECT job_id
+                  FROM pulse_agent_jobs
+                  WHERE status = 'running'
+                    AND attempt_count >= max_attempts
+                    AND updated_at_ms < %s
+                  ORDER BY updated_at_ms ASC, job_id ASC
+                  LIMIT %s
+                  FOR UPDATE SKIP LOCKED
+                )
+                UPDATE pulse_agent_jobs AS job
+                SET status = 'dead',
+                    last_error = 'stale_running_timeout',
+                    updated_at_ms = %s
+                FROM candidates
+                WHERE job.job_id = candidates.job_id
+                RETURNING job.*
+                """,
+                (stale_before_ms, bounded_limit, now),
+            ).fetchall()
+            for row in rows:
+                _terminalize_pulse_job(
+                    self.conn,
+                    row=_row(row),
+                    reason="stale_running_timeout",
+                    final_reason_bucket="stale_window_ttl",
+                    now_ms=now,
+                )
+        if commit and not callable(getattr(self.conn, "transaction", None)):
+            self.conn.commit()
+        return len(rows)
+
     def mark_job_succeeded(
         self,
         job_id: str,
@@ -526,7 +572,14 @@ class PulseJobsRepository:
         return int(cursor.rowcount or 0)
 
 
-def _terminalize_pulse_job(conn: Any, *, row: dict[str, Any], reason: str, now_ms: int) -> None:
+def _terminalize_pulse_job(
+    conn: Any,
+    *,
+    row: dict[str, Any],
+    reason: str,
+    now_ms: int,
+    final_reason_bucket: str | None = None,
+) -> None:
     terminalize_source_row(
         conn,
         worker_name="pulse_candidate",
@@ -535,6 +588,7 @@ def _terminalize_pulse_job(conn: Any, *, row: dict[str, Any], reason: str, now_m
         source_row=row,
         final_status="dead",
         final_reason=str(reason or row.get("last_error") or "dead"),
+        final_reason_bucket=final_reason_bucket,
         now_ms=now_ms,
         attempt_count=int(row.get("attempt_count") or 0),
         first_seen_at_ms=_optional_int(row.get("created_at_ms")),

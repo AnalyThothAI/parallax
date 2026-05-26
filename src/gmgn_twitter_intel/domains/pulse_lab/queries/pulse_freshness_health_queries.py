@@ -99,7 +99,7 @@ def fetch_pulse_health_runs(conn: Any, *, window: str, scope: str, since_ms: int
     }
 
 
-def fetch_pulse_health_candidates(conn: Any, *, window: str, scope: str, since_ms: int) -> dict[str, int]:
+def fetch_pulse_health_candidates(conn: Any, *, window: str, scope: str, since_ms: int) -> dict[str, int | None]:
     row = conn.execute(
         """
         SELECT

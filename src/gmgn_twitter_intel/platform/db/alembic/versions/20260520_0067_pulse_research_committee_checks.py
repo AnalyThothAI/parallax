@@ -70,12 +70,10 @@ def _replace_stage_check(*, name: str, stages: tuple[str, ...]) -> None:
     quoted = ", ".join(f"'{stage}'" for stage in stages)
     op.execute("ALTER TABLE pulse_agent_run_steps DROP CONSTRAINT IF EXISTS pulse_agent_run_steps_stage_check")
     op.execute(
-        "ALTER TABLE pulse_agent_run_steps "
-        "DROP CONSTRAINT IF EXISTS chk_pulse_agent_run_steps_stage_evidence_first"
+        "ALTER TABLE pulse_agent_run_steps DROP CONSTRAINT IF EXISTS chk_pulse_agent_run_steps_stage_evidence_first"
     )
     op.execute(
-        "ALTER TABLE pulse_agent_run_steps "
-        "DROP CONSTRAINT IF EXISTS chk_pulse_agent_run_steps_stage_research_committee"
+        "ALTER TABLE pulse_agent_run_steps DROP CONSTRAINT IF EXISTS chk_pulse_agent_run_steps_stage_research_committee"
     )
     op.execute(
         f"""
@@ -89,12 +87,10 @@ def _replace_stage_check(*, name: str, stages: tuple[str, ...]) -> None:
 def _replace_display_status_check(*, name: str, statuses: tuple[str, ...]) -> None:
     quoted = ", ".join(f"'{status}'" for status in statuses)
     op.execute(
-        "ALTER TABLE pulse_candidates "
-        "DROP CONSTRAINT IF EXISTS chk_pulse_candidates_display_status_evidence_first"
+        "ALTER TABLE pulse_candidates DROP CONSTRAINT IF EXISTS chk_pulse_candidates_display_status_evidence_first"
     )
     op.execute(
-        "ALTER TABLE pulse_candidates "
-        "DROP CONSTRAINT IF EXISTS chk_pulse_candidates_display_status_research_committee"
+        "ALTER TABLE pulse_candidates DROP CONSTRAINT IF EXISTS chk_pulse_candidates_display_status_research_committee"
     )
     op.execute(
         f"""

@@ -198,6 +198,7 @@ def build_parser() -> argparse.ArgumentParser:
     queue_inspect.add_argument("--worker", default="")
     queue_inspect.add_argument("--source-table", default="")
     queue_inspect.add_argument("--status", choices=("terminal", "active"), default="terminal")
+    queue_inspect.add_argument("--reason-bucket", default="")
     queue_inspect.add_argument("--limit", type=int, default=50)
     queue_resolve = ops_subcommands.add_parser("queue-resolve", help="resolve worker queue terminal evidence")
     queue_resolve.add_argument("--terminal-id", required=True)

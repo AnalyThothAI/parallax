@@ -101,12 +101,8 @@ def worker_lane_statuses(workers: dict[str, dict[str, Any]]) -> dict[str, dict[s
                 hard_timed_out_workers=sum(
                     1 for status in statuses if status.get("active_run_once_hard_timed_out_at_ms") is not None
                 ),
-                oldest_active_run_once_age_ms=_max_int(
-                    status.get("active_run_once_age_ms") for status in statuses
-                ),
-                iteration_duration_p99_ms=_max_float(
-                    status.get("iteration_duration_p99_ms") for status in statuses
-                ),
+                oldest_active_run_once_age_ms=_max_int(status.get("active_run_once_age_ms") for status in statuses),
+                iteration_duration_p99_ms=_max_float(status.get("iteration_duration_p99_ms") for status in statuses),
                 queue_depth=_sum_int_or_none(status.get("queue_depth") for status in statuses),
                 queue_health=_lane_queue_health(statuses),
             )
@@ -170,13 +166,9 @@ def _lane_queue_health(statuses: list[dict[str, Any]]) -> dict[str, Any]:
         "failed_count": failed_count,
         "blocked_count": blocked_count,
         "terminal_count": sum(int(health.get("terminal_count") or 0) for health in queue_healths),
-        "unresolved_terminal_count": sum(
-            int(health.get("unresolved_terminal_count") or 0) for health in queue_healths
-        ),
+        "unresolved_terminal_count": sum(int(health.get("unresolved_terminal_count") or 0) for health in queue_healths),
         "oldest_due_age_ms": _max_int(health.get("oldest_due_age_ms") for health in queue_healths),
-        "oldest_running_age_ms": _max_int(
-            health.get("oldest_running_age_ms") for health in queue_healths
-        ),
+        "oldest_running_age_ms": _max_int(health.get("oldest_running_age_ms") for health in queue_healths),
         "max_attempt_count": _max_int(health.get("max_attempt_count") for health in queue_healths),
     }
 

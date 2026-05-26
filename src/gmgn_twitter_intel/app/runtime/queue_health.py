@@ -62,9 +62,7 @@ STATUS_QUEUE_SPECS: dict[str, StatusQueueSpec] = {
 }
 
 QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
-    "asset_profile_refresh_targets": QueueHealthAdapterSpec(
-        table="asset_profile_refresh_targets", kind="dirty_target"
-    ),
+    "asset_profile_refresh_targets": QueueHealthAdapterSpec(table="asset_profile_refresh_targets", kind="dirty_target"),
     "discussion_digest_dirty_targets": QueueHealthAdapterSpec(
         table="discussion_digest_dirty_targets", kind="dirty_target"
     ),
@@ -85,9 +83,7 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "narrative_admission_dirty_targets": QueueHealthAdapterSpec(
         table="narrative_admission_dirty_targets", kind="dirty_target"
     ),
-    "news_projection_dirty_targets": QueueHealthAdapterSpec(
-        table="news_projection_dirty_targets", kind="dirty_target"
-    ),
+    "news_projection_dirty_targets": QueueHealthAdapterSpec(table="news_projection_dirty_targets", kind="dirty_target"),
     "notification_deliveries": QueueHealthAdapterSpec(
         table="notification_deliveries",
         kind="status_queue",
@@ -96,9 +92,7 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "pulse_agent_jobs": QueueHealthAdapterSpec(
         table="pulse_agent_jobs", kind="status_queue", status_queue=STATUS_QUEUE_SPECS["pulse_agent_jobs"]
     ),
-    "pulse_trigger_dirty_targets": QueueHealthAdapterSpec(
-        table="pulse_trigger_dirty_targets", kind="dirty_target"
-    ),
+    "pulse_trigger_dirty_targets": QueueHealthAdapterSpec(table="pulse_trigger_dirty_targets", kind="dirty_target"),
     "token_capture_tier_dirty_targets": QueueHealthAdapterSpec(
         table="token_capture_tier_dirty_targets", kind="dirty_target"
     ),
@@ -116,9 +110,7 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     "token_profile_current_dirty_targets": QueueHealthAdapterSpec(
         table="token_profile_current_dirty_targets", kind="dirty_target"
     ),
-    "token_radar_dirty_targets": QueueHealthAdapterSpec(
-        table="token_radar_dirty_targets", kind="dirty_target"
-    ),
+    "token_radar_dirty_targets": QueueHealthAdapterSpec(table="token_radar_dirty_targets", kind="dirty_target"),
     "watchlist_handle_summary_jobs": QueueHealthAdapterSpec(
         table="watchlist_handle_summary_jobs",
         kind="status_queue",
@@ -237,16 +229,13 @@ def aggregate_queue_health(tables: dict[str, dict[str, Any]]) -> dict[str, Any]:
     blocked_count = _sum_field(tables, "blocked_count")
     terminal_count = _sum_field(tables, "terminal_count")
     unresolved_terminal_count = _sum_field(tables, "unresolved_terminal_count")
+    reason_buckets = _sum_reason_buckets(tables)
     unavailable_count = sum(1 for health in tables.values() if not health.get("available"))
     contract_failure_count = sum(
         1 for health in tables.values() if health.get("error_code") in CONTRACT_FAILURE_ERROR_CODES
     )
-    adapter_error_count = sum(
-        1 for health in tables.values() if health.get("error_code") == "adapter_query_failure"
-    )
-    manifest_mismatch_count = sum(
-        1 for health in tables.values() if health.get("error_code") == "manifest_mismatch"
-    )
+    adapter_error_count = sum(1 for health in tables.values() if health.get("error_code") == "adapter_query_failure")
+    manifest_mismatch_count = sum(1 for health in tables.values() if health.get("error_code") == "manifest_mismatch")
     status = _aggregate_status(tables.values())
     return {
         "status": status,
@@ -269,6 +258,7 @@ def aggregate_queue_health(tables: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "blocked_count": blocked_count,
         "terminal_count": terminal_count,
         "unresolved_terminal_count": unresolved_terminal_count,
+        "reason_buckets": reason_buckets,
         "oldest_due_age_ms": _max_age(tables, "oldest_due_age_ms"),
         "oldest_running_age_ms": _max_age(tables, "oldest_running_age_ms"),
         "max_attempt_count": _max_int(health.get("max_attempt_count") for health in tables.values()),
@@ -292,6 +282,7 @@ def empty_queue_health() -> dict[str, Any]:
         "blocked_count": 0,
         "terminal_count": 0,
         "unresolved_terminal_count": 0,
+        "reason_buckets": {},
         "oldest_due_age_ms": None,
         "oldest_running_age_ms": None,
         "max_attempt_count": None,
@@ -467,7 +458,6 @@ def _status_metrics(conn: Any, spec: StatusQueueSpec, *, now_ms: int) -> dict[st
           COUNT(*) FILTER (WHERE {running_filter}) AS running_count,
           COUNT(*) FILTER (WHERE {_status_filter("status", spec.failed_statuses)}) AS failed_count,
           COUNT(*) FILTER (WHERE {_status_filter("status", spec.blocked_statuses)}) AS blocked_count,
-          COUNT(*) FILTER (WHERE {_status_filter("status", spec.terminal_statuses)}) AS source_terminal_count,
           MIN({due_column}) FILTER (
             WHERE {_status_filter("status", spec.due_statuses)}
               AND {due_column} <= %(now_ms)s
@@ -506,7 +496,24 @@ def _terminal_projection_metrics(
         """,
         params,
     ).fetchone()
-    return _row_dict(row)
+    metrics = _row_dict(row)
+    bucket_rows = conn.execute(
+        f"""
+        SELECT final_reason_bucket, COUNT(*) AS count
+        FROM worker_queue_terminal_events
+        WHERE source_table = %(source_table)s
+          AND operator_action IS NULL
+          {worker_filter}
+        GROUP BY final_reason_bucket
+        ORDER BY count DESC, final_reason_bucket ASC
+        """,
+        params,
+    ).fetchall()
+    metrics["reason_buckets"] = {
+        str(_row_get(bucket_row, "final_reason_bucket", 0) or "other"): int(_row_get(bucket_row, "count", 1) or 0)
+        for bucket_row in bucket_rows
+    }
+    return metrics
 
 
 def _table_health(
@@ -525,7 +532,7 @@ def _table_health(
     active_blocked_count = _int_metric(metrics, "blocked_count")
     source_terminal_count = _int_metric(metrics, "source_terminal_count")
     unresolved_terminal_count = _int_metric(terminal_metrics, "unresolved_terminal_count")
-    terminal_count = max(_int_metric(terminal_metrics, "terminal_count"), source_terminal_count)
+    terminal_count = _int_metric(terminal_metrics, "terminal_count")
     blocked_count = active_blocked_count + unresolved_terminal_count
     status = _health_status(
         queue_depth=queue_depth,
@@ -558,6 +565,7 @@ def _table_health(
         "source_terminal_count": source_terminal_count,
         "terminal_count": terminal_count,
         "unresolved_terminal_count": unresolved_terminal_count,
+        "reason_buckets": dict(terminal_metrics.get("reason_buckets") or {}),
         "oldest_due_age_ms": _age_ms(now_ms, metrics.get("oldest_due_at_ms")),
         "oldest_running_age_ms": _age_ms(now_ms, metrics.get("oldest_running_at_ms")),
         "max_attempt_count": _optional_int(metrics.get("max_attempt_count")),
@@ -590,6 +598,7 @@ def _unavailable_health(
         "active_blocked_count": 0,
         "terminal_count": 0,
         "unresolved_terminal_count": 0,
+        "reason_buckets": {},
         "oldest_due_age_ms": None,
         "oldest_running_age_ms": None,
         "max_attempt_count": None,
@@ -672,7 +681,6 @@ def _status_metric_statuses(spec: StatusQueueSpec) -> tuple[str, ...]:
                 *spec.running_statuses,
                 *spec.failed_statuses,
                 *spec.blocked_statuses,
-                *spec.terminal_statuses,
             )
         )
     )
@@ -743,6 +751,16 @@ def _sum_field(tables: dict[str, dict[str, Any]], field: str) -> int:
     return sum(int(health.get(field) or 0) for health in tables.values() if health.get("available"))
 
 
+def _sum_reason_buckets(tables: dict[str, dict[str, Any]]) -> dict[str, int]:
+    buckets: dict[str, int] = {}
+    for health in tables.values():
+        if not health.get("available"):
+            continue
+        for bucket, count in dict(health.get("reason_buckets") or {}).items():
+            buckets[str(bucket)] = buckets.get(str(bucket), 0) + int(count or 0)
+    return dict(sorted(buckets.items(), key=lambda item: (-item[1], item[0])))
+
+
 def _max_age(tables: dict[str, dict[str, Any]], field: str) -> int | None:
     return _max_int(health.get(field) for health in tables.values())
 
@@ -809,9 +827,7 @@ def _fill_unavailable_worker_queue_healths(
         table_health = {
             table: _unavailable_health(
                 table,
-                QUEUE_HEALTH_ADAPTER_SPECS.get(
-                    table, QueueHealthAdapterSpec(table=table, kind="unknown")
-                ).kind,
+                QUEUE_HEALTH_ADAPTER_SPECS.get(table, QueueHealthAdapterSpec(table=table, kind="unknown")).kind,
                 error_code=error_code,
                 exc=exc,
             )

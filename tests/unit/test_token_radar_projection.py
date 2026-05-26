@@ -14,7 +14,8 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_SOURCE_TABLE,
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import (
-    TokenRadarTargetFeatureQuery,
+    TokenRadarSourceRequest,
+    TokenRadarTargetFeatureBatchQuery,
 )
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
@@ -128,9 +129,7 @@ def test_compact_rank_inputs_preserves_rank_key_tie_breakers_from_scalar_columns
             }
         )
 
-    compact_rows = TokenRadarProjection.rank_compact_inputs(
-        [_compact_rank_input_from_factor_row(row) for row in rows]
-    )
+    compact_rows = TokenRadarProjection.rank_compact_inputs([_compact_rank_input_from_factor_row(row) for row in rows])
 
     assert [row["identity_id"] for row in compact_rows] == [
         "fallback-mentions",
@@ -206,15 +205,22 @@ def test_full_rank_input_rebuild_enumerates_legacy_rows_and_scores_owner_path(mo
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
     monkeypatch.setattr(
+        token_radar_projection_module,
+        "TokenRadarTargetFeatureBatchQuery",
+        lambda conn: FakeBatchQuery(token_radar=token_radar, rows_by_request={}),
+    )
+    monkeypatch.setattr(
         TokenRadarProjection,
-        "score_target_window",
+        "_project_source_request",
         lambda self, **kwargs: token_radar.score_calls.append(kwargs) or {"source_rows": 2, "rows_written": 1},
     )
     monkeypatch.setattr(
         TokenRadarProjection,
         "refresh_rank_set",
-        lambda self, **kwargs: token_radar.refresh_calls.append(kwargs)
-        or {"status": "ready", "source_rows": 1, "rows_written": 1, "computed_at_ms": kwargs["now_ms"]},
+        lambda self, **kwargs: (
+            token_radar.refresh_calls.append(kwargs)
+            or {"status": "ready", "source_rows": 1, "rows_written": 1, "computed_at_ms": kwargs["now_ms"]}
+        ),
     )
 
     result = TokenRadarProjection(repos=repos).rebuild_rank_inputs_full(
@@ -240,6 +246,7 @@ def test_full_rank_input_rebuild_enumerates_legacy_rows_and_scores_owner_path(mo
             "limit": 100,
         },
     ]
+    assert token_radar.source_request_batches[0][0].identity_id == "asset-1"
     assert token_radar.score_calls[0]["target"]["identity_id"] == "asset-1"
     assert token_radar.refresh_calls == [{"window": "1h", "scope": "all", "now_ms": now_ms, "limit": 100}]
 
@@ -700,9 +707,7 @@ def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> 
                     "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
                     "schema_version": NARRATIVE_SCHEMA_VERSION,
                     "source_watermark_ms": now_ms - 1_000,
-                    "payload_hash": repos.narrative_admission_dirty_targets.enqueued[0]["targets"][0][
-                        "payload_hash"
-                    ],
+                    "payload_hash": repos.narrative_admission_dirty_targets.enqueued[0]["targets"][0]["payload_hash"],
                     "priority": 40,
                     "due_at_ms": now_ms,
                 }
@@ -796,9 +801,7 @@ def test_projection_enqueues_token_profile_current_for_realtime_rank_changes() -
                     "target_type": "CexToken",
                     "target_id": "cex_token:BTC",
                     "source_watermark_ms": now_ms - 1_000,
-                    "payload_hash": repos.token_profile_current_dirty_targets.enqueued[0]["targets"][0][
-                        "payload_hash"
-                    ],
+                    "payload_hash": repos.token_profile_current_dirty_targets.enqueued[0]["targets"][0]["payload_hash"],
                     "priority": 70,
                     "due_at_ms": now_ms,
                 }
@@ -945,16 +948,22 @@ def test_projection_market_uses_social_start_row_not_latest_row():
     assert market["readiness"]["anchor_status"] == "ready"
 
 
-def test_token_radar_target_feature_query_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
+def test_token_radar_target_feature_batch_query_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
     conn = FakeConn()
 
-    TokenRadarTargetFeatureQuery(conn).source_rows(
-        target_type_key="CexToken",
-        identity_id="cex_token:BTC",
-        since_ms=1,
-        score_since_ms=1,
-        scope="all",
-        now_ms=2,
+    TokenRadarTargetFeatureBatchQuery(conn).source_rows_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="CexToken",
+                identity_id="cex_token:BTC",
+                window="1h",
+                scope="all",
+                analysis_since_ms=1,
+                score_since_ms=1,
+                now_ms=2,
+            )
+        ]
     )
 
     assert "preferred_price_feed" in conn.sql
@@ -965,16 +974,22 @@ def test_token_radar_target_feature_query_uses_preferred_cex_pricefeed_when_reso
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
-def test_token_radar_target_feature_query_does_not_read_historical_market_fact_table():
+def test_token_radar_target_feature_batch_query_does_not_read_historical_market_fact_table():
     conn = FakeConn()
 
-    TokenRadarTargetFeatureQuery(conn).source_rows(
-        target_type_key="Asset",
-        identity_id="asset-1",
-        since_ms=1,
-        score_since_ms=1,
-        scope="all",
-        now_ms=2,
+    TokenRadarTargetFeatureBatchQuery(conn).source_rows_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                window="1h",
+                scope="all",
+                analysis_since_ms=1,
+                score_since_ms=1,
+                now_ms=2,
+            )
+        ]
     )
 
     assert _legacy_price_table() not in conn.sql
@@ -995,31 +1010,66 @@ def test_token_radar_target_feature_query_does_not_read_historical_market_fact_t
     assert _public_market_key("decision") not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
-    assert "WITH source_intents AS MATERIALIZED" in conn.sql
+    assert "WITH source_intents AS MATERIALIZED" not in conn.sql
+    assert "WITH request_targets AS" in conn.sql
+    assert "jsonb_to_recordset" in conn.sql
     assert "WITH window_events AS MATERIALIZED" not in conn.sql
-    assert "events.received_at_ms <= %s" in conn.sql
-    assert conn.params[:5] == ("Asset", "asset-1", 1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
+    assert "events.received_at_ms <= r.now_ms" in conn.sql
+    assert conn.params[1] == TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
-def test_target_feature_query_filters_one_target_and_uses_current_market_and_composite_event_tick():
+def test_target_feature_batch_query_filters_requested_targets_and_uses_current_market_and_composite_event_tick():
     conn = FakeConn()
 
-    TokenRadarTargetFeatureQuery(conn).source_rows(
-        target_type_key="Asset",
-        identity_id="asset-1",
-        since_ms=1,
-        score_since_ms=1,
-        scope="matched",
-        now_ms=2,
+    TokenRadarTargetFeatureBatchQuery(conn).source_rows_for_requests(
+        [
+            TokenRadarSourceRequest(
+                request_key="request-1",
+                target_type_key="Asset",
+                identity_id="asset-1",
+                window="1h",
+                scope="matched",
+                analysis_since_ms=1,
+                score_since_ms=1,
+                now_ms=2,
+            )
+        ]
     )
 
-    assert "token_intent_resolutions.target_type = %s" in conn.sql
-    assert "token_intent_resolutions.target_id = %s" in conn.sql
+    assert "token_intent_resolutions.target_type = r.target_type_key" in conn.sql
+    assert "token_intent_resolutions.target_id = r.identity_id" in conn.sql
     assert "market_tick_current latest_price_tick" in conn.sql
     assert "event_price_tick.observed_at_ms = event_price_capture.tick_observed_at_ms" in conn.sql
     assert "event_price_tick.tick_id = event_price_capture.tick_id" in conn.sql
-    assert "events.is_watched = true" in conn.sql
-    assert conn.params[:5] == ("Asset", "asset-1", 1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
+    assert "CASE WHEN r.scope = 'matched' THEN events.is_watched = true ELSE true END" in conn.sql
+    assert conn.params[1] == TOKEN_RADAR_RESOLVER_POLICY_VERSION
+
+
+def test_target_feature_batch_query_groups_rows_by_request_and_chunks():
+    conn = FakeConn(
+        rows=[
+            {"request_key": "request-1", "event_id": "event-1"},
+            {"request_key": "request-2", "event_id": "event-2"},
+        ]
+    )
+    requests = [
+        TokenRadarSourceRequest(
+            request_key=f"request-{index}",
+            target_type_key="Asset",
+            identity_id=f"asset-{index}",
+            window="1h",
+            scope="all",
+            analysis_since_ms=1,
+            score_since_ms=2,
+            now_ms=3,
+        )
+        for index in (1, 2)
+    ]
+
+    rows = TokenRadarTargetFeatureBatchQuery(conn, chunk_size=1).source_rows_for_requests(requests)
+
+    assert list(rows) == ["request-1", "request-2"]
+    assert conn.execute_count == 2
 
 
 def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(monkeypatch):
@@ -1043,8 +1093,13 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     now_ms = 1_777_800_060_000
 
     monkeypatch.setattr(
+        token_radar_projection_module,
+        "TokenRadarTargetFeatureBatchQuery",
+        lambda conn: FakeBatchQuery(token_radar=token_radar, rows_by_request={}),
+    )
+    monkeypatch.setattr(
         TokenRadarProjection,
-        "score_target_window",
+        "_project_source_request",
         lambda self, **kwargs: {"source_rows": 1, "status": "updated"},
     )
     monkeypatch.setattr(
@@ -1073,9 +1128,8 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     assert dirty_targets.errors == []
 
 
-def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkeypatch):
-    score_calls: list[tuple[str, str]] = []
-    refresh_calls: list[tuple[str, str]] = []
+def test_projection_rebuild_dirty_targets_blocks_before_claim_when_rank_inputs_are_stale():
+    token_radar = FakeTokenRadar(stale_by_work_item={("5m", "all"): 3, ("1h", "matched"): 1})
     dirty_targets = FakeDirtyTargets(
         [
             {
@@ -1090,18 +1144,60 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
+    )()
+
+    result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+        work_items=(("5m", "all"), ("1h", "matched")),
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["blocked_precondition"] is True
+    assert result["reason"] == "token_radar_rank_inputs_require_full_rebuild"
+    assert result["stale_rank_input_count"] == 4
+    assert result["stale_rank_input_counts"] == {"5m:all": 3, "1h:matched": 1}
+    assert dirty_targets.claim_due_calls == []
+    assert dirty_targets.done == []
+    assert dirty_targets.errors == []
+
+
+def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkeypatch):
+    score_calls: list[tuple[str, str]] = []
+    refresh_calls: list[tuple[str, str]] = []
+    token_radar = FakeTokenRadar()
+    dirty_targets = FakeDirtyTargets(
+        [
+            {
+                "target_type_key": "Asset",
+                "identity_id": "asset-1",
+                "payload_hash": "claim-hash",
+                "lease_owner": "projection-worker",
+                "attempt_count": 1,
+            }
+        ]
+    )
+    repos = type(
+        "Repos",
+        (),
+        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
     )()
 
     def score(self, **kwargs):
-        score_calls.append((kwargs["window"], kwargs["scope"]))
+        score_calls.append((kwargs["request"].window, kwargs["request"].scope))
         return {"source_rows": 1, "status": "updated"}
 
     def refresh(self, **kwargs):
         refresh_calls.append((kwargs["window"], kwargs["scope"]))
         return {"rows_written": 1, "source_rows": 1, "status": "ready"}
 
-    monkeypatch.setattr(TokenRadarProjection, "score_target_window", score)
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "TokenRadarTargetFeatureBatchQuery",
+        lambda conn: FakeBatchQuery(token_radar=token_radar, rows_by_request={}),
+    )
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", score)
     monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
 
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
@@ -1113,6 +1209,10 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     )
 
     assert result["status"] == "ready"
+    assert [(request.window, request.scope) for request in token_radar.source_request_batches[0]] == [
+        ("5m", "all"),
+        ("1h", "matched"),
+    ]
     assert score_calls == [("5m", "all"), ("1h", "matched")]
     assert refresh_calls == [("1h", "matched"), ("5m", "all")]
     assert set(result["windows"]) == {"5m:all", "1h:matched"}
@@ -1140,7 +1240,12 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
     def fail_score(self, **kwargs):
         raise RuntimeError("target boom")
 
-    monkeypatch.setattr(TokenRadarProjection, "score_target_window", fail_score)
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "TokenRadarTargetFeatureBatchQuery",
+        lambda conn: FakeBatchQuery(token_radar=repos.token_radar, rows_by_request={}),
+    )
+    monkeypatch.setattr(TokenRadarProjection, "_project_source_request", fail_score)
 
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
         windows=("5m",),
@@ -1183,8 +1288,13 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
     now_ms = 1_777_800_060_000
 
     monkeypatch.setattr(
+        token_radar_projection_module,
+        "TokenRadarTargetFeatureBatchQuery",
+        lambda conn: FakeBatchQuery(token_radar=repos.token_radar, rows_by_request={}),
+    )
+    monkeypatch.setattr(
         TokenRadarProjection,
-        "score_target_window",
+        "_project_source_request",
         lambda self, **kwargs: {"source_rows": 1, "status": "updated"},
     )
 
@@ -1234,8 +1344,13 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
     now_ms = 1_777_800_060_000
 
     monkeypatch.setattr(
+        token_radar_projection_module,
+        "TokenRadarTargetFeatureBatchQuery",
+        lambda conn: FakeBatchQuery(token_radar=repos.token_radar, rows_by_request={}),
+    )
+    monkeypatch.setattr(
         TokenRadarProjection,
-        "score_target_window",
+        "_project_source_request",
         lambda self, **kwargs: {"source_rows": 1, "status": "updated"},
     )
     monkeypatch.setattr(
@@ -1456,16 +1571,20 @@ def ranking_row(
 
 
 class FakeConn:
-    sql = ""
-    params = None
+    def __init__(self, rows=None):
+        self.rows = rows or []
+        self.sql = ""
+        self.params = None
+        self.execute_count = 0
 
     def execute(self, sql, params=None):
         self.sql = str(sql)
         self.params = params
+        self.execute_count += 1
         return self
 
     def fetchall(self):
-        return []
+        return self.rows
 
 
 class FakeTransactionConn:
@@ -1540,10 +1659,12 @@ class FakeRejectingTokenRadar:
 class FakeDirtyTargets:
     def __init__(self, claims: list[dict[str, object]]):
         self.claims = claims
+        self.claim_due_calls: list[dict[str, object]] = []
         self.done: list[dict[str, object]] = []
         self.errors: list[dict[str, object]] = []
 
     def claim_due(self, **kwargs):
+        self.claim_due_calls.append(kwargs)
         return list(self.claims)
 
     def mark_done(self, keys, **kwargs):
@@ -1572,6 +1693,24 @@ class FakeRuntimeDirtyTargets:
         return {"targets": len(targets)}
 
 
+class FakeBatchQuery:
+    def __init__(
+        self,
+        *,
+        token_radar: FakeTokenRadar,
+        rows_by_request: dict[str, list[dict[str, object]]],
+    ):
+        self.token_radar = token_radar
+        self.rows_by_request = rows_by_request
+
+    def source_rows_for_requests(self, requests):
+        request_list = list(requests)
+        self.token_radar.source_request_batches.append(request_list)
+        return {
+            request.request_key: list(self.rows_by_request.get(request.request_key, [])) for request in request_list
+        }
+
+
 class FakeTokenRadar:
     def __init__(
         self,
@@ -1579,16 +1718,22 @@ class FakeTokenRadar:
         *,
         hydrated_payload_hash: str | None = None,
         stale_rank_inputs: int = 0,
+        stale_by_work_item: dict[tuple[str, str], int] | None = None,
     ):
         self.feature_rows = [row for row in feature_rows or [] if row is not None]
         self.rows: list[dict[str, object]] = []
         self.coverage: list[dict[str, object]] = []
         self.hydrated_payload_hash = hydrated_payload_hash
         self.stale_rank_inputs = int(stale_rank_inputs)
+        self.stale_by_work_item = stale_by_work_item or {}
         self.rebuild_keys: list[dict[str, object]] = []
         self.list_rebuild_calls: list[dict[str, object]] = []
         self.score_calls: list[dict[str, object]] = []
         self.refresh_calls: list[dict[str, object]] = []
+        self.source_request_batches: list[list[TokenRadarSourceRequest]] = []
+        self.upserts: list[dict[str, object]] = []
+        self.deletes: list[dict[str, object]] = []
+        self.target_projection_coverage: list[dict[str, object]] = []
 
     def mark_coverage(self, **kwargs):
         self.coverage.append(kwargs)
@@ -1598,6 +1743,23 @@ class FakeTokenRadar:
 
     def stale_rank_input_count(self, **kwargs):
         return self.stale_rank_inputs
+
+    def rank_input_readiness_for_work_items(self, **kwargs):
+        from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+            TokenRadarRankInputReadiness,
+        )
+
+        work_items = tuple(kwargs["work_items"])
+        stale_by_work_item = {
+            (str(window), str(scope)): int(self.stale_by_work_item.get((str(window), str(scope)), 0))
+            for window, scope in work_items
+            if int(self.stale_by_work_item.get((str(window), str(scope)), 0))
+        }
+        return TokenRadarRankInputReadiness(
+            ready=not stale_by_work_item,
+            stale_count=sum(stale_by_work_item.values()),
+            stale_by_work_item=stale_by_work_item,
+        )
 
     def load_target_feature_payloads_for_ranked_keys(self, keys):
         rows = []
@@ -1617,6 +1779,17 @@ class FakeTokenRadar:
     def publish_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True
+
+    def upsert_target_feature(self, **kwargs):
+        self.upserts.append(kwargs)
+        return 1
+
+    def delete_target_feature(self, **kwargs):
+        self.deletes.append(kwargs)
+        return 0
+
+    def mark_target_projection_coverage(self, **kwargs):
+        self.target_projection_coverage.append(kwargs)
 
 
 def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, object]:

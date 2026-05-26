@@ -5,9 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 ROLE_EVENT_TYPES: dict[str, frozenset[str]] = {
-    "official_exchange": frozenset(
-        {"exchange_listing", "exchange_delisting", "maintenance", "exchange_incident"}
-    ),
+    "official_exchange": frozenset({"exchange_listing", "exchange_delisting", "maintenance", "exchange_incident"}),
     "official_regulator": frozenset({"regulatory_action", "macro_policy"}),
     "official_protocol": frozenset(
         {"protocol_upgrade", "security_incident", "governance_tokenomics", "developer_release"}

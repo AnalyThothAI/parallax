@@ -27,6 +27,7 @@ def handle_queue_inspect(args: object, repos: object) -> tuple[int, dict[str, An
         worker_name=str(getattr(args, "worker", "") or "") or None,
         source_table=str(getattr(args, "source_table", "") or "") or None,
         status=str(getattr(args, "status", "") or "terminal"),
+        reason_bucket=str(getattr(args, "reason_bucket", "") or "") or None,
         limit=int(getattr(args, "limit", 50) or 50),
     )
     return 0, {"ok": True, "data": data}
@@ -51,10 +52,7 @@ def handle_queue_resolve(args: object, repos: object, *, now_ms: int) -> tuple[i
 
 
 def _bound_retry_transitions(repos: object) -> dict[tuple[str, str], Callable[..., dict[str, Any]]]:
-    return {
-        key: _bind_retry_transition(repos, transition)
-        for key, transition in QUEUE_RETRY_TRANSITIONS.items()
-    }
+    return {key: _bind_retry_transition(repos, transition) for key, transition in QUEUE_RETRY_TRANSITIONS.items()}
 
 
 def _bind_retry_transition(

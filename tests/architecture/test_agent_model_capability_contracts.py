@@ -77,7 +77,7 @@ def test_agent_runtime_has_single_json_object_output_path() -> None:
     forbidden_tokens = (
         '"json_schema"',
         "'json_schema'",
-        "schema_enforcement: str = \"provider\"",
+        'schema_enforcement: str = "provider"',
         "schema_enforcement=provider",
         "AgentOutputStrategy.JSON_SCHEMA",
         "AgentSchemaEnforcement.PROVIDER",
@@ -92,9 +92,7 @@ def test_agent_runtime_has_single_json_object_output_path() -> None:
         if path in allowlist:
             continue
         text = path.read_text(encoding="utf-8")
-        violations.extend(
-            f"{path.relative_to(ROOT)} contains {token!r}" for token in forbidden_tokens if token in text
-        )
+        violations.extend(f"{path.relative_to(ROOT)} contains {token!r}" for token in forbidden_tokens if token in text)
 
     assert violations == []
 

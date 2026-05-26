@@ -800,9 +800,7 @@ class FakeStoryProjectionRepository:
     def list_news_item_ids_for_stories(self, *, story_ids):
         wanted = set(story_ids)
         return [
-            str(member["news_item_id"])
-            for member in self.story_members
-            if str(member.get("story_id") or "") in wanted
+            str(member["news_item_id"]) for member in self.story_members if str(member.get("story_id") or "") in wanted
         ]
 
 

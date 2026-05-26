@@ -81,7 +81,7 @@ def test_backfill_watchlist_signal_stats_dispatches_to_repository(monkeypatch) -
             "upserted": 2,
             "has_more": True,
             "last_cursor": {"received_at_ms": 1700000000123, "event_id": "event-3"},
-            "next_after_cursor": "{\"event_id\":\"event-3\",\"received_at_ms\":1700000000123}",
+            "next_after_cursor": '{"event_id":"event-3","received_at_ms":1700000000123}',
             "batches": 1,
             "signal_events": 2,
             "normalized_handles": 1,
@@ -415,8 +415,9 @@ def test_rebuild_token_radar_rank_inputs_uses_full_rebuild_not_bounded_worker(mo
     monkeypatch.setattr(
         ops_module,
         "_rebuild_token_radar_rank_inputs_full",
-        lambda *_args, **kwargs: calls.append(("full_rebuild", dict(kwargs)))
-        or {"status": "ready", "legacy_rows_seen": 3},
+        lambda *_args, **kwargs: (
+            calls.append(("full_rebuild", dict(kwargs))) or {"status": "ready", "legacy_rows_seen": 3}
+        ),
     )
     stdout = io.StringIO()
 

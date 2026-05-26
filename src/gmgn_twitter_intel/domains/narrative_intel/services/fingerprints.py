@@ -45,4 +45,3 @@ def label_fingerprint(semantic_rows: Sequence[dict[str, Any]]) -> str:
 def _hash_payload(payload: Any) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-

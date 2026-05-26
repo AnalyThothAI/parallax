@@ -31,4 +31,3 @@ def ref_id_for_event(event_id: str) -> str:
 
 def ref_id_for_semantic(semantic_id: str) -> str:
     return f"semantic:{semantic_id}"
-

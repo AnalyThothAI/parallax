@@ -152,9 +152,7 @@ VALID_WORKER_CLASSIFICATIONS = frozenset(
     }
 )
 
-BROAD_DISCOVERY_CALLS = frozenset(
-    call for contract in RUNTIME_WORKER_CONTRACTS for call in contract.banned_calls
-)
+BROAD_DISCOVERY_CALLS = frozenset(call for contract in RUNTIME_WORKER_CONTRACTS for call in contract.banned_calls)
 
 CONTROL_PLANE_TABLES = frozenset(
     {
@@ -201,9 +199,7 @@ TOKEN_RADAR_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_rada
 TOKEN_RADAR_PROJECTION_SERVICE_PATH = SRC / "domains/token_intel/services/token_radar_projection.py"
 TOKEN_RADAR_PROJECTION_WORKER_PATH = SRC / "domains/token_intel/runtime/token_radar_projection_worker.py"
 EVENT_ANCHOR_WORKER_PATH = SRC / "domains/asset_market/runtime/event_anchor_backfill_worker.py"
-EVENT_ANCHOR_JOB_REPOSITORY_PATH = (
-    SRC / "domains/asset_market/repositories/event_anchor_backfill_job_repository.py"
-)
+EVENT_ANCHOR_JOB_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/event_anchor_backfill_job_repository.py"
 MACRO_REPOSITORY_PATH = SRC / "domains/macro_intel/repositories/macro_intel_repository.py"
 MACRO_ROUTE_PATH = SRC / "app/surfaces/api/routes_macro.py"
 
@@ -407,11 +403,7 @@ def test_broad_discovery_calls_are_repair_only_outside_runtime_workers() -> None
 @pytest.mark.parametrize("path", BOUNDED_SCHEDULER_COUNTER_PATHS, ids=lambda path: path.name)
 def test_bounded_scheduler_tail_workers_expose_compact_cost_counters(path: Path) -> None:
     keys = _runtime_entrypoint_dict_keys(path)
-    missing = [
-        key
-        for key in ("source_rows_scanned", "targets_loaded", "rows_written")
-        if key not in keys
-    ]
+    missing = [key for key in ("source_rows_scanned", "targets_loaded", "rows_written") if key not in keys]
 
     assert missing == [], f"{_rel(path)} is missing compact worker cost counters: {missing}"
 

@@ -6,4 +6,3 @@ DISCUSSION_DIGEST_PROMPT_VERSION = "discussion_digest_v1"
 NARRATIVE_MODEL_VERSION_UNKNOWN = "unknown"
 NARRATIVE_WINDOWS = ("5m", "1h", "4h", "24h")
 NARRATIVE_SCOPES = ("all", "matched")
-

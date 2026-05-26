@@ -140,9 +140,7 @@ def _absent() -> BullBearView:
 
 def test_signal_analyst_memo_with_allowed_refs_ok() -> None:
     memo = SignalAnalystMemo(
-        bull_claims=(
-            EvidenceClaim(claim="社交事件显示讨论正在扩散", evidence_refs=("event:event-1",), stance="bull"),
-        ),
+        bull_claims=(EvidenceClaim(claim="社交事件显示讨论正在扩散", evidence_refs=("event:event-1",), stance="bull"),),
         what_changed_zh="证据包内社交扩散较强，但仍需要等待更多确认。",
         allowed_evidence_ref_ids=("event:event-1",),
     )
@@ -151,9 +149,7 @@ def test_signal_analyst_memo_with_allowed_refs_ok() -> None:
 
 def test_bear_case_memo_with_allowed_refs_ok() -> None:
     memo = BearCaseMemo(
-        risk_claims=(
-            EvidenceClaim(claim="市场流动性仍然偏薄", evidence_refs=("market:pf-1",), stance="risk"),
-        ),
+        risk_claims=(EvidenceClaim(claim="市场流动性仍然偏薄", evidence_refs=("market:pf-1",), stance="risk"),),
         confidence_ceiling=0.7,
         missing_fact_impacts=(
             EvidenceClaim(claim="缺少更长窗口资金确认", evidence_refs=("missing:funding_context",), stance="gap"),

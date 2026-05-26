@@ -279,9 +279,14 @@ class PulseCandidateWorker(WorkerBase):
         return asyncio.run(self.process_due_jobs_once_async(now_ms=now_ms))
 
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0}
+        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0, "terminalized_stale_running": 0}
         for _ in range(min(self.batch_size, self.max_agent_jobs_per_cycle)):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
+            with self._repository_session() as repos:
+                result["terminalized_stale_running"] += _terminalize_exhausted_stale_running_jobs(
+                    repos.pulse_jobs,
+                    now_ms=resolved_now_ms,
+                )
             reservation = self.decision_client.try_reserve_execution(
                 "pulse.pipeline",
                 child_lanes=("pulse.signal_analyst", "pulse.bear_case", "pulse.risk_portfolio_judge"),
@@ -824,6 +829,18 @@ def _call_optional(target: Any, method: str, *args: Any) -> Any:
     if func is None:
         return None
     return func(*args)
+
+
+def _terminalize_exhausted_stale_running_jobs(pulse_jobs: Any, *, now_ms: int) -> int:
+    running_timeout_ms = int(getattr(pulse_jobs, "running_timeout_ms", 300_000) or 300_000)
+    return int(
+        pulse_jobs.terminalize_exhausted_stale_running_jobs(
+            now_ms=int(now_ms),
+            stale_after_ms=running_timeout_ms,
+            limit=100,
+        )
+        or 0
+    )
 
 
 def _transaction(conn: Any) -> AbstractContextManager[Any]:

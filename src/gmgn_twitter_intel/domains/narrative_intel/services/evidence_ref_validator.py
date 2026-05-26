@@ -28,9 +28,7 @@ class EvidenceRefValidator:
         missing_claims: list[str] = []
         if digest.status == "ready":
             missing_claims.extend(
-                f"cluster:{cluster.cluster_key}"
-                for cluster in digest.dominant_narratives
-                if not cluster.evidence_refs
+                f"cluster:{cluster.cluster_key}" for cluster in digest.dominant_narratives if not cluster.evidence_refs
             )
             if not (digest.bull_view.evidence_refs or digest.bear_view.evidence_refs):
                 missing_claims.append("arguments")

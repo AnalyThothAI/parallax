@@ -319,9 +319,7 @@ def _target_records(
         source_watermark_ms = _source_watermark_ms(target, default=now_ms)
         priority = _priority_value(target)
         due_at_ms = (
-            int(target.get("due_at_ms") or default_due_at_ms)
-            if isinstance(target, Mapping)
-            else default_due_at_ms
+            int(target.get("due_at_ms") or default_due_at_ms) if isinstance(target, Mapping) else default_due_at_ms
         )
         record = {
             "target_type": target_type,
@@ -408,10 +406,7 @@ def _source_watermark_ms(target: Mapping[str, Any] | tuple[str, str], *, default
     if not isinstance(target, Mapping):
         return int(default)
     return int(
-        target.get("source_watermark_ms")
-        or target.get("computed_at_ms")
-        or target.get("updated_at_ms")
-        or default
+        target.get("source_watermark_ms") or target.get("computed_at_ms") or target.get("updated_at_ms") or default
     )
 
 

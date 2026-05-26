@@ -622,9 +622,7 @@ class PulseCandidateJobService:
                             attempt_index=stage_audit.attempt_index,
                             provider=getattr(self.decision_client, "provider", "openai"),
                             model=getattr(self.decision_client, "model", ""),
-                            prompt_version=str(
-                                audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION
-                            ),
+                            prompt_version=str(audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION),
                             schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
                             input_json=stage_audit.input_json,
                             prompt_text=stage_audit.prompt_text,
@@ -799,11 +797,7 @@ def _committee_memos_from_stage_audits(
 
 
 def _packet_gate_refs(packet: PulseEvidencePacket) -> list[str]:
-    return [
-        ref.ref_id
-        for ref in packet.allowed_evidence_refs
-        if ref.ref_type == "gate"
-    ]
+    return [ref.ref_id for ref in packet.allowed_evidence_refs if ref.ref_type == "gate"]
 
 
 def _stage_finished_at_ms(stage_audit: StageRunAudit, *, fallback_finished_at_ms: int) -> int:

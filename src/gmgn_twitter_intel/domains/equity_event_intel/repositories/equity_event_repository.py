@@ -1791,9 +1791,7 @@ class EquityEventRepository:
 
     def load_events_for_brief_targets(self, *, company_event_ids: Sequence[str]) -> list[dict[str, Any]]:
         scoped_ids = [
-            str(company_event_id)
-            for company_event_id in dict.fromkeys(company_event_ids)
-            if str(company_event_id)
+            str(company_event_id) for company_event_id in dict.fromkeys(company_event_ids) if str(company_event_id)
         ]
         if not scoped_ids:
             return []

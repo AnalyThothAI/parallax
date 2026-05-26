@@ -49,11 +49,19 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert result.notes["status"] == "partial"
     assert result.notes["source_rows_scanned"] == 1
     assert result.notes["targets_loaded"] == len(MACRO_CORE_CONCEPTS)
+    assert result.notes["projected_rows_written"] == 1
     assert result.notes["rows_written"] == 1
     assert result.notes["history_coverage_ratio"] == "0.0"
     assert "data_gap_count" in result.notes
     assert int(result.notes["data_gap_count"]) > 0
     assert db.sessions == ["macro_view_projection"]
+    assert repo.calls == ["refresh_observation_series_rows", "observations_for_concepts", "insert_snapshot"]
+    assert repo.refresh_call == {
+        "projection_version": "macro_regime_v4",
+        "now_ms": NOW_MS,
+        "lookback_days": 730,
+        "limit_per_series": 99,
+    }
     assert repo.observations_for_series_call == {
         "concept_keys": MACRO_CORE_CONCEPTS,
         "lookback_days": 730,
@@ -79,8 +87,27 @@ class FakeDB:
 class FakeMacroIntelRepository:
     def __init__(self, *, observations: list[dict[str, object]]) -> None:
         self.observations = observations
+        self.calls: list[str] = []
+        self.refresh_call: dict[str, object] | None = None
         self.observations_for_series_call: dict[str, object] | None = None
         self.snapshots: list[dict[str, object]] = []
+
+    def refresh_observation_series_rows(
+        self,
+        *,
+        projection_version: str,
+        now_ms: int,
+        lookback_days: int,
+        limit_per_series: int,
+    ) -> int:
+        self.calls.append("refresh_observation_series_rows")
+        self.refresh_call = {
+            "projection_version": projection_version,
+            "now_ms": now_ms,
+            "lookback_days": lookback_days,
+            "limit_per_series": limit_per_series,
+        }
+        return len(self.observations)
 
     def observations_for_concepts(
         self,
@@ -89,6 +116,7 @@ class FakeMacroIntelRepository:
         lookback_days: int,
         limit_per_series: int,
     ) -> list[dict[str, object]]:
+        self.calls.append("observations_for_concepts")
         self.observations_for_series_call = {
             "concept_keys": concept_keys,
             "lookback_days": lookback_days,
@@ -97,4 +125,5 @@ class FakeMacroIntelRepository:
         return self.observations
 
     def insert_snapshot(self, snapshot: dict[str, object]) -> None:
+        self.calls.append("insert_snapshot")
         self.snapshots.append(snapshot)

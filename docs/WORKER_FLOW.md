@@ -68,7 +68,8 @@ The hot path from one public-stream frame to product output is:
    - live_price_gateway reads `token_capture_tier` control rows and latest market_ticks, then fans out cache-only WebSocket updates
 
 4. Token Intel projection
-   - token_radar_projection claims token_radar_dirty_targets and reads one target at a time through token_radar_target_feature_query
+   - token_radar_projection checks compact rank-input readiness before claiming token_radar_dirty_targets
+   - when ready, it claims dirty targets and hydrates source context through bounded TokenRadar source request batches
    - publishes token_radar_target_features, token_radar_current_rows for hot reads, token_radar_rank_history for compact rank history, and token_radar_snapshot_audit for point-in-time factor snapshots
    - emits token_radar_updated as a wake hint
 

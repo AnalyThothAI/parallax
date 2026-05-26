@@ -345,12 +345,12 @@ def test_token_target_repository_target_identity_escapes_cex_feed_like_pattern()
             "address": None,
             "status": "canonical",
             "pricefeed_id": "pricefeed:binance:BTCUSDT",
-                "provider": "binance",
-                "native_market_id": "BTCUSDT",
-                "quote_symbol": "USDT",
-                "feed_type": "cex_swap",
-            }
-        )
+            "provider": "binance",
+            "native_market_id": "BTCUSDT",
+            "quote_symbol": "USDT",
+            "feed_type": "cex_swap",
+        }
+    )
     repo = TokenTargetRepository(conn)
 
     result = repo.target_identity(target_type="CexToken", target_id="cex_token:BTC")

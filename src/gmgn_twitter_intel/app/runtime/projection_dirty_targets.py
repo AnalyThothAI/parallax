@@ -257,11 +257,7 @@ def _fetch_id_watermarks(
         where_clause = f"WHERE {since_column} >= %(since_ms)s"
         params["since_ms"] = int(since_ms)
     rows = conn.execute(sql_template.format(where_clause=where_clause), params).fetchall()
-    return [
-        (str(row[column]), int(row["source_watermark_ms"] or 0))
-        for row in rows
-        if row[column] is not None
-    ]
+    return [(str(row[column]), int(row["source_watermark_ms"] or 0)) for row in rows if row[column] is not None]
 
 
 def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:

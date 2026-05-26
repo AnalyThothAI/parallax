@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -68,6 +69,13 @@ RADAR_ROW_INSERT_VALUES_SQL = """
   %(listed_at_ms)s, %(created_at_ms)s
 """
 TOKEN_RADAR_RANK_INPUT_VERSION = "token-radar-rank-input-v1"
+
+
+@dataclass(frozen=True)
+class TokenRadarRankInputReadiness:
+    ready: bool
+    stale_count: int
+    stale_by_work_item: dict[tuple[str, str], int]
 
 
 class TokenRadarRepository:
@@ -765,7 +773,7 @@ class TokenRadarRepository:
             WHERE projection_version = %s
               AND "window" = ANY(%s::text[])
               AND scope = ANY(%s::text[])
-              AND rank_input_version <> %s
+              AND rank_input_version IS DISTINCT FROM %s
             ORDER BY "window" ASC, scope ASC, lane ASC, latest_event_received_at_ms DESC, identity_id ASC
             LIMIT %s
             """,
@@ -796,7 +804,7 @@ class TokenRadarRepository:
               WHERE projection_version = %s
                 AND "window" = %s
                 AND scope = %s
-                AND rank_input_version <> %s
+                AND rank_input_version IS DISTINCT FROM %s
               LIMIT %s
             ) stale_rank_inputs
             """,
@@ -809,6 +817,52 @@ class TokenRadarRepository:
             ),
         ).fetchone()
         return int((row or {}).get("count") or 0)
+
+    def rank_input_readiness_for_work_items(
+        self,
+        *,
+        projection_version: str,
+        work_items: Sequence[tuple[str, str]],
+    ) -> TokenRadarRankInputReadiness:
+        requested = tuple(dict.fromkeys((str(window), str(scope)) for window, scope in work_items if window and scope))
+        if not requested:
+            return TokenRadarRankInputReadiness(ready=True, stale_count=0, stale_by_work_item={})
+        rows = self.conn.execute(
+            """
+            WITH requested("window", scope) AS (
+              SELECT *
+              FROM unnest(%s::text[], %s::text[]) AS requested_values("window", scope)
+            ),
+            stale AS (
+              SELECT
+                requested."window",
+                requested.scope,
+                COUNT(*) AS stale_count
+              FROM requested
+              JOIN token_radar_target_features features
+                ON features."window" = requested."window"
+               AND features.scope = requested.scope
+              WHERE features.projection_version = %s
+                AND features.rank_input_version IS DISTINCT FROM %s
+              GROUP BY requested."window", requested.scope
+            )
+            SELECT "window", scope, stale_count
+            FROM stale
+            """,
+            (
+                [window for window, _scope in requested],
+                [scope for _window, scope in requested],
+                projection_version,
+                TOKEN_RADAR_RANK_INPUT_VERSION,
+            ),
+        ).fetchall()
+        stale_by_work_item = {(str(row["window"]), str(row["scope"])): int(row.get("stale_count") or 0) for row in rows}
+        stale_count = sum(stale_by_work_item.values())
+        return TokenRadarRankInputReadiness(
+            ready=stale_count == 0,
+            stale_count=stale_count,
+            stale_by_work_item=stale_by_work_item,
+        )
 
     def load_target_feature_payloads_for_ranked_keys(self, keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not keys:

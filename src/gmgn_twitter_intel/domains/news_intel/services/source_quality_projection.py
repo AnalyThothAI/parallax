@@ -4,9 +4,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-_FORMULA_ID = (
-    "fetch25|process15|resolved15|brief15|dedupe10|freshness10|useful_fact_or_context10"
-)
+_FORMULA_ID = "fetch25|process15|resolved15|brief15|dedupe10|freshness10|useful_fact_or_context10"
 _FORMULA_HASH = hashlib.sha256(_FORMULA_ID.encode()).hexdigest()[:12]
 SOURCE_QUALITY_PROJECTION_VERSION = f"news_source_quality_projection:v1:{_FORMULA_HASH}"
 

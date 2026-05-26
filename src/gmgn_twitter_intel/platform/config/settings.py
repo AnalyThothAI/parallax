@@ -927,6 +927,7 @@ class AgentRuntimeSettings(BaseModel):
                 raise ValueError(f"agent_runtime.lanes.{key} must be a mapping")
         return merged
 
+
 class PerWorkerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -60,10 +60,7 @@ def canonicalize_url(url: object) -> str:
 
 def title_fingerprint(title: object) -> str:
     normalized = str(title or "").casefold()
-    chars = [
-        " " if unicodedata.category(char).startswith(("P", "S")) else char
-        for char in normalized
-    ]
+    chars = [" " if unicodedata.category(char).startswith(("P", "S")) else char for char in normalized]
     return _WHITESPACE_RE.sub(" ", "".join(chars)).strip()
 
 

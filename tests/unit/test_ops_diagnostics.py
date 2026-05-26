@@ -196,9 +196,7 @@ def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> No
     assert stale_payload["agent_execution"]["status"] == "ok"
     assert stale_payload["overall"]["status"] == "ok"
 
-    runtime.agent_execution_gateway.snapshot["lanes"]["narrative.mention_semantics"][
-        "last_rpm_wait_at_ms"
-    ] = 999_800
+    runtime.agent_execution_gateway.snapshot["lanes"]["narrative.mention_semantics"]["last_rpm_wait_at_ms"] = 999_800
     recent_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000, since_hours=4, window="1h", scope="all")
 
     assert recent_payload["agent_execution"]["status"] == "degraded"
@@ -233,9 +231,7 @@ class FakeConn:
                     {
                         "due_count": 0,
                         "running_count": 0,
-                        "dead_count": sum(
-                            int(row["count"]) for row in self.queue_rows if row["status"] == "dead"
-                        ),
+                        "dead_count": sum(int(row["count"]) for row in self.queue_rows if row["status"] == "dead"),
                         "oldest_due_at_ms": None,
                         "oldest_running_at_ms": None,
                     }

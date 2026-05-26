@@ -482,14 +482,14 @@ def test_complete_mention_semantics_targets_current_semantic_identity(tmp_path):
             run_id=run["run_id"],
             labels=[
                 {
-                        "semantic_id": current["semantic_id"],
+                    "semantic_id": current["semantic_id"],
                     "event_id": "event-identity",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
                     "schema_version": current["schema_version"],
-                        "text_fingerprint": current["text_fingerprint"],
-                        "lease_owner": current["lease_owner"],
-                        "attempt_count": current["attempt_count"],
+                    "text_fingerprint": current["text_fingerprint"],
+                    "lease_owner": current["lease_owner"],
+                    "attempt_count": current["attempt_count"],
                     "trade_stance": "bullish",
                     "attention_valence": "celebratory",
                     "claim_type": "price-action",
