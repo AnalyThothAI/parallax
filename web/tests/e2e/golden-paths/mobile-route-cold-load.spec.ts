@@ -192,8 +192,8 @@ const routeCases: RouteCase[] = [
     },
     specific: async (page) => {
       await expect(page.getByRole("region", { name: "宏观工作台" })).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "宏观主模块" })).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "宏观模块" })).toBeHidden();
+      await expect(page.getByRole("navigation", { name: "宏观主模块" })).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "宏观模块" })).toHaveCount(0);
       await expect(page.getByText("美股风险：等待小盘确认")).toBeVisible();
       await expect(page.getByRole("region", { name: "关键指标" })).toContainText("标普500");
       await expect(page.getByRole("region", { name: "关键指标" })).not.toContainText("asset:spx");
