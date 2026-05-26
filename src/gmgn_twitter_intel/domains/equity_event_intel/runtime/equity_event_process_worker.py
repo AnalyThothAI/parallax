@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.equity_event_intel.services.event_classifier imp
 from gmgn_twitter_intel.domains.equity_event_intel.services.fact_candidates import (
     build_fact_candidates,
     build_source_spans,
-    document_text,
+    ready_evidence_texts,
 )
 
 
@@ -34,7 +34,7 @@ class EquityEventProcessWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            documents = repos.equity_events.list_unprocessed_event_documents(limit=self._batch_size())
+            documents = repos.equity_events.list_event_documents_for_processing(limit=self._batch_size())
         if not documents:
             return WorkerResult(skipped=1, notes={"reason": "no_unprocessed_documents"})
 
@@ -45,31 +45,38 @@ class EquityEventProcessWorker(WorkerBase):
             try:
                 identity = validate_company_identity(document)
                 event = classify_equity_event(document)
-                text = document_text(document)
+                evidence_artifacts = _evidence_artifacts(document)
+                evidence_status = str(document.get("evidence_status") or "pending")
+                evidence_reason = str(document.get("evidence_reason") or "")
+                artifact_texts = ready_evidence_texts(evidence_artifacts) if evidence_status == "ready" else []
                 spans = build_source_spans(
                     company_event_id=event.company_event_id,
                     event_document_id=event_document_id,
-                    source_id=document.get("source_id"),
-                    text=text,
+                    evidence_artifacts=evidence_artifacts if evidence_status == "ready" else [],
                     now_ms=now,
                 )
-                source_span_id = spans[0].span_id if spans else ""
-                candidates = (
-                    build_fact_candidates(
-                        company_event_id=event.company_event_id,
-                        event_document_id=event_document_id,
-                        source_span_id=source_span_id,
-                        company_id=event.company_id,
-                        ticker=event.ticker,
-                        event_type=event.event_type,
-                        period=event.fiscal_period,
-                        source_role=event.source_role,
-                        title=event.summary,
-                        body_text=text,
-                        now_ms=now,
+                candidates = []
+                for span, artifact_text in zip(spans, artifact_texts, strict=True):
+                    candidates.extend(
+                        build_fact_candidates(
+                            company_event_id=event.company_event_id,
+                            event_document_id=event_document_id,
+                            source_span_id=span.span_id,
+                            company_id=event.company_id,
+                            ticker=event.ticker,
+                            event_type=event.event_type,
+                            period=event.fiscal_period,
+                            source_role=event.source_role,
+                            evidence_text=artifact_text["text"],
+                            now_ms=now,
+                        )
                     )
-                    if source_span_id
-                    else []
+                fact_status, fact_reason, fact_extracted_at_ms = _fact_extraction_status(
+                    evidence_status=evidence_status,
+                    evidence_reason=evidence_reason,
+                    has_evidence_text=bool(artifact_texts),
+                    candidates=candidates,
+                    now_ms=now,
                 )
                 with self._repository_session() as repos:
                     old_company_event_ids = repos.equity_events.company_event_ids_for_document(
@@ -98,6 +105,14 @@ class EquityEventProcessWorker(WorkerBase):
                         now_ms=now,
                         commit=False,
                     )
+                    repos.equity_events.mark_event_document_evidence_status(
+                        event_document_id=event_document_id,
+                        evidence_status=evidence_status,
+                        evidence_reason=evidence_reason,
+                        evidence_ready_at_ms=document.get("evidence_ready_at_ms"),
+                        now_ms=now,
+                        commit=False,
+                    )
                     repos.equity_events.replace_source_spans(
                         event_document_id=event_document_id,
                         company_event_id=event.company_event_id,
@@ -108,6 +123,14 @@ class EquityEventProcessWorker(WorkerBase):
                         event_document_id=event_document_id,
                         company_event_id=event.company_event_id,
                         candidates=candidates,
+                        commit=False,
+                    )
+                    repos.equity_events.mark_event_document_fact_extraction_status(
+                        event_document_id=event_document_id,
+                        fact_extraction_status=fact_status,
+                        fact_extraction_reason=fact_reason,
+                        fact_extracted_at_ms=fact_extracted_at_ms,
+                        now_ms=now,
                         commit=False,
                     )
                     repos.equity_events.mark_event_document_processed(
@@ -168,6 +191,30 @@ class EquityEventProcessWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _evidence_artifacts(document: dict[str, Any]) -> list[dict[str, Any]]:
+    artifacts = document.get("evidence_artifacts")
+    if not isinstance(artifacts, list):
+        return []
+    return [dict(artifact) for artifact in artifacts if isinstance(artifact, dict)]
+
+
+def _fact_extraction_status(
+    *,
+    evidence_status: str,
+    evidence_reason: str,
+    has_evidence_text: bool,
+    candidates: list[Any],
+    now_ms: int,
+) -> tuple[str, str, int | None]:
+    if evidence_status != "ready":
+        return "no_evidence", evidence_reason or evidence_status, None
+    if not has_evidence_text:
+        return "no_evidence", evidence_reason or "no_ready_evidence_text", None
+    if candidates:
+        return "ready", "", int(now_ms)
+    return "no_extractable_facts", "no_revenue_or_eps_facts", None
 
 
 def _company_event_dirty_targets(*, company_event_ids: list[str], source_watermark_ms: int) -> list[dict[str, Any]]:

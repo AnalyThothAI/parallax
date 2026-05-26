@@ -25,6 +25,16 @@ TrustTier = Literal["official", "high", "standard", "low"]
 Priority = Literal["P0", "P1", "P2", "P3"]
 LifecycleStatus = Literal["raw", "processed", "process_failed", "brief_ready", "brief_stale"]
 ValidationStatus = Literal["accepted", "attention", "rejected", "pending"]
+EvidenceArtifactKind = Literal[
+    "html_text",
+    "xbrl",
+    "companyfacts",
+    "table",
+    "exhibit_text",
+    "transcript_text",
+    "ir_text",
+]
+EvidenceExtractionStatus = Literal["ready", "unavailable", "failed"]
 
 EQUITY_EVENT_BRIEF_WORKFLOW_NAME = "gmgn-twitter-intel.equity_event_brief"
 EQUITY_EVENT_BRIEF_AGENT_NAME = "EquityEventBriefAgent"
@@ -276,12 +286,41 @@ class NormalizedEquityDocument:
     raw_payload_json: dict[str, Any]
     fetched_at_ms: int
     cik: str | None = None
+    event_document_id: str | None = None
+    provider_document_id: str | None = None
     document_type: str = "unknown"
     form_type: str | None = None
     accession_number: str | None = None
     fiscal_period: str | None = None
     event_time_ms: int | None = None
     content_hash: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedEquityEvidenceArtifact:
+    evidence_artifact_id: str
+    event_document_id: str
+    artifact_kind: EvidenceArtifactKind
+    extraction_status: EvidenceExtractionStatus
+    source_url: str
+    content_hash: str
+    content_text: str
+    content_json: dict[str, Any]
+    excerpt_text: str
+    fetched_at_ms: int
+    parsed_at_ms: int
+    created_at_ms: int
+    updated_at_ms: int
+    provider_document_id: str | None = None
+    source_id: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EquityEvidenceHydrationResult:
+    status_code: int
+    artifacts: list[NormalizedEquityEvidenceArtifact]
+    error_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -562,6 +562,344 @@ def test_equity_event_repository_replace_page_rows_advances_source_watermark_wit
     assert after["xmin"] != before["xmin"]
 
 
+def test_equity_event_repository_replaces_evidence_artifacts_for_document(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    _seed_event_document(repos, event_document_id="event-doc-evidence-replace")
+
+    repos.equity_events.replace_evidence_artifacts(
+        event_document_id="event-doc-evidence-replace",
+        artifacts=[
+            {
+                "evidence_artifact_id": "artifact-old",
+                "provider_document_id": "provider-doc-event-duplicate",
+                "source_id": "sec:MSFT",
+                "artifact_kind": "html_text",
+                "extraction_status": "ready",
+                "source_url": "https://example.test/old.htm",
+                "content_hash": "hash-old",
+                "content_text": "old revenue text",
+                "content_json": {"version": 1},
+                "excerpt_text": "old revenue",
+                "fetched_at_ms": NOW_MS,
+                "parsed_at_ms": NOW_MS + 1,
+            }
+        ],
+        now_ms=NOW_MS + 2,
+    )
+    repos.equity_events.replace_evidence_artifacts(
+        event_document_id="event-doc-evidence-replace",
+        artifacts=[
+            {
+                "evidence_artifact_id": "artifact-new",
+                "provider_document_id": "provider-doc-event-duplicate",
+                "source_id": "sec:MSFT",
+                "artifact_kind": "xbrl",
+                "extraction_status": "ready",
+                "source_url": "https://example.test/new.xml",
+                "content_hash": "hash-new",
+                "content_text": "new revenue text",
+                "content_json": {"version": 2},
+                "excerpt_text": "new revenue",
+                "fetched_at_ms": NOW_MS + 3,
+                "parsed_at_ms": NOW_MS + 4,
+            }
+        ],
+        now_ms=NOW_MS + 5,
+    )
+
+    rows = repos.equity_events.list_event_evidence_artifacts("event-doc-evidence-replace")
+    assert [row["evidence_artifact_id"] for row in rows] == ["artifact-new"]
+    assert rows[0]["artifact_kind"] == "xbrl"
+    assert rows[0]["content_json"] == {"version": 2}
+
+
+def test_equity_event_repository_lists_ready_evidence_documents_for_processing(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    _seed_event_document(repos, event_document_id="event-doc-ready")
+    repos.equity_events.replace_evidence_artifacts(
+        event_document_id="event-doc-ready",
+        artifacts=[
+            {
+                "evidence_artifact_id": "artifact-ready",
+                "provider_document_id": "provider-doc-event-duplicate",
+                "source_id": "sec:MSFT",
+                "artifact_kind": "html_text",
+                "extraction_status": "ready",
+                "source_url": "https://example.test/msft.htm",
+                "content_hash": "hash-ready",
+                "content_text": "Revenue was $10.",
+                "content_json": {"sections": ["results"]},
+                "excerpt_text": "Revenue was $10.",
+                "fetched_at_ms": NOW_MS,
+                "parsed_at_ms": NOW_MS + 1,
+            }
+        ],
+        now_ms=NOW_MS + 2,
+    )
+    repos.equity_events.mark_event_document_evidence_status(
+        event_document_id="event-doc-ready",
+        evidence_status="ready",
+        evidence_reason="",
+        evidence_ready_at_ms=NOW_MS + 2,
+        now_ms=NOW_MS + 2,
+    )
+
+    rows = repos.equity_events.list_event_documents_for_processing(limit=10)
+
+    assert [row["event_document_id"] for row in rows] == ["event-doc-ready"]
+    assert rows[0]["evidence_status"] == "ready"
+    assert [artifact["evidence_artifact_id"] for artifact in rows[0]["evidence_artifacts"]] == ["artifact-ready"]
+
+
+def test_equity_event_repository_lists_unavailable_evidence_documents_with_reason(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    _seed_event_document(repos, event_document_id="event-doc-unavailable")
+    repos.equity_events.mark_event_document_evidence_status(
+        event_document_id="event-doc-unavailable",
+        evidence_status="unavailable",
+        evidence_reason="sec_document_unavailable",
+        evidence_ready_at_ms=NOW_MS + 2,
+        now_ms=NOW_MS + 2,
+    )
+
+    rows = repos.equity_events.list_event_documents_for_processing(limit=10)
+
+    assert [row["event_document_id"] for row in rows] == ["event-doc-unavailable"]
+    assert rows[0]["evidence_status"] == "unavailable"
+    assert rows[0]["evidence_reason"] == "sec_document_unavailable"
+    assert rows[0]["evidence_artifacts"] == []
+
+
+def test_equity_event_repository_excludes_pending_evidence_documents_from_processing(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    _seed_event_document(repos, event_document_id="event-doc-pending")
+
+    assert repos.equity_events.list_event_documents_for_processing(limit=10) == []
+
+
+def test_equity_event_repository_upserts_brief_state(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_company_event(
+        company_event_id="event-brief-state",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        primary_document_id=None,
+        event_type="quarterly_report",
+        priority="P0",
+        source_role="official_regulator",
+        fiscal_period="2026Q1",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        lifecycle_status="raw",
+        now_ms=NOW_MS,
+    )
+
+    inserted = repos.equity_events.upsert_brief_state(
+        company_event_id="event-brief-state",
+        brief_readiness_status="pending_due",
+        reason_code="evidence_ready",
+        reason_detail="evidence artifacts are ready",
+        input_hash="input-1",
+        source_updated_at_ms=NOW_MS,
+        next_retry_after_ms=None,
+        updated_at_ms=NOW_MS + 1,
+    )
+    updated = repos.equity_events.upsert_brief_state(
+        company_event_id="event-brief-state",
+        brief_readiness_status="failed_retryable",
+        reason_code="agent_backpressure",
+        reason_detail="retry after capacity frees",
+        input_hash="input-2",
+        source_updated_at_ms=NOW_MS + 2,
+        next_retry_after_ms=NOW_MS + 60_000,
+        updated_at_ms=NOW_MS + 3,
+    )
+
+    assert inserted["brief_readiness_status"] == "pending_due"
+    assert updated["brief_readiness_status"] == "failed_retryable"
+    assert updated["reason_code"] == "agent_backpressure"
+    assert updated["input_hash"] == "input-2"
+    assert updated["next_retry_after_ms"] == NOW_MS + 60_000
+
+
+def test_equity_event_repository_updates_source_material_freshness_status(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:FRESH",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:FRESH",
+        ticker="FRESH",
+        cik="0000000001",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.update_source_material_freshness(
+        source_id="sec:FRESH",
+        material_document_at_ms=NOW_MS + 1,
+        evidence_ready_at_ms=NOW_MS + 2,
+        product_projection_at_ms=NOW_MS + 3,
+        no_new_data_at_ms=NOW_MS + 4,
+        actionable_error="temporary evidence failure",
+        now_ms=NOW_MS + 5,
+    )
+
+    status = repos.equity_events.list_source_status(limit=10)[0]
+    assert status["last_success_at_ms"] is None
+    assert status["last_material_document_at_ms"] == NOW_MS + 1
+    assert status["last_evidence_ready_at_ms"] == NOW_MS + 2
+    assert status["last_product_projection_at_ms"] == NOW_MS + 3
+    assert status["last_no_new_data_at_ms"] == NOW_MS + 4
+    assert status["last_actionable_error"] == "temporary evidence failure"
+
+
+def test_equity_event_repository_reports_calendar_configuration_and_empty_reason(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+
+    assert repos.equity_events.calendar_configured() is False
+    assert repos.equity_events.calendar_empty_reason() == "calendar_source_not_configured"
+
+    repos.equity_events.upsert_source(
+        source_id="calendar:configured",
+        provider_type="configured_calendar",
+        company_id="",
+        ticker="",
+        cik=None,
+        source_role="calendar",
+        trust_tier="official",
+        refresh_interval_seconds=86_400,
+        enabled=True,
+        now_ms=NOW_MS,
+    )
+
+    assert repos.equity_events.calendar_configured() is True
+    assert repos.equity_events.calendar_empty_reason() == "no_calendar_rows_in_window"
+
+
+def test_equity_event_repository_summary_reports_product_status_counts(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    db_now_ms = postgres_conn.execute("SELECT (EXTRACT(EPOCH FROM now()) * 1000)::bigint AS now_ms").fetchone()[
+        "now_ms"
+    ]
+    source_id = "sec:SUMMARY"
+    company_id = "market_instrument:us_equity:SUMM"
+    event_id = "event-summary-main"
+
+    repos.equity_events.upsert_source(
+        source_id=source_id,
+        provider_type="sec_submissions",
+        company_id=company_id,
+        ticker="SUMM",
+        cik="0000000002",
+        source_role="official_regulator",
+        trust_tier="official",
+        refresh_interval_seconds=300,
+        enabled=True,
+        now_ms=db_now_ms,
+    )
+    fetch_run_id = repos.equity_events.start_fetch_run(source_id=source_id, started_at_ms=db_now_ms)
+    repos.equity_events.finish_fetch_run(
+        fetch_run_id=fetch_run_id,
+        source_id=source_id,
+        status="success",
+        finished_at_ms=db_now_ms + 100,
+        fetched_count=1,
+        inserted_count=1,
+    )
+    repos.equity_events.update_source_material_freshness(
+        source_id=source_id,
+        material_document_at_ms=db_now_ms + 200,
+        evidence_ready_at_ms=db_now_ms + 300,
+        now_ms=db_now_ms + 300,
+    )
+    repos.equity_events.upsert_source(
+        source_id="calendar:summary",
+        provider_type="configured_calendar",
+        company_id="",
+        ticker="",
+        cik=None,
+        source_role="calendar",
+        trust_tier="official",
+        refresh_interval_seconds=86_400,
+        enabled=True,
+        now_ms=db_now_ms,
+    )
+
+    for current_event_id, readiness in (
+        (event_id, "failed_retryable"),
+        ("event-summary-stale", "stale"),
+        ("event-summary-historical", "historical_unscheduled"),
+    ):
+        repos.equity_events.upsert_company_event(
+            company_event_id=current_event_id,
+            company_id=company_id,
+            ticker="SUMM",
+            primary_document_id=None,
+            event_type="quarterly_report",
+            priority="P0" if current_event_id == event_id else "P2",
+            source_role="official_regulator",
+            fiscal_period="2026Q1",
+            event_time_ms=db_now_ms,
+            discovered_at_ms=db_now_ms,
+            lifecycle_status="raw",
+            now_ms=db_now_ms,
+        )
+        repos.equity_events.upsert_brief_state(
+            company_event_id=current_event_id,
+            brief_readiness_status=readiness,
+            reason_code=readiness,
+            reason_detail="summary regression",
+            input_hash=f"input:{current_event_id}",
+            source_updated_at_ms=db_now_ms,
+            next_retry_after_ms=db_now_ms + 60_000 if readiness == "failed_retryable" else None,
+            updated_at_ms=db_now_ms + 400,
+        )
+
+    repos.equity_events.replace_page_rows(
+        rows=[
+            {
+                **_page_row("row-summary-main", event_id, "SUMM", db_now_ms),
+                "priority": "P0",
+                "computed_at_ms": db_now_ms + 500,
+                "source_watermark_ms": db_now_ms + 500,
+            }
+        ]
+    )
+    repos.equity_projection_dirty_targets.enqueue_targets(
+        [
+            {
+                "projection_name": "brief_input",
+                "target_kind": "company_event",
+                "target_id": event_id,
+                "payload_hash": "summary-brief-input",
+                "source_watermark_ms": db_now_ms,
+                "priority": 10,
+            }
+        ],
+        reason="summary_regression",
+        now_ms=db_now_ms,
+        due_at_ms=db_now_ms - 1,
+    )
+
+    summary = repos.equity_events.summary()
+
+    assert summary == {
+        "p0_open_count": 1,
+        "today_count": 1,
+        "due_brief_queue_count": 1,
+        "retryable_brief_failure_count": 1,
+        "stale_brief_count": 1,
+        "historical_backlog_count": 1,
+        "latest_material_event_at_ms": db_now_ms,
+        "latest_source_success_at_ms": db_now_ms + 100,
+        "latest_evidence_ready_at_ms": db_now_ms + 300,
+        "latest_projection_at_ms": db_now_ms + 500,
+        "calendar_configured": True,
+    }
+
+
 def test_equity_event_repository_computes_missing_page_payload_hash(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.upsert_company_event(
@@ -827,4 +1165,26 @@ def _seed_source_and_provider_document(repos) -> dict[str, object]:
         payload_hash="hash-1",
         raw_payload_json={"form": "10-Q"},
         fetched_at_ms=NOW_MS,
+    )
+
+
+def _seed_event_document(repos, *, event_document_id: str) -> dict[str, object]:
+    provider = _seed_source_and_provider_document(repos)
+    return repos.equity_events.upsert_event_document(
+        event_document_id=event_document_id,
+        provider_document_id=provider["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS,
+        content_hash=f"content:{event_document_id}",
+        now_ms=NOW_MS,
     )

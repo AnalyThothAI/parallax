@@ -86,7 +86,78 @@ class EquityEventRepository:
             """,
             (max(0, int(limit)),),
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [_source_status_payload(dict(row)) for row in rows]
+
+    def update_source_material_freshness(
+        self,
+        *,
+        source_id: str,
+        material_document_at_ms: int | None = None,
+        evidence_ready_at_ms: int | None = None,
+        product_projection_at_ms: int | None = None,
+        no_new_data_at_ms: int | None = None,
+        actionable_error: str | None = None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_sources
+               SET last_material_document_at_ms = COALESCE(%s, last_material_document_at_ms),
+                   last_evidence_ready_at_ms = COALESCE(%s, last_evidence_ready_at_ms),
+                   last_product_projection_at_ms = COALESCE(%s, last_product_projection_at_ms),
+                   last_no_new_data_at_ms = COALESCE(%s, last_no_new_data_at_ms),
+                   last_actionable_error = COALESCE(%s, last_actionable_error),
+                   updated_at_ms = %s
+             WHERE source_id = %s
+            """,
+            (
+                int(material_document_at_ms) if material_document_at_ms is not None else None,
+                int(evidence_ready_at_ms) if evidence_ready_at_ms is not None else None,
+                int(product_projection_at_ms) if product_projection_at_ms is not None else None,
+                int(no_new_data_at_ms) if no_new_data_at_ms is not None else None,
+                _compact_error(actionable_error),
+                int(now_ms),
+                source_id,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
+    def calendar_configured(self) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT EXISTS (
+              SELECT 1
+                FROM equity_event_sources
+               WHERE enabled = true
+                 AND provider_type = 'configured_calendar'
+              UNION ALL
+              SELECT 1
+                FROM equity_expected_events
+               WHERE status <> 'stale'
+              LIMIT 1
+            ) AS configured
+            """
+        ).fetchone()
+        return bool(row["configured"]) if row is not None else False
+
+    def calendar_empty_reason(self, *, has_rows: bool = False) -> str:
+        if has_rows:
+            return ""
+        if not self.calendar_configured():
+            return "calendar_source_not_configured"
+        row = self.conn.execute(
+            """
+            SELECT EXISTS (
+              SELECT 1
+                FROM equity_expected_events
+               WHERE status <> 'stale'
+              LIMIT 1
+            ) AS has_calendar_rows
+            """
+        ).fetchone()
+        return "" if row is not None and row["has_calendar_rows"] else "no_calendar_rows_in_window"
 
     def _source_reconcile_row(self, *, source_id: str, row: Any | None) -> dict[str, Any]:
         if row is None:
@@ -936,6 +1007,211 @@ class EquityEventRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def replace_evidence_artifacts(
+        self,
+        *,
+        event_document_id: str,
+        artifacts: Sequence[Mapping[str, Any]],
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            "DELETE FROM equity_event_evidence_artifacts WHERE event_document_id = %s",
+            (event_document_id,),
+        )
+        for artifact in artifacts:
+            payload = _evidence_artifact_payload(
+                event_document_id=event_document_id,
+                artifact=artifact,
+                now_ms=now_ms,
+            )
+            self.conn.execute(
+                """
+                INSERT INTO equity_event_evidence_artifacts (
+                  evidence_artifact_id, event_document_id, provider_document_id, source_id,
+                  artifact_kind, extraction_status, source_url, content_hash, content_text,
+                  content_json, excerpt_text, failure_reason, fetched_at_ms, parsed_at_ms,
+                  created_at_ms, updated_at_ms
+                )
+                VALUES (
+                  %(evidence_artifact_id)s, %(event_document_id)s, %(provider_document_id)s,
+                  %(source_id)s, %(artifact_kind)s, %(extraction_status)s, %(source_url)s,
+                  %(content_hash)s, %(content_text)s, %(content_json)s, %(excerpt_text)s,
+                  %(failure_reason)s, %(fetched_at_ms)s, %(parsed_at_ms)s, %(created_at_ms)s,
+                  %(updated_at_ms)s
+                )
+                """,
+                payload,
+            )
+        if commit:
+            self.conn.commit()
+
+    def list_event_evidence_artifacts(self, event_document_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+              FROM equity_event_evidence_artifacts
+             WHERE event_document_id = %s
+             ORDER BY artifact_kind ASC, evidence_artifact_id ASC
+            """,
+            (event_document_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_event_documents_for_processing(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT documents.*,
+                   provider.raw_payload_json,
+                   COALESCE(artifacts.evidence_artifacts, '[]'::jsonb) AS evidence_artifacts
+              FROM equity_event_documents AS documents
+              JOIN equity_provider_documents AS provider
+                ON provider.provider_document_id = documents.provider_document_id
+              LEFT JOIN LATERAL (
+                SELECT jsonb_agg(to_jsonb(evidence) ORDER BY evidence.artifact_kind, evidence.evidence_artifact_id)
+                         AS evidence_artifacts
+                  FROM equity_event_evidence_artifacts AS evidence
+                 WHERE evidence.event_document_id = documents.event_document_id
+              ) AS artifacts ON true
+             WHERE documents.lifecycle_status IN ('raw', 'process_failed')
+               AND documents.processing_attempts < 3
+               AND documents.evidence_status IN ('ready', 'unavailable', 'failed')
+             ORDER BY documents.event_time_ms DESC, documents.event_document_id ASC
+             LIMIT %s
+             FOR UPDATE OF documents SKIP LOCKED
+            """,
+            (max(0, int(limit)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_event_document_evidence_status(
+        self,
+        *,
+        event_document_id: str,
+        evidence_status: str,
+        evidence_reason: str,
+        evidence_ready_at_ms: int | None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_documents
+               SET evidence_status = %s,
+                   evidence_reason = %s,
+                   evidence_ready_at_ms = %s,
+                   updated_at_ms = %s
+             WHERE event_document_id = %s
+            """,
+            (
+                str(evidence_status),
+                str(evidence_reason or ""),
+                int(evidence_ready_at_ms) if evidence_ready_at_ms is not None else None,
+                int(now_ms),
+                event_document_id,
+            ),
+        )
+        self.conn.execute(
+            """
+            UPDATE equity_company_events
+               SET evidence_status = %s,
+                   evidence_reason = %s,
+                   updated_at_ms = %s
+             WHERE primary_document_id = %s
+            """,
+            (str(evidence_status), str(evidence_reason or ""), int(now_ms), event_document_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def mark_event_document_fact_extraction_status(
+        self,
+        *,
+        event_document_id: str,
+        fact_extraction_status: str,
+        fact_extraction_reason: str,
+        fact_extracted_at_ms: int | None,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_documents
+               SET fact_extraction_status = %s,
+                   fact_extraction_reason = %s,
+                   fact_extracted_at_ms = %s,
+                   updated_at_ms = %s
+             WHERE event_document_id = %s
+            """,
+            (
+                str(fact_extraction_status),
+                str(fact_extraction_reason or ""),
+                int(fact_extracted_at_ms) if fact_extracted_at_ms is not None else None,
+                int(now_ms),
+                event_document_id,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
+    def upsert_brief_state(
+        self,
+        *,
+        company_event_id: str,
+        brief_readiness_status: str,
+        reason_code: str,
+        reason_detail: str,
+        input_hash: str,
+        source_updated_at_ms: int,
+        next_retry_after_ms: int | None,
+        updated_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO equity_event_brief_states (
+              company_event_id, brief_readiness_status, reason_code, reason_detail,
+              input_hash, source_updated_at_ms, next_retry_after_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (company_event_id) DO UPDATE SET
+              brief_readiness_status = EXCLUDED.brief_readiness_status,
+              reason_code = EXCLUDED.reason_code,
+              reason_detail = EXCLUDED.reason_detail,
+              input_hash = EXCLUDED.input_hash,
+              source_updated_at_ms = EXCLUDED.source_updated_at_ms,
+              next_retry_after_ms = EXCLUDED.next_retry_after_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING *
+            """,
+            (
+                company_event_id,
+                str(brief_readiness_status),
+                str(reason_code or ""),
+                str(reason_detail or ""),
+                str(input_hash or ""),
+                int(source_updated_at_ms),
+                int(next_retry_after_ms) if next_retry_after_ms is not None else None,
+                int(updated_at_ms),
+            ),
+        ).fetchone()
+        self.conn.execute(
+            """
+            UPDATE equity_company_events
+               SET brief_readiness_status = %s,
+                   brief_readiness_reason = %s
+             WHERE company_event_id = %s
+            """,
+            (
+                str(brief_readiness_status),
+                str(reason_code or ""),
+                company_event_id,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
     def company_event_ids_for_document(self, *, event_document_id: str) -> list[str]:
         rows = self.conn.execute(
             """
@@ -1386,6 +1662,7 @@ class EquityEventRepository:
         company_event_ids: Sequence[str] | None = None,
         commit: bool = True,
     ) -> None:
+        source_ids_by_row_id = {str(row.get("row_id") or ""): _page_row_source_ids(row) for row in rows}
         payloads = [_page_row_payload(row) for row in rows]
         scoped_company_event_ids = (
             [str(company_event_id) for company_event_id in company_event_ids]
@@ -1415,15 +1692,18 @@ class EquityEventRepository:
                 INSERT INTO equity_event_page_rows (
                   row_id, company_event_id, story_id, company_id, ticker, company_name, event_type,
                   priority, source_role, latest_event_at_ms, lifecycle_status, headline, summary,
-                  facts_json, documents_json, brief_json, computed_at_ms, projection_version,
-                  payload_hash, source_watermark_ms
+                  evidence_status, evidence_reason, fact_extraction_status, fact_extraction_reason,
+                  facts_json, documents_json, brief_json, freshness_json, computed_at_ms,
+                  projection_version, payload_hash, source_watermark_ms
                 )
                 VALUES (
                   %(row_id)s, %(company_event_id)s, %(story_id)s, %(company_id)s, %(ticker)s,
                   %(company_name)s, %(event_type)s, %(priority)s, %(source_role)s,
                   %(latest_event_at_ms)s, %(lifecycle_status)s, %(headline)s, %(summary)s,
-                  %(facts_json)s, %(documents_json)s, %(brief_json)s, %(computed_at_ms)s,
-                  %(projection_version)s, %(payload_hash)s, %(source_watermark_ms)s
+                  %(evidence_status)s, %(evidence_reason)s, %(fact_extraction_status)s,
+                  %(fact_extraction_reason)s, %(facts_json)s, %(documents_json)s, %(brief_json)s,
+                  %(freshness_json)s, %(computed_at_ms)s, %(projection_version)s,
+                  %(payload_hash)s, %(source_watermark_ms)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   company_event_id = EXCLUDED.company_event_id,
@@ -1438,9 +1718,14 @@ class EquityEventRepository:
                   lifecycle_status = EXCLUDED.lifecycle_status,
                   headline = EXCLUDED.headline,
                   summary = EXCLUDED.summary,
+                  evidence_status = EXCLUDED.evidence_status,
+                  evidence_reason = EXCLUDED.evidence_reason,
+                  fact_extraction_status = EXCLUDED.fact_extraction_status,
+                  fact_extraction_reason = EXCLUDED.fact_extraction_reason,
                   facts_json = EXCLUDED.facts_json,
                   documents_json = EXCLUDED.documents_json,
                   brief_json = EXCLUDED.brief_json,
+                  freshness_json = EXCLUDED.freshness_json,
                   computed_at_ms = CASE
                     WHEN equity_event_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                       OR equity_event_page_rows.projection_version IS DISTINCT FROM EXCLUDED.projection_version
@@ -1459,6 +1744,13 @@ class EquityEventRepository:
                 """,
                 payload,
             )
+            for source_id in source_ids_by_row_id.get(str(payload["row_id"]), []):
+                self.update_source_material_freshness(
+                    source_id=source_id,
+                    product_projection_at_ms=int(payload["computed_at_ms"]),
+                    now_ms=int(payload["computed_at_ms"]),
+                    commit=False,
+                )
         if commit:
             self.conn.commit()
 
@@ -1679,34 +1971,73 @@ class EquityEventRepository:
         row = self.conn.execute(
             """
             SELECT
-              COUNT(*) FILTER (
+              COALESCE((
+                SELECT COUNT(*) FILTER (
                 WHERE priority = 'P0'
                   AND lifecycle_status IN ('raw', 'processed', 'process_failed', 'brief_stale')
-              )::integer AS p0_open_count,
-              COUNT(*) FILTER (
+                )::integer
+                  FROM equity_event_page_rows
+              ), 0) AS p0_open_count,
+              COALESCE((
+                SELECT COUNT(*) FILTER (
                 WHERE latest_event_at_ms >= (
                   EXTRACT(EPOCH FROM date_trunc('day', now())) * 1000
                 )::bigint
-              )::integer AS today_count,
-              COUNT(*) FILTER (
-                WHERE LOWER(COALESCE(brief_json ->> 'status', 'pending')) = 'pending'
-              )::integer AS brief_pending_count,
-              MAX(latest_event_at_ms) AS latest_event_at_ms
-              FROM equity_event_page_rows
+                )::integer
+                  FROM equity_event_page_rows
+              ), 0) AS today_count,
+              COALESCE((
+                SELECT COUNT(*)::integer
+                  FROM equity_event_projection_dirty_targets
+                 WHERE projection_name = 'brief_input'
+                   AND target_kind = 'company_event'
+                   AND due_at_ms <= (EXTRACT(EPOCH FROM now()) * 1000)::bigint
+                   AND (leased_until_ms IS NULL OR leased_until_ms <= (EXTRACT(EPOCH FROM now()) * 1000)::bigint)
+              ), 0) AS due_brief_queue_count,
+              COALESCE((
+                SELECT COUNT(*)::integer
+                  FROM equity_event_brief_states
+                 WHERE brief_readiness_status = 'failed_retryable'
+              ), 0) AS retryable_brief_failure_count,
+              COALESCE((
+                SELECT COUNT(*)::integer
+                  FROM equity_event_brief_states
+                 WHERE brief_readiness_status = 'stale'
+              ), 0) AS stale_brief_count,
+              COALESCE((
+                SELECT COUNT(*)::integer
+                  FROM equity_event_brief_states
+                 WHERE brief_readiness_status = 'historical_unscheduled'
+              ), 0) AS historical_backlog_count,
+              (SELECT MAX(latest_event_at_ms) FROM equity_event_page_rows) AS latest_material_event_at_ms,
+              (SELECT MAX(last_success_at_ms) FROM equity_event_sources) AS latest_source_success_at_ms,
+              (SELECT MAX(last_evidence_ready_at_ms) FROM equity_event_sources) AS latest_evidence_ready_at_ms,
+              (SELECT MAX(computed_at_ms) FROM equity_event_page_rows) AS latest_projection_at_ms,
+              EXISTS (
+                SELECT 1
+                  FROM equity_event_sources
+                 WHERE enabled = true
+                   AND provider_type = 'configured_calendar'
+                UNION ALL
+                SELECT 1
+                  FROM equity_expected_events
+                 WHERE status <> 'stale'
+                LIMIT 1
+              ) AS calendar_configured
             """
         ).fetchone()
-        if row is None:
-            return {
-                "p0_open_count": 0,
-                "today_count": 0,
-                "brief_pending_count": 0,
-                "latest_event_at_ms": None,
-            }
         return {
             "p0_open_count": int(row["p0_open_count"] or 0),
             "today_count": int(row["today_count"] or 0),
-            "brief_pending_count": int(row["brief_pending_count"] or 0),
-            "latest_event_at_ms": row["latest_event_at_ms"],
+            "due_brief_queue_count": int(row["due_brief_queue_count"] or 0),
+            "retryable_brief_failure_count": int(row["retryable_brief_failure_count"] or 0),
+            "stale_brief_count": int(row["stale_brief_count"] or 0),
+            "historical_backlog_count": int(row["historical_backlog_count"] or 0),
+            "latest_material_event_at_ms": row["latest_material_event_at_ms"],
+            "latest_source_success_at_ms": row["latest_source_success_at_ms"],
+            "latest_evidence_ready_at_ms": row["latest_evidence_ready_at_ms"],
+            "latest_projection_at_ms": row["latest_projection_at_ms"],
+            "calendar_configured": bool(row["calendar_configured"]),
         }
 
     def load_event_page_projection_payloads(self, *, company_event_ids: Sequence[str]) -> list[dict[str, Any]]:
@@ -1739,6 +2070,12 @@ class EquityEventRepository:
                    briefs.validator_version,
                    briefs.computed_at_ms AS brief_computed_at_ms,
                    briefs.updated_at_ms AS brief_updated_at_ms,
+                   brief_state.brief_readiness_status,
+                   brief_state.reason_code AS brief_reason_code,
+                   brief_state.reason_detail AS brief_reason_detail,
+                   brief_state.source_updated_at_ms AS brief_source_updated_at_ms,
+                   brief_state.next_retry_after_ms AS brief_next_retry_after_ms,
+                   brief_state.updated_at_ms AS brief_state_updated_at_ms,
                    COALESCE(fact_state.facts_updated_at_ms, 0) AS facts_updated_at_ms,
                    COALESCE(documents.updated_at_ms, 0) AS document_updated_at_ms,
                    GREATEST(
@@ -1746,6 +2083,7 @@ class EquityEventRepository:
                      COALESCE(universe.updated_at_ms, 0),
                      COALESCE(stories.updated_at_ms, 0),
                      COALESCE(briefs.updated_at_ms, 0),
+                     COALESCE(brief_state.updated_at_ms, 0),
                      COALESCE(documents.updated_at_ms, 0),
                      COALESCE(fact_state.facts_updated_at_ms, 0)
                    ) AS source_watermark_ms
@@ -1758,6 +2096,8 @@ class EquityEventRepository:
                 ON stories.story_id = members.story_id
               LEFT JOIN equity_event_agent_briefs AS briefs
                 ON briefs.company_event_id = events.company_event_id
+              LEFT JOIN equity_event_brief_states AS brief_state
+                ON brief_state.company_event_id = events.company_event_id
               LEFT JOIN equity_event_documents AS documents
                 ON documents.event_document_id = events.primary_document_id
               LEFT JOIN LATERAL (
@@ -1784,16 +2124,14 @@ class EquityEventRepository:
                     "story": _story_payload(item),
                     "facts": self._list_event_facts(str(item["company_event_id"])),
                     "documents": self._list_event_documents(_optional_str(item.get("primary_document_id"))),
-                    "brief": _brief_payload(item),
+                    "brief": _page_brief_payload(item),
                 }
             )
         return payloads
 
     def load_events_for_brief_targets(self, *, company_event_ids: Sequence[str]) -> list[dict[str, Any]]:
         scoped_ids = [
-            str(company_event_id)
-            for company_event_id in dict.fromkeys(company_event_ids)
-            if str(company_event_id)
+            str(company_event_id) for company_event_id in dict.fromkeys(company_event_ids) if str(company_event_id)
         ]
         if not scoped_ids:
             return []
@@ -2484,15 +2822,56 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
             "lifecycle_status": str(row["lifecycle_status"]),
             "headline": str(row["headline"]),
             "summary": str(row.get("summary") or ""),
+            "evidence_status": str(row.get("evidence_status") or "pending"),
+            "evidence_reason": str(row.get("evidence_reason") or ""),
+            "fact_extraction_status": str(row.get("fact_extraction_status") or "pending"),
+            "fact_extraction_reason": str(row.get("fact_extraction_reason") or ""),
             "facts_json": list(row.get("facts_json") or []),
             "documents_json": list(row.get("documents_json") or []),
-            "brief_json": dict(row.get("brief_json") or {"status": "pending"}),
+            "brief_json": dict(row.get("brief_json") or {"status": "pending_due"}),
+            "freshness_json": dict(row.get("freshness_json") or {}),
             "computed_at_ms": computed_at_ms,
             "source_watermark_ms": int(row.get("source_watermark_ms") or computed_at_ms),
             "projection_version": str(row["projection_version"]),
         },
-        json_fields=("facts_json", "documents_json", "brief_json"),
+        json_fields=("facts_json", "documents_json", "brief_json", "freshness_json"),
     )
+
+
+def _page_row_source_ids(row: Mapping[str, Any]) -> list[str]:
+    source_ids: list[str] = []
+    for document in row.get("documents_json") or []:
+        if not isinstance(document, Mapping):
+            continue
+        source_id = str(document.get("source_id") or "").strip()
+        if source_id and source_id not in source_ids:
+            source_ids.append(source_id)
+    return source_ids
+
+
+def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(row)
+    payload["product_status"] = _source_product_status(row)
+    return payload
+
+
+def _source_product_status(row: Mapping[str, Any]) -> str:
+    material_at = int(row.get("last_material_document_at_ms") or 0)
+    evidence_at = int(row.get("last_evidence_ready_at_ms") or 0)
+    projection_at = int(row.get("last_product_projection_at_ms") or 0)
+    no_new_data_at = int(row.get("last_no_new_data_at_ms") or 0)
+    actionable_error = str(row.get("last_actionable_error") or "").strip()
+    if actionable_error:
+        return "evidence_failed"
+    if no_new_data_at and no_new_data_at >= max(material_at, evidence_at, projection_at):
+        return "source_checked_no_new_data"
+    if evidence_at and projection_at >= evidence_at:
+        return "fresh"
+    if material_at and not evidence_at:
+        return "evidence_pending"
+    if evidence_at and (not projection_at or projection_at < evidence_at):
+        return "stale_projection"
+    return "unknown"
 
 
 def _calendar_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -2568,6 +2947,42 @@ def _company_timeline_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
+def _evidence_artifact_payload(
+    *,
+    event_document_id: str,
+    artifact: Mapping[str, Any],
+    now_ms: int,
+) -> dict[str, Any]:
+    evidence_artifact_id = _optional_str(artifact.get("evidence_artifact_id"))
+    if evidence_artifact_id is None:
+        evidence_artifact_id = _stable_payload_hash(
+            {
+                "event_document_id": event_document_id,
+                "artifact_kind": artifact.get("artifact_kind"),
+                "source_url": artifact.get("source_url"),
+                "content_hash": artifact.get("content_hash"),
+            }
+        )
+    return {
+        "evidence_artifact_id": evidence_artifact_id,
+        "event_document_id": event_document_id,
+        "provider_document_id": _optional_str(artifact.get("provider_document_id")),
+        "source_id": _optional_str(artifact.get("source_id")),
+        "artifact_kind": str(artifact["artifact_kind"]),
+        "extraction_status": str(artifact["extraction_status"]),
+        "source_url": str(artifact.get("source_url") or ""),
+        "content_hash": str(artifact.get("content_hash") or ""),
+        "content_text": str(artifact.get("content_text") or ""),
+        "content_json": Jsonb(_json_dict(artifact.get("content_json"))),
+        "excerpt_text": str(artifact.get("excerpt_text") or ""),
+        "failure_reason": _compact_error(_optional_str(artifact.get("failure_reason"))),
+        "fetched_at_ms": int(artifact.get("fetched_at_ms") or 0),
+        "parsed_at_ms": int(artifact.get("parsed_at_ms") or 0),
+        "created_at_ms": int(now_ms),
+        "updated_at_ms": int(now_ms),
+    }
+
+
 def _projection_payload(payload: dict[str, Any], *, json_fields: Sequence[str]) -> dict[str, Any]:
     payload["payload_hash"] = _projection_payload_hash(payload)
     for field in json_fields:
@@ -2579,9 +2994,14 @@ def _projection_payload_hash(payload: Mapping[str, Any]) -> str:
     hash_payload = {
         str(key): value
         for key, value in payload.items()
-        if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms"}
+        if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms", "freshness_json"}
     }
     encoded = json.dumps(hash_payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _stable_payload_hash(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(dict(payload), sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -2623,6 +3043,21 @@ def _brief_payload(row: Mapping[str, Any]) -> dict[str, Any] | None:
         "computed_at_ms": row.get("brief_computed_at_ms"),
         "updated_at_ms": row.get("brief_updated_at_ms"),
     }
+
+
+def _page_brief_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    payload = _brief_payload(row) or {}
+    payload.update(
+        {
+            "brief_readiness_status": row.get("brief_readiness_status") or "pending_due",
+            "reason_code": row.get("brief_reason_code") or "brief_state_missing",
+            "reason_detail": row.get("brief_reason_detail") or "",
+            "source_updated_at_ms": row.get("brief_source_updated_at_ms"),
+            "next_retry_after_ms": row.get("brief_next_retry_after_ms"),
+            "updated_at_ms": row.get("brief_state_updated_at_ms") or row.get("brief_updated_at_ms"),
+        }
+    )
+    return payload
 
 
 def _calendar_projection_payload(row: Mapping[str, Any]) -> dict[str, Any]:

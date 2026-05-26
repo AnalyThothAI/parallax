@@ -175,6 +175,8 @@ def test_equity_events_calendar_forwards_alias_filters() -> None:
     assert response.json() == {
         "ok": True,
         "data": {
+            "calendar_configured": True,
+            "empty_reason": "",
             "items": [
                 {
                     "row_id": "calendar-1",
@@ -183,9 +185,32 @@ def test_equity_events_calendar_forwards_alias_filters() -> None:
                     "expected_at_ms": 8_000,
                     "status": "expected",
                 }
-            ]
+            ],
         },
     }
+
+
+def test_equity_events_calendar_returns_not_configured_state() -> None:
+    equity_events = FakeEquityEventRepository()
+    equity_events.calendar_payload = {"items": []}
+    equity_events.calendar_is_configured = False
+    equity_events.calendar_empty_reason_value = "calendar_source_not_configured"
+    app = _app(equity_events)
+
+    with TestClient(app) as client:
+        response = client.get("/api/equity-events/calendar", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "data": {
+            "items": [],
+            "calendar_configured": False,
+            "empty_reason": "calendar_source_not_configured",
+        },
+    }
+    assert equity_events.calendar_configured_calls == 1
+    assert equity_events.calendar_empty_reason_calls == 1
 
 
 def test_equity_events_sources_status_returns_source_rows() -> None:
@@ -203,8 +228,21 @@ def test_equity_events_sources_status_returns_source_rows() -> None:
     }
 
 
-def test_equity_events_summary_returns_counts() -> None:
+def test_equity_events_summary_returns_product_freshness_not_global_pending() -> None:
     equity_events = FakeEquityEventRepository()
+    equity_events.summary_payload = {
+        "p0_open_count": 1,
+        "today_count": 2,
+        "due_brief_queue_count": 3,
+        "retryable_brief_failure_count": 4,
+        "stale_brief_count": 5,
+        "historical_backlog_count": 6,
+        "latest_material_event_at_ms": 7_000,
+        "latest_source_success_at_ms": 8_000,
+        "latest_evidence_ready_at_ms": 9_000,
+        "latest_projection_at_ms": 10_000,
+        "calendar_configured": False,
+    }
     app = _app(equity_events)
 
     with TestClient(app) as client:
@@ -212,15 +250,23 @@ def test_equity_events_summary_returns_counts() -> None:
 
     assert response.status_code == 200
     assert equity_events.summary_calls == 1
-    assert response.json() == {
-        "ok": True,
-        "data": {
-            "p0_open_count": 1,
-            "today_count": 2,
-            "brief_pending_count": 3,
-            "latest_event_at_ms": 4_000,
-        },
+    data = response.json()["data"]
+    expected_data = {
+        "p0_open_count": 1,
+        "today_count": 2,
+        "due_brief_queue_count": 3,
+        "retryable_brief_failure_count": 4,
+        "stale_brief_count": 5,
+        "historical_backlog_count": 6,
+        "latest_material_event_at_ms": 7_000,
+        "latest_source_success_at_ms": 8_000,
+        "latest_evidence_ready_at_ms": 9_000,
+        "latest_projection_at_ms": 10_000,
+        "calendar_configured": False,
     }
+    assert {key: data[key] for key in expected_data} == expected_data
+    assert "brief_pending_count" not in data
+    assert "latest_event_at_ms" not in data
 
 
 def test_equity_events_story_detail_and_missing_story() -> None:
@@ -288,9 +334,37 @@ class FakeEquityEventRepository:
         self.event_page_calls: list[dict[str, Any]] = []
         self.calendar_calls: list[dict[str, Any]] = []
         self.timeline_calls: list[dict[str, Any]] = []
+        self.calendar_configured_calls = 0
+        self.calendar_empty_reason_calls = 0
         self.source_status_calls = 0
         self.summary_calls = 0
         self.event_detail: dict[str, Any] | None = {"company_event_id": "event-1"}
+        self.calendar_payload: dict[str, Any] = {
+            "items": [
+                {
+                    "row_id": "calendar-1",
+                    "expected_event_id": "expected-1",
+                    "ticker": "MSFT",
+                    "expected_at_ms": 8_000,
+                    "status": "expected",
+                }
+            ]
+        }
+        self.calendar_is_configured = True
+        self.calendar_empty_reason_value: str | None = None
+        self.summary_payload: dict[str, Any] = {
+            "p0_open_count": 1,
+            "today_count": 2,
+            "due_brief_queue_count": 3,
+            "retryable_brief_failure_count": 0,
+            "stale_brief_count": 0,
+            "historical_backlog_count": 0,
+            "latest_material_event_at_ms": 4_000,
+            "latest_source_success_at_ms": 4_000,
+            "latest_evidence_ready_at_ms": 4_000,
+            "latest_projection_at_ms": 4_000,
+            "calendar_configured": True,
+        }
 
     def list_event_page_rows(
         self,
@@ -375,15 +449,16 @@ class FakeEquityEventRepository:
                 "universe": universe,
             }
         )
-        return [
-            {
-                "row_id": "calendar-1",
-                "expected_event_id": "expected-1",
-                "ticker": "MSFT",
-                "expected_at_ms": 8_000,
-                "status": "expected",
-            }
-        ]
+        return list(self.calendar_payload.get("items") or [])
+
+    def calendar_configured(self) -> bool:
+        self.calendar_configured_calls += 1
+        return self.calendar_is_configured
+
+    def calendar_empty_reason(self, *, has_rows: bool = False) -> str | None:
+        del has_rows
+        self.calendar_empty_reason_calls += 1
+        return self.calendar_empty_reason_value
 
     def list_company_timeline_rows(
         self,
@@ -409,12 +484,7 @@ class FakeEquityEventRepository:
 
     def summary(self) -> dict[str, Any]:
         self.summary_calls += 1
-        return {
-            "p0_open_count": 1,
-            "today_count": 2,
-            "brief_pending_count": 3,
-            "latest_event_at_ms": 4_000,
-        }
+        return dict(self.summary_payload)
 
 
 class FakeRepositoryContext:

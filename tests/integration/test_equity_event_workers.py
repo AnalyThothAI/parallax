@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import asdict
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,7 +11,10 @@ import pytest
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
-from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import (
+    EquityEventFetchWorker,
+    _evidence_document_status,
+)
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
     EquityEventPageProjectionWorker,
 )
@@ -21,7 +25,12 @@ from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_source_r
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_story_projection_worker import (
     EquityEventStoryProjectionWorker,
 )
-from gmgn_twitter_intel.domains.equity_event_intel.types import EQUITY_EVENT_BRIEF_LANE
+from gmgn_twitter_intel.domains.equity_event_intel.services.sec_evidence import (
+    build_failed_evidence_artifact,
+    build_ready_html_text_artifact,
+    build_unavailable_evidence_artifact,
+)
+from gmgn_twitter_intel.domains.equity_event_intel.types import EQUITY_EVENT_BRIEF_LANE, EquityEvidenceHydrationResult
 from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import connect_postgres_test, reset_postgres_schema
@@ -157,25 +166,18 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
     story_result = story_worker.run_once_sync()
 
     processed_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    evidence_artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
     company_event = postgres_conn.execute("SELECT * FROM equity_company_events").fetchone()
-    source_spans = postgres_conn.execute("SELECT * FROM equity_event_source_spans").fetchall()
-    fact_candidates = postgres_conn.execute("SELECT * FROM equity_event_fact_candidates").fetchall()
     story_group = postgres_conn.execute("SELECT * FROM equity_event_story_groups").fetchone()
     story_member = postgres_conn.execute("SELECT * FROM equity_event_story_members").fetchone()
 
     assert process_result.processed == 1
     assert processed_document["lifecycle_status"] == "processed"
+    assert processed_document["evidence_status"] == "ready"
+    assert len(evidence_artifacts) == 1
+    assert evidence_artifacts[0]["extraction_status"] == "ready"
     assert company_event["event_type"] == "quarterly_report"
     assert company_event["priority"] == "P0"
-    assert len(source_spans) == 1
-    assert {candidate["fact_type"] for candidate in fact_candidates} == {"revenue_actual", "eps_actual"}
-    assert {candidate["source_span_id"] for candidate in fact_candidates} == {source_spans[0]["span_id"]}
-    revenue_candidate = next(candidate for candidate in fact_candidates if candidate["fact_type"] == "revenue_actual")
-    assert revenue_candidate["metric_name"] == "revenue"
-    assert revenue_candidate["value_numeric"] == 62.0
-    assert revenue_candidate["value_unit"] == "USD_billion"
-    assert revenue_candidate["period"] == "2026Q1"
-    assert revenue_candidate["evidence_span_end"] > revenue_candidate["evidence_span_start"]
     assert wake_bus.events_processed == [1]
     assert story_result.processed == 1
     assert story_group["event_count"] == 1
@@ -436,6 +438,167 @@ def test_fetch_worker_records_structured_provider_failure(postgres_conn) -> None
     assert fetch_run["extra_json"]["provider_document"]["status"] == "failed"
 
 
+def test_fetch_worker_hydrates_sec_document_text_and_marks_evidence_ready(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    provider = _FakeEquityDocumentProvider(db)
+    _seed_sec_source(postgres_conn)
+    worker = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000)
+
+    result = worker.run_once_sync()
+
+    event_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
+    source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
+    assert result.processed == 1
+    assert len(provider.hydration_calls) == 1
+    assert provider.hydration_calls[0]["event_document_id"] == event_document["event_document_id"]
+    assert provider.hydration_calls[0]["provider_document_id"] == event_document["provider_document_id"]
+    assert provider.hydration_calls[0]["called_while_db_session_active"] is False
+    assert event_document["evidence_status"] == "ready"
+    assert event_document["evidence_ready_at_ms"] == NOW_MS + 1_000
+    assert event_document["evidence_reason"] == ""
+    assert len(artifacts) == 1
+    assert artifacts[0]["extraction_status"] == "ready"
+    assert "Revenue was $62.0 billion" in artifacts[0]["content_text"]
+    assert source["last_material_document_at_ms"] == NOW_MS + 1_000
+    assert source["last_evidence_ready_at_ms"] == NOW_MS + 1_000
+    assert source["last_no_new_data_at_ms"] is None
+    assert wake_bus.documents_written == [("sec:MSFT", 1)]
+
+
+def test_fetch_worker_marks_evidence_unavailable_for_empty_sec_document(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    provider = _FakeEquityDocumentProvider(db, hydration_text="")
+    _seed_sec_source(postgres_conn)
+    worker = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000)
+
+    result = worker.run_once_sync()
+
+    event_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
+    source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
+    assert result.processed == 1
+    assert event_document["evidence_status"] == "unavailable"
+    assert event_document["evidence_reason"] == "evidence_hydration_empty"
+    assert event_document["evidence_ready_at_ms"] is None
+    assert len(artifacts) == 1
+    assert artifacts[0]["extraction_status"] == "unavailable"
+    assert artifacts[0]["failure_reason"] == "evidence_hydration_empty"
+    assert source["last_material_document_at_ms"] == NOW_MS + 1_000
+    assert source["last_evidence_ready_at_ms"] is None
+    assert wake_bus.documents_written == [("sec:MSFT", 1)]
+    assert provider.hydration_calls[0]["called_while_db_session_active"] is False
+
+
+def test_fetch_worker_records_no_new_data_for_duplicate_only_fetch(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    provider = _FakeEquityDocumentProvider(db)
+    _seed_sec_source(postgres_conn)
+
+    first = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000).run_once_sync()
+    postgres_conn.execute(
+        "UPDATE equity_event_sources SET next_fetch_after_ms = %s WHERE source_id = %s",
+        (NOW_MS + 1_500, "sec:MSFT"),
+    )
+    postgres_conn.commit()
+    second = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 2_000).run_once_sync()
+
+    fetch_runs = postgres_conn.execute("SELECT * FROM equity_event_fetch_runs ORDER BY started_at_ms ASC").fetchall()
+    source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
+    assert first.processed == 1
+    assert second.processed == 0
+    assert fetch_runs[0]["inserted_count"] == 1
+    assert fetch_runs[0]["updated_count"] == 0
+    assert fetch_runs[0]["duplicate_count"] == 0
+    assert fetch_runs[1]["inserted_count"] == 0
+    assert fetch_runs[1]["updated_count"] == 0
+    assert fetch_runs[1]["duplicate_count"] == 1
+    assert len(provider.hydration_calls) == 1
+    assert source["last_material_document_at_ms"] == NOW_MS + 1_000
+    assert source["last_evidence_ready_at_ms"] == NOW_MS + 1_000
+    assert source["last_no_new_data_at_ms"] == NOW_MS + 2_000
+    assert wake_bus.documents_written == [("sec:MSFT", 1)]
+
+
+def test_fetch_worker_marks_hydration_exception_as_failed_evidence(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    provider = _FakeEquityDocumentProvider(db, hydration_exception=RuntimeError("boom"))
+    _seed_sec_source(postgres_conn)
+
+    first = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000).run_once_sync()
+    postgres_conn.execute(
+        "UPDATE equity_event_sources SET next_fetch_after_ms = %s WHERE source_id = %s",
+        (NOW_MS + 1_500, "sec:MSFT"),
+    )
+    postgres_conn.commit()
+    second = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 2_000).run_once_sync()
+
+    event_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
+    source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
+    fetch_runs = postgres_conn.execute("SELECT * FROM equity_event_fetch_runs ORDER BY started_at_ms ASC").fetchall()
+    assert first.processed == 1
+    assert first.failed == 0
+    assert second.processed == 0
+    assert event_document["evidence_status"] == "failed"
+    assert event_document["evidence_reason"] == "evidence_hydration_exception:RuntimeError"
+    assert len(artifacts) == 1
+    assert artifacts[0]["extraction_status"] == "failed"
+    assert artifacts[0]["failure_reason"] == "evidence_hydration_exception:RuntimeError"
+    assert source["last_actionable_error"] == "evidence_hydration_exception:RuntimeError"
+    assert fetch_runs[0]["status"] == "success"
+    assert fetch_runs[1]["duplicate_count"] == 1
+    assert len(provider.hydration_calls) == 1
+    assert wake_bus.documents_written == [("sec:MSFT", 1)]
+
+
+def test_evidence_document_status_handles_mixed_artifacts() -> None:
+    ready = build_ready_html_text_artifact(
+        event_document_id="event-doc-status",
+        source_url="https://example.test/doc.htm",
+        content_text="Revenue was $62.0 billion.",
+        fetched_at_ms=NOW_MS,
+        parsed_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+    unavailable = build_unavailable_evidence_artifact(
+        event_document_id="event-doc-status",
+        artifact_kind="companyfacts",
+        source_url="https://example.test/companyfacts.json",
+        reason="companyfacts_missing",
+        fetched_at_ms=NOW_MS,
+        parsed_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+    failed = build_failed_evidence_artifact(
+        event_document_id="event-doc-status",
+        artifact_kind="html_text",
+        source_url="https://example.test/doc.htm",
+        reason="sec_transport_error",
+        fetched_at_ms=NOW_MS,
+        parsed_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+
+    assert _evidence_document_status([ready, unavailable], fetched_at_ms=NOW_MS) == ("ready", "", NOW_MS)
+    assert _evidence_document_status([ready, failed], fetched_at_ms=NOW_MS) == ("ready", "", NOW_MS)
+    assert _evidence_document_status([unavailable], fetched_at_ms=NOW_MS) == (
+        "unavailable",
+        "companyfacts_missing",
+        None,
+    )
+    assert _evidence_document_status([failed], fetched_at_ms=NOW_MS) == ("failed", "sec_transport_error", None)
+    assert _evidence_document_status([failed, unavailable], fetched_at_ms=NOW_MS) == (
+        "unavailable",
+        "sec_transport_error",
+        None,
+    )
+
+
 def test_process_worker_marks_identity_mismatch_event_attention(postgres_conn) -> None:
     db = _WorkerDb(postgres_conn)
     _seed_processable_document(
@@ -451,6 +614,134 @@ def test_process_worker_marks_identity_mismatch_event_attention(postgres_conn) -
     event = postgres_conn.execute("SELECT * FROM equity_company_events").fetchone()
     assert result.processed == 1
     assert event["validation_status"] == "attention"
+
+
+def test_process_worker_extracts_facts_from_ready_evidence_artifacts(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-evidence-ready",
+        provider_document_id="provider-doc-evidence-ready",
+        evidence_text="Revenue was $64.0 billion for the quarter. EPS was $3.12.",
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    spans = postgres_conn.execute("SELECT * FROM equity_event_source_spans").fetchall()
+    facts = postgres_conn.execute("SELECT * FROM equity_event_fact_candidates ORDER BY fact_type").fetchall()
+    assert result.processed == 1
+    assert document["fact_extraction_status"] == "ready"
+    assert document["fact_extraction_reason"] == ""
+    assert document["fact_extracted_at_ms"] == NOW_MS + 1_000
+    assert len(spans) == 1
+    assert spans[0]["span_type"] == "evidence_artifact_text"
+    assert {fact["fact_type"] for fact in facts} == {"eps_actual", "revenue_actual"}
+    assert {fact["source_span_id"] for fact in facts} == {spans[0]["span_id"]}
+
+
+def test_process_worker_ignores_raw_payload_text_without_ready_evidence(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-raw-only",
+        provider_document_id="provider-doc-raw-only",
+        raw_payload_json={
+            "title": "Quarterly report",
+            "body_text": "Revenue was $99.0 billion. EPS was $9.99.",
+        },
+        evidence_status="ready",
+        evidence_text="",
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    spans = postgres_conn.execute("SELECT * FROM equity_event_source_spans").fetchall()
+    facts = postgres_conn.execute("SELECT * FROM equity_event_fact_candidates").fetchall()
+    assert result.processed == 1
+    assert document["lifecycle_status"] == "processed"
+    assert document["fact_extraction_status"] == "no_evidence"
+    assert spans == []
+    assert facts == []
+
+
+@pytest.mark.parametrize("evidence_status", ["unavailable", "failed"])
+def test_process_worker_keeps_event_for_missing_evidence_statuses(postgres_conn, evidence_status: str) -> None:
+    db = _WorkerDb(postgres_conn)
+    reason = f"{evidence_status}_reason"
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id=f"event-doc-{evidence_status}",
+        provider_document_id=f"provider-doc-{evidence_status}",
+        evidence_status=evidence_status,
+        evidence_reason=reason,
+        evidence_text="",
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    event = postgres_conn.execute("SELECT * FROM equity_company_events").fetchone()
+    dirty_targets = postgres_conn.execute(
+        "SELECT projection_name FROM equity_event_projection_dirty_targets"
+    ).fetchall()
+    assert result.processed == 1
+    assert document["lifecycle_status"] == "processed"
+    assert document["fact_extraction_status"] == "no_evidence"
+    assert document["fact_extraction_reason"] == reason
+    assert event["evidence_status"] == evidence_status
+    assert event["evidence_reason"] == reason
+    assert {row["projection_name"] for row in dirty_targets} >= {
+        "page",
+        "timeline",
+        "story",
+        "brief_input",
+        "alert",
+    }
+
+
+def test_process_worker_marks_no_extractable_facts_for_ready_evidence_without_metrics(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-no-facts",
+        provider_document_id="provider-doc-no-facts",
+        evidence_text="Microsoft filed its quarterly report and discussed operating momentum.",
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    spans = postgres_conn.execute("SELECT * FROM equity_event_source_spans").fetchall()
+    facts = postgres_conn.execute("SELECT * FROM equity_event_fact_candidates").fetchall()
+    assert result.processed == 1
+    assert document["fact_extraction_status"] == "no_extractable_facts"
+    assert document["fact_extraction_reason"] == "no_revenue_or_eps_facts"
+    assert len(spans) == 1
+    assert facts == []
+
+
+def test_process_worker_marks_attention_candidates_as_fact_extraction_ready(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    _seed_processable_document(
+        postgres_conn,
+        event_document_id="event-doc-attention-fact",
+        provider_document_id="provider-doc-attention-fact",
+        fiscal_period=None,
+        evidence_text="Revenue was $64.0 billion for the quarter.",
+    )
+
+    result = _process_worker(db, now_ms=NOW_MS + 1_000).run_once_sync()
+
+    document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
+    facts = postgres_conn.execute("SELECT * FROM equity_event_fact_candidates").fetchall()
+    assert result.processed == 1
+    assert document["fact_extraction_status"] == "ready"
+    assert document["fact_extracted_at_ms"] == NOW_MS + 1_000
+    assert len(facts) == 1
+    assert facts[0]["validation_status"] == "attention"
+    assert facts[0]["rejection_reasons_json"] == ["missing_slot:period"]
 
 
 def test_process_worker_retries_process_failed_documents(postgres_conn) -> None:
@@ -900,6 +1191,11 @@ def test_brief_worker_writes_cited_agent_run_current_brief_and_notifies(postgres
 
     run = postgres_conn.execute("SELECT * FROM equity_event_agent_runs").fetchone()
     brief = postgres_conn.execute("SELECT * FROM equity_event_agent_briefs").fetchone()
+    brief_state = postgres_conn.execute("SELECT * FROM equity_event_brief_states").fetchone()
+    event = postgres_conn.execute(
+        "SELECT * FROM equity_company_events WHERE company_event_id = %s",
+        (company_event_id,),
+    ).fetchone()
     assert result.processed == 1
     assert provider.called_while_db_session_active is False
     assert provider.packet_evidence_refs[:2] == ["event:summary", "doc:event-doc-page-msft"]
@@ -917,6 +1213,11 @@ def test_brief_worker_writes_cited_agent_run_current_brief_and_notifies(postgres
     assert brief["validation_status"] == "accepted"
     assert brief["brief_json"]["evidence_refs"] == provider.packet_evidence_refs
     assert brief["input_hash"] == run["input_hash"]
+    assert brief_state["brief_readiness_status"] == "ready"
+    assert brief_state["reason_code"] == "brief_ready"
+    assert brief_state["input_hash"] == run["input_hash"]
+    assert event["brief_readiness_status"] == "ready"
+    assert event["brief_readiness_reason"] == "brief_ready"
     assert wake_bus.briefs_updated == [1]
 
 
@@ -1130,6 +1431,14 @@ def test_brief_worker_persists_insufficient_for_no_official_evidence_and_does_no
         "SELECT * FROM equity_event_agent_briefs WHERE company_event_id = %s",
         (event,),
     ).fetchone()
+    brief_state = postgres_conn.execute(
+        "SELECT * FROM equity_event_brief_states WHERE company_event_id = %s",
+        (event,),
+    ).fetchone()
+    company_event = postgres_conn.execute(
+        "SELECT * FROM equity_company_events WHERE company_event_id = %s",
+        (event,),
+    ).fetchone()
     assert first.processed == 1
     assert first.notes["no_official_evidence"] == 1
     assert provider.called_while_db_session_active is None
@@ -1141,9 +1450,56 @@ def test_brief_worker_persists_insufficient_for_no_official_evidence_and_does_no
     assert brief["status"] == "insufficient"
     assert brief["validation_status"] == "attention"
     assert brief["brief_json"]["data_gaps"]
+    assert brief_state["brief_readiness_status"] == "insufficient"
+    assert brief_state["reason_code"] == "no_official_evidence"
+    assert company_event["brief_readiness_status"] == "insufficient"
+    assert company_event["brief_readiness_reason"] == "no_official_evidence"
     assert second.skipped == 1
     assert second.notes["reason"] == "no_due_brief_targets"
     assert wake_bus.briefs_updated == [1]
+
+
+def test_brief_worker_marks_provider_failure_retryable_readiness(postgres_conn) -> None:
+    db = _WorkerDb(postgres_conn)
+    wake_bus = _RecordingWakeBus()
+    _seed_page_projection_source(postgres_conn)
+    company_event_id = _company_event_id_for_document(postgres_conn, "event-doc-page-msft")
+    worker = _brief_worker(
+        db,
+        provider=_FailingEquityBriefProvider(db),
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 4_000,
+        run_id_factory=lambda: "equity-agent-run-provider-failed",
+    )
+
+    result = worker.run_once_sync()
+
+    brief_state = postgres_conn.execute(
+        "SELECT * FROM equity_event_brief_states WHERE company_event_id = %s",
+        (company_event_id,),
+    ).fetchone()
+    company_event = postgres_conn.execute(
+        "SELECT * FROM equity_company_events WHERE company_event_id = %s",
+        (company_event_id,),
+    ).fetchone()
+    dirty_target = postgres_conn.execute(
+        """
+        SELECT * FROM equity_event_projection_dirty_targets
+         WHERE projection_name = 'brief_input'
+           AND target_id = %s
+        ORDER BY updated_at_ms DESC
+        LIMIT 1
+        """,
+        (company_event_id,),
+    ).fetchone()
+    assert result.failed == 1
+    assert brief_state["brief_readiness_status"] == "failed_retryable"
+    assert brief_state["reason_code"] == "RuntimeError"
+    assert brief_state["next_retry_after_ms"] == NOW_MS + 64_000
+    assert company_event["brief_readiness_status"] == "failed_retryable"
+    assert company_event["brief_readiness_reason"] == "RuntimeError"
+    assert dirty_target["due_at_ms"] == NOW_MS + 64_000
+    assert dirty_target["last_error"] == "RuntimeError"
 
 
 class _WorkerDb:
@@ -1205,10 +1561,24 @@ class _SequenceClock:
 
 
 class _FakeEquityDocumentProvider:
-    def __init__(self, db: _WorkerDb) -> None:
+    def __init__(
+        self,
+        db: _WorkerDb,
+        *,
+        hydration_text: str | None = None,
+        hydration_exception: Exception | None = None,
+    ) -> None:
         self.db = db
+        self.hydration_text = (
+            "Revenue was $62.0 billion for the quarter. Diluted earnings per share were $2.94."
+            if hydration_text is None
+            else hydration_text
+        )
+        self.hydration_exception = hydration_exception
         self.calls: list[dict[str, Any]] = []
+        self.hydration_calls: list[dict[str, Any]] = []
         self.called_while_db_session_active: bool | None = None
+        self.hydration_called_while_db_session_active: bool | None = None
 
     def fetch_source(self, source: dict[str, Any]) -> EquityDocumentProviderFetchResult:
         self.calls.append(dict(source))
@@ -1247,6 +1617,37 @@ class _FakeEquityDocumentProvider:
             etag='"test-etag"',
             last_modified="Sat, 25 Apr 2026 00:00:00 GMT",
             not_modified=False,
+        )
+
+    def hydrate_document_evidence(self, *, source: dict[str, Any], document: Any) -> EquityEvidenceHydrationResult:
+        self.hydration_called_while_db_session_active = self.db.session_active
+        self.hydration_calls.append(
+            {
+                "source_id": source["source_id"],
+                "event_document_id": document.event_document_id,
+                "provider_document_id": document.provider_document_id,
+                "called_while_db_session_active": self.db.session_active,
+            }
+        )
+        assert not self.db.session_active
+        if self.hydration_exception is not None:
+            raise self.hydration_exception
+        if not self.hydration_text.strip():
+            return EquityEvidenceHydrationResult(status_code=200, artifacts=[])
+        return EquityEvidenceHydrationResult(
+            status_code=200,
+            artifacts=[
+                build_ready_html_text_artifact(
+                    event_document_id=str(document.event_document_id),
+                    provider_document_id=document.provider_document_id,
+                    source_id=str(source["source_id"]),
+                    source_url=document.document_url,
+                    content_text=self.hydration_text,
+                    fetched_at_ms=document.fetched_at_ms,
+                    parsed_at_ms=document.fetched_at_ms,
+                    now_ms=document.fetched_at_ms,
+                )
+            ],
         )
 
 
@@ -1355,6 +1756,18 @@ class _FakeEquityBriefProvider:
             },
             "agent_run_audit": self.request_audit(run_id="ignored", packet=packet),
         }
+
+
+class _FailingEquityBriefProvider(_FakeEquityBriefProvider):
+    async def brief_event(
+        self,
+        *,
+        run_id: str,
+        packet: Any,
+        reservation: AgentCapacityReservation | None = None,
+    ) -> dict[str, Any]:
+        del run_id, packet, reservation
+        raise RuntimeError("brief provider failed")
 
 
 def _brief_worker(
@@ -1579,8 +1992,11 @@ def _seed_processable_document(
     company_id: str = "market_instrument:us_equity:MSFT",
     ticker: str = "MSFT",
     form_type: str = "10-Q",
-    fiscal_period: str = "2026Q1",
+    fiscal_period: str | None = "2026Q1",
     raw_payload_json: dict[str, Any] | None = None,
+    evidence_status: str = "ready",
+    evidence_reason: str = "",
+    evidence_text: str = "Revenue was $62.0 billion. EPS was $2.94.",
     content_hash: str = "content-1",
     event_time_ms: int = NOW_MS,
 ) -> dict[str, Any]:
@@ -1626,7 +2042,71 @@ def _seed_processable_document(
         discovered_at_ms=NOW_MS,
         content_hash=content_hash,
         now_ms=NOW_MS,
+        commit=False,
     )
+    artifacts = []
+    if evidence_status == "ready" and evidence_text.strip():
+        artifacts.append(
+            asdict(
+                build_ready_html_text_artifact(
+                    event_document_id=event_document_id,
+                    provider_document_id=provider["provider_document_id"],
+                    source_id=source_id,
+                    source_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+                    content_text=evidence_text,
+                    fetched_at_ms=NOW_MS,
+                    parsed_at_ms=NOW_MS,
+                    now_ms=NOW_MS,
+                )
+            )
+        )
+    elif evidence_status == "unavailable":
+        artifacts.append(
+            asdict(
+                build_unavailable_evidence_artifact(
+                    event_document_id=event_document_id,
+                    provider_document_id=provider["provider_document_id"],
+                    source_id=source_id,
+                    artifact_kind="html_text",
+                    source_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+                    reason=evidence_reason,
+                    fetched_at_ms=NOW_MS,
+                    parsed_at_ms=NOW_MS,
+                    now_ms=NOW_MS,
+                )
+            )
+        )
+    elif evidence_status == "failed":
+        artifacts.append(
+            asdict(
+                build_failed_evidence_artifact(
+                    event_document_id=event_document_id,
+                    provider_document_id=provider["provider_document_id"],
+                    source_id=source_id,
+                    artifact_kind="html_text",
+                    source_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+                    reason=evidence_reason,
+                    fetched_at_ms=NOW_MS,
+                    parsed_at_ms=NOW_MS,
+                    now_ms=NOW_MS,
+                )
+            )
+        )
+    repos.equity_events.replace_evidence_artifacts(
+        event_document_id=event_document_id,
+        artifacts=artifacts,
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    repos.equity_events.mark_event_document_evidence_status(
+        event_document_id=event_document_id,
+        evidence_status=evidence_status,
+        evidence_reason=evidence_reason,
+        evidence_ready_at_ms=NOW_MS if evidence_status == "ready" else None,
+        now_ms=NOW_MS,
+        commit=False,
+    )
+    conn.commit()
     return provider
 
 
@@ -1676,6 +2156,38 @@ def _source_payload(symbol: str) -> dict[str, Any]:
         "trust_tier": "official",
         "enabled": True,
     }
+
+
+def _seed_sec_source(conn: Any) -> None:
+    repos = repositories_for_connection(conn)
+    repos.equity_events.upsert_source(
+        source_id="sec:MSFT",
+        provider_type="sec_submissions",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_role="official_regulator",
+        trust_tier="official",
+        now_ms=NOW_MS,
+    )
+
+
+def _fetch_worker(
+    db: _WorkerDb,
+    *,
+    provider: Any,
+    wake_bus: _RecordingWakeBus | None,
+    now_ms: int,
+) -> EquityEventFetchWorker:
+    return EquityEventFetchWorker(
+        name="equity_event_fetch",
+        settings=Settings().workers.equity_event_fetch,
+        db=db,
+        telemetry=SimpleNamespace(),
+        document_provider=provider,
+        wake_bus=wake_bus,
+        clock_ms=lambda: now_ms,
+    )
 
 
 def _universe_payload(symbol: str, *, active: bool) -> dict[str, Any]:

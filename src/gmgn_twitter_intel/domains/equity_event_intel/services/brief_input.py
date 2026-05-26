@@ -99,13 +99,6 @@ def _current_event(row: Mapping[str, Any]) -> EquityEventBriefCurrentEvent:
 
 
 def _source_document(row: Mapping[str, Any]) -> EquityEventBriefSourceDocument:
-    raw_payload = _json_dict(row.get("raw_payload_json"))
-    text = (
-        row.get("text_excerpt")
-        or raw_payload.get("body_text")
-        or raw_payload.get("summary")
-        or raw_payload.get("title")
-    )
     return EquityEventBriefSourceDocument(
         event_document_id=_str(row.get("event_document_id")),
         source_id=_bounded(row.get("source_id"), 160),
@@ -117,7 +110,7 @@ def _source_document(row: Mapping[str, Any]) -> EquityEventBriefSourceDocument:
         document_url=_bounded(row.get("document_url"), 2000),
         event_time_ms=_int(row.get("event_time_ms")),
         content_hash=_bounded(row.get("content_hash"), 160),
-        text_excerpt=_bounded(text, DOCUMENT_EXCERPT_MAX_CHARS),
+        text_excerpt=_bounded(row.get("text_excerpt"), DOCUMENT_EXCERPT_MAX_CHARS),
     )
 
 
@@ -242,18 +235,6 @@ def _fact_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
 
 def _story_member_sort_key(row: Mapping[str, Any]) -> tuple[int, str]:
     return (-_int(row.get("event_time_ms") or row.get("latest_event_at_ms")), _str(row.get("company_event_id")))
-
-
-def _json_dict(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return {str(key): child for key, child in value.items()}
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return {str(key): child for key, child in parsed.items()} if isinstance(parsed, Mapping) else {}
-    return {}
 
 
 def _json_list(value: Any) -> list[Any]:

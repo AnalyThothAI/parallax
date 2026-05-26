@@ -245,6 +245,8 @@ class EquityEventObjectData(ApiSchema):
 
 class EquityEventCalendarData(ApiSchema):
     items: list[JsonObject] = Field(default_factory=list)
+    calendar_configured: bool = False
+    empty_reason: str = ""
 
 
 class EquityEventTimelineData(ApiSchema):
@@ -259,8 +261,15 @@ class EquityEventSourceStatusData(ApiSchema):
 class EquityEventSummaryData(ApiSchema):
     p0_open_count: int = 0
     today_count: int = 0
-    brief_pending_count: int = 0
-    latest_event_at_ms: int | None = None
+    due_brief_queue_count: int = 0
+    retryable_brief_failure_count: int = 0
+    stale_brief_count: int = 0
+    historical_backlog_count: int = 0
+    latest_material_event_at_ms: int | None = None
+    latest_source_success_at_ms: int | None = None
+    latest_evidence_ready_at_ms: int | None = None
+    latest_projection_at_ms: int | None = None
+    calendar_configured: bool = False
 
 
 class LiveMarketData(ApiSchema):

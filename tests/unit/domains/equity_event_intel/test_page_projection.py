@@ -16,7 +16,7 @@ NOW_MS = 1_765_900_000_000
 
 def test_build_equity_event_page_row_includes_frontend_payload() -> None:
     row = build_equity_event_page_row(
-        event=_event(),
+        event=_event(evidence_status="ready", evidence_reason=""),
         company=_company(),
         story={"story_id": "story-msft-q1", "representative_headline": "MSFT reports Q1"},
         facts=[
@@ -32,6 +32,7 @@ def test_build_equity_event_page_row_includes_frontend_payload() -> None:
                 "evidence_quote": "Revenue was $62.0 billion.",
                 "source_role": "official_regulator",
                 "validation_status": "accepted",
+                "updated_at_ms": NOW_MS + 500,
                 "rejection_reasons_json": [],
             }
         ],
@@ -44,9 +45,22 @@ def test_build_equity_event_page_row_includes_frontend_payload() -> None:
                 "document_url": "https://sec.test/msft-q1.htm",
                 "fiscal_period": "2026Q1",
                 "event_time_ms": NOW_MS,
+                "source_id": "sec:MSFT",
+                "evidence_status": "ready",
+                "evidence_reason": "",
+                "evidence_ready_at_ms": NOW_MS + 200,
+                "fact_extraction_status": "ready",
+                "fact_extraction_reason": "",
+                "fact_extracted_at_ms": NOW_MS + 300,
+                "updated_at_ms": NOW_MS + 400,
             }
         ],
-        brief=None,
+        brief={
+            "brief_readiness_status": "ready",
+            "reason_code": "brief_ready",
+            "reason_detail": "brief generation completed with status ready",
+            "updated_at_ms": NOW_MS + 600,
+        },
         computed_at_ms=NOW_MS + 1_000,
     )
 
@@ -64,7 +78,12 @@ def test_build_equity_event_page_row_includes_frontend_payload() -> None:
         "priority": "P0",
         "lifecycle_status": "processed",
         "headline": "MSFT 2026Q1 quarterly report",
-        "brief_json": {"status": "pending"},
+        "brief_json": {
+            "status": "ready",
+            "reason_code": "brief_ready",
+            "reason_detail": "brief generation completed with status ready",
+            "updated_at_ms": NOW_MS + 600,
+        },
         "projection_version": "equity_event_page_rows_v1",
     }
     assert row["row_id"] != row["company_event_id"]
@@ -87,8 +106,19 @@ def test_build_equity_event_page_row_includes_frontend_payload() -> None:
         }
     ]
     assert row["documents_json"][0]["event_document_id"] == "doc-msft-q1"
+    assert row["documents_json"][0]["source_id"] == "sec:MSFT"
+    assert row["evidence_status"] == "ready"
+    assert row["fact_extraction_status"] == "ready"
     assert row["computed_at_ms"] == NOW_MS + 1_000
     assert row["source_watermark_ms"] == NOW_MS + 1_000
+    assert row["freshness_json"] == {
+        "material_event_at_ms": NOW_MS,
+        "document_updated_at_ms": NOW_MS + 400,
+        "evidence_ready_at_ms": NOW_MS + 200,
+        "fact_extracted_at_ms": NOW_MS + 300,
+        "brief_updated_at_ms": NOW_MS + 600,
+        "projection_at_ms": NOW_MS + 1_000,
+    }
     assert row["projection_version"] == EQUITY_EVENT_PAGE_PROJECTION_VERSION
     assert row["payload_hash"]
 

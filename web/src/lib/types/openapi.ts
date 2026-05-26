@@ -1412,6 +1412,16 @@ export interface components {
         };
         /** EquityEventCalendarData */
         EquityEventCalendarData: {
+            /**
+             * Calendar Configured
+             * @default false
+             */
+            calendar_configured: boolean;
+            /**
+             * Empty Reason
+             * @default
+             */
+            empty_reason: string;
             /** Items */
             items?: {
                 [key: string]: unknown;
@@ -1435,17 +1445,43 @@ export interface components {
         /** EquityEventSummaryData */
         EquityEventSummaryData: {
             /**
-             * Brief Pending Count
+             * Calendar Configured
+             * @default false
+             */
+            calendar_configured: boolean;
+            /**
+             * Due Brief Queue Count
              * @default 0
              */
-            brief_pending_count: number;
-            /** Latest Event At Ms */
-            latest_event_at_ms?: number | null;
+            due_brief_queue_count: number;
+            /**
+             * Historical Backlog Count
+             * @default 0
+             */
+            historical_backlog_count: number;
+            /** Latest Evidence Ready At Ms */
+            latest_evidence_ready_at_ms?: number | null;
+            /** Latest Material Event At Ms */
+            latest_material_event_at_ms?: number | null;
+            /** Latest Projection At Ms */
+            latest_projection_at_ms?: number | null;
+            /** Latest Source Success At Ms */
+            latest_source_success_at_ms?: number | null;
             /**
              * P0 Open Count
              * @default 0
              */
             p0_open_count: number;
+            /**
+             * Retryable Brief Failure Count
+             * @default 0
+             */
+            retryable_brief_failure_count: number;
+            /**
+             * Stale Brief Count
+             * @default 0
+             */
+            stale_brief_count: number;
             /**
              * Today Count
              * @default 0
@@ -1919,6 +1955,10 @@ export interface components {
             suggested_checks?: {
                 [key: string]: unknown;
             }[];
+            /** Worker Lanes */
+            worker_lanes?: {
+                [key: string]: unknown;
+            };
             /** Workers */
             workers?: {
                 [key: string]: unknown;
@@ -2362,6 +2402,10 @@ export interface components {
             };
             /** Store */
             store?: string | null;
+            /** Worker Lanes */
+            worker_lanes?: {
+                [key: string]: components["schemas"]["WorkerLaneStatusData"];
+            };
             /** Workers */
             workers?: {
                 [key: string]: components["schemas"]["WorkerStatusData"];
@@ -2763,6 +2807,48 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** WorkerLaneStatusData */
+        WorkerLaneStatusData: {
+            /**
+             * Enabled Workers
+             * @default 0
+             */
+            enabled_workers: number;
+            /**
+             * Failed Workers
+             * @default 0
+             */
+            failed_workers: number;
+            /**
+             * Hard Timed Out Workers
+             * @default 0
+             */
+            hard_timed_out_workers: number;
+            /** Iteration Duration P99 Ms */
+            iteration_duration_p99_ms?: number | null;
+            /** Lane */
+            lane: string;
+            /** Oldest Active Run Once Age Ms */
+            oldest_active_run_once_age_ms?: number | null;
+            /** Queue Depth */
+            queue_depth?: number | null;
+            /** Queue Health */
+            queue_health?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Running Workers
+             * @default 0
+             */
+            running_workers: number;
+            /**
+             * Soft Timed Out Workers
+             * @default 0
+             */
+            soft_timed_out_workers: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** WorkerStatusData */
         WorkerStatusData: {
             /** Active Run Once Age Ms */
@@ -2800,6 +2886,10 @@ export interface components {
             pool_wait_ms_p99?: number | null;
             /** Queue Depth */
             queue_depth?: number | null;
+            /** Queue Health */
+            queue_health?: {
+                [key: string]: unknown;
+            };
             /** Running */
             running: boolean;
         } & {

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from gmgn_twitter_intel.domains.equity_event_intel.types import EquityEventBriefInputPacket
+from gmgn_twitter_intel.domains.equity_event_intel.types import (
+    EquityEventBriefInputPacket,
+    EquityEvidenceHydrationResult,
+    NormalizedEquityDocument,
+)
 from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
 
@@ -16,6 +20,13 @@ class EquityDocumentFetchResult(Protocol):
 
 class EquityEventDocumentProvider(Protocol):
     def fetch_source(self, source: dict[str, Any]) -> EquityDocumentFetchResult: ...
+
+    def hydrate_document_evidence(
+        self,
+        *,
+        source: dict[str, Any],
+        document: NormalizedEquityDocument,
+    ) -> EquityEvidenceHydrationResult: ...
 
     def close(self) -> None: ...
 

@@ -4,16 +4,24 @@ import asyncio
 import hashlib
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import asdict, is_dataclass, replace
 from inspect import isawaitable
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.equity_event_intel.providers import EquityEventDocumentProvider
+from gmgn_twitter_intel.domains.equity_event_intel.services.sec_evidence import (
+    build_failed_evidence_artifact,
+    build_unavailable_evidence_artifact,
+)
 from gmgn_twitter_intel.domains.equity_event_intel.services.sec_submission_normalizer import (
     normalize_sec_submission_documents,
 )
-from gmgn_twitter_intel.domains.equity_event_intel.types import NormalizedEquityDocument
+from gmgn_twitter_intel.domains.equity_event_intel.types import (
+    NormalizedEquityDocument,
+    NormalizedEquityEvidenceArtifact,
+)
 
 
 class EquityEventFetchWorker(WorkerBase):
@@ -73,6 +81,12 @@ class EquityEventFetchWorker(WorkerBase):
             if failed_document is not None:
                 reason = _failed_fetch_reason(failed_document)
                 with self._repository_session() as repos:
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        actionable_error=reason,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
                     repos.equity_events.finish_fetch_run(
                         fetch_run_id=fetch_run_id,
                         source_id=source_id,
@@ -96,6 +110,12 @@ class EquityEventFetchWorker(WorkerBase):
                         now_ms=now_ms,
                         commit=False,
                     )
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        no_new_data_at_ms=now_ms,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
                     repos.equity_events.finish_fetch_run(
                         fetch_run_id=fetch_run_id,
                         source_id=source_id,
@@ -112,6 +132,20 @@ class EquityEventFetchWorker(WorkerBase):
                     source=source,
                     fetch_run_id=fetch_run_id,
                     documents=fetch_result.documents,
+                    fetched_at_ms=now_ms,
+                )
+                repos.conn.commit()
+
+            hydration_results = self._hydrate_documents(
+                source=source,
+                jobs=counts["hydration_jobs"],
+                fetched_at_ms=now_ms,
+            )
+
+            with self._repository_session() as repos:
+                evidence_counts = self._persist_evidence_results(
+                    repos.equity_events,
+                    results=hydration_results,
                     fetched_at_ms=now_ms,
                 )
                 repos.equity_events.update_source_http_cache(
@@ -133,12 +167,40 @@ class EquityEventFetchWorker(WorkerBase):
                     http_status=fetch_result.status_code,
                     commit=False,
                 )
+                if counts["inserted"] + counts["updated"] > 0:
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        material_document_at_ms=now_ms,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                if evidence_counts["evidence_ready"] > 0:
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        evidence_ready_at_ms=now_ms,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                if counts["inserted"] + counts["updated"] == 0 and counts["duplicate"] > 0:
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        no_new_data_at_ms=now_ms,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                if evidence_counts["actionable_error"]:
+                    repos.equity_events.update_source_material_freshness(
+                        source_id=source_id,
+                        actionable_error=str(evidence_counts["actionable_error"]),
+                        now_ms=now_ms,
+                        commit=False,
+                    )
                 repos.conn.commit()
 
-            written = counts["inserted"] + counts["updated"]
+            written = evidence_counts["terminal_written"]
             if written > 0 and self.wake_bus is not None:
                 self.wake_bus.notify_equity_event_document_written(source_id=source_id, count=written)
-            return WorkerResult(processed=written)
+            return WorkerResult(processed=counts["inserted"] + counts["updated"])
         except Exception as exc:  # pragma: no cover - exercised through integration failures.
             self._mark_source_failed(source_id=source_id, fetch_run_id=fetch_run_id, now_ms=now_ms, error=exc)
             return WorkerResult(failed=1, notes={"source_id": source_id, "error": str(exc)})
@@ -151,8 +213,14 @@ class EquityEventFetchWorker(WorkerBase):
         fetch_run_id: str,
         documents: list[dict[str, Any]],
         fetched_at_ms: int,
-    ) -> dict[str, int]:
-        counts = {"fetched": 0, "inserted": 0, "updated": 0, "duplicate": 0}
+    ) -> dict[str, Any]:
+        counts: dict[str, Any] = {
+            "fetched": 0,
+            "inserted": 0,
+            "updated": 0,
+            "duplicate": 0,
+            "hydration_jobs": [],
+        }
         for envelope in documents:
             for normalized in _normalize_envelope(source=source, envelope=envelope, fetched_at_ms=fetched_at_ms):
                 counts["fetched"] += 1
@@ -192,6 +260,100 @@ class EquityEventFetchWorker(WorkerBase):
                 status = str(event.get("status") or provider.get("status") or "duplicate")
                 if status in counts:
                     counts[status] += 1
+                normalized_with_ids = replace(
+                    normalized,
+                    event_document_id=str(event["event_document_id"]),
+                    provider_document_id=str(provider["provider_document_id"]),
+                )
+                if status in {"inserted", "updated"}:
+                    counts["hydration_jobs"].append(normalized_with_ids)
+        return counts
+
+    def _hydrate_documents(
+        self,
+        *,
+        source: Mapping[str, Any],
+        jobs: list[NormalizedEquityDocument],
+        fetched_at_ms: int,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for document in jobs:
+            try:
+                hydration = self.document_provider.hydrate_document_evidence(
+                    source=dict(source),
+                    document=document,
+                )
+                artifacts = list(hydration.artifacts)
+            except Exception as exc:
+                artifacts = [
+                    build_failed_evidence_artifact(
+                        event_document_id=str(document.event_document_id),
+                        provider_document_id=document.provider_document_id,
+                        source_id=str(source["source_id"]),
+                        artifact_kind="html_text",
+                        source_url=document.document_url,
+                        reason=_hydration_exception_reason(exc),
+                        fetched_at_ms=fetched_at_ms,
+                        parsed_at_ms=fetched_at_ms,
+                        now_ms=fetched_at_ms,
+                    )
+                ]
+            if not artifacts:
+                artifacts = [
+                    build_unavailable_evidence_artifact(
+                        event_document_id=str(document.event_document_id),
+                        provider_document_id=document.provider_document_id,
+                        source_id=str(source["source_id"]),
+                        artifact_kind="html_text",
+                        source_url=document.document_url,
+                        reason="evidence_hydration_empty",
+                        fetched_at_ms=fetched_at_ms,
+                        parsed_at_ms=fetched_at_ms,
+                        now_ms=fetched_at_ms,
+                    )
+                ]
+            results.append({"document": document, "artifacts": artifacts})
+        return results
+
+    def _persist_evidence_results(
+        self,
+        repository: Any,
+        *,
+        results: list[dict[str, Any]],
+        fetched_at_ms: int,
+    ) -> dict[str, Any]:
+        counts: dict[str, Any] = {
+            "terminal_written": 0,
+            "evidence_ready": 0,
+            "actionable_error": "",
+        }
+        for result in results:
+            document = result["document"]
+            artifacts = result["artifacts"]
+            evidence_status, evidence_reason, evidence_ready_at_ms = _evidence_document_status(
+                artifacts,
+                fetched_at_ms=fetched_at_ms,
+            )
+            repository.replace_evidence_artifacts(
+                event_document_id=str(document.event_document_id),
+                artifacts=_artifact_mappings(artifacts),
+                now_ms=fetched_at_ms,
+                commit=False,
+            )
+            repository.mark_event_document_evidence_status(
+                event_document_id=str(document.event_document_id),
+                evidence_status=evidence_status,
+                evidence_reason=evidence_reason,
+                evidence_ready_at_ms=evidence_ready_at_ms,
+                now_ms=fetched_at_ms,
+                commit=False,
+            )
+            if evidence_status == "ready":
+                counts["evidence_ready"] += 1
+            elif evidence_status == "failed" and evidence_reason and not counts["actionable_error"]:
+                counts["actionable_error"] = evidence_reason
+            if evidence_status in {"ready", "unavailable", "failed"}:
+                counts["terminal_written"] += 1
         return counts
 
     def _mark_source_failed(self, *, source_id: str, fetch_run_id: str, now_ms: int, error: Exception) -> None:
@@ -199,6 +361,12 @@ class EquityEventFetchWorker(WorkerBase):
             return
         try:
             with self._repository_session() as repos:
+                repos.equity_events.update_source_material_freshness(
+                    source_id=source_id,
+                    actionable_error=str(error),
+                    now_ms=now_ms,
+                    commit=False,
+                )
                 repos.equity_events.finish_fetch_run(
                     fetch_run_id=fetch_run_id,
                     source_id=source_id,
@@ -242,6 +410,35 @@ def _failed_fetch_document(documents: list[dict[str, Any]]) -> dict[str, Any] | 
 
 def _failed_fetch_reason(document: Mapping[str, Any]) -> str:
     return str(document.get("error_code") or document.get("error") or "provider_failed")
+
+
+def _hydration_exception_reason(exc: Exception) -> str:
+    class_name = type(exc).__name__.strip() or "Exception"
+    return f"evidence_hydration_exception:{class_name}"[:240]
+
+
+def _evidence_document_status(
+    artifacts: list[NormalizedEquityEvidenceArtifact],
+    *,
+    fetched_at_ms: int,
+) -> tuple[str, str, int | None]:
+    ready_reasons = [
+        str(artifact.failure_reason or "").strip() for artifact in artifacts if artifact.extraction_status == "ready"
+    ]
+    if ready_reasons:
+        reason = next((value for value in ready_reasons if value), "") if all(ready_reasons) else ""
+        return "ready", reason, int(fetched_at_ms)
+
+    reasons = [str(artifact.failure_reason or "").strip() for artifact in artifacts]
+    reason = next((value for value in reasons if value), "")
+    statuses = {str(artifact.extraction_status) for artifact in artifacts}
+    if statuses == {"failed"}:
+        return "failed", reason, None
+    return "unavailable", reason, None
+
+
+def _artifact_mappings(artifacts: list[NormalizedEquityEvidenceArtifact]) -> list[Mapping[str, Any]]:
+    return [asdict(artifact) if is_dataclass(artifact) else artifact for artifact in artifacts]
 
 
 def _stable_id(prefix: str, source_id: Any, document: NormalizedEquityDocument) -> str:

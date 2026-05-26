@@ -150,12 +150,17 @@ def test_equity_document_provider_wraps_timeout_invalid_json_and_invalid_cik() -
         )
     )
 
-    assert timeout_provider.fetch_source({"source_id": "sec:AAPL", "cik": "320193"}).documents[0][
-        "error_code"
-    ] == "sec_timeout"
-    assert invalid_json_provider.fetch_source({"source_id": "sec:AAPL", "cik": "320193"}).documents[0][
-        "error_code"
-    ] == "sec_invalid_json"
-    assert invalid_json_provider.fetch_source({"source_id": "sec:AAPL", "cik": "CIK-not-a-number"}).documents[0][
-        "error_code"
-    ] == "invalid_cik"
+    assert (
+        timeout_provider.fetch_source({"source_id": "sec:AAPL", "cik": "320193"}).documents[0]["error_code"]
+        == "sec_timeout"
+    )
+    assert (
+        invalid_json_provider.fetch_source({"source_id": "sec:AAPL", "cik": "320193"}).documents[0]["error_code"]
+        == "sec_invalid_json"
+    )
+    assert (
+        invalid_json_provider.fetch_source({"source_id": "sec:AAPL", "cik": "CIK-not-a-number"}).documents[0][
+            "error_code"
+        ]
+        == "invalid_cik"
+    )

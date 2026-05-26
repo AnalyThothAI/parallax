@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.equity_event_intel._constants import EQUITY_EVENT_FACT_POLICY_VERSION
-from gmgn_twitter_intel.domains.equity_event_intel.types import EquityFactCandidate, EquitySourceSpan
+from gmgn_twitter_intel.domains.equity_event_intel.types import (
+    EquityFactCandidate,
+    EquitySourceSpan,
+    SourceRole,
+    ValidationStatus,
+)
 
 _OFFICIAL_SOURCE_ROLES = frozenset({"official_regulator", "official_issuer"})
 _REVENUE_VALUE_RE = r"(?P<value>(?:\$\s*)?-?\d+(?:\.\d+)?\s*(?:billion|million|bn|m)|\$\s*-?\d+(?:\.\d+)?)"
@@ -24,28 +29,54 @@ def build_source_spans(
     *,
     company_event_id: str,
     event_document_id: str,
-    source_id: str | None,
-    text: str,
+    evidence_artifacts: Iterable[Mapping[str, Any]],
     now_ms: int,
 ) -> list[EquitySourceSpan]:
-    normalized_text = text.strip()
-    if not normalized_text:
-        return []
-    return [
-        EquitySourceSpan(
-            span_id=_stable_id("equity-source-span", company_event_id, event_document_id, normalized_text[:200]),
-            company_event_id=company_event_id,
-            event_document_id=event_document_id,
-            source_id=source_id,
-            span_type="document_text",
-            section_key="body",
-            span_start=0,
-            span_end=len(normalized_text),
-            evidence_quote=normalized_text[:500],
-            confidence=1.0,
-            created_at_ms=int(now_ms),
+    spans: list[EquitySourceSpan] = []
+    for artifact_text in ready_evidence_texts(evidence_artifacts):
+        text = artifact_text["text"]
+        spans.append(
+            EquitySourceSpan(
+                span_id=_stable_id(
+                    "equity-source-span",
+                    company_event_id,
+                    event_document_id,
+                    artifact_text["evidence_artifact_id"],
+                    text[:200],
+                ),
+                company_event_id=company_event_id,
+                event_document_id=event_document_id,
+                source_id=artifact_text["source_id"] or None,
+                span_type="evidence_artifact_text",
+                section_key=artifact_text["artifact_kind"] or None,
+                span_start=0,
+                span_end=len(text),
+                evidence_quote=text[:500],
+                confidence=1.0,
+                created_at_ms=int(now_ms),
+            )
         )
-    ]
+    return spans
+
+
+def ready_evidence_texts(evidence_artifacts: Iterable[Mapping[str, Any]]) -> list[dict[str, str]]:
+    texts: list[dict[str, str]] = []
+    for artifact in evidence_artifacts:
+        if str(artifact.get("extraction_status") or "") != "ready":
+            continue
+        text = str(artifact.get("content_text") or "").strip()
+        if not text:
+            continue
+        texts.append(
+            {
+                "evidence_artifact_id": str(artifact.get("evidence_artifact_id") or ""),
+                "source_id": str(artifact.get("source_id") or ""),
+                "artifact_kind": str(artifact.get("artifact_kind") or ""),
+                "source_url": str(artifact.get("source_url") or ""),
+                "text": text,
+            }
+        )
+    return texts
 
 
 def build_fact_candidates(
@@ -58,11 +89,10 @@ def build_fact_candidates(
     event_type: str,
     period: str | None,
     source_role: str,
-    title: str = "",
-    body_text: str = "",
+    evidence_text: str = "",
     now_ms: int,
 ) -> list[EquityFactCandidate]:
-    text = " ".join(part.strip() for part in (title, body_text) if part and part.strip()).strip()
+    text = evidence_text.strip()
     if not text:
         return []
 
@@ -85,7 +115,14 @@ def build_fact_candidates(
         validation_status, rejection_reasons = _validation(source_role=source_role, required_slots=required_slots)
         candidates.append(
             EquityFactCandidate(
-                fact_candidate_id=_stable_id("equity-fact", company_event_id, event_document_id, fact_type, value),
+                fact_candidate_id=_stable_id(
+                    "equity-fact",
+                    company_event_id,
+                    event_document_id,
+                    source_span_id,
+                    fact_type,
+                    value,
+                ),
                 company_event_id=company_event_id,
                 event_document_id=event_document_id,
                 source_span_id=source_span_id,
@@ -103,7 +140,7 @@ def build_fact_candidates(
                 evidence_quote=_evidence_quote(text, start=match.start(), end=match.end()),
                 evidence_span_start=match.start(),
                 evidence_span_end=match.end(),
-                source_role=source_role,
+                source_role=cast(SourceRole, source_role),
                 validation_status=validation_status,
                 rejection_reasons_json=rejection_reasons,
                 extraction_method="deterministic_rules_v1",
@@ -113,17 +150,6 @@ def build_fact_candidates(
             )
         )
     return candidates
-
-
-def document_text(document: Mapping[str, Any]) -> str:
-    raw_payload = document.get("raw_payload_json")
-    parts: list[str] = []
-    if isinstance(raw_payload, Mapping):
-        for key in ("title", "description", "summary", "body_text", "press_release_text", "text"):
-            value = str(raw_payload.get(key) or "").strip()
-            if value:
-                parts.append(value)
-    return " ".join(parts).strip()
 
 
 def _typed_value(*, metric_name: str, value: str) -> tuple[float | None, str]:
@@ -160,7 +186,7 @@ def _required_slots(
     }
 
 
-def _validation(*, source_role: str, required_slots: dict[str, bool]) -> tuple[str, list[str]]:
+def _validation(*, source_role: str, required_slots: dict[str, bool]) -> tuple[ValidationStatus, list[str]]:
     reasons = [f"missing_slot:{slot}" for slot, present in required_slots.items() if not present]
     if source_role in _OFFICIAL_SOURCE_ROLES:
         return ("attention", reasons) if reasons else ("accepted", [])

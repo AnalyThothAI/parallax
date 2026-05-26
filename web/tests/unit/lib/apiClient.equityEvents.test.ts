@@ -190,8 +190,15 @@ describe("equity events API client normalization", () => {
         data: {
           p0_open_count: "2",
           today_count: 5,
-          brief_pending_count: "3",
-          latest_event_at_ms: "1765000000000",
+          due_brief_queue_count: "3",
+          retryable_brief_failure_count: 1,
+          stale_brief_count: 2,
+          historical_backlog_count: 4,
+          latest_material_event_at_ms: "1765000000000",
+          latest_source_success_at_ms: "1765000000100",
+          latest_evidence_ready_at_ms: "1765000000200",
+          latest_projection_at_ms: "1765000000300",
+          calendar_configured: true,
         },
       };
     });
@@ -199,8 +206,15 @@ describe("equity events API client normalization", () => {
     await expect(fetchEquityEventSummary()).resolves.toEqual({
       p0_open_count: 2,
       today_count: 5,
-      brief_pending_count: 3,
-      latest_event_at_ms: 1_765_000_000_000,
+      due_brief_queue_count: 3,
+      retryable_brief_failure_count: 1,
+      stale_brief_count: 2,
+      historical_backlog_count: 4,
+      latest_material_event_at_ms: 1_765_000_000_000,
+      latest_source_success_at_ms: 1_765_000_000_100,
+      latest_evidence_ready_at_ms: 1_765_000_000_200,
+      latest_projection_at_ms: 1_765_000_000_300,
+      calendar_configured: true,
     });
   });
 });

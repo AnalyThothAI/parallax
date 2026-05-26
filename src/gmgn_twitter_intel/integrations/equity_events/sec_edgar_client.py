@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from json import JSONDecodeError
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -24,6 +25,22 @@ class SecEdgarSubmissionFetchResult:
     etag: str | None = None
     last_modified: str | None = None
     not_modified: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SecEdgarDocumentFetchResult:
+    status_code: int
+    text: str = ""
+    etag: str | None = None
+    last_modified: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SecEdgarCompanyFactsFetchResult:
+    status_code: int
+    payload: dict[str, Any] = field(default_factory=dict)
+    etag: str | None = None
+    last_modified: str | None = None
 
 
 class SecEdgarClient:
@@ -89,6 +106,34 @@ class SecEdgarClient:
             not_modified=False,
         )
 
+    def fetch_filing_document(self, document_url: str) -> SecEdgarDocumentFetchResult:
+        if not _is_sec_archive_document_url(document_url):
+            raise ValueError("SEC filing document URL must be under sec.gov Archives")
+        response = self._get_with_retry(str(document_url), headers={})
+        if not _is_sec_archive_document_url(str(response.url)):
+            raise ValueError("SEC filing document URL must be under sec.gov Archives")
+        response.raise_for_status()
+        return SecEdgarDocumentFetchResult(
+            status_code=response.status_code,
+            text=response.text,
+            etag=response.headers.get("etag"),
+            last_modified=response.headers.get("last-modified"),
+        )
+
+    def fetch_companyfacts(self, cik: str) -> SecEdgarCompanyFactsFetchResult:
+        response = self._get_with_retry(_companyfacts_url(cik), headers={})
+        response.raise_for_status()
+        try:
+            payload = response.json()
+        except JSONDecodeError as exc:
+            raise SecEdgarInvalidJsonError("SEC EDGAR response was not valid JSON") from exc
+        return SecEdgarCompanyFactsFetchResult(
+            status_code=response.status_code,
+            payload=payload,
+            etag=response.headers.get("etag"),
+            last_modified=response.headers.get("last-modified"),
+        )
+
     def _get_with_retry(self, url: str, *, headers: dict[str, str]) -> httpx.Response:
         response: httpx.Response | None = None
         for attempt in range(1, self._max_attempts + 1):
@@ -130,6 +175,23 @@ def _company_submissions_url(cik: str) -> str:
     return f"https://data.sec.gov/submissions/CIK{cik10}.json"
 
 
+def _companyfacts_url(cik: str) -> str:
+    digits = _normalize_cik(cik)
+    if not digits:
+        raise SecEdgarInvalidCikError("SEC EDGAR CIK is required")
+    cik10 = digits.zfill(10)
+    return f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik10}.json"
+
+
+def _is_sec_archive_document_url(value: str) -> bool:
+    parsed = urlparse(str(value or "").strip())
+    return (
+        parsed.scheme == "https"
+        and parsed.netloc.lower() == "www.sec.gov"
+        and parsed.path.startswith("/Archives/edgar/data/")
+    )
+
+
 def _normalize_cik(value: str) -> str:
     normalized = str(value or "").strip()
     if not normalized:
@@ -160,6 +222,8 @@ def _parse_retry_after(value: str | None) -> float | None:
 
 __all__ = [
     "SecEdgarClient",
+    "SecEdgarCompanyFactsFetchResult",
+    "SecEdgarDocumentFetchResult",
     "SecEdgarInvalidCikError",
     "SecEdgarInvalidJsonError",
     "SecEdgarSubmissionFetchResult",

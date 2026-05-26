@@ -151,7 +151,7 @@ export async function fetchEquityEventCalendar(
     token?: string | null;
   } = {},
 ): Promise<EquityEventCalendarData> {
-  const response = await getApi<{ items?: unknown[] }>("/api/equity-events/calendar", {
+  const response = await getApi<Record<string, unknown>>("/api/equity-events/calendar", {
     params: {
       status: params.status,
       ticker: params.ticker,
@@ -159,7 +159,9 @@ export async function fetchEquityEventCalendar(
     token: params.token ?? undefined,
   });
   return {
-    items: (response.data.items ?? []).map(normalizeEquityCalendarClientRow),
+    items: arrayOrEmpty(response.data.items).map(normalizeEquityCalendarClientRow),
+    calendar_configured: Boolean(response.data.calendar_configured),
+    empty_reason: stringOrNull(response.data.empty_reason) ?? "",
   };
 }
 
@@ -569,8 +571,15 @@ function normalizeEquityEventClientSummary(row: unknown): EquityEventSummary {
   return {
     p0_open_count: numberOrNull(payload.p0_open_count) ?? 0,
     today_count: numberOrNull(payload.today_count) ?? 0,
-    brief_pending_count: numberOrNull(payload.brief_pending_count) ?? 0,
-    latest_event_at_ms: numberOrNull(payload.latest_event_at_ms),
+    due_brief_queue_count: numberOrNull(payload.due_brief_queue_count) ?? 0,
+    retryable_brief_failure_count: numberOrNull(payload.retryable_brief_failure_count) ?? 0,
+    stale_brief_count: numberOrNull(payload.stale_brief_count) ?? 0,
+    historical_backlog_count: numberOrNull(payload.historical_backlog_count) ?? 0,
+    latest_material_event_at_ms: numberOrNull(payload.latest_material_event_at_ms),
+    latest_source_success_at_ms: numberOrNull(payload.latest_source_success_at_ms),
+    latest_evidence_ready_at_ms: numberOrNull(payload.latest_evidence_ready_at_ms),
+    latest_projection_at_ms: numberOrNull(payload.latest_projection_at_ms),
+    calendar_configured: Boolean(payload.calendar_configured),
   };
 }
 
@@ -606,6 +615,7 @@ function normalizeEquityEventClientDocuments(raw: unknown): EquityEventDocument[
     const payload = objectOrNull(item) ?? {};
     return {
       event_document_id: stringOrNull(payload.event_document_id),
+      source_id: stringOrNull(payload.source_id),
       document_type: stringOrNull(payload.document_type),
       form_type: stringOrNull(payload.form_type),
       accession_number: stringOrNull(payload.accession_number),
@@ -613,6 +623,10 @@ function normalizeEquityEventClientDocuments(raw: unknown): EquityEventDocument[
       document_url: stringOrNull(payload.document_url),
       event_time_ms: numberOrNull(payload.event_time_ms),
       source_role: stringOrNull(payload.source_role),
+      evidence_status: stringOrNull(payload.evidence_status),
+      evidence_reason: stringOrNull(payload.evidence_reason),
+      fact_extraction_status: stringOrNull(payload.fact_extraction_status),
+      fact_extraction_reason: stringOrNull(payload.fact_extraction_reason),
     };
   });
 }

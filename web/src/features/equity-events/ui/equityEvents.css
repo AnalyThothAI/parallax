@@ -184,6 +184,19 @@
     font-size: 11px;
   }
 
+  .equity-event-feed-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .equity-event-load-more {
+    border-radius: 7px;
+    padding: 7px 12px;
+    color: var(--bone);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
   .equity-event-feed-head,
   .equity-event-feed-row {
     display: grid;

@@ -51,6 +51,9 @@ def test_normalize_sec_submission_documents_prefers_acceptance_time() -> None:
                 "acceptanceDateTime": ["2026-04-25T14:30:15.000Z"],
                 "reportDate": [""],
                 "primaryDocument": ["msft-8k.htm"],
+                "title": ["Item 2.02 Results of Operations and Financial Condition"],
+                "description": ["Microsoft earnings release with management commentary."],
+                "body_text": ["Revenue increased and operating income grew."],
             }
         },
     }
@@ -67,9 +70,20 @@ def test_normalize_sec_submission_documents_prefers_acceptance_time() -> None:
 
     assert len(docs) == 1
     assert docs[0].event_time_ms == int(datetime(2026, 4, 25, 14, 30, 15, tzinfo=UTC).timestamp() * 1000)
-    assert docs[0].document_url == (
-        "https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-8k.htm"
-    )
+    assert docs[0].document_url == ("https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft-8k.htm")
+    assert docs[0].raw_payload_json == {
+        "company_cik": "CIK0000789019",
+        "company_name": "MICROSOFT CORP",
+        "accession_number": "0000789019-26-000001",
+        "form_type": "8-K",
+        "acceptance_datetime": "2026-04-25T14:30:15.000Z",
+        "filing_date": "2026-04-25",
+        "report_date": None,
+        "primary_document": "msft-8k.htm",
+    }
+    assert "title" not in docs[0].raw_payload_json
+    assert "description" not in docs[0].raw_payload_json
+    assert "body_text" not in docs[0].raw_payload_json
 
 
 def test_normalize_sec_submission_documents_skips_rows_without_document_url() -> None:

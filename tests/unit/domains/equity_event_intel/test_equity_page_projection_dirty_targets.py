@@ -1007,8 +1007,15 @@ class _FakeProcessEquityRepository:
         self.matching_expected_event_ids = matching_expected_event_ids
         self.conn = _FakeConn()
 
-    def list_unprocessed_event_documents(self, *, limit: int) -> list[dict[str, Any]]:
-        return [self.document]
+    def list_event_documents_for_processing(self, *, limit: int) -> list[dict[str, Any]]:
+        document = dict(self.document)
+        document.setdefault("evidence_status", "ready")
+        document.setdefault("evidence_reason", "")
+        document.setdefault(
+            "evidence_artifacts",
+            [{"extraction_status": "ready", "content_text": "Revenue was up."}],
+        )
+        return [document]
 
     def company_event_ids_for_document(self, *, event_document_id: str) -> list[str]:
         return list(self.old_event_ids)
@@ -1025,7 +1032,16 @@ class _FakeProcessEquityRepository:
     def replace_fact_candidates(self, **_kwargs: Any) -> None:
         return None
 
+    def mark_event_document_evidence_status(self, **_kwargs: Any) -> None:
+        return None
+
+    def mark_event_document_fact_extraction_status(self, **_kwargs: Any) -> None:
+        return None
+
     def mark_event_document_processed(self, **_kwargs: Any) -> None:
+        return None
+
+    def mark_event_document_process_failed(self, **_kwargs: Any) -> None:
         return None
 
     def matching_expected_event_ids_for_company_events(self, *, company_event_ids: list[str]) -> list[str]:

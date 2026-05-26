@@ -126,7 +126,7 @@ def test_packet_builds_current_event_official_evidence_refs_and_hash() -> None:
 
     assert packet.current_event.company_event_id == "event-1"
     assert packet.source_documents[0].event_document_id == "doc-1"
-    assert len(packet.source_documents[0].text_excerpt) <= 2000
+    assert packet.source_documents[0].text_excerpt == ""
     assert [span.span_id for span in packet.source_spans] == ["span-1", "span-2"]
     assert [fact.fact_candidate_id for fact in packet.fact_lanes] == ["fact-1", "fact-2"]
     assert packet.evidence_refs == [

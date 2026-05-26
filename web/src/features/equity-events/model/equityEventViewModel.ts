@@ -12,8 +12,15 @@ export type EquityEventFeedModel = {
   emptyTitle: string;
 };
 
-export const buildEquityEventFeedModel = (rows: EquityEventRow[]): EquityEventFeedModel => {
-  const sortedRows = sortEquityEventRows(rows);
+export type EquityEventFeedModelOptions = {
+  ordering?: "backend" | "priority";
+};
+
+export const buildEquityEventFeedModel = (
+  rows: EquityEventRow[],
+  options: EquityEventFeedModelOptions = {},
+): EquityEventFeedModel => {
+  const sortedRows = options.ordering === "priority" ? sortEquityEventRows(rows) : [...rows];
   return {
     rows: sortedRows,
     summary: {
@@ -52,9 +59,13 @@ export const equityEventPriorityRank = (priority?: string | null): number => {
 export const equityEventBriefStatusLabel = (status?: string | null): string => {
   const labels: Record<string, string> = {
     disabled: "brief disabled",
-    failed: "brief failed",
+    failed_retryable: "brief retryable",
+    failed_terminal: "brief failed",
+    historical_unscheduled: "historical backlog",
     insufficient: "insufficient brief",
+    in_progress: "brief running",
     pending: "pending brief",
+    pending_due: "brief due",
     ready: "brief ready",
     stale: "brief stale",
   };

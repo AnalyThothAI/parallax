@@ -211,8 +211,15 @@ function equityEventSummaryData() {
   return {
     p0_open_count: 1,
     today_count: 1,
-    brief_pending_count: 0,
-    latest_event_at_ms: NOW,
+    due_brief_queue_count: 0,
+    retryable_brief_failure_count: 0,
+    stale_brief_count: 0,
+    historical_backlog_count: 0,
+    latest_material_event_at_ms: NOW,
+    latest_source_success_at_ms: NOW,
+    latest_evidence_ready_at_ms: NOW,
+    latest_projection_at_ms: NOW,
+    calendar_configured: true,
   };
 }
 

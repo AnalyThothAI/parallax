@@ -81,6 +81,59 @@ describe("equity event view model", () => {
     expect(buildEquityEventFeedModel([]).emptyTitle).toBe("No equity event rows");
   });
 
+  it("preserves backend incoming order by default", () => {
+    const rows = [
+      normalizeEquityEventRow({
+        company_event_id: "p2-first",
+        ticker: "MSFT",
+        event_type: "guidance_update",
+        priority: "P2",
+        source_role: "official_regulator",
+        latest_event_at_ms: 300,
+      }),
+      normalizeEquityEventRow({
+        company_event_id: "p0-second",
+        ticker: "NVDA",
+        event_type: "earnings_release",
+        priority: "P0",
+        source_role: "official_issuer",
+        latest_event_at_ms: 100,
+      }),
+    ];
+
+    expect(buildEquityEventFeedModel(rows).rows.map((row) => row.company_event_id)).toEqual([
+      "p2-first",
+      "p0-second",
+    ]);
+  });
+
+  it("sorts by priority when priority ordering is requested", () => {
+    const rows = [
+      normalizeEquityEventRow({
+        company_event_id: "p2-first",
+        ticker: "MSFT",
+        event_type: "guidance_update",
+        priority: "P2",
+        source_role: "official_regulator",
+        latest_event_at_ms: 300,
+      }),
+      normalizeEquityEventRow({
+        company_event_id: "p0-second",
+        ticker: "NVDA",
+        event_type: "earnings_release",
+        priority: "P0",
+        source_role: "official_issuer",
+        latest_event_at_ms: 100,
+      }),
+    ];
+
+    expect(
+      buildEquityEventFeedModel(rows, { ordering: "priority" }).rows.map(
+        (row) => row.company_event_id,
+      ),
+    ).toEqual(["p0-second", "p2-first"]);
+  });
+
   it("normalizes calendar aliases for observed matches", () => {
     const row = normalizeEquityCalendarRow({
       expected_event_id: "expected-1",

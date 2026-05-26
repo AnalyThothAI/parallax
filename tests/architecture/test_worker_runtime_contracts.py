@@ -28,6 +28,9 @@ NARRATIVE_DIGEST_WORKER = SRC / "domains" / "narrative_intel" / "runtime" / "tok
 NARRATIVE_EPOCH_POLICY = SRC / "domains" / "narrative_intel" / "services" / "narrative_epoch_policy.py"
 API_ROUTES = SRC / "app" / "surfaces" / "api"
 WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
+EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION = (
+    SRC / "platform/db/alembic/versions/20260526_0103_equity_event_evidence_hard_cut.py"
+)
 
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
@@ -198,6 +201,21 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
         SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
         SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
         SRC / "platform/db/alembic/versions/20260523_0083_equity_event_intel.py",
+    },
+}
+
+RUNTIME_WRITE_OWNER_ALLOWLISTS: dict[str, set[Path]] = {
+    "equity_event_evidence_artifacts": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_fetch_worker.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_process_worker.py",
+        EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION,
+    },
+    "equity_event_brief_states": {
+        SRC / "domains/equity_event_intel/repositories/equity_event_repository.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_brief_worker.py",
+        SRC / "domains/equity_event_intel/runtime/equity_event_page_projection_worker.py",
+        EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION,
     },
 }
 
@@ -381,9 +399,7 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
         "token_profile_current_dirty_targets",
         "token_radar_dirty_targets",
     }
-    manifest_dirty_targets = {
-        table for dirty_tables in worker_dirty_target_tables().values() for table in dirty_tables
-    }
+    manifest_dirty_targets = {table for dirty_tables in worker_dirty_target_tables().values() for table in dirty_tables}
 
     assert expected_dirty_targets <= manifest_dirty_targets
 
@@ -664,6 +680,36 @@ def test_read_model_single_writers(table_name: str) -> None:
 @pytest.mark.architecture
 def test_dirty_target_control_plane_tables_are_not_read_models() -> None:
     assert set(CONTROL_PLANE_TABLES).isdisjoint(SINGLE_WRITER_READ_MODELS)
+
+
+@pytest.mark.architecture
+@pytest.mark.parametrize("table_name", sorted(RUNTIME_WRITE_OWNER_ALLOWLISTS))
+def test_runtime_table_sql_writes_stay_in_owner_allowlist(table_name: str) -> None:
+    allowlist = RUNTIME_WRITE_OWNER_ALLOWLISTS[table_name]
+    migration_allowlist = {path for path in allowlist if "alembic/versions" in path.as_posix()}
+    runtime_allowlist = allowlist - migration_allowlist
+    write_pattern = re.compile(
+        rf"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+{re.escape(table_name)}\b",
+        re.IGNORECASE,
+    )
+    violations = [
+        f"{_rel(path)} writes runtime-owned table {table_name}"
+        for path in SRC.rglob("*.py")
+        if path not in runtime_allowlist
+        and "alembic/versions" not in path.as_posix()
+        and not path.is_relative_to(API_ROUTES)
+        and write_pattern.search(path.read_text())
+    ]
+    api_route_violations = [
+        f"{_rel(path)} writes runtime-owned table {table_name}"
+        for path in API_ROUTES.rglob("*.py")
+        if write_pattern.search(path.read_text())
+    ]
+
+    assert migration_allowlist == {EQUITY_EVENT_EVIDENCE_HARD_CUT_MIGRATION}
+    assert all(table_name in path.read_text() for path in migration_allowlist)
+    assert violations == []
+    assert api_route_violations == []
 
 
 @pytest.mark.architecture

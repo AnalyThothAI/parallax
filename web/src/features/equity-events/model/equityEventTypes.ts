@@ -34,6 +34,7 @@ export type EquityEventDataGap = {
 
 export type EquityEventDocument = {
   event_document_id: string | null;
+  source_id: string | null;
   document_type: string | null;
   form_type: string | null;
   accession_number: string | null;
@@ -41,6 +42,10 @@ export type EquityEventDocument = {
   document_url: string | null;
   event_time_ms: number | null;
   source_role: string | null;
+  evidence_status: string | null;
+  evidence_reason: string | null;
+  fact_extraction_status: string | null;
+  fact_extraction_reason: string | null;
 };
 
 export type EquityEventFact = {
@@ -125,13 +130,22 @@ export type EquityEventCalendarRow = {
 
 export type EquityEventCalendarData = {
   items: EquityEventCalendarRow[];
+  calendar_configured: boolean;
+  empty_reason: string;
 };
 
 export type EquityEventSummary = {
   p0_open_count: number;
   today_count: number;
-  brief_pending_count: number;
-  latest_event_at_ms: number | null;
+  due_brief_queue_count: number;
+  retryable_brief_failure_count: number;
+  stale_brief_count: number;
+  historical_backlog_count: number;
+  latest_material_event_at_ms: number | null;
+  latest_source_success_at_ms: number | null;
+  latest_evidence_ready_at_ms: number | null;
+  latest_projection_at_ms: number | null;
+  calendar_configured: boolean;
 };
 
 export const normalizeEquityEventRow = (raw: unknown): EquityEventRow => {
@@ -200,8 +214,15 @@ export const normalizeEquityEventSummary = (raw: unknown): EquityEventSummary =>
   return {
     p0_open_count: numberOrNull(payload.p0_open_count) ?? 0,
     today_count: numberOrNull(payload.today_count) ?? 0,
-    brief_pending_count: numberOrNull(payload.brief_pending_count) ?? 0,
-    latest_event_at_ms: numberOrNull(payload.latest_event_at_ms),
+    due_brief_queue_count: numberOrNull(payload.due_brief_queue_count) ?? 0,
+    retryable_brief_failure_count: numberOrNull(payload.retryable_brief_failure_count) ?? 0,
+    stale_brief_count: numberOrNull(payload.stale_brief_count) ?? 0,
+    historical_backlog_count: numberOrNull(payload.historical_backlog_count) ?? 0,
+    latest_material_event_at_ms: numberOrNull(payload.latest_material_event_at_ms),
+    latest_source_success_at_ms: numberOrNull(payload.latest_source_success_at_ms),
+    latest_evidence_ready_at_ms: numberOrNull(payload.latest_evidence_ready_at_ms),
+    latest_projection_at_ms: numberOrNull(payload.latest_projection_at_ms),
+    calendar_configured: Boolean(payload.calendar_configured),
   };
 };
 
@@ -228,6 +249,7 @@ const normalizeEquityEventDocuments = (raw: unknown): EquityEventDocument[] =>
     const payload = objectOrNull(item) ?? {};
     return {
       event_document_id: stringOrNull(payload.event_document_id),
+      source_id: stringOrNull(payload.source_id),
       document_type: stringOrNull(payload.document_type),
       form_type: stringOrNull(payload.form_type),
       accession_number: stringOrNull(payload.accession_number),
@@ -235,6 +257,10 @@ const normalizeEquityEventDocuments = (raw: unknown): EquityEventDocument[] =>
       document_url: stringOrNull(payload.document_url),
       event_time_ms: numberOrNull(payload.event_time_ms),
       source_role: stringOrNull(payload.source_role),
+      evidence_status: stringOrNull(payload.evidence_status),
+      evidence_reason: stringOrNull(payload.evidence_reason),
+      fact_extraction_status: stringOrNull(payload.fact_extraction_status),
+      fact_extraction_reason: stringOrNull(payload.fact_extraction_reason),
     };
   });
 

@@ -1904,6 +1904,16 @@
       "EquityEventCalendarData": {
         "additionalProperties": true,
         "properties": {
+          "calendar_configured": {
+            "default": false,
+            "title": "Calendar Configured",
+            "type": "boolean"
+          },
+          "empty_reason": {
+            "default": "",
+            "title": "Empty Reason",
+            "type": "string"
+          },
           "items": {
             "items": {
               "additionalProperties": true,
@@ -1940,12 +1950,22 @@
       "EquityEventSummaryData": {
         "additionalProperties": true,
         "properties": {
-          "brief_pending_count": {
+          "calendar_configured": {
+            "default": false,
+            "title": "Calendar Configured",
+            "type": "boolean"
+          },
+          "due_brief_queue_count": {
             "default": 0,
-            "title": "Brief Pending Count",
+            "title": "Due Brief Queue Count",
             "type": "integer"
           },
-          "latest_event_at_ms": {
+          "historical_backlog_count": {
+            "default": 0,
+            "title": "Historical Backlog Count",
+            "type": "integer"
+          },
+          "latest_evidence_ready_at_ms": {
             "anyOf": [
               {
                 "type": "integer"
@@ -1954,11 +1974,54 @@
                 "type": "null"
               }
             ],
-            "title": "Latest Event At Ms"
+            "title": "Latest Evidence Ready At Ms"
+          },
+          "latest_material_event_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Material Event At Ms"
+          },
+          "latest_projection_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Projection At Ms"
+          },
+          "latest_source_success_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Source Success At Ms"
           },
           "p0_open_count": {
             "default": 0,
             "title": "P0 Open Count",
+            "type": "integer"
+          },
+          "retryable_brief_failure_count": {
+            "default": 0,
+            "title": "Retryable Brief Failure Count",
+            "type": "integer"
+          },
+          "stale_brief_count": {
+            "default": 0,
+            "title": "Stale Brief Count",
             "type": "integer"
           },
           "today_count": {
@@ -2806,6 +2869,11 @@
             },
             "title": "Suggested Checks",
             "type": "array"
+          },
+          "worker_lanes": {
+            "additionalProperties": true,
+            "title": "Worker Lanes",
+            "type": "object"
           },
           "workers": {
             "items": {
@@ -4494,6 +4562,13 @@
             ],
             "title": "Store"
           },
+          "worker_lanes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WorkerLaneStatusData"
+            },
+            "title": "Worker Lanes",
+            "type": "object"
+          },
           "workers": {
             "additionalProperties": {
               "$ref": "#/components/schemas/WorkerStatusData"
@@ -5415,6 +5490,83 @@
         "title": "WatchlistOverviewQuery",
         "type": "object"
       },
+      "WorkerLaneStatusData": {
+        "additionalProperties": true,
+        "properties": {
+          "enabled_workers": {
+            "default": 0,
+            "title": "Enabled Workers",
+            "type": "integer"
+          },
+          "failed_workers": {
+            "default": 0,
+            "title": "Failed Workers",
+            "type": "integer"
+          },
+          "hard_timed_out_workers": {
+            "default": 0,
+            "title": "Hard Timed Out Workers",
+            "type": "integer"
+          },
+          "iteration_duration_p99_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration Duration P99 Ms"
+          },
+          "lane": {
+            "title": "Lane",
+            "type": "string"
+          },
+          "oldest_active_run_once_age_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Active Run Once Age Ms"
+          },
+          "queue_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Depth"
+          },
+          "queue_health": {
+            "additionalProperties": true,
+            "title": "Queue Health",
+            "type": "object"
+          },
+          "running_workers": {
+            "default": 0,
+            "title": "Running Workers",
+            "type": "integer"
+          },
+          "soft_timed_out_workers": {
+            "default": 0,
+            "title": "Soft Timed Out Workers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lane"
+        ],
+        "title": "WorkerLaneStatusData",
+        "type": "object"
+      },
       "WorkerStatusData": {
         "additionalProperties": true,
         "properties": {
@@ -5553,6 +5705,11 @@
               }
             ],
             "title": "Queue Depth"
+          },
+          "queue_health": {
+            "additionalProperties": true,
+            "title": "Queue Health",
+            "type": "object"
           },
           "running": {
             "title": "Running",

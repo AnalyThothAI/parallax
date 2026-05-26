@@ -89,8 +89,8 @@ export function EquityEventsRoute({
           />
           <Metric
             icon={<FileClock aria-hidden />}
-            label="pending"
-            value={summaryQuery.data?.brief_pending_count ?? "--"}
+            label="brief due"
+            value={summaryQuery.data?.due_brief_queue_count ?? "--"}
           />
         </div>
       </header>
@@ -175,6 +175,9 @@ export function EquityEventsRoute({
           isLoading={feedQuery.isLoading}
           model={feedModel}
           nextCursor={feedQuery.data?.next_cursor ?? null}
+          onLoadMore={(cursor) =>
+            navigate(`${earningsPath()}${searchFor({ ...routeState, cursor })}`)
+          }
           onOpen={(eventId) => navigate(equityEventDetailPath(eventId))}
         />
       )}

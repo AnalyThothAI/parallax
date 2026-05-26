@@ -16,6 +16,7 @@ export function EquityEventFeed({
   isLoading,
   model,
   nextCursor,
+  onLoadMore,
   onOpen,
 }: {
   error: unknown;
@@ -24,6 +25,7 @@ export function EquityEventFeed({
   isLoading: boolean;
   model: EquityEventFeedModel;
   nextCursor: string | null;
+  onLoadMore: (cursor: string) => void;
   onOpen: (eventId: string) => void;
 }) {
   if (isLoading && !model.rows.length) {
@@ -52,6 +54,17 @@ export function EquityEventFeed({
           <span>{model.summary.drivers} drivers</span>
           {nextCursor ? <span>next page</span> : <span>latest page</span>}
         </div>
+        {nextCursor ? (
+          <div className="equity-event-feed-actions">
+            <button
+              className="equity-event-load-more"
+              type="button"
+              onClick={() => onLoadMore(nextCursor)}
+            >
+              Load more
+            </button>
+          </div>
+        ) : null}
         <div className="equity-event-feed-head" aria-hidden="true">
           <span>Time</span>
           <span>Event</span>

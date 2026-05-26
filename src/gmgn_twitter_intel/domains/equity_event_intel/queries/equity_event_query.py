@@ -44,10 +44,12 @@ class EquityEventQuery:
         return {"items": rows, "next_cursor": next_cursor}
 
     def get_event(self, company_event_id: str) -> dict[str, Any] | None:
-        return self.repository.get_event_detail(company_event_id=company_event_id)
+        row = self.repository.get_event_detail(company_event_id=company_event_id)
+        return dict(row) if row is not None else None
 
     def get_story(self, story_id: str) -> dict[str, Any] | None:
-        return self.repository.get_story_detail(story_id=story_id)
+        row = self.repository.get_story_detail(story_id=story_id)
+        return dict(row) if row is not None else None
 
     def list_calendar(
         self,
@@ -67,7 +69,9 @@ class EquityEventQuery:
             status=status,
             session=session,
         )
-        return {"items": rows}
+        configured = bool(self.repository.calendar_configured())
+        empty_reason = self.repository.calendar_empty_reason(has_rows=bool(rows)) or ""
+        return {"items": rows, "calendar_configured": configured, "empty_reason": empty_reason}
 
     def company_timeline(
         self,
@@ -85,15 +89,22 @@ class EquityEventQuery:
         return {"items": rows, "next_cursor": next_cursor}
 
     def source_status(self) -> list[dict[str, Any]]:
-        return self.repository.list_source_status()
+        return [dict(row) for row in self.repository.list_source_status()]
 
     def summary(self) -> dict[str, Any]:
         data = dict(self.repository.summary() or {})
         return {
             "p0_open_count": int(data.get("p0_open_count") or 0),
             "today_count": int(data.get("today_count") or 0),
-            "brief_pending_count": int(data.get("brief_pending_count") or 0),
-            "latest_event_at_ms": data.get("latest_event_at_ms"),
+            "due_brief_queue_count": int(data.get("due_brief_queue_count") or 0),
+            "retryable_brief_failure_count": int(data.get("retryable_brief_failure_count") or 0),
+            "stale_brief_count": int(data.get("stale_brief_count") or 0),
+            "historical_backlog_count": int(data.get("historical_backlog_count") or 0),
+            "latest_material_event_at_ms": data.get("latest_material_event_at_ms"),
+            "latest_source_success_at_ms": data.get("latest_source_success_at_ms"),
+            "latest_evidence_ready_at_ms": data.get("latest_evidence_ready_at_ms"),
+            "latest_projection_at_ms": data.get("latest_projection_at_ms"),
+            "calendar_configured": bool(data.get("calendar_configured")),
         }
 
 

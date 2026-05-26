@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
-from gmgn_twitter_intel.domains.equity_event_intel.types import EquityCompanyEvent
+from gmgn_twitter_intel.domains.equity_event_intel.types import EquityCompanyEvent, Priority, SourceRole
 
 _EARNINGS_8K_TEXT = (
     "results of operations and financial condition",
@@ -24,8 +24,8 @@ def classify_equity_event(document: Mapping[str, Any]) -> EquityCompanyEvent:
         ticker=_required_text(document, "ticker").upper(),
         primary_document_id=_required_text(document, "event_document_id"),
         event_type=event_type,
-        priority=priority,
-        source_role=_text(document.get("source_role")) or "observed_source",
+        priority=cast(Priority, priority),
+        source_role=cast(SourceRole, _text(document.get("source_role")) or "observed_source"),
         fiscal_period=_optional_text(document.get("fiscal_period")),
         event_time_ms=_int_or(document.get("event_time_ms"), 0),
         discovered_at_ms=_int_or(document.get("discovered_at_ms"), _int_or(document.get("event_time_ms"), 0)),

@@ -45,11 +45,21 @@ def build_equity_event_page_row(
             "source_role": str(event["source_role"]),
             "latest_event_at_ms": int(event.get("event_time_ms") or computed_at_ms),
             "lifecycle_status": str(event.get("lifecycle_status") or "raw"),
+            "evidence_status": str(event.get("evidence_status") or "pending"),
+            "evidence_reason": str(event.get("evidence_reason") or ""),
+            "fact_extraction_status": _document_fact_status(documents, "fact_extraction_status", "pending"),
+            "fact_extraction_reason": _document_fact_status(documents, "fact_extraction_reason", ""),
             "headline": _event_headline(ticker=ticker, fiscal_period=fiscal_period, event_type=event_type),
             "summary": str(event.get("summary") or ""),
             "facts_json": [_fact_payload(row) for row in facts],
             "documents_json": [_document_payload(row) for row in documents],
             "brief_json": _brief_payload(brief),
+            "freshness_json": _freshness_payload(
+                event=event,
+                documents=documents,
+                brief=brief,
+                computed_at_ms=computed_at_ms,
+            ),
             "computed_at_ms": int(computed_at_ms),
             "source_watermark_ms": _source_watermark(event, computed_at_ms=computed_at_ms),
             "projection_version": EQUITY_EVENT_PAGE_PROJECTION_VERSION,
@@ -260,6 +270,11 @@ def _document_payload(row: Mapping[str, Any]) -> dict[str, Any]:
             "document_url": row.get("document_url"),
             "event_time_ms": _optional_int(row.get("event_time_ms")),
             "source_role": row.get("source_role"),
+            "source_id": row.get("source_id"),
+            "evidence_status": row.get("evidence_status"),
+            "evidence_reason": row.get("evidence_reason"),
+            "fact_extraction_status": row.get("fact_extraction_status"),
+            "fact_extraction_reason": row.get("fact_extraction_reason"),
         }
     )
 
@@ -272,14 +287,54 @@ def _timeline_fact_payload(row: Any) -> dict[str, Any]:
 
 def _brief_payload(brief: Mapping[str, Any] | None) -> dict[str, Any]:
     if brief is None:
-        return {"status": "pending"}
+        return {"status": "pending_due", "reason_code": "brief_state_missing"}
     payload = _json_object(brief.get("brief_json") if isinstance(brief, Mapping) else None)
-    if not payload:
-        payload = _json_object(brief)
-    status = brief.get("status") if isinstance(brief, Mapping) else None
-    if status and "status" not in payload:
+    status = (
+        brief.get("brief_readiness_status") or brief.get("readiness_status") or brief.get("status")
+        if isinstance(brief, Mapping)
+        else None
+    )
+    if status:
         payload["status"] = status
-    return payload or {"status": "pending"}
+    if isinstance(brief, Mapping):
+        for key in ("reason_code", "reason_detail", "next_retry_after_ms", "source_updated_at_ms", "updated_at_ms"):
+            value = brief.get(key)
+            if value is not None:
+                payload[key] = value
+        if brief.get("status") and "agent_status" not in payload:
+            payload["agent_status"] = brief.get("status")
+    return payload or {"status": "pending_due", "reason_code": "brief_state_missing"}
+
+
+def _document_fact_status(documents: Sequence[Mapping[str, Any]], key: str, fallback: str) -> str:
+    for row in documents:
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
+    return fallback
+
+
+def _freshness_payload(
+    *,
+    event: Mapping[str, Any],
+    documents: Sequence[Mapping[str, Any]],
+    brief: Mapping[str, Any] | None,
+    computed_at_ms: int,
+) -> dict[str, Any]:
+    document_updated_at_ms = max((_optional_int(row.get("updated_at_ms")) or 0 for row in documents), default=0)
+    evidence_ready_at_ms = max((_optional_int(row.get("evidence_ready_at_ms")) or 0 for row in documents), default=0)
+    fact_extracted_at_ms = max((_optional_int(row.get("fact_extracted_at_ms")) or 0 for row in documents), default=0)
+    brief_updated_at_ms = _optional_int((brief or {}).get("updated_at_ms") if isinstance(brief, Mapping) else None)
+    return _compact_mapping(
+        {
+            "material_event_at_ms": _optional_int(event.get("event_time_ms")),
+            "document_updated_at_ms": document_updated_at_ms or None,
+            "evidence_ready_at_ms": evidence_ready_at_ms or None,
+            "fact_extracted_at_ms": fact_extracted_at_ms or None,
+            "brief_updated_at_ms": brief_updated_at_ms,
+            "projection_at_ms": int(computed_at_ms),
+        }
+    )
 
 
 def _event_family(event_type: str) -> str:
@@ -334,12 +389,18 @@ def _with_payload_hash(row: dict[str, Any]) -> dict[str, Any]:
 
 def _payload_hash(row: Mapping[str, Any]) -> str:
     payload = {
-        str(key): value
+        str(key): _hash_value(key=str(key), value=value)
         for key, value in row.items()
-        if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms"}
+        if key not in {"computed_at_ms", "payload_hash", "source_watermark_ms", "freshness_json"}
     }
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _hash_value(*, key: str, value: Any) -> Any:
+    if key != "freshness_json" or not isinstance(value, Mapping):
+        return value
+    return {str(child_key): child for child_key, child in value.items() if str(child_key) != "projection_at_ms"}
 
 
 def _source_watermark(row: Mapping[str, Any], *, computed_at_ms: int) -> int:

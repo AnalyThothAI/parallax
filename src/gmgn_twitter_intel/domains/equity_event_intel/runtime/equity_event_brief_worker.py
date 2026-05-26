@@ -87,6 +87,8 @@ class EquityEventBriefWorker(WorkerBase):
         for target in claimed:
             target_id = str(target.get("target_id") or "")
             candidate = candidates_by_id.get(target_id)
+            packet: EquityEventBriefInputPacket | None = None
+            source_updated_at_ms = now
             if candidate is None:
                 notes["missing_target"] += 1
                 await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
@@ -94,8 +96,20 @@ class EquityEventBriefWorker(WorkerBase):
                 continue
 
             try:
+                source_updated_at_ms = int(candidate.get("source_updated_at_ms") or now)
                 packet = _packet_from_candidate(candidate, agent_config=agent_config)
                 if _current_brief_is_fresh(candidate, packet=packet, agent_config=agent_config):
+                    await asyncio.to_thread(
+                        self._upsert_brief_readiness,
+                        company_event_id=packet.current_event.company_event_id,
+                        status=_fresh_current_brief_readiness_status(candidate),
+                        reason_code="current_brief_fresh",
+                        reason_detail="current brief matches current source input hash",
+                        input_hash=packet.input_hash,
+                        source_updated_at_ms=source_updated_at_ms,
+                        next_retry_after_ms=None,
+                        updated_at_ms=now,
+                    )
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                     skipped += 1
                     continue
@@ -103,23 +117,57 @@ class EquityEventBriefWorker(WorkerBase):
                     outcome = await self._record_no_official_evidence(
                         packet=packet,
                         agent_config=agent_config,
-                        source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
+                        source_updated_at_ms=source_updated_at_ms,
                     )
                     for key, value in outcome.notes.items():
                         notes[key] = int(notes.get(key, 0)) + int(value)
                     current_updates += outcome.current_updates
                     notes["no_official_evidence"] += 1
+                    await asyncio.to_thread(
+                        self._upsert_brief_readiness,
+                        company_event_id=packet.current_event.company_event_id,
+                        status=outcome.readiness_status,
+                        reason_code=outcome.readiness_reason_code,
+                        reason_detail=outcome.readiness_reason_detail,
+                        input_hash=packet.input_hash,
+                        source_updated_at_ms=source_updated_at_ms,
+                        next_retry_after_ms=_next_retry_after_ms(now_ms=now, retry_ms=outcome.retry_ms),
+                        updated_at_ms=now,
+                    )
                     await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
                     continue
 
+                await asyncio.to_thread(
+                    self._upsert_brief_readiness,
+                    company_event_id=packet.current_event.company_event_id,
+                    status="in_progress",
+                    reason_code="agent_execution_started",
+                    reason_detail="brief input is ready and agent execution is starting",
+                    input_hash=packet.input_hash,
+                    source_updated_at_ms=source_updated_at_ms,
+                    next_retry_after_ms=None,
+                    updated_at_ms=now,
+                )
                 outcome = await self._process_candidate(
                     packet=packet,
                     agent_config=agent_config,
                     now_ms=now,
-                    source_updated_at_ms=int(candidate.get("source_updated_at_ms") or now),
+                    source_updated_at_ms=source_updated_at_ms,
                 )
             except Exception as exc:
                 notes["failed"] += 1
+                if packet is not None:
+                    await asyncio.to_thread(
+                        self._upsert_brief_readiness,
+                        company_event_id=packet.current_event.company_event_id,
+                        status="failed_retryable",
+                        reason_code=type(exc).__name__,
+                        reason_detail=str(exc)[:500],
+                        input_hash=packet.input_hash,
+                        source_updated_at_ms=source_updated_at_ms,
+                        next_retry_after_ms=now + self._retry_ms(),
+                        updated_at_ms=now,
+                    )
                 await asyncio.to_thread(
                     self._mark_targets_error,
                     [target],
@@ -131,6 +179,17 @@ class EquityEventBriefWorker(WorkerBase):
             for key, value in outcome.notes.items():
                 notes[key] = int(notes.get(key, 0)) + int(value)
             current_updates += outcome.current_updates
+            await asyncio.to_thread(
+                self._upsert_brief_readiness,
+                company_event_id=packet.current_event.company_event_id,
+                status=outcome.readiness_status,
+                reason_code=outcome.readiness_reason_code,
+                reason_detail=outcome.readiness_reason_detail,
+                input_hash=packet.input_hash,
+                source_updated_at_ms=source_updated_at_ms,
+                next_retry_after_ms=_next_retry_after_ms(now_ms=now, retry_ms=outcome.retry_ms),
+                updated_at_ms=now,
+            )
             await asyncio.to_thread(self._complete_claimed_target, target, outcome=outcome, now_ms=now)
 
         if current_updates > 0 and self.wake_bus is not None:
@@ -212,6 +271,9 @@ class EquityEventBriefWorker(WorkerBase):
                 current_updates=0,
                 retry_ms=self._backpressure_cooldown_ms(),
                 retry_reason=outcome,
+                readiness_status="pending_due",
+                readiness_reason_code=outcome,
+                readiness_reason_detail="brief execution deferred by capacity controls",
             )
 
         try:
@@ -286,6 +348,9 @@ class EquityEventBriefWorker(WorkerBase):
                 current_updates=1,
                 retry_ms=self._retry_ms(),
                 retry_reason="source_changed_before_publish",
+                readiness_status="failed_retryable",
+                readiness_reason_code="source_changed_before_publish",
+                readiness_reason_detail=errors[0]["message"],
             )
         if not validation.publishable:
             await asyncio.to_thread(
@@ -320,6 +385,9 @@ class EquityEventBriefWorker(WorkerBase):
                 retry_ms=self._retry_ms(),
                 retry_reason="domain_validation_failed",
                 retry_attempt_limited=True,
+                readiness_status="failed_retryable",
+                readiness_reason_code="domain_validation_failed",
+                readiness_reason_detail="equity event brief validation failed",
             )
 
         payload_dict = validation.payload or {}
@@ -351,7 +419,13 @@ class EquityEventBriefWorker(WorkerBase):
             computed_at_ms=finished_at_ms,
         )
         status = str(validation.status)
-        return _CandidateOutcome(notes={status: 1}, current_updates=1)
+        return _CandidateOutcome(
+            notes={status: 1},
+            current_updates=1,
+            readiness_status=_brief_status_to_readiness_status(status),
+            readiness_reason_code=f"brief_{status}",
+            readiness_reason_detail=f"brief generation completed with status {status}",
+        )
 
     async def _record_no_official_evidence(
         self,
@@ -400,7 +474,13 @@ class EquityEventBriefWorker(WorkerBase):
             validation_status="attention",
             computed_at_ms=int(source_updated_at_ms),
         )
-        return _CandidateOutcome(notes={"insufficient": 1}, current_updates=1)
+        return _CandidateOutcome(
+            notes={"insufficient": 1},
+            current_updates=1,
+            readiness_status="insufficient",
+            readiness_reason_code="no_official_evidence",
+            readiness_reason_detail="event lacks official regulator or issuer evidence for a publishable brief",
+        )
 
     async def _record_provider_failure(
         self,
@@ -449,6 +529,9 @@ class EquityEventBriefWorker(WorkerBase):
             retry_ms=self._retry_ms(),
             retry_reason=_provider_error_class(error),
             retry_attempt_limited=resolved_execution_started,
+            readiness_status="failed_retryable",
+            readiness_reason_code=_provider_error_class(error),
+            readiness_reason_detail=str(error)[:500],
         )
 
     async def _record_execute_backpressure(
@@ -486,11 +569,14 @@ class EquityEventBriefWorker(WorkerBase):
             current_updates=0,
             retry_ms=self._backpressure_cooldown_ms(),
             retry_reason=outcome,
+            readiness_status="pending_due",
+            readiness_reason_code=outcome,
+            readiness_reason_detail="brief execution deferred before provider start",
         )
 
     def _claim_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
-            return repos.equity_projection_dirty_targets.claim_due(
+            rows = repos.equity_projection_dirty_targets.claim_due(
                 limit=self._batch_size(),
                 lease_ms=self._lease_ms(),
                 now_ms=now_ms,
@@ -498,13 +584,15 @@ class EquityEventBriefWorker(WorkerBase):
                 projection_name="brief_input",
                 target_kind="company_event",
             )
+        return [dict(row) for row in rows]
 
     def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         company_event_ids = _target_ids(claimed)
         if not company_event_ids:
             return []
         with self._repository_session() as repos:
-            return repos.equity_events.load_events_for_brief_targets(company_event_ids=company_event_ids)
+            rows = repos.equity_events.load_events_for_brief_targets(company_event_ids=company_event_ids)
+        return [dict(row) for row in rows]
 
     def _complete_claimed_target(
         self,
@@ -653,6 +741,30 @@ class EquityEventBriefWorker(WorkerBase):
             computed_at_ms=computed_at_ms,
         )
 
+    def _upsert_brief_readiness(
+        self,
+        *,
+        company_event_id: str,
+        status: str,
+        reason_code: str,
+        reason_detail: str,
+        input_hash: str,
+        source_updated_at_ms: int,
+        next_retry_after_ms: int | None,
+        updated_at_ms: int,
+    ) -> None:
+        with self._repository_session() as repos:
+            repos.equity_events.upsert_brief_state(
+                company_event_id=company_event_id,
+                brief_readiness_status=status,
+                reason_code=reason_code,
+                reason_detail=reason_detail,
+                input_hash=input_hash,
+                source_updated_at_ms=source_updated_at_ms,
+                next_retry_after_ms=next_retry_after_ms,
+                updated_at_ms=updated_at_ms,
+            )
+
     def _repository_session(self) -> Any:
         return self.db.worker_session(
             self.name,
@@ -688,12 +800,18 @@ class _CandidateOutcome:
         retry_ms: int | None = None,
         retry_reason: str = "",
         retry_attempt_limited: bool = False,
+        readiness_status: str = "",
+        readiness_reason_code: str = "",
+        readiness_reason_detail: str = "",
     ) -> None:
         self.notes = dict(notes)
         self.current_updates = int(current_updates)
         self.retry_ms = int(retry_ms) if retry_ms is not None else None
         self.retry_reason = retry_reason or "agent_brief_retry"
         self.retry_attempt_limited = bool(retry_attempt_limited)
+        self.readiness_status = readiness_status or "pending_due"
+        self.readiness_reason_code = readiness_reason_code or self.retry_reason
+        self.readiness_reason_detail = readiness_reason_detail or self.readiness_reason_code
 
 
 def _target_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
@@ -751,6 +869,27 @@ def _current_brief_is_fresh(
     if str(current.get("artifact_version_hash") or "") != agent_config.artifact_version_hash:
         return False
     return int(current.get("computed_at_ms") or 0) >= int(candidate.get("source_updated_at_ms") or 0)
+
+
+def _fresh_current_brief_readiness_status(candidate: Mapping[str, Any]) -> str:
+    current = _optional_dict(candidate.get("current_brief"))
+    status = str((current or {}).get("status") or "")
+    return _brief_status_to_readiness_status(status)
+
+
+def _brief_status_to_readiness_status(status: str) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized == "ready":
+        return "ready"
+    if normalized == "insufficient":
+        return "insufficient"
+    if normalized == "failed":
+        return "failed_retryable"
+    return "pending_due"
+
+
+def _next_retry_after_ms(*, now_ms: int, retry_ms: int | None) -> int | None:
+    return int(now_ms) + int(retry_ms) if retry_ms is not None else None
 
 
 def _brief_dirty_targets(*, company_event_id: str, source_watermark_ms: int) -> list[dict[str, Any]]:

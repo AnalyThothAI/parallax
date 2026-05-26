@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
 )
 from gmgn_twitter_intel.integrations.news_feeds.cryptopanic_client import CryptopanicFeedClient
 from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedClient, FeedFetchResult
+from gmgn_twitter_intel.integrations.news_feeds.opennews_client import OpenNewsFeedClient
 from gmgn_twitter_intel.integrations.news_feeds.provider_registry import (
     NewsFeedProviderRegistry,
     default_news_feed_provider_registry,
@@ -21,10 +22,15 @@ from gmgn_twitter_intel.platform.config.settings import Settings
 
 
 def news_feed_client(settings: Settings) -> NewsSourceProvider:
-    del settings
+    opennews_settings = settings.news_intel.opennews
     registry = default_news_feed_provider_registry(
         rss_client=FeedClient(),
         cryptopanic_client=CryptopanicFeedClient(),
+        opennews_client=OpenNewsFeedClient(
+            token=opennews_settings.api_token,
+            wss_url=opennews_settings.wss_url,
+            connect_timeout_seconds=opennews_settings.connect_timeout_seconds,
+        ),
     )
     return RegistryBackedNewsSourceProvider(registry=registry)
 
@@ -71,10 +77,17 @@ class RegistryBackedNewsSourceProvider:
 
 
 class CompositeNewsFeedClient:
-    def __init__(self, *, rss_client: FeedClient, cryptopanic_client: CryptopanicFeedClient) -> None:
+    def __init__(
+        self,
+        *,
+        rss_client: FeedClient,
+        cryptopanic_client: CryptopanicFeedClient,
+        opennews_client: OpenNewsFeedClient | None = None,
+    ) -> None:
         self._registry = default_news_feed_provider_registry(
             rss_client=rss_client,
             cryptopanic_client=cryptopanic_client,
+            opennews_client=opennews_client,
         )
 
     def fetch(
@@ -86,7 +99,7 @@ class CompositeNewsFeedClient:
         provider_type: str | None = None,
         source: dict[str, Any] | None = None,
     ) -> FeedFetchResult:
-        resolved_provider_type = provider_type or ("cryptopanic" if str(url).startswith("cryptopanic://") else "rss")
+        resolved_provider_type = provider_type or _provider_type_for_url(str(url))
         return self._registry.fetch(
             provider_type=resolved_provider_type,
             feed_url=url,
@@ -130,6 +143,14 @@ def _provider_diagnostics(feed_result: Any) -> dict[str, Any]:
 def _optional_str(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _provider_type_for_url(url: str) -> str:
+    if url.startswith("cryptopanic://"):
+        return "cryptopanic"
+    if url.startswith("opennews://"):
+        return "opennews"
+    return "rss"
 
 
 __all__ = ["CompositeNewsFeedClient", "RegistryBackedNewsSourceProvider", "news_feed_client"]
