@@ -47,6 +47,18 @@ STATUS_QUEUE_SPECS: dict[str, StatusQueueSpec] = {
         blocked_statuses=(),
         terminal_statuses=("failed", "expired"),
     ),
+    "equity_event_evidence_jobs": StatusQueueSpec(
+        table="equity_event_evidence_jobs",
+        due_column="due_at_ms",
+        active_statuses=("pending", "running", "failed_retryable"),
+        due_statuses=("pending", "failed_retryable"),
+        running_statuses=("running",),
+        failed_statuses=("failed_retryable",),
+        blocked_statuses=("failed_terminal",),
+        terminal_statuses=("failed_terminal",),
+        lease_column="leased_until_ms",
+        running_age_column="started_at_ms",
+    ),
     "token_mention_semantics": StatusQueueSpec(
         table="token_mention_semantics",
         due_column="next_retry_at_ms",
@@ -71,6 +83,11 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
     ),
     "equity_event_projection_dirty_targets": QueueHealthAdapterSpec(
         table="equity_event_projection_dirty_targets", kind="dirty_target"
+    ),
+    "equity_event_evidence_jobs": QueueHealthAdapterSpec(
+        table="equity_event_evidence_jobs",
+        kind="status_queue",
+        status_queue=STATUS_QUEUE_SPECS["equity_event_evidence_jobs"],
     ),
     "event_anchor_backfill_jobs": QueueHealthAdapterSpec(
         table="event_anchor_backfill_jobs",

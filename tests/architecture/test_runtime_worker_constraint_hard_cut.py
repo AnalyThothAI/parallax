@@ -130,6 +130,7 @@ WORKER_CLASSIFICATION: dict[str, str] = {
     "news_source_quality_projection": "dirty_target_consumer",
     "equity_event_source_reconcile": "bounded_provider_scheduler",
     "equity_event_fetch": "bounded_provider_scheduler",
+    "equity_event_evidence_hydration": "leased_job_consumer",
     "equity_event_process": "target_scoped_expansion",
     "equity_event_story_projection": "dirty_target_consumer",
     "equity_event_brief": "dirty_target_consumer",

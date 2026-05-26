@@ -1375,6 +1375,16 @@ class EquityEventFetchWorkerSettings(PerWorkerSettings):
     wakes_on: tuple[str, ...] = ("equity_event_sources_reconciled",)
 
 
+class EquityEventEvidenceHydrationWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=20, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    lease_ms: int = Field(default=60_000, ge=1)
+    retry_delay_ms: int = Field(default=60_000, ge=1)
+    advisory_lock_key: int = 2026052307
+    wakes_on: tuple[str, ...] = ("equity_event_evidence_job_written",)
+
+
 class EquityEventProcessWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=30.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
@@ -1458,6 +1468,9 @@ class WorkersSettings(BaseModel):
         default_factory=EquityEventSourceReconcileWorkerSettings
     )
     equity_event_fetch: EquityEventFetchWorkerSettings = Field(default_factory=EquityEventFetchWorkerSettings)
+    equity_event_evidence_hydration: EquityEventEvidenceHydrationWorkerSettings = Field(
+        default_factory=EquityEventEvidenceHydrationWorkerSettings
+    )
     equity_event_process: EquityEventProcessWorkerSettings = Field(default_factory=EquityEventProcessWorkerSettings)
     equity_event_story_projection: EquityEventStoryProjectionWorkerSettings = Field(
         default_factory=EquityEventStoryProjectionWorkerSettings
@@ -2224,6 +2237,15 @@ equity_event_fetch:
   batch_size: 20
   advisory_lock_key: 2026052302
   wakes_on: ["equity_event_sources_reconciled"]
+equity_event_evidence_hydration:
+  enabled: true
+  interval_seconds: 30.0
+  batch_size: 20
+  max_attempts: 3
+  lease_ms: 60000
+  retry_delay_ms: 60000
+  advisory_lock_key: 2026052307
+  wakes_on: ["equity_event_evidence_job_written"]
 equity_event_process:
   enabled: true
   interval_seconds: 30.0

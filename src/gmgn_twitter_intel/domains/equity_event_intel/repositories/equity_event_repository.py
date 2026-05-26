@@ -829,6 +829,21 @@ class EquityEventRepository:
                   THEN equity_event_documents.processed_at_ms
                   ELSE NULL
                 END,
+                evidence_status = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.evidence_status
+                  ELSE 'pending'
+                END,
+                evidence_reason = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.evidence_reason
+                  ELSE ''
+                END,
+                evidence_ready_at_ms = CASE
+                  WHEN equity_event_documents.content_hash IS NOT DISTINCT FROM EXCLUDED.content_hash
+                  THEN equity_event_documents.evidence_ready_at_ms
+                  ELSE NULL
+                END,
                 updated_at_ms = EXCLUDED.updated_at_ms
               WHERE equity_event_documents.company_id IS DISTINCT FROM EXCLUDED.company_id
                  OR equity_event_documents.ticker IS DISTINCT FROM EXCLUDED.ticker
@@ -1006,6 +1021,263 @@ class EquityEventRepository:
             (max(0, int(limit)),),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def enqueue_evidence_job(
+        self,
+        *,
+        evidence_job_id: str,
+        event_document_id: str,
+        source_id: str | None,
+        priority: str = "P2",
+        due_at_ms: int,
+        max_attempts: int = 3,
+        now_ms: int,
+        company_event_id: str | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            INSERT INTO equity_event_evidence_jobs (
+              evidence_job_id, event_document_id, company_event_id, source_id, status, priority,
+              due_at_ms, started_at_ms, finished_at_ms, attempt_count, max_attempts, lease_owner,
+              leased_until_ms, last_error, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, 'pending', %s, %s, NULL, NULL, 0, %s, NULL, NULL, NULL, %s, %s)
+            ON CONFLICT (evidence_job_id) DO UPDATE SET
+              event_document_id = EXCLUDED.event_document_id,
+              company_event_id = EXCLUDED.company_event_id,
+              source_id = EXCLUDED.source_id,
+              status = 'pending',
+              priority = EXCLUDED.priority,
+              due_at_ms = EXCLUDED.due_at_ms,
+              started_at_ms = NULL,
+              finished_at_ms = NULL,
+              attempt_count = 0,
+              max_attempts = EXCLUDED.max_attempts,
+              lease_owner = NULL,
+              leased_until_ms = NULL,
+              last_error = NULL,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            RETURNING *
+            """,
+            (
+                evidence_job_id,
+                event_document_id,
+                company_event_id,
+                source_id,
+                str(priority or "P2"),
+                int(due_at_ms),
+                max(1, int(max_attempts)),
+                int(now_ms),
+                int(now_ms),
+            ),
+        ).fetchone()
+        self.conn.execute(
+            """
+            UPDATE equity_event_documents
+               SET evidence_status = 'pending',
+                   evidence_reason = '',
+                   evidence_ready_at_ms = NULL,
+                   updated_at_ms = %s
+             WHERE event_document_id = %s
+            """,
+            (int(now_ms), event_document_id),
+        )
+        if commit:
+            self.conn.commit()
+        return dict(row)
+
+    def claim_due_evidence_jobs(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int = 60_000,
+        commit: bool = True,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT evidence_job_id
+                FROM equity_event_evidence_jobs
+               WHERE status IN ('pending', 'failed_retryable')
+                 AND due_at_ms <= %s
+                 AND attempt_count < max_attempts
+               ORDER BY priority ASC, due_at_ms ASC, evidence_job_id ASC
+               LIMIT %s
+               FOR UPDATE SKIP LOCKED
+            )
+            UPDATE equity_event_evidence_jobs AS jobs
+               SET status = 'running',
+                   started_at_ms = COALESCE(started_at_ms, %s),
+                   attempt_count = attempt_count + 1,
+                   lease_owner = %s,
+                   leased_until_ms = %s,
+                   last_error = NULL,
+                   updated_at_ms = %s
+              FROM due
+             WHERE jobs.evidence_job_id = due.evidence_job_id
+            RETURNING jobs.*
+            """,
+            (
+                int(now_ms),
+                max(0, int(limit)),
+                int(now_ms),
+                str(lease_owner),
+                int(now_ms) + max(1, int(lease_ms)),
+                int(now_ms),
+            ),
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return [dict(row) for row in rows]
+
+    def load_evidence_hydration_input(self, *, evidence_job_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT to_jsonb(jobs.*) AS job,
+                   to_jsonb(sources.*) AS source,
+                   jsonb_build_object(
+                     'event_document_id', documents.event_document_id,
+                     'provider_document_id', documents.provider_document_id,
+                     'provider_document_key', provider.provider_document_key,
+                     'company_id', documents.company_id,
+                     'ticker', documents.ticker,
+                     'cik', documents.cik,
+                     'document_url', documents.document_url,
+                     'payload_hash', provider.payload_hash,
+                     'raw_payload_json', provider.raw_payload_json,
+                     'fetched_at_ms', provider.fetched_at_ms,
+                     'document_type', documents.document_type,
+                     'form_type', documents.form_type,
+                     'accession_number', documents.accession_number,
+                     'fiscal_period', documents.fiscal_period,
+                     'event_time_ms', documents.event_time_ms,
+                     'content_hash', documents.content_hash
+                   ) AS document
+              FROM equity_event_evidence_jobs AS jobs
+              JOIN equity_event_documents AS documents
+                ON documents.event_document_id = jobs.event_document_id
+              JOIN equity_provider_documents AS provider
+                ON provider.provider_document_id = documents.provider_document_id
+              LEFT JOIN equity_event_sources AS sources
+                ON sources.source_id = COALESCE(jobs.source_id, documents.source_id)
+             WHERE jobs.evidence_job_id = %s
+             LIMIT 1
+            """,
+            (evidence_job_id,),
+        ).fetchone()
+        if row is None:
+            return {}
+        return {"job": dict(row["job"]), "source": dict(row["source"] or {}), "document": dict(row["document"])}
+
+    def finish_evidence_job_success(
+        self,
+        *,
+        evidence_job_id: str,
+        finished_at_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_evidence_jobs
+               SET status = 'success',
+                   finished_at_ms = %s,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = NULL,
+                   updated_at_ms = %s
+             WHERE evidence_job_id = %s
+            """,
+            (int(finished_at_ms), int(finished_at_ms), evidence_job_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def finish_evidence_job_retryable(
+        self,
+        *,
+        evidence_job_id: str,
+        error: str,
+        due_at_ms: int,
+        now_ms: int,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_evidence_jobs
+               SET status = CASE
+                     WHEN attempt_count >= max_attempts THEN 'failed_terminal'
+                     ELSE 'failed_retryable'
+                   END,
+                   due_at_ms = %s,
+                   finished_at_ms = CASE
+                     WHEN attempt_count >= max_attempts THEN %s
+                     ELSE NULL
+                   END,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = %s,
+                   updated_at_ms = %s
+             WHERE evidence_job_id = %s
+            """,
+            (int(due_at_ms), int(now_ms), _compact_error(error), int(now_ms), evidence_job_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def finish_evidence_job_terminal(
+        self,
+        *,
+        evidence_job_id: str,
+        finished_at_ms: int,
+        error: str | None,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE equity_event_evidence_jobs
+               SET status = 'failed_terminal',
+                   finished_at_ms = %s,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = %s,
+                   updated_at_ms = %s
+             WHERE evidence_job_id = %s
+            """,
+            (int(finished_at_ms), _compact_error(error), int(finished_at_ms), evidence_job_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> int:
+        rows = self.conn.execute(
+            """
+            UPDATE equity_event_evidence_jobs
+               SET status = CASE
+                     WHEN attempt_count >= max_attempts THEN 'failed_terminal'
+                     ELSE 'failed_retryable'
+                   END,
+                   due_at_ms = %s,
+                   finished_at_ms = CASE
+                     WHEN attempt_count >= max_attempts THEN %s
+                     ELSE NULL
+                   END,
+                   lease_owner = NULL,
+                   leased_until_ms = NULL,
+                   last_error = COALESCE(last_error, 'evidence_job_lease_expired'),
+                   updated_at_ms = %s
+             WHERE status = 'running'
+               AND leased_until_ms IS NOT NULL
+               AND leased_until_ms <= %s
+            RETURNING evidence_job_id
+            """,
+            (int(now_ms), int(now_ms), int(now_ms), int(now_ms)),
+        ).fetchall()
+        if commit:
+            self.conn.commit()
+        return len(rows)
 
     def replace_evidence_artifacts(
         self,

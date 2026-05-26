@@ -487,11 +487,37 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("equity event due sources", "equity document provider"),
         ordering_keys=("source_id", "document_id"),
         writes_facts=("equity_event_fetch_runs", "equity_provider_documents", "equity_event_documents"),
-        writes_control_plane=("equity_event_projection_dirty_targets",),
+        writes_control_plane=("equity_event_evidence_jobs",),
         idempotency_evidence=("equity document source/external identity",),
         advisory_lock_key="2026052302",
         wakes_on=("equity_event_sources_reconciled",),
+        wakes_out=("equity_event_evidence_job_written",),
+    ),
+    WorkerManifest(
+        name="equity_event_evidence_hydration",
+        domain="equity_event_intel",
+        factory="equity_event_intel.py",
+        lane=WorkerLane.IDENTITY_MARKET_FACT,
+        kind=WorkerKind.FACT_LIFECYCLE,
+        worker_class=(
+            "gmgn_twitter_intel.domains.equity_event_intel.runtime."
+            "equity_event_evidence_hydration_worker.EquityEventEvidenceHydrationWorker"
+        ),
+        start_priority=98,
+        input_contract=("equity_event_evidence_jobs due rows", "equity document provider"),
+        ordering_keys=("event_document_id", "evidence_job_id"),
+        writes_facts=(
+            "equity_event_evidence_artifacts",
+            "equity_event_documents.evidence_status",
+            "equity_company_events.evidence_status",
+            "equity_event_sources.last_evidence_ready_at_ms",
+        ),
+        writes_control_plane=("equity_event_evidence_jobs",),
+        idempotency_evidence=("event_document_id evidence artifact replacement",),
+        advisory_lock_key="2026052307",
+        wakes_on=("equity_event_evidence_job_written",),
         wakes_out=("equity_event_document_written",),
+        queue_health_tables=("equity_event_evidence_jobs",),
     ),
     WorkerManifest(
         name="equity_event_process",
@@ -502,7 +528,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         worker_class=(
             "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker.EquityEventProcessWorker"
         ),
-        start_priority=98,
+        start_priority=99,
         input_contract=("equity_event_documents awaiting processing",),
         ordering_keys=("document_id", "company_event_id"),
         writes_facts=(
