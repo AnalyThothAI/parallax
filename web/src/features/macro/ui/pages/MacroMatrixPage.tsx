@@ -5,7 +5,6 @@ import type {
 } from "@lib/types";
 import * as PageState from "@shared/ui/PageState";
 import { Button } from "@shared/ui/button";
-import { Database, Link as LinkIcon, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useMacroAssetCorrelationQuery } from "../../api/useMacroAssetCorrelationQuery";
@@ -137,7 +136,7 @@ function CorrelationMatrix({
   }
   return (
     <MacroTableFrame caption={`${data.window} 资产相关性矩阵`} minWidth={720} stickyFirstColumn>
-      <table aria-label={`${data.window} 资产相关性矩阵`} className="macro-asset-index-table">
+      <table aria-label={`${data.window} 资产相关性矩阵`} className="macro-matrix-table">
         <caption>{data.window} 资产相关性矩阵</caption>
         <thead>
           <tr>

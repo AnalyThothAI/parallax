@@ -1,13 +1,15 @@
 @layer app.features {
   .macro-asset-index-table,
-  .macro-module-index-table {
+  .macro-module-index-table,
+  .macro-matrix-table {
     width: 100%;
     min-width: var(--macro-table-min-width, 720px);
     border-collapse: collapse;
   }
 
   .macro-asset-index-table caption,
-  .macro-module-index-table caption {
+  .macro-module-index-table caption,
+  .macro-matrix-table caption {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -21,7 +23,9 @@
   .macro-asset-index-table th,
   .macro-asset-index-table td,
   .macro-module-index-table th,
-  .macro-module-index-table td {
+  .macro-module-index-table td,
+  .macro-matrix-table th,
+  .macro-matrix-table td {
     padding: 10px 12px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     color: var(--text-primary, #f8fafc);
@@ -32,7 +36,8 @@
   }
 
   .macro-asset-index-table thead th,
-  .macro-module-index-table thead th {
+  .macro-module-index-table thead th,
+  .macro-matrix-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
@@ -47,14 +52,18 @@
   .macro-asset-index-table tbody tr:last-child th,
   .macro-asset-index-table tbody tr:last-child td,
   .macro-module-index-table tbody tr:last-child th,
-  .macro-module-index-table tbody tr:last-child td {
+  .macro-module-index-table tbody tr:last-child td,
+  .macro-matrix-table tbody tr:last-child th,
+  .macro-matrix-table tbody tr:last-child td {
     border-bottom: 0;
   }
 
   .macro-asset-index-table tbody tr:hover th,
   .macro-asset-index-table tbody tr:hover td,
   .macro-module-index-table tbody tr:hover th,
-  .macro-module-index-table tbody tr:hover td {
+  .macro-module-index-table tbody tr:hover td,
+  .macro-matrix-table tbody tr:hover th,
+  .macro-matrix-table tbody tr:hover td {
     background: rgba(125, 211, 252, 0.035);
   }
 
