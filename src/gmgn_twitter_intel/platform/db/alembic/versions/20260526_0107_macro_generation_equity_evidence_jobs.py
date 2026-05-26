@@ -101,29 +101,6 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        WITH ranked AS (
-          SELECT rows.ctid AS row_ctid,
-                 row_number() OVER (
-                   PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at
-                   ORDER BY
-                     CASE WHEN active.generation_id = rows.generation_id THEN 0 ELSE 1 END,
-                     CASE WHEN rows.generation_id = 'initial-active' THEN 0 ELSE 1 END,
-                     rows.projected_at_ms DESC,
-                     rows.generation_id DESC
-                 ) AS keep_rank
-            FROM macro_observation_series_rows AS rows
-            LEFT JOIN macro_observation_series_active_generation AS active
-              ON active.projection_version = rows.projection_version
-             AND active.concept_key = rows.concept_key
-        )
-        DELETE FROM macro_observation_series_rows AS rows
-        USING ranked
-        WHERE rows.ctid = ranked.row_ctid
-          AND ranked.keep_rank > 1
-        """
-    )
-    op.execute(
-        """
         ALTER TABLE macro_observation_series_rows
           ADD CONSTRAINT macro_observation_series_rows_pkey
           PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)
@@ -179,6 +156,29 @@ def downgrade() -> None:
         """
         ALTER TABLE macro_observation_series_rows
           DROP CONSTRAINT IF EXISTS macro_observation_series_rows_pkey
+        """
+    )
+    op.execute(
+        """
+        WITH ranked AS (
+          SELECT rows.ctid AS row_ctid,
+                 row_number() OVER (
+                   PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at
+                   ORDER BY
+                     CASE WHEN active.generation_id = rows.generation_id THEN 0 ELSE 1 END,
+                     CASE WHEN rows.generation_id = 'initial-active' THEN 0 ELSE 1 END,
+                     rows.projected_at_ms DESC,
+                     rows.generation_id DESC
+                 ) AS keep_rank
+            FROM macro_observation_series_rows AS rows
+            LEFT JOIN macro_observation_series_active_generation AS active
+              ON active.projection_version = rows.projection_version
+             AND active.concept_key = rows.concept_key
+        )
+        DELETE FROM macro_observation_series_rows AS rows
+        USING ranked
+        WHERE rows.ctid = ranked.row_ctid
+          AND ranked.keep_rank > 1
         """
     )
     op.execute(

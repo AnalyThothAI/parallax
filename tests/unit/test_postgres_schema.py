@@ -427,6 +427,7 @@ def test_runtime_rank_source_edges_migration_contract() -> None:
 def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
     text = MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION.read_text()
     normalized_text = " ".join(text.split())
+    upgrade_text, downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)
 
     assert 'revision = "20260526_0107"' in text
     assert 'down_revision = "20260526_0106"' in text
@@ -468,21 +469,25 @@ def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
     assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in text
     assert "DROP TABLE IF EXISTS macro_observation_series_generations" in text
     assert "DROP COLUMN IF EXISTS generation_id" in text
-    assert "DELETE FROM macro_observation_series_rows" in text
-    assert "row_number() OVER" in text
+    assert "DELETE FROM macro_observation_series_rows" not in upgrade_text
+    assert "DELETE FROM macro_observation_series_rows" in downgrade_text
+    assert "row_number() OVER" in downgrade_text
     assert (
         "PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at"
-        in text
+        in downgrade_text
     )
     assert (
         "active.generation_id = rows.generation_id"
-        in text
+        in downgrade_text
     )
-    assert "rows.generation_id = 'initial-active'" in text
-    assert "rows.projected_at_ms DESC" in text
-    assert "rows.generation_id DESC" in text
-    assert text.index("DELETE FROM macro_observation_series_rows") < text.index(
-        "ADD CONSTRAINT macro_observation_series_rows_pkey"
+    assert "rows.generation_id = 'initial-active'" in downgrade_text
+    assert "rows.projected_at_ms DESC" in downgrade_text
+    assert "rows.generation_id DESC" in downgrade_text
+    old_pk = "PRIMARY KEY (projection_version, concept_key, observed_at)"
+    assert old_pk in downgrade_text
+    assert "PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)" not in downgrade_text
+    assert downgrade_text.index("DELETE FROM macro_observation_series_rows") < downgrade_text.index(
+        old_pk
     )
 
 
