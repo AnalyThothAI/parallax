@@ -468,6 +468,22 @@ def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
     assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in text
     assert "DROP TABLE IF EXISTS macro_observation_series_generations" in text
     assert "DROP COLUMN IF EXISTS generation_id" in text
+    assert "DELETE FROM macro_observation_series_rows" in text
+    assert "row_number() OVER" in text
+    assert (
+        "PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at"
+        in text
+    )
+    assert (
+        "active.generation_id = rows.generation_id"
+        in text
+    )
+    assert "rows.generation_id = 'initial-active'" in text
+    assert "rows.projected_at_ms DESC" in text
+    assert "rows.generation_id DESC" in text
+    assert text.index("DELETE FROM macro_observation_series_rows") < text.index(
+        "ADD CONSTRAINT macro_observation_series_rows_pkey"
+    )
 
 
 def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
