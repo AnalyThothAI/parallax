@@ -65,7 +65,7 @@ def upgrade() -> None:
           asset_address TEXT,
           asset_symbol TEXT,
           asset_name TEXT,
-          asset_identity_confidence DOUBLE PRECISION,
+          asset_identity_confidence TEXT,
           asset_identity_reason_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
           asset_identity_conflict_count INTEGER NOT NULL DEFAULT 0,
           asset_registry_status TEXT,

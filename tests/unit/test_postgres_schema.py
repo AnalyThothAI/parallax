@@ -149,6 +149,10 @@ MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION = Path(
 RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py"
 )
+RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260526_0109_rank_source_identity_confidence_text.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -414,9 +418,11 @@ def test_runtime_rank_source_edges_migration_contract() -> None:
         "gmgn_user_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]",
         "event_price_usd NUMERIC",
         "latest_price_usd NUMERIC",
+        "asset_identity_confidence TEXT",
         "first_seen_global_24h BOOLEAN NOT NULL DEFAULT false",
     ):
         assert column in text
+    assert "asset_identity_confidence DOUBLE PRECISION" not in text
     for forbidden in ("event_text", "text_clean", "reference_json", "raw_payload_json", "audit_json"):
         assert forbidden not in text
     assert "CHECK (source_kind IN ('event', 'intent', 'resolution'))" in text
@@ -549,11 +555,30 @@ def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
     ) in normalized_text
 
 
+def test_rank_source_identity_confidence_text_migration_contract() -> None:
+    text = RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260526_0109"' in text
+    assert 'down_revision = "20260526_0108"' in text
+    assert "ALTER TABLE token_radar_rank_source_events" in text
+    assert "ALTER COLUMN asset_identity_confidence TYPE TEXT" in normalized_text
+    assert "USING asset_identity_confidence::text" in normalized_text
+    assert "ALTER COLUMN asset_identity_confidence TYPE DOUBLE PRECISION" in normalized_text
+    assert "asset_identity_confidence ~ '^-?[0-9]+(\\\\.[0-9]+)?$'" in text
+    assert "ELSE NULL" in text
+
+
 def test_runtime_performance_hard_cut_revision_chain() -> None:
     migrations = (
         (RUNTIME_RANK_SOURCE_EDGES_MIGRATION, "20260526_0106", "20260526_0105"),
         (MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION, "20260526_0107", "20260526_0106"),
         (RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION, "20260526_0108", "20260526_0107"),
+        (
+            RANK_SOURCE_IDENTITY_CONFIDENCE_TEXT_MIGRATION,
+            "20260526_0109",
+            "20260526_0108",
+        ),
     )
 
     for migration, revision, down_revision in migrations:
