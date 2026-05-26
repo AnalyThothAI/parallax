@@ -11,18 +11,25 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
+    min-width: 0;
     min-height: 0;
+    color: var(--text-primary, #f8fafc);
+  }
+
+  .macro-shell-main,
+  .macro-shell-content {
+    display: grid;
+    min-width: 0;
   }
 
   .macro-shell-main {
-    display: grid;
     gap: 10px;
-    min-width: 0;
   }
 
   .macro-shell-header {
     display: grid;
     gap: 6px;
+    min-width: 0;
     padding: 6px 2px 8px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   }
@@ -35,6 +42,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    min-width: 0;
     color: var(--text-muted, #94a3b8);
     font-size: 0.78rem;
   }
@@ -50,10 +58,14 @@
 
   .macro-shell-heading-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: flex-end;
-    justify-content: space-between;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, auto);
+    align-items: end;
     gap: 16px;
+    min-width: 0;
+  }
+
+  .macro-shell-heading-copy {
+    min-width: 0;
   }
 
   .macro-shell-kicker {
@@ -82,22 +94,49 @@
 
   .macro-shell-state {
     display: grid;
-    grid-template-columns: auto auto;
-    gap: 3px;
-    min-width: 210px;
+    grid-template-columns: repeat(auto-fit, minmax(118px, max-content));
+    justify-content: end;
+    gap: 6px 12px;
+    min-width: 0;
+    margin: 0;
     color: var(--text-muted, #94a3b8);
     font-size: 0.78rem;
     text-align: right;
   }
 
-  .macro-shell-state strong {
+  .macro-shell-state-item {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .macro-shell-state dt,
+  .macro-shell-state dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .macro-shell-state dd {
     color: var(--text-primary, #f8fafc);
     font-size: 0.88rem;
     font-weight: 700;
   }
 
-  .macro-shell-content {
+  .macro-shell-status-actions {
+    display: grid;
+    justify-items: end;
+    gap: 8px;
     min-width: 0;
+  }
+
+  .macro-shell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .macro-route-unsupported {
@@ -129,11 +168,18 @@
       grid-template-columns: 1fr;
     }
 
+    .macro-shell-status-actions {
+      justify-items: stretch;
+    }
+
     .macro-shell-state {
-      grid-template-columns: auto auto;
+      justify-content: start;
       text-align: left;
     }
 
+    .macro-shell-actions {
+      justify-content: flex-start;
+    }
   }
 
   @media (max-width: 520px) {
@@ -150,8 +196,12 @@
     }
 
     .macro-shell-state {
-      grid-template-columns: 1fr;
-      min-width: 0;
+      grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+      width: 100%;
+    }
+
+    .macro-shell-actions {
+      width: 100%;
     }
   }
 }
