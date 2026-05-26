@@ -41,7 +41,7 @@ def test_macro_concept_key_migration_backfills_historical_stooq_rows_only() -> N
 
 def test_macro_hard_cut_constants_and_core_concept_metadata_are_exported() -> None:
     assert _constants.MACRO_VIEW_PROJECTION_VERSION == "macro_regime_v4"
-    assert _constants.MACRO_MODULE_VIEW_VERSION == "macro_module_view_v2"
+    assert _constants.MACRO_MODULE_VIEW_VERSION == "macro_module_view_v3"
     assert _constants.MACRO_MIN_CHART_POINTS == 2
     assert _constants.MACRO_REQUIRED_DELTA_POINTS == {"5d": 6, "20d": 21, "60d": 61}
     assert _constants.MACRO_REQUIRED_STAT_POINTS == 126

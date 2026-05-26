@@ -33,11 +33,13 @@ def build_macro_module_view(
     feature_map = _mapping(snapshot.get("features_json"))
     concept_keys = _module_concept_keys(config)
     cex_source = _cex_source(cex_board) if config.module_id == "assets/crypto-derivatives" else None
-    data_gaps = _data_gaps(
+    primary_chart = _primary_chart(config.chart_specs[0], feature_map) if config.chart_specs else _empty_chart()
+    data_health = _data_health(
         config=config,
         snapshot=snapshot,
         feature_map=feature_map,
         concept_keys=concept_keys,
+        primary_chart=primary_chart,
         cex_source=cex_source,
     )
 
@@ -45,25 +47,44 @@ def build_macro_module_view(
     if config.module_id == "assets/crypto-derivatives":
         tables.append(_cex_table(cex_board))
     tables.append(
-        _availability_table(config=config, feature_map=feature_map, concept_keys=concept_keys, data_gaps=data_gaps)
+        _availability_table(
+            config=config,
+            feature_map=feature_map,
+            concept_keys=concept_keys,
+            data_gaps=_availability_gaps(data_health),
+        )
     )
 
     tiles = [_tile(concept_key, feature_map[concept_key]) for concept_key in concept_keys if concept_key in feature_map]
     return _ordered_payload(
         snapshot=_snapshot_header(config=config, snapshot=snapshot),
         tiles=tiles,
-        primary_chart=_primary_chart(config.chart_specs[0], feature_map) if config.chart_specs else _empty_chart(),
+        primary_chart=primary_chart,
         tables=tables,
-        read=_read(config=config, snapshot=snapshot),
-        evidence=_evidence(snapshot),
+        module_read=_module_read(
+            config=config,
+            feature_map=feature_map,
+            primary_chart=primary_chart,
+            data_health=data_health,
+            snapshot=snapshot,
+        ),
+        module_evidence=_module_evidence(
+            config=config,
+            feature_map=feature_map,
+            primary_chart=primary_chart,
+            data_health={**data_health, "_scenario": snapshot.get("scenario_json")},
+            cex_source=cex_source,
+        ),
+        transmission=_transmission(config=config, snapshot=snapshot, feature_map=feature_map, data_health=data_health),
+        data_health=data_health,
         provenance=_provenance(
             snapshot=snapshot,
             observations=observations,
             latest_import_run=latest_import_run,
             cex_source=cex_source,
         ),
-        data_gaps=data_gaps,
         related_routes=_related_routes(config.related_routes),
+        section_boards=_section_boards(config, feature_map),
     )
 
 
@@ -73,11 +94,13 @@ def _missing_view(
     cex_board: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     cex_source = _cex_source(cex_board) if config.module_id == "assets/crypto-derivatives" else None
-    gaps = _data_gaps(
+    primary_chart = _missing_chart(config.chart_specs[0]) if config.chart_specs else _empty_chart()
+    data_health = _data_health(
         config=config,
         snapshot={"data_gaps_json": build_macro_data_gaps(["macro_view_snapshot_missing"])},
         feature_map={},
         concept_keys=(),
+        primary_chart=primary_chart,
         cex_source=cex_source,
     )
     return _ordered_payload(
@@ -99,32 +122,37 @@ def _missing_view(
             "source_projection_version": None,
         },
         tiles=[],
-        primary_chart=_missing_chart(config.chart_specs[0]) if config.chart_specs else _empty_chart(),
+        primary_chart=primary_chart,
         tables=[
             _cex_table(cex_board) if spec.table_id == "cex_perp_board" else _missing_table(spec)
             for spec in config.table_specs
         ]
         + [
             _availability_table(
-                config=config, feature_map={}, concept_keys=_module_concept_keys(config), data_gaps=gaps
+                config=config,
+                feature_map={},
+                concept_keys=_module_concept_keys(config),
+                data_gaps=_availability_gaps(data_health),
             )
         ],
-        read={
+        module_read={
             "headline": f"{config.title}：缺少快照",
             "regime_label": "数据缺口",
             "confidence_label": "低置信度 0%",
             "data_note": "宏观快照缺失，页面只展示可用性和缺口。",
             "methodology_note": "运行 macro sync 回填历史并重新投影后恢复图表。",
         },
-        evidence={"confirmations": [], "contradictions": [], "watch_triggers": [], "invalidations": []},
+        module_evidence={"confirmations": [], "contradictions": [], "watch_triggers": [], "invalidations": []},
+        transmission=_transmission(config=config, snapshot={}, feature_map={}, data_health=data_health),
+        data_health=data_health,
         provenance=_provenance(
             snapshot={},
             observations=[],
             latest_import_run=latest_import_run,
             cex_source=cex_source,
         ),
-        data_gaps=gaps,
         related_routes=_related_routes(config.related_routes),
+        section_boards=[],
     )
 
 
@@ -134,22 +162,26 @@ def _ordered_payload(
     tiles: list[dict[str, Any]],
     primary_chart: dict[str, Any],
     tables: list[dict[str, Any]],
-    read: dict[str, Any],
-    evidence: dict[str, Any],
+    module_read: dict[str, Any],
+    module_evidence: dict[str, Any],
+    transmission: dict[str, Any],
+    data_health: dict[str, Any],
     provenance: dict[str, Any],
-    data_gaps: list[dict[str, Any]],
     related_routes: list[dict[str, str]],
+    section_boards: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "snapshot": snapshot,
         "tiles": tiles,
         "primary_chart": primary_chart,
         "tables": tables,
-        "read": read,
-        "evidence": evidence,
+        "module_read": module_read,
+        "module_evidence": module_evidence,
+        "transmission": transmission,
+        "data_health": data_health,
         "provenance": provenance,
-        "data_gaps": data_gaps,
         "related_routes": related_routes,
+        "section_boards": section_boards,
     }
 
 
@@ -382,26 +414,99 @@ def _availability_table(
     }
 
 
-def _read(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    scenario = _mapping(snapshot.get("scenario_json"))
-    regime = str(scenario.get("current_regime") or snapshot.get("regime") or "data_gap")
-    confidence = _number(scenario.get("confidence")) or 0.0
+def _module_read(
+    *,
+    config: MacroModuleConfig,
+    feature_map: Mapping[str, Any],
+    primary_chart: Mapping[str, Any],
+    data_health: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    if config.module_id == "overview":
+        scenario = _mapping(snapshot.get("scenario_json"))
+        regime = str(scenario.get("current_regime") or snapshot.get("regime") or "data_gap")
+        confidence = _number(scenario.get("confidence")) or 0.0
+        headline_label = _regime_label(regime)
+        confidence_label = _confidence_label(confidence)
+    else:
+        status = str(data_health.get("summary_status") or primary_chart.get("status") or "unknown")
+        headline_label = _status_label(status)
+        present = len([concept_key for concept_key in _module_concept_keys(config) if concept_key in feature_map])
+        total = len(_module_concept_keys(config))
+        confidence_label = f"模块覆盖 {present}/{total}" if total else "模块覆盖 0/0"
     return {
-        "headline": f"{config.title}：{_regime_label(regime)}",
-        "regime_label": _regime_label(regime),
-        "confidence_label": _confidence_label(confidence),
+        "headline": f"{config.title}：{headline_label}",
+        "regime_label": headline_label,
+        "confidence_label": confidence_label,
         "data_note": "本页只展示已入库的真实观测、规则状态和可用性说明。",
         "methodology_note": f"{config.title} 使用模块配置中的 required/optional 概念生成图表和表格。",
     }
 
 
-def _evidence(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    scenario = _mapping(snapshot.get("scenario_json"))
+def _module_evidence(
+    *,
+    config: MacroModuleConfig,
+    feature_map: Mapping[str, Any],
+    primary_chart: Mapping[str, Any],
+    data_health: Mapping[str, Any],
+    cex_source: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if config.module_id == "overview":
+        scenario = _mapping(data_health.get("_scenario"))
+        return {
+            "confirmations": [_evidence_item(item) for item in _mapping_list(scenario.get("confirmations"))],
+            "contradictions": [_evidence_item(item) for item in _mapping_list(scenario.get("contradictions"))],
+            "watch_triggers": [_evidence_item(item) for item in _mapping_list(scenario.get("watch_triggers"))],
+            "invalidations": [_evidence_item(item) for item in _mapping_list(scenario.get("invalidations"))],
+        }
+
+    confirmations = [
+        {
+            "code": f"module_concept_available:{concept_key}",
+            "label": _feature_label(concept_key, _mapping(feature_map.get(concept_key))),
+            "description": _availability_note(concept_key, _mapping(feature_map.get(concept_key))),
+        }
+        for concept_key in _module_concept_keys(config)
+        if concept_key in feature_map
+    ]
+    missing_concepts = _string_list(primary_chart.get("missing_concept_keys"))
+    contradictions = [
+        {
+            "code": f"module_concept_missing:{concept_key}",
+            "label": MACRO_CONCEPT_METADATA.get(concept_key, {}).get("label") or concept_key,
+            "description": "模块配置概念未在最新宏观投影中出现。",
+        }
+        for concept_key in missing_concepts
+    ]
+    watch_triggers = [
+        {
+            "code": f"module_gap:{gap.get('code')}",
+            "label": str(gap.get("label") or gap.get("code") or "数据缺口"),
+            "description": str(gap.get("remediation_hint") or "补齐数据源后重新投影。"),
+        }
+        for gap in _mapping_list(data_health.get("future_integration_gaps"))
+    ]
+    if cex_source is not None and cex_source.get("status") != "ok":
+        watch_triggers.append(
+            {
+                "code": f"module_source:{cex_source.get('status')}",
+                "label": "CEX OI Radar",
+                "description": "CEX 合约杠杆板当前不可完整使用。",
+            }
+        )
     return {
-        "confirmations": [_evidence_item(item) for item in _mapping_list(scenario.get("confirmations"))],
-        "contradictions": [_evidence_item(item) for item in _mapping_list(scenario.get("contradictions"))],
-        "watch_triggers": [_evidence_item(item) for item in _mapping_list(scenario.get("watch_triggers"))],
-        "invalidations": [_evidence_item(item) for item in _mapping_list(scenario.get("invalidations"))],
+        "confirmations": confirmations,
+        "contradictions": contradictions,
+        "watch_triggers": watch_triggers,
+        "invalidations": [
+            {
+                "code": "module_chart_missing",
+                "label": "主图缺失",
+                "description": "主图核心序列全部缺失时，模块信号不可用。",
+            }
+        ]
+        if primary_chart.get("status") == "missing"
+        else [],
     }
 
 
@@ -556,28 +661,231 @@ def _missing_cex_row(reason: str) -> dict[str, Any]:
     }
 
 
-def _data_gaps(
+def _data_health(
     *,
     config: MacroModuleConfig,
     snapshot: Mapping[str, Any],
     feature_map: Mapping[str, Any],
     concept_keys: Sequence[str],
+    primary_chart: Mapping[str, Any],
     cex_source: Mapping[str, Any] | None,
-) -> list[dict[str, Any]]:
-    gaps = [_gap_payload(gap) for gap in _sequence(snapshot.get("data_gaps_json"))]
+) -> dict[str, Any]:
+    global_gaps = [_gap_payload(gap) for gap in _sequence(snapshot.get("data_gaps_json"))]
+    global_scope = "global_blocker" if config.module_id == "overview" else "global_reference"
+    global_gaps = [_with_scope(gap, global_scope) for gap in global_gaps]
+
+    module_gaps: list[dict[str, Any]] = []
+    if any(gap.get("code") == "macro_view_snapshot_missing" for gap in global_gaps):
+        module_gaps.extend(_with_scope(gap, "module_blocker") for gap in global_gaps)
     for concept_key in concept_keys:
         feature = feature_map.get(concept_key)
         if isinstance(feature, Mapping):
-            gaps.extend(_gap_payload(gap) for gap in _sequence(feature.get("data_gaps")))
-    gaps.extend(_gap_payload(gap) for gap in build_macro_data_gaps(config.gap_codes))
+            module_gaps.extend(
+                _with_scope(_gap_payload(gap), "module_blocker") for gap in _sequence(feature.get("data_gaps"))
+            )
+    config_gaps = [_gap_payload(gap) for gap in build_macro_data_gaps(config.gap_codes)]
+    if any(gap.get("code") == "macro_view_snapshot_missing" for gap in global_gaps):
+        module_gaps.extend(_with_scope(gap, "module_blocker") for gap in config_gaps)
+        future_integration_gaps = []
+    else:
+        future_integration_gaps = [_with_scope(gap, "future_integration") for gap in config_gaps]
     if cex_source is not None:
-        gaps.extend(_gap_payload(gap) for gap in build_macro_data_gaps(cex_source["degraded_reasons"]))
+        module_gaps.extend(
+            _with_scope(_gap_payload(gap), "module_blocker")
+            for gap in build_macro_data_gaps(cex_source["degraded_reasons"])
+        )
+
+    chart_gaps = [
+        _with_scope(
+            _gap_payload(
+                {
+                    "code": f"chart_missing:{concept_key}",
+                    "label": f"主图缺少序列：{_concept_short_label(concept_key)}",
+                    "severity": "warning",
+                    "concept_key": concept_key,
+                }
+            ),
+            "chart_blocker",
+        )
+        for concept_key in _string_list(primary_chart.get("missing_concept_keys"))
+    ]
+    status = _data_health_status(
+        module_gaps=module_gaps,
+        chart_gaps=chart_gaps,
+        primary_chart=primary_chart,
+        feature_map=feature_map,
+        concept_keys=concept_keys,
+    )
+    return {
+        "summary_status": status,
+        "module_gaps": _unique_gaps(module_gaps),
+        "chart_gaps": _unique_gaps(chart_gaps),
+        "global_gaps": _unique_gaps(global_gaps),
+        "future_integration_gaps": _unique_gaps(future_integration_gaps),
+    }
+
+
+def _availability_gaps(data_health: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return [
+        *_mapping_list(data_health.get("module_gaps")),
+        *_mapping_list(data_health.get("chart_gaps")),
+        *_mapping_list(data_health.get("future_integration_gaps")),
+    ]
+
+
+def _unique_gaps(gaps: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     unique: dict[str, dict[str, Any]] = {}
     for gap in gaps:
         code = str(gap.get("code") or "")
         if code and code not in unique:
-            unique[code] = gap
+            unique[code] = dict(gap)
     return list(unique.values())
+
+
+def _with_scope(gap: Mapping[str, Any], scope: str) -> dict[str, Any]:
+    payload = dict(gap)
+    payload["scope"] = scope
+    return payload
+
+
+def _data_health_status(
+    *,
+    module_gaps: Sequence[Mapping[str, Any]],
+    chart_gaps: Sequence[Mapping[str, Any]],
+    primary_chart: Mapping[str, Any],
+    feature_map: Mapping[str, Any],
+    concept_keys: Sequence[str],
+) -> str:
+    if any(gap.get("severity") == "error" for gap in module_gaps):
+        return "missing"
+    chart_status = str(primary_chart.get("status") or "unknown")
+    if chart_status == "missing" or (
+        concept_keys and not any(concept_key in feature_map for concept_key in concept_keys)
+    ):
+        return "missing"
+    if module_gaps or chart_gaps or chart_status in {"partial", "insufficient_history"}:
+        return "partial"
+    return "ok"
+
+
+def _transmission(
+    *,
+    config: MacroModuleConfig,
+    snapshot: Mapping[str, Any],
+    feature_map: Mapping[str, Any],
+    data_health: Mapping[str, Any],
+) -> dict[str, Any]:
+    if config.module_id == "overview":
+        chain = _mapping(snapshot.get("chain_json"))
+        nodes = [
+            {
+                "id": f"global:{key}",
+                "label": _section_label(key),
+                "value": _regime_label(str(_mapping(value).get("regime") or "data_gap")),
+                "kind": "signal",
+                "status": "ok" if _mapping(value).get("regime") not in {None, "data_gap"} else "missing",
+            }
+            for key, value in chain.items()
+            if isinstance(value, Mapping)
+        ]
+        if not nodes:
+            nodes = [
+                {
+                    "id": "global:data_health",
+                    "label": "全局数据健康",
+                    "value": _status_label(data_health.get("summary_status")),
+                    "kind": "risk",
+                    "status": str(data_health.get("summary_status") or "unknown"),
+                }
+            ]
+        return {"nodes": nodes}
+
+    first_concept = next(
+        (concept_key for concept_key in _module_concept_keys(config) if concept_key in feature_map), None
+    )
+    source_status = "ok" if first_concept else "missing"
+    source_value = (
+        _feature_short_label(first_concept, _mapping(feature_map.get(first_concept))) if first_concept else "缺少观测"
+    )
+    return {
+        "nodes": [
+            {
+                "id": f"{config.module_id}:source",
+                "label": "模块观测",
+                "value": source_value,
+                "kind": "source",
+                "status": source_status,
+            },
+            {
+                "id": f"{config.module_id}:signal",
+                "label": config.title,
+                "value": _status_label(data_health.get("summary_status")),
+                "kind": "signal",
+                "status": str(data_health.get("summary_status") or "unknown"),
+            },
+            {
+                "id": f"{config.module_id}:implication",
+                "label": "宏观含义",
+                "value": config.question,
+                "kind": "implication",
+                "status": str(data_health.get("summary_status") or "unknown"),
+            },
+        ]
+    }
+
+
+def _section_boards(config: MacroModuleConfig, feature_map: Mapping[str, Any]) -> list[dict[str, Any]]:
+    boards: list[dict[str, Any]] = []
+    for spec in config.section_board_specs:
+        rows = []
+        for concept_key in spec.concept_keys:
+            feature = _mapping(feature_map.get(concept_key))
+            row = _section_board_row(concept_key, feature)
+            rows.append(row)
+        boards.append(
+            {
+                "board_id": spec.board_id,
+                "title": spec.title,
+                "route_path": spec.route_path,
+                "concept_keys": list(spec.concept_keys),
+                "status": "ok" if all(row["status"] == "ok" for row in rows) else "partial" if rows else "missing",
+                "rows": rows,
+            }
+        )
+    return boards
+
+
+def _section_board_row(concept_key: str, feature: Mapping[str, Any]) -> dict[str, Any]:
+    latest = _mapping(feature.get("latest"))
+    source = _mapping(feature.get("source"))
+    value = _number(latest.get("value"))
+    delta_20d = _number(_mapping(feature.get("delta")).get("20d"))
+    return {
+        "concept_key": concept_key,
+        "label": _feature_label(concept_key, feature),
+        "short_label": _feature_short_label(concept_key, feature),
+        "status": "ok" if feature else "missing",
+        "display_value": _display_number(value),
+        "delta_label": _delta_label(delta_20d),
+        "observed_at_label": _observed_label(latest.get("observed_at")),
+        "source_label": _source_label(source),
+    }
+
+
+def _section_label(section: str) -> str:
+    return {
+        "assets": "资产联动",
+        "credit": "信用压力",
+        "economy": "经济数据",
+        "fed": "美联储",
+        "liquidity": "美元流动性",
+        "rates": "利率定价",
+        "volatility": "波动率",
+    }.get(section, section)
+
+
+def _concept_short_label(concept_key: str) -> str:
+    return str(MACRO_CONCEPT_METADATA.get(concept_key, {}).get("short_label") or concept_key)
 
 
 def _gap_payload(value: object) -> dict[str, Any]:
