@@ -319,6 +319,14 @@ Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` t
 
 Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
 
+PostgreSQL table lifecycle follows the hot/cold contract in
+`docs/references/POSTGRES_PERFORMANCE.md`: compact rank/read models are the
+only hot ranking inputs, selected-row hydrate tables are read only after a
+stable row/document selection, audit/history tables are managed by partition
+lifecycle, and control-plane tables are leased with bounded work and terminal
+evidence. Runtime workers must not use deletes against cold audit/history
+tables as queue maintenance.
+
 Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, `pulse_lab`, and `watchlist_intel`. Do not add empty provider files.
 
 CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.

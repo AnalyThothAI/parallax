@@ -139,6 +139,16 @@ NORMALIZE_TERMINAL_REASON_BUCKETS_MIGRATION = Path(
 OPENNEWS_PROVIDER_SIGNAL_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0105_opennews_provider_signal.py"
 )
+RUNTIME_RANK_SOURCE_EDGES_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0106_runtime_rank_source_edges.py"
+)
+MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/"
+    "20260526_0107_macro_generation_equity_evidence_jobs.py"
+)
+RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0108_runtime_perf_lifecycle_indexes.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -374,6 +384,182 @@ def test_normalize_terminal_reason_buckets_migration_contract() -> None:
         assert bucket in text
     assert text.index("WHEN final_reason ILIKE '%stale%'") < text.index("WHEN final_reason ILIKE '%timeout%'")
     assert "ANALYZE worker_queue_terminal_events" in text
+
+
+def test_runtime_rank_source_edges_migration_contract() -> None:
+    text = RUNTIME_RANK_SOURCE_EDGES_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+
+    assert 'revision = "20260526_0106"' in text
+    assert 'down_revision = "20260526_0105"' in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_rank_source_events" in text
+    for column in (
+        "projection_version TEXT NOT NULL",
+        '"window" TEXT NOT NULL',
+        "scope TEXT NOT NULL",
+        "lane TEXT NOT NULL",
+        "target_type_key TEXT NOT NULL",
+        "identity_id TEXT NOT NULL",
+        "source_kind TEXT NOT NULL",
+        "source_id TEXT NOT NULL",
+        "event_received_at_ms BIGINT NOT NULL",
+        "source_rank INTEGER NOT NULL DEFAULT 0",
+        "projected_at_ms BIGINT NOT NULL",
+        "intent_id TEXT NOT NULL",
+        "event_id TEXT NOT NULL",
+        "text_fingerprint TEXT",
+        "post_quality_score INTEGER",
+        "post_informative BOOLEAN",
+        "post_has_market_context BOOLEAN",
+        "gmgn_user_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]",
+        "event_price_usd NUMERIC",
+        "latest_price_usd NUMERIC",
+        "first_seen_global_24h BOOLEAN NOT NULL DEFAULT false",
+    ):
+        assert column in text
+    for forbidden in ("event_text", "text_clean", "reference_json", "raw_payload_json", "audit_json"):
+        assert forbidden not in text
+    assert "CHECK (source_kind IN ('event', 'intent', 'resolution'))" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_token_radar_rank_source_events_target" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_token_radar_rank_source_events_source" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_token_radar_rank_source_events_recent" in text
+    rank_source_pk = (
+        'PRIMARY KEY ( projection_version, "window", scope, lane, target_type_key, '
+        "identity_id, source_kind, source_id )"
+    )
+    assert (
+        rank_source_pk in normalized_text
+    )
+    assert (
+        'ON token_radar_rank_source_events( projection_version, "window", scope, target_type_key, identity_id )'
+        in normalized_text
+    )
+    assert "DROP TABLE IF EXISTS token_radar_rank_source_events" in text
+
+
+def test_macro_generation_and_equity_evidence_jobs_migration_contract() -> None:
+    text = MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    upgrade_text, downgrade_text = text.split("def downgrade() -> None:", maxsplit=1)
+
+    assert 'revision = "20260526_0107"' in text
+    assert 'down_revision = "20260526_0106"' in text
+    assert "CREATE TABLE IF NOT EXISTS macro_observation_series_active_generation" in text
+    assert "CREATE TABLE IF NOT EXISTS macro_observation_series_generations" in text
+    assert "ALTER TABLE macro_observation_series_rows" in text
+    assert "ADD COLUMN IF NOT EXISTS generation_id TEXT NOT NULL DEFAULT 'initial-active'" in text
+    assert "UPDATE macro_observation_series_rows" in text
+    assert "SET generation_id = 'initial-active'" in text
+    assert (
+        "PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)"
+        in text
+    )
+    assert (
+        "ON CONFLICT (projection_version, concept_key) DO UPDATE SET generation_id = EXCLUDED.generation_id"
+        in normalized_text
+    )
+    assert "CREATE TABLE IF NOT EXISTS equity_event_evidence_jobs" in text
+    for column in (
+        "evidence_job_id TEXT PRIMARY KEY",
+        "event_document_id TEXT NOT NULL REFERENCES equity_event_documents(event_document_id) ON DELETE CASCADE",
+        "status TEXT NOT NULL DEFAULT 'pending'",
+        "priority TEXT NOT NULL DEFAULT 'P2'",
+        "due_at_ms BIGINT NOT NULL DEFAULT 0",
+        "started_at_ms BIGINT",
+        "finished_at_ms BIGINT",
+        "attempt_count INTEGER NOT NULL DEFAULT 0",
+        "max_attempts INTEGER NOT NULL DEFAULT 3",
+        "lease_owner TEXT",
+        "leased_until_ms BIGINT",
+    ):
+        assert column in text
+    assert "CHECK (status IN ('pending', 'running', 'success', 'failed_retryable', 'failed_terminal'))" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_due" in text
+    assert "WHERE status IN ('pending', 'failed_retryable')" in text
+    assert "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_running" in text
+    assert "WHERE status = 'running'" in text
+    assert "DROP TABLE IF EXISTS equity_event_evidence_jobs" in text
+    assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in text
+    assert "DROP TABLE IF EXISTS macro_observation_series_generations" in text
+    assert "DROP COLUMN IF EXISTS generation_id" in text
+    assert "DELETE FROM macro_observation_series_rows" not in upgrade_text
+    assert "DELETE FROM macro_observation_series_rows" in downgrade_text
+    assert "row_number() OVER" in downgrade_text
+    assert (
+        "PARTITION BY rows.projection_version, rows.concept_key, rows.observed_at"
+        in downgrade_text
+    )
+    assert (
+        "active.generation_id = rows.generation_id"
+        in downgrade_text
+    )
+    assert "rows.generation_id = 'initial-active'" in downgrade_text
+    assert "rows.projected_at_ms DESC" in downgrade_text
+    assert "rows.generation_id DESC" in downgrade_text
+    old_pk = "PRIMARY KEY (projection_version, concept_key, observed_at)"
+    assert old_pk in downgrade_text
+    assert "PRIMARY KEY (projection_version, concept_key, observed_at, generation_id)" not in downgrade_text
+    assert downgrade_text.index("DELETE FROM macro_observation_series_rows") < downgrade_text.index(
+        old_pk
+    )
+
+
+def test_runtime_perf_lifecycle_indexes_migration_contract() -> None:
+    text = RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION.read_text()
+
+    assert 'revision = "20260526_0108"' in text
+    assert 'down_revision = "20260526_0107"' in text
+    for table_name in (
+        "token_radar_rank_source_events",
+        "macro_observation_series_active_generation",
+        "macro_observation_series_generations",
+        "equity_event_evidence_jobs",
+    ):
+        assert f"COMMENT ON TABLE {table_name}" in text
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_rows_generation_lookup",
+        "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generation_maintenance",
+        "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_generations_status",
+        "CREATE INDEX IF NOT EXISTS idx_macro_observation_series_active_generation_generation",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_document",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_reap_running",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_evidence_jobs_active_health",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_running_started",
+        "CREATE INDEX IF NOT EXISTS idx_equity_event_fetch_runs_status_started",
+        "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_status_started",
+        "DROP INDEX IF EXISTS idx_equity_event_fetch_runs_running_started",
+        "DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_active_health",
+        "DROP INDEX IF EXISTS idx_equity_event_evidence_jobs_reap_running",
+        "DROP INDEX IF EXISTS idx_macro_observation_series_generation_maintenance",
+        "COMMENT ON TABLE token_radar_rank_source_events IS NULL",
+    ):
+        assert statement in text
+    normalized_text = " ".join(text.split())
+    assert (
+        "ON equity_event_evidence_jobs(leased_until_ms, evidence_job_id) WHERE status = 'running'"
+        in normalized_text
+    )
+    assert (
+        "ON equity_event_evidence_jobs(status, due_at_ms, leased_until_ms, evidence_job_id) "
+        "WHERE status <> 'success'"
+    ) in normalized_text
+    assert (
+        "ON macro_observation_series_rows( projection_version, generation_id, concept_key ) "
+        "INCLUDE (projected_at_ms, observed_at)"
+    ) in normalized_text
+
+
+def test_runtime_performance_hard_cut_revision_chain() -> None:
+    migrations = (
+        (RUNTIME_RANK_SOURCE_EDGES_MIGRATION, "20260526_0106", "20260526_0105"),
+        (MACRO_GENERATION_EQUITY_EVIDENCE_JOBS_MIGRATION, "20260526_0107", "20260526_0106"),
+        (RUNTIME_PERF_LIFECYCLE_INDEXES_MIGRATION, "20260526_0108", "20260526_0107"),
+    )
+
+    for migration, revision, down_revision in migrations:
+        text = migration.read_text()
+        assert f'revision = "{revision}"' in text
+        assert f'down_revision = "{down_revision}"' in text
 
 
 def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:

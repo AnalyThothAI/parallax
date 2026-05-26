@@ -143,6 +143,7 @@ def test_equity_event_intel_defaults_are_configured() -> None:
     assert settings.equity_event_intel.enabled is False
     assert settings.equity_event_intel.default_universe == "nasdaq_tech"
     assert settings.workers.equity_event_fetch.interval_seconds == 60.0
+    assert settings.workers.equity_event_fetch.evidence_job_max_attempts == 3
     assert settings.workers.equity_event_page_projection.wakes_on == (
         "equity_event_document_written",
         "equity_event_processed",
@@ -155,6 +156,7 @@ def test_default_workers_yaml_contains_equity_event_workers_and_agent_lane() -> 
     payload = yaml.safe_load(default_workers_yaml())
 
     assert "equity_event_fetch" in payload
+    assert payload["equity_event_fetch"]["evidence_job_max_attempts"] == 3
     assert "equity_event_page_projection" in payload
     assert "equity_event.brief" in payload["agent_runtime"]["lanes"]
 

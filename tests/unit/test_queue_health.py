@@ -262,6 +262,17 @@ def test_adapter_registry_declares_every_manifest_queue_table_without_fallback()
     assert {spec.kind for spec in specs.values()} <= {"status_queue", "dirty_target", "terminal_projection"}
 
 
+def test_equity_evidence_jobs_queue_health_uses_status_queue_contract() -> None:
+    spec = queue_health_adapter_specs()["equity_event_evidence_jobs"]
+
+    assert spec.kind == "status_queue"
+    assert spec.status_queue is not None
+    assert spec.status_queue.due_column == "due_at_ms"
+    assert spec.status_queue.lease_column == "leased_until_ms"
+    assert spec.status_queue.active_statuses == ("pending", "running", "failed_retryable")
+    assert spec.status_queue.terminal_statuses == ("failed_terminal",)
+
+
 def test_unregistered_manifest_queue_table_reports_manifest_mismatch() -> None:
     health = fetch_queue_table_health(_DirtyTargetConn(), "unknown_manifest_queue", now_ms=1_000)
 

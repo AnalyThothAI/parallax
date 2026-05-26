@@ -22,6 +22,19 @@ The 2026-05-26 hard cut proved the pattern: first make the pressure visible,
 then remove the exact hot SQL or retry loop. Do not hide backlog by weakening
 `/readyz`, reducing worker count, or deleting facts.
 
+## Hot/Cold Lifecycle Contract
+
+PostgreSQL tables are grouped by runtime temperature before any performance or
+maintenance change. Hot paths stay compact and indexed by claimed work keys;
+cold paths are retained by partition lifecycle, not by worker-loop deletes.
+
+| Retention class | Tables | Lifecycle rule |
+| --- | --- | --- |
+| Hot compact rank/read path | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_rows`, `macro_observation_series_rows` active generation | No wide JSON/text scans. Reads and claims must use compact scalar columns indexed by claimed work keys, generation/version keys, target keys, or ranking keys. |
+| Selected-row hydrate | `events`, `enriched_events`, `equity_event_evidence_artifacts` | Access only after ranking, document selection, or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
+| Cold audit/history | `token_radar_snapshot_audit_*`, `token_radar_rank_history_*`, `raw_frames` | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
+| Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
+
 ## Source Material
 
 - Spec: `docs/superpowers/specs/active/2026-05-26-postgres-performance-queue-hard-cut-cn.md`
@@ -126,6 +139,43 @@ ROLLBACK;
 
 PostgreSQL actually executes a statement under `EXPLAIN ANALYZE`; the rollback
 is not optional for `INSERT`, `UPDATE`, `DELETE`, and `MERGE`.
+
+## Runtime Performance Root Fix Hard Cut
+
+Use `scripts/runtime_performance_root_fix_check.sh` after the runtime
+performance architecture hard cut is deployed. The script is intentionally
+read-only: it checks `/readyz`, Alembic head, `pg_stat_statements`, and worker
+state, but it does not reset statistics, enqueue jobs, mutate rows, or change
+database settings. It exits non-zero when a hard gate is over its configured
+threshold.
+
+Hard gates enforced by the check:
+
+- Old Token Radar `WITH request_targets AS (` calls must not increase during
+  the validation window when `OLD_TOKEN_RADAR_CALLS_BEFORE` is supplied.
+- `token_radar_rank_source_events` query mean-time proxy must stay below
+  `TOKEN_RADAR_RANK_SOURCE_MAX_MS` (default `100`), with temp block writes at
+  or below `TOKEN_RADAR_TEMP_BLOCKS_MAX` (default `0`).
+- The largest Token Radar SQL fingerprint must stay below 10% of total
+  `pg_stat_statements.total_exec_time` for the window by default, configurable
+  with `TOKEN_RADAR_TOP_SQL_SHARE_MAX`.
+- Stale `equity_event_fetch_runs.status = 'running'` rows older than 15 minutes
+  must be at or below `STALE_EQUITY_FETCH_RUNS_MAX` (default `0`).
+
+The script also prints the current Alembic head. Runtime results are not
+accepted unless that head corresponds to the deployed runtime performance hard
+cut migration set.
+
+The script prints a read-only lifecycle report with this CSV header:
+
+```text
+table_name,total_bytes,live_rows,dead_rows,last_analyze,retention_class,recommended_action
+```
+
+The report is advisory only. It reads `pg_stat_user_tables` and
+`pg_total_relation_size(relid)` for the hot/cold lifecycle tables, then labels
+each row with the retention class above. It recommends follow-up review but does
+not run partition changes, heap maintenance, queue updates, or worker actions.
 
 ## Query Design Rules
 

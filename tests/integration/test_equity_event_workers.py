@@ -11,10 +11,11 @@ import pytest
 from gmgn_twitter_intel.app.runtime.provider_wiring.equity_events import EquityDocumentProviderFetchResult
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
-from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import (
-    EquityEventFetchWorker,
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_evidence_hydration_worker import (
+    EquityEventEvidenceHydrationWorker,
     _evidence_document_status,
 )
+from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
     EquityEventPageProjectionWorker,
 )
@@ -143,6 +144,15 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
     assert event_documents[0]["form_type"] == "10-Q"
     assert event_documents[0]["fiscal_period"] == "2026Q1"
     assert fetch_runs[0]["status"] == "success"
+    assert wake_bus.evidence_jobs_written == [("sec:MSFT", 1)]
+    assert wake_bus.documents_written == []
+
+    hydration_result = _hydration_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 1_500,
+    ).run_once_sync()
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
     process_worker = EquityEventProcessWorker(
@@ -172,6 +182,7 @@ def test_source_reconcile_and_fetch_workers_write_sec_documents_outside_db_sessi
     story_member = postgres_conn.execute("SELECT * FROM equity_event_story_members").fetchone()
 
     assert process_result.processed == 1
+    assert hydration_result.processed == 1
     assert processed_document["lifecycle_status"] == "processed"
     assert processed_document["evidence_status"] == "ready"
     assert len(evidence_artifacts) == 1
@@ -446,24 +457,32 @@ def test_fetch_worker_hydrates_sec_document_text_and_marks_evidence_ready(postgr
     worker = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000)
 
     result = worker.run_once_sync()
+    hydration_result = _hydration_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 1_500,
+    ).run_once_sync()
 
     event_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
     artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
     source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
     assert result.processed == 1
+    assert hydration_result.processed == 1
     assert len(provider.hydration_calls) == 1
     assert provider.hydration_calls[0]["event_document_id"] == event_document["event_document_id"]
     assert provider.hydration_calls[0]["provider_document_id"] == event_document["provider_document_id"]
     assert provider.hydration_calls[0]["called_while_db_session_active"] is False
     assert event_document["evidence_status"] == "ready"
-    assert event_document["evidence_ready_at_ms"] == NOW_MS + 1_000
+    assert event_document["evidence_ready_at_ms"] == NOW_MS + 1_500
     assert event_document["evidence_reason"] == ""
     assert len(artifacts) == 1
     assert artifacts[0]["extraction_status"] == "ready"
     assert "Revenue was $62.0 billion" in artifacts[0]["content_text"]
     assert source["last_material_document_at_ms"] == NOW_MS + 1_000
-    assert source["last_evidence_ready_at_ms"] == NOW_MS + 1_000
+    assert source["last_evidence_ready_at_ms"] == NOW_MS + 1_500
     assert source["last_no_new_data_at_ms"] is None
+    assert wake_bus.evidence_jobs_written == [("sec:MSFT", 1)]
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 
@@ -475,11 +494,18 @@ def test_fetch_worker_marks_evidence_unavailable_for_empty_sec_document(postgres
     worker = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000)
 
     result = worker.run_once_sync()
+    hydration_result = _hydration_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 1_500,
+    ).run_once_sync()
 
     event_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
     artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
     source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
     assert result.processed == 1
+    assert hydration_result.processed == 1
     assert event_document["evidence_status"] == "unavailable"
     assert event_document["evidence_reason"] == "evidence_hydration_empty"
     assert event_document["evidence_ready_at_ms"] is None
@@ -488,6 +514,7 @@ def test_fetch_worker_marks_evidence_unavailable_for_empty_sec_document(postgres
     assert artifacts[0]["failure_reason"] == "evidence_hydration_empty"
     assert source["last_material_document_at_ms"] == NOW_MS + 1_000
     assert source["last_evidence_ready_at_ms"] is None
+    assert wake_bus.evidence_jobs_written == [("sec:MSFT", 1)]
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
     assert provider.hydration_calls[0]["called_while_db_session_active"] is False
 
@@ -499,6 +526,12 @@ def test_fetch_worker_records_no_new_data_for_duplicate_only_fetch(postgres_conn
     _seed_sec_source(postgres_conn)
 
     first = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000).run_once_sync()
+    hydration = _hydration_worker(
+        db,
+        provider=provider,
+        wake_bus=wake_bus,
+        now_ms=NOW_MS + 1_500,
+    ).run_once_sync()
     postgres_conn.execute(
         "UPDATE equity_event_sources SET next_fetch_after_ms = %s WHERE source_id = %s",
         (NOW_MS + 1_500, "sec:MSFT"),
@@ -509,6 +542,7 @@ def test_fetch_worker_records_no_new_data_for_duplicate_only_fetch(postgres_conn
     fetch_runs = postgres_conn.execute("SELECT * FROM equity_event_fetch_runs ORDER BY started_at_ms ASC").fetchall()
     source = postgres_conn.execute("SELECT * FROM equity_event_sources WHERE source_id = %s", ("sec:MSFT",)).fetchone()
     assert first.processed == 1
+    assert hydration.processed == 1
     assert second.processed == 0
     assert fetch_runs[0]["inserted_count"] == 1
     assert fetch_runs[0]["updated_count"] == 0
@@ -518,8 +552,9 @@ def test_fetch_worker_records_no_new_data_for_duplicate_only_fetch(postgres_conn
     assert fetch_runs[1]["duplicate_count"] == 1
     assert len(provider.hydration_calls) == 1
     assert source["last_material_document_at_ms"] == NOW_MS + 1_000
-    assert source["last_evidence_ready_at_ms"] == NOW_MS + 1_000
+    assert source["last_evidence_ready_at_ms"] == NOW_MS + 1_500
     assert source["last_no_new_data_at_ms"] == NOW_MS + 2_000
+    assert wake_bus.evidence_jobs_written == [("sec:MSFT", 1)]
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 
@@ -530,12 +565,15 @@ def test_fetch_worker_marks_hydration_exception_as_failed_evidence(postgres_conn
     _seed_sec_source(postgres_conn)
 
     first = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_000).run_once_sync()
+    hydration_1 = _hydration_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 1_500).run_once_sync()
     postgres_conn.execute(
         "UPDATE equity_event_sources SET next_fetch_after_ms = %s WHERE source_id = %s",
         (NOW_MS + 1_500, "sec:MSFT"),
     )
     postgres_conn.commit()
     second = _fetch_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 2_000).run_once_sync()
+    hydration_2 = _hydration_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 62_000).run_once_sync()
+    hydration_3 = _hydration_worker(db, provider=provider, wake_bus=wake_bus, now_ms=NOW_MS + 123_000).run_once_sync()
 
     event_document = postgres_conn.execute("SELECT * FROM equity_event_documents").fetchone()
     artifacts = postgres_conn.execute("SELECT * FROM equity_event_evidence_artifacts").fetchall()
@@ -544,6 +582,9 @@ def test_fetch_worker_marks_hydration_exception_as_failed_evidence(postgres_conn
     assert first.processed == 1
     assert first.failed == 0
     assert second.processed == 0
+    assert hydration_1.failed == 1
+    assert hydration_2.failed == 1
+    assert hydration_3.processed == 1
     assert event_document["evidence_status"] == "failed"
     assert event_document["evidence_reason"] == "evidence_hydration_exception:RuntimeError"
     assert len(artifacts) == 1
@@ -552,7 +593,8 @@ def test_fetch_worker_marks_hydration_exception_as_failed_evidence(postgres_conn
     assert source["last_actionable_error"] == "evidence_hydration_exception:RuntimeError"
     assert fetch_runs[0]["status"] == "success"
     assert fetch_runs[1]["duplicate_count"] == 1
-    assert len(provider.hydration_calls) == 1
+    assert len(provider.hydration_calls) == 3
+    assert wake_bus.evidence_jobs_written == [("sec:MSFT", 1)]
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 
@@ -867,6 +909,13 @@ def test_reprocessing_updated_document_clears_stale_story_membership(postgres_co
         event_time_ms=NOW_MS + 3_000,
         discovered_at_ms=NOW_MS + 3_000,
         content_hash="content-updated",
+        now_ms=NOW_MS + 3_000,
+    )
+    repos.equity_events.mark_event_document_evidence_status(
+        event_document_id="event-doc-update",
+        evidence_status="ready",
+        evidence_reason="",
+        evidence_ready_at_ms=NOW_MS + 3_000,
         now_ms=NOW_MS + 3_000,
     )
 
@@ -1523,6 +1572,7 @@ class _WorkerDb:
 class _RecordingWakeBus:
     def __init__(self) -> None:
         self.sources_reconciled: list[int] = []
+        self.evidence_jobs_written: list[tuple[str, int]] = []
         self.documents_written: list[tuple[str, int]] = []
         self.events_processed: list[int] = []
         self.stories_updated: list[int] = []
@@ -1534,6 +1584,9 @@ class _RecordingWakeBus:
 
     def notify_equity_event_document_written(self, *, source_id: str, count: int) -> None:
         self.documents_written.append((source_id, count))
+
+    def notify_equity_event_evidence_job_written(self, *, source_id: str, count: int) -> None:
+        self.evidence_jobs_written.append((source_id, count))
 
     def notify_equity_event_processed(self, *, count: int) -> None:
         self.events_processed.append(count)
@@ -2182,6 +2235,24 @@ def _fetch_worker(
     return EquityEventFetchWorker(
         name="equity_event_fetch",
         settings=Settings().workers.equity_event_fetch,
+        db=db,
+        telemetry=SimpleNamespace(),
+        document_provider=provider,
+        wake_bus=wake_bus,
+        clock_ms=lambda: now_ms,
+    )
+
+
+def _hydration_worker(
+    db: _WorkerDb,
+    *,
+    provider: Any,
+    wake_bus: _RecordingWakeBus | None,
+    now_ms: int,
+) -> EquityEventEvidenceHydrationWorker:
+    return EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=Settings().workers.equity_event_evidence_hydration,
         db=db,
         telemetry=SimpleNamespace(),
         document_provider=provider,

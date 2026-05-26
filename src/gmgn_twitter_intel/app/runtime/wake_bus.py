@@ -64,6 +64,9 @@ class WakeBus:
     def notify_equity_event_document_written(self, *, source_id: str, count: int) -> None:
         self._notify("equity_event_document_written", {"source_id": str(source_id), "count": int(count)})
 
+    def notify_equity_event_evidence_job_written(self, *, source_id: str, count: int) -> None:
+        self._notify("equity_event_evidence_job_written", {"source_id": str(source_id), "count": int(count)})
+
     def notify_equity_event_processed(self, *, count: int) -> None:
         self._notify("equity_event_processed", {"count": int(count)})
 

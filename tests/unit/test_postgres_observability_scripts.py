@@ -24,3 +24,35 @@ def test_powa_configure_script_sets_bounded_history_and_does_not_print_secrets()
     assert "POSTGRES_PASSWORD" not in script
     assert "postgres_password" not in script
     assert "cat " not in script
+
+
+def test_runtime_performance_check_prints_read_only_lifecycle_report() -> None:
+    script = (
+        ROOT / "scripts" / "runtime_performance_root_fix_check.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "== postgres lifecycle report ==" in script
+    assert "psql_cmd --csv -c" in script
+    assert "pg_stat_user_tables" in script
+    assert "pg_total_relation_size(relid)" in script
+    assert "table_name" in script
+    assert "total_bytes" in script
+    assert "live_rows" in script
+    assert "dead_rows" in script
+    assert "last_analyze" in script
+    assert "retention_class" in script
+    assert "recommended_action" in script
+    assert "raw_frames" in script
+    assert "events" in script
+    assert "enriched_events" in script
+    assert "equity_event_evidence_artifacts" in script
+    assert "token_radar_rank_source_events" in script
+    assert "token_radar_snapshot_audit_%" in script
+    assert "token_radar_rank_history_%" in script
+    assert "hot compact rank/read path" in script
+    assert "selected-row hydrate" in script
+    assert "cold audit/history" in script
+    assert "DELETE FROM" not in script
+    assert "DROP " not in script
+    assert "DETACH" not in script
+    assert "VACUUM" not in script

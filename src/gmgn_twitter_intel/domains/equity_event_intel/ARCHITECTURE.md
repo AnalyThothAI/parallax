@@ -21,6 +21,11 @@ Provider observations and material event facts live in PostgreSQL:
   provider metadata hashes.
 - `equity_event_documents`: normalized official documents/releases/transcripts
   attached to source/company identity.
+- `equity_event_evidence_jobs`: leased evidence hydration jobs keyed by
+  `event_document_id`; fetch only enqueues or resets these jobs.
+- `equity_event_evidence_artifacts`: hydrated source text/table artifacts for
+  official documents. `EquityEventEvidenceHydrationWorker` is the only runtime
+  writer.
 - `equity_company_events`: material company-event facts classified from
   official documents.
 - `equity_event_source_spans`: cited source snippets extracted from official
@@ -57,6 +62,9 @@ configured company universe / expected events
   -> equity_event_sources + equity_expected_events
   -> EquityEventFetchWorker
   -> equity_provider_documents + equity_event_documents
+  -> equity_event_evidence_jobs
+  -> EquityEventEvidenceHydrationWorker
+  -> equity_event_evidence_artifacts + document evidence status
   -> EquityEventProcessWorker
   -> equity_company_events + source spans + fact candidates
   -> EquityEventStoryProjectionWorker
@@ -70,6 +78,15 @@ configured company universe / expected events
 
 Every worker wakes from PostgreSQL `NOTIFY` only as a hint and also has bounded
 `interval_seconds` catch-up. Missed wakes must not stall the event chain.
+
+`EquityEventFetchWorker` owns only source claiming, provider document fetch,
+provider/event document upsert, evidence job enqueue, fetch-run completion, and
+material source freshness. It does not hydrate evidence or write evidence
+artifacts. `EquityEventEvidenceHydrationWorker` owns the due
+`equity_event_evidence_jobs` queue, performs bounded evidence provider
+hydration outside the fetch chain, replaces `equity_event_evidence_artifacts`,
+updates document/company evidence status and source evidence freshness, and
+wakes downstream document consumers after terminal evidence state is written.
 
 ## Source Roles
 

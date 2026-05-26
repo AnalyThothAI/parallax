@@ -52,6 +52,258 @@ def test_equity_event_repository_reconciles_source_and_expected_event(postgres_c
     assert repos.equity_events.list_source_status()[0]["source_id"] == "sec:AAPL"
 
 
+def test_reap_stale_evidence_jobs_returns_new_terminal_job_context(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-stale-evidence")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-stale",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=1,
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="worker-a",
+        lease_ms=1,
+    )
+
+    reaped = repos.equity_events.reap_stale_evidence_jobs(
+        now_ms=NOW_MS + 3,
+        limit=1,
+        lease_owner="terminalizer-a",
+        lease_ms=60_000,
+    )
+    hydration_input = repos.equity_events.load_evidence_hydration_input(evidence_job_id="evidence-job-stale")
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-stale",),
+    ).fetchone()
+
+    assert [row["evidence_job_id"] for row in reaped] == ["evidence-job-stale"]
+    assert reaped[0]["status"] == "running"
+    assert reaped[0]["last_error"] == "evidence_job_lease_expired"
+    assert job["status"] == "running"
+    assert job["lease_owner"] == "terminalizer-a"
+    assert job["leased_until_ms"] == NOW_MS + 60_003
+    assert job["finished_at_ms"] is None
+    assert hydration_input["document"]["event_document_id"] == "event-doc-stale-evidence"
+    assert hydration_input["document"]["source_id"] == "sec:MSFT"
+
+
+def test_reap_stale_evidence_jobs_is_bounded(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    for index in range(2):
+        document = _seed_event_document(repos, event_document_id=f"event-doc-stale-{index}")
+        repos.equity_events.enqueue_evidence_job(
+            evidence_job_id=f"evidence-job-stale-{index}",
+            event_document_id=document["event_document_id"],
+            source_id="sec:MSFT",
+            due_at_ms=NOW_MS,
+            max_attempts=1,
+            now_ms=NOW_MS,
+        )
+    repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=2,
+        lease_owner="worker-a",
+        lease_ms=1,
+    )
+
+    first_reap = repos.equity_events.reap_stale_evidence_jobs(
+        now_ms=NOW_MS + 3,
+        limit=1,
+        lease_owner="terminalizer-a",
+        lease_ms=60_000,
+    )
+    second_reap = repos.equity_events.reap_stale_evidence_jobs(
+        now_ms=NOW_MS + 4,
+        limit=1,
+        lease_owner="terminalizer-b",
+        lease_ms=60_000,
+    )
+
+    assert len(first_reap) == 1
+    assert len(second_reap) == 1
+    assert first_reap[0]["evidence_job_id"] != second_reap[0]["evidence_job_id"]
+
+
+def test_evidence_job_claim_guard_rejects_reset_document_content(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-claim-guard")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-claim-guard",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=3,
+        now_ms=NOW_MS,
+    )
+    claimed = repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="worker-a",
+        lease_ms=60_000,
+    )[0]
+    repos.equity_events.upsert_event_document(
+        event_document_id=document["event_document_id"],
+        provider_document_id=document["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 2,
+        content_hash="content-reset",
+        now_ms=NOW_MS + 2,
+    )
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-claim-guard",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS + 2,
+        max_attempts=3,
+        now_ms=NOW_MS + 2,
+    )
+
+    current = repos.equity_events.evidence_job_claim_is_current(
+        evidence_job_id="evidence-job-claim-guard",
+        attempt_count=claimed["attempt_count"],
+        lease_owner="worker-a",
+        event_document_id=document["event_document_id"],
+        content_hash=document["content_hash"],
+    )
+    finished = repos.equity_events.finish_evidence_job_success(
+        evidence_job_id="evidence-job-claim-guard",
+        finished_at_ms=NOW_MS + 3,
+        attempt_count=claimed["attempt_count"],
+        lease_owner="worker-a",
+    )
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-claim-guard",),
+    ).fetchone()
+
+    assert current is False
+    assert finished is False
+    assert job["status"] == "pending"
+    assert job["attempt_count"] == 0
+
+
+def test_evidence_job_retryable_finish_rejects_reset_document_content(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-retry-guard")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-retry-guard",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=3,
+        now_ms=NOW_MS,
+    )
+    claimed = repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="equity_event_evidence_hydration",
+        lease_ms=60_000,
+    )[0]
+    repos.equity_events.upsert_event_document(
+        event_document_id=document["event_document_id"],
+        provider_document_id=document["provider_document_id"],
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        source_id="sec:MSFT",
+        source_role="official_regulator",
+        document_type="sec_filing",
+        form_type="10-Q",
+        accession_number="0000789019-26-000001",
+        fiscal_period="2026Q1",
+        document_url="https://www.sec.gov/Archives/edgar/data/789019/000078901926000001/msft.htm",
+        event_time_ms=NOW_MS,
+        discovered_at_ms=NOW_MS + 2,
+        content_hash="content-reset",
+        now_ms=NOW_MS + 2,
+    )
+
+    finished = repos.equity_events.finish_evidence_job_retryable(
+        evidence_job_id="evidence-job-retry-guard",
+        error="evidence_hydration_exception:RuntimeError",
+        due_at_ms=NOW_MS + 60_000,
+        now_ms=NOW_MS + 3,
+        attempt_count=claimed["attempt_count"],
+        lease_owner="equity_event_evidence_hydration",
+        event_document_id=document["event_document_id"],
+        content_hash=document["content_hash"],
+    )
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-retry-guard",),
+    ).fetchone()
+
+    assert finished is False
+    assert job["status"] == "running"
+    assert job["attempt_count"] == claimed["attempt_count"]
+    assert job["lease_owner"] == "equity_event_evidence_hydration"
+
+
+def test_evidence_job_failure_finish_rejects_missing_content_hash_guard(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-missing-hash-guard")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-missing-hash-guard",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=3,
+        now_ms=NOW_MS,
+    )
+    claimed = repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="equity_event_evidence_hydration",
+        lease_ms=60_000,
+    )[0]
+
+    retryable_finished = repos.equity_events.finish_evidence_job_retryable(
+        evidence_job_id="evidence-job-missing-hash-guard",
+        error="evidence_hydration_exception:RuntimeError",
+        due_at_ms=NOW_MS + 60_000,
+        now_ms=NOW_MS + 2,
+        attempt_count=claimed["attempt_count"],
+        lease_owner="equity_event_evidence_hydration",
+        event_document_id=document["event_document_id"],
+        content_hash=None,
+    )
+    terminal_finished = repos.equity_events.finish_evidence_job_terminal(
+        evidence_job_id="evidence-job-missing-hash-guard",
+        finished_at_ms=NOW_MS + 3,
+        error="evidence_hydration_exception:RuntimeError",
+        attempt_count=claimed["attempt_count"],
+        lease_owner="equity_event_evidence_hydration",
+        event_document_id=document["event_document_id"],
+        content_hash=None,
+    )
+    job = postgres_conn.execute(
+        "SELECT * FROM equity_event_evidence_jobs WHERE evidence_job_id = %s",
+        ("evidence-job-missing-hash-guard",),
+    ).fetchone()
+
+    assert retryable_finished is False
+    assert terminal_finished is False
+    assert job["status"] == "running"
+    assert job["attempt_count"] == claimed["attempt_count"]
+    assert job["lease_owner"] == "equity_event_evidence_hydration"
+
+
 def test_equity_event_repository_writes_raw_document_event_and_page_row(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.upsert_source(

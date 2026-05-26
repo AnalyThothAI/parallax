@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -99,12 +101,16 @@ class MacroIntelRepository:
         if concept_keys:
             rows = self.conn.execute(
                 """
-                SELECT *
-                FROM macro_observation_series_rows
-                WHERE projection_version = %s
-                  AND concept_key = ANY(%s)
-                  AND series_rank = 1
-                ORDER BY concept_key ASC
+                SELECT rows.*
+                FROM macro_observation_series_rows AS rows
+                JOIN macro_observation_series_active_generation AS active
+                  ON active.projection_version = rows.projection_version
+                 AND active.concept_key = rows.concept_key
+                 AND active.generation_id = rows.generation_id
+                WHERE rows.projection_version = %s
+                  AND rows.concept_key = ANY(%s)
+                  AND rows.series_rank = 1
+                ORDER BY rows.concept_key ASC
                 LIMIT %s
                 """,
                 (projection_version, list(concept_keys), bounded_limit),
@@ -112,11 +118,15 @@ class MacroIntelRepository:
         else:
             rows = self.conn.execute(
                 """
-                SELECT *
-                FROM macro_observation_series_rows
-                WHERE projection_version = %s
-                  AND series_rank = 1
-                ORDER BY concept_key ASC
+                SELECT rows.*
+                FROM macro_observation_series_rows AS rows
+                JOIN macro_observation_series_active_generation AS active
+                  ON active.projection_version = rows.projection_version
+                 AND active.concept_key = rows.concept_key
+                 AND active.generation_id = rows.generation_id
+                WHERE rows.projection_version = %s
+                  AND rows.series_rank = 1
+                ORDER BY rows.concept_key ASC
                 LIMIT %s
                 """,
                 (projection_version, bounded_limit),
@@ -133,102 +143,225 @@ class MacroIntelRepository:
     ) -> int:
         bounded_lookback_days = max(1, int(lookback_days))
         bounded_limit_per_series = max(1, int(limit_per_series))
-        cursor = self.conn.execute(
-            """
-            WITH deleted AS (
-              DELETE FROM macro_observation_series_rows
-              WHERE projection_version = %s
-            ),
-            source_ranked AS (
-              SELECT
-                concept_key,
-                observed_at,
-                value_numeric,
-                source_name,
-                series_key,
-                source_priority,
-                unit,
-                frequency,
-                data_quality,
-                source_ts,
-                raw_payload_json,
-                ingested_at_ms,
-                row_number() OVER (
-                  PARTITION BY concept_key, observed_at
-                  ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
-                ) AS dedupe_rank
-              FROM macro_observations
-              WHERE observed_at >= CURRENT_DATE - %s::int
-                AND value_numeric IS NOT NULL
-            ),
-            series_ranked AS (
-              SELECT
-                *,
-                row_number() OVER (
-                  PARTITION BY concept_key
-                  ORDER BY observed_at DESC
-                ) AS series_rank
-              FROM source_ranked
-              WHERE dedupe_rank = 1
+        generation_id = _generation_id(projection_version, now_ms)
+        row_count = 0
+        generation_empty = False
+        with _transaction_context(self.conn):
+            self.conn.execute(
+                """
+                INSERT INTO macro_observation_series_generations(
+                  projection_version,
+                  generation_id,
+                  status,
+                  source_row_count,
+                  created_at_ms
+                )
+                VALUES (%s, %s, 'building', 0, %s)
+                """,
+                (projection_version, generation_id, int(now_ms)),
             )
-            INSERT INTO macro_observation_series_rows(
-              projection_version,
-              concept_key,
-              observed_at,
-              series_rank,
-              value_numeric,
-              source_name,
-              series_key,
-              source_priority,
-              unit,
-              frequency,
-              data_quality,
-              source_ts,
-              raw_payload_json,
-              ingested_at_ms,
-              projected_at_ms
-            )
-            SELECT
-              %s AS projection_version,
-              concept_key,
-              observed_at,
-              series_rank,
-              value_numeric,
-              source_name,
-              series_key,
-              source_priority,
-              unit,
-              frequency,
-              data_quality,
-              source_ts,
-              COALESCE(raw_payload_json, '{}'::jsonb) AS raw_payload_json,
-              ingested_at_ms,
-              %s AS projected_at_ms
-            FROM series_ranked
-            WHERE series_rank <= %s
-            ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET
-              series_rank = excluded.series_rank,
-              value_numeric = excluded.value_numeric,
-              source_name = excluded.source_name,
-              series_key = excluded.series_key,
-              source_priority = excluded.source_priority,
-              unit = excluded.unit,
-              frequency = excluded.frequency,
-              data_quality = excluded.data_quality,
-              source_ts = excluded.source_ts,
-              raw_payload_json = excluded.raw_payload_json,
-              ingested_at_ms = excluded.ingested_at_ms,
-              projected_at_ms = excluded.projected_at_ms
-            """,
-            (
-                projection_version,
-                bounded_lookback_days,
-                projection_version,
-                int(now_ms),
-                bounded_limit_per_series,
-            ),
-        )
-        return int(getattr(cursor, "rowcount", 0) or 0)
+            row = self.conn.execute(
+                """
+                WITH source_ranked AS (
+                  SELECT
+                    concept_key,
+                    observed_at,
+                    value_numeric,
+                    source_name,
+                    series_key,
+                    source_priority,
+                    unit,
+                    frequency,
+                    data_quality,
+                    source_ts,
+                    raw_payload_json,
+                    ingested_at_ms,
+                    row_number() OVER (
+                      PARTITION BY concept_key, observed_at
+                      ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
+                    ) AS dedupe_rank
+                  FROM macro_observations
+                  WHERE observed_at >= CURRENT_DATE - %s::int
+                    AND value_numeric IS NOT NULL
+                ),
+                series_ranked AS (
+                  SELECT
+                    *,
+                    row_number() OVER (
+                      PARTITION BY concept_key
+                      ORDER BY observed_at DESC
+                    ) AS series_rank
+                  FROM source_ranked
+                  WHERE dedupe_rank = 1
+                ),
+                inserted_rows AS (
+                INSERT INTO macro_observation_series_rows(
+                  projection_version,
+                  generation_id,
+                  concept_key,
+                  observed_at,
+                  series_rank,
+                  value_numeric,
+                  source_name,
+                  series_key,
+                  source_priority,
+                  unit,
+                  frequency,
+                  data_quality,
+                  source_ts,
+                  raw_payload_json,
+                  ingested_at_ms,
+                  projected_at_ms
+                )
+                SELECT
+                  %s AS projection_version,
+                  %s AS generation_id,
+                  concept_key,
+                  observed_at,
+                  series_rank,
+                  value_numeric,
+                  source_name,
+                  series_key,
+                  source_priority,
+                  unit,
+                  frequency,
+                  data_quality,
+                  source_ts,
+                  COALESCE(raw_payload_json, '{}'::jsonb) AS raw_payload_json,
+                  ingested_at_ms,
+                  %s AS projected_at_ms
+                FROM series_ranked
+                WHERE series_rank <= %s
+                ON CONFLICT (projection_version, concept_key, observed_at, generation_id) DO UPDATE SET
+                  series_rank = excluded.series_rank,
+                  value_numeric = excluded.value_numeric,
+                  source_name = excluded.source_name,
+                  series_key = excluded.series_key,
+                  source_priority = excluded.source_priority,
+                  unit = excluded.unit,
+                  frequency = excluded.frequency,
+                  data_quality = excluded.data_quality,
+                  source_ts = excluded.source_ts,
+                  raw_payload_json = excluded.raw_payload_json,
+                  ingested_at_ms = excluded.ingested_at_ms,
+                  projected_at_ms = excluded.projected_at_ms
+                RETURNING 1
+                )
+                SELECT COUNT(*)::bigint AS row_count
+                FROM inserted_rows
+                """,
+                (
+                    bounded_lookback_days,
+                    projection_version,
+                    generation_id,
+                    int(now_ms),
+                    bounded_limit_per_series,
+                ),
+            ).fetchone()
+            row_count = int(dict(row or {}).get("row_count") or 0)
+            if row_count == 0:
+                self.conn.execute(
+                    """
+                    UPDATE macro_observation_series_generations
+                       SET status = 'failed',
+                           completed_at_ms = %s,
+                           failure_reason = 'macro_observation_series_generation_empty'
+                     WHERE projection_version = %s
+                       AND generation_id = %s
+                    """,
+                    (int(now_ms), projection_version, generation_id),
+                )
+                generation_empty = True
+            else:
+                self.conn.execute(
+                    """
+                    INSERT INTO macro_observation_series_active_generation(
+                      projection_version,
+                      concept_key,
+                      generation_id,
+                      activated_at_ms
+                    )
+                    SELECT DISTINCT
+                           rows.projection_version,
+                           rows.concept_key,
+                           rows.generation_id,
+                           %s AS activated_at_ms
+                      FROM macro_observation_series_rows AS rows
+                     WHERE rows.projection_version = %s
+                       AND rows.generation_id = %s
+                    ON CONFLICT (projection_version, concept_key) DO UPDATE
+                      SET generation_id = EXCLUDED.generation_id,
+                          activated_at_ms = EXCLUDED.activated_at_ms
+                    """,
+                    (int(now_ms), projection_version, generation_id),
+                )
+                self.conn.execute(
+                    """
+                    UPDATE macro_observation_series_generations
+                       SET status = 'active',
+                           source_row_count = %s,
+                           activated_at_ms = %s,
+                           completed_at_ms = %s,
+                           failure_reason = NULL
+                     WHERE projection_version = %s
+                       AND generation_id = %s
+                    """,
+                    (row_count, int(now_ms), int(now_ms), projection_version, generation_id),
+                )
+                self.conn.execute(
+                    """
+                    UPDATE macro_observation_series_generations AS generation
+                       SET status = 'superseded',
+                           completed_at_ms = %s
+                     WHERE generation.projection_version = %s
+                       AND generation.generation_id <> %s
+                       AND generation.status = 'active'
+                       AND NOT EXISTS (
+                         SELECT 1
+                           FROM macro_observation_series_active_generation AS active
+                          WHERE active.projection_version = generation.projection_version
+                            AND active.generation_id = generation.generation_id
+                       )
+                    """,
+                    (int(now_ms), projection_version, generation_id),
+                )
+                self.conn.execute(
+                    """
+                    WITH cleanup_generations AS (
+                      SELECT generation.projection_version, generation.generation_id
+                        FROM macro_observation_series_generations AS generation
+                       WHERE generation.projection_version = %s
+                         AND generation.status = 'superseded'
+                         AND NOT EXISTS (
+                           SELECT 1
+                             FROM macro_observation_series_active_generation AS active
+                            WHERE active.projection_version = generation.projection_version
+                              AND active.generation_id = generation.generation_id
+                         )
+                       LIMIT 8
+                    ),
+                    cleanup_candidates AS (
+                      SELECT rows.ctid AS row_ctid,
+                             rows.projection_version,
+                             rows.generation_id
+                        FROM macro_observation_series_rows AS rows
+                        JOIN cleanup_generations
+                          ON cleanup_generations.projection_version = rows.projection_version
+                         AND cleanup_generations.generation_id = rows.generation_id
+                       ORDER BY rows.projected_at_ms NULLS FIRST, rows.concept_key ASC, rows.observed_at ASC
+                       LIMIT 10000
+                    )
+                    DELETE FROM macro_observation_series_rows AS rows
+                    USING cleanup_candidates
+                    WHERE rows.ctid = cleanup_candidates.row_ctid
+                      AND rows.projection_version = cleanup_candidates.projection_version
+                      AND rows.generation_id = cleanup_candidates.generation_id
+                    """,
+                    (projection_version,),
+                )
+        if generation_empty:
+            raise RuntimeError("macro_observation_series_generation_empty")
+        return row_count
 
     def observations_for_concepts(
         self,
@@ -242,13 +375,17 @@ class MacroIntelRepository:
         bounded_limit_per_series = max(1, int(limit_per_series))
         rows = self.conn.execute(
             """
-            SELECT *
-            FROM macro_observation_series_rows
-            WHERE projection_version = %s
-              AND concept_key = ANY(%s)
-              AND observed_at >= CURRENT_DATE - %s::int
-              AND series_rank <= %s
-            ORDER BY concept_key ASC, observed_at DESC, series_rank ASC
+            SELECT rows.*
+            FROM macro_observation_series_rows AS rows
+            JOIN macro_observation_series_active_generation AS active
+              ON active.projection_version = rows.projection_version
+             AND active.concept_key = rows.concept_key
+             AND active.generation_id = rows.generation_id
+            WHERE rows.projection_version = %s
+              AND rows.concept_key = ANY(%s)
+              AND rows.observed_at >= CURRENT_DATE - %s::int
+              AND rows.series_rank <= %s
+            ORDER BY rows.concept_key ASC, rows.observed_at DESC, rows.series_rank ASC
             """,
             (projection_version, list(concept_keys), bounded_lookback_days, bounded_limit_per_series),
         ).fetchall()
@@ -267,16 +404,20 @@ class MacroIntelRepository:
               SELECT unnest(%s::text[]) AS concept_key
             ),
             aggregated AS (
-              SELECT concept_key,
+              SELECT rows.concept_key,
                      COUNT(*)::int AS points,
-                     MAX(observed_at) AS latest_observed_at,
-                     MIN(observed_at) AS oldest_observed_at,
-                     array_remove(array_agg(DISTINCT source_name ORDER BY source_name), NULL) AS sources
-              FROM macro_observation_series_rows
-              JOIN requested USING (concept_key)
-              WHERE projection_version = %s
-                AND observed_at >= CURRENT_DATE - %s::int
-              GROUP BY concept_key
+                     MAX(rows.observed_at) AS latest_observed_at,
+                     MIN(rows.observed_at) AS oldest_observed_at,
+                     array_remove(array_agg(DISTINCT rows.source_name ORDER BY rows.source_name), NULL) AS sources
+              FROM macro_observation_series_rows AS rows
+              JOIN requested ON requested.concept_key = rows.concept_key
+              JOIN macro_observation_series_active_generation AS active
+                ON active.projection_version = rows.projection_version
+               AND active.concept_key = rows.concept_key
+               AND active.generation_id = rows.generation_id
+              WHERE rows.projection_version = %s
+                AND rows.observed_at >= CURRENT_DATE - %s::int
+              GROUP BY rows.concept_key
             )
             SELECT requested.concept_key,
                    COALESCE(aggregated.points, 0) AS points,
@@ -394,6 +535,17 @@ def _observation_id(observation: Mapping[str, Any]) -> str:
     )
     digest = hashlib.sha256(identity.encode()).hexdigest()[:32]
     return f"macro-observation:{digest}"
+
+
+def _generation_id(projection_version: str, now_ms: int) -> str:
+    return f"macro-observation-series:{projection_version}:{int(now_ms)}:{uuid.uuid4().hex}"
+
+
+def _transaction_context(conn: Any):
+    transaction = getattr(conn, "transaction", None)
+    if transaction is None:
+        return nullcontext()
+    return transaction()
 
 
 def _count(row: Any) -> int:

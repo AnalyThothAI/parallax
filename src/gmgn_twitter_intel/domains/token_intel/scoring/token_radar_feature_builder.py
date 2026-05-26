@@ -207,7 +207,7 @@ def _quality_features(window: list[dict[str, Any]], *, diffusion: dict[str, Any]
     mentions = max(1, len({str(row["event_id"]) for row in window}))
     post_scores = [_post_score(row) for row in window]
     duplicate_share = float(diffusion.get("duplicate_text_share") or 0.0)
-    text_features = [post_text_features(str(row.get("text") or row.get("text_clean") or "")) for row in window]
+    text_features = [_compact_or_text_features(row) for row in window]
     informative_count = sum(1 for item in text_features if item.get("informative"))
     market_context_count = sum(1 for item in text_features if item.get("has_market_context"))
     llm_utility_values = [v for row in window if (v := _llm_utility(row)) is not None]
@@ -308,6 +308,9 @@ def _with_source_weight(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _post_score(row: dict[str, Any]) -> int:
+    compact_score = _int_or_none(row.get("post_quality_score"))
+    if compact_score is not None:
+        return max(0, min(100, compact_score))
     score = post_quality_score(
         {
             "text": row.get("text") or row.get("text_clean"),
@@ -319,6 +322,17 @@ def _post_score(row: dict[str, Any]) -> int:
         }
     )
     return int(score.get("score") or 0)
+
+
+def _compact_or_text_features(row: dict[str, Any]) -> dict[str, Any]:
+    informative = row.get("post_informative")
+    has_market_context = row.get("post_has_market_context")
+    if informative is not None or has_market_context is not None:
+        return {
+            "informative": bool(informative),
+            "has_market_context": bool(has_market_context),
+        }
+    return post_text_features(str(row.get("text") or row.get("text_clean") or ""))
 
 
 def _confidence(row: dict[str, Any]) -> float:

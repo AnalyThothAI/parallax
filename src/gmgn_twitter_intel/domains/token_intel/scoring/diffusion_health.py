@@ -38,7 +38,9 @@ def diffusion_health(mentions: list[dict[str, Any]], watched_author_handles: set
 
     for mention in mentions:
         handle = _normalize_handle(mention.get("author_handle"))
-        fingerprint = text_fingerprint(mention.get("text_clean") or mention.get("search_text"))
+        fingerprint = str(mention.get("text_fingerprint") or "").strip()
+        if not fingerprint:
+            fingerprint = text_fingerprint(mention.get("text_clean") or mention.get("search_text"))
         if fingerprint:
             fingerprint_counts[fingerprint] += 1
         if not handle:
