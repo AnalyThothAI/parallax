@@ -5,6 +5,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
@@ -13,7 +14,7 @@ from gmgn_twitter_intel.domains.notifications.services.notification_rules import
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.platform.config.settings import Settings
 
-WORKER_KEYS = frozenset({"notification_delivery", "notification_rule"})
+WORKER_KEYS = manifest_names_for_factory("notifications.py")
 
 
 def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

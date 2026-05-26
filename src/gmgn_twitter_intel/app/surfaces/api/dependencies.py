@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import Request
 
+from gmgn_twitter_intel.app.runtime.worker_manifest import require_worker_manifest
 from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiUnauthorized
 
 
@@ -29,6 +30,7 @@ def _request_token(request: Request) -> str | None:
 
 
 def _worker_running(runtime: Any, worker_name: str) -> bool:
+    require_worker_manifest(worker_name)
     scheduler = getattr(runtime, "scheduler", None)
     if scheduler is None:
         return False
@@ -46,6 +48,7 @@ def _worker_running(runtime: Any, worker_name: str) -> bool:
 
 
 def _worker_object(runtime: Any, worker_name: str) -> Any | None:
+    require_worker_manifest(worker_name)
     workers = getattr(runtime, "workers", {})
     worker = workers.get(worker_name)
     if worker is None:

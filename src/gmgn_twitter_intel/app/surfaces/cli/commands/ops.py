@@ -25,7 +25,7 @@ from gmgn_twitter_intel.app.runtime.token_radar_postgres_hard_reset import (
     ensure_postgres_partitions,
     reset_token_radar_postgres_hard_cut,
 )
-from gmgn_twitter_intel.app.runtime.worker_status import canonical_workers_status_payload
+from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
@@ -678,7 +678,7 @@ def _worker_status_payload(settings: object) -> dict[str, Any]:
     runtime = None
     try:
         runtime = bootstrap(settings, start_collector=False)
-        return {"workers": canonical_workers_status_payload(runtime)}
+        return workers_status_payload(runtime)
     finally:
         if runtime is not None:
             asyncio.run(runtime.aclose())

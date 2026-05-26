@@ -7,7 +7,7 @@ from hashlib import sha256
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
@@ -532,6 +532,7 @@ def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
     assert "live_price_gateway" not in data
     assert "resolution_refresh" not in data
     assert "token_radar_projection" not in data
+    assert "worker_lanes" in data
     workers = data["workers"]
     for name in (
         "token_capture_tier",
@@ -1691,7 +1692,9 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert body["ok"] is True
     data = body["data"]
     assert data["handles"] == ["toly", "elonmusk"]
-    assert set(CANONICAL_WORKER_NAMES).issubset(data["workers"])
+    manifest_names = {manifest.name for manifest in all_worker_manifests()}
+    assert manifest_names.issubset(data["workers"])
+    assert set(data["worker_lanes"]) >= {"ingest", "projection", "agent"}
     assert "collector" not in data
     assert "enrichment" not in data
     assert "notifications" not in data

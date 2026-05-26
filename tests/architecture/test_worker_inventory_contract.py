@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from gmgn_twitter_intel.app.runtime.wake_bus import WakeBus
-from tests.architecture.test_worker_runtime_contracts import EXPECTED_WORKERS, SINGLE_WRITER_READ_MODELS
+from tests.architecture.test_worker_runtime_contracts import MANIFEST_WORKER_CLASSES, SINGLE_WRITER_READ_MODELS
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
@@ -33,20 +33,17 @@ WRITE_METHOD_PREFIXES = (
 
 @pytest.mark.architecture
 def test_worker_inventory_keys_match_runtime_registry_and_settings() -> None:
-    from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES, CANONICAL_WORKER_NAMES
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 
     inventory = _worker_inventory()
     marker_keys = _worker_inventory_marker_keys()
     table_keys = set(inventory)
-    registry_keys = set(CANONICAL_WORKER_NAMES)
-    class_keys = set(CANONICAL_WORKER_CLASSES)
+    manifest_keys = set(MANIFEST_WORKER_CLASSES)
     settings_keys = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
 
-    assert marker_keys == registry_keys, _key_diff_message("worker-inventory marker", marker_keys, registry_keys)
-    assert table_keys == registry_keys, _key_diff_message("Worker Inventory table", table_keys, registry_keys)
-    assert class_keys == registry_keys, _key_diff_message("CANONICAL_WORKER_CLASSES", class_keys, registry_keys)
-    assert settings_keys == registry_keys, _key_diff_message("WorkersSettings", settings_keys, registry_keys)
+    assert marker_keys == manifest_keys, _key_diff_message("worker-inventory marker", marker_keys, manifest_keys)
+    assert table_keys == manifest_keys, _key_diff_message("Worker Inventory table", table_keys, manifest_keys)
+    assert settings_keys == manifest_keys, _key_diff_message("WorkersSettings", settings_keys, manifest_keys)
 
 
 @pytest.mark.architecture
@@ -107,7 +104,7 @@ def test_documented_single_writer_read_models_match_runtime_allowlist() -> None:
 
 
 def _derived_read_model_writer_rows() -> tuple[dict[str, list[str]], list[str]]:
-    worker_paths = {key: _qualified_worker_module_path(qualified) for key, qualified in EXPECTED_WORKERS.items()}
+    worker_paths = {key: _qualified_worker_module_path(qualified) for key, qualified in MANIFEST_WORKER_CLASSES.items()}
     repository_attrs = _repository_attrs_by_path()
     dependency_paths = {key: _local_dependency_closure(path) for key, path in worker_paths.items()}
     attribute_calls = {key: _repository_write_calls(paths) for key, paths in dependency_paths.items()}

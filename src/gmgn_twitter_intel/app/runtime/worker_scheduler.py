@@ -5,9 +5,9 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_registry import WORKER_START_PRIORITY
+from gmgn_twitter_intel.app.runtime.worker_manifest import worker_start_priority
 
-_START_PRIORITY = WORKER_START_PRIORITY
+_START_PRIORITY = worker_start_priority()
 
 _SCHEDULER_CONCURRENT_WORKERS = {"enrichment"}
 

@@ -4,15 +4,16 @@ import io
 import json
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
 from gmgn_twitter_intel.cli import main
 
 
-def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypatch):
+def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(monkeypatch):
     from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
 
     closed = {"value": False}
     captured = {}
+    manifest_names = tuple(manifest.name for manifest in all_worker_manifests())
     base_worker = {
         "enabled": False,
         "running": False,
@@ -94,7 +95,7 @@ def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypa
                 upstream_client=None,
             )
             self.scheduler = SimpleNamespace(
-                status_payload=lambda: {name: dict(base_worker) for name in CANONICAL_WORKER_NAMES}
+                status_payload=lambda: {name: dict(base_worker) for name in manifest_names}
             )
 
         async def aclose(self):
@@ -117,13 +118,19 @@ def test_cli_ops_worker_status_emits_canonical_workers_and_queue_depths(monkeypa
     assert captured["start_collector"] is False
     assert closed["value"] is True
     workers = payload["data"]["workers"]
-    assert set(CANONICAL_WORKER_NAMES).issubset(workers)
-    assert all("queue_depth" in workers[name] for name in CANONICAL_WORKER_NAMES)
-    assert all("active_run_once_age_ms" in workers[name] for name in CANONICAL_WORKER_NAMES)
-    assert all("active_run_once_count" in workers[name] for name in CANONICAL_WORKER_NAMES)
+    worker_lanes = payload["data"]["worker_lanes"]
+    assert set(manifest_names).issubset(workers)
+    assert all("queue_depth" in workers[name] for name in manifest_names)
+    assert all("active_run_once_age_ms" in workers[name] for name in manifest_names)
+    assert all("active_run_once_count" in workers[name] for name in manifest_names)
+    assert "projection" in worker_lanes
+    assert "agent" in worker_lanes
+    assert worker_lanes["agent"]["queue_depth"] == 9
     assert workers["enrichment"]["queue_depth"] == 6
     assert workers["handle_summary"]["queue_depth"] == 3
     assert workers["notification_delivery"]["queue_depth"] == 4
     assert workers["collector"]["details"]["frames_received"] == 88
     assert workers["collector"]["details"]["matched_twitter_events"] == 7
     assert workers["collector"]["details"]["snapshot_gate_outcomes"] == {"immediate_complete": 3}
+    old_summary_jobs = "_".join(("watchlist", "summary", "jobs"))
+    assert old_summary_jobs not in json.dumps(payload)

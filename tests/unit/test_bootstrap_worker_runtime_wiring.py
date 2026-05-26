@@ -40,7 +40,7 @@ from gmgn_twitter_intel.platform.config.settings import Settings
 _UNSET = object()
 
 
-def _legacy_anchor_worker_key() -> str:
+def _old_anchor_worker_key() -> str:
     return "_".join(("anchor", "price"))
 
 
@@ -59,7 +59,7 @@ def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_legacy_anchor_worker(
         wake_bus=db.wake,
     )
 
-    assert _legacy_anchor_worker_key() not in workers
+    assert _old_anchor_worker_key() not in workers
     assert isinstance(workers["token_capture_tier"], TokenCaptureTierWorker)
     assert workers["token_capture_tier"].batch_size == 500
     assert workers["token_capture_tier"].ws_limit == 100

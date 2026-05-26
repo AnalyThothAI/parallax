@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker import (
     CexOiRadarBoardWorker,
 )
 
-WORKER_KEYS = frozenset({"cex_oi_radar_board"})
+WORKER_KEYS = manifest_names_for_factory("cex_market_intel.py")
 
 
 def construct_cex_market_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 
-WORKER_KEYS = frozenset({"pulse_candidate"})
+WORKER_KEYS = manifest_names_for_factory("pulse.py")
 
 
 def construct_pulse_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

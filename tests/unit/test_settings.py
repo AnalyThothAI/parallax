@@ -23,7 +23,13 @@ from gmgn_twitter_intel.platform.config.settings import (
 from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, config_path, workers_config_path
 
 
-def _legacy_anchor_worker_key() -> str:
+def _manifest_worker_names() -> set[str]:
+    from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
+
+    return {manifest.name for manifest in all_worker_manifests()}
+
+
+def _old_anchor_worker_key() -> str:
     return "_".join(("anchor", "price"))
 
 
@@ -107,7 +113,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert not hasattr(settings, "okx_cex_base_url")
     assert not hasattr(settings, "okx_cex_sync_enabled")
     assert not hasattr(settings, "okx_cex_inst_types")
-    assert not hasattr(settings.workers, _legacy_anchor_worker_key())
+    assert not hasattr(settings.workers, _old_anchor_worker_key())
     assert settings.workers.market_tick_stream.subscription_limit == 100
     assert settings.workers.market_tick_poll.interval_seconds == 15
     assert settings.workers.token_capture_tier.batch_size == 500
@@ -856,6 +862,13 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     assert workers.handle_summary.time_threshold_ms == 1_800_000
     assert workers.handle_summary.window_days == 3
     Settings(**{**payload, "workers": workers})
+
+
+def test_default_workers_yaml_keys_match_manifest_worker_names() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+
+    assert set(payload) == _manifest_worker_names() | {"defaults", "agent_runtime"}
+    assert set(WorkersSettings.model_fields) == set(payload)
 
 
 def test_config_example_matches_settings_schema() -> None:

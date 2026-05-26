@@ -45,21 +45,29 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 
 ### Worker Runtime Config (`workers.yaml`)
 
-`workers.yaml` is the only source for worker runtime knobs. It contains
-`defaults`, `agent_runtime`, and one block per canonical worker key:
+`WorkerManifest v1` in `app/runtime/worker_manifest.py` is the only source for
+the worker inventory, lane membership, start priority, class path, queue-depth
+table, dirty-target consumers, and stable ownership contract. `workers.yaml`
+is the only source for worker runtime knobs. It contains `defaults`, `agent_runtime`, and one block
+per manifest worker key, in manifest start-priority order:
 
-`collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
-`live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
-`token_image_mirror`, `token_radar_projection`, `token_profile_current`,
-`narrative_admission`,
-`mention_semantics`, `token_discussion_digest`, `news_fetch`,
-`news_item_process`, `news_story_projection`, `news_item_brief`,
-`news_page_projection`, `cex_oi_radar_board`, `macro_view_projection`,
-`pulse_candidate`, `enrichment`, `handle_summary`, `notification_rule`, and
-`notification_delivery`.
+`collector`, `market_tick_stream`, `market_tick_poll`,
+`market_tick_current_projection`, `event_anchor_backfill`,
+`token_capture_tier`, `live_price_gateway`, `resolution_refresh`,
+`asset_profile_refresh`, `token_image_mirror`, `token_profile_current`,
+`token_radar_projection`, `narrative_admission`, `mention_semantics`,
+`token_discussion_digest`, `news_fetch`, `news_item_process`,
+`news_story_projection`, `news_item_brief`, `news_page_projection`,
+`news_source_quality_projection`, `equity_event_source_reconcile`,
+`equity_event_fetch`, `equity_event_process`,
+`equity_event_story_projection`, `equity_event_brief`,
+`equity_event_page_projection`, `cex_oi_radar_board`,
+`macro_view_projection`, `pulse_candidate`, `enrichment`, `handle_summary`,
+`notification_rule`, and `notification_delivery`.
 
-The schema is `WorkersSettings`; the canonical key list is guarded
-against `worker_registry.py` and `docs/WORKERS.md`.
+The schema is `WorkersSettings`; its worker fields and the generated default
+`workers.yaml` must match manifest names exactly. Unknown worker keys hard fail
+startup instead of being ignored or aliased.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
 contains the global default model, global concurrency/RPM limits, and
@@ -98,10 +106,15 @@ FastAPI response models are the source for generated frontend types:
 
 Runtime health/status contract:
 
-- `/readyz` and `/api/status` expose worker state only under
-  `data.workers` / `workers` as a map keyed by canonical worker key.
-  Old top-level worker sections such as `collector`,
-  `token_radar_projection`, or `pulse_candidate` are removed.
+- `/readyz` and `/api/status` expose worker state under
+  `data.workers` / `workers` as a map keyed by manifest worker name, plus
+  lane aggregate state under `data.worker_lanes` / `worker_lanes`.
+  Top-level worker sections such as `collector`,
+  `token_radar_projection`, or `pulse_candidate` are not part of the contract.
+- `worker_lanes` is keyed by manifest lane (`ingest`,
+  `identity_market_fact`, `projection`, `agent`, `notification`,
+  `maintenance_cache`) and reports enabled/running/failed counts, timeout
+  counts, max active age, max iteration p99, and summed queue depth.
 - Each worker status contains common `WorkerBase` fields:
   `enabled`, `running`, timestamps, `last_result`, `last_error`,
   `iteration_duration_p99_ms`, `queue_depth`, and `pool_wait_ms_p99`.
@@ -357,7 +370,7 @@ Macro contract:
   subpages (`credit/cds`, `credit/stress`). Unsupported ids return
   `400 {"error":"unsupported_macro_module","field":"module_id"}`.
 - The `assets/crypto-derivatives` module may attach a `cex_perp_board` table
-  sourced from the persisted `cex_oi_radar_board` read model. Rows are compact
+  sourced from persisted `cex_oi_radar_runs` / `cex_oi_radar_rows`. Rows are compact
   display-table rows with labeled cells for symbol, open interest, funding,
   24h volume, and score. Optional richer derivatives facts are exposed only
   when persisted read models add them through the v2 table-cell contract;

@@ -12,7 +12,7 @@
 - FastAPI runtime 在启动时 bootstrap `Runtime`，启动 scheduler，并把 runtime 放到 `app.state.service`；同时提供 `/healthz`、`/readyz`、`/metrics`、`/ws` 和前端静态挂载，见 `src/gmgn_twitter_intel/app/runtime/app.py:30`、`src/gmgn_twitter_intel/app/runtime/app.py:38`、`src/gmgn_twitter_intel/app/runtime/app.py:57`、`src/gmgn_twitter_intel/app/runtime/app.py:59`、`src/gmgn_twitter_intel/app/runtime/app.py:63`、`src/gmgn_twitter_intel/app/runtime/app.py:69`、`src/gmgn_twitter_intel/app/runtime/app.py:77`。
 - `/api/status` 已经聚合 DB health、provider connection state、snapshot gate 和 worker payload，见 `src/gmgn_twitter_intel/app/runtime/app.py:139`、`src/gmgn_twitter_intel/app/runtime/app.py:151`、`src/gmgn_twitter_intel/app/runtime/app.py:152`、`src/gmgn_twitter_intel/app/runtime/app.py:156`、`src/gmgn_twitter_intel/app/surfaces/api/routes_status.py:53`。
 - Worker status 可以补齐 canonical worker，并能从部分 DB-backed queue 表填充 queue depth，见 `src/gmgn_twitter_intel/app/runtime/worker_status.py:5`、`src/gmgn_twitter_intel/app/runtime/worker_status.py:26`、`src/gmgn_twitter_intel/app/runtime/worker_status.py:57`、`src/gmgn_twitter_intel/app/runtime/worker_status.py:75`。
-- Job queue 已经有 allowlisted descriptor，包括 `enrichment_jobs`、`watchlist_summary_jobs`、`pulse_agent_jobs`、`notification_deliveries`，见 `src/gmgn_twitter_intel/app/runtime/job_queue.py:19`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:32`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:45`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:51`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:61`。
+- Job queue 已经有 allowlisted descriptor，包括 `enrichment_jobs`、`watchlist_handle_summary_jobs`、`pulse_agent_jobs`、`notification_deliveries`，见 `src/gmgn_twitter_intel/app/runtime/job_queue.py:19`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:32`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:45`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:51`、`src/gmgn_twitter_intel/app/runtime/job_queue.py:61`。
 - Provider wiring 已经把 provider 按领域聚合进 `WiredProviders`，asset market provider 还携带 `ProviderHealth` 列表，见 `src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py:28`、`src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py:38`、`src/gmgn_twitter_intel/app/runtime/provider_wiring/types.py:81`、`src/gmgn_twitter_intel/domains/asset_market/providers.py:19`、`src/gmgn_twitter_intel/app/runtime/provider_wiring/asset_market.py:74`、`src/gmgn_twitter_intel/app/runtime/provider_wiring/asset_market.py:86`。
 - API router 目前按 surface include 各领域路由，新增 ops 路由应同样挂在 `/api` 下，见 `src/gmgn_twitter_intel/app/surfaces/api/http.py:22`、`src/gmgn_twitter_intel/app/surfaces/api/http.py:24`、`src/gmgn_twitter_intel/app/surfaces/api/http.py:33`。
 - Frontend 已经是 feature-layer 路由结构：`AppRoutes` 拉取 status、recent、radar、watchlist、signal-lab 查询并渲染 shell；现有 `/stocks`、`/watchlist`、`/news`、`/signal-lab`、index route 都在 cockpit shell 下，见 `web/src/routes/AppRoutes.tsx:37`、`web/src/routes/AppRoutes.tsx:40`、`web/src/routes/AppRoutes.tsx:177`、`web/src/routes/AppRoutes.tsx:221`、`web/src/routes/AppRoutes.tsx:225`、`web/src/routes/AppRoutes.tsx:250`、`web/src/routes/AppRoutes.tsx:252`、`web/src/routes/AppRoutes.tsx:263`。
@@ -148,7 +148,7 @@ Authentication: same as above.
 
 Path params:
 
-- `queue_name`: allowlisted queue descriptor name: `enrichment_jobs`, `watchlist_summary_jobs`, `pulse_agent_jobs`, `notification_deliveries`.
+- `queue_name`: allowlisted queue descriptor name: `enrichment_jobs`, `watchlist_handle_summary_jobs`, `pulse_agent_jobs`, `notification_deliveries`.
 
 Query params:
 

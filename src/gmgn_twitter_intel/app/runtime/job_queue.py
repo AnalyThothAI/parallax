@@ -35,8 +35,8 @@ ENRICHMENT_JOBS = JobQueueDescriptor(
     id_column="job_id",
     priority_order="priority DESC, next_run_at_ms ASC, created_at_ms ASC, job_id ASC",
 )
-WATCHLIST_SUMMARY_JOBS = JobQueueDescriptor(
-    name="watchlist_summary_jobs",
+WATCHLIST_HANDLE_SUMMARY_JOBS = JobQueueDescriptor(
+    name="watchlist_handle_summary_jobs",
     table="watchlist_handle_summary_jobs",
     id_column="handle",
     priority_order="next_run_at_ms ASC, updated_at_ms ASC, handle ASC",
@@ -60,7 +60,7 @@ NOTIFICATION_DELIVERIES = JobQueueDescriptor(
 
 JOB_QUEUE_DESCRIPTORS: Mapping[str, JobQueueDescriptor] = {
     descriptor.name: descriptor
-    for descriptor in (ENRICHMENT_JOBS, WATCHLIST_SUMMARY_JOBS, PULSE_AGENT_JOBS, NOTIFICATION_DELIVERIES)
+    for descriptor in (ENRICHMENT_JOBS, WATCHLIST_HANDLE_SUMMARY_JOBS, PULSE_AGENT_JOBS, NOTIFICATION_DELIVERIES)
 }
 _DESCRIPTORS_BY_TABLE: Mapping[str, JobQueueDescriptor] = {
     descriptor.table: descriptor for descriptor in JOB_QUEUE_DESCRIPTORS.values()

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES
+from gmgn_twitter_intel.app.runtime.worker_manifest import worker_class_by_name
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
@@ -168,8 +168,7 @@ CONTROL_PLANE_TABLES = frozenset(
         "asset_profile_refresh_targets",
         "token_capture_tier_dirty_targets",
         "live_market_target_set_dirty_targets",
-        "watchlist_summary_dirty_targets",
-        "watchlist_summary_jobs",
+        "watchlist_handle_summary_jobs",
     }
 )
 
@@ -185,9 +184,10 @@ BUSINESS_OUTPUT_TABLES = frozenset(
         "token_image_assets",
         "asset_profiles",
         "token_capture_tier",
-        "live_market_ticks",
-        "handle_summaries",
-        "watchlist_signal_summaries",
+        "market_ticks",
+        "watchlist_handle_signal_events",
+        "watchlist_handle_signal_stats",
+        "watchlist_handle_summaries",
     }
 )
 
@@ -204,8 +204,9 @@ REPAIR_HANDLER_COMMAND = "enqueue-runtime-worker-dirty-targets"
 
 @pytest.mark.architecture
 def test_every_registered_worker_has_runtime_constraint_classification() -> None:
-    missing = sorted(set(CANONICAL_WORKER_CLASSES) - set(WORKER_CLASSIFICATION))
-    extra = sorted(set(WORKER_CLASSIFICATION) - set(CANONICAL_WORKER_CLASSES))
+    manifest_workers = set(worker_class_by_name())
+    missing = sorted(manifest_workers - set(WORKER_CLASSIFICATION))
+    extra = sorted(set(WORKER_CLASSIFICATION) - manifest_workers)
     invalid = {
         worker: classification
         for worker, classification in WORKER_CLASSIFICATION.items()
