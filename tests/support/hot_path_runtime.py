@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage
 
@@ -68,7 +68,7 @@ def auth_headers() -> dict[str, str]:
 
 
 def _disabled_workers() -> dict[str, dict[str, Any]]:
-    workers = {name: {"enabled": False} for name in CANONICAL_WORKER_NAMES}
+    workers = {manifest.name: {"enabled": False} for manifest in all_worker_manifests()}
     workers.update(
         {
             "event_anchor_backfill": {

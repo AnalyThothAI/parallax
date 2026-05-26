@@ -9,7 +9,7 @@ from gmgn_twitter_intel.app.runtime.db_pool_bundle import DBPoolBundle
 from gmgn_twitter_intel.app.runtime.providers_wiring import WiredProviders
 from gmgn_twitter_intel.app.runtime.telemetry import TelemetryRegistry
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
+from gmgn_twitter_intel.app.runtime.worker_manifest import worker_names
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.platform.config.settings import Settings
@@ -60,6 +60,7 @@ def construct_workers(
     )
     specs = worker_factory_specs()
     _validate_factory_specs(specs)
+    manifest_worker_names = worker_names()
     constructed: dict[str, WorkerBase] = {
         name: _DisabledWorker(
             name=name,
@@ -67,7 +68,7 @@ def construct_workers(
             db=db,
             telemetry=telemetry,
         )
-        for name in CANONICAL_WORKER_NAMES
+        for name in manifest_worker_names
     }
     populated: set[str] = set()
     for spec in specs:
@@ -206,7 +207,7 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
 
 
 def _validate_factory_specs(specs: tuple[WorkerFactorySpec, ...]) -> None:
-    canonical = frozenset(CANONICAL_WORKER_NAMES)
+    canonical = frozenset(worker_names())
     owner_by_key: dict[str, str] = {}
     for spec in specs:
         unknown = spec.keys - canonical

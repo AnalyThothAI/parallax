@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 
-WORKER_KEYS = frozenset({"token_radar_projection"})
+WORKER_KEYS = manifest_names_for_factory("token_intel.py")
 
 
 def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

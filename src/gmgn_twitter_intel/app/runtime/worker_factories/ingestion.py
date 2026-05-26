@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 
-WORKER_KEYS = frozenset({"collector"})
+WORKER_KEYS = manifest_names_for_factory("ingestion.py")
 
 
 def construct_ingestion_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

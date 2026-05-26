@@ -52,6 +52,13 @@ decision changes, update the nearest architecture / contract / reliability
 document in the same change. A fresh agent must not need chat history to know
 where token identity is extracted, resolved, refreshed, scored, and served.
 
+Worker runtime inventory is not inferred from `workers.yaml` or factory
+registries. `WorkerManifest v1` (`app/runtime/worker_manifest.py`) is the only
+source for worker existence, lane, kind, class path, start priority, queue-depth
+ownership, idempotency evidence, side-effect ledger evidence, and wake
+contracts. `workers.yaml` supplies runtime knobs for manifest workers only and
+unknown worker keys fail startup.
+
 ## Architecture Invariants (Kappa/CQRS)
 
 These eleven invariants govern how data flows through the service. Code that
@@ -199,8 +206,8 @@ Cross-cutting primitives that implement these invariants:
   SQL uses the worker pool, long-lived single-writer advisory locks use
   the lock pool, and wake emit/listen traffic uses the wake pool so read
   and worker traffic cannot be starved by projection locks or listeners.
-- `worker_registry.py` and `WorkerScheduler` — declare the canonical
-  worker keys/classes and own worker start/stop/status semantics.
+- `worker_manifest.py` and `WorkerScheduler` — declare the canonical
+  worker keys/classes/lane contracts and own worker start/stop/status semantics.
 - `LLMGateway` and `AgentExecutionGateway` — `LLMGateway` owns low-level
   OpenAI transport/client/trace-export lifecycle; `AgentExecutionGateway`
   is the single agent execution path used by Social, Watchlist,
@@ -216,7 +223,7 @@ Cross-cutting primitives that implement these invariants:
 
 | Root | Responsibility |
 |------|----------------|
-| `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/bootstrap.py` wires `DBPoolBundle`, providers, repositories, the canonical worker registry, `WorkerScheduler`, readiness, and lifecycle. `app/surfaces/{api,cli}/` translate public inputs and outputs. Wake mechanics flow through `DBPoolBundle.wake_emitter()` / `wake_listener()`. |
+| `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/bootstrap.py` wires `DBPoolBundle`, providers, repositories, manifest-owned workers, `WorkerScheduler`, readiness, and lifecycle. `app/surfaces/{api,cli}/` translate public inputs and outputs. Wake mechanics flow through `DBPoolBundle.wake_emitter()` / `wake_listener()`. |
 | `domains/` | Product domains. Each domain owns its repositories, queries, services / scoring, read models, and runtime workers. |
 | `integrations/` | External adapters for GMGN, OKX, and OpenAI Agents. They translate third-party API shapes but do not own product decisions. |
 | `platform/` | Config, PostgreSQL infrastructure (client, migrations, audit, Alembic), logging, and runtime paths. Platform never imports product domains. |
@@ -298,7 +305,7 @@ types/config → repositories/queries → services/scoring → read_models/runti
 | `domains/<d>/runtime` | own domain's `services`, `providers.py`, `repositories`, `queries`, `scoring`, plus other domains' `interfaces.py`. **No `integrations/*`, `platform/db`, or `platform/paths`.** |
 | `app/runtime/providers_wiring.py` | Service-process composition module. The only service-runtime file that joins concrete `integrations/*` clients with domain Provider contracts. It may translate supplier shapes such as OKX chain indexes into domain values. |
 | `app/runtime/bootstrap.py` | Runtime orchestration: builds `DBPoolBundle`, repositories, workers, surfaces, readiness dependencies, and lifecycle. Imports `wire_providers(...)` / `WiredProviders`; does not import concrete integrations or domain provider modules directly. |
-| `app/runtime/worker_registry.py` and `app/runtime/worker_scheduler.py` | Canonical worker key/class inventory plus start, stop, close, status, and unhealthy-reason semantics. |
+| `app/runtime/worker_manifest.py` and `app/runtime/worker_scheduler.py` | Canonical worker key/class/lane inventory plus start, stop, close, status, and unhealthy-reason semantics. |
 | `app/runtime` | composition root: may import any domain runtime, repository, or interface to wire the process, subject to the dedicated Provider wiring rule above. |
 | `app/surfaces/api`, `app/surfaces/cli` | domain `interfaces.py` and read services. **No domain SQL, scoring, settlement, token resolution, or notification rules** — surfaces translate public inputs into domain calls. |
 | `platform/*` | stdlib, third-party. **Never** imports `domains/`, `integrations/`, or `app/`. |

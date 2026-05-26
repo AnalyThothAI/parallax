@@ -50,6 +50,8 @@ def test_ops_diagnostics_survives_news_section_failure() -> None:
     assert payload["domains"]["news"]["status"] == "unknown"
     assert payload["domains"]["news"]["error_type"] == "RuntimeError"
     assert payload["workers"]
+    assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
+    assert payload["worker_lanes"]["projection"]["running_workers"] >= 1
     assert payload["providers"]
     assert payload["queues"]
 
@@ -70,6 +72,29 @@ def test_ops_queue_payload_marks_dead_queue_blocked() -> None:
 
     assert payload["counts_by_status"]["dead"] == 1
     assert payload["summary"]["status"] == "blocked"
+
+
+def test_ops_queue_payload_uses_handle_summary_queue_contract() -> None:
+    runtime = FakeRuntime()
+
+    payload = ops_queue_payload(
+        runtime,
+        queue_name="watchlist_handle_summary_jobs",
+        status=None,
+        limit=20,
+        now_ms=10_000,
+    )
+    old_payload = ops_queue_payload(
+        runtime,
+        queue_name="_".join(("watchlist", "summary", "jobs")),
+        status=None,
+        limit=20,
+        now_ms=10_000,
+    )
+
+    assert payload["queue_name"] == "watchlist_handle_summary_jobs"
+    assert payload["summary"]["worker_name"] == "handle_summary"
+    assert old_payload == INVALID_QUEUE
 
 
 def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:

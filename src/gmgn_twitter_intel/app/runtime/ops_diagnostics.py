@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
-from gmgn_twitter_intel.app.runtime.worker_status import canonical_workers_status_payload
+from gmgn_twitter_intel.app.runtime.worker_status import workers_status_payload
 from gmgn_twitter_intel.domains.narrative_intel.queries import NarrativeBacklogHealthQuery
 from gmgn_twitter_intel.domains.pulse_lab.queries.pulse_freshness_health_queries import (
     fetch_pulse_health_candidates,
@@ -92,7 +92,9 @@ def ops_diagnostics_payload(
     database = _section("database", lambda: _database_payload(runtime))
     collector = _section("collector", lambda: _collector_payload(runtime))
     providers = _providers_payload(runtime)
-    workers = _workers_payload(runtime)
+    worker_status = workers_status_payload(runtime)
+    workers = _workers_payload(worker_status["workers"])
+    worker_lanes = worker_status["worker_lanes"]
     queues = _queues_payload(runtime, now_ms=generated_at_ms)
     agent_execution = _agent_execution_payload(runtime, now_ms=generated_at_ms)
     domains = _domains_payload(
@@ -120,6 +122,7 @@ def ops_diagnostics_payload(
         "collector": collector,
         "providers": providers,
         "workers": workers,
+        "worker_lanes": worker_lanes,
         "queues": queues,
         "agent_execution": agent_execution,
         "domains": domains,
@@ -326,8 +329,7 @@ def _provider_reason(*, configured: bool, state: str | None = None, error: Any =
     return "ready"
 
 
-def _workers_payload(runtime: Any) -> list[dict[str, Any]]:
-    workers = canonical_workers_status_payload(runtime)
+def _workers_payload(workers: Mapping[str, dict[str, Any]]) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for name, status in sorted(workers.items()):
         last_error = status.get("last_error")
@@ -541,7 +543,7 @@ def _queue_worker_name(queue_name: str) -> str:
         "enrichment_jobs": "enrichment",
         "notification_deliveries": "notification_delivery",
         "pulse_agent_jobs": "pulse_candidate",
-        "watchlist_summary_jobs": "handle_summary",
+        "watchlist_handle_summary_jobs": "handle_summary",
     }.get(queue_name, queue_name)
 
 
@@ -619,7 +621,7 @@ def _news_domain(runtime: Any) -> dict[str, Any]:
 
 
 def _watchlist_domain(runtime: Any) -> dict[str, Any]:
-    workers = _workers_payload(runtime)
+    workers = _workers_payload(workers_status_payload(runtime)["workers"])
     handle_worker = next((worker for worker in workers if worker.get("name") == "handle_summary"), None)
     status = str((handle_worker or {}).get("status") or "unknown")
     return {"status": status, "handle_summary_worker": handle_worker}

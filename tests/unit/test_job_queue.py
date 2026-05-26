@@ -8,7 +8,7 @@ from gmgn_twitter_intel.app.runtime import job_queue
 from gmgn_twitter_intel.app.runtime.job_queue import (
     ENRICHMENT_JOBS,
     NOTIFICATION_DELIVERIES,
-    WATCHLIST_SUMMARY_JOBS,
+    WATCHLIST_HANDLE_SUMMARY_JOBS,
     BackoffPolicy,
     JobQueue,
 )
@@ -68,7 +68,7 @@ def test_watchlist_claim_sets_unique_lease_token_and_expiry(monkeypatch) -> None
     uuids = iter(["aaa111", "bbb222"])
     monkeypatch.setattr(job_queue, "_new_token_suffix", lambda: next(uuids))
     queue = JobQueue(
-        descriptor=WATCHLIST_SUMMARY_JOBS,
+        descriptor=WATCHLIST_HANDLE_SUMMARY_JOBS,
         worker_name="handle summary",
         lease_ms=60_000,
         max_attempts=3,
@@ -80,6 +80,7 @@ def test_watchlist_claim_sets_unique_lease_token_and_expiry(monkeypatch) -> None
 
     sql, params = conn.executed[0]
     _second_sql, second_params = conn.executed[1]
+    assert WATCHLIST_HANDLE_SUMMARY_JOBS.name == "watchlist_handle_summary_jobs"
     assert "FROM watchlist_handle_summary_jobs" in sql
     assert "lease_token = %s" in sql
     assert "lease_expires_at_ms = %s" in sql
@@ -135,7 +136,7 @@ def test_notification_claim_records_last_attempt_time() -> None:
 def test_lease_finalize_requires_token_and_clears_lease_columns() -> None:
     conn = FakeConn(rows=[{"handle": "alice", "status": "done"}], rowcount=1)
     queue = JobQueue(
-        descriptor=WATCHLIST_SUMMARY_JOBS,
+        descriptor=WATCHLIST_HANDLE_SUMMARY_JOBS,
         worker_name="handle_summary",
         lease_ms=60_000,
         max_attempts=3,
@@ -158,7 +159,7 @@ def test_lease_finalize_requires_token_and_clears_lease_columns() -> None:
 def test_lease_finalize_failure_uses_token_and_returns_none_when_lease_lost() -> None:
     conn = FakeConn(rows=[], rowcount=0)
     queue = JobQueue(
-        descriptor=WATCHLIST_SUMMARY_JOBS,
+        descriptor=WATCHLIST_HANDLE_SUMMARY_JOBS,
         worker_name="handle_summary",
         lease_ms=60_000,
         max_attempts=3,

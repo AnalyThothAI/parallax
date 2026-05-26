@@ -5,6 +5,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
@@ -20,16 +21,7 @@ from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolve
     MentionKeys,
 )
 
-WORKER_KEYS = frozenset(
-    {
-        "news_fetch",
-        "news_item_process",
-        "news_story_projection",
-        "news_item_brief",
-        "news_page_projection",
-        "news_source_quality_projection",
-    }
-)
+WORKER_KEYS = manifest_names_for_factory("news_intel.py")
 
 
 def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

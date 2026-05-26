@@ -24,6 +24,18 @@ class BootstrapData(ApiSchema):
     replay_limit: int
 
 
+class WorkerLaneStatusData(ApiSchema):
+    lane: str
+    enabled_workers: int = 0
+    running_workers: int = 0
+    failed_workers: int = 0
+    soft_timed_out_workers: int = 0
+    hard_timed_out_workers: int = 0
+    oldest_active_run_once_age_ms: int | None = None
+    iteration_duration_p99_ms: float | None = None
+    queue_depth: int | None = None
+
+
 class StatusData(ApiSchema):
     ok: bool
     reasons: list[str] = Field(default_factory=list)
@@ -34,6 +46,7 @@ class StatusData(ApiSchema):
     provider_states: JsonObject = Field(default_factory=dict)
     agent_execution: JsonObject | None = None
     workers: dict[str, WorkerStatusData] = Field(default_factory=dict)
+    worker_lanes: dict[str, WorkerLaneStatusData] = Field(default_factory=dict)
 
 
 class WorkerStatusData(ApiSchema):
@@ -573,6 +586,7 @@ class OpsDiagnosticsData(ApiSchema):
     collector: JsonObject = Field(default_factory=dict)
     providers: list[JsonObject] = Field(default_factory=list)
     workers: list[JsonObject] = Field(default_factory=list)
+    worker_lanes: JsonObject = Field(default_factory=dict)
     queues: list[JsonObject] = Field(default_factory=list)
     agent_execution: JsonObject = Field(default_factory=dict)
     domains: JsonObject = Field(default_factory=dict)

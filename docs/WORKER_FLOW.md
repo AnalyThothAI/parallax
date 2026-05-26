@@ -206,6 +206,12 @@ control-plane rows only. They are repaired through explicit ops commands that
 enqueue targets; normal worker loops do not fall back to historical scans when
 the queue is empty.
 
+Worker identity and lane grouping come from `WorkerManifest v1` only.
+`workers.yaml` can tune a manifest worker's cadence, lease, timeout, attempt,
+batch, wake, and agent budget settings, but it cannot create a worker or alias
+an old queue name. For watchlist summaries the queue contract is
+`watchlist_handle_summary_jobs`.
+
 ### Narrative Currentness State
 
 Narrative digest state answers: "What readable narrative epoch do we have, and
@@ -308,8 +314,9 @@ Use this order for real-data investigations:
 
 2. Check worker status.
    Use `/api/status`, `/readyz`, or `ops worker-status`. Look under the
-   `workers` map only. Old top-level worker status sections are not part
-   of the contract.
+   `workers` map for manifest worker status and `worker_lanes` for lane-level
+   enabled/running/failed/timeout counts and summed queue depth. Old top-level
+   worker status sections are not part of the contract.
 
 3. Identify the missing truth.
    Ask which fact should exist: event, intent, resolution, identity,
@@ -338,7 +345,7 @@ Use this order for real-data investigations:
 
 For each worker, answer these questions before changing code:
 
-- What is the worker's canonical key in `worker_registry.py`?
+- What is the worker's canonical key in `worker_manifest.py`?
 - Is it constructed by the owning domain factory?
 - Which settings block in `workers.yaml` controls it?
 - Does it inherit `WorkerBase`?

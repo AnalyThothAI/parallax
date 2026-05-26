@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
@@ -16,20 +17,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker i
 from gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 
-WORKER_KEYS = frozenset(
-    {
-        "asset_profile_refresh",
-        "event_anchor_backfill",
-        "live_price_gateway",
-        "market_tick_current_projection",
-        "market_tick_poll",
-        "market_tick_stream",
-        "resolution_refresh",
-        "token_capture_tier",
-        "token_image_mirror",
-        "token_profile_current",
-    }
-)
+WORKER_KEYS = manifest_names_for_factory("asset_market.py")
 
 
 def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

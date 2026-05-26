@@ -11,6 +11,12 @@ import pytest
 import yaml
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
+from gmgn_twitter_intel.app.runtime.worker_manifest import (
+    all_worker_manifests,
+    worker_class_by_name,
+    worker_dirty_target_tables,
+    worker_start_priority,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
@@ -26,154 +32,7 @@ WORKER_FACTORIES = SRC / "app" / "runtime" / "worker_factories"
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
 
-def _legacy_anchor_worker_key() -> str:
-    return "_".join(("anchor", "price"))
-
-
-EXPECTED_WORKERS = {
-    "collector": "gmgn_twitter_intel.domains.ingestion.runtime.collector_service.CollectorService",
-    "market_tick_stream": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
-    ),
-    "market_tick_poll": "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
-    "market_tick_current_projection": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_current_projection_worker."
-        "MarketTickCurrentProjectionWorker"
-    ),
-    "event_anchor_backfill": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.event_anchor_backfill_worker.EventAnchorBackfillWorker"
-    ),
-    "token_capture_tier": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
-    ),
-    "live_price_gateway": "gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway.LivePriceGateway",
-    "resolution_refresh": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"
-    ),
-    "asset_profile_refresh": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"
-    ),
-    "token_image_mirror": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.token_image_mirror_worker.TokenImageMirrorWorker"
-    ),
-    "token_profile_current": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.token_profile_current_worker.TokenProfileCurrentWorker"
-    ),
-    "token_radar_projection": (
-        "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
-    ),
-    "narrative_admission": (
-        "gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker.NarrativeAdmissionWorker"
-    ),
-    "mention_semantics": (
-        "gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker.MentionSemanticsWorker"
-    ),
-    "token_discussion_digest": (
-        "gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker.TokenDiscussionDigestWorker"
-    ),
-    "news_fetch": "gmgn_twitter_intel.domains.news_intel.runtime.news_fetch_worker.NewsFetchWorker",
-    "news_item_process": (
-        "gmgn_twitter_intel.domains.news_intel.runtime.news_item_process_worker.NewsItemProcessWorker"
-    ),
-    "news_story_projection": (
-        "gmgn_twitter_intel.domains.news_intel.runtime.news_story_projection_worker.NewsStoryProjectionWorker"
-    ),
-    "news_item_brief": ("gmgn_twitter_intel.domains.news_intel.runtime.news_item_brief_worker.NewsItemBriefWorker"),
-    "news_page_projection": (
-        "gmgn_twitter_intel.domains.news_intel.runtime.news_page_projection_worker.NewsPageProjectionWorker"
-    ),
-    "news_source_quality_projection": (
-        "gmgn_twitter_intel.domains.news_intel.runtime.news_source_quality_projection_worker."
-        "NewsSourceQualityProjectionWorker"
-    ),
-    "equity_event_source_reconcile": (
-        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
-        "equity_event_source_reconcile_worker.EquityEventSourceReconcileWorker"
-    ),
-    "equity_event_fetch": (
-        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker.EquityEventFetchWorker"
-    ),
-    "equity_event_process": (
-        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_process_worker.EquityEventProcessWorker"
-    ),
-    "equity_event_story_projection": (
-        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
-        "equity_event_story_projection_worker.EquityEventStoryProjectionWorker"
-    ),
-    "equity_event_brief": (
-        "gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker.EquityEventBriefWorker"
-    ),
-    "equity_event_page_projection": (
-        "gmgn_twitter_intel.domains.equity_event_intel.runtime."
-        "equity_event_page_projection_worker.EquityEventPageProjectionWorker"
-    ),
-    "cex_oi_radar_board": (
-        "gmgn_twitter_intel.domains.cex_market_intel.runtime.cex_oi_radar_board_worker.CexOiRadarBoardWorker"
-    ),
-    "macro_view_projection": (
-        "gmgn_twitter_intel.domains.macro_intel.runtime.macro_view_projection_worker.MacroViewProjectionWorker"
-    ),
-    "pulse_candidate": "gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker.PulseCandidateWorker",
-    "enrichment": "gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker.EnrichmentWorker",
-    "handle_summary": "gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker.HandleSummaryWorker",
-    "notification_rule": "gmgn_twitter_intel.domains.notifications.runtime.notification_worker.NotificationWorker",
-    "notification_delivery": (
-        "gmgn_twitter_intel.domains.notifications.runtime.notification_delivery.NotificationDeliveryWorker"
-    ),
-}
-
-OLD_READYZ_WORKER_KEYS = {
-    "collector",
-    "market_tick_stream",
-    "market_tick_poll",
-    "market_tick_current_projection",
-    "event_anchor_backfill",
-    "token_capture_tier",
-    "live_price_gateway",
-    "resolution_refresh",
-    "asset_profile_refresh",
-    "token_image_mirror",
-    "token_profile_current",
-    "token_radar_projection",
-    "narrative_admission",
-    "mention_semantics",
-    "token_discussion_digest",
-    "news_fetch",
-    "news_item_process",
-    "news_story_projection",
-    "news_item_brief",
-    "news_page_projection",
-    "news_source_quality_projection",
-    "equity_event_source_reconcile",
-    "equity_event_fetch",
-    "equity_event_process",
-    "equity_event_story_projection",
-    "equity_event_brief",
-    "equity_event_page_projection",
-    "pulse_candidate",
-    "enrichment",
-    "handle_summary",
-    "notification_rule",
-    "notification_delivery",
-}
-
-OLD_RUNTIME_SETTINGS = {
-    "enrichment_poll_interval_seconds",
-    "enrichment_batch_size",
-    "pulse_agent_batch_size",
-    "pulse_agent_interval_seconds",
-    "watchlist_handle_summary_poll_interval_seconds",
-    "notification_worker_interval_seconds",
-    "notification_delivery_interval_seconds",
-    f"{_legacy_anchor_worker_key()}_interval_seconds",
-    "resolution_refresh_interval_seconds",
-    "asset_profile_refresh_interval_seconds",
-    "cex_sync_interval_seconds",
-    "dex_sync_interval_seconds",
-    "dex_price_hot_stale_seconds",
-    "dex_price_warm_stale_seconds",
-    "dex_price_refresh_limit",
-}
+MANIFEST_WORKER_CLASSES = worker_class_by_name()
 
 DB_SESSION_HELPERS = {"worker_session", "_repository_session"}
 EXTERNAL_IO_TOKENS = {
@@ -375,13 +234,9 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "domains/asset_market/repositories/live_market_target_set_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
     },
-    "watchlist_summary_dirty_targets": {
-        SRC / "domains/watchlist_intel/repositories/watchlist_summary_dirty_target_repository.py",
-        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
-    },
-    "watchlist_summary_jobs": {
-        SRC / "domains/watchlist_intel/repositories/watchlist_summary_job_repository.py",
-        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    "watchlist_handle_summary_jobs": {
+        SRC / "domains/watchlist_intel/repositories/watchlist_intel_repository.py",
+        SRC / "platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py",
     },
     "equity_event_projection_dirty_targets": {
         SRC / "domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py",
@@ -426,7 +281,7 @@ STUBBED_TASK_WORKER_QUALIFIED_NAME_FRAGMENTS: tuple[str, ...] = ()
 
 
 @pytest.mark.architecture
-@pytest.mark.parametrize(("worker_key", "qualified_name"), EXPECTED_WORKERS.items())
+@pytest.mark.parametrize(("worker_key", "qualified_name"), MANIFEST_WORKER_CLASSES.items())
 def test_all_long_running_workers_inherit_worker_base(worker_key: str, qualified_name: str) -> None:
     try:
         worker_class = _import_qualified_name(qualified_name)
@@ -446,7 +301,7 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
         "live_price_gateway",
     }
     violations: list[str] = []
-    for worker_key, qualified_name in EXPECTED_WORKERS.items():
+    for worker_key, qualified_name in MANIFEST_WORKER_CLASSES.items():
         try:
             worker_class = _import_qualified_name(qualified_name)
         except ModuleNotFoundError as exc:
@@ -464,38 +319,95 @@ def test_long_running_workers_do_not_override_worker_base_run_without_allowlist(
 
 
 @pytest.mark.architecture
-def test_worker_registry_matches_workers_yaml_schema() -> None:
-    from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_CLASSES, CANONICAL_WORKER_NAMES
-    from gmgn_twitter_intel.app.runtime.worker_scheduler import _START_PRIORITY
+def test_worker_manifest_matches_workers_yaml_schema() -> None:
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings
 
-    expected_keys = set(EXPECTED_WORKERS)
+    expected_keys = set(MANIFEST_WORKER_CLASSES)
     settings_keys = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
     docs_keys = _worker_inventory_keys()
 
-    assert CANONICAL_WORKER_CLASSES == EXPECTED_WORKERS
-    assert set(CANONICAL_WORKER_NAMES) == expected_keys
-    assert set(_START_PRIORITY) == expected_keys
     assert settings_keys == expected_keys
     assert docs_keys == expected_keys
 
 
 @pytest.mark.architecture
-def test_token_image_mirror_starts_between_profile_refresh_and_current_projection() -> None:
-    from gmgn_twitter_intel.app.runtime.worker_registry import WORKER_START_PRIORITY
+def test_worker_manifest_owns_all_single_writer_tables() -> None:
+    owned_tables = {
+        table
+        for manifest in all_worker_manifests()
+        for table in (
+            *manifest.writes_facts,
+            *manifest.writes_read_models,
+            *manifest.writes_control_plane,
+            *manifest.side_effect_ledgers,
+        )
+    }
+    missing = sorted(set(SINGLE_WRITER_READ_MODELS) - owned_tables)
 
-    assert WORKER_START_PRIORITY["asset_profile_refresh"] < WORKER_START_PRIORITY["token_image_mirror"]
-    assert WORKER_START_PRIORITY["token_image_mirror"] < WORKER_START_PRIORITY["token_profile_current"]
+    assert missing == []
+
+
+@pytest.mark.architecture
+def test_worker_manifest_forbids_semantic_read_model_aliases() -> None:
+    forbidden_aliases = {
+        "cex_oi_radar_board",
+        "equity_event_pages",
+        "equity_event_stories",
+        "macro_view",
+        "news_pages",
+        "news_source_quality",
+        "news_stories",
+        "watchlist_signal_summaries",
+    }
+    aliases = {
+        f"{manifest.name}:{table}"
+        for manifest in all_worker_manifests()
+        for table in manifest.writes_read_models
+        if table in forbidden_aliases
+    }
+
+    assert aliases == set()
+
+
+@pytest.mark.architecture
+def test_worker_manifest_declares_dirty_target_consumers() -> None:
+    expected_dirty_targets = {
+        "asset_profile_refresh_targets",
+        "discussion_digest_dirty_targets",
+        "equity_event_projection_dirty_targets",
+        "live_market_target_set_dirty_targets",
+        "market_tick_current_dirty_targets",
+        "narrative_admission_dirty_targets",
+        "news_projection_dirty_targets",
+        "pulse_trigger_dirty_targets",
+        "token_capture_tier_dirty_targets",
+        "token_discovery_dirty_lookup_keys",
+        "token_image_source_dirty_targets",
+        "token_profile_current_dirty_targets",
+        "token_radar_dirty_targets",
+    }
+    manifest_dirty_targets = {
+        table for dirty_tables in worker_dirty_target_tables().values() for table in dirty_tables
+    }
+
+    assert expected_dirty_targets <= manifest_dirty_targets
+
+
+@pytest.mark.architecture
+def test_token_image_mirror_starts_between_profile_refresh_and_current_projection() -> None:
+    priority = worker_start_priority()
+
+    assert priority["asset_profile_refresh"] < priority["token_image_mirror"]
+    assert priority["token_image_mirror"] < priority["token_profile_current"]
 
 
 @pytest.mark.architecture
 def test_non_continuous_worker_defaults_have_finite_hard_timeout() -> None:
-    from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
     from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
 
     settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
 
-    for worker_key in CANONICAL_WORKER_NAMES:
+    for worker_key in MANIFEST_WORKER_CLASSES:
         worker_settings = getattr(settings, worker_key)
         hard_timeout = worker_settings.hard_timeout_seconds
         if worker_key in ZERO_HARD_TIMEOUT_ALLOWLIST:
@@ -507,7 +419,6 @@ def test_non_continuous_worker_defaults_have_finite_hard_timeout() -> None:
 @pytest.mark.architecture
 def test_worker_construction_is_split_into_domain_factories() -> None:
     from gmgn_twitter_intel.app.runtime.worker_factories import worker_factory_specs
-    from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
 
     bootstrap_path = SRC / "app/runtime/bootstrap.py"
     bootstrap_tree = _parse(bootstrap_path)
@@ -517,7 +428,7 @@ def test_worker_construction_is_split_into_domain_factories() -> None:
     }
     expected_worker_modules = {
         qualified_name.rpartition(".")[0]
-        for key, qualified_name in EXPECTED_WORKERS.items()
+        for key, qualified_name in MANIFEST_WORKER_CLASSES.items()
         if key != "collector" and not _is_stubbed_task_worker(qualified_name)
     }
     bootstrap_runtime_worker_imports = sorted(
@@ -535,11 +446,11 @@ def test_worker_construction_is_split_into_domain_factories() -> None:
 
     assert worker_factory_files == EXPECTED_WORKER_FACTORY_FILES
     assert {spec.name for spec in specs} == EXPECTED_WORKER_FACTORY_FILES - {"__init__.py"}
-    assert set(owned_keys) == set(CANONICAL_WORKER_NAMES)
+    assert set(owned_keys) == set(MANIFEST_WORKER_CLASSES)
     assert len(owned_keys) == len(set(owned_keys))
     assert "_construct_workers" not in bootstrap_functions
     assert bootstrap_runtime_worker_imports == []
-    for worker_key in set(EXPECTED_WORKERS) - {"collector"}:
+    for worker_key in set(MANIFEST_WORKER_CLASSES) - {"collector"}:
         assert f'constructed["{worker_key}"]' not in bootstrap_text
     assert sorted(expected_worker_modules - factory_runtime_worker_imports) == []
 
@@ -622,10 +533,12 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_module, "_db_status", lambda _runtime: {"ok": True})
     payload, status_code = app_module._readiness_payload(runtime)
 
-    assert top_level_schema_keys.isdisjoint(OLD_READYZ_WORKER_KEYS)
+    assert top_level_schema_keys.isdisjoint(MANIFEST_WORKER_CLASSES)
     assert "workers" in top_level_schema_keys
+    assert "worker_lanes" in top_level_schema_keys
     assert status_code == 200
-    assert set(payload).isdisjoint(OLD_READYZ_WORKER_KEYS)
+    assert set(payload).isdisjoint(MANIFEST_WORKER_CLASSES)
+    assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent", "notification"}
     collector = payload["workers"]["collector"]
     assert collector["enabled"] is False
     assert collector["running"] is False
@@ -646,17 +559,58 @@ def test_no_old_worker_runtime_settings() -> None:
         WorkersSettings,
     )
 
+    forbidden_runtime_settings = {
+        "enrichment_poll_interval_seconds",
+        "enrichment_batch_size",
+        "pulse_agent_batch_size",
+        "pulse_agent_interval_seconds",
+        "watchlist_handle_summary_poll_interval_seconds",
+        "notification_worker_interval_seconds",
+        "notification_delivery_interval_seconds",
+        "_".join(("anchor", "price", "interval", "seconds")),
+        "resolution_refresh_interval_seconds",
+        "asset_profile_refresh_interval_seconds",
+        "cex_sync_interval_seconds",
+        "dex_sync_interval_seconds",
+        "dex_price_hot_stale_seconds",
+        "dex_price_warm_stale_seconds",
+        "dex_price_refresh_limit",
+    }
     checked_models = (CollectorConfig, LlmConfig, NotificationsConfig, OkxProviderConfig, Settings)
     violations = {
         f"{model.__name__}.{field_name}"
         for model in checked_models
         for field_name in model.model_fields
-        if field_name in OLD_RUNTIME_SETTINGS
+        if field_name in forbidden_runtime_settings
     }
     worker_fields = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
 
     assert violations == set()
-    assert worker_fields == set(EXPECTED_WORKERS)
+    assert worker_fields == set(MANIFEST_WORKER_CLASSES)
+
+
+@pytest.mark.architecture
+def test_runtime_contracts_forbid_old_watchlist_queue_tokens() -> None:
+    old_summary_constant = "_".join(("WATCHLIST", "SUMMARY", "JOBS"))
+    old_summary_jobs = '"' + "_".join(("watchlist", "summary", "jobs")) + '"'
+    old_summary_dirty_targets = '"' + "_".join(("watchlist", "summary", "dirty", "targets")) + '"'
+    forbidden_tokens = (old_summary_constant, old_summary_jobs, old_summary_dirty_targets)
+    scanned_paths = [
+        SRC / "app/runtime/job_queue.py",
+        SRC / "app/runtime/ops_diagnostics.py",
+        ROOT / "tests/unit/test_job_queue.py",
+        ROOT / "tests/unit/test_ops_diagnostics.py",
+        ROOT / "tests/architecture/test_runtime_worker_constraint_hard_cut.py",
+    ]
+
+    violations = [
+        f"{_rel(path)} contains {token}"
+        for path in scanned_paths
+        for token in forbidden_tokens
+        if token in path.read_text(encoding="utf-8")
+    ]
+
+    assert violations == []
 
 
 @pytest.mark.architecture
@@ -884,7 +838,7 @@ def _worker_inventory_keys() -> set[str]:
 
 def _worker_runtime_paths() -> list[Path]:
     paths: list[Path] = []
-    for qualified_name in EXPECTED_WORKERS.values():
+    for qualified_name in MANIFEST_WORKER_CLASSES.values():
         try:
             paths.append(Path(_module_file(qualified_name)))
         except ModuleNotFoundError:

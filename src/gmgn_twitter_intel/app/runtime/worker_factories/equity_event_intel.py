@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_brief_worker import EquityEventBriefWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_fetch_worker import EquityEventFetchWorker
 from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_page_projection_worker import (
@@ -15,16 +16,7 @@ from gmgn_twitter_intel.domains.equity_event_intel.runtime.equity_event_story_pr
     EquityEventStoryProjectionWorker,
 )
 
-WORKER_KEYS = frozenset(
-    {
-        "equity_event_source_reconcile",
-        "equity_event_fetch",
-        "equity_event_process",
-        "equity_event_story_projection",
-        "equity_event_brief",
-        "equity_event_page_projection",
-    }
-)
+WORKER_KEYS = manifest_names_for_factory("equity_event_intel.py")
 
 
 def construct_equity_event_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

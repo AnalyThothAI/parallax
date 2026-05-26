@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import HandleSummaryTriggerConfig
 
-WORKER_KEYS = frozenset({"enrichment"})
+WORKER_KEYS = manifest_names_for_factory("enrichment.py")
 
 
 def construct_enrichment_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

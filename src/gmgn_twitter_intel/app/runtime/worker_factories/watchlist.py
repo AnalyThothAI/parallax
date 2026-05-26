@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
 
-WORKER_KEYS = frozenset({"handle_summary"})
+WORKER_KEYS = manifest_names_for_factory("watchlist.py")
 
 
 def construct_watchlist_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

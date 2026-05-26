@@ -233,6 +233,9 @@ def test_healthz_readyz_and_metrics_return_status(tmp_path):
     assert payload["workers"]["collector"]["last_result"] is None
     assert "event_anchor_backfill" in payload["workers"]
     assert payload["workers"]["event_anchor_backfill"]["enabled"] is True
+    assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
+    assert payload["worker_lanes"]["projection"]["enabled_workers"] >= 1
+    assert payload["worker_lanes"]["agent"]["failed_workers"] == 0
     assert metrics.status_code == 200
     assert metrics.headers["content-type"].startswith("text/plain")
     assert "gmgn_db_pool_wait_ms" in metrics.text

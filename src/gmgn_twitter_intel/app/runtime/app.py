@@ -165,6 +165,7 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
     db_status = _db_status(runtime)
     reasons = _unhealthy_reasons(runtime, db_status=db_status)
     stream_dex_market = _stream_dex_market(runtime)
+    worker_status = workers_status_payload(runtime)
     payload = {
         "ok": not reasons,
         "reasons": reasons,
@@ -177,12 +178,13 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
             "okx_dex_ws": _provider_state_payload(stream_dex_market),
         },
         "agent_execution": _agent_execution_status(runtime),
-        "workers": workers_status_payload(runtime),
+        "workers": worker_status["workers"],
+        "worker_lanes": worker_status["worker_lanes"],
     }
     return payload, 503 if reasons else 200
 
 
-def _workers_status_payload(runtime: Runtime) -> dict[str, dict[str, Any]]:
+def _workers_status_payload(runtime: Runtime) -> dict[str, Any]:
     return workers_status_payload(runtime)
 
 

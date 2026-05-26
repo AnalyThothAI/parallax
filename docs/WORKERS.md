@@ -14,11 +14,19 @@ database.
 
 ## Runtime Contract
 
+`src/gmgn_twitter_intel/app/runtime/worker_manifest.py` is the worker
+contract source of truth. A worker exists only if its manifest entry exists;
+the inventory below, `WorkersSettings`, worker factories, scheduler priority,
+queue-depth ownership, `/readyz`, `/api/status`, and `ops worker-status` are
+all checked against that manifest. `workers.yaml` is runtime knobs only: it may
+set enabled state, cadence, leases, attempts, timeouts, wake hints, and agent
+lane budgets, but it does not define the worker inventory.
+
 Every long-running worker listed here is a `WorkerBase` subclass.
 `runtime.bootstrap()` builds the process runtime:
 
 ```text
-settings + workers.yaml
+settings + WorkerManifest v1 + workers.yaml
   -> DBPoolBundle
   -> provider wiring
   -> domain worker factories
@@ -302,11 +310,11 @@ Adding a wake channel requires all of these in one change:
 - `WorkerBase` owns the common run loop, timeout/backoff handling,
   `run_once()` execution, advisory lock acquisition, status payloads,
   queue-depth hooks, pool-wait metrics, and close semantics.
-- `runtime.bootstrap()` constructs `Runtime.workers` from the canonical
-  registry and replaces unavailable or disabled workers with disabled
+- `runtime.bootstrap()` constructs `Runtime.workers` from `WorkerManifest v1`
+  factory ownership and replaces unavailable or disabled workers with disabled
   `WorkerBase` placeholders so status payloads always contain the same
   keys.
-- `WorkerScheduler.start()` starts enabled workers in registry priority
+- `WorkerScheduler.start()` starts enabled workers in manifest priority
   order. `WorkerScheduler.stop()` calls `stop()`, waits for tasks,
   cancels stragglers, calls `aclose()`, and closes the `DBPoolBundle`.
 - Worker timeout settings are layered. `soft_timeout_seconds` is an
@@ -327,9 +335,12 @@ Adding a wake channel requires all of these in one change:
   `collector` is the only zero-hard-timeout worker because it is a
   continuous stream lifecycle with its own snapshot gate and watchdog.
 - `/readyz`, `/api/status`, and `ops worker-status` expose worker state
-  only under the `workers` map. `collector.details` carries collector
-  counters, including `snapshot_gate_outcomes`; `snapshot_gate` is a
-  global health field copied from those counters.
+  under `workers` and lane aggregate state under `worker_lanes`. `workers`
+  is keyed by manifest worker name; `worker_lanes` is keyed by manifest lane
+  (`ingest`, `identity_market_fact`, `projection`, `agent`, `notification`,
+  `maintenance_cache`). `collector.details` carries collector counters,
+  including `snapshot_gate_outcomes`; `snapshot_gate` is a global health field
+  copied from those counters.
 - Runtime knobs live in `~/.gmgn-twitter-intel/workers.yaml`. The
   application/provider config in `config.yaml` must not contain worker
   interval, batch, concurrency, lease, max-attempt, soft/hard timeout,
@@ -452,10 +463,11 @@ change:
    `name`, typed worker settings, injected `DBPoolBundle`, telemetry,
    and any narrow provider protocols it needs. Put business work in
    `run_once()`.
-2. Add the canonical key and class path to
-   `app/runtime/worker_registry.py`, add a matching
-   `WorkersSettings` field and default `workers.yaml` block, and
-   construct the worker in the owning domain factory under
+2. Add a `WorkerManifest` entry with lane, kind, class path, start priority,
+   input/ordering contracts, write ownership, idempotency evidence, side-effect
+   ledgers when applicable, queue-depth table when applicable, and wake
+   channels. Add a matching `WorkersSettings` field and default `workers.yaml`
+   block, then construct the worker in the owning domain factory under
    `app/runtime/worker_factories/`.
 3. Add a row to this file's worker inventory.
 4. Add or update the wake channels table here if the worker introduces a
@@ -465,7 +477,7 @@ change:
    map.
 6. If the worker writes a new derived table, declare it as a read model
    and name its single writer in `ARCHITECTURE.md`.
-7. Extend architecture guards so `WorkerBase`, `worker_registry.py`,
+7. Extend architecture guards so `WorkerBase`, `WorkerManifest`,
    `WorkersSettings`, the default `workers.yaml`, and this file's
    `worker-inventory-keys` marker stay in lockstep.
 

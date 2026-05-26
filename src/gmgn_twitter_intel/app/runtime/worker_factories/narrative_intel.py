@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_factories import WorkerFactoryContext
+from gmgn_twitter_intel.app.runtime.worker_manifest import manifest_names_for_factory
 from gmgn_twitter_intel.domains.narrative_intel.runtime.mention_semantics_worker import MentionSemanticsWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
 from gmgn_twitter_intel.domains.narrative_intel.runtime.token_discussion_digest_worker import (
     TokenDiscussionDigestWorker,
 )
 
-WORKER_KEYS = frozenset({"narrative_admission", "mention_semantics", "token_discussion_digest"})
+WORKER_KEYS = manifest_names_for_factory("narrative_intel.py")
 
 
 def construct_narrative_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:

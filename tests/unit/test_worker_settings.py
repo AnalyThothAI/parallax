@@ -2,7 +2,6 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAMES
 from gmgn_twitter_intel.platform.agent_execution import AgentRuntimePolicy
 from gmgn_twitter_intel.platform.config.settings import (
     NarrativeAdmissionWorkerSettings,
@@ -14,7 +13,13 @@ from gmgn_twitter_intel.platform.config.settings import (
 )
 
 
-def _legacy_anchor_worker_key() -> str:
+def _manifest_worker_names() -> set[str]:
+    from gmgn_twitter_intel.app.runtime.worker_manifest import all_worker_manifests
+
+    return {manifest.name for manifest in all_worker_manifests()}
+
+
+def _old_anchor_worker_key() -> str:
     return "_".join(("anchor", "price"))
 
 
@@ -22,8 +27,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     payload = yaml.safe_load(default_workers_yaml())
     settings = WorkersSettings(**payload)
 
-    assert set(payload) - {"defaults", "agent_runtime"} == set(CANONICAL_WORKER_NAMES)
-    assert _legacy_anchor_worker_key() not in payload
+    assert set(payload) - {"defaults", "agent_runtime"} == _manifest_worker_names()
+    assert _old_anchor_worker_key() not in payload
     assert settings.defaults.enabled is True
     assert settings.defaults.interval_seconds == 5
     assert settings.defaults.soft_timeout_seconds == 120
@@ -126,6 +131,12 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.notification_delivery.max_attempts == 5
 
 
+def test_worker_settings_schema_matches_manifest_worker_names() -> None:
+    worker_fields = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
+
+    assert worker_fields == _manifest_worker_names()
+
+
 def test_equity_event_intel_defaults_are_configured() -> None:
     settings = Settings(ws_token="secret")
 
@@ -217,7 +228,7 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     payload = yaml.safe_load(text)
     legacy_channel = "_".join(("market", "observation", "written"))
 
-    assert _legacy_anchor_worker_key() not in payload
+    assert _old_anchor_worker_key() not in payload
     assert legacy_channel not in text
     assert "live_observation_" not in text
     assert "hot_target_ttl_seconds" not in text
@@ -324,9 +335,9 @@ def test_worker_settings_reject_unknown_worker_key():
         WorkersSettings(**payload)
 
 
-def test_worker_settings_reject_legacy_anchor_worker_key():
+def test_worker_settings_reject_old_anchor_worker_key():
     payload = yaml.safe_load(default_workers_yaml())
-    payload[_legacy_anchor_worker_key()] = {"enabled": True}
+    payload[_old_anchor_worker_key()] = {"enabled": True}
 
     with pytest.raises(ValidationError):
         WorkersSettings(**payload)
