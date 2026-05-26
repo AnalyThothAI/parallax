@@ -50,17 +50,18 @@ export function flattenMacroRouteDescriptors(
       );
     }
 
-    const current = hasRouteMetadata
-      ? [
-          {
-            href: node.href,
-            label: node.label,
-            pageKind: node.pageKind,
-            productTier: node.productTier,
-            routeId: node.routeId,
-          },
-        ]
-      : [];
+    const current =
+      node.routeId && node.pageKind && node.productTier
+        ? [
+            {
+              href: node.href,
+              label: node.label,
+              pageKind: node.pageKind,
+              productTier: node.productTier,
+              routeId: node.routeId,
+            },
+          ]
+        : [];
 
     return [...current, ...flattenMacroRouteDescriptors(node.children ?? [])];
   });

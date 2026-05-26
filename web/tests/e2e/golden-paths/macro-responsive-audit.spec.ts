@@ -71,7 +71,7 @@ test.describe("macro responsive audit", () => {
 
       for (const route of [...PRODUCT_ROUTES, ...HIDDEN_DIRECT_ROUTES]) {
         await page.goto(route);
-        await expect(page.getByLabel("宏观工作台").or(page.getByRole("status"))).toBeVisible();
+        await expect(page.getByLabel("宏观工作台")).toBeVisible();
         await expectNoMacroBodyOverflow(page);
         await expectNoMacroMetricFragmentation(page);
         await expectMacroTableFramesBounded(page);

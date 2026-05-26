@@ -68,7 +68,7 @@ export type MacroRouteResolution =
   | {
       routeKind: "module";
       moduleId: MacroModuleId;
-      pageKind: Exclude<MacroPageKind, "unsupported">;
+      pageKind: Exclude<MacroPageKind, "matrix" | "unsupported">;
       productTier: Exclude<MacroProductTier, "unsupported">;
       routeId: MacroModuleId;
       canonicalPath: string;
@@ -110,7 +110,7 @@ export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteRe
     return {
       canonicalPath: "/macro",
       moduleId: "overview",
-      pageKind: descriptor?.pageKind ?? "overview",
+      pageKind: descriptor ? modulePageKind(descriptor.pageKind) : "overview",
       productTier: descriptor?.productTier ?? "primary",
       routeId: "overview",
       routeKind: "module",
@@ -133,7 +133,7 @@ export function parseMacroRouteTail(routeTail: string | undefined): MacroRouteRe
     return {
       canonicalPath: descriptor.href,
       moduleId: descriptor.routeId,
-      pageKind: descriptor.pageKind,
+      pageKind: modulePageKind(descriptor.pageKind),
       productTier: descriptor.productTier,
       routeId: descriptor.routeId,
       routeKind: "module",
@@ -223,4 +223,13 @@ function normalizeRouteTail(routeTail: string | undefined): string {
 
 function isMacroModuleId(value: MacroRouteId): value is MacroModuleId {
   return value !== "assets/correlation";
+}
+
+function modulePageKind(
+  pageKind: Exclude<MacroPageKind, "unsupported">,
+): Exclude<MacroPageKind, "matrix" | "unsupported"> {
+  if (pageKind === "matrix") {
+    throw new Error("Matrix macro routes must not resolve as module pages.");
+  }
+  return pageKind;
 }
