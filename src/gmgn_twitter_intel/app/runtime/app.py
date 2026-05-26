@@ -22,6 +22,11 @@ from gmgn_twitter_intel.app.surfaces.api.exceptions import (
 )
 from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 from gmgn_twitter_intel.app.surfaces.api.schemas import StatusData
+from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract import (
+    NewsProviderContractError,
+    validate_news_provider_contract,
+)
+from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
@@ -164,7 +169,13 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
     collector_status = runtime.collector.status.to_dict()
     db_status = _db_status(runtime)
     worker_status = workers_status_payload(runtime)
-    reasons = _unhealthy_reasons(runtime, db_status=db_status, worker_status=worker_status)
+    news_provider_contract = _news_provider_contract_payload(runtime)
+    reasons = _unhealthy_reasons(
+        runtime,
+        db_status=db_status,
+        worker_status=worker_status,
+        news_provider_contract=news_provider_contract,
+    )
     stream_dex_market = _stream_dex_market(runtime)
     payload = {
         "ok": not reasons,
@@ -178,6 +189,7 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
             "okx_dex_ws": _provider_state_payload(stream_dex_market),
         },
         "agent_execution": _agent_execution_status(runtime),
+        "news_provider_contract": news_provider_contract,
         "workers": worker_status["workers"],
         "worker_lanes": worker_status["worker_lanes"],
     }
@@ -214,12 +226,67 @@ def _unhealthy_reasons(
     *,
     db_status: dict[str, object],
     worker_status: dict[str, Any],
+    news_provider_contract: dict[str, Any],
 ) -> list[str]:
     reasons = [reason for reason in runtime.scheduler.unhealthy_reasons() if ":stopped" not in str(reason)]
     if not db_status.get("ok"):
         reasons.append("database_unhealthy")
+    if news_provider_contract.get("ok") is False and str(news_provider_contract.get("reason") or "").startswith(
+        "news_provider_type_"
+    ):
+        reasons.append("news_provider_contract_error")
     reasons.extend(_queue_health_contract_reasons(worker_status))
     return reasons
+
+
+def _news_provider_contract_payload(runtime: Runtime) -> dict[str, Any]:
+    configured_sources = tuple(getattr(getattr(runtime.settings, "news_intel", None), "sources", ()) or ())
+    supported_provider_types = _news_supported_provider_types(runtime)
+    try:
+        with runtime.repositories() as repos:
+            schema_provider_types = repos.news.news_source_provider_constraint_values()
+        return validate_news_provider_contract(
+            configured_sources=configured_sources,
+            supported_provider_types=supported_provider_types,
+            schema_provider_types=schema_provider_types,
+        )
+    except NewsProviderContractError as exc:
+        return exc.to_payload()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "news_provider_contract_unavailable",
+            "error": type(exc).__name__,
+            "configured_provider_types": _configured_news_provider_types(configured_sources),
+            "supported_provider_types": list(supported_provider_types),
+            "schema_provider_types": [],
+        }
+
+
+def _news_supported_provider_types(runtime: Runtime) -> tuple[str, ...]:
+    news_intel = getattr(getattr(runtime, "providers", None), "news_intel", None)
+    feed_client = getattr(news_intel, "feed_client", None)
+    supported = getattr(feed_client, "supported_provider_types", None)
+    if callable(supported):
+        return tuple(str(value) for value in supported())
+    registry = getattr(feed_client, "_registry", None)
+    registry_supported = getattr(registry, "supported_provider_types", None)
+    if callable(registry_supported):
+        return tuple(str(value) for value in registry_supported())
+    return tuple(SUPPORTED_NEWS_PROVIDER_TYPES)
+
+
+def _configured_news_provider_types(configured_sources: tuple[Any, ...]) -> list[str]:
+    values: list[str] = []
+    for source in configured_sources:
+        if isinstance(source, dict):
+            value = source.get("provider_type")
+        else:
+            value = getattr(source, "provider_type", None)
+        provider_type = str(value or "").strip()
+        if provider_type:
+            values.append(provider_type)
+    return sorted(dict.fromkeys(values))
 
 
 def _queue_health_contract_reasons(worker_status: dict[str, Any]) -> list[str]:

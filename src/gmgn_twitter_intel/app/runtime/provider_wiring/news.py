@@ -41,6 +41,9 @@ class RegistryBackedNewsSourceProvider:
     def __init__(self, *, registry: NewsFeedProviderRegistry) -> None:
         self._registry = registry
 
+    def supported_provider_types(self) -> tuple[str, ...]:
+        return self._registry.supported_provider_types()
+
     def fetch(
         self,
         source: NewsSourceSnapshot,

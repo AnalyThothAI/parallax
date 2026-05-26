@@ -44,11 +44,27 @@ _SECRET_QUOTED_KEY_VALUE_RE = re.compile(
 _SECRET_HEADER_RE = re.compile(r"\b(authorization|cookie)\s*:\s*[^\r\n]+", re.IGNORECASE)
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
 _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
+_CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 
 
 class NewsRepository:
     def __init__(self, conn: Any):
         self.conn = conn
+
+    def news_source_provider_constraint_values(self) -> tuple[str, ...]:
+        row = self.conn.execute(
+            """
+            SELECT pg_get_constraintdef(oid) AS constraint_def
+              FROM pg_constraint
+             WHERE conname = %s
+             ORDER BY oid DESC
+             LIMIT 1
+            """,
+            ("news_sources_provider_type_check",),
+        ).fetchone()
+        if row is None:
+            return ()
+        return _quoted_constraint_values(str(row["constraint_def"] or ""))
 
     def upsert_source(
         self,
@@ -2613,6 +2629,15 @@ def _json_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
     return {}
+
+
+def _quoted_constraint_values(constraint_def: str) -> tuple[str, ...]:
+    values: list[str] = []
+    for match in _CHECK_QUOTED_VALUE_RE.finditer(str(constraint_def or "")):
+        value = match.group(1).replace("''", "'")
+        if value:
+            values.append(value)
+    return tuple(dict.fromkeys(values))
 
 
 def _json_list(value: Any) -> list[Any]:

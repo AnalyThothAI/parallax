@@ -11,13 +11,19 @@ from typing import Any
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.news_intel.providers import NewsSourceProvider
+from gmgn_twitter_intel.domains.news_intel.services.news_provider_contract import (
+    NewsProviderContractError,
+    validate_news_provider_contract,
+)
 from gmgn_twitter_intel.domains.news_intel.services.text_normalization import content_hash, title_fingerprint
+from gmgn_twitter_intel.domains.news_intel.types.source_classification import PROVIDER_TYPES
 from gmgn_twitter_intel.domains.news_intel.types.source_provider import (
     NewsProviderContextObservation,
     NewsProviderObservation,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
+from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 
 
 class NewsFetchWorker(WorkerBase):
@@ -54,6 +60,14 @@ class NewsFetchWorker(WorkerBase):
         configured_sources = tuple(getattr(self.news_settings, "sources", ()) or ())
         metadata_dirty_count = 0
         with self._repository_session() as repos, repos.conn.transaction():
+            try:
+                contract = validate_news_provider_contract(
+                    configured_sources=configured_sources,
+                    supported_provider_types=_supported_provider_types(self.feed_client),
+                    schema_provider_types=_schema_provider_types(repos.news),
+                )
+            except NewsProviderContractError as exc:
+                return WorkerResult(failed=1, notes=exc.to_payload())
             reconciled_sources = repos.news.reconcile_configured_sources(
                 configured_sources,
                 now_ms=now,
@@ -101,7 +115,7 @@ class NewsFetchWorker(WorkerBase):
             processed=processed,
             failed=failed,
             skipped=max(0, len(configured_sources) - source_count),
-            notes={"due_sources": source_count},
+            notes={"due_sources": source_count, "news_provider_contract": contract},
         )
 
     def _fetch_source(self, source: dict[str, Any], *, now_ms: int) -> WorkerResult:
@@ -404,6 +418,24 @@ def _source_quality_windows(windows: Iterable[str] | None) -> tuple[str, ...]:
 def _optional_str(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
+
+
+def _supported_provider_types(feed_client: NewsSourceProvider) -> tuple[str, ...]:
+    supported = getattr(feed_client, "supported_provider_types", None)
+    if callable(supported):
+        return tuple(str(value) for value in supported())
+    registry = getattr(feed_client, "_registry", None)
+    registry_supported = getattr(registry, "supported_provider_types", None)
+    if callable(registry_supported):
+        return tuple(str(value) for value in registry_supported())
+    return tuple(SUPPORTED_NEWS_PROVIDER_TYPES)
+
+
+def _schema_provider_types(repository: Any) -> tuple[str, ...]:
+    constraint_values = getattr(repository, "news_source_provider_constraint_values", None)
+    if callable(constraint_values):
+        return tuple(str(value) for value in constraint_values())
+    return tuple(PROVIDER_TYPES)
 
 
 def _now_ms() -> int:
