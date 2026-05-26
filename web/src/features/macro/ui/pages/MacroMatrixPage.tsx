@@ -31,14 +31,8 @@ export function MacroMatrixPage({ token }: { token: string }) {
   const query = useMacroAssetCorrelationQuery({ token, window });
   const data = query.data ?? null;
   const titleByKey = useMemo(() => assetTitleByKey(data), [data]);
-  const positivePairs = useMemo(
-    () => strongestCorrelationPairs(data, "positive"),
-    [data],
-  );
-  const negativePairs = useMemo(
-    () => strongestCorrelationPairs(data, "negative"),
-    [data],
-  );
+  const positivePairs = useMemo(() => strongestCorrelationPairs(data, "positive"), [data]);
+  const negativePairs = useMemo(() => strongestCorrelationPairs(data, "negative"), [data]);
 
   return (
     <MacroShell

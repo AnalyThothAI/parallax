@@ -3,11 +3,7 @@ import { Separator } from "@shared/ui/separator";
 import { MacroBreadcrumb } from "./MacroBreadcrumb";
 import type { MacroShellHeaderModel } from "./MacroShell";
 
-export function MacroPageHeader({
-  header,
-}: {
-  header: MacroShellHeaderModel;
-}) {
+export function MacroPageHeader({ header }: { header: MacroShellHeaderModel }) {
   return (
     <header className="macro-shell-header">
       <MacroBreadcrumb breadcrumbs={header.breadcrumbs} />

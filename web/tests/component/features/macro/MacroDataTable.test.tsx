@@ -82,9 +82,7 @@ describe("Macro table primitives", () => {
       "表格加载中",
     );
 
-    rerender(
-      <MacroDataTable table={{ id: "rates_snapshot", rows: [] }} caption="利率快照" />,
-    );
+    rerender(<MacroDataTable table={{ id: "rates_snapshot", rows: [] }} caption="利率快照" />);
 
     expect(screen.getByRole("status", { name: "利率快照空状态" })).toHaveTextContent("暂无表格行");
   });

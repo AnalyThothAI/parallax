@@ -1,8 +1,4 @@
-import type {
-  MacroPageKind,
-  MacroProductTier,
-  MacroRouteId,
-} from "./macroPageRegistry";
+import type { MacroPageKind, MacroProductTier, MacroRouteId } from "./macroPageRegistry";
 import type { MacroRouteSection } from "./macroRoutes";
 
 type SupportedMacroPageKind = Exclude<MacroPageKind, "unsupported">;

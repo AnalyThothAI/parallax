@@ -1,7 +1,4 @@
-import {
-  MACRO_NAVIGATION_TREE,
-  type MacroNavigationNode,
-} from "./macroNavigationTree";
+import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "./macroNavigationTree";
 import {
   macroRouteDescriptor,
   type MacroPageKind,
@@ -158,9 +155,7 @@ export function macroRouteLabel(moduleId: MacroModuleId): string {
   return ROUTES_BY_ID.get(moduleId)?.label ?? "总览";
 }
 
-export function macroNavigationPath(
-  routeId: MacroRouteId,
-): MacroNavigationNode[] {
+export function macroNavigationPath(routeId: MacroRouteId): MacroNavigationNode[] {
   return findNavigationPath(MACRO_NAVIGATION_TREE, routeId) ?? [];
 }
 

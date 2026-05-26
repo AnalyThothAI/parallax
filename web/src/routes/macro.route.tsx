@@ -1,7 +1,4 @@
-import {
-  MacroWorkbenchRoute,
-  parseMacroRouteTail,
-} from "@features/macro";
+import { MacroWorkbenchRoute, parseMacroRouteTail } from "@features/macro";
 import { useParams } from "react-router-dom";
 
 import { useShellRouteContext } from "./shellRouteContext";

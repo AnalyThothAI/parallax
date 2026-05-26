@@ -39,9 +39,7 @@ export function macroRouteDescriptor(routeId: MacroRouteId): MacroRouteDescripto
   return ROUTE_DESCRIPTORS_BY_ID.get(routeId);
 }
 
-export function flattenMacroRouteDescriptors(
-  nodes: MacroNavigationNode[],
-): MacroRouteDescriptor[] {
+export function flattenMacroRouteDescriptors(nodes: MacroNavigationNode[]): MacroRouteDescriptor[] {
   return nodes.flatMap((node) => {
     const hasRouteMetadata = Boolean(node.routeId || node.pageKind || node.productTier);
     if (hasRouteMetadata && (!node.routeId || !node.pageKind || !node.productTier)) {

@@ -18,7 +18,11 @@ export function MacroModuleIndexPage({ module, moduleId }: MacroModulePageProps)
 
   return (
     <MacroPageScaffold label={`${label}模块索引`} pageKind="index">
-      <MacroMetricStrip ariaLabel="模块索引状态" density="compact" metrics={moduleIndexMetrics(boards)} />
+      <MacroMetricStrip
+        ariaLabel="模块索引状态"
+        density="compact"
+        metrics={moduleIndexMetrics(boards)}
+      />
       <MacroPanel ariaLabel="模块目录" span="full" title={`${label}模块目录`}>
         {boards.length > 0 ? (
           <MacroTableFrame caption={tableCaption} minWidth={720} stickyFirstColumn>
