@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.types import MarketTick
-from gmgn_twitter_intel.platform.db.postgres_client import require_transaction
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +30,7 @@ class MarketTickPersistenceService:
         fail_after_ticks_for_test: bool = False,
     ) -> MarketTickPersistenceResult:
         materialized = list(ticks)
-        require_transaction(self.repos.conn, operation="market_tick_persistence")
+        self.repos.require_transaction(operation="market_tick_persistence")
         if not materialized:
             return MarketTickPersistenceResult(inserted_ids=[], changed_targets=[])
 

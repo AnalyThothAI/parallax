@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -80,6 +81,7 @@ class TokenRadarRepository:
         scope: str,
         computed_at_ms: int,
         rows: list[dict[str, Any]],
+        on_current_changes: Callable[..., None] | None = None,
         commit: bool = True,
     ) -> bool:
         self.conn.execute(
@@ -310,6 +312,15 @@ class TokenRadarRepository:
             computed_at_ms=int(computed_at_ms),
             commit=False,
         )
+        if on_current_changes is not None:
+            on_current_changes(
+                window=window,
+                scope=scope,
+                rows=rows_to_insert,
+                exited_rows=exited_rows,
+                previous_by_key=existing_by_key,
+                computed_at_ms=int(computed_at_ms),
+            )
         if commit:
             self.conn.commit()
         return True
@@ -442,6 +453,31 @@ class TokenRadarRepository:
             ),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def current_row_for_target(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        target_type: str,
+        target_id: str,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM token_radar_current_rows
+            WHERE projection_version = %s
+              AND "window" = %s
+              AND scope = %s
+              AND target_type = %s
+              AND target_id = %s
+            ORDER BY lane DESC, rank ASC
+            LIMIT 1
+            """,
+            (projection_version, window, scope, target_type, target_id),
+        ).fetchone()
+        return dict(row) if row is not None else None
 
     def latest_snapshot_audit_rows(
         self,

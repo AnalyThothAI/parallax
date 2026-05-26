@@ -472,8 +472,38 @@ def _worker_result_payload(result: WorkerResult | None) -> dict[str, Any] | None
         "failed": int(result.failed),
         "dead": int(result.dead),
         "skipped": int(result.skipped),
-        "notes": dict(result.notes),
+        "notes": _compact_status_notes(result.notes),
     }
+
+
+def _compact_status_notes(notes: dict[str, Any]) -> dict[str, Any]:
+    return {str(key): _compact_status_value(value) for key, value in dict(notes).items()}
+
+
+def _compact_status_value(value: Any, *, depth: int = 0) -> Any:
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    if isinstance(value, str):
+        return value[:500]
+    if depth >= 2:
+        return _compact_leaf(value)
+    if isinstance(value, dict):
+        items = list(value.items())[:20]
+        compact = {str(key): _compact_status_value(item, depth=depth + 1) for key, item in items}
+        if len(value) > 20:
+            compact["_truncated"] = len(value) - 20
+        return compact
+    if isinstance(value, list | tuple):
+        compact_list = [_compact_status_value(item, depth=depth + 1) for item in list(value)[:20]]
+        if len(value) > 20:
+            compact_list.append({"_truncated": len(value) - 20})
+        return compact_list
+    return _compact_leaf(value)
+
+
+def _compact_leaf(value: Any) -> Any:
+    text = str(value)
+    return text[:500]
 
 
 def _p99(values: list[float]) -> float | None:

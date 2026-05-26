@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_policy_evaluator import (
+from gmgn_twitter_intel.domains.pulse_lab.queries.pulse_policy_evaluator import (
     build_pulse_policy_evaluation,
     write_pulse_policy_evaluation_report,
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_postgres_hard_reset import (
+from gmgn_twitter_intel.app.runtime.token_radar_postgres_hard_reset import (
     ensure_postgres_partitions,
     reset_token_radar_postgres_hard_cut,
 )

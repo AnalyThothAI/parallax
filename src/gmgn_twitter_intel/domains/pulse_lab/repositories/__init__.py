@@ -9,6 +9,9 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository imp
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
+    PulseTriggerDirtyTargetRepository,
+)
 
 __all__ = [
     "PulseAdmissionRepository",
@@ -20,4 +23,5 @@ __all__ = [
     "PulsePlaybooksRepository",
     "PulseReadRepository",
     "PulseRunsRepository",
+    "PulseTriggerDirtyTargetRepository",
 ]

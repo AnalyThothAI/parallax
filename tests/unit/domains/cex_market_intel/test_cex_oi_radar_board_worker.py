@@ -26,6 +26,9 @@ def test_cex_oi_radar_board_worker_persists_latest_run():
     assert db.repos.cex_detail_snapshots.upserted[0]["target_id"] == "cex_token:BTC"
     assert db.repos.cex_detail_snapshots.upserted[0]["oi_change_pct_1h"] is None
     assert db.repos.cex_oi_radar.finished["status"] == "success"
+    assert result.notes["source_rows_scanned"] == 1
+    assert result.notes["targets_loaded"] == 1
+    assert result.notes["rows_written"] == 2
 
 
 def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
@@ -44,7 +47,10 @@ def test_cex_oi_radar_board_worker_skips_when_previous_thread_still_finishing():
         worker._local_run_lock.release()
 
     assert result.skipped == 1
-    assert result.notes == {"reason": "previous_run_still_finishing"}
+    assert result.notes["reason"] == "previous_run_still_finishing"
+    assert result.notes["source_rows_scanned"] == 0
+    assert result.notes["targets_loaded"] == 0
+    assert result.notes["rows_written"] == 0
 
 
 def test_cex_oi_radar_board_worker_caps_universe_to_batch_size():

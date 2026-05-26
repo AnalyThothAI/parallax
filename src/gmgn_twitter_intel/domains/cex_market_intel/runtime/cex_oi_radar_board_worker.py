@@ -42,7 +42,17 @@ class CexOiRadarBoardWorker(WorkerBase):
 
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         if not self._local_run_lock.acquire(blocking=False):
-            return WorkerResult(skipped=1, notes={"reason": "previous_run_still_finishing"})
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "previous_run_still_finishing",
+                    "claimed": 0,
+                    "queue_depth": 0,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                },
+            )
         try:
             return self._run_once_sync_locked(now_ms=now_ms)
         finally:
@@ -50,7 +60,17 @@ class CexOiRadarBoardWorker(WorkerBase):
 
     def _run_once_sync_locked(self, *, now_ms: int | None = None) -> WorkerResult:
         if self.cex_market is None:
-            return WorkerResult(skipped=1, notes={"reason": "cex_market_unavailable"})
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "cex_market_unavailable",
+                    "claimed": 0,
+                    "queue_depth": 0,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                },
+            )
 
         now = int(now_ms if now_ms is not None else self.clock_ms())
         period = str(getattr(self.settings, "period", "5m"))
@@ -75,7 +95,17 @@ class CexOiRadarBoardWorker(WorkerBase):
                     failed_count=0,
                     notes={"reason": "empty_binance_universe"},
                 )
-            return WorkerResult(skipped=1, notes={"reason": "empty_binance_universe"})
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "empty_binance_universe",
+                    "claimed": 0,
+                    "queue_depth": 0,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                },
+            )
 
         try:
             built = build_binance_oi_radar_rows(
@@ -112,7 +142,16 @@ class CexOiRadarBoardWorker(WorkerBase):
             return WorkerResult(
                 processed=len(rows),
                 failed=int(built["failed"]),
-                notes={"run_id": run_id, "universe_count": len(universe), "status": status},
+                notes={
+                    "run_id": run_id,
+                    "universe_count": len(universe),
+                    "status": status,
+                    "claimed": len(universe),
+                    "queue_depth": 0,
+                    "source_rows_scanned": len(universe),
+                    "targets_loaded": len(universe),
+                    "rows_written": int(written) + int(detail_written),
+                },
             )
         except Exception as exc:
             with self._repository_session() as repos:

@@ -149,3 +149,152 @@ def test_ops_enqueue_token_radar_dirty_targets_parser_accepts_source_since_limit
 
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "enqueue-token-radar-dirty-targets", "--source", "events"])
+
+
+def test_ops_enqueue_runtime_worker_dirty_targets_parser_defaults_to_dry_run() -> None:
+    parser = build_parser()
+
+    dry_run = parser.parse_args(
+        [
+            "ops",
+            "enqueue-runtime-worker-dirty-targets",
+            "--work",
+            "pulse_trigger",
+            "--window",
+            "1h",
+            "--scope",
+            "all",
+            "--since-hours",
+            "4",
+        ]
+    )
+    execute = parser.parse_args(
+        [
+            "ops",
+            "enqueue-runtime-worker-dirty-targets",
+            "--work",
+            "pulse_trigger",
+            "--window",
+            "4h",
+            "--scope",
+            "all",
+            "--target-id",
+            "asset-1",
+            "--limit",
+            "25",
+            "--execute",
+        ]
+    )
+
+    assert dry_run.ops_command == "enqueue-runtime-worker-dirty-targets"
+    assert dry_run.work == "pulse_trigger"
+    assert dry_run.window == "1h"
+    assert dry_run.scope == "all"
+    assert dry_run.since_hours == 4
+    assert dry_run.limit is None
+    assert dry_run.dry_run is True
+    assert dry_run.execute is False
+    assert execute.window == "4h"
+    assert execute.target_id == "asset-1"
+    assert execute.limit == 25
+    assert execute.execute is True
+    assert execute.dry_run is False
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "ops",
+                "enqueue-runtime-worker-dirty-targets",
+                "--work",
+                "pulse_trigger",
+                "--since-hours",
+                "4",
+                "--dry-run",
+                "--execute",
+            ]
+        )
+
+
+def test_ops_enqueue_runtime_worker_dirty_targets_parser_accepts_narrative_admission_work() -> None:
+    args = build_parser().parse_args(
+        [
+            "ops",
+            "enqueue-runtime-worker-dirty-targets",
+            "--work",
+            "narrative_admission",
+            "--window",
+            "1h",
+            "--scope",
+            "all",
+            "--since-hours",
+            "4",
+            "--dry-run",
+        ]
+    )
+
+    assert args.ops_command == "enqueue-runtime-worker-dirty-targets"
+    assert args.work == "narrative_admission"
+    assert args.window == "1h"
+    assert args.scope == "all"
+    assert args.since_hours == 4
+    assert args.dry_run is True
+    assert args.execute is False
+
+
+def test_ops_enqueue_runtime_worker_dirty_targets_parser_accepts_discussion_digest_work() -> None:
+    args = build_parser().parse_args(
+        [
+            "ops",
+            "enqueue-runtime-worker-dirty-targets",
+            "--work",
+            "discussion_digest",
+            "--window",
+            "1h",
+            "--scope",
+            "matched",
+            "--target-id",
+            "solana:So111",
+            "--limit",
+            "25",
+            "--dry-run",
+        ]
+    )
+
+    assert args.ops_command == "enqueue-runtime-worker-dirty-targets"
+    assert args.work == "discussion_digest"
+    assert args.window == "1h"
+    assert args.scope == "matched"
+    assert args.target_id == "solana:So111"
+    assert args.limit == 25
+    assert args.dry_run is True
+    assert args.execute is False
+
+
+def test_ops_enqueue_runtime_worker_dirty_targets_parser_accepts_asset_market_repair_selectors() -> None:
+    args = build_parser().parse_args(
+        [
+            "ops",
+            "enqueue-runtime-worker-dirty-targets",
+            "--work",
+            "image_source",
+            "--target-type",
+            "Asset",
+            "--target-id",
+            "asset:eip155:1:erc20:0xabc",
+            "--source-url",
+            "https://gmgn.ai/external-res/abc.png",
+            "--provider",
+            "gmgn_dex_profile",
+            "--limit",
+            "25",
+            "--dry-run",
+        ]
+    )
+
+    assert args.ops_command == "enqueue-runtime-worker-dirty-targets"
+    assert args.work == "image_source"
+    assert args.target_type == "Asset"
+    assert args.target_id == "asset:eip155:1:erc20:0xabc"
+    assert args.source_url == "https://gmgn.ai/external-res/abc.png"
+    assert args.provider == "gmgn_dex_profile"
+    assert args.limit == 25

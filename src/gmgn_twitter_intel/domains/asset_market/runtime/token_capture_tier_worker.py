@@ -17,6 +17,7 @@ DEFAULT_BATCH_SIZE = 100
 DEFAULT_WS_LIMIT = 50
 DEFAULT_POLL_LIMIT = 200
 ADVISORY_LOCK_KEY = 2026051503
+DEFAULT_LEASE_MS = 60_000
 
 
 class TokenCaptureTierWorker(WorkerBase):
@@ -51,18 +52,52 @@ class TokenCaptureTierWorker(WorkerBase):
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_now_ms = int(now_ms if now_ms is not None else self.clock())
-        processed = await asyncio.to_thread(self._project_once, observed_now_ms)
-        return WorkerResult(processed=processed, notes={"updated_tiers": processed})
+        result = await asyncio.to_thread(self._project_once, observed_now_ms)
+        return WorkerResult(
+            processed=int(result.get("rows_written") or 0),
+            skipped=1 if int(result.get("claimed") or 0) == 0 else 0,
+            notes={
+                "claimed": int(result.get("claimed") or 0),
+                "queue_depth": int(result.get("queue_depth") or 0),
+                "source_rows_scanned": int(result.get("source_rows_scanned") or 0),
+                "targets_loaded": int(result.get("targets_loaded") or 0),
+                "rows_written": int(result.get("rows_written") or 0),
+                "result": result,
+            },
+        )
 
-    def _project_once(self, now_ms: int) -> int:
+    def _project_once(self, now_ms: int) -> dict[str, Any]:
         with self.db.worker_session(self.name) as repos:
-            return project_once(
-                repos,
+            claims = repos.token_capture_tier_dirty_targets.claim_due(
                 now_ms=now_ms,
-                batch_size=self.batch_size,
-                ws_limit=self.ws_limit,
-                poll_limit=self.poll_limit,
+                limit=1,
+                lease_owner=self.name,
+                lease_ms=max(1, int(getattr(self.settings, "lease_ms", DEFAULT_LEASE_MS) or DEFAULT_LEASE_MS)),
+                commit=True,
             )
+            result = {
+                "claimed": len(claims),
+                "queue_depth": repos.token_capture_tier_dirty_targets.queue_depth(now_ms=now_ms),
+                "source_rows_scanned": 0,
+                "targets_loaded": len(claims),
+                "rows_written": 0,
+                "started_at_ms": int(now_ms),
+                "finished_at_ms": int(now_ms),
+            }
+            if not claims:
+                result["reason"] = "no_due_token_capture_tier_rank_sets"
+                return result
+            with repos.transaction():
+                result["rows_written"] = project_once(
+                    repos,
+                    now_ms=now_ms,
+                    batch_size=self.batch_size,
+                    ws_limit=self.ws_limit,
+                    poll_limit=self.poll_limit,
+                    commit=False,
+                )
+                repos.token_capture_tier_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
+            return result
 
 
 def project_once(
@@ -72,11 +107,12 @@ def project_once(
     batch_size: int = DEFAULT_BATCH_SIZE,
     ws_limit: int = DEFAULT_WS_LIMIT,
     poll_limit: int = DEFAULT_POLL_LIMIT,
+    commit: bool = True,
 ) -> int:
     resolved_batch_size = max(1, int(batch_size))
     resolved_ws_limit = max(0, int(ws_limit))
     resolved_poll_limit = max(0, int(poll_limit))
-    rows = repos.registry.active_live_market_targets(
+    rows = repos.registry.ranked_live_market_targets(
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         since_ms=int(now_ms) - WINDOW_MS["24h"],
         limit=resolved_batch_size,
@@ -136,11 +172,12 @@ def project_once(
     active_keys = [
         {"target_type": target_type, "target_id": target_id} for target_type, target_id in (*tier1_keys, *tier2_keys)
     ]
-    repos.token_capture_tiers.demote_absent_hot_rows(
+    repos.token_capture_tiers.demote_hot_rows_outside_rank_set(
         active_keys=active_keys,
         updated_at_ms=int(now_ms),
     )
-    _commit_if_supported(repos)
+    if commit:
+        _commit_if_supported(repos)
     return len(candidates)
 
 

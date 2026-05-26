@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
@@ -16,15 +16,32 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
 from gmgn_twitter_intel.platform.agent_execution import AgentCapacityReservation
 
-if TYPE_CHECKING:
-    from gmgn_twitter_intel.domains.pulse_lab.services.pulse_agent_cost_guard import PulseStagePlan
-
 
 @dataclass(frozen=True, slots=True)
 class PulseDecisionStageSpec:
     stage: str
     prompt_text: str
     input_payload: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class PulseStagePlan:
+    run_signal_analyst: bool
+    run_bear_case: bool
+    run_risk_portfolio_judge: bool
+    signal_model: str
+    bear_model: str
+    judge_model: str | None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "run_signal_analyst": bool(self.run_signal_analyst),
+            "run_bear_case": bool(self.run_bear_case),
+            "run_risk_portfolio_judge": bool(self.run_risk_portfolio_judge),
+            "signal_model": str(self.signal_model),
+            "bear_model": str(self.bear_model),
+            "judge_model": self.judge_model,
+        }
 
 
 _DEFAULT_STAGE_NAMES = ("signal_analyst", "bear_case", "risk_portfolio_judge")
@@ -211,5 +228,6 @@ __all__ = [
     "PulseDecisionRuntime",
     "PulseDecisionStageSpec",
     "PulseEvidencePacket",
+    "PulseStagePlan",
     "SignalAnalystMemo",
 ]

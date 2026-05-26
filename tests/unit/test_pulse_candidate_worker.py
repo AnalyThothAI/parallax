@@ -469,8 +469,8 @@ def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
     async def scenario() -> None:
         task = asyncio.create_task(worker.run())
         try:
-            await _wait_until(lambda: repos.token_radar.latest_calls >= 1)
-            await _wait_until(lambda: repos.token_radar.latest_calls >= 2)
+            await _wait_until(lambda: repos.pulse_trigger_dirty_targets.claim_calls >= 1)
+            await _wait_until(lambda: repos.pulse_trigger_dirty_targets.claim_calls >= 2)
         finally:
             await worker.stop()
             await task
@@ -721,10 +721,11 @@ def test_scan_global_pending_cap_bounds_enqueues_across_windows_and_scopes() -> 
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
-    assert result["asset_seen"] == 4
+    assert result["asset_seen"] == 2
     assert result["asset_enqueued"] == 2
     assert result["asset_skipped"] == 2
     assert result["asset_suppressed_pending_global"] == 2
+    assert result["dirty_triggers_rescheduled"] == 2
     assert len(repos.pulse_jobs.jobs) == 2
 
 
@@ -747,21 +748,22 @@ def test_scan_window_scope_pending_cap_suppresses_enqueue_without_admission_clai
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
-    assert result["asset_seen"] == 2
+    assert result["asset_seen"] == 0
     assert result["asset_enqueued"] == 0
     assert result["asset_skipped"] == 2
     assert result["asset_suppressed_pending_window_scope"] == 2
+    assert result["dirty_triggers_rescheduled"] == 2
     assert repos.pulse_admission.admission_claims == []
     assert repos.pulse_jobs.jobs == []
 
 
-def test_stale_primary_window_jobs_are_terminalized_before_processing() -> None:
+def test_runtime_does_not_terminalize_stale_jobs_outside_targeted_ops() -> None:
     repos = FakeRepos()
     repos.pulse_jobs.jobs.append(
         {
             "job_id": "job-stale-1h",
             "candidate_id": "candidate-stale-1h",
-            "status": "pending",
+            "status": "running",
             "window": "1h",
             "scope": "all",
             "created_at_ms": NOW_MS - 3_601_000,
@@ -774,10 +776,10 @@ def test_stale_primary_window_jobs_are_terminalized_before_processing() -> None:
 
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
 
-    assert result["stale_jobs_terminalized"] == 1
     assert result["claimed"] == 0
-    assert repos.pulse_jobs.jobs[0]["status"] == "dead"
-    assert repos.pulse_jobs.jobs[0]["last_error"] == "stale_window_ttl"
+    assert "stale_jobs_terminalized" not in result
+    assert repos.pulse_jobs.jobs[0]["status"] == "running"
+    assert "last_error" not in repos.pulse_jobs.jobs[0]
 
 
 def test_normalized_failure_reason_maps_unknown_evidence() -> None:
@@ -1125,9 +1127,14 @@ def _worker(
     settings: Any | None = None,
     wake_waiter: Any | None = None,
 ) -> PulseCandidateWorker:
+    resolved_settings = settings or _settings()
+    repos.pulse_trigger_dirty_targets.configure(
+        windows=tuple(getattr(resolved_settings, "windows", ("1h",)) or ("1h",)),
+        scopes=tuple(getattr(resolved_settings, "scopes", ("all",)) or ("all",)),
+    )
     return PulseCandidateWorker(
         name="pulse_candidate",
-        settings=settings or _settings(),
+        settings=resolved_settings,
         db=FakeDB(repos),
         telemetry=object(),
         decision_client=client or FakeClient(),
@@ -1345,6 +1352,7 @@ class FakeRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
         self.token_radar = FakeTokenRadar()
+        self.pulse_trigger_dirty_targets = FakePulseTriggerDirtyTargets(self.token_radar)
         self.token_targets = FakeTokenTargets()
         pulse_state = FakePulseStore()
         self.pulse_jobs = pulse_state
@@ -1409,6 +1417,85 @@ class FakeTokenRadar:
         if key in self.rows_by_window_scope:
             return list(self.rows_by_window_scope[key])
         return list(self.rows)
+
+    def current_row_for_target(self, **kwargs: Any) -> dict[str, Any] | None:
+        key = (kwargs.get("window"), kwargs.get("scope"))
+        rows = self.rows_by_window_scope.get(key, self.rows)
+        target_type = kwargs.get("target_type")
+        target_id = kwargs.get("target_id")
+        for row in rows:
+            if row.get("target_type") == target_type and row.get("target_id") == target_id:
+                return dict(row)
+        return None
+
+
+class FakePulseTriggerDirtyTargets:
+    def __init__(self, token_radar: FakeTokenRadar) -> None:
+        self.token_radar = token_radar
+        self.windows = ("1h",)
+        self.scopes = ("all",)
+        self.claim_calls = 0
+        self.done: list[dict[str, Any]] = []
+        self.errors: list[dict[str, Any]] = []
+        self.rescheduled: list[dict[str, Any]] = []
+
+    def configure(self, *, windows: tuple[str, ...], scopes: tuple[str, ...]) -> None:
+        self.windows = windows
+        self.scopes = scopes
+
+    def queue_depth(self, **_: Any) -> int:
+        return len(self._claim_candidates())
+
+    def claim_due(self, *, limit: int, **_: Any) -> list[dict[str, Any]]:
+        self.claim_calls += 1
+        return self._claim_candidates()[: max(0, int(limit))]
+
+    def mark_done(self, claims: list[dict[str, Any]], **_: Any) -> int:
+        self.done.extend(claims)
+        return len(claims)
+
+    def mark_error(self, claims: list[dict[str, Any]], **kwargs: Any) -> int:
+        self.errors.append({"claims": list(claims), **kwargs})
+        return len(claims)
+
+    def reschedule(self, claims: list[dict[str, Any]], **kwargs: Any) -> int:
+        self.rescheduled.append({"claims": list(claims), **kwargs})
+        return len(claims)
+
+    def _claim_candidates(self) -> list[dict[str, Any]]:
+        claims: list[dict[str, Any]] = []
+        if self.token_radar.rows_by_window_scope:
+            row_sets = self.token_radar.rows_by_window_scope.items()
+        else:
+            row_sets = [
+                ((window, scope), self.token_radar.rows)
+                for window in self.windows
+                for scope in self.scopes
+            ]
+        for (window, scope), rows in row_sets:
+            for row in rows:
+                target_type = str(row.get("target_type") or "")
+                target_id = str(row.get("target_id") or "")
+                if not target_type or not target_id:
+                    continue
+                claims.append(
+                    {
+                        "target_type": target_type,
+                        "target_id": target_id,
+                        "window": str(window),
+                        "scope": str(scope),
+                        "payload_hash": f"pulse-trigger:{window}:{scope}:{target_type}:{target_id}",
+                        "dirty_reason": "token_radar_changed",
+                        "source_watermark_ms": int(
+                            row.get("source_max_received_at_ms")
+                            or row.get("computed_at_ms")
+                            or NOW_MS
+                        ),
+                        "lease_owner": "pulse_candidate",
+                        "attempt_count": 1,
+                    }
+                )
+        return claims
 
 
 class FakeTokenTargets:

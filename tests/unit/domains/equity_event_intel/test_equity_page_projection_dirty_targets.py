@@ -355,7 +355,7 @@ def test_event_processing_enqueues_projection_and_matching_calendar_targets_in_s
     assert equity_repo.conn.commits == 1
     assert dirty_repo.enqueue_commits == [False]
     target_keys = {(row["projection_name"], row["target_kind"], row["target_id"]) for row in dirty_repo.enqueued}
-    assert ("brief_input", "company_event", event_id) not in target_keys
+    assert ("brief_input", "company_event", event_id) in target_keys
     for projection_name in ("story", "page", "timeline", "alert"):
         assert (projection_name, "company_event", event_id) in target_keys
         assert (projection_name, "company_event", "old-event-1") in target_keys

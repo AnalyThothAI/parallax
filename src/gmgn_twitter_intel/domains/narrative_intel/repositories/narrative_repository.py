@@ -18,11 +18,11 @@ from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
 from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
     text_fingerprint,
 )
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_currentness import (
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_currentness import (
     public_currentness,
     unsupported_digest_sentinel,
 )
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import DIGEST_WINDOWS
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import DIGEST_WINDOWS
 
 _SEMANTIC_COVERAGE_KEYS = (
     "source_event_count",
@@ -45,6 +45,7 @@ class NarrativeRepository:
         *,
         now_ms: int,
         limit: int | None = None,
+        commit: bool = True,
     ) -> dict[str, int]:
         upserted = 0
         selected = list(rows)[: max(1, int(limit))] if limit is not None else list(rows)
@@ -132,18 +133,72 @@ class NarrativeRepository:
                 payload,
             )
             upserted += 1
-        _commit_if_available(self.conn)
+        if commit:
+            _commit_if_available(self.conn)
         return {"upserted": upserted, "seen": len(selected)}
 
-    def admitted_radar_rows(
+    def source_set_for_admission(
         self,
         *,
+        target_type: str,
+        target_id: str,
+        since_ms: int,
+        until_ms: int,
+        watched_only: bool,
+        limit: int,
+    ) -> dict[str, Any]:
+        watched_clause = "AND events.is_watched = true" if watched_only else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              events.event_id,
+              events.text_clean AS text_clean,
+              events.received_at_ms AS source_received_at_ms,
+              events.author_handle,
+              events.tweet_id,
+              events.raw_json AS reference_json
+            FROM token_intent_resolutions AS resolution
+            JOIN events ON events.event_id = resolution.event_id
+            WHERE resolution.target_type = %s
+              AND resolution.target_id = %s
+              AND resolution.is_current = true
+              AND events.received_at_ms >= %s
+              AND events.received_at_ms <= %s
+              {watched_clause}
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
+            LIMIT %s
+            """,
+            (target_type, target_id, int(since_ms), int(until_ms), int(limit)),
+        ).fetchall()
+        source_rows = [_row(row) for row in rows]
+        event_ids = [str(row["event_id"]) for row in source_rows if row.get("event_id")]
+        max_received_at_ms = max((_int(row.get("source_received_at_ms")) or 0 for row in source_rows), default=None)
+        return {
+            "source_event_ids": event_ids,
+            "source_rows": [
+                {
+                    **row,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                }
+                for row in source_rows
+            ],
+            "source_event_count": len(event_ids),
+            "independent_author_count": _author_count(source_rows),
+            "source_max_received_at_ms": max_received_at_ms,
+        }
+
+    def load_radar_admission_target(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
         window: str,
         scope: str,
-        limit: int,
         projection_version: str,
-    ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
+        schema_version: str,
+    ) -> dict[str, Any]:
+        radar_row = self.conn.execute(
             """
             WITH latest AS (
               SELECT computed_at_ms, row_count
@@ -172,11 +227,10 @@ class NarrativeRepository:
               ON token_radar_current_rows.projection_version = %s
              AND token_radar_current_rows."window" = %s
              AND token_radar_current_rows.scope = %s
+             AND token_radar_current_rows.target_type = %s
+             AND token_radar_current_rows.target_id = %s
             WHERE latest.row_count > 0
-              AND token_radar_current_rows.target_type IS NOT NULL
-              AND token_radar_current_rows.target_id IS NOT NULL
-            ORDER BY token_radar_current_rows.rank ASC
-            LIMIT %s
+            LIMIT 1
             """,
             (
                 projection_version,
@@ -185,110 +239,49 @@ class NarrativeRepository:
                 projection_version,
                 window,
                 scope,
-                int(limit),
+                target_type,
+                target_id,
             ),
-        ).fetchall()
-        return [_row(row) for row in rows]
+        ).fetchone()
+        return {
+            "radar_row": _row(radar_row) if radar_row else None,
+            "existing_admission": self.current_admission_for_target(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version=schema_version,
+            ),
+        }
 
-    def source_set_for_admission(
+    def stale_admission_target(
         self,
         *,
         target_type: str,
         target_id: str,
-        since_ms: int,
-        until_ms: int,
-        watched_only: bool,
-        limit: int,
-    ) -> dict[str, Any]:
-        watched_clause = "AND events.is_watched = true" if watched_only else ""
-        rows = self.conn.execute(
-            f"""
-            SELECT
-              events.event_id,
-              events.received_at_ms AS source_received_at_ms,
-              events.author_handle
-            FROM token_intent_resolutions AS resolution
-            JOIN events ON events.event_id = resolution.event_id
-            WHERE resolution.target_type = %s
-              AND resolution.target_id = %s
-              AND resolution.is_current = true
-              AND events.received_at_ms >= %s
-              AND events.received_at_ms <= %s
-              {watched_clause}
-            ORDER BY events.received_at_ms DESC, events.event_id DESC
-            LIMIT %s
-            """,
-            (target_type, target_id, int(since_ms), int(until_ms), int(limit)),
-        ).fetchall()
-        source_rows = [_row(row) for row in rows]
-        event_ids = [str(row["event_id"]) for row in source_rows if row.get("event_id")]
-        max_received_at_ms = max((_int(row.get("source_received_at_ms")) or 0 for row in source_rows), default=None)
-        return {
-            "source_event_ids": event_ids,
-            "source_event_count": len(event_ids),
-            "independent_author_count": _author_count(source_rows),
-            "source_max_received_at_ms": max_received_at_ms,
-        }
-
-    def admissions_for_window_scope(
-        self,
-        *,
         window: str,
         scope: str,
         schema_version: str,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM narrative_admissions
-            WHERE "window" = %s
-              AND scope = %s
-              AND schema_version = %s
-            ORDER BY priority DESC, last_seen_at_ms DESC
-            LIMIT %s
-            """,
-            (window, scope, schema_version, int(limit)),
-        ).fetchall()
-        return [_row(row) for row in rows]
-
-    def delete_admissions_outside_frontier(
-        self,
-        *,
-        window: str,
-        scope: str,
-        schema_version: str,
-        active_target_keys: Sequence[tuple[str, str]],
         now_ms: int,
+        commit: bool = True,
     ) -> dict[str, int]:
-        keys = {(str(target_type), str(target_id)) for target_type, target_id in active_target_keys}
-        active_keys = [f"{target_type}\t{target_id}" for target_type, target_id in sorted(keys)]
-        stale_digests = self.conn.execute(
-            """
-            DELETE FROM token_discussion_digests AS digest
-            WHERE digest.schema_version = %s
-              AND digest."window" = %s
-              AND digest.scope = %s
-              AND NOT ((digest.target_type || E'\t' || digest.target_id) = ANY(%s::text[]))
-            """,
-            (schema_version, window, scope, active_keys),
-        )
         admissions = self.conn.execute(
             """
             DELETE FROM narrative_admissions AS admissions
-            WHERE admissions.schema_version = %s
+            WHERE admissions.target_type = %s
+              AND admissions.target_id = %s
               AND admissions."window" = %s
               AND admissions.scope = %s
-              AND NOT ((admissions.target_type || E'\t' || admissions.target_id) = ANY(%s::text[]))
+              AND admissions.schema_version = %s
             """,
-            (schema_version, window, scope, active_keys),
+            (target_type, target_id, window, scope, schema_version),
         )
-        obsolete_semantics = self._delete_semantics_outside_current_admissions(schema_version=schema_version)
-        _commit_if_available(self.conn)
+        if commit:
+            _commit_if_available(self.conn)
         return {
-            "deleted_admissions": int(getattr(admissions, "rowcount", 0) or 0),
-            "deleted_digests": int(getattr(stale_digests, "rowcount", 0) or 0),
-            "deleted_obsolete_semantics": int(obsolete_semantics),
+            "staled_admissions": int(getattr(admissions, "rowcount", 0) or 0),
+            "staled_digests": 0,
+            "staled_semantics": 0,
         }
 
     def due_admissions_for_semantics(
@@ -629,6 +622,7 @@ class NarrativeRepository:
         schema_version: str,
         model_version: str,
         now_ms: int,
+        commit: bool = True,
     ) -> dict[str, int]:
         inserted = 0
         existing = 0
@@ -670,8 +664,133 @@ class NarrativeRepository:
                 inserted += 1
             else:
                 existing += 1
-        _commit_if_available(self.conn)
+        if commit:
+            _commit_if_available(self.conn)
         return {"inserted": inserted, "existing": existing}
+
+    def mention_semantics_queue_depth(self, *, now_ms: int) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM token_mention_semantics
+            WHERE status IN ('queued', 'retryable_error', 'stale')
+              AND next_retry_at_ms <= %s
+              AND (leased_until_ms IS NULL OR leased_until_ms <= %s)
+            """,
+            (int(now_ms), int(now_ms)),
+        ).fetchone()
+        return int(row["count"] if row else 0)
+
+    def claim_due_mention_semantics(
+        self,
+        *,
+        now_ms: int,
+        limit: int,
+        lease_owner: str,
+        lease_ms: int,
+        max_per_target: int | None = None,
+    ) -> list[dict[str, Any]]:
+        per_target_limit = max(1, int(max_per_target or limit or 1))
+        rows = self.conn.execute(
+            """
+            WITH ranked AS (
+              SELECT semantics.semantic_id,
+                     row_number() OVER (
+                       PARTITION BY semantics.target_type, semantics.target_id
+                       ORDER BY semantics.source_received_at_ms DESC, semantics.semantic_id ASC
+                     ) AS target_rank
+              FROM token_mention_semantics AS semantics
+              WHERE semantics.status IN ('queued', 'retryable_error', 'stale')
+                AND semantics.next_retry_at_ms <= %(now_ms)s
+                AND (
+                  semantics.leased_until_ms IS NULL
+                  OR semantics.leased_until_ms <= %(now_ms)s
+                )
+            ),
+            due AS (
+              SELECT semantics.semantic_id
+              FROM token_mention_semantics AS semantics
+              JOIN ranked ON ranked.semantic_id = semantics.semantic_id
+              WHERE ranked.target_rank <= %(per_target_limit)s
+              ORDER BY semantics.source_received_at_ms DESC, semantics.semantic_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE OF semantics SKIP LOCKED
+            ),
+            claimed AS (
+              UPDATE token_mention_semantics AS semantics
+              SET leased_until_ms = %(leased_until_ms)s,
+                  lease_owner = %(lease_owner)s,
+                  attempt_count = semantics.attempt_count + 1,
+                  claimed_at_ms = %(now_ms)s,
+                  last_error = NULL
+              FROM due
+              WHERE semantics.semantic_id = due.semantic_id
+              RETURNING semantics.*
+            )
+            SELECT claimed.*,
+                   events.text_clean AS text_clean,
+                   events.author_handle,
+                   events.tweet_id,
+                   events.raw_json AS reference_json
+            FROM claimed
+            JOIN events ON events.event_id = claimed.event_id
+            ORDER BY claimed.source_received_at_ms DESC, claimed.semantic_id ASC
+            """,
+            {
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + max(1, int(lease_ms)),
+                "lease_owner": str(lease_owner),
+                "per_target_limit": per_target_limit,
+                "limit": max(0, int(limit)),
+            },
+        ).fetchall()
+        _commit_if_available(self.conn)
+        return [_row(row) for row in rows]
+
+    def release_mention_semantics_claims(
+        self,
+        claims: Sequence[dict[str, Any]],
+        *,
+        next_retry_at_ms: int,
+        now_ms: int,
+        error: str | None = None,
+    ) -> int:
+        records = _semantic_claim_records(claims)
+        if not records:
+            return 0
+        cursor = self.conn.execute(
+            """
+            WITH claimed AS (
+              SELECT *
+              FROM jsonb_to_recordset(%s::jsonb) AS claim(
+                semantic_id text,
+                text_fingerprint text,
+                lease_owner text,
+                attempt_count integer
+              )
+            )
+            UPDATE token_mention_semantics AS semantics
+            SET leased_until_ms = NULL,
+                lease_owner = NULL,
+                claimed_at_ms = NULL,
+                next_retry_at_ms = %s,
+                last_error = %s,
+                error = COALESCE(%s, semantics.error)
+            FROM claimed
+            WHERE semantics.semantic_id = claimed.semantic_id
+              AND semantics.text_fingerprint = claimed.text_fingerprint
+              AND semantics.lease_owner = claimed.lease_owner
+              AND semantics.attempt_count = claimed.attempt_count
+            """,
+            (
+                _json(records),
+                int(next_retry_at_ms),
+                None if error is None else str(error)[:500],
+                None if error is None else str(error)[:500],
+            ),
+        )
+        _commit_if_available(self.conn)
+        return int(getattr(cursor, "rowcount", 0) or 0)
 
     def mark_admissions_semantics_scanned(
         self,
@@ -922,6 +1041,7 @@ class NarrativeRepository:
         labels: Sequence[dict[str, Any]],
         failures: Sequence[dict[str, Any]],
         now_ms: int,
+        commit: bool = True,
     ) -> dict[str, int]:
         labeled = 0
         unavailable = 0
@@ -946,32 +1066,15 @@ class NarrativeRepository:
                     raw_label_json = %s,
                     model_run_id = %s,
                     computed_at_ms = %s,
-                    error = NULL
-                WHERE (
-                    semantic_id = %s
-                    OR (
-                      COALESCE(%s, '') = ''
-                      AND event_id = %s
-                      AND target_type = %s
-                      AND target_id = %s
-                      AND schema_version = %s
-                      AND text_fingerprint = %s
-                    )
-                    OR (
-                      COALESCE(%s, '') = ''
-                      AND COALESCE(%s, '') = ''
-                      AND event_id = %s
-                      AND target_type = %s
-                      AND target_id = %s
-                      AND (
-                        SELECT COUNT(*)
-                        FROM token_mention_semantics AS matching
-                        WHERE matching.event_id = token_mention_semantics.event_id
-                          AND matching.target_type = token_mention_semantics.target_type
-                          AND matching.target_id = token_mention_semantics.target_id
-                      ) = 1
-                    )
-                )
+                    error = NULL,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    claimed_at_ms = NULL,
+                    last_error = NULL
+                WHERE semantic_id = %s
+                  AND text_fingerprint = %s
+                  AND lease_owner = %s
+                  AND attempt_count = %s
                 """,
                 (
                     status,
@@ -986,18 +1089,10 @@ class NarrativeRepository:
                     _json(label.get("raw_label") or label),
                     run_id,
                     now_ms,
-                    str(label.get("semantic_id") or ""),
-                    str(label.get("semantic_id") or ""),
-                    _required(label, "event_id"),
-                    _required(label, "target_type"),
-                    _required(label, "target_id"),
-                    str(label.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
-                    str(label.get("text_fingerprint") or ""),
-                    str(label.get("semantic_id") or ""),
-                    str(label.get("text_fingerprint") or ""),
-                    _required(label, "event_id"),
-                    _required(label, "target_type"),
-                    _required(label, "target_id"),
+                    _required(label, "semantic_id"),
+                    _required(label, "text_fingerprint"),
+                    _required(label, "lease_owner"),
+                    _required_int(label, "attempt_count"),
                 ),
             )
             if int(getattr(cursor, "rowcount", 0) or 0) > 0:
@@ -1015,48 +1110,23 @@ class NarrativeRepository:
                         retry_count = retry_count + 1,
                         next_retry_at_ms = 0,
                         computed_at_ms = %s,
-                        error = %s
-                    WHERE (
-                        semantic_id = %s
-                        OR (
-                          COALESCE(%s, '') = ''
-                          AND event_id = %s
-                          AND target_type = %s
-                          AND target_id = %s
-                          AND schema_version = %s
-                          AND text_fingerprint = %s
-                        )
-                        OR (
-                          COALESCE(%s, '') = ''
-                          AND COALESCE(%s, '') = ''
-                          AND event_id = %s
-                          AND target_type = %s
-                          AND target_id = %s
-                          AND (
-                            SELECT COUNT(*)
-                            FROM token_mention_semantics AS matching
-                            WHERE matching.event_id = token_mention_semantics.event_id
-                              AND matching.target_type = token_mention_semantics.target_type
-                              AND matching.target_id = token_mention_semantics.target_id
-                          ) = 1
-                        )
-                    )
+                        error = %s,
+                        leased_until_ms = NULL,
+                        lease_owner = NULL,
+                        claimed_at_ms = NULL,
+                        last_error = NULL
+                    WHERE semantic_id = %s
+                      AND text_fingerprint = %s
+                      AND lease_owner = %s
+                      AND attempt_count = %s
                     """,
                     (
                         now_ms,
                         str(failure.get("error") or "provider_failure"),
-                        str(failure.get("semantic_id") or ""),
-                        str(failure.get("semantic_id") or ""),
-                        _required(failure, "event_id"),
-                        _required(failure, "target_type"),
-                        _required(failure, "target_id"),
-                        str(failure.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
-                        str(failure.get("text_fingerprint") or ""),
-                        str(failure.get("semantic_id") or ""),
-                        str(failure.get("text_fingerprint") or ""),
-                        _required(failure, "event_id"),
-                        _required(failure, "target_type"),
-                        _required(failure, "target_id"),
+                        _required(failure, "semantic_id"),
+                        _required(failure, "text_fingerprint"),
+                        _required(failure, "lease_owner"),
+                        _required_int(failure, "attempt_count"),
                     ),
                 )
                 unavailable += int(getattr(cursor, "rowcount", 0) or 0)
@@ -1067,53 +1137,89 @@ class NarrativeRepository:
                     SET status = 'retryable_error',
                         retry_count = retry_count + 1,
                         next_retry_at_ms = %s,
-                        error = %s
-                    WHERE (
-                        semantic_id = %s
-                        OR (
-                          COALESCE(%s, '') = ''
-                          AND event_id = %s
-                          AND target_type = %s
-                          AND target_id = %s
-                          AND schema_version = %s
-                          AND text_fingerprint = %s
-                        )
-                        OR (
-                          COALESCE(%s, '') = ''
-                          AND COALESCE(%s, '') = ''
-                          AND event_id = %s
-                          AND target_type = %s
-                          AND target_id = %s
-                          AND (
-                            SELECT COUNT(*)
-                            FROM token_mention_semantics AS matching
-                            WHERE matching.event_id = token_mention_semantics.event_id
-                              AND matching.target_type = token_mention_semantics.target_type
-                              AND matching.target_id = token_mention_semantics.target_id
-                          ) = 1
-                        )
-                    )
+                        error = %s,
+                        leased_until_ms = NULL,
+                        lease_owner = NULL,
+                        claimed_at_ms = NULL,
+                        last_error = NULL
+                    WHERE semantic_id = %s
+                      AND text_fingerprint = %s
+                      AND lease_owner = %s
+                      AND attempt_count = %s
                     """,
                     (
                         int(failure.get("next_retry_at_ms") or now_ms + 60_000),
                         str(failure.get("error") or "provider_failure"),
-                        str(failure.get("semantic_id") or ""),
-                        str(failure.get("semantic_id") or ""),
-                        _required(failure, "event_id"),
-                        _required(failure, "target_type"),
-                        _required(failure, "target_id"),
-                        str(failure.get("schema_version") or NARRATIVE_SCHEMA_VERSION),
-                        str(failure.get("text_fingerprint") or ""),
-                        str(failure.get("semantic_id") or ""),
-                        str(failure.get("text_fingerprint") or ""),
-                        _required(failure, "event_id"),
-                        _required(failure, "target_type"),
-                        _required(failure, "target_id"),
+                        _required(failure, "semantic_id"),
+                        _required(failure, "text_fingerprint"),
+                        _required(failure, "lease_owner"),
+                        _required_int(failure, "attempt_count"),
                     ),
                 )
                 failed += int(getattr(cursor, "rowcount", 0) or 0)
-        _commit_if_available(self.conn)
+        if commit:
+            _commit_if_available(self.conn)
         return {"labeled": labeled, "semantic_unavailable": unavailable, "failed": failed}
+
+    def digest_dirty_targets_for_mention_semantics_claims(
+        self,
+        claims: Sequence[dict[str, Any]],
+        *,
+        projection_version: str,
+        schema_version: str,
+    ) -> list[dict[str, Any]]:
+        records = _semantic_digest_claim_records(claims)
+        if not records:
+            return []
+        rows = self.conn.execute(
+            """
+            WITH claimed AS (
+              SELECT *
+              FROM unnest(
+                %(semantic_ids)s::text[],
+                %(event_ids)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[]
+              ) AS claimed(semantic_id, event_id, target_type, target_id)
+            )
+            SELECT DISTINCT ON (
+              admissions.target_type,
+              admissions.target_id,
+              admissions."window",
+              admissions.scope
+            )
+              admissions.target_type,
+              admissions.target_id,
+              admissions."window",
+              admissions.scope,
+              %(projection_version)s AS projection_version,
+              admissions.schema_version,
+              COALESCE(admissions.source_max_received_at_ms, admissions.source_window_end_ms, 0) AS source_watermark_ms,
+              COALESCE(admissions.priority, 0) AS priority
+            FROM claimed
+            JOIN narrative_admissions AS admissions
+              ON admissions.target_type = claimed.target_type
+             AND admissions.target_id = claimed.target_id
+             AND admissions.schema_version = %(schema_version)s
+             AND admissions.status = 'admitted'
+             AND admissions.source_event_ids_json ? claimed.event_id
+            ORDER BY
+              admissions.target_type,
+              admissions.target_id,
+              admissions."window",
+              admissions.scope,
+              source_watermark_ms DESC
+            """,
+            {
+                "semantic_ids": [str(record["semantic_id"]) for record in records],
+                "event_ids": [str(record["event_id"]) for record in records],
+                "target_types": [str(record["target_type"]) for record in records],
+                "target_ids": [str(record["target_id"]) for record in records],
+                "projection_version": str(projection_version),
+                "schema_version": str(schema_version),
+            },
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def due_digest_targets(
         self, *, now_ms: int, limit: int, windows: tuple[str, ...] = ("1h",), scopes: tuple[str, ...] = ("all",)
@@ -1979,6 +2085,34 @@ def _stable_ids(values: Sequence[str]) -> list[str]:
     return sorted({str(value).strip() for value in values if str(value).strip()})
 
 
+def _semantic_claim_records(claims: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "semantic_id": _required(claim, "semantic_id"),
+            "text_fingerprint": _required(claim, "text_fingerprint"),
+            "lease_owner": _required(claim, "lease_owner"),
+            "attempt_count": _required_int(claim, "attempt_count"),
+        }
+        for claim in claims
+    ]
+
+
+def _semantic_digest_claim_records(claims: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    records: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for claim in claims:
+        semantic_id = _required(claim, "semantic_id")
+        event_id = _required(claim, "event_id")
+        target_type = _required(claim, "target_type")
+        target_id = _required(claim, "target_id")
+        records[(semantic_id, event_id, target_type, target_id)] = {
+            "semantic_id": semantic_id,
+            "event_id": event_id,
+            "target_type": target_type,
+            "target_id": target_id,
+        }
+    return list(records.values())
+
+
 def _digest_payload(digest: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
     source_event_ids = _json_list(digest.get("source_event_ids") or digest.get("source_event_ids_json"))
     source_fingerprint = digest.get("source_fingerprint")
@@ -2095,6 +2229,13 @@ def _required(row: dict[str, Any], key: str) -> str:
     if not value:
         raise ValueError(f"missing required narrative repository value: {key}")
     return value
+
+
+def _required_int(row: dict[str, Any], key: str) -> int:
+    value = row.get(key)
+    if value is None:
+        raise ValueError(f"missing required narrative repository value: {key}")
+    return int(value)
 
 
 def _clean(value: Any) -> str | None:

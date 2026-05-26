@@ -229,23 +229,17 @@ class FakeRepos:
         active_targets: list[dict[str, Any]],
         latest_ticks: dict[tuple[str, str], dict[str, Any]],
     ) -> None:
-        self.registry = FakeRegistry(active_targets)
+        self.token_capture_tiers = FakeTokenCaptureTiers(active_targets)
         self.market_ticks = FakeMarketTickRepo(latest_ticks)
 
 
-class FakeRegistry:
+class FakeTokenCaptureTiers:
     def __init__(self, targets: list[dict[str, Any]]) -> None:
         self._targets = targets
         self.calls: list[dict[str, Any]] = []
 
-    def active_live_market_targets(
-        self,
-        *,
-        projection_version: str,
-        since_ms: int,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        self.calls.append({"projection_version": projection_version, "since_ms": since_ms, "limit": limit})
+    def live_target_rows(self, *, limit: int) -> list[dict[str, Any]]:
+        self.calls.append({"limit": limit})
         return list(self._targets)
 
 

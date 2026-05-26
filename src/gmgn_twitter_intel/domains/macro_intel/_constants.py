@@ -13,6 +13,7 @@ MACRO_PROVIDER_SERIES_TO_CONCEPT = {
     "fred:WRBWFRBL": "liquidity:reserve_balances",
     "fred:RRPONTSYD": "liquidity:on_rrp",
     "nyfed:RRP": "liquidity:nyfed_rrp",
+    "nyfed:SRF": "liquidity:srf",
     "nyfed:SOFR": "liquidity:sofr",
     "treasury_fiscal:operating_cash_balance": "liquidity:tga",
     "fred:DFF": "fed:dff",

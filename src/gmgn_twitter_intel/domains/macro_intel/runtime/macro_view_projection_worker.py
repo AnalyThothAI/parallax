@@ -42,6 +42,11 @@ class MacroViewProjectionWorker(WorkerBase):
         return WorkerResult(
             processed=1,
             notes={
+                "claimed": 1,
+                "queue_depth": 0,
+                "source_rows_scanned": len(observations),
+                "targets_loaded": len(MACRO_CORE_CONCEPTS),
+                "rows_written": 1,
                 "projection_version": str(snapshot["projection_version"]),
                 "status": str(snapshot["status"]),
                 "regime": str(snapshot["regime"]),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.asset_market.runtime import token_image_mirror_worker as worker_module
@@ -18,7 +18,6 @@ def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monk
         statement_timeout_seconds=120,
     )
 
-    monkeypatch.setattr(worker_module, "TokenImageSourceQuery", FakeSourceQuery)
     monkeypatch.setattr(worker_module, "TokenImageMirrorService", lambda **kwargs: FakeMirrorService(db=db, **kwargs))
 
     worker = TokenImageMirrorWorker(
@@ -32,35 +31,43 @@ def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monk
     result = asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
 
     assert result.notes["result"] == {
-        "selected": 2,
-        "pending_upserted": 2,
+        "selected": 4,
+        "pending_upserted": 3,
         "ready_existing": 1,
-        "claimed": 3,
+        "unsupported_existing": 0,
+        "claimed": 4,
+        "queue_depth": 0,
+        "source_rows_scanned": 0,
+        "targets_loaded": 4,
+        "rows_written": 3,
         "mirrored": 1,
         "error": 1,
         "unsupported": 1,
         "started_at_ms": 1_700_000_000_000,
         "finished_at_ms": 1_700_000_000_000,
     }
-    assert result.processed == 3
+    assert result.processed == 4
     assert result.failed == 1
-    assert db.statement_timeouts == [120]
+    assert db.statement_timeouts == [120, 120, 120, 120]
     assert db.repo.upserted_now_ms == 1_700_000_000_000
-    assert db.repo.claimed == (1_700_000_000_000, 3)
-    assert db.repo.ready_source_urls == ["https://gmgn.ai/external-res/ready.png", "https://gmgn.ai/external-res/new.png"]
-
-
-class FakeSourceQuery:
-    def __init__(self, conn) -> None:
-        self.conn = conn
-
-    def candidate_sources(self, *, now_ms: int, source_limit: int):
-        assert now_ms == 1_700_000_000_000
-        assert source_limit == 2
-        return [
-            {"source_url": "https://gmgn.ai/external-res/ready.png", "source_provider": "gmgn", "source_kind": "x"},
-            {"source_url": "https://gmgn.ai/external-res/new.png", "source_provider": "gmgn", "source_kind": "x"},
-        ]
+    assert db.dirty.claimed == {
+        "now_ms": 1_700_000_000_000,
+        "limit": 3,
+        "lease_owner": "token_image_mirror",
+        "lease_ms": 600_000,
+        "commit": True,
+    }
+    assert db.repo.terminal_source_urls == [
+        "https://gmgn.ai/external-res/ready.png",
+        "https://gmgn.ai/external-res/new.png",
+        "https://gmgn.ai/external-res/bad.png",
+        "https://gmgn.ai/external-res/unsupported.svg",
+    ]
+    assert db.profile_dirty.enqueued_targets == [
+        ("Asset", "asset-ready"),
+        ("Asset", "asset-new"),
+        ("Asset", "asset-unsupported"),
+    ]
 
 
 class FakeMirrorService:
@@ -72,31 +79,27 @@ class FakeMirrorService:
     def mirror_source(self, row, *, now_ms: int):
         assert now_ms == 1_700_000_000_000
         assert self.db.open_sessions == 0
-        return {"status": row["outcome"], "source_url": row["source_url"]}
+        outcomes = {
+            "https://gmgn.ai/external-res/new.png": "ready",
+            "https://gmgn.ai/external-res/bad.png": "error",
+            "https://gmgn.ai/external-res/unsupported.svg": "unsupported",
+        }
+        return {"status": outcomes[row["source_url"]], "source_url": row["source_url"]}
 
 
 class FakeTokenImageRepo:
     def __init__(self) -> None:
         self.upserted_now_ms: int | None = None
-        self.claimed: tuple[int, int] | None = None
-        self.ready_source_urls: list[str] = []
+        self.terminal_source_urls: list[str] = []
 
     def upsert_pending_sources(self, rows, *, now_ms: int, commit: bool = True):
-        assert commit is True
+        assert commit is False
         self.upserted_now_ms = now_ms
         return len(rows)
 
-    def ready_by_source_urls(self, source_urls):
-        self.ready_source_urls = list(source_urls)
+    def terminal_by_source_urls(self, source_urls):
+        self.terminal_source_urls = list(source_urls)
         return {"https://gmgn.ai/external-res/ready.png": {"status": "ready"}}
-
-    def claim_due_sources(self, *, now_ms: int, limit: int):
-        self.claimed = (now_ms, limit)
-        return [
-            {"source_url": "https://gmgn.ai/external-res/new.png", "outcome": "ready"},
-            {"source_url": "https://gmgn.ai/external-res/bad.png", "outcome": "error"},
-            {"source_url": "https://gmgn.ai/external-res/unsupported.svg", "outcome": "unsupported"},
-        ]
 
 
 class FakeDB:
@@ -104,6 +107,8 @@ class FakeDB:
         self.open_sessions = 0
         self.statement_timeouts: list[float] = []
         self.repo = FakeTokenImageRepo()
+        self.dirty = FakeImageSourceDirtyTargets()
+        self.profile_dirty = FakeProfileDirtyTargets()
 
     @contextmanager
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
@@ -111,6 +116,70 @@ class FakeDB:
         self.statement_timeouts.append(statement_timeout_seconds)
         self.open_sessions += 1
         try:
-            yield SimpleNamespace(conn=object(), token_image_assets=self.repo)
+            yield FakeRepos(self)
         finally:
             self.open_sessions -= 1
+
+
+class FakeRepos:
+    def __init__(self, db: FakeDB) -> None:
+        self.conn = object()
+        self.token_image_assets = db.repo
+        self.token_image_source_dirty_targets = db.dirty
+        self.token_profile_current_dirty_targets = db.profile_dirty
+
+    def transaction(self):
+        return nullcontext()
+
+
+class FakeImageSourceDirtyTargets:
+    def __init__(self) -> None:
+        self.claimed: dict | None = None
+        self.done: list[dict] = []
+        self.errors: list[dict] = []
+
+    def claim_due(self, **kwargs):
+        self.claimed = dict(kwargs)
+        return [
+            image_claim("https://gmgn.ai/external-res/ready.png", "asset-ready", "ready"),
+            image_claim("https://gmgn.ai/external-res/new.png", "asset-new", "ready"),
+            image_claim("https://gmgn.ai/external-res/bad.png", "asset-bad", "error"),
+            image_claim("https://gmgn.ai/external-res/unsupported.svg", "asset-unsupported", "unsupported"),
+        ]
+
+    def queue_depth(self, **kwargs):
+        return 0
+
+    def mark_done(self, claims, **kwargs):
+        self.done.extend(dict(claim) for claim in claims)
+        return len(claims)
+
+    def mark_error(self, claims, *, error, **kwargs):
+        self.errors.extend({**dict(claim), "error": error} for claim in claims)
+        return len(claims)
+
+
+class FakeProfileDirtyTargets:
+    def __init__(self) -> None:
+        self.enqueued_targets: list[tuple[str, str]] = []
+
+    def enqueue_targets(self, targets, *, reason, now_ms, commit):
+        self.enqueued_targets.extend((target["target_type"], target["target_id"]) for target in targets)
+        return {"targets": len(targets)}
+
+
+def image_claim(source_url: str, target_id: str, outcome: str) -> dict:
+    return {
+        "source_url": source_url,
+        "source_url_hash": f"hash:{source_url}",
+        "source_provider": "gmgn",
+        "source_kind": "asset_profiles.logo_url",
+        "target_type": "Asset",
+        "target_id": target_id,
+        "raw_ref_json": {"asset_id": target_id},
+        "source_watermark_ms": 1_700_000_000_000,
+        "payload_hash": f"payload:{source_url}",
+        "lease_owner": "token_image_mirror",
+        "attempt_count": 1,
+        "outcome": outcome,
+    }

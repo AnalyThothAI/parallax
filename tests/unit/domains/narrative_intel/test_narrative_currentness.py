@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_currentness import (
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_currentness import (
     narrative_delta_from_currentness,
     public_currentness,
     unsupported_digest_sentinel,

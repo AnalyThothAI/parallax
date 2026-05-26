@@ -1062,6 +1062,12 @@ def test_brief_worker_retry_budget_ignores_stale_failure_started_before_source_r
         run_id_factory=lambda: next(first_run_ids),
     ).run_once_sync()
 
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=[company_event_id],
+        projection_names=["brief_input"],
+        now_ms=NOW_MS + 6_500,
+    )
     second_run_ids = iter(["fresh-after-refresh-run"])
     second = _brief_worker(
         db,
@@ -1095,6 +1101,12 @@ def test_brief_worker_persists_insufficient_for_no_official_evidence_and_does_no
     db = _WorkerDb(postgres_conn)
     wake_bus = _RecordingWakeBus()
     event = _seed_non_official_event(postgres_conn)
+    _enqueue_company_event_projection_targets(
+        postgres_conn,
+        company_event_ids=[event],
+        projection_names=["brief_input"],
+        now_ms=NOW_MS + 1_000,
+    )
     provider = _FakeEquityBriefProvider(db)
     worker = _brief_worker(
         db,
@@ -1130,7 +1142,7 @@ def test_brief_worker_persists_insufficient_for_no_official_evidence_and_does_no
     assert brief["validation_status"] == "attention"
     assert brief["brief_json"]["data_gaps"]
     assert second.skipped == 1
-    assert second.notes["reason"] == "no_events_for_brief"
+    assert second.notes["reason"] == "no_due_brief_targets"
     assert wake_bus.briefs_updated == [1]
 
 

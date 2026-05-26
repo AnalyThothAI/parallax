@@ -27,6 +27,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.mention_semantics import (
     MentionSemanticLabel,
     MentionSemanticsBatchResult,
 )
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.platform.agent_execution import AgentExecutionError, AgentExecutionErrorClass
 from gmgn_twitter_intel.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 
@@ -77,20 +78,52 @@ def test_mention_semantics_worker_calls_provider_outside_db_session():
     asyncio.run(scenario())
 
 
-def test_narrative_admission_worker_rebuilds_current_frontier_source_sets():
+def test_narrative_admission_worker_skips_empty_dirty_queue_without_broad_scan():
+    repo = FakeNarrativeRepository()
+    dirty_targets = FakeDirtyTargetRepository(claims=[])
+    db = FakeDB(repo, narrative_admission_dirty_targets=dirty_targets)
+    worker = NarrativeAdmissionWorker(
+        name="narrative_admission",
+        settings=fake_admission_settings(),
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = worker.run_once_sync(now_ms=10_000)
+
+    assert result.skipped == 1
+    assert result.notes["reason"] == "no_due_narrative_admission_targets"
+    assert result.notes["claimed"] == 0
+    assert result.notes["source_rows_scanned"] == 0
+    assert result.notes["targets_loaded"] == 0
+    assert result.notes["rows_written"] == 0
+    assert dirty_targets.claim_due_calls == [
+        {"now_ms": 10_000, "limit": 10, "lease_owner": "narrative_admission", "lease_ms": 60_000, "commit": False}
+    ]
+    assert repo.admitted_radar_rows_calls == []
+    assert repo.admissions_for_window_scope_calls == []
+    assert repo.deleted_frontiers == []
+    assert repo.load_target_calls == []
+    assert db.transaction_entries == 1
+
+
+def test_narrative_admission_worker_claims_target_and_recomputes_exact_source_set():
     async def scenario():
         repo = FakeNarrativeRepository(
-            radar_rows=[
-                {
-                    "target_type": "chain_token",
-                    "target_id": "solana:So111",
-                    "rank": 1,
-                    "rank_score": 90,
-                    "source_event_ids_json": ["event-1"],
-                    "computed_at_ms": 10_000,
-                    "source_max_received_at_ms": 9_000,
+            target_contexts={
+                ("chain_token", "solana:So111", "1h", "matched"): {
+                    "radar_row": {
+                        "target_type": "chain_token",
+                        "target_id": "solana:So111",
+                        "rank": 1,
+                        "rank_score": 90,
+                        "source_event_ids_json": ["event-old"],
+                        "computed_at_ms": 10_000,
+                        "source_max_received_at_ms": 9_000,
+                    },
+                    "existing_admission": None,
                 }
-            ],
+            },
             source_rows=[
                 {
                     "event_id": "event-1",
@@ -102,7 +135,27 @@ def test_narrative_admission_worker_rebuilds_current_frontier_source_sets():
                 }
             ],
         )
-        db = FakeDB(repo)
+        dirty_targets = FakeDirtyTargetRepository(
+            claims=[
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "matched",
+                    "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "payload_hash": "payload-1",
+                    "lease_owner": "narrative_admission",
+                    "attempt_count": 1,
+                }
+            ]
+        )
+        digest_dirty_targets = FakeDirtyTargetRepository()
+        db = FakeDB(
+            repo,
+            narrative_admission_dirty_targets=dirty_targets,
+            discussion_digest_dirty_targets=digest_dirty_targets,
+        )
         worker = NarrativeAdmissionWorker(
             name="narrative_admission",
             settings=fake_admission_settings(),
@@ -112,20 +165,157 @@ def test_narrative_admission_worker_rebuilds_current_frontier_source_sets():
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.processed == 1
-        assert result.notes["frontier_rows"] == 1
-        assert result.notes["source_events"] == 1
+        assert result.processed == 3
+        assert result.notes["claimed"] == 1
+        assert result.notes["targets_loaded"] == 1
+        assert result.notes["source_rows_scanned"] == 1
+        assert result.notes["rows_written"] == 3
+        assert repo.load_target_calls == [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "1h",
+                "scope": "matched",
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+            }
+        ]
         assert repo.upserted_admissions[0]["source_event_ids"] == ["event-1"]
         assert repo.upserted_admissions[0]["projection_computed_at_ms"] == 10_000
         assert repo.upserted_admissions[0]["source_window_end_ms"] == 10_000
         assert repo.upserted_admissions[0]["source_max_received_at_ms"] == 9_000
         assert repo.upserted_admissions[0]["source_event_count"] == 1
         assert repo.upserted_admissions[0]["independent_author_count"] == 1
+        assert repo.enqueued_source_event_ids == ["event-1"]
+        assert digest_dirty_targets.enqueued_targets == [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "1h",
+                "scope": "matched",
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "source_watermark_ms": 9_000,
+                "priority": repo.upserted_admissions[0]["priority"],
+            }
+        ]
+        assert dirty_targets.mark_done_calls == [{"claims": dirty_targets.claimed, "now_ms": 10_000, "commit": False}]
+        assert repo.admitted_radar_rows_calls == []
+        assert repo.admissions_for_window_scope_calls == []
+        assert repo.deleted_frontiers == []
 
     asyncio.run(scenario())
 
 
-def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_sets():
+def test_narrative_admission_worker_stales_only_claimed_missing_target():
+    repo = FakeNarrativeRepository(
+        target_contexts={
+            ("chain_token", "solana:Exited", "1h", "matched"): {
+                "radar_row": None,
+                "existing_admission": {
+                    "admission_id": "admission-exited",
+                    "target_type": "chain_token",
+                    "target_id": "solana:Exited",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "status": "admitted",
+                    "source_event_ids_json": ["event-exited"],
+                },
+            }
+        }
+    )
+    dirty_targets = FakeDirtyTargetRepository(
+        claims=[
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:Exited",
+                "window": "1h",
+                "scope": "matched",
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "payload_hash": "payload-exit",
+                "lease_owner": "narrative_admission",
+                "attempt_count": 1,
+            }
+        ]
+    )
+    db = FakeDB(repo, narrative_admission_dirty_targets=dirty_targets)
+    worker = NarrativeAdmissionWorker(
+        name="narrative_admission",
+        settings=fake_admission_settings(),
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = worker.run_once_sync(now_ms=10_000)
+
+    assert result.processed == 1
+    assert result.notes["admissions_staled"] == 1
+    assert result.notes["digests_staled"] == 0
+    assert result.notes["semantics_staled"] == 0
+    assert repo.staled_admission_targets == [
+        {
+            "target_type": "chain_token",
+            "target_id": "solana:Exited",
+            "window": "1h",
+            "scope": "matched",
+            "schema_version": NARRATIVE_SCHEMA_VERSION,
+            "now_ms": 10_000,
+            "commit": False,
+        }
+    ]
+    assert repo.deleted_frontiers == []
+    assert dirty_targets.mark_done_calls == [{"claims": dirty_targets.claimed, "now_ms": 10_000, "commit": False}]
+
+
+def test_narrative_admission_worker_marks_claim_error_with_completion_token():
+    repo = FakeNarrativeRepository()
+
+    def fail_load(**kwargs):
+        raise RuntimeError("forced exact load failure")
+
+    repo.load_radar_admission_target = fail_load
+    dirty_targets = FakeDirtyTargetRepository(
+        claims=[
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:Failed",
+                "window": "1h",
+                "scope": "matched",
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "payload_hash": "payload-failed",
+                "lease_owner": "narrative_admission",
+                "attempt_count": 1,
+            }
+        ]
+    )
+    db = FakeDB(repo, narrative_admission_dirty_targets=dirty_targets)
+    worker = NarrativeAdmissionWorker(
+        name="narrative_admission",
+        settings=fake_admission_settings(error_retry_seconds=7),
+        db=db,
+        telemetry=SimpleNamespace(),
+    )
+
+    result = worker.run_once_sync(now_ms=10_000)
+
+    assert result.failed == 1
+    assert result.processed == 0
+    assert dirty_targets.mark_done_calls == []
+    assert dirty_targets.mark_error_calls == [
+        {
+            "claims": dirty_targets.claimed,
+            "error": "RuntimeError: forced exact load failure",
+            "now_ms": 10_000,
+            "retry_ms": 7_000,
+            "commit": False,
+        }
+    ]
+
+
+def test_mention_semantics_worker_empty_queue_does_not_scan_admissions():
     async def scenario():
         repo = FakeNarrativeRepository(
             due_mentions=[],
@@ -167,29 +357,20 @@ def test_mention_semantics_worker_bounds_semantic_enqueue_from_admitted_source_s
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.notes["enqueue_semantic_inserted"] == 2
-        assert result.notes["enqueue_semantic_suppressed_budget"] == 3
-        assert result.notes["enqueue_semantic_pending_before"] == 1
-        assert repo.due_admissions_for_semantics_calls == [
-            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
-        ]
-        assert repo.pending_semantics_count_calls == [
-            {
-                "target_type": "chain_token",
-                "target_id": "solana:So111",
-                "schema_version": "narrative_intel_v1",
-                "model_version": None,
-                "windows": ("1h",),
-                "scopes": ("matched",),
-            }
-        ]
-        assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
-        assert result.processed == 1
+        assert result.skipped == 1
+        assert result.notes["reason"] == "no_due_mentions"
+        assert result.notes["claimed"] == 0
+        assert result.notes["source_rows_scanned"] == 0
+        assert result.notes["targets_loaded"] == 0
+        assert result.notes["rows_written"] == 0
+        assert repo.due_admissions_for_semantics_calls == []
+        assert repo.pending_semantics_count_calls == []
+        assert repo.enqueued_source_event_ids == []
 
     asyncio.run(scenario())
 
 
-def test_mention_semantics_enqueues_missing_rows_even_when_due_rows_exist():
+def test_mention_semantics_worker_claims_only_existing_semantic_rows():
     async def scenario():
         repo = FakeNarrativeRepository(
             due_mentions=[
@@ -209,7 +390,7 @@ def test_mention_semantics_enqueues_missing_rows_even_when_due_rows_exist():
                     "target_id": "solana:So111",
                     "window": "1h",
                     "scope": "all",
-                    "source_event_ids_json": ["event-new"],
+                    "source_event_ids_json": ["event-1"],
                 }
             ],
             source_rows=[
@@ -234,57 +415,50 @@ def test_mention_semantics_enqueues_missing_rows_even_when_due_rows_exist():
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert result.notes["enqueue_semantic_inserted"] == 1
-        assert repo.enqueued_source_event_ids == ["event-new"]
         assert result.notes["claimed"] == 1
+        assert result.notes["source_rows_scanned"] == 0
+        assert result.notes["targets_loaded"] == 1
         assert result.processed == 1
+        assert repo.enqueued_source_event_ids == []
+        assert repo.due_admissions_for_semantics_calls == []
+        assert db.discussion_digest_dirty_targets.enqueued_targets == [
+            {
+                "target_type": "chain_token",
+                "target_id": "solana:So111",
+                "window": "1h",
+                "scope": "all",
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "source_watermark_ms": 0,
+                "priority": 0,
+            }
+        ]
+        assert repo.claim_due_mention_semantics_calls == [
+            {
+                "now_ms": 10_000,
+                "limit": 10,
+                "lease_owner": "mention_semantics",
+                "lease_ms": 60_000,
+                "max_per_target": 3,
+            }
+        ]
 
     asyncio.run(scenario())
 
 
-def test_mention_semantics_enqueue_budget_counts_only_missing_rows():
-    repo = FakeNarrativeRepository(
-        due_mentions=[],
-        due_admissions=[
-            {
-                "admission_id": "admission-1",
-                "target_type": "chain_token",
-                "target_id": "solana:So111",
-                "window": "1h",
-                "scope": "matched",
-                "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
-            }
-        ],
-        source_rows=[
-            {
-                "event_id": f"event-{index}",
-                "target_type": "chain_token",
-                "target_id": "solana:So111",
-                "text_clean": f"SOL breakout {index}",
-                "source_received_at_ms": 9_000 + index,
-            }
-            for index in range(1, 6)
-        ],
-        existing_semantic_event_ids={"event-1", "event-2"},
-    )
+def test_mention_semantics_worker_has_no_runtime_admission_enqueue_path():
+    repo = FakeNarrativeRepository(due_mentions=[])
     db = FakeDB(repo)
     worker = MentionSemanticsWorker(
         name="mention_semantics",
-        settings=fake_settings(
-            max_semantic_rows_enqueued_per_cycle=3,
-            max_pending_semantics_per_target=10,
-        ),
+        settings=fake_settings(),
         db=db,
         telemetry=SimpleNamespace(),
         provider=BarrierNarrativeProvider(db),
     )
 
-    stats = worker._enqueue_missing_from_admissions_sync(now_ms=10_000)
-
-    assert stats["semantic_existing"] == 2
-    assert stats["semantic_inserted"] == 3
-    assert stats["semantic_suppressed_budget"] == 0
-    assert repo.enqueued_source_event_ids == ["event-3", "event-4", "event-5"]
+    assert not hasattr(worker, "_enqueue_missing_from_admissions_sync")
+    assert not hasattr(worker, "_missing_source_rows_for_semantics")
 
 
 def test_mention_semantics_worker_records_provider_failure_without_poisoning_worker_loop():
@@ -337,6 +511,8 @@ def test_mention_semantics_worker_persists_cleanup_when_provider_call_is_cancell
             "target_id": "solana:So111",
             "schema_version": NARRATIVE_SCHEMA_VERSION,
             "text_fingerprint": "fp-1",
+            "lease_owner": "mention_semantics",
+            "attempt_count": 1,
             "error": "worker_timeout_cancelled",
             "next_retry_at_ms": repo.recorded_runs[0]["finished_at_ms"] + 7_000,
         }
@@ -362,8 +538,10 @@ def test_mention_semantics_capacity_denied_does_not_increment_retry_count():
         assert result.failed == 0
         assert result.skipped == 1
         assert result.notes["agent_backpressure"] == "capacity_denied"
+        assert result.notes["rows_written"] == 1
         assert repo.recorded_runs == []
         assert repo.completed_batches == []
+        assert repo.released_semantic_claims[0]["error"] == "capacity_denied"
 
     asyncio.run(scenario())
 
@@ -497,55 +675,54 @@ def test_mention_semantics_worker_hard_cuts_source_age_prune_and_claims_first():
     asyncio.run(scenario())
 
 
-def test_mention_semantics_partial_enqueue_uses_short_retry_and_exposes_missing_backlog():
+def test_mention_semantics_no_start_backpressure_releases_claimed_rows():
     async def scenario():
         repo = FakeNarrativeRepository(
-            due_mentions=[],
-            due_admissions=[
+            due_mentions=[
                 {
-                    "admission_id": "admission-1",
+                    "semantic_id": "semantic-1",
+                    "event_id": "event-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "1h",
-                    "scope": "matched",
-                    "source_event_ids_json": [f"event-{index}" for index in range(1, 6)],
+                    "text_clean": "SOL breakout",
+                    "text_fingerprint": "fp-1",
                 }
-            ],
-            source_rows=[
-                {
-                    "event_id": f"event-{index}",
-                    "target_type": "chain_token",
-                    "target_id": "solana:So111",
-                    "text_clean": f"SOL breakout {index}",
-                    "text_fingerprint": f"fp-{index}",
-                    "source_received_at_ms": 9_000 + index,
-                }
-                for index in range(1, 6)
-            ],
+            ]
         )
         db = FakeDB(repo)
         worker = MentionSemanticsWorker(
             name="mention_semantics",
-            settings=fake_settings(
-                interval_seconds=60.0,
-                max_semantic_rows_enqueued_per_cycle=4,
-                max_semantic_rows_enqueued_per_admission=2,
-                max_pending_semantics_per_target=10,
-                partial_enqueue_retry_seconds=5,
-            ),
+            settings=fake_settings(provider_failure_backoff_seconds=7),
             db=db,
             telemetry=SimpleNamespace(),
-            provider=BarrierNarrativeProvider(db),
+            provider=NoStartNarrativeProvider(),
         )
 
         result = await worker.run_once(now_ms=10_000)
 
-        assert repo.enqueued_source_event_ids == ["event-1", "event-2"]
-        assert result.notes["enqueue_semantic_inserted"] == 2
-        assert result.notes["enqueue_missing_after_enqueue"] == 3
-        assert result.notes["enqueue_semantic_suppressed_budget"] == 3
-        assert repo.semantic_scans == [
-            {"admission_ids": ["admission-1"], "next_due_at_ms": 15_000, "now_ms": 10_000}
+        assert result.skipped == 1
+        assert result.notes["agent_backpressure"] == "capacity_denied"
+        assert result.notes["rows_written"] == 1
+        assert repo.released_semantic_claims == [
+            {
+                "claims": [
+                    {
+                        "schema_version": NARRATIVE_SCHEMA_VERSION,
+                        "retry_count": 0,
+                        "semantic_id": "semantic-1",
+                        "event_id": "event-1",
+                        "target_type": "chain_token",
+                        "target_id": "solana:So111",
+                        "text_clean": "SOL breakout",
+                        "text_fingerprint": "fp-1",
+                        "lease_owner": "mention_semantics",
+                        "attempt_count": 1,
+                    }
+                ],
+                "next_retry_at_ms": 17_000,
+                "now_ms": 10_000,
+                "error": "capacity_denied",
+            }
         ]
 
     asyncio.run(scenario())
@@ -564,8 +741,14 @@ def test_mention_semantics_claim_passes_per_target_cycle_cap():
     rows = worker._claim_due_rows_sync(now_ms=10_000, limit=10)
 
     assert len(rows) == 1
-    assert repo.due_mentions_calls == [
-        {"now_ms": 10_000, "limit": 10, "max_per_target": 3, "windows": ("1h",), "scopes": ("matched",)}
+    assert repo.claim_due_mention_semantics_calls == [
+        {
+            "now_ms": 10_000,
+            "limit": 10,
+            "lease_owner": "mention_semantics",
+            "lease_ms": 60_000,
+            "max_per_target": 3,
+        }
     ]
 
 
@@ -633,16 +816,35 @@ def test_token_discussion_digest_worker_records_provider_failure_without_poisoni
 
         assert result.processed == 0
         assert result.failed == 1
-        assert repo.due_digest_target_calls == [
-            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        assert db.discussion_digest_dirty_targets.claim_due_calls == [
+            {
+                "now_ms": 10_000,
+                "limit": 10,
+                "lease_owner": "token_discussion_digest",
+                "lease_ms": 60_000,
+                "commit": True,
+                "windows": ("1h",),
+                "scopes": ("matched",),
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+            }
         ]
+        assert repo.due_digest_target_calls == []
         assert result.notes["llm_calls"] == 1
         assert result.notes["llm_failures"] == 1
         assert repo.recorded_runs[0]["stage"] == "discussion_digest"
         assert repo.recorded_runs[0]["status"] == "failed"
         assert repo.recorded_runs[0]["trace_metadata_json"]["lane"] == "narrative.discussion_digest"
         assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "TimeoutError"
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 610_000, "now_ms": 10_000}]
+        assert db.discussion_digest_dirty_targets.mark_error_calls == [
+            {
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "error": "TimeoutError: provider timed out",
+                "now_ms": 10_000,
+                "retry_ms": 600_000,
+                "commit": True,
+            }
+        ]
+        assert repo.digest_scans == []
 
     asyncio.run(scenario())
 
@@ -666,13 +868,16 @@ def test_token_discussion_digest_worker_persists_cleanup_when_provider_call_is_c
         assert repo.recorded_runs[0]["status"] == "failed"
         assert repo.recorded_runs[0]["error"] == "worker_timeout_cancelled"
         assert repo.recorded_runs[0]["trace_metadata_json"]["error_type"] == "CancelledError"
-        assert repo.digest_scans == [
+        assert db.discussion_digest_dirty_targets.mark_error_calls == [
             {
-                "admission_ids": ["admission-1"],
-                "next_due_at_ms": repo.recorded_runs[0]["finished_at_ms"] + 7_000,
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "error": "worker_timeout_cancelled",
                 "now_ms": repo.recorded_runs[0]["finished_at_ms"],
+                "retry_ms": 7_000,
+                "commit": True,
             }
         ]
+        assert repo.digest_scans == []
 
     asyncio.run(scenario())
 
@@ -715,11 +920,9 @@ def test_token_discussion_digest_worker_defers_threshold_targets_after_llm_cycle
         assert result.notes["llm_calls"] == 1
         assert result.notes["deferred_llm_budget"] == 1
         assert result.notes["refresh_reasons"]["llm_cycle_budget_exhausted"] == 1
-        assert repo.digest_scans[-1] == {
-            "admission_ids": ["admission-2"],
-            "next_due_at_ms": 11_000,
-            "now_ms": 10_000,
-        }
+        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["claims"][0]["admission_id"] == "admission-2"
+        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["due_at_ms"] == 11_000
+        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["now_ms"] == 10_000
 
     asyncio.run(scenario())
 
@@ -765,10 +968,20 @@ def test_token_discussion_digest_worker_defers_after_provider_failure_budget():
         assert result.notes["llm_failures"] == 1
         assert result.notes["deferred_llm_budget"] == 1
         assert result.notes["refresh_reasons"]["llm_failure_budget_exhausted"] == 1
-        assert repo.digest_scans == [
-            {"admission_ids": ["admission-1"], "next_due_at_ms": 17_000, "now_ms": 10_000},
-            {"admission_ids": ["admission-2"], "next_due_at_ms": 11_000, "now_ms": 10_000},
+        assert db.discussion_digest_dirty_targets.mark_error_calls == [
+            {
+                "claims": [db.discussion_digest_dirty_targets.claimed[0]],
+                "error": "TimeoutError: provider timed out",
+                "now_ms": 10_000,
+                "retry_ms": 7_000,
+                "commit": True,
+            }
         ]
+        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["claims"] == [
+            db.discussion_digest_dirty_targets.claimed[1]
+        ]
+        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["due_at_ms"] == 11_000
+        assert db.discussion_digest_dirty_targets.reschedule_calls[-1]["now_ms"] == 10_000
 
     asyncio.run(scenario())
 
@@ -793,7 +1006,14 @@ def test_digest_capacity_denied_marks_pending_not_failed():
         assert result.notes["failed"] == 0
         assert result.notes["refresh_reasons"]["agent_backpressure"] == 1
         assert repo.recorded_runs == []
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 11_000, "now_ms": 10_000}]
+        assert db.discussion_digest_dirty_targets.reschedule_calls == [
+            {
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "due_at_ms": 11_000,
+                "now_ms": 10_000,
+                "commit": True,
+            }
+        ]
 
     asyncio.run(scenario())
 
@@ -856,7 +1076,14 @@ def test_token_discussion_digest_worker_keeps_labeling_gap_pending_and_reschedul
         assert result.notes["insufficient"] == 0
         assert repo.replaced_digests[0]["status"] == "pending"
         assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_labeling_pending"}]
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 70_000, "now_ms": 10_000}]
+        assert db.discussion_digest_dirty_targets.reschedule_calls == [
+            {
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "due_at_ms": 70_000,
+                "now_ms": 10_000,
+                "commit": True,
+            }
+        ]
 
     asyncio.run(scenario())
 
@@ -886,10 +1113,27 @@ def test_token_discussion_digest_worker_does_not_claim_unsupported_5m_by_default
         result = await worker.run_once(now_ms=10_000)
 
         assert result.skipped == 1
-        assert result.notes == {"reason": "no_due_digest_targets", "claimed": 0}
-        assert repo.due_digest_target_calls == [
-            {"now_ms": 10_000, "limit": 10, "windows": ("1h",), "scopes": ("matched",)}
+        assert result.notes == {
+            "reason": "no_due_digest_targets",
+            "claimed": 0,
+            "queue_depth": 0,
+            "source_rows_scanned": 0,
+            "targets_loaded": 0,
+            "rows_written": 0,
+        }
+        assert db.discussion_digest_dirty_targets.claim_due_calls == [
+            {
+                "now_ms": 10_000,
+                "limit": 10,
+                "lease_owner": "token_discussion_digest",
+                "lease_ms": 60_000,
+                "commit": True,
+                "windows": ("1h",),
+                "scopes": ("matched",),
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+            }
         ]
+        assert repo.due_digest_target_calls == []
         assert result.processed == 0
         assert result.failed == 0
         assert repo.replaced_digests == []
@@ -956,7 +1200,14 @@ def test_token_discussion_digest_worker_defer_below_threshold_delta_with_ready_d
         assert result.notes["deferred_epoch_policy"] == 1
         assert result.notes["refresh_reasons"]["no_material_delta"] == 1
         assert repo.replaced_digests == []
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 910_000, "now_ms": 10_000}]
+        assert db.discussion_digest_dirty_targets.reschedule_calls == [
+            {
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "due_at_ms": 910_000,
+                "now_ms": 10_000,
+                "commit": True,
+            }
+        ]
 
     asyncio.run(scenario())
 
@@ -1106,7 +1357,14 @@ def test_token_discussion_digest_worker_counts_terminal_semantic_unavailable():
         assert result.notes["refresh_reasons"]["semantic_provider_unavailable"] == 1
         assert repo.replaced_digests[0]["status"] == "semantic_unavailable"
         assert repo.replaced_digests[0]["data_gaps"] == [{"reason": "semantic_provider_unavailable"}]
-        assert repo.digest_scans == [{"admission_ids": ["admission-1"], "next_due_at_ms": 910_000, "now_ms": 10_000}]
+        assert db.discussion_digest_dirty_targets.reschedule_calls == [
+            {
+                "claims": db.discussion_digest_dirty_targets.claimed,
+                "due_at_ms": 910_000,
+                "now_ms": 10_000,
+                "commit": True,
+            }
+        ]
 
     asyncio.run(scenario())
 
@@ -1405,17 +1663,116 @@ def fake_digest_settings(**overrides):
 
 
 class FakeDB:
-    def __init__(self, narrative_repo):
+    def __init__(self, narrative_repo, *, narrative_admission_dirty_targets=None, discussion_digest_dirty_targets=None):
         self.narrative_repo = narrative_repo
+        self.narrative_admission_dirty_targets = narrative_admission_dirty_targets or FakeDirtyTargetRepository()
+        if discussion_digest_dirty_targets is None and hasattr(narrative_repo, "digest_dirty_claims"):
+            discussion_digest_dirty_targets = FakeDirtyTargetRepository(claims=narrative_repo.digest_dirty_claims())
+        self.discussion_digest_dirty_targets = discussion_digest_dirty_targets or FakeDirtyTargetRepository()
         self.active_sessions = 0
+        self.transaction_entries = 0
 
     @contextmanager
     def worker_session(self, name, statement_timeout_seconds=None):
         self.active_sessions += 1
         try:
-            yield SimpleNamespace(narratives=self.narrative_repo)
+            yield FakeRepositorySession(
+                narratives=self.narrative_repo,
+                narrative_admission_dirty_targets=self.narrative_admission_dirty_targets,
+                discussion_digest_dirty_targets=self.discussion_digest_dirty_targets,
+                transaction_hook=self._record_transaction,
+            )
         finally:
             self.active_sessions -= 1
+
+    def _record_transaction(self):
+        self.transaction_entries += 1
+
+
+class FakeRepositorySession(SimpleNamespace):
+    @contextmanager
+    def transaction(self):
+        self.transaction_hook()
+        yield
+
+
+class FakeDirtyTargetRepository:
+    def __init__(self, *, claims=None):
+        self.claims = list(claims or [])
+        self.claimed = []
+        self.enqueued_targets = []
+        self.claim_due_calls = []
+        self.mark_done_calls = []
+        self.mark_error_calls = []
+        self.reschedule_calls = []
+        self.queue_depth_calls = []
+
+    def claim_due(self, *, now_ms, limit, lease_owner, lease_ms, commit=True, **filters):
+        self.claim_due_calls.append(
+            {
+                "now_ms": now_ms,
+                "limit": limit,
+                "lease_owner": lease_owner,
+                "lease_ms": lease_ms,
+                "commit": commit,
+                **filters,
+            }
+        )
+        claims = self.claims
+        windows = set(filters.get("windows") or [])
+        scopes = set(filters.get("scopes") or [])
+        schema_version = filters.get("schema_version")
+        if windows:
+            claims = [claim for claim in claims if claim.get("window") in windows]
+        if scopes:
+            claims = [claim for claim in claims if claim.get("scope") in scopes]
+        if schema_version:
+            claims = [claim for claim in claims if claim.get("schema_version") == schema_version]
+        claimed = claims[:limit]
+        self.claimed = list(claimed)
+        claimed_ids = {id(claim) for claim in claimed}
+        self.claims = [claim for claim in self.claims if id(claim) not in claimed_ids]
+        return claimed
+
+    def enqueue_targets(self, targets, *, reason, now_ms, due_at_ms=None, commit=True):
+        rows = [dict(target) for target in targets]
+        self.enqueued_targets.extend(rows)
+        return {"targets": len(rows)}
+
+    def mark_done(self, claims, *, now_ms, commit=True):
+        payload = {"claims": list(claims), "now_ms": now_ms, "commit": commit}
+        self.mark_done_calls.append(payload)
+        return len(payload["claims"])
+
+    def mark_error(self, claims, *, error, now_ms, retry_ms, commit=True):
+        payload = {
+            "claims": list(claims),
+            "error": error,
+            "now_ms": now_ms,
+            "retry_ms": retry_ms,
+            "commit": commit,
+        }
+        self.mark_error_calls.append(payload)
+        return len(payload["claims"])
+
+    def reschedule(self, claims, *, due_at_ms, now_ms, commit=True):
+        payload = {"claims": list(claims), "due_at_ms": due_at_ms, "now_ms": now_ms, "commit": commit}
+        self.reschedule_calls.append(payload)
+        return len(payload["claims"])
+
+    def queue_depth(self, *, now_ms, **filters):
+        self.queue_depth_calls.append({"now_ms": now_ms, **filters})
+        claims = self.claims
+        windows = set(filters.get("windows") or [])
+        scopes = set(filters.get("scopes") or [])
+        schema_version = filters.get("schema_version")
+        if windows:
+            claims = [claim for claim in claims if claim.get("window") in windows]
+        if scopes:
+            claims = [claim for claim in claims if claim.get("scope") in scopes]
+        if schema_version:
+            claims = [claim for claim in claims if claim.get("schema_version") == schema_version]
+        return len(claims)
 
 
 class FakeNarrativeRepository:
@@ -1424,6 +1781,7 @@ class FakeNarrativeRepository:
         *,
         radar_rows=None,
         source_rows=None,
+        target_contexts=None,
         due_mentions=None,
         due_admissions=None,
         pending_semantics=None,
@@ -1431,6 +1789,7 @@ class FakeNarrativeRepository:
     ):
         self.radar_rows = list(radar_rows or [])
         self.source_rows = list(source_rows or [])
+        self.target_contexts = dict(target_contexts or {})
         self.due_mentions = due_mentions
         self.due_admissions = due_admissions
         self.pending_semantics = dict(pending_semantics or {})
@@ -1440,18 +1799,44 @@ class FakeNarrativeRepository:
         self.completed_batches = []
         self.upserted_admissions = []
         self.deleted_frontiers = []
+        self.staled_admission_targets = []
         self.scanned_admission_ids = []
         self.enqueued_source_event_ids = []
         self.semantic_scans = []
+        self.load_target_calls = []
+        self.admitted_radar_rows_calls = []
+        self.admissions_for_window_scope_calls = []
         self.due_mentions_calls = []
+        self.claim_due_mention_semantics_calls = []
+        self.mention_semantics_queue_depth_calls = []
+        self.released_semantic_claims = []
         self.due_admissions_for_semantics_calls = []
         self.pending_semantics_count_calls = []
 
     def admitted_radar_rows(self, *, window, scope, limit, projection_version):
+        self.admitted_radar_rows_calls.append(
+            {"window": window, "scope": scope, "limit": limit, "projection_version": projection_version}
+        )
         return self.radar_rows[:limit]
 
     def admissions_for_window_scope(self, *, window, scope, schema_version, limit):
+        self.admissions_for_window_scope_calls.append(
+            {"window": window, "scope": scope, "schema_version": schema_version, "limit": limit}
+        )
         return []
+
+    def load_radar_admission_target(self, *, target_type, target_id, window, scope, projection_version, schema_version):
+        self.load_target_calls.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "window": window,
+                "scope": scope,
+                "projection_version": projection_version,
+                "schema_version": schema_version,
+            }
+        )
+        return dict(self.target_contexts.get((target_type, target_id, window, scope), {}))
 
     def source_set_for_admission(self, *, target_type, target_id, since_ms, until_ms, watched_only, limit):
         rows = [
@@ -1461,15 +1846,30 @@ class FakeNarrativeRepository:
         ]
         return {
             "source_event_ids": [row["event_id"] for row in rows],
+            "source_rows": rows,
             "source_event_count": len(rows),
             "independent_author_count": len({row.get("author_handle") for row in rows if row.get("author_handle")}),
             "source_max_received_at_ms": max((row.get("source_received_at_ms") or 0 for row in rows), default=None),
         }
 
-    def upsert_admissions(self, rows, *, now_ms, limit=None):
+    def upsert_admissions(self, rows, *, now_ms, limit=None, commit=True):
         selected = list(rows)[:limit] if limit is not None else list(rows)
         self.upserted_admissions.extend(selected)
         return {"upserted": len(selected), "seen": len(selected)}
+
+    def stale_admission_target(self, *, target_type, target_id, window, scope, schema_version, now_ms, commit=True):
+        self.staled_admission_targets.append(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "window": window,
+                "scope": scope,
+                "schema_version": schema_version,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+        return {"staled_admissions": 1, "staled_digests": 0, "staled_semantics": 0}
 
     def delete_admissions_outside_frontier(self, *, window, scope, schema_version, active_target_keys, now_ms):
         self.deleted_frontiers.append(set(active_target_keys))
@@ -1503,9 +1903,7 @@ class FakeNarrativeRepository:
 
     def missing_source_rows_for_mention_semantics(self, admission, *, limit, schema_version):
         return [
-            row
-            for row in self.source_rows[:limit]
-            if str(row.get("event_id")) not in self.existing_semantic_event_ids
+            row for row in self.source_rows[:limit] if str(row.get("event_id")) not in self.existing_semantic_event_ids
         ]
 
     def pending_mention_semantics_count(
@@ -1523,16 +1921,13 @@ class FakeNarrativeRepository:
         )
         return int(self.pending_semantics.get((target_type, target_id), 0))
 
-    def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms):
-        self.enqueued_source_event_ids.extend(str(row["event_id"]) for row in source_rows)
-        inserted_rows = [
-            row
-            for row in source_rows
-            if str(row.get("event_id")) not in self.existing_semantic_event_ids
-        ]
+    def enqueue_missing_mention_semantics(self, source_rows, *, schema_version, model_version, now_ms, commit=True):
+        rows = list(source_rows)
+        self.enqueued_source_event_ids.extend(str(row["event_id"]) for row in rows)
+        inserted_rows = [row for row in rows if str(row.get("event_id")) not in self.existing_semantic_event_ids]
         if self.due_mentions is not None:
             self.due_mentions.extend(inserted_rows)
-        return {"inserted": len(inserted_rows), "existing": len(source_rows) - len(inserted_rows)}
+        return {"inserted": len(inserted_rows), "existing": len(rows) - len(inserted_rows)}
 
     def mark_admissions_semantics_scanned(self, admission_ids, *, next_due_at_ms, now_ms):
         self.scanned_admission_ids.extend(admission_ids)
@@ -1564,12 +1959,64 @@ class FakeNarrativeRepository:
             }
         ]
 
+    def claim_due_mention_semantics(self, *, now_ms, limit, lease_owner, lease_ms, max_per_target=None):
+        self.claim_due_mention_semantics_calls.append(
+            {
+                "now_ms": now_ms,
+                "limit": limit,
+                "lease_owner": lease_owner,
+                "lease_ms": lease_ms,
+                "max_per_target": max_per_target,
+            }
+        )
+        if self.due_mentions is not None:
+            rows = self.due_mentions[:limit]
+        else:
+            rows = [
+                {
+                    "semantic_id": "semantic-1",
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "SOL breakout",
+                    "text_fingerprint": "fp-1",
+                }
+            ][:limit]
+        return [
+            {
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "retry_count": 0,
+                **row,
+                "lease_owner": lease_owner,
+                "attempt_count": int(row.get("attempt_count") or 0) + 1,
+            }
+            for row in rows
+        ]
+
+    def mention_semantics_queue_depth(self, *, now_ms):
+        self.mention_semantics_queue_depth_calls.append({"now_ms": now_ms})
+        if self.due_mentions is not None:
+            return len(self.due_mentions)
+        return 1
+
+    def release_mention_semantics_claims(self, claims, *, next_retry_at_ms, now_ms, error=None):
+        rows = list(claims)
+        self.released_semantic_claims.append(
+            {
+                "claims": rows,
+                "next_retry_at_ms": next_retry_at_ms,
+                "now_ms": now_ms,
+                "error": error,
+            }
+        )
+        return len(rows)
+
     def record_narrative_model_run(self, run, *, commit=True):
         self.recorded_run_commits.append(commit)
         self.recorded_runs.append(run)
         return run
 
-    def complete_mention_semantics_batch(self, *, run_id, labels, failures, now_ms):
+    def complete_mention_semantics_batch(self, *, run_id, labels, failures, now_ms, commit=True):
         self.completed_batches.append({"run_id": run_id, "labels": labels, "failures": failures, "now_ms": now_ms})
         unavailable = sum(1 for failure in failures if failure.get("status") == "semantic_unavailable")
         return {
@@ -1577,6 +2024,55 @@ class FakeNarrativeRepository:
             "semantic_unavailable": unavailable,
             "failed": len(failures) - unavailable,
         }
+
+    def digest_dirty_targets_for_mention_semantics_claims(self, claims, *, projection_version, schema_version):
+        rows = []
+        seen = set()
+        for claim in claims:
+            event_id = str(claim.get("event_id") or "")
+            target_type = str(claim.get("target_type") or "")
+            target_id = str(claim.get("target_id") or "")
+            matching_admissions = [
+                admission
+                for admission in (self.due_admissions or [])
+                if admission.get("target_type") == target_type
+                and admission.get("target_id") == target_id
+                and event_id in (admission.get("source_event_ids_json") or [])
+            ]
+            if not matching_admissions:
+                matching_admissions = [
+                    {
+                        "target_type": target_type,
+                        "target_id": target_id,
+                        "window": "1h",
+                        "scope": "matched",
+                        "source_max_received_at_ms": 0,
+                        "priority": 0,
+                    }
+                ]
+            for admission in matching_admissions:
+                key = (
+                    admission.get("target_type"),
+                    admission.get("target_id"),
+                    admission.get("window"),
+                    admission.get("scope"),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(
+                    {
+                        "target_type": str(admission.get("target_type") or ""),
+                        "target_id": str(admission.get("target_id") or ""),
+                        "window": str(admission.get("window") or ""),
+                        "scope": str(admission.get("scope") or ""),
+                        "projection_version": projection_version,
+                        "schema_version": schema_version,
+                        "source_watermark_ms": int(admission.get("source_max_received_at_ms") or 0),
+                        "priority": int(admission.get("priority") or 0),
+                    }
+                )
+        return rows
 
 
 class FakeDigestRepository:
@@ -1592,15 +2088,37 @@ class FakeDigestRepository:
         self.digest_context_calls = []
         self.due_digest_target_calls = []
 
+    def digest_dirty_claims(self):
+        targets = self.targets
+        if targets is None:
+            targets = [
+                {
+                    "admission_id": "admission-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "window": "1h",
+                    "scope": "matched",
+                }
+            ]
+        return [
+            {
+                **target,
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "schema_version": NARRATIVE_SCHEMA_VERSION,
+                "payload_hash": f"payload-{index}",
+                "lease_owner": "token_discussion_digest",
+                "attempt_count": 1,
+            }
+            for index, target in enumerate(targets, start=1)
+        ]
+
     def due_digest_targets(self, *, now_ms, limit, windows=("1h",), scopes=("all",)):
         self.due_digest_target_calls.append(
             {"now_ms": now_ms, "limit": limit, "windows": tuple(windows), "scopes": tuple(scopes)}
         )
         if self.targets is not None:
             return [
-                target
-                for target in self.targets
-                if target.get("window") in windows and target.get("scope") in scopes
+                target for target in self.targets if target.get("window") in windows and target.get("scope") in scopes
             ][:limit]
         return [
             {

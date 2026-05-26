@@ -57,15 +57,15 @@ The hot path from one public-stream frame to product output is:
    - enqueues event_anchor_backfill_jobs when the anchor is pending
 
 3. Asset Market workers
-   - token_capture_tier ranks active market targets into stream, poll, or inline-only lanes
+   - token_capture_tier claims `token_capture_tier_dirty_targets` before ranking active market targets into stream, poll, or inline-only lanes
    - market_tick_stream writes Tier 1 WebSocket market_ticks
    - market_tick_poll writes Tier 2 REST market_ticks
    - event_anchor_backfill finishes short-lived pending event anchors
    - resolution_refresh discovers and reprocesses NIL / AMBIGUOUS lookups
-   - asset_profile_refresh writes provider profile source caches
-   - token_image_mirror mirrors eligible provider logo URLs into local cached files
-   - token_profile_current projects public profile/icon facts from persisted sources and ready local image rows
-   - live_price_gateway reads latest market_ticks and fans out cache-only WebSocket updates
+   - asset_profile_refresh claims provider-scoped `asset_profile_refresh_targets` before provider calls and writes provider profile source caches
+   - token_image_mirror claims `token_image_source_dirty_targets` and mirrors exact provider logo URLs into local cached files
+   - token_profile_current claims `token_profile_current_dirty_targets` and projects public profile/icon facts from exact persisted sources and ready local image rows
+   - live_price_gateway reads `token_capture_tier` control rows and latest market_ticks, then fans out cache-only WebSocket updates
 
 4. Token Intel projection
    - token_radar_projection claims token_radar_dirty_targets and reads one target at a time through token_radar_target_feature_query
@@ -73,15 +73,15 @@ The hot path from one public-stream frame to product output is:
    - emits token_radar_updated as a wake hint
 
 5. Narrative Intelligence read models
-   - narrative_admission reads the latest ready Radar frontier and material facts, then writes current source-set admissions
+   - narrative_admission claims `narrative_admission_dirty_targets`, then reads exact Radar/material facts and writes current source-set admissions
    - mention_semantics claims due semantic rows and labels only source events from current admissions
-   - token_discussion_digest evaluates the current admission against the last ready epoch with `NarrativeEpochPolicy`
+   - token_discussion_digest claims `discussion_digest_dirty_targets` and evaluates the exact current admission against the last ready epoch with `NarrativeEpochPolicy`
    - 5m admissions are scanner-only and are scanned/deferred without discussion-digest writes
    - 1h/4h/24h material delta, TTL expiry, or first ready work seals a new digest epoch; non-material delta leaves the last ready snapshot readable
    - emits narrative_semantics_updated only as a wake hint for digest refresh
 
 6. Consumers
-   - Pulse reads token_radar_current_rows, gates candidates, runs the agent, and writes audit rows
+   - Pulse claims `pulse_trigger_dirty_targets`, exact-loads Token Radar rows, gates candidates, runs the agent, and writes audit rows
    - Pulse may include ready discussion digest evidence but never triggers narrative workers
    - notifications evaluate candidates and enqueue deliveries
    - API / WebSocket / CLI read public read models
@@ -197,6 +197,14 @@ Examples:
 
 These rows schedule work. They are not product facts by themselves.
 Product surfaces should not infer token quality from a queue status.
+
+Dirty-target queues such as `pulse_trigger_dirty_targets`,
+`narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`,
+`token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
+`asset_profile_refresh_targets`, and `token_capture_tier_dirty_targets` are
+control-plane rows only. They are repaired through explicit ops commands that
+enqueue targets; normal worker loops do not fall back to historical scans when
+the queue is empty.
 
 ### Narrative Currentness State
 

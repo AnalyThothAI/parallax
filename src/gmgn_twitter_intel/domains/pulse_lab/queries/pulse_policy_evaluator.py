@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_VERSION
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 
 DEFAULT_CURRENT_POLICY_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_CURRENT_POLICY_SCOPES = ("all", "matched")

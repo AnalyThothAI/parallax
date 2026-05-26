@@ -13,7 +13,7 @@ from gmgn_twitter_intel.domains.evidence.types.entity import EVM_QUERY_CHAINS, n
 from gmgn_twitter_intel.domains.evidence.types.tweet_identity import canonical_tweet_url, logical_dedup_key
 from gmgn_twitter_intel.domains.evidence.types.tweet_text import build_text_projection
 from gmgn_twitter_intel.domains.evidence.types.twitter_event import TwitterEvent
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from gmgn_twitter_intel.platform.db.postgres_client import require_transaction, transaction
 
 
 class EvidenceRepository:
@@ -22,6 +22,9 @@ class EvidenceRepository:
 
     def unit_of_work(self) -> AbstractContextManager[None]:
         return transaction(self.conn)
+
+    def require_transaction(self, *, operation: str) -> None:
+        require_transaction(self.conn, operation=operation)
 
     def insert_raw_frame(
         self,

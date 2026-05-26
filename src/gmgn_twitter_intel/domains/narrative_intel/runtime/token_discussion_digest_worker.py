@@ -74,8 +74,19 @@ class TokenDiscussionDigestWorker(WorkerBase):
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         limit = max(1, int(getattr(self.settings, "batch_size", 25) or 25))
         targets = await asyncio.to_thread(self._due_targets_sync, now_ms=resolved_now_ms, limit=limit)
+        queue_depth = await asyncio.to_thread(self._queue_depth_sync, now_ms=resolved_now_ms)
         if not targets:
-            return WorkerResult(skipped=1, notes={"reason": "no_due_digest_targets", "claimed": 0})
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "no_due_digest_targets",
+                    "claimed": 0,
+                    "queue_depth": queue_depth,
+                    "source_rows_scanned": 0,
+                    "targets_loaded": 0,
+                    "rows_written": 0,
+                },
+            )
 
         counts = {"ready": 0, "insufficient": 0, "pending": 0, "semantic_unavailable": 0, "failed": 0}
         refresh_reasons: dict[str, int] = {}
@@ -83,8 +94,21 @@ class TokenDiscussionDigestWorker(WorkerBase):
         llm_failures = 0
         deferred = 0
         deferred_epoch_policy = 0
+        source_rows_scanned = 0
+        targets_loaded = 0
+        rows_written = 0
         for target in targets:
             context = await asyncio.to_thread(self._digest_context_sync, target=target)
+            targets_loaded += 1
+            source_rows_scanned += int(context.get("source_event_count") or 0)
+            if _context_not_admitted(context):
+                await asyncio.to_thread(
+                    self._mark_digest_done_sync,
+                    target=target,
+                    now_ms=resolved_now_ms,
+                )
+                refresh_reasons["not_admitted"] = refresh_reasons.get("not_admitted", 0) + 1
+                continue
             current_ready = await asyncio.to_thread(self._current_ready_digest_sync, target=target)
             market_context = await asyncio.to_thread(
                 self._market_context_sync,
@@ -125,11 +149,12 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         digest=digest.model_dump(mode="json"),
                         now_ms=resolved_now_ms,
                     )
+                    rows_written += 1
                     counts[status_decision.status_if_not_refresh] += 1
                 else:
                     deferred_epoch_policy += 1
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._reschedule_digest_claim_sync,
                     target=target,
                     now_ms=resolved_now_ms,
                     next_due_at_ms=epoch_decision.next_due_at_ms,
@@ -156,8 +181,9 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         digest=digest.model_dump(mode="json"),
                         now_ms=resolved_now_ms,
                     )
+                    rows_written += 1
                     await asyncio.to_thread(
-                        self._mark_digest_scanned_sync,
+                        self._reschedule_digest_claim_sync,
                         target=target,
                         now_ms=resolved_now_ms,
                         next_due_at_ms=_next_due_after_no_ready_status_block(
@@ -172,7 +198,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
 
             if llm_calls >= self._max_llm_calls_per_cycle():
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._reschedule_digest_claim_sync,
                     target=target,
                     now_ms=resolved_now_ms,
                     next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
@@ -185,7 +211,7 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 continue
             if llm_failures >= self._max_llm_failures_per_cycle():
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._reschedule_digest_claim_sync,
                     target=target,
                     now_ms=resolved_now_ms,
                     next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
@@ -254,16 +280,17 @@ class TokenDiscussionDigestWorker(WorkerBase):
                     },
                 )
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._mark_digest_error_sync,
                     target=target,
                     now_ms=finished_at_ms,
                     next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=finished_at_ms),
+                    error="worker_timeout_cancelled",
                 )
                 raise
             except Exception as exc:
                 if _is_agent_no_start_backpressure(exc):
                     await asyncio.to_thread(
-                        self._mark_digest_scanned_sync,
+                        self._reschedule_digest_claim_sync,
                         target=target,
                         now_ms=resolved_now_ms,
                         next_due_at_ms=self._backpressure_next_due_at_ms(now_ms=resolved_now_ms),
@@ -303,11 +330,13 @@ class TokenDiscussionDigestWorker(WorkerBase):
                         "latency_ms": finished_at_ms - started_at_ms,
                     },
                 )
+                rows_written += 1
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._mark_digest_error_sync,
                     target=target,
                     now_ms=resolved_now_ms,
                     next_due_at_ms=self._provider_failure_next_due_at_ms(now_ms=resolved_now_ms),
+                    error=f"{type(exc).__name__}: {exc}",
                 )
                 counts["failed"] += 1
                 continue
@@ -320,10 +349,11 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 )
             except Exception:
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._mark_digest_error_sync,
                     target=target,
                     now_ms=finished_at_ms,
                     next_due_at_ms=epoch_decision.next_due_at_ms,
+                    error="publish_ready_digest_failed",
                 )
                 counts["failed"] += 1
                 continue
@@ -331,10 +361,11 @@ class TokenDiscussionDigestWorker(WorkerBase):
             validation = self.validator.validate_digest_refs(ready_digest, allowed_refs)
             if not validation.ok:
                 await asyncio.to_thread(
-                    self._mark_digest_scanned_sync,
+                    self._mark_digest_error_sync,
                     target=target,
                     now_ms=finished_at_ms,
                     next_due_at_ms=epoch_decision.next_due_at_ms,
+                    error="invalid_evidence_refs",
                 )
                 counts["failed"] += 1
                 continue
@@ -371,8 +402,9 @@ class TokenDiscussionDigestWorker(WorkerBase):
                 digest=digest_payload,
                 now_ms=finished_at_ms,
             )
+            rows_written += 2
             await asyncio.to_thread(
-                self._mark_digest_scanned_sync,
+                self._reschedule_digest_claim_sync,
                 target=target,
                 now_ms=finished_at_ms,
                 next_due_at_ms=epoch_decision.next_due_at_ms,
@@ -389,6 +421,10 @@ class TokenDiscussionDigestWorker(WorkerBase):
             failed=counts["failed"],
             notes={
                 "claimed": len(targets),
+                "queue_depth": queue_depth,
+                "source_rows_scanned": source_rows_scanned,
+                "targets_loaded": targets_loaded,
+                "rows_written": rows_written,
                 **counts,
                 "llm_calls": llm_calls,
                 "llm_failures": llm_failures,
@@ -399,13 +435,28 @@ class TokenDiscussionDigestWorker(WorkerBase):
         )
 
     def _due_targets_sync(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+        lease_ms = max(1, int(getattr(self.settings, "lease_seconds", 60) or 60)) * 1000
         with self._repository_session() as repos:
             return list(
-                repos.narratives.due_digest_targets(
+                repos.discussion_digest_dirty_targets.claim_due(
                     now_ms=now_ms,
                     limit=limit,
+                    lease_owner=self.name,
+                    lease_ms=lease_ms,
                     windows=_settings_windows(self.settings),
                     scopes=_settings_scopes(self.settings),
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
+                )
+            )
+
+    def _queue_depth_sync(self, *, now_ms: int) -> int:
+        with self._repository_session() as repos:
+            return int(
+                repos.discussion_digest_dirty_targets.queue_depth(
+                    now_ms=now_ms,
+                    windows=_settings_windows(self.settings),
+                    scopes=_settings_scopes(self.settings),
+                    schema_version=NARRATIVE_SCHEMA_VERSION,
                 )
             )
 
@@ -460,14 +511,34 @@ class TokenDiscussionDigestWorker(WorkerBase):
         with self._repository_session() as repos:
             repos.narratives.record_narrative_model_run(run, commit=True)
 
-    def _mark_digest_scanned_sync(self, *, target: dict[str, Any], now_ms: int, next_due_at_ms: int) -> None:
-        admission_id = str(target.get("admission_id") or "").strip()
-        if not admission_id:
-            return
+    def _reschedule_digest_claim_sync(self, *, target: dict[str, Any], now_ms: int, next_due_at_ms: int) -> None:
         with self._repository_session() as repos:
-            repos.narratives.mark_admissions_digest_scanned(
-                [admission_id],
-                next_due_at_ms=next_due_at_ms,
+            repos.discussion_digest_dirty_targets.reschedule(
+                [target],
+                due_at_ms=next_due_at_ms,
+                now_ms=now_ms,
+            )
+
+    def _mark_digest_error_sync(
+        self,
+        *,
+        target: dict[str, Any],
+        now_ms: int,
+        next_due_at_ms: int,
+        error: str,
+    ) -> None:
+        with self._repository_session() as repos:
+            repos.discussion_digest_dirty_targets.mark_error(
+                [target],
+                error=error,
+                now_ms=now_ms,
+                retry_ms=_retry_ms_until(now_ms=now_ms, next_due_at_ms=next_due_at_ms),
+            )
+
+    def _mark_digest_done_sync(self, *, target: dict[str, Any], now_ms: int) -> None:
+        with self._repository_session() as repos:
+            repos.discussion_digest_dirty_targets.mark_done(
+                [target],
                 now_ms=now_ms,
             )
 
@@ -614,12 +685,20 @@ def _next_due_after_no_ready_status_block(*, reason: str, epoch_next_due_at_ms: 
     return int(epoch_next_due_at_ms)
 
 
+def _retry_ms_until(*, now_ms: int, next_due_at_ms: int) -> int:
+    return max(1, int(next_due_at_ms) - int(now_ms))
+
+
 def _settings_windows(settings: Any) -> tuple[str, ...]:
     return tuple(getattr(settings, "windows", ("1h",)) or ("1h",))
 
 
 def _settings_scopes(settings: Any) -> tuple[str, ...]:
     return tuple(getattr(settings, "scopes", ("all",)) or ("all",))
+
+
+def _context_not_admitted(context: dict[str, Any]) -> bool:
+    return any(str(gap.get("reason") or "") == "not_admitted" for gap in context.get("data_gaps") or [])
 
 
 def _is_agent_no_start_backpressure(exc: Exception) -> bool:

@@ -219,6 +219,22 @@ class TokenImageAssetRepository:
         ).fetchall()
         return {str(row["source_url"]): dict(row) for row in rows}
 
+    def terminal_by_source_urls(self, source_urls: list[str]) -> dict[str, dict[str, Any]]:
+        source_url_hashes = [_source_url_hash(source_url) for source_url in _unique_source_urls(source_urls)]
+        if not source_url_hashes:
+            return {}
+
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM token_image_assets
+            WHERE status IN ('ready', 'unsupported')
+              AND source_url_hash = ANY(%s)
+            """,
+            (source_url_hashes,),
+        ).fetchall()
+        return {str(row["source_url"]): dict(row) for row in rows}
+
     def ready_by_image_id(self, image_id: str) -> dict[str, Any] | None:
         normalized_image_id = _optional_text(image_id)
         if not normalized_image_id:

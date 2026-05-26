@@ -42,10 +42,11 @@ def test_handle_summary_worker_processes_due_jobs_concurrently():
         assert result == WorkerResult(
             processed=2,
             notes={
-                "reconcile_seen": 0,
-                "reconcile_enqueued": 0,
-                "reconcile_skipped": 0,
                 "claimed": 2,
+                "queue_depth": 0,
+                "source_rows_scanned": 0,
+                "targets_loaded": 2,
+                "rows_written": 2,
                 "processed": 2,
                 "failed": 0,
             },
@@ -81,63 +82,6 @@ def test_handle_summary_worker_records_failed_run_audit():
         assert repo.failed_runs[0]["request_json"]["agent_run_audit"]["sdk_trace_id"] == "trace-toly"
         assert repo.failed_runs[0]["usage_json"] == {"input_tokens": 12}
         assert repo.failed_jobs[0]["handle"] == "toly"
-
-    asyncio.run(scenario())
-
-
-def test_handle_summary_worker_reports_reconcile_failure_as_iteration_result():
-    async def scenario():
-        repo = ReconcileFailingWatchlistRepository([])
-        db = FakeDB(repo)
-        worker = HandleSummaryWorker(
-            name="handle_summary",
-            settings=fake_settings(concurrency=1),
-            db=db,
-            telemetry=SimpleNamespace(),
-            provider=FailingSummaryProvider(),
-            handles=("toly",),
-        )
-
-        result = await worker.run_once(now_ms=1_000)
-
-        assert result.processed == 0
-        assert result.failed == 1
-        assert result.notes["reconcile_failed"] == 1
-        assert result.notes["reconcile_error"] == "TimeoutError"
-        assert result.notes["claimed"] == 0
-
-    asyncio.run(scenario())
-
-
-def test_handle_summary_worker_reconcile_enqueues_stats_backed_missing_job():
-    async def scenario():
-        repo = ReconcileRowsWatchlistRepository([])
-        db = FakeDB(repo)
-        worker = HandleSummaryWorker(
-            name="handle_summary",
-            settings=fake_settings(concurrency=1),
-            db=db,
-            telemetry=SimpleNamespace(),
-            provider=FailingSummaryProvider(),
-            handles=("toly",),
-        )
-
-        result = await worker.run_once(now_ms=1_000)
-
-        assert result.processed == 1
-        assert result.notes["reconcile_seen"] == 1
-        assert result.notes["reconcile_enqueued"] == 1
-        assert result.notes["claimed"] == 0
-        assert repo.enqueued_summary_jobs == [
-            {
-                "handle": "toly",
-                "next_run_at_ms": 1_000,
-                "pending_signal_count": 1,
-                "trigger_reason": "cold_start",
-                "max_attempts": 3,
-                "commit": True,
-            }
-        ]
 
     asyncio.run(scenario())
 
@@ -259,9 +203,6 @@ class FakeWatchlistRepository:
         self.enqueued_summary_jobs = []
         self.claim_calls = 0
 
-    def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
-        return []
-
     def get_handle_summary(self, handle):
         return None
 
@@ -331,16 +272,6 @@ class FakeWatchlistRepository:
             }
         )
         return {**job, "status": "pending", "last_error": f"agent_backpressure:{reason}"}
-
-
-class ReconcileFailingWatchlistRepository(FakeWatchlistRepository):
-    def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
-        raise TimeoutError("summary reconcile timed out")
-
-
-class ReconcileRowsWatchlistRepository(FakeWatchlistRepository):
-    def handles_missing_summary_jobs(self, *, handles, since_ms, limit):
-        return [{"handle": "toly", "signal_count": 1, "latest_signal_at_ms": 900}]
 
 
 class BarrierSummaryProvider:

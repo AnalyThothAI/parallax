@@ -137,32 +137,6 @@ class PulseJobsRepository:
     def claim_due_job(self, now_ms: int | None = None) -> dict[str, Any] | None:
         now = int(now_ms if now_ms is not None else _now_ms())
         stale_before = now - self.running_timeout_ms
-        self.mark_stale_agent_runs_failed(now_ms=now, stale_before_ms=stale_before, commit=False)
-        self.conn.execute(
-            """
-            UPDATE pulse_agent_jobs
-            SET status = 'dead',
-                last_error = 'stale_running_timeout',
-                updated_at_ms = %s
-            WHERE status = 'running'
-              AND updated_at_ms < %s
-              AND attempt_count >= max_attempts
-            """,
-            (now, stale_before),
-        )
-        self.conn.execute(
-            """
-            UPDATE pulse_agent_jobs
-            SET status = 'failed',
-                next_run_at_ms = %s,
-                last_error = 'stale_running_timeout',
-                updated_at_ms = %s
-            WHERE status = 'running'
-              AND updated_at_ms < %s
-              AND attempt_count < max_attempts
-            """,
-            (now, now, stale_before),
-        )
         row = self.conn.execute(
             """
             WITH picked AS (

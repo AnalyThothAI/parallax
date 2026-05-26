@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_currentness import (
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_currentness import (
     narrative_delta_from_currentness,
     public_currentness,
 )

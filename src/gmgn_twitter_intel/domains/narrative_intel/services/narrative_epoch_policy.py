@@ -5,8 +5,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-EPOCH_POLICY_VERSION = "token-narrative-epoch-v1"
-DIGEST_WINDOWS = frozenset({"1h"})
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import (
+    DIGEST_WINDOWS,
+    EPOCH_POLICY_VERSION,
+)
 
 EpochDecisionReason = Literal[
     "unsupported_window",

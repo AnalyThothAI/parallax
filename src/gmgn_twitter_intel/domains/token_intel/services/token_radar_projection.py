@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
+from collections.abc import Mapping
 from typing import Any
 
+from gmgn_twitter_intel.domains.narrative_intel.interfaces import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
@@ -45,6 +48,10 @@ LIVE_LATEST_MAX_AGE_MS = 90 * 1000
 FRESH_LATEST_MAX_AGE_MS = 5 * 60 * 1000
 DIRTY_TARGET_LEASE_MS = 2 * 60 * 1000
 DIRTY_TARGET_RETRY_MS = 30 * 1000
+PULSE_TRIGGER_WINDOWS = frozenset({"1h", "4h"})
+PULSE_TRIGGER_SCOPES = frozenset({"all", "matched"})
+NARRATIVE_ADMISSION_WINDOWS = frozenset({"1h"})
+NARRATIVE_ADMISSION_SCOPE = "all"
 
 
 class TokenRadarProjection:
@@ -264,78 +271,80 @@ class TokenRadarProjection:
                 default=0,
             )
             projection_repo = ProjectionRepository(self.repos.conn)
-            projection_repo.mark_stale_running_runs(
-                projection_name=TOKEN_RADAR_PROJECTION_NAME,
-                projection_version=PROJECTION_VERSION,
-                stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
-                finished_at_ms=computed_at_ms,
-                commit=False,
-            )
-            run = projection_repo.start_run(
-                projection_name=TOKEN_RADAR_PROJECTION_NAME,
-                projection_version=PROJECTION_VERSION,
-                mode="rebuild",
-                source_start_ms=0,
-                source_end_ms=computed_at_ms,
-                commit=False,
-            )
-            rows_replaced = self.repos.token_radar.publish_rows(
-                projection_version=PROJECTION_VERSION,
-                window=window,
-                scope=scope,
-                computed_at_ms=computed_at_ms,
-                rows=rows,
-                commit=False,
-            )
-            if not rows_replaced:
+            with _transaction_context(self.repos.conn):
+                projection_repo.mark_stale_running_runs(
+                    projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                    projection_version=PROJECTION_VERSION,
+                    stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
+                    finished_at_ms=computed_at_ms,
+                    commit=False,
+                )
+                run = projection_repo.start_run(
+                    projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                    projection_version=PROJECTION_VERSION,
+                    mode="rebuild",
+                    source_start_ms=0,
+                    source_end_ms=computed_at_ms,
+                    commit=False,
+                )
+                rows_replaced = self.repos.token_radar.publish_rows(
+                    projection_version=PROJECTION_VERSION,
+                    window=window,
+                    scope=scope,
+                    computed_at_ms=computed_at_ms,
+                    rows=rows,
+                    on_current_changes=self._enqueue_runtime_dirty_targets_for_rank_changes,
+                    commit=False,
+                )
+                if not rows_replaced:
+                    projection_repo.finish_run(
+                        run_id=str(run["run_id"]),
+                        status="stale_skipped",
+                        rows_read=len(feature_rows),
+                        rows_written=0,
+                        dirty_ranges_written=0,
+                        error="newer_projection_exists",
+                        commit=False,
+                    )
+                    return {
+                        "rows_written": 0,
+                        "source_rows": len(feature_rows),
+                        "computed_at_ms": computed_at_ms,
+                        "status": "stale_skipped",
+                    }
+                projection_repo.advance_offset(
+                    projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                    projection_version=PROJECTION_VERSION,
+                    source_table=TOKEN_RADAR_SOURCE_TABLE,
+                    source_max_received_at_ms=source_max_received_at_ms,
+                    source_max_id=str(rows[0]["row_id"]) if rows else "",
+                    last_run_id=str(run["run_id"]),
+                    lag_ms=max(0, computed_at_ms - source_max_received_at_ms) if source_max_received_at_ms else 0,
+                    status="ready",
+                    commit=False,
+                )
                 projection_repo.finish_run(
                     run_id=str(run["run_id"]),
-                    status="stale_skipped",
+                    status="ready",
                     rows_read=len(feature_rows),
-                    rows_written=0,
+                    rows_written=len(rows),
                     dirty_ranges_written=0,
-                    error="newer_projection_exists",
-                    commit=True,
+                    commit=False,
                 )
-                return {
-                    "rows_written": 0,
-                    "source_rows": len(feature_rows),
-                    "computed_at_ms": computed_at_ms,
-                    "status": "stale_skipped",
-                }
-            projection_repo.advance_offset(
-                projection_name=TOKEN_RADAR_PROJECTION_NAME,
-                projection_version=PROJECTION_VERSION,
-                source_table=TOKEN_RADAR_SOURCE_TABLE,
-                source_max_received_at_ms=source_max_received_at_ms,
-                source_max_id=str(rows[0]["row_id"]) if rows else "",
-                last_run_id=str(run["run_id"]),
-                lag_ms=max(0, computed_at_ms - source_max_received_at_ms) if source_max_received_at_ms else 0,
-                status="ready",
-                commit=False,
-            )
-            projection_repo.finish_run(
-                run_id=str(run["run_id"]),
-                status="ready",
-                rows_read=len(feature_rows),
-                rows_written=len(rows),
-                dirty_ranges_written=0,
-                commit=False,
-            )
-            self.repos.token_radar.mark_coverage(
-                projection_version=PROJECTION_VERSION,
-                window=window,
-                scope=scope,
-                status="ready",
-                reason=None,
-                source_rows=len(feature_rows),
-                row_count=len(rows),
-                computed_at_ms=computed_at_ms,
-                started_at_ms=computed_at_ms,
-                finished_at_ms=_now_ms(),
-                error=None,
-                commit=True,
-            )
+                self.repos.token_radar.mark_coverage(
+                    projection_version=PROJECTION_VERSION,
+                    window=window,
+                    scope=scope,
+                    status="ready",
+                    reason=None,
+                    source_rows=len(feature_rows),
+                    row_count=len(rows),
+                    computed_at_ms=computed_at_ms,
+                    started_at_ms=computed_at_ms,
+                    finished_at_ms=_now_ms(),
+                    error=None,
+                    commit=False,
+                )
             return {
                 "rows_written": len(rows),
                 "source_rows": len(feature_rows),
@@ -358,6 +367,188 @@ class TokenRadarProjection:
                 commit=True,
             )
             raise
+
+    def _enqueue_runtime_dirty_targets_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        self._enqueue_pulse_triggers_for_rank_changes(
+            window=window,
+            scope=scope,
+            rows=rows,
+            exited_rows=exited_rows,
+            previous_by_key=previous_by_key,
+            computed_at_ms=computed_at_ms,
+        )
+        self._enqueue_narrative_admission_for_rank_changes(
+            window=window,
+            scope=scope,
+            rows=rows,
+            exited_rows=exited_rows,
+            previous_by_key=previous_by_key,
+            computed_at_ms=computed_at_ms,
+        )
+        self._enqueue_token_profile_current_for_rank_changes(
+            window=window,
+            scope=scope,
+            rows=rows,
+            exited_rows=exited_rows,
+            previous_by_key=previous_by_key,
+            computed_at_ms=computed_at_ms,
+        )
+
+    def _enqueue_pulse_triggers_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        if str(window) not in PULSE_TRIGGER_WINDOWS or str(scope) not in PULSE_TRIGGER_SCOPES:
+            return
+        targets: list[dict[str, Any]] = []
+        for row in rows:
+            previous = previous_by_key.get(_current_key(row))
+            if previous is not None and str(previous.get("payload_hash") or "") == str(row.get("payload_hash") or ""):
+                continue
+            target = _pulse_trigger_target(
+                row,
+                previous=previous,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                exited=False,
+            )
+            if target is not None:
+                targets.append(target)
+        for row in exited_rows:
+            target = _pulse_trigger_target(
+                row,
+                previous=row,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                exited=True,
+            )
+            if target is not None:
+                targets.append(target)
+        if not targets:
+            return
+        repo = getattr(self.repos, "pulse_trigger_dirty_targets", None)
+        if repo is None:
+            raise RuntimeError("pulse_trigger_dirty_targets repository is required for Token Radar Pulse triggers")
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for target in targets:
+            grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
+        for reason, reason_targets in grouped.items():
+            repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
+
+    def _enqueue_narrative_admission_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        if str(window) not in NARRATIVE_ADMISSION_WINDOWS or str(scope) != NARRATIVE_ADMISSION_SCOPE:
+            return
+        targets: list[dict[str, Any]] = []
+        for row in rows:
+            previous = previous_by_key.get(_current_key(row))
+            if previous is not None and str(previous.get("payload_hash") or "") == str(row.get("payload_hash") or ""):
+                continue
+            target = _narrative_admission_target(
+                row,
+                previous=previous,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                exited=False,
+            )
+            if target is not None:
+                targets.append(target)
+        for row in exited_rows:
+            target = _narrative_admission_target(
+                row,
+                previous=row,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                exited=True,
+            )
+            if target is not None:
+                targets.append(target)
+        if not targets:
+            return
+        repo = getattr(self.repos, "narrative_admission_dirty_targets", None)
+        if repo is None:
+            raise RuntimeError(
+                "narrative_admission_dirty_targets repository is required for Token Radar Narrative Admission"
+            )
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for target in targets:
+            grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
+        for reason, reason_targets in grouped.items():
+            repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
+
+    def _enqueue_token_profile_current_for_rank_changes(
+        self,
+        *,
+        window: str,
+        scope: str,
+        rows: list[dict[str, Any]],
+        exited_rows: list[dict[str, Any]],
+        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
+        computed_at_ms: int,
+    ) -> None:
+        targets: list[dict[str, Any]] = []
+        for row in rows:
+            previous = previous_by_key.get(_current_key(row))
+            if previous is not None and str(previous.get("payload_hash") or "") == str(row.get("payload_hash") or ""):
+                continue
+            target = _token_profile_current_target(
+                row,
+                previous=previous,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                exited=False,
+            )
+            if target is not None:
+                targets.append(target)
+        for row in exited_rows:
+            target = _token_profile_current_target(
+                row,
+                previous=row,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                exited=True,
+            )
+            if target is not None:
+                targets.append(target)
+        if not targets:
+            return
+        repo = getattr(self.repos, "token_profile_current_dirty_targets", None)
+        if repo is None:
+            raise RuntimeError("token_profile_current_dirty_targets repository is required for Token Radar profiles")
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for target in targets:
+            grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
+        for reason, reason_targets in grouped.items():
+            repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
 
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -511,6 +702,223 @@ def _claim_key(claim: dict[str, Any]) -> dict[str, str | int]:
         "lease_owner": str(claim.get("lease_owner") or ""),
         "attempt_count": int(claim.get("attempt_count") or 0),
     }
+
+
+def _current_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(row.get("lane") or ""),
+        str(row.get("target_type_key") or row.get("target_type") or ""),
+        str(row.get("identity_id") or row.get("target_id") or row.get("intent_id") or ""),
+    )
+
+
+def _pulse_trigger_target(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+    exited: bool,
+) -> dict[str, Any] | None:
+    target_type = str(row.get("target_type") or "").strip()
+    target_id = str(row.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return None
+    reason = _pulse_trigger_reason(row, previous=previous, exited=exited)
+    source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
+    payload = {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": str(window),
+        "scope": str(scope),
+        "rank": row.get("rank"),
+        "lane": row.get("lane"),
+        "decision": row.get("decision"),
+        "exited": bool(exited),
+        "factor_snapshot_hash": _stable_payload_hash(row.get("factor_snapshot_json") or {}),
+        "source_event_ids": _json_ready(row.get("source_event_ids_json") or []),
+        "source_watermark_ms": source_watermark_ms,
+        "token_radar_payload_hash": row.get("payload_hash"),
+        "reason": reason,
+    }
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": str(window),
+        "scope": str(scope),
+        "dirty_reason": reason,
+        "payload_hash": _stable_payload_hash(payload),
+        "source_watermark_ms": source_watermark_ms,
+        "priority": 50 if exited else 40,
+        "due_at_ms": int(computed_at_ms),
+    }
+
+
+def _narrative_admission_target(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+    exited: bool,
+) -> dict[str, Any] | None:
+    target_type = str(row.get("target_type") or "").strip()
+    target_id = str(row.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return None
+    reason = _narrative_admission_reason(row, previous=previous, exited=exited)
+    source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
+    payload = {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": str(window),
+        "scope": str(scope),
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "schema_version": NARRATIVE_SCHEMA_VERSION,
+        "rank": row.get("rank"),
+        "lane": row.get("lane"),
+        "decision": row.get("decision"),
+        "exited": bool(exited),
+        "factor_snapshot_hash": _stable_payload_hash(row.get("factor_snapshot_json") or {}),
+        "source_event_ids": _json_ready(row.get("source_event_ids_json") or []),
+        "source_watermark_ms": source_watermark_ms,
+        "token_radar_payload_hash": row.get("payload_hash"),
+        "reason": reason,
+    }
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": str(window),
+        "scope": str(scope),
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "schema_version": NARRATIVE_SCHEMA_VERSION,
+        "dirty_reason": reason,
+        "payload_hash": _stable_payload_hash(payload),
+        "source_watermark_ms": source_watermark_ms,
+        "priority": 50 if exited else 40,
+        "due_at_ms": int(computed_at_ms),
+    }
+
+
+def _token_profile_current_target(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    window: str,
+    scope: str,
+    computed_at_ms: int,
+    exited: bool,
+) -> dict[str, Any] | None:
+    target_type = str(row.get("target_type") or "").strip()
+    target_id = str(row.get("target_id") or "").strip()
+    if target_type not in {"Asset", "CexToken"} or not target_id:
+        return None
+    reason = _token_profile_current_reason(row, previous=previous, exited=exited)
+    source_watermark_ms = int(row.get("source_max_received_at_ms") or computed_at_ms)
+    payload = {
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": str(window),
+        "scope": str(scope),
+        "rank": row.get("rank"),
+        "lane": row.get("lane"),
+        "decision": row.get("decision"),
+        "exited": bool(exited),
+        "source_watermark_ms": source_watermark_ms,
+        "token_radar_payload_hash": row.get("payload_hash"),
+        "reason": reason,
+    }
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "dirty_reason": reason,
+        "payload_hash": _stable_payload_hash(payload),
+        "source_watermark_ms": source_watermark_ms,
+        "priority": 60 if exited else 70,
+        "due_at_ms": int(computed_at_ms),
+    }
+
+
+def _pulse_trigger_reason(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    exited: bool,
+) -> str:
+    if exited:
+        return "token_radar_exited"
+    if previous is None:
+        return "token_radar_entered"
+    if int(previous.get("rank") or 0) != int(row.get("rank") or 0):
+        return "token_radar_rank_changed"
+    if int(previous.get("source_max_received_at_ms") or 0) != int(row.get("source_max_received_at_ms") or 0):
+        return "token_radar_source_watermark_changed"
+    return "token_radar_changed"
+
+
+def _token_profile_current_reason(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    exited: bool,
+) -> str:
+    if exited:
+        return "token_radar_exited"
+    if previous is None:
+        return "token_radar_entered"
+    if str(previous.get("lane") or "") != str(row.get("lane") or ""):
+        return "token_radar_visibility_changed"
+    if str(previous.get("decision") or "") != str(row.get("decision") or ""):
+        return "token_radar_visibility_changed"
+    if int(previous.get("rank") or 0) != int(row.get("rank") or 0):
+        return "token_radar_rank_changed"
+    if int(previous.get("source_max_received_at_ms") or 0) != int(row.get("source_max_received_at_ms") or 0):
+        return "token_radar_source_watermark_changed"
+    return "token_radar_changed"
+
+
+def _narrative_admission_reason(
+    row: Mapping[str, Any],
+    *,
+    previous: Mapping[str, Any] | None,
+    exited: bool,
+) -> str:
+    if exited:
+        return "token_radar_exited"
+    if previous is None:
+        return "token_radar_entered"
+    if str(previous.get("lane") or "") != str(row.get("lane") or ""):
+        return "token_radar_visibility_changed"
+    if str(previous.get("decision") or "") != str(row.get("decision") or ""):
+        return "token_radar_visibility_changed"
+    if int(previous.get("rank") or 0) != int(row.get("rank") or 0):
+        return "token_radar_rank_changed"
+    if int(previous.get("source_max_received_at_ms") or 0) != int(row.get("source_max_received_at_ms") or 0):
+        return "token_radar_source_watermark_changed"
+    return "token_radar_changed"
+
+
+def _stable_payload_hash(payload: Any) -> str:
+    encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _transaction_context(conn: Any):
+    transaction = getattr(conn, "transaction", None)
+    if transaction is None:
+        raise RuntimeError("token_radar_projection_requires_transactional_connection")
+    return transaction()
+
+
+def _json_ready(value: Any) -> Any:
+    raw = getattr(value, "obj", value)
+    if isinstance(raw, Mapping):
+        return {str(key): _json_ready(item) for key, item in raw.items()}
+    if isinstance(raw, list | tuple | set):
+        return [_json_ready(item) for item in raw]
+    return raw
 
 
 def _project_group(

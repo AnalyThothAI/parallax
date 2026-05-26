@@ -47,6 +47,9 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert result.processed == 1
     assert result.notes["projection_version"] == "macro_regime_v4"
     assert result.notes["status"] == "partial"
+    assert result.notes["source_rows_scanned"] == 1
+    assert result.notes["targets_loaded"] == len(MACRO_CORE_CONCEPTS)
+    assert result.notes["rows_written"] == 1
     assert result.notes["history_coverage_ratio"] == "0.0"
     assert "data_gap_count" in result.notes
     assert int(result.notes["data_gap_count"]) > 0

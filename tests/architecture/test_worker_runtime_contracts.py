@@ -343,6 +343,46 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
 }
 
 CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
+    "pulse_trigger_dirty_targets": {
+        SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "narrative_admission_dirty_targets": {
+        SRC / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "discussion_digest_dirty_targets": {
+        SRC / "domains/narrative_intel/repositories/discussion_digest_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "token_profile_current_dirty_targets": {
+        SRC / "domains/asset_market/repositories/token_profile_current_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "token_image_source_dirty_targets": {
+        SRC / "domains/asset_market/repositories/token_image_source_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "asset_profile_refresh_targets": {
+        SRC / "domains/asset_market/repositories/asset_profile_refresh_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "token_capture_tier_dirty_targets": {
+        SRC / "domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "live_market_target_set_dirty_targets": {
+        SRC / "domains/asset_market/repositories/live_market_target_set_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "watchlist_summary_dirty_targets": {
+        SRC / "domains/watchlist_intel/repositories/watchlist_summary_dirty_target_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
+    "watchlist_summary_jobs": {
+        SRC / "domains/watchlist_intel/repositories/watchlist_summary_job_repository.py",
+        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+    },
     "equity_event_projection_dirty_targets": {
         SRC / "domains/equity_event_intel/repositories/equity_projection_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260524_0094_projection_dirty_targets_hard_cut.py",

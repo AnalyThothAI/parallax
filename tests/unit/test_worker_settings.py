@@ -121,6 +121,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.handle_summary.statement_timeout_seconds == 10
     assert settings.handle_summary.reconcile_limit == 20
     assert settings.handle_summary.window_days == 3
+    assert settings.macro_view_projection.lookback_days == 730
+    assert settings.macro_view_projection.limit_per_series == 250
     assert settings.notification_delivery.max_attempts == 5
 
 

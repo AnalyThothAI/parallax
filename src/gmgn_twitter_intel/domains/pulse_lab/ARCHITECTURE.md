@@ -17,8 +17,10 @@ enqueue `5m`.
 ## Data Flow
 
 ```text
-token_radar_current_rows + events + enriched_events + market facts + identity facts
-  -> PulseCandidateWorker admission
+pulse_trigger_dirty_targets
+  -> PulseCandidateWorker claim
+  -> exact token_radar_current_rows + events + enriched_events + market facts + identity facts
+  -> deterministic admission
   -> PulseEvidenceBuilder
   -> pulse_evidence_packets
   -> EvidenceCompletenessGate
@@ -40,6 +42,7 @@ eval, and write-gate audit rows so operators can see why nothing was published.
 | Component | Code owner | Writes | Invariant |
 |---|---|---|---|
 | Candidate gate | `services/pulse_candidate_gate.py` | none | Deterministic admission from `factor_snapshot_json`; fails closed on low score, hard risks, insufficient projection quality, or insufficient independent-source quality. |
+| Trigger control plane | `repositories/pulse_trigger_dirty_target_repository.py`, `runtime/pulse_candidate_worker.py` | `pulse_trigger_dirty_targets` | Token Radar producers enqueue changed target/window/scope edges. Runtime claims dirty targets before loading evidence and never scans current Radar rows on an empty queue. |
 | Evidence source repository | `repositories/pulse_evidence_source_repository.py` | none | Reads events, enriched events, market ticks/price observations, and identity/profile facts. Provider raw frames are not facts. |
 | Evidence packet builder | `services/evidence_packet_builder.py` | `pulse_evidence_packets` through repository | Constructs a sealed packet with stable `allowed_evidence_refs`, source fingerprints, quality metrics, and data gaps before any LLM call. |
 | Evidence completeness gate | `services/evidence_completeness_gate.py` | run-step audit only | Decides whether packet evidence is complete, partial, stale, or insufficient; sets max decision status and public display ceiling. |

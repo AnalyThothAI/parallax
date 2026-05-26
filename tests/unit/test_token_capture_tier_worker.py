@@ -207,7 +207,8 @@ def test_worker_run_once_returns_worker_result_processed_count() -> None:
     assert isinstance(worker, WorkerBase)
     assert isinstance(result, WorkerResult)
     assert result.processed == 2
-    assert result.notes == {"updated_tiers": 2}
+    assert result.notes["claimed"] == 1
+    assert result.notes["rows_written"] == 2
     assert db.session_names == ["token_capture_tier"]
 
 
@@ -237,10 +238,10 @@ def test_default_workers_yaml_includes_token_capture_tier_settings() -> None:
     assert workers.token_capture_tier.advisory_lock_key == ADVISORY_LOCK_KEY
 
 
-def test_registry_active_live_market_targets_projects_rank_score_from_factor_snapshot() -> None:
+def test_registry_ranked_live_market_targets_projects_rank_score_from_factor_snapshot() -> None:
     conn = CapturingConn()
 
-    rows = RegistryRepository(conn).active_live_market_targets(
+    rows = RegistryRepository(conn).ranked_live_market_targets(
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         since_ms=1_800_000_000_000 - WINDOW_MS["24h"],
         limit=25,
@@ -329,7 +330,13 @@ class FakeRepos:
     ) -> None:
         self.registry = FakeRegistry(rows)
         self.token_capture_tiers = FakeTokenCaptureTiers(existing_tiers=existing_tiers or [])
+        self.token_capture_tier_dirty_targets = FakeCaptureDirtyTargets()
         self.conn = FakeConn()
+
+    def transaction(self):
+        from contextlib import nullcontext
+
+        return nullcontext()
 
 
 class FakeRegistry:
@@ -337,7 +344,7 @@ class FakeRegistry:
         self.rows = rows
         self.calls: list[dict[str, object]] = []
 
-    def active_live_market_targets(self, *, projection_version: str, since_ms: int, limit: int):
+    def ranked_live_market_targets(self, *, projection_version: str, since_ms: int, limit: int):
         self.calls.append({"projection_version": projection_version, "since_ms": since_ms, "limit": limit})
         return self.rows[:limit]
 
@@ -352,7 +359,7 @@ class FakeTokenCaptureTiers:
     def upsert_tier(self, **kwargs) -> None:
         self.upserts.append(kwargs)
 
-    def demote_absent_hot_rows(
+    def demote_hot_rows_outside_rank_set(
         self,
         *,
         active_keys: list[dict[str, str]],
@@ -372,6 +379,25 @@ class FakeTokenCaptureTiers:
                 demoted_now.append(key)
         self.demoted.extend(demoted_now)
         return len(demoted_now)
+
+
+class FakeCaptureDirtyTargets:
+    def claim_due(self, **kwargs):
+        return [
+            {
+                "work_name": "active_live_market_rank_set",
+                "partition_key": "global",
+                "payload_hash": "hash",
+                "lease_owner": "token_capture_tier",
+                "attempt_count": 1,
+            }
+        ]
+
+    def queue_depth(self, **kwargs):
+        return 0
+
+    def mark_done(self, claims, **kwargs):
+        return len(claims)
 
 
 class FakeConn:

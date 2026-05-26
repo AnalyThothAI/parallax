@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import (
     DIGEST_WINDOWS,
     EPOCH_POLICY_VERSION,
 )

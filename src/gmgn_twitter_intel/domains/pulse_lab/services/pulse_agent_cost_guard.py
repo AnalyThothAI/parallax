@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseStagePlan
 from gmgn_twitter_intel.domains.pulse_lab.services.evidence_completeness_gate import (
     EvidenceCompletenessGateResult,
 )
@@ -31,19 +32,6 @@ class PulseRunFingerprint:
     runtime_hash: str
     stage_plan_hash: str
     route: str
-
-    def to_json(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(frozen=True, slots=True)
-class PulseStagePlan:
-    run_signal_analyst: bool
-    run_bear_case: bool
-    run_risk_portfolio_judge: bool
-    signal_model: str
-    bear_model: str
-    judge_model: str | None
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -308,6 +296,5 @@ __all__ = [
     "PulseCostGuardAction",
     "PulseCostGuardDecision",
     "PulseRunFingerprint",
-    "PulseStagePlan",
     "decide_pulse_agent_cost",
 ]

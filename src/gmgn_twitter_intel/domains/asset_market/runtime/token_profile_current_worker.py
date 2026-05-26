@@ -11,6 +11,9 @@ from gmgn_twitter_intel.domains.asset_market.services.token_profile_current_proj
     project_token_profile_current,
 )
 
+DEFAULT_LEASE_MS = 60_000
+DEFAULT_RETRY_MS = 30_000
+
 
 class TokenProfileCurrentWorker(WorkerBase):
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -21,21 +24,85 @@ class TokenProfileCurrentWorker(WorkerBase):
             + int(result.get("missing") or 0)
             + int(result.get("unsupported") or 0),
             failed=int(result.get("error") or 0),
-            notes={"result": result},
+            skipped=1 if int(result.get("claimed") or 0) == 0 else 0,
+            notes={
+                "claimed": int(result.get("claimed") or 0),
+                "queue_depth": int(result.get("queue_depth") or 0),
+                "source_rows_scanned": int(result.get("source_rows_scanned") or 0),
+                "targets_loaded": int(result.get("targets_loaded") or 0),
+                "rows_written": int(result.get("rows_written") or 0),
+                "result": result,
+            },
         )
 
     def _rebuild_once(self, now_ms: int) -> dict[str, Any]:
-        with self.db.worker_session(self.name) as repos:
+        with self.db.worker_session(
+            self.name,
+            statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
+        ) as repos:
             return rebuild_token_profile_current_once(
                 repos=repos,
                 now_ms=now_ms,
                 limit=max(1, int(getattr(self.settings, "batch_size", 500))),
+                lease_owner=self.name,
+                lease_ms=max(1, int(getattr(self.settings, "lease_ms", DEFAULT_LEASE_MS) or DEFAULT_LEASE_MS)),
+                retry_ms=max(1, int(getattr(self.settings, "retry_ms", DEFAULT_RETRY_MS) or DEFAULT_RETRY_MS)),
             )
 
 
-def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 500) -> dict[str, Any]:
+def rebuild_token_profile_current_once(
+    *,
+    repos: Any,
+    now_ms: int,
+    limit: int = 500,
+    lease_owner: str = "token_profile_current",
+    lease_ms: int = DEFAULT_LEASE_MS,
+    retry_ms: int = DEFAULT_RETRY_MS,
+) -> dict[str, Any]:
+    result = _empty_result(now_ms=now_ms)
+    claims = repos.token_profile_current_dirty_targets.claim_due(
+        now_ms=now_ms,
+        limit=limit,
+        lease_owner=lease_owner,
+        lease_ms=lease_ms,
+        commit=True,
+    )
+    result["claimed"] = len(claims)
+    result["selected"] = len(claims)
+    result["queue_depth"] = repos.token_profile_current_dirty_targets.queue_depth(now_ms=now_ms)
+    if not claims:
+        result["reason"] = "no_due_token_profile_current_targets"
+        return result
+
+    try:
+        with repos.transaction():
+            _project_claimed_token_profiles(repos=repos, claims=claims, now_ms=now_ms, result=result)
+            repos.token_profile_current_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
+    except Exception as exc:
+        with repos.transaction():
+            repos.token_profile_current_dirty_targets.mark_error(
+                claims,
+                error=_error_text(exc),
+                now_ms=now_ms,
+                retry_ms=retry_ms,
+                commit=False,
+            )
+        result["error"] += len(claims)
+        result["last_error"] = _error_text(exc)
+    result["finished_at_ms"] = int(now_ms)
+    return result
+
+
+def _project_claimed_token_profiles(
+    *,
+    repos: Any,
+    claims: list[dict[str, Any]],
+    now_ms: int,
+    result: dict[str, Any],
+) -> None:
     query = getattr(repos, "source_query", None) or TokenProfileSourceQuery(repos.conn)
-    targets = query.recent_profile_targets(now_ms=now_ms, limit=limit)
+    targets = _dedupe_targets(claims)
+    result["targets_loaded"] = len(targets)
     asset_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "Asset"]
     cex_token_ids = [str(row["target_id"]) for row in targets if str(row.get("target_type") or "") == "CexToken"]
     gmgn_openapi = query.gmgn_openapi_profiles(asset_ids)
@@ -47,9 +114,6 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
         repos=repos,
         sources=[gmgn_openapi, binance_web3, gmgn_stream, okx_dex, cex_profiles],
     )
-    result = _empty_result(now_ms=now_ms)
-    result["selected"] = len(targets)
-
     for target in targets:
         target_id = str(target.get("target_id") or "")
         row = project_token_profile_current(
@@ -63,10 +127,18 @@ def rebuild_token_profile_current_once(*, repos: Any, now_ms: int, limit: int = 
             computed_at_ms=now_ms,
         )
         repos.token_profiles.upsert_current(row, commit=False)
+        result["rows_written"] += 1
         _record_row(result, row)
-    repos.conn.commit()
-    result["finished_at_ms"] = int(now_ms)
-    return result
+
+
+def _dedupe_targets(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    targets: dict[tuple[str, str], dict[str, str]] = {}
+    for row in rows:
+        target_type = str(row.get("target_type") or "").strip()
+        target_id = str(row.get("target_id") or "").strip()
+        if target_type and target_id:
+            targets[(target_type, target_id)] = {"target_type": target_type, "target_id": target_id}
+    return list(targets.values())
 
 
 def _ready_images_by_source_url(*, repos: Any, sources: list[dict[str, dict[str, Any]]]) -> dict[str, dict[str, Any]]:
@@ -120,6 +192,11 @@ def _record_row(result: dict[str, Any], row: dict[str, Any]) -> None:
 def _empty_result(*, now_ms: int) -> dict[str, Any]:
     return {
         "selected": 0,
+        "claimed": 0,
+        "queue_depth": 0,
+        "source_rows_scanned": 0,
+        "targets_loaded": 0,
+        "rows_written": 0,
         "ready": 0,
         "missing": 0,
         "unsupported": 0,
@@ -129,3 +206,8 @@ def _empty_result(*, now_ms: int) -> dict[str, Any]:
         "started_at_ms": int(now_ms),
         "finished_at_ms": int(now_ms),
     }
+
+
+def _error_text(exc: BaseException) -> str:
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__

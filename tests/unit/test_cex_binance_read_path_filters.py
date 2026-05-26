@@ -29,10 +29,10 @@ def test_registry_preferred_cex_reads_are_binance_usdt_swap_only() -> None:
         _assert_no_legacy_cex_preference_ordering(sql)
 
 
-def test_registry_active_live_market_targets_cex_payloads_are_binance_usdt_swap_only() -> None:
+def test_registry_ranked_live_market_targets_cex_payloads_are_binance_usdt_swap_only() -> None:
     conn = RecordingConn()
 
-    RegistryRepository(conn).active_live_market_targets(
+    RegistryRepository(conn).ranked_live_market_targets(
         projection_version="token-radar-v13-social-attention",
         since_ms=1_700_000_000_000,
         limit=25,

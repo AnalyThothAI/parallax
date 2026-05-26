@@ -3,26 +3,10 @@ from __future__ import annotations
 from gmgn_twitter_intel.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
 
 
-def test_recent_profile_targets_uses_current_radar_and_bounded_recent_resolutions():
-    conn = _Conn(rows=[{"target_type": "Asset", "target_id": "asset:abc", "best_radar_rank": 1}])
-    query = TokenProfileSourceQuery(conn)
+def test_token_profile_source_query_has_no_broad_target_discovery_entrypoint():
+    query = TokenProfileSourceQuery(_Conn(rows=[]))
 
-    rows = query.recent_profile_targets(now_ms=1_700_000_100_000, limit=25)
-
-    assert rows == [{"target_type": "Asset", "target_id": "asset:abc", "best_radar_rank": 1}]
-    sql = conn.sqls[-1]
-    params = conn.params[-1]
-    assert "token_radar_projection_coverage" in sql
-    assert "token_radar_current_rows" in sql
-    assert "token_radar_rows" not in sql
-    assert "token_intent_resolutions" in sql
-    assert "recent_resolution_rows AS MATERIALIZED" in sql
-    assert "events.received_at_ms >= %s" in sql
-    assert "ORDER BY events.received_at_ms DESC" in sql
-    assert "target_type IN ('Asset', 'CexToken')" in sql
-    assert "LIMIT %s" in sql
-    assert params[-2] == 100
-    assert params[-1] == 25
+    assert not hasattr(query, "recent" + "_profile_targets")
 
 
 def test_gmgn_openapi_profiles_reads_ready_asset_profile_source_only():

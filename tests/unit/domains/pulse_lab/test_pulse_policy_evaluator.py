@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.pulse_lab.services.pulse_policy_evaluator import (
+from gmgn_twitter_intel.domains.pulse_lab.queries.pulse_policy_evaluator import (
     build_pulse_policy_evaluation,
     fetch_radar_rows,
     render_pulse_policy_evaluation_report,

@@ -384,7 +384,7 @@ class RegistryRepository:
         assets = [_with_identity_metadata(dict(row)) for row in rows]
         return sorted(assets, key=_identity_metadata_sort_key)
 
-    def active_live_market_targets(
+    def ranked_live_market_targets(
         self,
         *,
         projection_version: str,

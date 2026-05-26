@@ -57,7 +57,7 @@ usage: gmgn-twitter-intel ops [-h]
                               {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-enrichment-jobs,backfill-watchlist-signal-stats,reset-token-radar-postgres-hard-cut,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-runtime-worker-dirty-targets,ensure-postgres-partitions,drop-expired-postgres-partitions,projection-status,worker-status,validate-projections,enqueue-projection-dirty-targets,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,cex-binance-hard-cut-cleanup,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,rebuild-narrative-intel,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -75,6 +75,9 @@ positional arguments:
                         market_ticks
     enqueue-token-radar-dirty-targets
                         enqueue Token Radar dirty targets from persisted facts
+    enqueue-runtime-worker-dirty-targets
+                        enqueue bounded dirty targets for runtime worker
+                        repair
     ensure-postgres-partitions
                         ensure current and next Token Radar PostgreSQL
                         history/audit partitions

@@ -118,6 +118,9 @@ EQUITY_PROJECTION_PAYLOAD_HASHES_MIGRATION = Path(
 TOKEN_RADAR_TARGET_PROJECTION_COVERAGE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260524_0093_token_radar_target_projection_coverage.py"
 )
+RUNTIME_WORKER_DIRTY_TARGETS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -148,6 +151,48 @@ def test_alembic_revision_graph_has_single_head() -> None:
     script = ScriptDirectory.from_config(alembic_config())
 
     assert script.get_heads() == [script.get_current_head()]
+
+
+def test_runtime_worker_dirty_targets_migration_adds_narrative_control_plane() -> None:
+    text = RUNTIME_WORKER_DIRTY_TARGETS_MIGRATION.read_text()
+
+    for table_name in ("narrative_admission_dirty_targets", "discussion_digest_dirty_targets"):
+        assert f"CREATE TABLE IF NOT EXISTS {table_name}" in text
+        assert 'PRIMARY KEY (target_type, target_id, "window", scope)' in text
+        assert "projection_version TEXT NOT NULL" in text
+        assert "schema_version TEXT NOT NULL" in text
+        assert f"idx_{table_name.removesuffix('_targets')}_due" in text
+        assert f"idx_{table_name.removesuffix('_targets')}_lease" in text
+
+    assert "CREATE TABLE IF NOT EXISTS token_profile_current_dirty_targets" in text
+    assert "PRIMARY KEY (target_type, target_id)" in text
+    assert "idx_token_profile_current_dirty_due" in text
+    assert "idx_token_profile_current_dirty_lease" in text
+    assert "CREATE TABLE IF NOT EXISTS token_image_source_dirty_targets" in text
+    assert "PRIMARY KEY (source_url_hash, target_type, target_id)" in text
+    assert "raw_ref_json JSONB NOT NULL DEFAULT '{}'::jsonb" in text
+    assert "idx_token_image_source_dirty_due" in text
+    assert "idx_token_image_source_dirty_lease" in text
+    assert "CREATE TABLE IF NOT EXISTS asset_profile_refresh_targets" in text
+    assert "PRIMARY KEY (provider, target_type, target_id)" in text
+    assert "chain_id TEXT NOT NULL" in text
+    assert "address TEXT NOT NULL" in text
+    assert "idx_asset_profile_refresh_targets_due" in text
+    assert "idx_asset_profile_refresh_targets_lease" in text
+    assert "CREATE TABLE IF NOT EXISTS token_capture_tier_dirty_targets" in text
+    assert "PRIMARY KEY (work_name, partition_key)" in text
+    assert "idx_token_capture_tier_dirty_due" in text
+    assert "idx_token_capture_tier_dirty_lease" in text
+
+    for column in (
+        "leased_until_ms BIGINT",
+        "lease_owner TEXT",
+        "attempt_count INTEGER NOT NULL DEFAULT 0",
+        "claimed_at_ms BIGINT",
+        "last_error TEXT",
+    ):
+        assert f"ALTER TABLE token_mention_semantics ADD COLUMN IF NOT EXISTS {column}" in text
+    assert "idx_token_mention_semantics_lease" in text
 
 
 def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:

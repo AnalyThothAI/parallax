@@ -38,14 +38,14 @@ def test_build_macro_asset_correlation_uses_aligned_daily_returns() -> None:
         0.009,
     ]
     observations = [
-        *_price_observations("asset:spy", dates, _prices_from_returns(base_returns), source="yahoo"),
-        *_price_observations(
+        *_price_samples("asset:spy", dates, _prices_from_returns(base_returns), source="yahoo"),
+        *_price_samples(
             "asset:qqq",
             dates,
             _prices_from_returns([value * 1.4 for value in base_returns]),
             source="yahoo",
         ),
-        *_price_observations(
+        *_price_samples(
             "asset:tlt",
             dates,
             _prices_from_returns([value * -0.75 for value in base_returns]),
@@ -81,8 +81,8 @@ def test_build_macro_asset_correlation_dedupes_by_source_priority() -> None:
     dates = _dates(24)
     returns = ([0.004, 0.009, -0.003, 0.014, 0.002, -0.005] * 4)[:-1]
     observations = [
-        *_price_observations("asset:spy", dates, _prices_from_returns(returns), source="yahoo", priority=100),
-        *_price_observations("asset:qqq", dates, _prices_from_returns(returns), source="yahoo", priority=100),
+        *_price_samples("asset:spy", dates, _prices_from_returns(returns), source="yahoo", priority=100),
+        *_price_samples("asset:qqq", dates, _prices_from_returns(returns), source="yahoo", priority=100),
         _observation(
             "asset:spy",
             dates[-2],
@@ -106,8 +106,8 @@ def test_build_macro_asset_correlation_dedupes_by_source_priority() -> None:
 def test_build_macro_asset_correlation_marks_pairs_unavailable_when_overlap_is_too_small() -> None:
     dates = _dates(24)
     observations = [
-        *_price_observations("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1])),
-        *_price_observations("crypto:eth", dates[-3:], [2000.0, 2015.0, 2008.0]),
+        *_price_samples("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1])),
+        *_price_samples("crypto:eth", dates[-3:], [2000.0, 2015.0, 2008.0]),
     ]
 
     result = build_macro_asset_correlation(
@@ -148,7 +148,7 @@ def _prices_from_returns(log_returns: list[float]) -> list[float]:
     return prices
 
 
-def _price_observations(
+def _price_samples(
     concept_key: str,
     dates: list[date],
     values: list[float],

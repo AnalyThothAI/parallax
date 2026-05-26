@@ -140,17 +140,30 @@ class LivePriceGateway(WorkerBase):
         result = await self._run_cycle(now_ms=now_ms)
         return WorkerResult(
             processed=int(result.get("live_market_updates_published") or 0),
-            notes={"result": result},
+            notes={
+                "claimed": int(result.get("claimed") or 0),
+                "queue_depth": int(result.get("queue_depth") or 0),
+                "source_rows_scanned": int(result.get("source_rows_scanned") or 0),
+                "targets_loaded": int(result.get("targets_loaded") or 0),
+                "rows_written": int(result.get("rows_written") or 0),
+                "result": result,
+            },
         )
 
     async def _run_cycle(self, *, now_ms: int | None = None) -> dict[str, Any]:
         received_at_ms = int(now_ms if now_ms is not None else self.clock())
         result = {
+            "claimed": 0,
+            "queue_depth": 0,
+            "source_rows_scanned": 0,
+            "targets_loaded": 0,
+            "rows_written": 0,
             "targets_selected": 0,
             "live_market_updates_published": 0,
         }
         active_targets = await asyncio.to_thread(self._active_targets, now_ms=received_at_ms)
         result["targets_selected"] = len(active_targets)
+        result["targets_loaded"] = len(active_targets)
         market_targets: list[dict[str, Any]] = []
         for row in active_targets:
             target = _market_target_from_row(row)
@@ -211,13 +224,8 @@ class LivePriceGateway(WorkerBase):
             remaining -= step
 
     def _active_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
-        since_ms = int(now_ms) - int(self.target_ttl_seconds * 1000)
         with self.db.worker_session(self.name) as repos:
-            targets: Sequence[Mapping[str, Any]] = repos.registry.active_live_market_targets(
-                projection_version=self.projection_version,
-                since_ms=since_ms,
-                limit=self.target_limit,
-            )
+            targets: Sequence[Mapping[str, Any]] = repos.token_capture_tiers.live_target_rows(limit=self.target_limit)
         return [dict(target) for target in targets]
 
     def _latest_market_ticks(

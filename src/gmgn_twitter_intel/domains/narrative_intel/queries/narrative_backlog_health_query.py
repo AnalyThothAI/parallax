@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import EPOCH_POLICY_VERSION
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import EPOCH_POLICY_VERSION
 
 _HOUR_MS = 60 * 60 * 1000
 

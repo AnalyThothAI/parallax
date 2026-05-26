@@ -9,9 +9,9 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
-from gmgn_twitter_intel.domains.news_intel.services.source_quality_projection import window_ms_for_label
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
+from gmgn_twitter_intel.domains.news_intel.types.source_quality_policy import window_ms_for_label
 
 _DEFAULT_SOURCE_CLAIM_LEASE_MS = 60_000
 _REDACTED = "<redacted>"

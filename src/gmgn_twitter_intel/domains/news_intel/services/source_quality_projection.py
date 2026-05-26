@@ -10,13 +10,6 @@ _FORMULA_ID = (
 _FORMULA_HASH = hashlib.sha256(_FORMULA_ID.encode()).hexdigest()[:12]
 SOURCE_QUALITY_PROJECTION_VERSION = f"news_source_quality_projection:v1:{_FORMULA_HASH}"
 
-SOURCE_QUALITY_WINDOWS_MS: dict[str, int] = {
-    "1h": 60 * 60 * 1000,
-    "4h": 4 * 60 * 60 * 1000,
-    "24h": 24 * 60 * 60 * 1000,
-    "7d": 7 * 24 * 60 * 60 * 1000,
-}
-
 _COUNT_KEYS = (
     "fetch_run_count",
     "fetch_success_count",
@@ -60,14 +53,6 @@ def quality_status(score: float | None) -> str:
     if score >= 25:
         return "degraded"
     return "poor"
-
-
-def window_ms_for_label(window: str) -> int:
-    normalized = str(window or "").strip().lower()
-    if normalized not in SOURCE_QUALITY_WINDOWS_MS:
-        allowed = ", ".join(SOURCE_QUALITY_WINDOWS_MS)
-        raise ValueError(f"unsupported news source quality window: {normalized or '<empty>'}; allowed: {allowed}")
-    return SOURCE_QUALITY_WINDOWS_MS[normalized]
 
 
 def build_source_quality_row(

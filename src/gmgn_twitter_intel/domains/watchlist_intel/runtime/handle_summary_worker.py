@@ -37,62 +37,30 @@ class HandleSummaryWorker(WorkerBase):
         self.concurrency = max(1, int(getattr(settings, "concurrency", 1) or 1))
         self.lease_ms = max(1_000, int(getattr(settings, "lease_ms", 120_000) or 120_000))
         self.provider_timeout_seconds = max(1.0, (self.lease_ms - 1_000) / 1000)
-        self.reconcile_limit = max(1, int(getattr(settings, "reconcile_limit", 100) or 100))
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         started_at_ms = int(now_ms if now_ms is not None else _now_ms())
-        try:
-            reconcile = await asyncio.to_thread(self.reconcile_missing_jobs_once, now_ms=started_at_ms)
-        except Exception as exc:
-            logger.warning("watchlist handle summary reconcile failed: error={}", str(exc)[:300])
-            reconcile = {
-                "seen": 0,
-                "enqueued": 0,
-                "skipped": 0,
-                "failed": 1,
-                "error": type(exc).__name__,
-            }
-        process = await self.process_due_jobs_once_async(now_ms=started_at_ms)
-        notes = {**{f"reconcile_{key}": value for key, value in reconcile.items()}, **process}
-        skipped = int(reconcile.get("skipped") or 0)
-        if not notes["claimed"] and not notes["reconcile_enqueued"]:
-            skipped = max(1, skipped)
+        notes = await self.process_due_jobs_once_async(now_ms=started_at_ms)
+        skipped = 0
+        if not notes["claimed"]:
+            skipped = 1
         return WorkerResult(
-            processed=int(process.get("processed") or 0) + int(reconcile.get("enqueued") or 0),
-            failed=int(process.get("failed") or 0) + int(reconcile.get("failed") or 0),
+            processed=int(notes.get("processed") or 0),
+            failed=int(notes.get("failed") or 0),
             skipped=skipped,
             notes=notes,
         )
 
-    def reconcile_missing_jobs_once(self, *, now_ms: int | None = None) -> dict[str, int]:
-        resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-        since_ms = resolved_now_ms - max(1, int(self.config.window_days)) * 24 * 60 * 60 * 1000
-        result = {"seen": 0, "enqueued": 0, "skipped": 0}
-        with self._repository_session() as repos:
-            rows = repos.watchlist_intel.handles_missing_summary_jobs(
-                handles=self.handles,
-                since_ms=since_ms,
-                limit=self.reconcile_limit,
-            )
-            service = WatchlistHandleSummaryService(
-                repository=repos.watchlist_intel,
-                provider=None,
-                config=self.config,
-            )
-            for row in rows:
-                result["seen"] += 1
-                if service.enqueue_handle_summary_if_due(
-                    handle=str(row.get("handle") or ""),
-                    now_ms=resolved_now_ms,
-                    commit=True,
-                ):
-                    result["enqueued"] += 1
-                else:
-                    result["skipped"] += 1
-        return result
-
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        result = {"claimed": 0, "processed": 0, "failed": 0}
+        result = {
+            "claimed": 0,
+            "queue_depth": 0,
+            "source_rows_scanned": 0,
+            "targets_loaded": 0,
+            "rows_written": 0,
+            "processed": 0,
+            "failed": 0,
+        }
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         jobs: list[tuple[dict[str, Any], Any]] = []
         for _ in range(self.concurrency):
@@ -110,6 +78,7 @@ class HandleSummaryWorker(WorkerBase):
                 break
             jobs.append((job, reservation))
         result["claimed"] = len(jobs)
+        result["targets_loaded"] = len(jobs)
         if not jobs:
             return result
         outcomes = await asyncio.gather(
@@ -121,6 +90,7 @@ class HandleSummaryWorker(WorkerBase):
                 _record_agent_backpressure_reason(result, outcome.split(":", 1)[1])
                 continue
             result[outcome] += 1
+        result["rows_written"] = int(result["processed"] or 0) + int(result["failed"] or 0)
         return result
 
     async def _process_job(self, job: dict[str, Any], *, now_ms: int, reservation: Any) -> str:

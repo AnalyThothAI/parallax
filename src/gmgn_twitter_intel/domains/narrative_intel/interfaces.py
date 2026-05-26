@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
+
+__all__ = ("NARRATIVE_SCHEMA_VERSION", "NarrativeDigestReader")
+
 
 class NarrativeDigestReader(Protocol):
     def current_narrative_snapshots_for_targets(

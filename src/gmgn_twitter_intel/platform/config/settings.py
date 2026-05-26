@@ -1030,6 +1030,8 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=250, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052109
+    lookback_days: int = Field(default=730, ge=1)
+    limit_per_series: int = Field(default=250, ge=1)
 
 
 class PulseCandidateTriggerThresholds(BaseModel):

@@ -22,10 +22,12 @@ from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.enriched_event_repository import EnrichedEventRepository
 from .repositories.event_anchor_backfill_job_repository import EventAnchorBackfillJobRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
+from .repositories.market_tick_current_dirty_target_repository import MarketTickCurrentDirtyTargetRepository
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
 from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
 from .repositories.token_profile_current_repository import TokenProfileCurrentRepository
+from .services.market_tick_persistence import MarketTickPersistenceService
 from .types import EnrichedEventCapture
 
 __all__ = [
@@ -48,6 +50,8 @@ __all__ = [
     "EnrichedEventRepository",
     "EventAnchorBackfillJobRepository",
     "IdentityEvidenceRepository",
+    "MarketTickCurrentDirtyTargetRepository",
+    "MarketTickPersistenceService",
     "MarketTickRepository",
     "RegistryRepository",
     "TokenCaptureTierRepository",

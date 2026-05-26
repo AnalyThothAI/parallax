@@ -68,8 +68,12 @@ are wrong too.
    `equity_company_events`, `equity_event_source_spans`,
    `equity_event_fact_candidates`, and `macro_observations` are
    the business fact tables. Control plane tables such as
-   `event_anchor_backfill_jobs` and `news_fetch_runs` own worker scheduling state
-   and are not product truth. `macro_import_runs` records importer provenance,
+   `event_anchor_backfill_jobs`, `pulse_trigger_dirty_targets`,
+   `narrative_admission_dirty_targets`, `discussion_digest_dirty_targets`,
+   `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
+   `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
+   `news_fetch_runs` own worker scheduling state and are not product truth.
+   `macro_import_runs` records importer provenance,
    coverage, and data-quality diagnostics; macro product state still rebuilds
    from `macro_observations`. Every derived read model can be rebuilt from the
    facts.
@@ -135,7 +139,9 @@ are wrong too.
    Radar listens to that current-ready channel. Every listener must have a
    bounded `interval_seconds` loop that re-reads durable queues or bounded
    read models so a missed `NOTIFY` cannot stall the pipeline. Runtime workers
-   must not compensate for missed wakes by scanning large fact windows.
+   must not compensate for missed wakes by scanning large fact windows; missed
+   enqueue recovery belongs to explicit bounded ops repair commands that
+   enqueue control rows only.
 7. **No runtime compatibility layer.** Hard cuts delete the old runtime
    path. No `_overlay_*`, no `fallback_to_v2_snapshot`, no "if missing fall
    back to the old field". Migration code and rollback docs may reference
@@ -362,9 +368,11 @@ Radar scoring snapshots. The runtime profile lane is:
 
 ```
 resolved Asset(chain,address)
+  → asset_profile_refresh_targets
   → AssetProfileRefreshWorker
   → dex_profile_sources[].token_profile(...)
   → asset_profiles (GMGN OpenAPI + Binance Web3 source caches)
+  → token_profile_current_dirty_targets
   → TokenProfileCurrentWorker
   → token_profile_current
   → TokenProfileReadModel
@@ -372,7 +380,7 @@ resolved Asset(chain,address)
   → shared frontend TokenProfileCard
 ```
 
-Only `asset_market` workers and ops commands may call the profile provider.
+Only `asset_market` workers and explicit ops commands may call the profile provider.
 HTTP handlers, CLI read commands, Token Radar projection, Search read models,
 and frontend components read persisted `token_profile_current` through
 `TokenProfileReadModel`. The current profile projection only marks rows

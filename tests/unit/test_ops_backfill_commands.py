@@ -369,6 +369,77 @@ def test_enqueue_token_radar_dirty_targets_execute_dispatches_to_market_current_
     ]
 
 
+def test_enqueue_runtime_worker_dirty_targets_dispatches_to_dedicated_handler(monkeypatch) -> None:
+    from gmgn_twitter_intel.app.surfaces.cli.commands import ops as ops_module
+
+    calls: list[dict[str, Any]] = []
+
+    @contextmanager
+    def fake_repositories(_settings: object):
+        yield SimpleNamespace(conn=object())
+
+    def fake_enqueue_runtime_worker_dirty_targets(repos: object, **kwargs: Any) -> dict[str, Any]:
+        calls.append({"repos": repos, **kwargs})
+        return {
+            "work": kwargs["work"],
+            "dry_run": not bool(kwargs["execute"]),
+            "execute": bool(kwargs["execute"]),
+            "candidate_count": 3,
+            "enqueued_count": 0,
+            "targets": [],
+        }
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
+    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+    monkeypatch.setattr(
+        ops_module,
+        "enqueue_runtime_worker_dirty_targets",
+        fake_enqueue_runtime_worker_dirty_targets,
+    )
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "enqueue-runtime-worker-dirty-targets",
+            "--work",
+            "pulse_trigger",
+            "--window",
+            "1h",
+            "--scope",
+            "all",
+            "--since-hours",
+            "4",
+        ],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert payload["data"] == {
+        "work": "pulse_trigger",
+        "dry_run": True,
+        "execute": False,
+        "candidate_count": 3,
+        "enqueued_count": 0,
+        "targets": [],
+    }
+    assert calls == [
+        {
+            "repos": calls[0]["repos"],
+            "work": "pulse_trigger",
+            "window": "1h",
+            "scope": "all",
+            "since_hours": 4.0,
+            "target_id": "",
+            "limit": None,
+            "execute": False,
+            "now_ms": 1_700_000_100_000,
+        }
+    ]
+
+
 class _FakeWatchlistIntel:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []

@@ -197,6 +197,41 @@ def test_worker_base_timeout_and_exception_record_error_backoff_and_continue_unt
     asyncio.run(scenario())
 
 
+def test_worker_status_payload_compacts_large_result_notes() -> None:
+    class NotesWorker(WorkerBase):
+        async def run_once(self) -> WorkerResult:
+            self._stop_event.set()
+            return WorkerResult(
+                processed=1,
+                notes={
+                    "claimed": 1,
+                    "large_text": "x" * 800,
+                    "large_list": list(range(25)),
+                    "large_dict": {f"k{i}": i for i in range(25)},
+                },
+            )
+
+    async def scenario() -> None:
+        worker = NotesWorker(
+            name="notes_worker",
+            settings=worker_settings(interval_seconds=0),
+            db=None,
+            telemetry=FakeTelemetry(),
+        )
+
+        await worker.run()
+        payload = worker.status_payload()
+
+        notes = payload["last_result"]["notes"]
+        assert notes["claimed"] == 1
+        assert len(notes["large_text"]) == 500
+        assert len(notes["large_list"]) == 21
+        assert notes["large_list"][-1] == {"_truncated": 5}
+        assert notes["large_dict"]["_truncated"] == 5
+
+    asyncio.run(scenario())
+
+
 def test_worker_base_success_wait_floors_zero_interval_to_positive_timeout() -> None:
     class TwoIterationWorker(WorkerBase):
         def __init__(self, **kwargs: Any) -> None:

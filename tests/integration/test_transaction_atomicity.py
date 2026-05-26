@@ -128,6 +128,7 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
                     conn=repos.conn,
                     market_ticks=repos.market_ticks,
                     market_tick_current_dirty_targets=dirty_recorder,
+                    require_transaction=repos.require_transaction,
                 )
             )
             service.insert_ticks_and_enqueue_current_dirty(

@@ -4,6 +4,7 @@ from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from tests.postgres_test_utils import connect_postgres_test
@@ -78,7 +79,7 @@ def test_migration_creates_narrative_read_model_tables(tmp_path):
     }.issubset(tables)
 
 
-def test_admitted_radar_rows_query_matches_current_token_radar_schema(tmp_path):
+def test_load_radar_admission_target_query_matches_current_token_radar_schema(tmp_path):
     conn, _, repo = open_repo(tmp_path)
     try:
         columns = {
@@ -91,21 +92,24 @@ def test_admitted_radar_rows_query_matches_current_token_radar_schema(tmp_path):
                 """
             ).fetchall()
         }
-        rows = repo.admitted_radar_rows(
+        context = repo.load_radar_admission_target(
+            target_type="Asset",
+            target_id="asset:missing",
             window="5m",
             scope="all",
-            limit=10,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            schema_version=NARRATIVE_SCHEMA_VERSION,
         )
     finally:
         conn.close()
 
     assert "rank_score" in columns
     assert "factor_snapshot_json" in columns
-    assert rows == []
+    assert context["radar_row"] is None
+    assert context["existing_admission"] is None
 
 
-def test_admitted_radar_rows_uses_latest_ready_projection_frontier(tmp_path):
+def test_load_radar_admission_target_uses_exact_latest_ready_projection_frontier(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
         for event_id in ["event-old-1", "event-old-2", "event-latest"]:
@@ -166,20 +170,22 @@ def test_admitted_radar_rows_uses_latest_ready_projection_frontier(tmp_path):
         )
         conn.commit()
 
-        rows = repo.admitted_radar_rows(
+        context = repo.load_radar_admission_target(
+            target_type="Asset",
+            target_id="asset:latest:rank10",
             window="24h",
             scope="all",
-            limit=3,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            schema_version=NARRATIVE_SCHEMA_VERSION,
         )
     finally:
         conn.close()
 
-    assert [row["computed_at_ms"] for row in rows] == [2_000]
-    assert [row["target_id"] for row in rows] == ["asset:latest:rank10"]
+    assert context["radar_row"]["computed_at_ms"] == 2_000
+    assert context["radar_row"]["target_id"] == "asset:latest:rank10"
 
 
-def test_admitted_radar_rows_uses_current_rows_when_coverage_timestamp_advances_without_row_churn(tmp_path):
+def test_load_radar_admission_target_uses_current_row_when_coverage_timestamp_advances_without_row_churn(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
         assert evidence.insert_event(make_event("event-stable"), is_watched=True) is True
@@ -215,18 +221,20 @@ def test_admitted_radar_rows_uses_current_rows_when_coverage_timestamp_advances_
         )
         conn.commit()
 
-        rows = repo.admitted_radar_rows(
+        context = repo.load_radar_admission_target(
+            target_type="Asset",
+            target_id="asset:stable:rank1",
             window="24h",
             scope="all",
-            limit=3,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            schema_version=NARRATIVE_SCHEMA_VERSION,
         )
     finally:
         conn.close()
 
-    assert [row["target_id"] for row in rows] == ["asset:stable:rank1"]
-    assert [row["computed_at_ms"] for row in rows] == [2_000]
-    assert [row["row_computed_at_ms"] for row in rows] == [1_000]
+    assert context["radar_row"]["target_id"] == "asset:stable:rank1"
+    assert context["radar_row"]["computed_at_ms"] == 2_000
+    assert context["radar_row"]["row_computed_at_ms"] == 1_000
 
 
 def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
@@ -265,7 +273,13 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
             model_version="gpt-test",
             now_ms=2_000,
         )
-        due = repo.due_mentions_for_labeling(now_ms=2_001, limit=10, scopes=("matched",))
+        due = repo.claim_due_mention_semantics(
+            now_ms=2_001,
+            limit=10,
+            lease_owner="mention_semantics",
+            lease_ms=60_000,
+            max_per_target=10,
+        )
         run = repo.record_narrative_model_run(
             {
                 "stage": "mention_semantics",
@@ -288,6 +302,11 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
                     "event_id": "event-1",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
+                    "semantic_id": due[0]["semantic_id"],
+                    "schema_version": due[0]["schema_version"],
+                    "text_fingerprint": due[0]["text_fingerprint"],
+                    "lease_owner": due[0]["lease_owner"],
+                    "attempt_count": due[0]["attempt_count"],
                     "trade_stance": "bullish",
                     "attention_valence": "celebratory",
                     "claim_type": "price-action",
@@ -306,6 +325,18 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
             ],
             failures=[],
             now_ms=2_020,
+        )
+        digest_dirty_targets = repo.digest_dirty_targets_for_mention_semantics_claims(
+            [
+                {
+                    **due[0],
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                }
+            ],
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            schema_version="narrative_intel_v1",
         )
         hydrated = repo.semantics_for_posts(
             [{"event_id": "event-1", "target_type": "chain_token", "target_id": "solana:So111"}],
@@ -341,6 +372,18 @@ def test_repository_enqueues_completes_and_hydrates_semantics(tmp_path):
     assert [row["event_id"] for row in due] == ["event-1"]
     assert due[0]["text_clean"] == "SOL breakout discussion"
     assert complete["labeled"] == 1
+    assert digest_dirty_targets == [
+        {
+            "target_type": "chain_token",
+            "target_id": "solana:So111",
+            "window": "1h",
+            "scope": "matched",
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+            "schema_version": "narrative_intel_v1",
+            "source_watermark_ms": 1000,
+            "priority": 0,
+        }
+    ]
     assert hydrated[("event-1", "chain_token", "solana:So111")]["trade_stance"] == "bullish"
     assert context["independent_author_count"] == 1
     assert context["mentions"][0]["text_clean"] == "SOL breakout discussion"
@@ -411,13 +454,14 @@ def test_complete_mention_semantics_targets_current_semantic_identity(tmp_path):
             model_version="gpt-test",
             now_ms=2_000,
         )
-        current = conn.execute(
-            """
-            SELECT semantic_id, schema_version, text_fingerprint
-            FROM token_mention_semantics
-            WHERE text_fingerprint = 'fingerprint-current'
-            """
-        ).fetchone()
+        due = repo.claim_due_mention_semantics(
+            now_ms=2_001,
+            limit=10,
+            lease_owner="mention_semantics",
+            lease_ms=60_000,
+            max_per_target=10,
+        )
+        current = next(row for row in due if row["text_fingerprint"] == "fingerprint-current")
         run = repo.record_narrative_model_run(
             {
                 "stage": "mention_semantics",
@@ -438,12 +482,14 @@ def test_complete_mention_semantics_targets_current_semantic_identity(tmp_path):
             run_id=run["run_id"],
             labels=[
                 {
-                    "semantic_id": current["semantic_id"],
+                        "semantic_id": current["semantic_id"],
                     "event_id": "event-identity",
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
                     "schema_version": current["schema_version"],
-                    "text_fingerprint": current["text_fingerprint"],
+                        "text_fingerprint": current["text_fingerprint"],
+                        "lease_owner": current["lease_owner"],
+                        "attempt_count": current["attempt_count"],
                     "trade_stance": "bullish",
                     "attention_valence": "celebratory",
                     "claim_type": "price-action",
@@ -585,6 +631,150 @@ def test_due_mentions_for_labeling_filters_to_current_admitted_1h_sources(tmp_pa
     assert [row["event_id"] for row in due] == ["event-1"]
 
 
+def test_claim_due_mention_semantics_leases_rows_before_provider_work(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        for event_id in ["event-1", "event-2"]:
+            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-1",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "first source",
+                    "source_received_at_ms": 1_000,
+                },
+                {
+                    "event_id": "event-2",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "second source",
+                    "source_received_at_ms": 2_000,
+                },
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_000,
+        )
+
+        claims = repo.claim_due_mention_semantics(
+            now_ms=2_001,
+            limit=10,
+            lease_owner="worker-a",
+            lease_ms=60_000,
+            max_per_target=10,
+        )
+        second_claims = repo.claim_due_mention_semantics(
+            now_ms=2_002,
+            limit=10,
+            lease_owner="worker-b",
+            lease_ms=60_000,
+            max_per_target=10,
+        )
+    finally:
+        conn.close()
+
+    assert [row["event_id"] for row in claims] == ["event-2", "event-1"]
+    assert {row["lease_owner"] for row in claims} == {"worker-a"}
+    assert {row["attempt_count"] for row in claims} == {1}
+    assert second_claims == []
+
+
+def test_complete_mention_semantics_requires_fresh_claim_token(tmp_path):
+    conn, evidence, repo = open_repo(tmp_path)
+    try:
+        assert evidence.insert_event(make_event("event-stale-claim"), is_watched=True) is True
+        repo.enqueue_missing_mention_semantics(
+            [
+                {
+                    "event_id": "event-stale-claim",
+                    "target_type": "chain_token",
+                    "target_id": "solana:So111",
+                    "text_clean": "claim token source",
+                    "source_received_at_ms": 1_000,
+                }
+            ],
+            schema_version="narrative_intel_v1",
+            model_version="gpt-test",
+            now_ms=2_000,
+        )
+        claim = repo.claim_due_mention_semantics(
+            now_ms=2_001,
+            limit=1,
+            lease_owner="worker-a",
+            lease_ms=60_000,
+        )[0]
+        run = repo.record_narrative_model_run(
+            {
+                "stage": "mention_semantics",
+                "provider": "test-provider",
+                "model": "gpt-test",
+                "schema_version": "narrative_intel_v1",
+                "prompt_version": "mention_semantics_v1",
+                "input_hash": "stale-claim-input",
+                "request_json": {"event_ids": ["event-stale-claim"]},
+                "status": "done",
+                "started_at_ms": 2_000,
+                "finished_at_ms": 2_010,
+                "latency_ms": 10,
+            }
+        )
+
+        stale_complete = repo.complete_mention_semantics_batch(
+            run_id=run["run_id"],
+            labels=[
+                {
+                    **claim,
+                    "attempt_count": claim["attempt_count"] + 1,
+                    "trade_stance": "bullish",
+                    "attention_valence": "celebratory",
+                    "claim_type": "price-action",
+                    "evidence_type": "scanner-alert",
+                    "semantic_confidence": 0.8,
+                    "evidence_refs": [],
+                    "raw_label": {"ok": True},
+                }
+            ],
+            failures=[],
+            now_ms=2_020,
+        )
+        fresh_complete = repo.complete_mention_semantics_batch(
+            run_id=run["run_id"],
+            labels=[
+                {
+                    **claim,
+                    "trade_stance": "bullish",
+                    "attention_valence": "celebratory",
+                    "claim_type": "price-action",
+                    "evidence_type": "scanner-alert",
+                    "semantic_confidence": 0.8,
+                    "evidence_refs": [],
+                    "raw_label": {"ok": True},
+                }
+            ],
+            failures=[],
+            now_ms=2_030,
+        )
+        row = conn.execute(
+            """
+            SELECT status, lease_owner, leased_until_ms, attempt_count
+            FROM token_mention_semantics
+            WHERE semantic_id = %s
+            """,
+            (claim["semantic_id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stale_complete == {"labeled": 0, "semantic_unavailable": 0, "failed": 0}
+    assert fresh_complete["labeled"] == 1
+    assert row["status"] == "labeled"
+    assert row["lease_owner"] is None
+    assert row["leased_until_ms"] is None
+    assert row["attempt_count"] == 1
+
+
 def test_pending_mention_semantics_count_filters_to_current_admitted_1h_sources(tmp_path):
     conn, evidence, repo = open_repo(tmp_path)
     try:
@@ -606,7 +796,7 @@ def test_pending_mention_semantics_count_filters_to_current_admitted_1h_sources(
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "source_event_ids": ["event-24h"],
@@ -705,7 +895,7 @@ def test_digest_context_counts_missing_semantics_outside_prompt_limit(tmp_path):
         context = repo.digest_context(
             target_type="chain_token",
             target_id="solana:So111",
-            window="24h",
+            window="1h",
             scope="matched",
             max_mentions=10,
         )
@@ -891,7 +1081,8 @@ def test_semantic_coverage_counts_duplicate_text_fingerprints_once_per_source_ro
     assert missing == 0
 
 
-def test_replace_current_digest_supersedes_previous_current(tmp_path):
+def test_replace_current_digest_replaces_previous_current_row(tmp_path):
+    window = "1h"
     conn, _, repo = open_repo(tmp_path)
     try:
         repo.upsert_admissions(
@@ -899,7 +1090,7 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": window,
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "source_event_ids": ["event-1"],
@@ -916,7 +1107,7 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
             {
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": window,
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -935,7 +1126,7 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
             {
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": window,
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -952,7 +1143,7 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
         )
         current = repo.current_digests_for_targets(
             [{"target_type": "chain_token", "target_id": "solana:So111"}],
-            window="24h",
+            window=window,
             scope="matched",
             schema_version="narrative_intel_v1",
         )
@@ -969,12 +1160,14 @@ def test_replace_current_digest_supersedes_previous_current(tmp_path):
     assert first["digest_id"] != second["digest_id"]
     assert current[("chain_token", "solana:So111")]["status"] == "pending"
     assert current[("chain_token", "solana:So111")]["currentness"]["display_status"] == "not_ready"
-    assert current[("chain_token", "solana:So111")]["data_gaps_json"] == [
-        {"reason": "low_independent_author_count"}
+    assert current[("chain_token", "solana:So111")]["data_gaps_json"] == [{"reason": "low_independent_author_count"}]
+    assert rows == [
+        {
+            "digest_id": second["digest_id"],
+            "is_current": True,
+            "superseded_at_ms": None,
+        }
     ]
-    assert rows[0]["is_current"] is False
-    assert rows[0]["superseded_at_ms"] == 2_000
-    assert rows[1]["is_current"] is True
 
 
 def test_replace_current_digest_is_idempotent_for_same_digest(tmp_path):
@@ -1220,9 +1413,7 @@ def test_current_narrative_snapshots_batches_target_lookup(tmp_path):
 
     assert current[("chain_token", "solana:Ready")]["status"] == "ready"
     assert current[("chain_token", "solana:Pending")]["status"] == "pending"
-    assert current[("chain_token", "solana:Pending")]["data_gaps_json"] == [
-        {"reason": "semantic_labeling_pending"}
-    ]
+    assert current[("chain_token", "solana:Pending")]["data_gaps_json"] == [{"reason": "semantic_labeling_pending"}]
     assert current[("chain_token", "solana:Missing")]["data_gaps_json"] == [{"reason": "no_ready_digest"}]
     assert counting_conn.execute_count <= 4
 
@@ -1361,7 +1552,7 @@ def test_current_digests_marks_suppressed_ready_digest_out_of_frontier(tmp_path)
                 {
                     "target_type": "chain_token",
                     "target_id": "solana:So111",
-                    "window": "24h",
+                    "window": "1h",
                     "scope": "matched",
                     "schema_version": "narrative_intel_v1",
                     "status": "suppressed",
@@ -1376,7 +1567,7 @@ def test_current_digests_marks_suppressed_ready_digest_out_of_frontier(tmp_path)
             {
                 "target_type": "chain_token",
                 "target_id": "solana:So111",
-                "window": "24h",
+                "window": "1h",
                 "scope": "matched",
                 "schema_version": "narrative_intel_v1",
                 "model_version": "deterministic",
@@ -1393,7 +1584,7 @@ def test_current_digests_marks_suppressed_ready_digest_out_of_frontier(tmp_path)
 
         current = repo.current_digests_for_targets(
             [{"target_type": "chain_token", "target_id": "solana:So111"}],
-            window="24h",
+            window="1h",
             scope="matched",
             schema_version="narrative_intel_v1",
         )

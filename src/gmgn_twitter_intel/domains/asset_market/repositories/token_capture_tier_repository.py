@@ -129,7 +129,7 @@ class TokenCaptureTierRepository:
         ).fetchone()
         return cast("dict[str, Any] | None", row)
 
-    def demote_absent_hot_rows(
+    def demote_hot_rows_outside_rank_set(
         self,
         *,
         active_keys: list[dict[str, str]],
@@ -157,3 +157,40 @@ class TokenCaptureTierRepository:
             {"active_keys": Jsonb(list(active_keys)), "updated_at_ms": int(updated_at_ms)},
         )
         return int(getattr(cursor, "rowcount", 0) or 0)
+
+    def live_target_rows(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT
+              token_capture_tier.target_type,
+              token_capture_tier.target_id,
+              token_capture_tier.tier,
+              token_capture_tier.score,
+              CASE
+                WHEN token_capture_tier.target_type = 'chain_token'
+                  THEN split_part(token_capture_tier.target_id, ':', 1)
+                ELSE NULL
+              END AS chain_id,
+              CASE
+                WHEN token_capture_tier.target_type = 'chain_token'
+                  THEN split_part(token_capture_tier.target_id, ':', 2)
+                ELSE NULL
+              END AS address,
+              split_part(token_capture_tier.target_id, ':', 1) AS provider,
+              split_part(token_capture_tier.target_id, ':', 2) AS native_market_id,
+              CASE
+                WHEN token_capture_tier.target_type = 'cex_symbol' THEN 'USDT'
+                ELSE NULL
+              END AS quote_symbol
+            FROM token_capture_tier
+            WHERE token_capture_tier.tier IN (1, 2)
+            ORDER BY token_capture_tier.tier ASC,
+                     token_capture_tier.score DESC,
+                     token_capture_tier.updated_at_ms DESC,
+                     token_capture_tier.target_type ASC,
+                     token_capture_tier.target_id ASC
+            LIMIT %(limit)s
+            """,
+            {"limit": max(0, int(limit))},
+        ).fetchall()
+        return [dict(row) for row in rows]

@@ -554,7 +554,7 @@ def test_claim_due_job_recovers_stale_running_without_exceeding_max_attempts(tmp
     assert stale_reclaim["attempt_count"] == 2
 
 
-def test_claim_due_job_releases_unclaimed_stale_running_jobs(tmp_path) -> None:
+def test_claim_due_job_does_not_globally_release_unclaimed_stale_running_jobs(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -595,10 +595,10 @@ def test_claim_due_job_releases_unclaimed_stale_running_jobs(tmp_path) -> None:
     by_job_id = {row["job_id"]: row for row in rows}
     assert by_job_id["job-stale-a"]["status"] == "running"
     assert by_job_id["job-stale-a"]["attempt_count"] == 2
-    assert by_job_id["job-stale-b"]["status"] == "failed"
+    assert by_job_id["job-stale-b"]["status"] == "running"
     assert by_job_id["job-stale-b"]["attempt_count"] == 1
-    assert by_job_id["job-stale-b"]["last_error"] == "stale_running_timeout"
-    assert by_job_id["job-stale-b"]["next_run_at_ms"] == 1_202
+    assert by_job_id["job-stale-b"]["last_error"] is None
+    assert by_job_id["job-stale-b"]["next_run_at_ms"] == 1_000
 
 
 def test_claim_due_job_marks_exhausted_stale_running_dead(tmp_path) -> None:
@@ -634,7 +634,8 @@ def test_claim_due_job_marks_exhausted_stale_running_dead(tmp_path) -> None:
     assert first_claim["attempt_count"] == 1
     assert stale_reclaim is None
     assert stored is not None
-    assert stored["status"] == "dead"
+    assert stored["status"] == "running"
+    assert stored["last_error"] is None
 
 
 def test_pending_job_counts_and_stale_window_ttl_terminalize_short_window_jobs(tmp_path) -> None:

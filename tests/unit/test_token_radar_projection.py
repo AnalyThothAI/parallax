@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import pytest
 
 import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
+from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
@@ -355,7 +358,7 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "discovery_results_json": None,
     }
     feature_row = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
-    repos = type("Repos", (), {"conn": object(), "token_radar": FakeRejectingTokenRadar([feature_row])})()
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": FakeRejectingTokenRadar([feature_row])})()
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -394,7 +397,7 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
             "rows_written": 0,
             "dirty_ranges_written": 0,
             "error": "newer_projection_exists",
-            "commit": True,
+            "commit": False,
         }
     ]
 
@@ -409,7 +412,7 @@ def test_projection_refresh_rank_set_does_not_mark_user_coverage_running(monkeyp
         scope="all",
     )
     token_radar = FakeTokenRadar([feature_row])
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -433,7 +436,7 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
         scope="all",
     )
     token_radar = FakeTokenRadar([feature_row])
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -451,6 +454,170 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     assert token_radar.rows[0]["market_json"] == {}
 
 
+def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "factor_snapshot_json": {"schema_version": "factor"},
+        "source_event_ids_json": ["event-1"],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+    }
+    repos = type(
+        "Repos",
+        (),
+        {"narrative_admission_dirty_targets": FakeRuntimeDirtyTargets()},
+    )()
+
+    TokenRadarProjection(repos=repos)._enqueue_narrative_admission_for_rank_changes(
+        window="1h",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.narrative_admission_dirty_targets.enqueued == [
+        {
+            "targets": [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset-1",
+                    "window": "1h",
+                    "scope": "all",
+                    "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "source_watermark_ms": now_ms - 1_000,
+                    "payload_hash": repos.narrative_admission_dirty_targets.enqueued[0]["targets"][0][
+                        "payload_hash"
+                    ],
+                    "priority": 40,
+                    "due_at_ms": now_ms,
+                }
+            ],
+            "reason": "token_radar_entered",
+            "now_ms": now_ms,
+            "commit": False,
+        }
+    ]
+
+
+def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "factor_snapshot_json": {"schema_version": "factor"},
+        "source_event_ids_json": ["event-1"],
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+    }
+    repos = type(
+        "Repos",
+        (),
+        {"pulse_trigger_dirty_targets": FakeRuntimeDirtyTargets()},
+    )()
+
+    TokenRadarProjection(repos=repos)._enqueue_pulse_triggers_for_rank_changes(
+        window="1h",
+        scope="matched",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.pulse_trigger_dirty_targets.enqueued == [
+        {
+            "targets": [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset-1",
+                    "window": "1h",
+                    "scope": "matched",
+                    "source_watermark_ms": now_ms - 1_000,
+                    "payload_hash": repos.pulse_trigger_dirty_targets.enqueued[0]["targets"][0]["payload_hash"],
+                    "priority": 40,
+                    "due_at_ms": now_ms,
+                }
+            ],
+            "reason": "token_radar_entered",
+            "now_ms": now_ms,
+            "commit": False,
+        }
+    ]
+
+
+def test_projection_enqueues_token_profile_current_for_realtime_rank_changes() -> None:
+    now_ms = 1_777_800_060_000
+    row = {
+        "target_type": "CexToken",
+        "target_id": "cex_token:BTC",
+        "rank": 1,
+        "lane": "resolved",
+        "decision": "high_alert",
+        "source_max_received_at_ms": now_ms - 1_000,
+        "payload_hash": "row-hash",
+    }
+    repos = type(
+        "Repos",
+        (),
+        {"token_profile_current_dirty_targets": FakeRuntimeDirtyTargets()},
+    )()
+
+    TokenRadarProjection(repos=repos)._enqueue_token_profile_current_for_rank_changes(
+        window="5m",
+        scope="all",
+        rows=[row],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=now_ms,
+    )
+
+    assert repos.token_profile_current_dirty_targets.enqueued == [
+        {
+            "targets": [
+                {
+                    "target_type": "CexToken",
+                    "target_id": "cex_token:BTC",
+                    "source_watermark_ms": now_ms - 1_000,
+                    "payload_hash": repos.token_profile_current_dirty_targets.enqueued[0]["targets"][0][
+                        "payload_hash"
+                    ],
+                    "priority": 70,
+                    "due_at_ms": now_ms,
+                }
+            ],
+            "reason": "token_radar_entered",
+            "now_ms": now_ms,
+            "commit": False,
+        }
+    ]
+
+
+def test_projection_skips_narrative_admission_enqueue_outside_realtime_window_scope() -> None:
+    repos = type("Repos", (), {})()
+
+    TokenRadarProjection(repos=repos)._enqueue_narrative_admission_for_rank_changes(
+        window="5m",
+        scope="all",
+        rows=[],
+        exited_rows=[],
+        previous_by_key={},
+        computed_at_ms=1_777_800_060_000,
+    )
+
+    assert not hasattr(repos, "narrative_admission_dirty_targets")
+
+
 def test_projection_marks_market_missing_when_event_market_tick_has_not_arrived(monkeypatch):
     recorder = FakeProjectionRecorder()
     now_ms = 1_777_800_060_000
@@ -465,7 +632,7 @@ def test_projection_marks_market_missing_when_event_market_tick_has_not_arrived(
     row["event_price_tick_lag_ms"] = None
     row["first_price_usd"] = None
     token_radar = FakeTokenRadar([_project_group([row], now_ms=now_ms, window="5m", scope="all")])
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
 
     monkeypatch.setattr(
         token_radar_projection_module,
@@ -664,7 +831,7 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     repos = type(
         "Repos",
         (),
-        {"conn": object(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
+        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
     )()
     now_ms = 1_777_800_060_000
 
@@ -716,7 +883,7 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     repos = type(
         "Repos",
         (),
-        {"conn": object(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
     )()
 
     def score(self, **kwargs):
@@ -759,7 +926,7 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
     repos = type(
         "Repos",
         (),
-        {"conn": object(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
     )()
     now_ms = 1_777_800_060_000
 
@@ -804,7 +971,7 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
     repos = type(
         "Repos",
         (),
-        {"conn": object(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
     )()
     now_ms = 1_777_800_060_000
 
@@ -855,7 +1022,7 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
     repos = type(
         "Repos",
         (),
-        {"conn": object(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
     )()
     now_ms = 1_777_800_060_000
 
@@ -1094,6 +1261,16 @@ class FakeConn:
         return []
 
 
+class FakeTransactionConn:
+    def __init__(self):
+        self.transaction_count = 0
+
+    @contextmanager
+    def transaction(self):
+        self.transaction_count += 1
+        yield
+
+
 def _legacy_price_table() -> str:
     return "_".join(("price", "observations"))
 
@@ -1161,6 +1338,22 @@ class FakeDirtyTargets:
         for key in keys:
             self.errors.append({**dict(key), "error": error})
         return len(self.errors)
+
+
+class FakeRuntimeDirtyTargets:
+    def __init__(self):
+        self.enqueued: list[dict[str, object]] = []
+
+    def enqueue_targets(self, targets, *, reason, now_ms, commit):
+        self.enqueued.append(
+            {
+                "targets": list(targets),
+                "reason": reason,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+        )
+        return {"targets": len(targets)}
 
 
 class FakeTokenRadar:

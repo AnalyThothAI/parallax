@@ -43,6 +43,9 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
             "repos": db.repos,
             "now_ms": 1_700_000_000_000,
             "limit": 7,
+            "lease_owner": "token_profile_current",
+            "lease_ms": 60_000,
+            "retry_ms": 30_000,
         }
     ]
     assert db.session_names == ["token_profile_current"]
@@ -72,10 +75,10 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         ),
     }
     repos = FakeRepos(
-        targets=[
-            {"target_type": "Asset", "target_id": "asset:gmgn"},
-            {"target_type": "Asset", "target_id": "asset:stream"},
-            {"target_type": "CexToken", "target_id": "cex_token:BTC"},
+        claims=[
+            claim("Asset", "asset:gmgn"),
+            claim("Asset", "asset:stream"),
+            claim("CexToken", "cex_token:BTC"),
         ],
         gmgn_openapi={
             "asset:gmgn": {
@@ -125,9 +128,20 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         ready_image_assets=ready_assets,
     )
 
-    result = module.rebuild_token_profile_current_once(repos=repos, now_ms=10_000, limit=100)
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+    )
 
     assert result["selected"] == 3
+    assert result["claimed"] == 3
+    assert result["source_rows_scanned"] == 0
+    assert result["targets_loaded"] == 3
+    assert result["rows_written"] == 3
     assert result["ready"] == 3
     assert result["unsupported"] == 0
     assert result["with_logo"] == 3
@@ -151,7 +165,79 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         ]
     ]
     assert repos.token_profiles.commits == [False, False, False]
-    assert repos.conn.commits == 1
+    assert repos.dirty_targets.claim_calls == [
+        {
+            "now_ms": 10_000,
+            "limit": 100,
+            "lease_owner": "profile-worker",
+            "lease_ms": 60_000,
+            "commit": True,
+        }
+    ]
+    assert repos.dirty_targets.done == [
+        claim("Asset", "asset:gmgn"),
+        claim("Asset", "asset:stream"),
+        claim("CexToken", "cex_token:BTC"),
+    ]
+    assert repos.transactions == 1
+
+
+def test_rebuild_token_profile_current_once_empty_queue_does_not_load_profile_sources():
+    repos = FakeRepos(
+        claims=[],
+        gmgn_openapi={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+    )
+
+    assert result["reason"] == "no_due_token_profile_current_targets"
+    assert result["claimed"] == 0
+    assert result["source_rows_scanned"] == 0
+    assert result["targets_loaded"] == 0
+    assert result["rows_written"] == 0
+    assert repos.source_query.profile_loader_calls == []
+    assert repos.token_profiles.rows == []
+    assert repos.transactions == 0
+
+
+def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fails():
+    repos = FakeRepos(
+        claims=[claim("Asset", "asset:gmgn")],
+        gmgn_openapi={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+    repos.source_query.fail_loader = RuntimeError("profile source boom")
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+    )
+
+    assert result["error"] == 1
+    assert "profile source boom" in result["last_error"]
+    assert repos.dirty_targets.errors == [
+        {
+            **claim("Asset", "asset:gmgn"),
+            "error": "RuntimeError: profile source boom",
+            "retry_ms": 30_000,
+            "now_ms": 10_000,
+            "commit": False,
+        }
+    ]
 
 
 def worker_settings(**overrides):
@@ -160,6 +246,8 @@ def worker_settings(**overrides):
         "interval_seconds": 60.0,
         "timeout_seconds": 120.0,
         "batch_size": 500,
+        "lease_ms": 60_000,
+        "retry_ms": 30_000,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -170,7 +258,7 @@ class FakeDB:
         self.repos = object()
         self.session_names: list[str] = []
 
-    def worker_session(self, name: str):
+    def worker_session(self, name: str, **kwargs):
         self.session_names.append(name)
         return FakeSession(self.repos)
 
@@ -190,7 +278,7 @@ class FakeRepos:
     def __init__(
         self,
         *,
-        targets,
+        claims,
         gmgn_openapi,
         gmgn_stream,
         okx_dex,
@@ -199,8 +287,10 @@ class FakeRepos:
         ready_image_assets=None,
     ) -> None:
         self.conn = FakeConn()
+        self.transactions = 0
+        self.dirty_targets = FakeDirtyTargets(claims)
+        self.token_profile_current_dirty_targets = self.dirty_targets
         self.source_query = FakeSourceQuery(
-            targets=targets,
             gmgn_openapi=gmgn_openapi,
             binance_web3=binance_web3 or {},
             gmgn_stream=gmgn_stream,
@@ -209,6 +299,9 @@ class FakeRepos:
         )
         self.token_profiles = FakeTokenProfiles()
         self.token_image_assets = FakeTokenImageAssets(ready_image_assets or {})
+
+    def transaction(self):
+        return FakeTransaction(self)
 
 
 class FakeConn:
@@ -219,36 +312,88 @@ class FakeConn:
         self.commits += 1
 
 
+class FakeTransaction:
+    def __init__(self, repos):
+        self.repos = repos
+
+    def __enter__(self):
+        self.repos.transactions += 1
+        return self.repos
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class FakeDirtyTargets:
+    def __init__(self, claims):
+        self.claims = list(claims)
+        self.claim_calls: list[dict] = []
+        self.done: list[dict] = []
+        self.errors: list[dict] = []
+
+    def claim_due(self, **kwargs):
+        self.claim_calls.append(dict(kwargs))
+        return list(self.claims)
+
+    def queue_depth(self, **kwargs):
+        return 0
+
+    def mark_done(self, claims, *, now_ms, commit=True):
+        self.done.extend(dict(claim) for claim in claims)
+        return len(claims)
+
+    def mark_error(self, claims, *, error, retry_ms, now_ms, commit=True):
+        self.errors.extend(
+            {
+                **dict(claim),
+                "error": error,
+                "retry_ms": retry_ms,
+                "now_ms": now_ms,
+                "commit": commit,
+            }
+            for claim in claims
+        )
+        return len(claims)
+
+
 class FakeSourceQuery:
-    def __init__(self, *, targets, gmgn_openapi, binance_web3, gmgn_stream, okx_dex, cex_profiles) -> None:
-        self.targets = targets
+    def __init__(self, *, gmgn_openapi, binance_web3, gmgn_stream, okx_dex, cex_profiles) -> None:
         self.gmgn_openapi = gmgn_openapi
         self.binance_web3 = binance_web3
         self.gmgn_stream = gmgn_stream
         self.okx_dex = okx_dex
         self.cex_profiles = cex_profiles
-
-    def recent_profile_targets(self, **kwargs):
-        return self.targets
+        self.profile_loader_calls: list[str] = []
+        self.fail_loader: BaseException | None = None
 
     def gmgn_openapi_profiles(self, asset_ids):
+        self._record_loader("gmgn_openapi_profiles")
         return {asset_id: self.gmgn_openapi[asset_id] for asset_id in asset_ids if asset_id in self.gmgn_openapi}
 
     def binance_web3_profiles(self, asset_ids):
+        self._record_loader("binance_web3_profiles")
         return {asset_id: self.binance_web3[asset_id] for asset_id in asset_ids if asset_id in self.binance_web3}
 
     def gmgn_stream_profiles(self, asset_ids):
+        self._record_loader("gmgn_stream_profiles")
         return {asset_id: self.gmgn_stream[asset_id] for asset_id in asset_ids if asset_id in self.gmgn_stream}
 
     def okx_dex_profiles(self, asset_ids):
+        self._record_loader("okx_dex_profiles")
         return {asset_id: self.okx_dex[asset_id] for asset_id in asset_ids if asset_id in self.okx_dex}
 
     def cex_token_profiles(self, cex_token_ids):
+        self._record_loader("cex_token_profiles")
         return {
             cex_token_id: self.cex_profiles[cex_token_id]
             for cex_token_id in cex_token_ids
             if cex_token_id in self.cex_profiles
         }
+
+    def _record_loader(self, name):
+        self.profile_loader_calls.append(name)
+        if self.fail_loader is not None:
+            raise self.fail_loader
 
 
 class FakeTokenProfiles:
@@ -282,4 +427,14 @@ def ready_image(source_url: str, *, image_id: str, source_provider: str) -> dict
         "source_provider": source_provider,
         "source_url_hash": f"hash-{image_id}",
         "public_url": f"/api/token-images/{image_id}",
+    }
+
+
+def claim(target_type: str, target_id: str) -> dict:
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "payload_hash": f"hash:{target_type}:{target_id}",
+        "lease_owner": "profile-worker",
+        "attempt_count": 1,
     }

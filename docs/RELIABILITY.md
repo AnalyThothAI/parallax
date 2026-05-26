@@ -199,6 +199,16 @@ targets and do not write read-model rows. Normal worker idle paths must be
 proportional to queue depth, not to the size of `events`, `token_intents`,
 `token_intent_resolutions`, or market tick fact tables.
 
+The same dirty-target rule applies to runtime agent/profile tails:
+`pulse_candidate`, `narrative_admission`, `token_discussion_digest`,
+`token_profile_current`, `token_image_mirror`, `asset_profile_refresh`, and
+`token_capture_tier` must claim their control-plane rows first. `mention_semantics`
+and `handle_summary` are leased-job consumers and must not discover missing
+jobs inside the runtime loop. `LivePriceGateway` reads the live target control
+set from `token_capture_tier`; it must not scan Token Radar current rows.
+Historical discovery belongs to `ops enqueue-runtime-worker-dirty-targets`,
+which is dry-run by default, bounded by explicit selectors, and enqueue-only.
+
 ## Token Radar Clean Reset And Watchlist Summary Maintenance
 
 Token Radar storage is a clean-reset hard cut. Legacy `token_radar_rows` and

@@ -8,10 +8,8 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.news_intel.services.source_quality_projection import (
-    build_source_quality_rows,
-    window_ms_for_label,
-)
+from gmgn_twitter_intel.domains.news_intel.services.source_quality_projection import build_source_quality_rows
+from gmgn_twitter_intel.domains.news_intel.types.source_quality_policy import window_ms_for_label
 
 
 class NewsSourceQualityProjectionWorker(WorkerBase):

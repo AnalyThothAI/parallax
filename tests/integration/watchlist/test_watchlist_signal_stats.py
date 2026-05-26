@@ -82,49 +82,6 @@ def test_watchlist_signal_stats_tracks_event_idempotency_moves_and_removals(tmp_
         conn.close()
 
 
-def test_handles_missing_summary_jobs_reads_signal_stats_without_social_rows(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        repo = WatchlistIntelRepository(conn)
-        repo.record_signal_event_state(handle="toly", event_id="event-1", received_at_ms=1_000, is_signal_event=True)
-        repo.record_signal_event_state(handle="toly", event_id="event-2", received_at_ms=2_000, is_signal_event=True)
-        repo.record_signal_event_state(
-            handle="traderpow",
-            event_id="event-3",
-            received_at_ms=3_000,
-            is_signal_event=True,
-        )
-        repo.enqueue_handle_summary_job(
-            handle="traderpow",
-            next_run_at_ms=3_000,
-            pending_signal_count=1,
-            trigger_reason="signal_threshold",
-            commit=True,
-        )
-
-        missing = repo.handles_missing_summary_jobs(handles=("toly", "traderpow"), since_ms=0, limit=10)
-        repo.upsert_handle_summary(
-            handle="toly",
-            generated_at_ms=4_000,
-            input_window_start_ms=0,
-            input_window_end_ms=4_000,
-            input_event_count=2,
-            signal_count_at_generation=2,
-            model="test-model",
-            summary_zh="Toly signal summary.",
-            topics=[],
-            raw_response={"ok": True},
-            commit=True,
-        )
-        current = repo.handles_missing_summary_jobs(handles=("toly", "traderpow"), since_ms=0, limit=10)
-    finally:
-        conn.close()
-
-    assert missing == [{"handle": "toly", "signal_count": 2, "latest_signal_at_ms": 2_000}]
-    assert current == []
-
-
 def test_backfill_signal_stats_dry_run_does_not_write_read_models(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

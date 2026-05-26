@@ -5,7 +5,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, cast
@@ -55,6 +55,9 @@ PULSE_EDGE_BUDGET_PER_HOUR = 3
 PULSE_TARGET_EDGE_BUDGET_PER_HOUR = 3
 PULSE_FAILURE_CIRCUIT_PER_HOUR = 3
 PULSE_FAILURE_CIRCUIT_REASONS = ("schema_validation_failed", "unknown_evidence_id")
+PULSE_TRIGGER_LEASE_MS = 60_000
+PULSE_TRIGGER_CAPACITY_RETRY_MS = 30_000
+PULSE_TRIGGER_ERROR_RETRY_MS = 60_000
 ADVISORY_LOCK_KEY = 2026051502
 
 
@@ -92,9 +95,6 @@ class PulseCandidateWorker(WorkerBase):
         self.max_pending_jobs_per_window_scope = max(
             1,
             int(getattr(settings, "max_pending_jobs_per_window_scope", 25) or 25),
-        )
-        self.stale_job_ttl_by_window_seconds = _window_ttl_seconds(
-            getattr(settings, "stale_job_ttl_by_window_seconds", None)
         )
         self.trigger_thresholds = trigger_thresholds or _trigger_thresholds_from_settings(settings)
         self.gate_thresholds = gate_thresholds or _gate_thresholds_from_settings(settings)
@@ -136,82 +136,150 @@ class PulseCandidateWorker(WorkerBase):
         result = {"scan": scan, "process": process}
         return result
 
-    def scan_triggers_once(self, *, now_ms: int | None = None) -> dict[str, int]:
+    def scan_triggers_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-        result = {
+        result: dict[str, Any] = {
+            "claimed": 0,
+            "queue_depth": 0,
+            "source_rows_scanned": 0,
+            "targets_loaded": 0,
+            "rows_written": 0,
             "asset_seen": 0,
             "asset_enqueued": 0,
             "asset_skipped": 0,
+            "missing_current_rows": 0,
+            "target_exits_suppressed": 0,
+            "dirty_triggers_done": 0,
+            "dirty_triggers_rescheduled": 0,
+            "dirty_triggers_failed": 0,
             "source_seen": 0,
             "source_enqueued": 0,
             "source_skipped": 0,
             "asset_suppressed_cycle_budget": 0,
             "asset_suppressed_pending_global": 0,
             "asset_suppressed_pending_window_scope": 0,
-            "stale_jobs_terminalized": 0,
         }
-        with self._repository_session() as repos:
-            result["stale_jobs_terminalized"] = _terminalize_stale_jobs(
-                repos,
+        with self._repository_session() as repos, _transaction(repos.conn):
+            queue_depth = _queue_depth(repos, now_ms=resolved_now_ms)
+            result["queue_depth"] = queue_depth
+            claims = repos.pulse_trigger_dirty_targets.claim_due(
                 now_ms=resolved_now_ms,
-                ttl_by_window_seconds=self.stale_job_ttl_by_window_seconds,
+                limit=self.batch_size,
+                lease_owner=self.name,
+                lease_ms=PULSE_TRIGGER_LEASE_MS,
+                commit=False,
             )
+            result["claimed"] = len(claims)
+            if not claims:
+                result["reason"] = "no_due_pulse_triggers"
+                return result
             enqueued_this_cycle = 0
             pending_jobs_global = _pending_agent_job_count(repos)
             pending_jobs_by_window_scope: dict[tuple[str, str], int] = {}
-            for window in self.windows:
-                for scope in self.scopes:
-                    scope_key = (window, scope)
-                    pending_jobs_by_window_scope[scope_key] = _pending_agent_job_count_for_window_scope(
-                        repos,
-                        window=window,
-                        scope=scope,
-                    )
-                    rows = repos.token_radar.latest_current_rows(
-                        window=window,
-                        scope=scope,
-                        limit=self.batch_size,
-                        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                    )
-                    for row in rows:
-                        result["asset_seen"] += 1
+            for claim in claims:
+                window = _clean(claim.get("window"))
+                scope = _clean(claim.get("scope"))
+                target_type = _clean(claim.get("target_type"))
+                target_id = _clean(claim.get("target_id"))
+                try:
+                    with _transaction(repos.conn):
+                        if not window or not scope or not target_type or not target_id:
+                            result["asset_skipped"] += 1
+                            result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
+                            continue
+                        scope_key = (window, scope)
+                        if scope_key not in pending_jobs_by_window_scope:
+                            pending_jobs_by_window_scope[scope_key] = _pending_agent_job_count_for_window_scope(
+                                repos,
+                                window=window,
+                                scope=scope,
+                            )
                         if enqueued_this_cycle >= self.max_enqueues_per_cycle:
                             result["asset_skipped"] += 1
                             result["asset_suppressed_cycle_budget"] += 1
+                            result["dirty_triggers_rescheduled"] += _reschedule_trigger(
+                                repos,
+                                claim,
+                                now_ms=resolved_now_ms,
+                            )
                             continue
                         if pending_jobs_global >= self.max_pending_jobs_global:
                             result["asset_skipped"] += 1
                             result["asset_suppressed_pending_global"] += 1
+                            result["dirty_triggers_rescheduled"] += _reschedule_trigger(
+                                repos,
+                                claim,
+                                now_ms=resolved_now_ms,
+                            )
                             continue
                         if pending_jobs_by_window_scope[scope_key] >= self.max_pending_jobs_per_window_scope:
                             result["asset_skipped"] += 1
                             result["asset_suppressed_pending_window_scope"] += 1
+                            result["dirty_triggers_rescheduled"] += _reschedule_trigger(
+                                repos,
+                                claim,
+                                now_ms=resolved_now_ms,
+                            )
                             continue
+                        row = repos.token_radar.current_row_for_target(
+                            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                            target_type=target_type,
+                            target_id=target_id,
+                            window=window,
+                            scope=scope,
+                        )
+                        if row is None:
+                            result["asset_skipped"] += 1
+                            result["missing_current_rows"] += 1
+                            if _is_exit_trigger(claim):
+                                result["target_exits_suppressed"] += _suppress_exited_trigger_target(
+                                    repos,
+                                    claim,
+                                    now_ms=resolved_now_ms,
+                                )
+                            result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
+                            continue
+                        result["asset_seen"] += 1
+                        result["targets_loaded"] += 1
                         context = self._asset_context(repos, row, window=window, scope=scope, now_ms=resolved_now_ms)
                         if context is None:
                             result["asset_skipped"] += 1
+                            result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
                             continue
                         if self._enqueue_if_due(repos, context, now_ms=resolved_now_ms):
                             result["asset_enqueued"] += 1
+                            result["rows_written"] += 1
                             enqueued_this_cycle += 1
                             pending_jobs_global += 1
                             pending_jobs_by_window_scope[scope_key] += 1
                         else:
                             result["asset_skipped"] += 1
+                        result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
+                except Exception as exc:
+                    logger.warning(
+                        "pulse trigger processing failed: target_type={} target_id={} window={} scope={} error={}",
+                        target_type,
+                        target_id,
+                        window,
+                        scope,
+                        _compact_error(exc),
+                    )
+                    result["asset_skipped"] += 1
+                    with _transaction(repos.conn):
+                        result["dirty_triggers_failed"] += repos.pulse_trigger_dirty_targets.mark_error(
+                            [claim],
+                            error=str(exc),
+                            now_ms=resolved_now_ms,
+                            retry_ms=PULSE_TRIGGER_ERROR_RETRY_MS,
+                            commit=False,
+                        )
         return result
 
     def process_due_jobs_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         return asyncio.run(self.process_due_jobs_once_async(now_ms=now_ms))
 
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0, "stale_jobs_terminalized": 0}
-        with self._repository_session() as repos:
-            resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
-            result["stale_jobs_terminalized"] = _terminalize_stale_jobs(
-                repos,
-                now_ms=resolved_now_ms,
-                ttl_by_window_seconds=self.stale_job_ttl_by_window_seconds,
-            )
+        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0}
         for _ in range(min(self.batch_size, self.max_agent_jobs_per_cycle)):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             reservation = self.decision_client.try_reserve_execution(
@@ -611,29 +679,86 @@ def _pending_agent_job_count_for_window_scope(repos: Any, *, window: str, scope:
     return safe_int(count_func(window=window, scope=scope))
 
 
-def _terminalize_stale_jobs(repos: Any, *, now_ms: int, ttl_by_window_seconds: dict[str, int]) -> int:
-    if not ttl_by_window_seconds:
+def _queue_depth(repos: Any, *, now_ms: int) -> int:
+    queue_depth_func = getattr(repos.pulse_trigger_dirty_targets, "queue_depth", None)
+    if queue_depth_func is None:
         return 0
-    terminalize_func = getattr(repos.pulse_jobs, "terminalize_stale_jobs_by_window", None)
-    if terminalize_func is None:
-        return 0
+    return safe_int(queue_depth_func(now_ms=now_ms))
+
+
+def _reschedule_trigger(repos: Any, claim: dict[str, Any], *, now_ms: int) -> int:
     return safe_int(
-        terminalize_func(
-            now_ms=now_ms,
-            ttl_by_window_seconds=ttl_by_window_seconds,
+        repos.pulse_trigger_dirty_targets.reschedule(
+            [claim],
+            due_at_ms=int(now_ms) + PULSE_TRIGGER_CAPACITY_RETRY_MS,
+            now_ms=int(now_ms),
+            commit=False,
         )
     )
 
 
-def _window_ttl_seconds(value: Any) -> dict[str, int]:
-    if not isinstance(value, dict):
-        return {}
-    result: dict[str, int] = {}
-    for window, ttl_seconds in value.items():
-        ttl = safe_int(ttl_seconds)
-        if ttl > 0:
-            result[str(window)] = ttl
-    return result
+def _is_exit_trigger(claim: dict[str, Any]) -> bool:
+    return str(claim.get("dirty_reason") or "") == "token_radar_exited"
+
+
+def _suppress_exited_trigger_target(repos: Any, claim: dict[str, Any], *, now_ms: int) -> int:
+    target_type = _clean(claim.get("target_type"))
+    target_id = _clean(claim.get("target_id"))
+    window = _clean(claim.get("window"))
+    scope = _clean(claim.get("scope"))
+    if not target_type or not target_id or not window or not scope:
+        return 0
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window=window,
+        scope=scope,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    edge_state = {
+        "candidate_id": candidate_id,
+        "candidate_type": "token_target",
+        "target_type": target_type,
+        "target_id": target_id,
+        "window": window,
+        "scope": scope,
+        "pulse_version": PULSE_VERSION,
+        "gate_version": PULSE_GATE_VERSION,
+        "pulse_status": "not_active",
+        "verdict": "not_active",
+        "score_band": "exited",
+        "trigger_signature": str(claim.get("payload_hash") or ""),
+        "timeline_signature": "token_radar_exited",
+        "exit_reason": "token_radar_exited",
+    }
+    repos.pulse_admission.claim_pulse_admission(
+        candidate_id=candidate_id,
+        target_type=target_type,
+        target_id=target_id,
+        hour_bucket_ms=int(now_ms) // 3_600_000 * 3_600_000,
+        now_ms=int(now_ms),
+        target_limit=PULSE_TARGET_EDGE_BUDGET_PER_HOUR,
+        candidate_limit=PULSE_EDGE_BUDGET_PER_HOUR,
+        edge_state=edge_state,
+        edge_events=("token_radar_exited",),
+        admission_action="suppress",
+        admission_reason="token_radar_exited",
+        commit=False,
+    )
+    return 1
+
+
+def _mark_trigger_done(repos: Any, claim: dict[str, Any], *, now_ms: int) -> int:
+    done = safe_int(
+        repos.pulse_trigger_dirty_targets.mark_done(
+            [claim],
+            now_ms=int(now_ms),
+            commit=False,
+        )
+    )
+    if done != 1:
+        raise RuntimeError("pulse_trigger_dirty_target_stale_completion")
+    return done
 
 
 def _target_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -704,7 +829,7 @@ def _call_optional(target: Any, method: str, *args: Any) -> Any:
 def _transaction(conn: Any) -> AbstractContextManager[Any]:
     if hasattr(conn, "transaction"):
         return cast(AbstractContextManager[Any], conn.transaction())
-    return nullcontext()
+    raise RuntimeError("pulse_candidate_requires_transactional_connection")
 
 
 def _mapping(value: Any) -> dict[str, Any]:

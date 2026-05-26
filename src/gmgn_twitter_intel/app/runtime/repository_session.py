@@ -17,14 +17,26 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
+from gmgn_twitter_intel.domains.asset_market.repositories.asset_profile_refresh_target_repository import (
+    AssetProfileRefreshTargetRepository,
+)
 from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
     MarketTickCurrentDirtyTargetRepository,
 )
 from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_repository import (
     MarketTickCurrentRepository,
 )
+from gmgn_twitter_intel.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
+    TokenCaptureTierDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.asset_market.repositories.token_image_asset_repository import (
     TokenImageAssetRepository,
+)
+from gmgn_twitter_intel.domains.asset_market.repositories.token_image_source_dirty_target_repository import (
+    TokenImageSourceDirtyTargetRepository,
+)
+from gmgn_twitter_intel.domains.asset_market.repositories.token_profile_current_dirty_target_repository import (
+    TokenProfileCurrentDirtyTargetRepository,
 )
 from gmgn_twitter_intel.domains.cex_market_intel.repositories.cex_derivative_series_repository import (
     CexDerivativeSeriesRepository,
@@ -42,6 +54,12 @@ from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_projectio
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
+from gmgn_twitter_intel.domains.narrative_intel.repositories.discussion_digest_dirty_target_repository import (
+    DiscussionDigestDirtyTargetRepository,
+)
+from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
+    NarrativeAdmissionDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 from gmgn_twitter_intel.domains.news_intel.repositories.news_projection_dirty_target_repository import (
     NewsProjectionDirtyTargetRepository,
@@ -59,6 +77,9 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_jobs_repository imp
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
+from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
+    PulseTriggerDirtyTargetRepository,
+)
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.domains.social_enrichment.repositories.social_event_extraction_repository import (
     SocialEventExtractionRepository,
@@ -79,7 +100,7 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_dirty_targe
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 from gmgn_twitter_intel.domains.watchlist_intel.repositories.watchlist_intel_repository import WatchlistIntelRepository
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from gmgn_twitter_intel.platform.db.postgres_client import require_transaction, transaction
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,9 +110,12 @@ class RepositorySession:
     entities: EntityRepository
     signals: SignalRepository
     asset_profiles: AssetProfileRepository
+    asset_profile_refresh_targets: AssetProfileRefreshTargetRepository
     cex_token_profiles: CexTokenProfileRepository
     token_profiles: TokenProfileCurrentRepository
+    token_profile_current_dirty_targets: TokenProfileCurrentDirtyTargetRepository
     token_image_assets: TokenImageAssetRepository
+    token_image_source_dirty_targets: TokenImageSourceDirtyTargetRepository
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
     intent_resolutions: IntentResolutionRepository
@@ -103,6 +127,7 @@ class RepositorySession:
     market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository
     enriched_events: EnrichedEventRepository
     event_anchor_jobs: EventAnchorBackfillJobRepository
+    token_capture_tier_dirty_targets: TokenCaptureTierDirtyTargetRepository
     token_capture_tiers: TokenCaptureTierRepository
     token_intent_lookup: TokenIntentLookupRepository
     event_tokens: EventTokenProjectionQuery
@@ -119,10 +144,13 @@ class RepositorySession:
     pulse_evidence: PulseEvidenceRepository
     pulse_evidence_sources: PulseEvidenceSourceRepository
     pulse_runs: PulseRunsRepository
+    pulse_trigger_dirty_targets: PulseTriggerDirtyTargetRepository
     pulse_agent_eval: PulseAgentEvalRepository
     pulse_read: PulseReadRepository
     pulse_playbooks: PulsePlaybooksRepository
     narratives: NarrativeRepository
+    narrative_admission_dirty_targets: NarrativeAdmissionDirtyTargetRepository
+    discussion_digest_dirty_targets: DiscussionDigestDirtyTargetRepository
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
@@ -139,6 +167,9 @@ class RepositorySession:
     def transaction(self):
         return self.unit_of_work()
 
+    def require_transaction(self, *, operation: str) -> None:
+        require_transaction(self.conn, operation=operation)
+
 
 def repositories_for_connection(conn: Any) -> RepositorySession:
     return RepositorySession(
@@ -147,9 +178,12 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
         asset_profiles=AssetProfileRepository(conn),
+        asset_profile_refresh_targets=AssetProfileRefreshTargetRepository(conn),
         cex_token_profiles=CexTokenProfileRepository(conn),
         token_profiles=TokenProfileCurrentRepository(conn),
+        token_profile_current_dirty_targets=TokenProfileCurrentDirtyTargetRepository(conn),
         token_image_assets=TokenImageAssetRepository(conn),
+        token_image_source_dirty_targets=TokenImageSourceDirtyTargetRepository(conn),
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),
         intent_resolutions=IntentResolutionRepository(conn),
@@ -161,6 +195,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         market_tick_current_dirty_targets=MarketTickCurrentDirtyTargetRepository(conn),
         enriched_events=EnrichedEventRepository(conn),
         event_anchor_jobs=EventAnchorBackfillJobRepository(conn),
+        token_capture_tier_dirty_targets=TokenCaptureTierDirtyTargetRepository(conn),
         token_capture_tiers=TokenCaptureTierRepository(conn),
         token_intent_lookup=TokenIntentLookupRepository(conn),
         event_tokens=EventTokenProjectionQuery(conn),
@@ -177,10 +212,13 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         pulse_evidence=PulseEvidenceRepository(conn),
         pulse_evidence_sources=PulseEvidenceSourceRepository(conn),
         pulse_runs=PulseRunsRepository(conn),
+        pulse_trigger_dirty_targets=PulseTriggerDirtyTargetRepository(conn),
         pulse_agent_eval=PulseAgentEvalRepository(conn),
         pulse_read=PulseReadRepository(conn),
         pulse_playbooks=PulsePlaybooksRepository(conn),
         narratives=NarrativeRepository(conn),
+        narrative_admission_dirty_targets=NarrativeAdmissionDirtyTargetRepository(conn),
+        discussion_digest_dirty_targets=DiscussionDigestDirtyTargetRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),

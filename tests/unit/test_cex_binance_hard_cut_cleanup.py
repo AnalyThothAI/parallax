@@ -48,7 +48,7 @@ def test_dry_run_reports_planned_counts_without_lock_or_mutation() -> None:
     assert not _has_mutation(conn.sqls)
 
 
-def test_cleanup_sql_does_not_reference_removed_price_observations_table() -> None:
+def test_cleanup_sql_does_not_reference_removed_legacy_price_table() -> None:
     conn = RecordingConn(counts={"binance_canonical_usdt_perp_feeds": 512})
 
     cleanup_cex_binance_hard_cut(

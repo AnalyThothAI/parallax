@@ -786,42 +786,6 @@ class WatchlistIntelRepository:
     def token_resolutions_for_events(self, event_ids: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
         return EventTokenProjectionQuery(self.conn).for_events(event_ids)
 
-    def handles_missing_summary_jobs(
-        self,
-        *,
-        handles: tuple[str, ...],
-        since_ms: int,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        normalized = [normalize_watchlist_handle(handle) for handle in handles]
-        if not normalized:
-            return []
-        rows = self.conn.execute(
-            """
-            SELECT
-              stats.handle,
-              stats.total_signal_count AS signal_count,
-              stats.latest_signal_at_ms
-            FROM watchlist_handle_signal_stats stats
-            LEFT JOIN watchlist_handle_summaries summary
-              ON summary.handle = stats.handle
-            LEFT JOIN watchlist_handle_summary_jobs job
-              ON job.handle = stats.handle
-             AND job.status IN ('pending', 'running', 'failed')
-            WHERE stats.handle = ANY(%s)
-              AND stats.latest_signal_at_ms >= %s
-              AND job.handle IS NULL
-              AND (
-                summary.handle IS NULL
-                OR summary.signal_count_at_generation < stats.total_signal_count
-              )
-            ORDER BY stats.latest_signal_at_ms DESC
-            LIMIT %s
-            """,
-            (normalized, int(since_ms), max(0, int(limit))),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
     def _recompute_signal_stats(self, handles: set[str]) -> None:
         for handle in sorted(handles):
             aggregate = self.conn.execute(

@@ -70,11 +70,11 @@ def test_list_by_tier_excludes_recently_attempted_keys_without_offset() -> None:
     assert params["exclude_keys"].obj == [{"target_type": "chain_token", "target_id": "solana:abc"}]
 
 
-def test_demote_absent_hot_rows_targets_only_tier1_and_tier2_rows() -> None:
+def test_demote_hot_rows_outside_rank_set_targets_only_tier1_and_tier2_rows() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 3
 
-    demoted = TokenCaptureTierRepository(conn).demote_absent_hot_rows(
+    demoted = TokenCaptureTierRepository(conn).demote_hot_rows_outside_rank_set(
         active_keys=[
             {"target_type": "chain_token", "target_id": "solana:abc"},
             {"target_type": "cex_symbol", "target_id": "binance:ETHUSDT"},
@@ -99,11 +99,11 @@ def test_demote_absent_hot_rows_targets_only_tier1_and_tier2_rows() -> None:
     ]
 
 
-def test_demote_absent_hot_rows_returns_zero_when_no_rows_match() -> None:
+def test_demote_hot_rows_outside_rank_set_returns_zero_when_no_rows_match() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 0
 
-    demoted = TokenCaptureTierRepository(conn).demote_absent_hot_rows(
+    demoted = TokenCaptureTierRepository(conn).demote_hot_rows_outside_rank_set(
         active_keys=[],
         updated_at_ms=1_777_800_000_000,
     )

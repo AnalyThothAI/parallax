@@ -16,13 +16,11 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     EnrichedEventRepository,
     EventAnchorBackfillJobRepository,
     IdentityEvidenceRepository,
+    MarketTickCurrentDirtyTargetRepository,
+    MarketTickPersistenceService,
     MarketTickRepository,
     RegistryRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
-    MarketTickCurrentDirtyTargetRepository,
-)
-from gmgn_twitter_intel.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from gmgn_twitter_intel.domains.evidence.interfaces import (
     TextSurface,
     TwitterEvent,
@@ -103,6 +101,9 @@ class IngestService:
         self.event_anchor_jobs = event_anchor_jobs or EventAnchorBackfillJobRepository(evidence.conn)
         self.token_radar_dirty_targets = token_radar_dirty_targets
         self.event_anchor_active_window_ms = max(1, int(event_anchor_active_window_ms))
+
+    def require_transaction(self, *, operation: str) -> None:
+        self.evidence.require_transaction(operation=operation)
 
     def insert_raw_frame(self, **kwargs: Any) -> bool:
         result: bool = self.evidence.insert_raw_frame(**kwargs)

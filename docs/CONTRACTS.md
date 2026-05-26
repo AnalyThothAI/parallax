@@ -511,6 +511,11 @@ returns `cleanup` plus `final_health` summaries without hand-written SQL or
 API-path side effects. Its cleanup phase is an ops maintenance writer
 exception that must run while holding the narrative worker advisory locks; it is
 not a runtime compatibility layer and is not callable from HTTP routes.
+`ops enqueue-runtime-worker-dirty-targets` is the bounded repair surface for
+runtime dirty-target consumers. It is dry-run by default, requires an explicit
+work selector plus a bounded target/time/source selector, enqueues control rows
+only, and never calls providers, agents, worker `run_once()`, or public
+read-model writers.
 
 Macro one-shot CLI commands are operator surfaces, not background workers:
 `macro import-bundle --file <json>` or `--stdin` imports a macrodata-cli

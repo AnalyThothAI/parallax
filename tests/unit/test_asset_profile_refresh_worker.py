@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.domains.asset_market.providers import (
@@ -15,7 +16,7 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
     calls: list[dict] = []
     provider = object()
     source = DexProfileSource(provider="gmgn_dex_profile", market=provider)
-    row = {"asset_id": "asset-1", "chain_id": "solana", "address": "abc"}
+    row = claim_row("gmgn_dex_profile")
     profile = DexTokenProfile(
         chain_id="solana",
         address="abc",
@@ -36,10 +37,9 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
         calls.append(kwargs)
         return profile
 
-    monkeypatch.setattr(module, "select_due_asset_profile_rows", lambda **_: [row])
     monkeypatch.setattr(module, "fetch_asset_profile", fake_fetch_asset_profile)
     monkeypatch.setattr(module, "write_ready_asset_profile", lambda **_: None)
-    db = FakeDB()
+    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [row]})
     worker = module.AssetProfileRefreshWorker(
         name="asset_profile_refresh",
         settings=worker_settings(batch_size=7),
@@ -52,6 +52,9 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
 
     assert result.processed == 1
     assert result.notes["result"]["selected"] == 1
+    assert result.notes["result"]["claimed"] == 1
+    assert result.notes["result"]["source_rows_scanned"] == 0
+    assert result.notes["result"]["rows_written"] == 1
     assert result.notes["result"]["ready"] == 1
     assert calls == [
         {
@@ -60,22 +63,22 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
         }
     ]
     assert db.session_names == ["asset_profile_refresh", "asset_profile_refresh"]
+    assert db.refresh_targets.rescheduled[0]["reason"] == "profile_ready_written"
 
 
 def test_asset_profile_refresh_worker_reports_provider_block_without_writing_token_error(monkeypatch):
-    row = {"asset_id": "asset-1", "chain_id": "solana", "address": "abc"}
+    row = claim_row("gmgn_dex_profile")
     writes: list[str] = []
 
     def fake_fetch_asset_profile(**kwargs):
         raise DexProviderTemporarilyUnavailable("GET /v1/token/info blocked by Cloudflare challenge HTTP 403")
 
-    monkeypatch.setattr(module, "select_due_asset_profile_rows", lambda **_: [row])
     monkeypatch.setattr(module, "fetch_asset_profile", fake_fetch_asset_profile)
     monkeypatch.setattr(module, "write_error_asset_profile", lambda **_: writes.append("error"))
     worker = module.AssetProfileRefreshWorker(
         name="asset_profile_refresh",
         settings=worker_settings(),
-        db=FakeDB(),
+        db=FakeDB(claims_by_provider={"gmgn_dex_profile": [row]}),
         telemetry=object(),
         dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
     )
@@ -108,12 +111,7 @@ def test_asset_profile_refresh_worker_continues_to_binance_when_gmgn_is_blocked(
     binance_provider = object()
     gmgn_source = DexProfileSource(provider="gmgn_dex_profile", market=gmgn_provider)
     binance_source = DexProfileSource(provider="binance_web3_profile", market=binance_provider)
-    row = {"asset_id": "asset-1", "chain_id": "eip155:56", "address": "0xabc"}
     calls: list[tuple[str, str]] = []
-
-    def fake_select_due_asset_profile_rows(**kwargs):
-        calls.append(("select", kwargs["provider"]))
-        return [row]
 
     def fake_fetch_asset_profile(**kwargs):
         provider = kwargs["profile_source"].provider
@@ -136,13 +134,18 @@ def test_asset_profile_refresh_worker_continues_to_binance_when_gmgn_is_blocked(
             raw={},
         )
 
-    monkeypatch.setattr(module, "select_due_asset_profile_rows", fake_select_due_asset_profile_rows)
     monkeypatch.setattr(module, "fetch_asset_profile", fake_fetch_asset_profile)
     monkeypatch.setattr(module, "write_ready_asset_profile", lambda **_: None)
+    db = FakeDB(
+        claims_by_provider={
+            "gmgn_dex_profile": [claim_row("gmgn_dex_profile")],
+            "binance_web3_profile": [claim_row("binance_web3_profile")],
+        }
+    )
     worker = module.AssetProfileRefreshWorker(
         name="asset_profile_refresh",
         settings=worker_settings(),
-        db=FakeDB(),
+        db=db,
         telemetry=object(),
         dex_profile_sources=(gmgn_source, binance_source),
     )
@@ -156,9 +159,7 @@ def test_asset_profile_refresh_worker_continues_to_binance_when_gmgn_is_blocked(
     assert result.notes["result"]["sources"]["gmgn_dex_profile"]["provider_blocked"] == 1
     assert result.notes["result"]["sources"]["binance_web3_profile"]["ready"] == 1
     assert calls == [
-        ("select", "gmgn_dex_profile"),
         ("fetch", "gmgn_dex_profile"),
-        ("select", "binance_web3_profile"),
         ("fetch", "binance_web3_profile"),
     ]
 
@@ -169,19 +170,22 @@ def worker_settings(**overrides):
         "interval_seconds": 60.0,
         "timeout_seconds": 120.0,
         "batch_size": 50,
+        "lease_ms": 120_000,
+        "provider_retry_ms": 300_000,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
 
 
 class FakeDB:
-    def __init__(self) -> None:
-        self.repos = object()
+    def __init__(self, claims_by_provider: dict[str, list[dict]] | None = None) -> None:
         self.session_names: list[str] = []
+        self.refresh_targets = FakeRefreshTargets(claims_by_provider or {})
+        self.profile_dirty = FakeProfileDirtyTargets()
 
-    def worker_session(self, name: str):
+    def worker_session(self, name: str, **kwargs):
         self.session_names.append(name)
-        return FakeSession(self.repos)
+        return FakeSession(FakeRepos(self))
 
 
 class FakeSession:
@@ -195,9 +199,64 @@ class FakeSession:
         return False
 
 
+class FakeRepos:
+    def __init__(self, db: FakeDB) -> None:
+        self.asset_profile_refresh_targets = db.refresh_targets
+        self.token_profile_current_dirty_targets = db.profile_dirty
+
+    def transaction(self):
+        return nullcontext()
+
+
+class FakeRefreshTargets:
+    def __init__(self, claims_by_provider: dict[str, list[dict]]) -> None:
+        self.claims_by_provider = claims_by_provider
+        self.claim_calls: list[dict] = []
+        self.rescheduled: list[dict] = []
+
+    def claim_due(self, **kwargs):
+        self.claim_calls.append(dict(kwargs))
+        return list(self.claims_by_provider.get(kwargs["provider"], []))
+
+    def queue_depth(self, **kwargs):
+        return 0
+
+    def reschedule(self, claims, *, due_at_ms, now_ms, reason=None, commit=True):
+        self.rescheduled.append(
+            {
+                "claims": list(claims),
+                "due_at_ms": due_at_ms,
+                "now_ms": now_ms,
+                "reason": reason,
+                "commit": commit,
+            }
+        )
+        return len(claims)
+
+
+class FakeProfileDirtyTargets:
+    def enqueue_targets(self, targets, *, reason, now_ms, commit):
+        return {"targets": len(list(targets))}
+
+
 class ClosableProvider:
     def __init__(self):
         self.closed = False
 
     def close(self):
         self.closed = True
+
+
+def claim_row(provider: str) -> dict:
+    return {
+        "provider": provider,
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "asset_id": "asset-1",
+        "chain_id": "solana",
+        "address": "abc",
+        "payload_hash": f"hash:{provider}:asset-1",
+        "lease_owner": "asset_profile_refresh",
+        "attempt_count": 1,
+        "due_at_ms": 1_700_000_000_000,
+    }
