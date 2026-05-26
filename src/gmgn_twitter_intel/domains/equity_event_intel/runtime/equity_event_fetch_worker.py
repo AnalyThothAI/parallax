@@ -236,7 +236,7 @@ class EquityEventFetchWorker(WorkerBase):
                         source_id=str(source["source_id"]),
                         priority="P2",
                         due_at_ms=fetched_at_ms,
-                        max_attempts=int(getattr(self.settings, "max_evidence_attempts", 3)),
+                        max_attempts=int(getattr(self.settings, "evidence_job_max_attempts", 3)),
                         now_ms=fetched_at_ms,
                         commit=False,
                     )

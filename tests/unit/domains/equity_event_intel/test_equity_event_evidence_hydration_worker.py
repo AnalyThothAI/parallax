@@ -52,6 +52,58 @@ def test_hydration_worker_claims_job_writes_artifacts_finishes_and_wakes() -> No
     assert wake_bus.documents_written == [("sec:MSFT", 1)]
 
 
+def test_hydration_worker_terminalizes_reaped_stale_job_with_failed_artifact_and_wake() -> None:
+    repo = _HydrationRepo(
+        reaped_terminal_jobs=[
+            {"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}
+        ],
+        claimed_jobs=[],
+    )
+    wake_bus = _WakeBus()
+    worker = EquityEventEvidenceHydrationWorker(
+        name="equity_event_evidence_hydration",
+        settings=SimpleNamespace(
+            batch_size=10,
+            max_attempts=3,
+            lease_ms=60_000,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_Provider(),
+        wake_bus=wake_bus,
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert result.notes["reaped_stale"] == 1
+    assert repo.replaced_artifacts[0]["event_document_id"] == "event-document-id"
+    artifact = repo.replaced_artifacts[0]["artifacts"][0]
+    assert artifact["extraction_status"] == "failed"
+    assert artifact["failure_reason"] == "evidence_job_lease_expired"
+    assert repo.marked_statuses == [
+        {
+            "event_document_id": "event-document-id",
+            "evidence_status": "failed",
+            "evidence_reason": "evidence_job_lease_expired",
+            "evidence_ready_at_ms": None,
+        }
+    ]
+    assert repo.terminals == [
+        {
+            "evidence_job_id": "job-event-document-id",
+            "finished_at_ms": NOW_MS,
+            "error": "evidence_job_lease_expired",
+        }
+    ]
+    assert repo.source_freshness == [
+        {"source_id": "sec:MSFT", "actionable_error": "evidence_job_lease_expired"}
+    ]
+    assert wake_bus.documents_written == [("sec:MSFT", 1)]
+
+
 @dataclass
 class _Provider:
     def hydrate_document_evidence(self, *, source: dict[str, Any], document: Any) -> EquityEvidenceHydrationResult:
@@ -83,22 +135,34 @@ class _Provider:
 
 
 class _HydrationRepo:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        reaped_terminal_jobs: list[dict[str, Any]] | None = None,
+        claimed_jobs: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.conn = SimpleNamespace(commit=lambda: None)
+        self.reaped_terminal_jobs = [] if reaped_terminal_jobs is None else reaped_terminal_jobs
+        self.claimed_jobs = (
+            [{"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}]
+            if claimed_jobs is None
+            else claimed_jobs
+        )
         self.reaped: list[dict[str, Any]] = []
         self.claims: list[dict[str, Any]] = []
         self.replaced_artifacts: list[dict[str, Any]] = []
         self.marked_statuses: list[dict[str, Any]] = []
         self.successes: list[dict[str, Any]] = []
+        self.terminals: list[dict[str, Any]] = []
         self.source_freshness: list[dict[str, Any]] = []
 
-    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> int:
+    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
         self.reaped.append({"now_ms": now_ms})
-        return 0
+        return self.reaped_terminal_jobs
 
     def claim_due_evidence_jobs(self, *, now_ms: int, limit: int, lease_owner: str, **_: Any) -> list[dict[str, Any]]:
         self.claims.append({"now_ms": now_ms, "limit": limit, "lease_owner": lease_owner})
-        return [{"evidence_job_id": "job-event-document-id", "event_document_id": "event-document-id"}]
+        return self.claimed_jobs
 
     def load_evidence_hydration_input(self, *, evidence_job_id: str) -> dict[str, Any]:
         assert evidence_job_id == "job-event-document-id"
@@ -145,14 +209,36 @@ class _HydrationRepo:
     def finish_evidence_job_success(self, *, evidence_job_id: str, finished_at_ms: int, **_: Any) -> None:
         self.successes.append({"evidence_job_id": evidence_job_id, "finished_at_ms": finished_at_ms})
 
+    def finish_evidence_job_terminal(
+        self,
+        *,
+        evidence_job_id: str,
+        finished_at_ms: int,
+        error: str | None,
+        **_: Any,
+    ) -> None:
+        self.terminals.append(
+            {
+                "evidence_job_id": evidence_job_id,
+                "finished_at_ms": finished_at_ms,
+                "error": error,
+            }
+        )
+
     def update_source_material_freshness(
         self,
         *,
         source_id: str,
         evidence_ready_at_ms: int | None = None,
+        actionable_error: str | None = None,
         **_: Any,
     ) -> None:
-        self.source_freshness.append({"source_id": source_id, "evidence_ready_at_ms": evidence_ready_at_ms})
+        payload: dict[str, Any] = {"source_id": source_id}
+        if evidence_ready_at_ms is not None:
+            payload["evidence_ready_at_ms"] = evidence_ready_at_ms
+        if actionable_error is not None:
+            payload["actionable_error"] = actionable_error
+        self.source_freshness.append(payload)
 
 
 class _Db:

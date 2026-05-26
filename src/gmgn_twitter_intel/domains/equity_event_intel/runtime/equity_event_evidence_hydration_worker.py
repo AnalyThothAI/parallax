@@ -48,7 +48,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos:
-            reaped = repos.equity_events.reap_stale_evidence_jobs(now_ms=now, commit=False)
+            reaped_terminal_jobs = repos.equity_events.reap_stale_evidence_jobs(now_ms=now, commit=False)
             jobs = repos.equity_events.claim_due_evidence_jobs(
                 now_ms=now,
                 limit=self._batch_size(),
@@ -61,6 +61,11 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         processed = 0
         failed = 0
         written = 0
+        for job in reaped_terminal_jobs:
+            result = self._terminalize_stale_job(dict(job), now_ms=now)
+            processed += result.processed
+            failed += result.failed
+            written += int(result.notes.get("terminal_written", 0))
         for job in jobs:
             result = self._hydrate_job(dict(job), now_ms=now)
             processed += result.processed
@@ -69,7 +74,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         return WorkerResult(
             processed=processed,
             failed=failed,
-            notes={"claimed": len(jobs), "reaped_stale": int(reaped or 0), "terminal_written": written},
+            notes={"claimed": len(jobs), "reaped_stale": len(reaped_terminal_jobs), "terminal_written": written},
         )
 
     def _hydrate_job(self, job: dict[str, Any], *, now_ms: int) -> WorkerResult:
@@ -123,6 +128,41 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
             )
             return WorkerResult(failed=1, notes={"evidence_job_id": evidence_job_id, "error": str(exc)})
 
+    def _terminalize_stale_job(self, job: dict[str, Any], *, now_ms: int) -> WorkerResult:
+        evidence_job_id = str(job["evidence_job_id"])
+        with self._repository_session() as repos:
+            payload = repos.equity_events.load_evidence_hydration_input(evidence_job_id=evidence_job_id)
+        if not payload:
+            self._finish_failure(
+                evidence_job_id=evidence_job_id,
+                error="evidence_hydration_input_missing",
+                now_ms=now_ms,
+                terminal=True,
+            )
+            return WorkerResult(failed=1, notes={"evidence_job_id": evidence_job_id})
+
+        source = dict(payload["source"])
+        document = _normalized_document_from_row(payload["document"])
+        reason = "evidence_job_lease_expired"
+        artifact = build_failed_evidence_artifact(
+            event_document_id=str(document.event_document_id),
+            provider_document_id=document.provider_document_id,
+            source_id=_source_id_from_payload(source=source, document=dict(payload["document"])),
+            artifact_kind="html_text",
+            source_url=document.document_url,
+            reason=reason,
+            fetched_at_ms=now_ms,
+            parsed_at_ms=now_ms,
+            now_ms=now_ms,
+        )
+        return self._persist_terminal_result(
+            payload=payload,
+            artifacts=[artifact],
+            now_ms=now_ms,
+            job_status="failed_terminal",
+            error=reason,
+        )
+
     def _handle_hydration_exception(self, *, payload: Mapping[str, Any], error: Exception, now_ms: int) -> WorkerResult:
         job = dict(payload["job"])
         terminal = int(job.get("attempt_count") or 0) >= int(job.get("max_attempts") or self._max_attempts())
@@ -170,7 +210,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
         source = dict(payload["source"])
         document = dict(payload["document"])
         event_document_id = str(document["event_document_id"])
-        source_id = str(source["source_id"])
+        source_id = _source_id_from_payload(source=source, document=document)
         evidence_status, evidence_reason, evidence_ready_at_ms = _evidence_document_status(
             artifacts,
             fetched_at_ms=now_ms,
@@ -220,7 +260,7 @@ class EquityEventEvidenceHydrationWorker(WorkerBase):
                 )
             repos.conn.commit()
 
-        if evidence_status in {"ready", "unavailable", "failed"} and self.wake_bus is not None:
+        if evidence_status in {"ready", "unavailable", "failed"} and source_id and self.wake_bus is not None:
             self.wake_bus.notify_equity_event_document_written(source_id=source_id, count=1)
         return WorkerResult(processed=1, notes={"terminal_written": 1, "evidence_status": evidence_status})
 
@@ -317,6 +357,10 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text or None
+
+
+def _source_id_from_payload(*, source: Mapping[str, Any], document: Mapping[str, Any]) -> str:
+    return str(source.get("source_id") or document.get("source_id") or "")
 
 
 def _now_ms() -> int:

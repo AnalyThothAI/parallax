@@ -1142,6 +1142,8 @@ class EquityEventRepository:
                      'event_document_id', documents.event_document_id,
                      'provider_document_id', documents.provider_document_id,
                      'provider_document_key', provider.provider_document_key,
+                     'source_id', documents.source_id,
+                     'source_role', documents.source_role,
                      'company_id', documents.company_id,
                      'ticker', documents.ticker,
                      'cik', documents.cik,
@@ -1251,7 +1253,7 @@ class EquityEventRepository:
         if commit:
             self.conn.commit()
 
-    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> int:
+    def reap_stale_evidence_jobs(self, *, now_ms: int, commit: bool = True) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             UPDATE equity_event_evidence_jobs
@@ -1271,13 +1273,13 @@ class EquityEventRepository:
              WHERE status = 'running'
                AND leased_until_ms IS NOT NULL
                AND leased_until_ms <= %s
-            RETURNING evidence_job_id
+            RETURNING *
             """,
             (int(now_ms), int(now_ms), int(now_ms), int(now_ms)),
         ).fetchall()
         if commit:
             self.conn.commit()
-        return len(rows)
+        return [dict(row) for row in rows if str(row.get("status") or "") == "failed_terminal"]
 
     def replace_evidence_artifacts(
         self,

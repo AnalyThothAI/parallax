@@ -64,6 +64,47 @@ def test_fetch_worker_enqueues_evidence_jobs_without_hydrating(monkeypatch: pyte
     ]
 
 
+def test_fetch_worker_uses_configured_evidence_job_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    document = NormalizedEquityDocument(
+        provider_document_key="0000789019-26-000001:10-Q",
+        company_id="market_instrument:us_equity:MSFT",
+        ticker="MSFT",
+        cik="0000789019",
+        document_url="https://sec.example/msft-10q.htm",
+        payload_hash="payload-hash",
+        raw_payload_json={},
+        fetched_at_ms=NOW_MS,
+        content_hash="content-hash",
+    )
+    monkeypatch.setattr(fetch_module, "_normalize_envelope", lambda **_: [document])
+    repo = _FetchRepo()
+    worker = EquityEventFetchWorker(
+        name="equity_event_fetch",
+        settings=SimpleNamespace(
+            batch_size=20,
+            evidence_job_max_attempts=7,
+            statement_timeout_seconds=None,
+        ),
+        db=_Db(repo),
+        telemetry=SimpleNamespace(),
+        document_provider=_Provider(),
+        wake_bus=_WakeBus(),
+        clock_ms=lambda: NOW_MS,
+    )
+
+    result = worker._fetch_source(
+        {
+            "source_id": "sec:MSFT",
+            "provider_type": "sec_submissions",
+            "source_role": "official_regulator",
+        },
+        now_ms=NOW_MS,
+    )
+
+    assert result.processed == 1
+    assert repo.enqueued_jobs[0]["max_attempts"] == 7
+
+
 @dataclass
 class _Provider:
     def fetch_source(self, source: dict[str, Any]) -> EquityDocumentProviderFetchResult:

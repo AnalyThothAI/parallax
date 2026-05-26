@@ -52,6 +52,34 @@ def test_equity_event_repository_reconciles_source_and_expected_event(postgres_c
     assert repos.equity_events.list_source_status()[0]["source_id"] == "sec:AAPL"
 
 
+def test_reap_stale_evidence_jobs_returns_new_terminal_job_context(postgres_conn) -> None:
+    repos = repositories_for_connection(postgres_conn)
+    document = _seed_event_document(repos, event_document_id="event-doc-stale-evidence")
+    repos.equity_events.enqueue_evidence_job(
+        evidence_job_id="evidence-job-stale",
+        event_document_id=document["event_document_id"],
+        source_id="sec:MSFT",
+        due_at_ms=NOW_MS,
+        max_attempts=1,
+        now_ms=NOW_MS,
+    )
+    repos.equity_events.claim_due_evidence_jobs(
+        now_ms=NOW_MS + 1,
+        limit=1,
+        lease_owner="worker-a",
+        lease_ms=1,
+    )
+
+    reaped = repos.equity_events.reap_stale_evidence_jobs(now_ms=NOW_MS + 3)
+    hydration_input = repos.equity_events.load_evidence_hydration_input(evidence_job_id="evidence-job-stale")
+
+    assert [row["evidence_job_id"] for row in reaped] == ["evidence-job-stale"]
+    assert reaped[0]["status"] == "failed_terminal"
+    assert reaped[0]["last_error"] == "evidence_job_lease_expired"
+    assert hydration_input["document"]["event_document_id"] == "event-doc-stale-evidence"
+    assert hydration_input["document"]["source_id"] == "sec:MSFT"
+
+
 def test_equity_event_repository_writes_raw_document_event_and_page_row(postgres_conn) -> None:
     repos = repositories_for_connection(postgres_conn)
     repos.equity_events.upsert_source(

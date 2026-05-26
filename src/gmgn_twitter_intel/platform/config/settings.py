@@ -1371,6 +1371,7 @@ class EquityEventSourceReconcileWorkerSettings(PerWorkerSettings):
 class EquityEventFetchWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=20, ge=1)
+    evidence_job_max_attempts: int = Field(default=3, ge=1)
     advisory_lock_key: int = 2026052302
     wakes_on: tuple[str, ...] = ("equity_event_sources_reconciled",)
 
@@ -2235,6 +2236,7 @@ equity_event_fetch:
   enabled: true
   interval_seconds: 60.0
   batch_size: 20
+  evidence_job_max_attempts: 3
   advisory_lock_key: 2026052302
   wakes_on: ["equity_event_sources_reconciled"]
 equity_event_evidence_hydration:
