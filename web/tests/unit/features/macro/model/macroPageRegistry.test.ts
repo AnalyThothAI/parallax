@@ -33,8 +33,14 @@ describe("macroPageRegistry", () => {
   });
 
   it("throws when an addressable macro node is only partially annotated", () => {
-    expect(() =>
-      flattenMacroRouteDescriptors([{ label: "Bad", href: "/macro/bad", routeId: "overview" }]),
-    ).toThrow(/\/macro\/bad/);
+    let message = "";
+    try {
+      flattenMacroRouteDescriptors([{ label: "Bad", href: "/macro/bad", routeId: "overview" }]);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain("/macro/bad");
+    expect(message).toContain("Bad");
   });
 });
