@@ -2,19 +2,26 @@ import type { MacroSectionBoard, MacroSemanticRecord } from "@lib/types";
 import { Link } from "react-router-dom";
 
 import { formatMacroScalar } from "../../model/macroPageViewModel";
+import { MacroMetricStrip } from "../primitives/MacroMetricStrip";
+import { MacroPageScaffold } from "../primitives/MacroPageScaffold";
+import { MacroPanel } from "../primitives/MacroPanel";
+import { MacroTableFrame } from "../tables/MacroTableFrame";
 
-import type { MacroModulePageProps } from "./MacroModulePageFrame";
-import "./MacroAssetsLandingPage.css";
+import type { MacroModulePageProps } from "./MacroModulePageRenderer";
+import "./macroPages.css";
 
-export function MacroAssetsLandingPage({ module }: MacroModulePageProps) {
+export function MacroAssetIndexPage({ module }: MacroModulePageProps) {
   const boards = module.section_boards;
+  const metrics = assetIndexMetrics(boards);
+
   return (
-    <section aria-label="大类资产索引" className="macro-assets-index">
-      {boards.length > 0 ? (
-        <>
-          <AssetIndexSummary boards={boards} />
-          <div className="macro-assets-index-matrix-wrap">
-            <table aria-label="大类资产矩阵" className="macro-assets-index-matrix">
+    <MacroPageScaffold label="大类资产索引" pageKind="index">
+      <MacroMetricStrip ariaLabel="资产索引状态" density="compact" metrics={metrics} />
+      <MacroPanel ariaLabel="资产目录" span="full" title="大类资产索引">
+        {boards.length > 0 ? (
+          <MacroTableFrame caption="大类资产矩阵" minWidth={720} stickyFirstColumn>
+            <table aria-label="大类资产矩阵" className="macro-asset-index-table">
+              <caption>大类资产矩阵</caption>
               <thead>
                 <tr>
                   <th scope="col">板块</th>
@@ -30,57 +37,59 @@ export function MacroAssetsLandingPage({ module }: MacroModulePageProps) {
                 ))}
               </tbody>
             </table>
+          </MacroTableFrame>
+        ) : (
+          <div className="macro-asset-index-empty" role="status">
+            暂无资产索引
           </div>
-        </>
-      ) : (
-        <div className="macro-assets-index-empty" role="status">
-          暂无资产索引
-        </div>
-      )}
-    </section>
+        )}
+      </MacroPanel>
+    </MacroPageScaffold>
   );
 }
 
-function AssetIndexSummary({ boards }: { boards: MacroSectionBoard[] }) {
+function assetIndexMetrics(boards: MacroSectionBoard[]) {
   const partialCount = boards.filter((board) => statusKey(board) === "partial").length;
   const missingCount = boards.filter((board) =>
     ["missing", "unknown"].includes(statusKey(board)),
   ).length;
   const readyCount = boards.filter((board) => statusKey(board) === "ok").length;
-  return (
-    <div aria-label="资产索引状态" className="macro-assets-index-summary">
-      <SummaryMetric label="覆盖" value={`${boards.length} 个板块`} />
-      <SummaryMetric label="可用" value={`${readyCount} 个可用`} />
-      <SummaryMetric label="待确认" value={`${partialCount} 个待确认`} />
-      <SummaryMetric label="待接入" value={`${missingCount} 个待接入`} />
-    </div>
-  );
+  return [
+    metric("coverage", "覆盖", `${boards.length} 个板块`),
+    metric("ready", "可用", `${readyCount} 个可用`),
+    metric("partial", "待确认", `${partialCount} 个待确认`),
+    metric("missing", "待接入", `${missingCount} 个待接入`),
+  ];
 }
 
-function SummaryMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="macro-assets-index-summary-item">
-      <span>{label}</span>
-      <b>{value}</b>
-    </div>
-  );
+function metric(key: string, label: string, value: string) {
+  return {
+    key,
+    label,
+    observedAtLabel: null,
+    quality: null,
+    qualityLabel: null,
+    shortLabel: label,
+    unitLabel: null,
+    value,
+  };
 }
 
 function AssetIndexRow({ board }: { board: MacroSectionBoard }) {
   return (
     <tr>
       <th scope="row">
-        <span className="macro-assets-index-asset">{board.title}</span>
+        <span className="macro-asset-index-asset">{board.title}</span>
       </th>
       <td>
-        <span className="macro-assets-index-status" data-status={statusKey(board)}>
+        <span className="macro-asset-index-status" data-status={statusKey(board)}>
           {boardStatusLabel(board)}
         </span>
       </td>
       <td>{boardProxy(board)}</td>
       <td>{boardRead(board)}</td>
       <td>
-        <Link className="macro-assets-index-link" to={board.href}>
+        <Link className="macro-asset-index-link" to={board.href}>
           查看{board.title}
         </Link>
       </td>

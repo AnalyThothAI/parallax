@@ -12,7 +12,7 @@ export function Component() {
   const navigate = useNavigate();
   const { "*": routeTail } = useParams();
   const resolution = parseMacroRouteTail(routeTail);
-  if (resolution.routeKind === "asset-correlation") {
+  if (resolution.routeKind === "matrix") {
     return (
       <MacroAssetCorrelationPage
         token={token}
@@ -27,5 +27,12 @@ export function Component() {
       <MacroWorkbenchRoute routeKind="unsupported" routeTail={resolution.routeTail} token={token} />
     );
   }
-  return <MacroWorkbenchRoute moduleId={resolution.moduleId} token={token} />;
+  return (
+    <MacroWorkbenchRoute
+      moduleId={resolution.moduleId}
+      pageKind={resolution.pageKind}
+      productTier={resolution.productTier}
+      token={token}
+    />
+  );
 }

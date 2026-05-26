@@ -1,10 +1,4 @@
-import {
-  MacroAssetClassPage,
-  MacroAssetsLandingPage,
-  MacroCryptoDerivativesPage,
-  MacroOverviewPage,
-  MacroRatesPage,
-} from "@features/macro";
+import { MacroModulePageRenderer } from "@features/macro/ui/pages/MacroModulePageRenderer";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import {
   macroAssetsModuleFixture,
@@ -60,15 +54,20 @@ describe("Macro module pages", () => {
 
   it("renders overview page grammar and fetches series from backend chart concepts", async () => {
     renderWithProviders(
-      <MacroOverviewPage
+      <MacroModulePageRenderer
         module={macroOverviewModuleFixture()}
         moduleId="overview"
+        pageKind="overview"
         token="test-token"
       />,
       { route: "/macro" },
     );
 
-    expect(screen.getByRole("region", { name: "总览模块页面" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "总览模块页面" })).toHaveAttribute(
+      "data-page-kind",
+      "overview",
+    );
+    expect(document.querySelector(".macro-page-panel-current")).not.toBeInTheDocument();
     expectRegionsInOrder(["宏观总览", "核心驱动", "全局传导链", "数据健康"]);
     const overview = screen.getByRole("region", { name: "宏观总览" });
     expect(within(overview).getByText("总览：风险偏好等待利率与流动性确认")).toBeInTheDocument();
@@ -76,12 +75,7 @@ describe("Macro module pages", () => {
     expect(within(overview).getByText("中低置信度")).toBeInTheDocument();
     expect(within(overview).getByText("加密 beta 需要美元流动性配合。")).toBeInTheDocument();
     const drivers = screen.getByRole("region", { name: "核心驱动" });
-    expect(within(drivers).getByRole("group", { name: "确认" })).toHaveTextContent(
-      "美股代理可用SPX/QQQ 最新观测存在",
-    );
-    expect(within(drivers).getByRole("group", { name: "观察触发" })).toHaveTextContent(
-      "收益率曲线更新等待利率模块补齐",
-    );
+    expect(within(drivers).getByRole("table", { name: "美股代理快照" })).toBeInTheDocument();
     const dataHealth = screen.getByRole("region", { name: "数据健康" });
     expect(within(dataHealth).getByText("部分全局历史待回填")).toBeInTheDocument();
     expect(within(dataHealth).getByText("未来宏观日历待接入")).toBeInTheDocument();
@@ -98,7 +92,7 @@ describe("Macro module pages", () => {
 
   it("renders backend macro fields instead of empty placeholders", () => {
     renderWithProviders(
-      <MacroOverviewPage
+      <MacroModulePageRenderer
         module={macroOverviewModuleFixture({
           module_read: {
             headline: "",
@@ -108,6 +102,7 @@ describe("Macro module pages", () => {
           },
         })}
         moduleId="overview"
+        pageKind="overview"
         token="test-token"
       />,
       { route: "/macro" },
@@ -122,9 +117,10 @@ describe("Macro module pages", () => {
 
   it("renders asset-class normalized return page from backend payloads", async () => {
     renderWithProviders(
-      <MacroAssetClassPage
+      <MacroModulePageRenderer
         module={macroModuleFixture()}
         moduleId="assets/equities"
+        pageKind="leaf"
         token="test-token"
       />,
       { route: "/macro/assets/equities" },
@@ -153,9 +149,10 @@ describe("Macro module pages", () => {
 
   it("renders assets landing as a terminal index", () => {
     renderWithProviders(
-      <MacroAssetsLandingPage
+      <MacroModulePageRenderer
         module={macroAssetsModuleFixture()}
         moduleId="assets"
+        pageKind="index"
         token="test-token"
       />,
       { route: "/macro/assets" },
@@ -214,7 +211,12 @@ describe("Macro module pages", () => {
     ];
 
     renderWithProviders(
-      <MacroAssetsLandingPage module={module} moduleId="assets" token="test-token" />,
+      <MacroModulePageRenderer
+        module={module}
+        moduleId="assets"
+        pageKind="index"
+        token="test-token"
+      />,
       { route: "/macro/assets" },
     );
 
@@ -240,9 +242,10 @@ describe("Macro module pages", () => {
     };
 
     renderWithProviders(
-      <MacroAssetClassPage
+      <MacroModulePageRenderer
         module={macroModuleFixture()}
         moduleId="assets/equities"
+        pageKind="leaf"
         token="test-token"
       />,
       { route: "/macro/assets/equities" },
@@ -261,9 +264,10 @@ describe("Macro module pages", () => {
 
   it("renders yield curve points without requesting a time-series endpoint", () => {
     renderWithProviders(
-      <MacroRatesPage
+      <MacroModulePageRenderer
         module={macroYieldCurveModuleFixture()}
         moduleId="rates/yield-curve"
+        pageKind="leaf"
         token="test-token"
       />,
       { route: "/macro/rates/yield-curve" },
@@ -284,15 +288,16 @@ describe("Macro module pages", () => {
 
   it("renders crypto derivatives CEX board source and explicit data gaps", async () => {
     renderWithProviders(
-      <MacroCryptoDerivativesPage
+      <MacroModulePageRenderer
         module={macroCryptoDerivativesModuleFixture()}
         moduleId="assets/crypto-derivatives"
+        pageKind="leaf"
         token="test-token"
       />,
       { route: "/macro/assets/crypto-derivatives" },
     );
 
-    const cexBoard = screen.getByRole("region", { name: "CEX 永续看板" });
+    const cexBoard = screen.getByRole("table", { name: "CEX 永续看板" });
     expect(within(cexBoard).getByText("12.50B")).toBeInTheDocument();
     expect(screen.queryByText("暂无表格行")).not.toBeInTheDocument();
     expect(screen.getAllByRole("table", { name: "CEX 永续看板" })).toHaveLength(1);
