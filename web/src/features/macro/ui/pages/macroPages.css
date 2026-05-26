@@ -44,7 +44,7 @@
     max-width: 52%;
     padding: 3px 8px;
     border: 1px solid rgba(125, 211, 252, 0.18);
-    border-radius: 999px;
+    border-radius: 8px;
     color: var(--text-muted, #94a3b8);
     font-size: 0.74rem;
     overflow-wrap: anywhere;
