@@ -22,7 +22,7 @@ The correlation route is a special surface. It renders a separate page shell in 
 
 The frontend architecture contract requires macro shell/sidebar code to own macro navigation and module pages to render deterministic `macro_module_view_v3` fields directly. It also requires responsive behavior to be a tested architecture surface, with desktop starting at `1280px`, tablet from `768px` through `1279px`, and mobile at `max-width: 767px`; see `docs/FRONTEND.md`.
 
-Browser audit on the running Docker app (`http://127.0.0.1:8765`) covered 32 macro routes at `1096x690`, `1366x720`, `834x1194`, and `390x844`. The audit found no body-level horizontal overflow, but found repeated content-level defects:
+Browser audit on the running Docker app (`http://127.0.0.1:8765`) covered the 32 primary/secondary product macro routes at `1096x690`, `1366x720`, `834x1194`, and `390x844`. The current route model also has five hidden-supported direct routes: `/macro/rates/auctions`, `/macro/fed/statements`, `/macro/fed/speeches`, `/macro/volatility/dashboard`, and `/macro/credit/cds`. The audit found no body-level horizontal overflow, but found repeated content-level defects:
 
 - `/macro` at 1366 shows the overview read card as a 7-column orphan with a large empty right side in the first viewport.
 - KPI labels break into vertical fragments on several routes and widths, including `SPX`, `VIX`, `CPI`, `Payrolls`, `Claims`, `DXY`, `SOFR`, and credit OAS labels.
@@ -169,7 +169,7 @@ The frontend contract changes are visual and semantic:
 - AC3. WHEN `/macro/assets/equities`, `/macro/rates/yield-curve`, `/macro/liquidity`, `/macro/economy`, `/macro/volatility`, and `/macro/credit/stress` are loaded on mobile, THEN the page SHALL have no body-level horizontal overflow, no text overlap, and no clipped controls.
 - AC4. WHEN a table or matrix is wider than its mobile container, THEN horizontal scrolling SHALL be bounded to that table/matrix frame and the frame SHALL provide visual and accessible context for scrolling.
 - AC5. WHEN `/macro/assets/correlation` is loaded, THEN it SHALL share the macro shell/header grammar and responsive page contract while preserving the correlation matrix workflow.
-- AC6. WHEN all 32 currently supported macro route paths are swept in browser automation at the required viewports, THEN there SHALL be zero console errors, zero unintended alert states, zero body-level horizontal overflow cases, and zero primary-sidebar occurrences of hidden labels `拍卖`, `FOMC 声明`, `美联储讲话`, `Dashboard`, and `CDS 代理`.
+- AC6. WHEN the 32 primary/secondary product macro route paths plus the five hidden-supported direct routes are swept in browser automation at the required viewports, THEN there SHALL be zero console errors, zero unintended alert states, zero body-level horizontal overflow cases, and zero primary-sidebar occurrences of hidden labels `拍卖`, `FOMC 声明`, `美联储讲话`, `Dashboard`, and `CDS 代理`.
 - AC7. WHEN frontend architecture tests run, THEN macro CSS SHALL remain owner-scoped, cascade-layered, and below the side-effect CSS budget; no retired CSS buckets or compatibility selectors SHALL be introduced.
 - AC8. WHEN component tests render overview, asset index, leaf, matrix, hidden-supported, loading, empty, stale, and error states, THEN each state SHALL use the same macro primitives and SHALL NOT duplicate route-specific layout CSS.
 
