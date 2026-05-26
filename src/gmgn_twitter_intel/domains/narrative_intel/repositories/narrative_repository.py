@@ -4,8 +4,8 @@ import hashlib
 import json
 import time
 from collections.abc import Sequence
-from contextlib import nullcontext
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -1986,7 +1986,11 @@ class NarrativeRepository:
         )
 
     def _not_ready_reason_for_admission(self, admission: dict[str, Any] | None) -> str:
-        coverage = self.semantic_coverage_for_admission(admission) if _is_admitted(admission) else None
+        coverage = (
+            self.semantic_coverage_for_admission(admission)
+            if admission is not None and _is_admitted(admission)
+            else None
+        )
         return self._not_ready_reason_from_coverage(admission, coverage)
 
     @staticmethod
@@ -2294,10 +2298,10 @@ def _optional_int(value: Any) -> int | None:
     return int(value)
 
 
-def _transaction(conn: Any):
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if callable(transaction):
-        return transaction()
+        return cast(AbstractContextManager[Any], transaction())
     return nullcontext()
 
 

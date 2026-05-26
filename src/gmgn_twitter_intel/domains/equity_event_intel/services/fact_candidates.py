@@ -3,10 +3,15 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.equity_event_intel._constants import EQUITY_EVENT_FACT_POLICY_VERSION
-from gmgn_twitter_intel.domains.equity_event_intel.types import EquityFactCandidate, EquitySourceSpan
+from gmgn_twitter_intel.domains.equity_event_intel.types import (
+    EquityFactCandidate,
+    EquitySourceSpan,
+    SourceRole,
+    ValidationStatus,
+)
 
 _OFFICIAL_SOURCE_ROLES = frozenset({"official_regulator", "official_issuer"})
 _REVENUE_VALUE_RE = r"(?P<value>(?:\$\s*)?-?\d+(?:\.\d+)?\s*(?:billion|million|bn|m)|\$\s*-?\d+(?:\.\d+)?)"
@@ -103,7 +108,7 @@ def build_fact_candidates(
                 evidence_quote=_evidence_quote(text, start=match.start(), end=match.end()),
                 evidence_span_start=match.start(),
                 evidence_span_end=match.end(),
-                source_role=source_role,
+                source_role=cast(SourceRole, source_role),
                 validation_status=validation_status,
                 rejection_reasons_json=rejection_reasons,
                 extraction_method="deterministic_rules_v1",
@@ -160,7 +165,7 @@ def _required_slots(
     }
 
 
-def _validation(*, source_role: str, required_slots: dict[str, bool]) -> tuple[str, list[str]]:
+def _validation(*, source_role: str, required_slots: dict[str, bool]) -> tuple[ValidationStatus, list[str]]:
     reasons = [f"missing_slot:{slot}" for slot, present in required_slots.items() if not present]
     if source_role in _OFFICIAL_SOURCE_ROLES:
         return ("attention", reasons) if reasons else ("accepted", [])

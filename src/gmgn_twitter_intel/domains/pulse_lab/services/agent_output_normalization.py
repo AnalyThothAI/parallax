@@ -285,6 +285,7 @@ def _iter_ref_lists(payload: dict[str, Any], *, output_type: type[Any]) -> list[
                 refs.extend((field_name, values, index) for index in range(len(values)))
         return refs
 
+    group_names: tuple[str, ...]
     if output_type is SignalAnalystMemo:
         group_names = ("bull_claims",)
     elif output_type is BearCaseMemo:

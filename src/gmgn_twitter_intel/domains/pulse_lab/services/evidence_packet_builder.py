@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from gmgn_twitter_intel.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
@@ -415,12 +415,15 @@ class PulseEvidenceBuilder:
         scope = _optional_str(getattr(context, "scope", None))
         if not target_type or not target_id or not window or not scope:
             return None
-        return method(
-            target_type=target_type,
-            target_id=target_id,
-            window=window,
-            scope=scope,
-            schema_version="narrative_intel_v1",
+        return cast(
+            dict[str, Any],
+            method(
+                target_type=target_type,
+                target_id=target_id,
+                window=window,
+                scope=scope,
+                schema_version="narrative_intel_v1",
+            ),
         )
 
 

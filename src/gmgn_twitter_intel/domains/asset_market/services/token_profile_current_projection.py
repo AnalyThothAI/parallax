@@ -377,7 +377,7 @@ def _project_logo(
     selected_source_provider: str | None = None,
 ) -> dict[str, Any]:
     source_url = _clean(provider_logo_url)
-    fields = {
+    fields: dict[str, Any] = {
         "logo_url": None,
         "logo_image_id": None,
         "logo_source_provider": None,
@@ -390,12 +390,14 @@ def _project_logo(
         return fields
 
     ready_image = ready_images_by_source_url.get(str(source_url))
-    public_url = _clean((ready_image or {}).get("public_url"))
+    public_url = _clean(ready_image.get("public_url") if ready_image is not None else None)
     if public_url:
         fields["logo_url"] = public_url
-        fields["logo_image_id"] = _clean(ready_image.get("image_id"))
-        fields["logo_source_provider"] = _clean(selected_source_provider) or _clean(ready_image.get("source_provider"))
-        fields["logo_source_url_hash"] = _clean(ready_image.get("source_url_hash"))
+        fields["logo_image_id"] = _clean(ready_image.get("image_id")) if ready_image is not None else None
+        fields["logo_source_provider"] = _clean(selected_source_provider) or (
+            _clean(ready_image.get("source_provider")) if ready_image is not None else None
+        )
+        fields["logo_source_url_hash"] = _clean(ready_image.get("source_url_hash")) if ready_image is not None else None
         return fields
 
     fields["quality_flags"] = ["logo_mirror_pending"]

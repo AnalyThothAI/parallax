@@ -1947,7 +1947,7 @@ notifications:
 
 
 def _default_news_intel_yaml() -> str:
-    return yaml.safe_dump(
+    rendered = yaml.safe_dump(
         {
             "news_intel": {
                 "enabled": True,
@@ -1956,7 +1956,8 @@ def _default_news_intel_yaml() -> str:
             }
         },
         sort_keys=False,
-    ).rstrip()
+    )
+    return str(rendered).rstrip()
 
 
 def default_workers_yaml() -> str:

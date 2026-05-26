@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -490,13 +490,16 @@ class EquityEventBriefWorker(WorkerBase):
 
     def _claim_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self._repository_session() as repos:
-            return repos.equity_projection_dirty_targets.claim_due(
-                limit=self._batch_size(),
-                lease_ms=self._lease_ms(),
-                now_ms=now_ms,
-                lease_owner=self.name,
-                projection_name="brief_input",
-                target_kind="company_event",
+            return cast(
+                list[dict[str, Any]],
+                repos.equity_projection_dirty_targets.claim_due(
+                    limit=self._batch_size(),
+                    lease_ms=self._lease_ms(),
+                    now_ms=now_ms,
+                    lease_owner=self.name,
+                    projection_name="brief_input",
+                    target_kind="company_event",
+                ),
             )
 
     def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -504,7 +507,10 @@ class EquityEventBriefWorker(WorkerBase):
         if not company_event_ids:
             return []
         with self._repository_session() as repos:
-            return repos.equity_events.load_events_for_brief_targets(company_event_ids=company_event_ids)
+            return cast(
+                list[dict[str, Any]],
+                repos.equity_events.load_events_for_brief_targets(company_event_ids=company_event_ids),
+            )
 
     def _complete_claimed_target(
         self,

@@ -92,7 +92,7 @@ class MarketTickStreamWorker(WorkerBase):
 
         stream_dex_market = self.stream_dex_market
         stream_result = await self._stream_and_persist_ticks(targets, stream_dex_market=stream_dex_market)
-        notes = {
+        notes: dict[str, Any] = {
             "targets_selected": len(rows),
             "stream_targets": len(targets),
             "ticks_attempted": stream_result.attempted,

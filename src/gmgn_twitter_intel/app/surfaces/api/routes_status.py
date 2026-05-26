@@ -82,14 +82,14 @@ def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
     }
 
 
-def _positive_int(value: object, *, default: int) -> int:
+def _positive_int(value: Any, *, default: int) -> int:
     try:
         return max(1, int(value or default))
     except (TypeError, ValueError):
         return default
 
 
-def _nonnegative_int(value: object, *, default: int) -> int:
+def _nonnegative_int(value: Any, *, default: int) -> int:
     try:
         return max(0, int(value if value is not None else default))
     except (TypeError, ValueError):

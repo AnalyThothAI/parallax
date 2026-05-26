@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared import (
@@ -597,10 +597,10 @@ def _terminalize_pulse_job(
     )
 
 
-def _transaction(conn: Any):
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if callable(transaction):
-        return transaction()
+        return cast(AbstractContextManager[Any], transaction())
     return nullcontext()
 
 

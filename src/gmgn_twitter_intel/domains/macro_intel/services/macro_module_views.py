@@ -725,9 +725,9 @@ def _data_health(
 
 def _availability_gaps(data_health: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [
-        *_mapping_list(data_health.get("module_gaps")),
-        *_mapping_list(data_health.get("chart_gaps")),
-        *_mapping_list(data_health.get("future_integration_gaps")),
+        *[dict(gap) for gap in _mapping_list(data_health.get("module_gaps"))],
+        *[dict(gap) for gap in _mapping_list(data_health.get("chart_gaps"))],
+        *[dict(gap) for gap in _mapping_list(data_health.get("future_integration_gaps"))],
     ]
 
 

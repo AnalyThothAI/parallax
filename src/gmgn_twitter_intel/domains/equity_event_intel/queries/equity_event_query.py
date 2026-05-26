@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.equity_event_intel.repositories.equity_event_repository import (
     equity_event_page_cursor,
@@ -44,10 +44,10 @@ class EquityEventQuery:
         return {"items": rows, "next_cursor": next_cursor}
 
     def get_event(self, company_event_id: str) -> dict[str, Any] | None:
-        return self.repository.get_event_detail(company_event_id=company_event_id)
+        return cast(dict[str, Any] | None, self.repository.get_event_detail(company_event_id=company_event_id))
 
     def get_story(self, story_id: str) -> dict[str, Any] | None:
-        return self.repository.get_story_detail(story_id=story_id)
+        return cast(dict[str, Any] | None, self.repository.get_story_detail(story_id=story_id))
 
     def list_calendar(
         self,
@@ -85,7 +85,7 @@ class EquityEventQuery:
         return {"items": rows, "next_cursor": next_cursor}
 
     def source_status(self) -> list[dict[str, Any]]:
-        return self.repository.list_source_status()
+        return cast(list[dict[str, Any]], self.repository.list_source_status())
 
     def summary(self) -> dict[str, Any]:
         data = dict(self.repository.summary() or {})

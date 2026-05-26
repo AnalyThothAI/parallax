@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -158,15 +158,18 @@ class _TokenImageAssetSessionRepository:
             self.worker_name,
             statement_timeout_seconds=float(getattr(self.settings, "statement_timeout_seconds", 120.0)),
         ) as repos:
-            return repos.token_image_assets.mark_ready(
-                source_url=source_url,
-                media_type=media_type,
-                file_extension=file_extension,
-                content_sha256=content_sha256,
-                byte_size=byte_size,
-                storage_path=storage_path,
-                now_ms=now_ms,
-                commit=commit,
+            return cast(
+                dict[str, Any],
+                repos.token_image_assets.mark_ready(
+                    source_url=source_url,
+                    media_type=media_type,
+                    file_extension=file_extension,
+                    content_sha256=content_sha256,
+                    byte_size=byte_size,
+                    storage_path=storage_path,
+                    now_ms=now_ms,
+                    commit=commit,
+                ),
             )
 
     def mark_error(

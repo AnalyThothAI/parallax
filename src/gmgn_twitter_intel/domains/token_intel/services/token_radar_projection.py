@@ -4,7 +4,8 @@ import hashlib
 import json
 import time
 from collections.abc import Mapping
-from typing import Any
+from contextlib import AbstractContextManager
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.narrative_intel.interfaces import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.token_intel._constants import (
@@ -1144,11 +1145,11 @@ def _stable_payload_hash(payload: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _transaction_context(conn: Any):
+def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if transaction is None:
         raise RuntimeError("token_radar_projection_requires_transactional_connection")
-    return transaction()
+    return cast(AbstractContextManager[Any], transaction())
 
 
 def _json_ready(value: Any) -> Any:

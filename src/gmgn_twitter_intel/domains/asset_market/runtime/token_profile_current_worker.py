@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -145,7 +145,7 @@ def _ready_images_by_source_url(*, repos: Any, sources: list[dict[str, dict[str,
     source_urls = _candidate_logo_urls(sources)
     if not source_urls:
         return {}
-    return repos.token_image_assets.ready_by_source_urls(source_urls)
+    return cast(dict[str, dict[str, Any]], repos.token_image_assets.ready_by_source_urls(source_urls))
 
 
 def _candidate_logo_urls(sources: list[dict[str, dict[str, Any]]]) -> list[str]:

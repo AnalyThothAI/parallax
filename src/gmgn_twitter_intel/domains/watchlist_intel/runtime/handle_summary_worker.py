@@ -52,7 +52,7 @@ class HandleSummaryWorker(WorkerBase):
         )
 
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        result = {
+        result: dict[str, int | str] = {
             "claimed": 0,
             "queue_depth": 0,
             "source_rows_scanned": 0,
@@ -89,7 +89,7 @@ class HandleSummaryWorker(WorkerBase):
             if outcome.startswith("agent_backpressure:"):
                 _record_agent_backpressure_reason(result, outcome.split(":", 1)[1])
                 continue
-            result[outcome] += 1
+            result[outcome] = int(result.get(outcome) or 0) + 1
         result["rows_written"] = int(result["processed"] or 0) + int(result["failed"] or 0)
         return result
 

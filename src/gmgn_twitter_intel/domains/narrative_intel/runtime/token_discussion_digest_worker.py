@@ -23,11 +23,11 @@ from gmgn_twitter_intel.domains.narrative_intel.services.discussion_digest_servi
 from gmgn_twitter_intel.domains.narrative_intel.services.evidence_ref_validator import EvidenceRefValidator
 from gmgn_twitter_intel.domains.narrative_intel.services.narrative_epoch_policy import (
     DEFAULT_THRESHOLDS,
-    EPOCH_POLICY_VERSION,
     NarrativeEpochPolicy,
     NarrativeEpochThreshold,
 )
 from gmgn_twitter_intel.domains.narrative_intel.types.evidence_refs import EvidenceRef
+from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import EPOCH_POLICY_VERSION
 from gmgn_twitter_intel.platform.cancellation import is_worker_hard_timeout_cancelled
 
 

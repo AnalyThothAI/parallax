@@ -279,7 +279,13 @@ class PulseCandidateWorker(WorkerBase):
         return asyncio.run(self.process_due_jobs_once_async(now_ms=now_ms))
 
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0, "terminalized_stale_running": 0}
+        result: dict[str, Any] = {
+            "claimed": 0,
+            "processed": 0,
+            "failed": 0,
+            "missing_context": 0,
+            "terminalized_stale_running": 0,
+        }
         for _ in range(min(self.batch_size, self.max_agent_jobs_per_cycle)):
             resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             with self._repository_session() as repos:

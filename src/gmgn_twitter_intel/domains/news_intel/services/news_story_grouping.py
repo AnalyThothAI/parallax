@@ -83,7 +83,12 @@ def _has_token_overlap(item: dict[str, Any], candidate: dict[str, Any]) -> bool:
 
 
 def _token_targets(row: dict[str, Any]) -> set[str]:
-    return {_optional_text(value) for value in row.get("token_targets") or [] if _optional_text(value)}
+    targets: set[str] = set()
+    for value in row.get("token_targets") or []:
+        target = _optional_text(value)
+        if target:
+            targets.add(target)
+    return targets
 
 
 def _is_time_close(item: dict[str, Any], candidate: dict[str, Any]) -> bool:

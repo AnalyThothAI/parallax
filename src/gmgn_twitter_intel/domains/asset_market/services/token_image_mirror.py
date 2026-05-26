@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import ParseResult, urlparse
 from uuid import uuid4
 
@@ -104,14 +104,17 @@ class TokenImageMirrorService:
         filename = f"{content_hash}{media.file_extension}"
         self._write_cache_file(filename=filename, content=content)
 
-        return self.repository.mark_ready(
-            source_url,
-            media_type=media.media_type,
-            file_extension=media.file_extension,
-            content_sha256=content_hash,
-            byte_size=len(content),
-            storage_path=filename,
-            now_ms=int(now_ms),
+        return cast(
+            dict[str, Any],
+            self.repository.mark_ready(
+                source_url,
+                media_type=media.media_type,
+                file_extension=media.file_extension,
+                content_sha256=content_hash,
+                byte_size=len(content),
+                storage_path=filename,
+                now_ms=int(now_ms),
+            ),
         )
 
     def _fetch(self, url: str) -> Any:
@@ -176,7 +179,7 @@ class _TokenImageMirrorError(Exception):
 
 class _CurlCffiTokenImageClient:
     def get(self, url: str, **kwargs: Any) -> Any:
-        session = curl_requests.Session(impersonate=TOKEN_IMAGE_MIRROR_CURL_IMPERSONATE)
+        session = curl_requests.Session(impersonate=cast(Any, TOKEN_IMAGE_MIRROR_CURL_IMPERSONATE))
         try:
             return session.get(url, **kwargs)
         finally:

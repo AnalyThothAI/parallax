@@ -299,7 +299,7 @@ def downgrade() -> None:
 def _backfill_recoverable_scalars_in_chunks() -> None:
     bind = op.get_bind()
     statement = _backfill_statement()
-    cursor: tuple[str, str, str, str, str, str] | None = None
+    cursor: tuple[str, ...] | None = None
     while True:
         params = _backfill_cursor_params(cursor)
         rows = bind.execute(statement, params).mappings().all()
@@ -322,7 +322,7 @@ def _backfill_statement() -> sa.TextClause:
     )
 
 
-def _backfill_cursor_params(cursor: tuple[str, str, str, str, str, str] | None) -> dict[str, object]:
+def _backfill_cursor_params(cursor: tuple[str, ...] | None) -> dict[str, object]:
     if cursor is None:
         return {
             "backfill_batch_size": _BACKFILL_BATCH_SIZE,

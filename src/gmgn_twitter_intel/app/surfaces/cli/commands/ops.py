@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
@@ -436,9 +437,9 @@ def _backfill_watchlist_signal_stats(
     normalized_handles = 0
     has_more = False
     for _ in range(parsed_max_batches):
-        result = dict(
+        result = _object_dict(
             _call_with_supported_kwargs(
-                repository.backfill_signal_stats_batch,  # type: ignore[attr-defined]
+                repository.backfill_signal_stats_batch,
                 after_received_at_ms=after_received_at_ms,
                 after_event_id=after_event_id,
                 batch_size=parsed_batch_size,
@@ -658,7 +659,7 @@ def _cursor_json(value: dict[str, Any] | None) -> str | None:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _optional_int(value: object) -> int | None:
+def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -1038,7 +1039,7 @@ def _cleanup_narrative_backlog(
     realtime_scopes: tuple[str, ...] = ("all",),
 ) -> dict[str, int]:
     with db.worker_session("rebuild_narrative_intel_cleanup") as repos:
-        return dict(
+        return _object_dict(
             _call_with_supported_kwargs(
                 repos.narratives.cleanup_narrative_current_hard_cut,
                 schema_version=NARRATIVE_SCHEMA_VERSION,
@@ -1075,16 +1076,20 @@ def _merge_int_counts(total: dict[str, int], item: dict[str, Any]) -> None:
             continue
 
 
-def _call_with_supported_kwargs(method: object, **kwargs: object) -> object:
+def _call_with_supported_kwargs(method: Callable[..., object], **kwargs: object) -> object:
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        return method(**kwargs)  # type: ignore[misc]
+        return method(**kwargs)
     parameters = signature.parameters.values()
     if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
-        return method(**kwargs)  # type: ignore[misc]
+        return method(**kwargs)
     supported = {key: value for key, value in kwargs.items() if key in signature.parameters}
-    return method(**supported)  # type: ignore[misc]
+    return method(**supported)
+
+
+def _object_dict(value: object) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
@@ -1106,14 +1111,14 @@ def _narrative_health_worker_kwargs(workers: object) -> dict[str, Any]:
     }
 
 
-def _positive_int(value: object, *, default: int) -> int:
+def _positive_int(value: Any, *, default: int) -> int:
     try:
         return max(1, int(value or default))
     except (TypeError, ValueError):
         return default
 
 
-def _nonnegative_int(value: object, *, default: int) -> int:
+def _nonnegative_int(value: Any, *, default: int) -> int:
     try:
         return max(0, int(value if value is not None else default))
     except (TypeError, ValueError):

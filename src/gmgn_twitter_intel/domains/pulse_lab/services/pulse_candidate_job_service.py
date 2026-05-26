@@ -302,6 +302,7 @@ class PulseCandidateJobService:
                         commit=False,
                     )
             run_started = True
+            stage_audits: tuple[StageRunAudit, ...]
             if cost_guard is not None and cost_guard.action == "no_llm_finalize":
                 final_decision = _abstain_decision(
                     route=route,

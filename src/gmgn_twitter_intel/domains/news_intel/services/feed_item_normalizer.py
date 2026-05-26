@@ -5,7 +5,7 @@ import json
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.domains.news_intel.services.text_normalization import canonicalize_url, clean_news_text
 from gmgn_twitter_intel.domains.news_intel.types import NormalizedNewsItem
@@ -81,10 +81,12 @@ def _language(entry: Mapping[str, Any]) -> str:
 def _json_safe_payload(entry: Mapping[str, Any], *, source_domain: str) -> dict[str, Any]:
     payload = dict(entry)
     payload["source_domain"] = str(source_domain)
-    return json.loads(json.dumps(payload, default=str, ensure_ascii=False, sort_keys=True))
+    return cast(dict[str, Any], json.loads(json.dumps(payload, default=str, ensure_ascii=False, sort_keys=True)))
 
 
 def _epoch_ms(value: object) -> int | None:
+    if not isinstance(value, str | bytes | bytearray | int | float):
+        return _iso_epoch_ms(value)
     try:
         numeric = float(value)
     except (TypeError, ValueError):

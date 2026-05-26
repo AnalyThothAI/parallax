@@ -6,7 +6,7 @@ import time
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.surfaces.cli.dependencies import repositories
 from gmgn_twitter_intel.domains.macro_intel._constants import (
@@ -210,7 +210,7 @@ def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, An
         "source_coverage_json",
     }
     if not any(key in snapshot for key in heavy_keys):
-        return _json_ready(snapshot)
+        return cast(dict[str, Any], _json_ready(snapshot))
 
     panels = _object_map(snapshot.get("panels_json")) or _object_map(snapshot.get("chain_json"))
     features = _object_map(snapshot.get("features_json"))

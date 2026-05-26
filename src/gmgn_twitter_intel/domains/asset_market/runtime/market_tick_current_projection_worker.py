@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
@@ -70,12 +70,15 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
             self.name,
             statement_timeout_seconds=getattr(self.settings, "statement_timeout_seconds", None),
         ) as repos:
-            return repos.market_tick_current_dirty_targets.claim_due(
-                limit=max(1, int(getattr(self.settings, "batch_size", 100) or 100)),
-                now_ms=int(now_ms),
-                lease_ms=max(1, int(getattr(self.settings, "lease_ms", 120_000) or 120_000)),
-                lease_owner=self.name,
-                commit=True,
+            return cast(
+                list[dict[str, Any]],
+                repos.market_tick_current_dirty_targets.claim_due(
+                    limit=max(1, int(getattr(self.settings, "batch_size", 100) or 100)),
+                    now_ms=int(now_ms),
+                    lease_ms=max(1, int(getattr(self.settings, "lease_ms", 120_000) or 120_000)),
+                    lease_owner=self.name,
+                    commit=True,
+                ),
             )
 
     def _process_claim(self, claim: Mapping[str, Any], *, now_ms: int) -> tuple[bool, tuple[str, str] | None]:
