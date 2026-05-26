@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { formatMacroScalar } from "../../model/macroPageViewModel";
 
 import type { MacroModulePageProps } from "./MacroModulePageFrame";
-import "./macroPages.css";
+import "./MacroAssetsLandingPage.css";
 
 export function MacroAssetsLandingPage({ module }: MacroModulePageProps) {
   return (
