@@ -259,6 +259,49 @@ def test_opennews_client_parses_iso_timestamp_from_live_push_shape() -> None:
     )
 
 
+def test_opennews_client_keeps_live_push_without_external_link() -> None:
+    websocket = FakeWebSocket(
+        recv_messages=[
+            {"jsonrpc": "2.0", "id": "opennews_subscribe_1", "result": {"success": True}},
+            {
+                "jsonrpc": "2.0",
+                "method": "news.update",
+                "params": {
+                    "id": "2367468",
+                    "text": "OpenNews token alert",
+                    "newsType": "6551News",
+                    "engineType": "news",
+                    "coins": [
+                        {"market_type": "cex", "symbol": "BTC"},
+                        {"market_type": "dex", "symbol": "SOL"},
+                    ],
+                    "ts": "2026-05-26T19:18:48.871+08:00",
+                },
+            },
+        ]
+    )
+    client = OpenNewsFeedClient(
+        token="test-token",
+        connect=lambda url, **kwargs: FakeConnect(url=url, websocket=websocket, kwargs=kwargs),
+        now_ms=lambda: NOW_MS,
+    )
+
+    result = client.fetch(
+        "opennews://subscribe",
+        limit=1,
+        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 1}},
+    )
+
+    assert len(result.entries) == 1
+    assert result.entries[0]["link"] == "opennews://item/2367468"
+    assert result.entries[0]["title"] == "OpenNews token alert"
+    assert result.entries[0]["provider_signal"]["status"] == "partial"
+    assert result.entries[0]["provider_token_impacts"] == [
+        {"symbol": "BTC", "market_type": "cex", "score": None, "signal": None, "grade": None},
+        {"symbol": "SOL", "market_type": "dex", "score": None, "signal": None, "grade": None},
+    ]
+
+
 class FakeWebSocket:
     def __init__(self, *, recv_messages: list[dict[str, Any]]) -> None:
         self._recv_messages = list(recv_messages)

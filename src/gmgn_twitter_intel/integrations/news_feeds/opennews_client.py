@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from gmgn_twitter_intel.domains.news_intel.services.opennews_provider_signal import (
     provider_signal_from_opennews_payload,
@@ -259,7 +259,7 @@ def _entry_from_message(message: Mapping[str, Any], *, now_ms: Callable[[], int]
 
 def _entry_from_params(params: Mapping[str, Any], *, method: str, now_ms: Callable[[], int]) -> dict[str, Any] | None:
     article_id = _optional_text(params.get("id")) or _optional_text(params.get("sourceItemKey"))
-    link = _optional_text(params.get("link") or params.get("url"))
+    link = _optional_text(params.get("link") or params.get("url")) or _fallback_link(article_id)
     title = _optional_text(params.get("title") or params.get("text"))
     if not article_id:
         return None
@@ -302,13 +302,23 @@ def _merge_entry(existing: Mapping[str, Any] | None, patch: Mapping[str, Any]) -
             continue
         if key == "provider_signal" and _keeps_existing_provider_signal(merged.get(key), value):
             continue
+        if key == "link" and _keeps_existing_link(merged.get(key), value):
+            continue
         if _is_present(value):
             merged[key] = value
     return merged
 
 
 def _entry_is_visible(entry: Mapping[str, Any]) -> bool:
-    return bool(_optional_text(entry.get("link")) and _optional_text(entry.get("title")))
+    return bool(
+        _optional_text(entry.get("id"))
+        and _optional_text(entry.get("link"))
+        and _optional_text(entry.get("title"))
+    )
+
+
+def _fallback_link(article_id: str) -> str:
+    return f"opennews://item/{quote(article_id, safe='')}"
 
 
 def _is_present(value: Any) -> bool:
@@ -325,6 +335,16 @@ def _keeps_existing_provider_signal(existing: Any, patch: Any) -> bool:
     if not isinstance(existing, Mapping) or not isinstance(patch, Mapping):
         return False
     return str(existing.get("status") or "") == "ready" and str(patch.get("status") or "") != "ready"
+
+
+def _keeps_existing_link(existing: Any, patch: Any) -> bool:
+    existing_link = _optional_text(existing)
+    patch_link = _optional_text(patch)
+    return bool(existing_link and patch_link and not _is_fallback_link(existing_link) and _is_fallback_link(patch_link))
+
+
+def _is_fallback_link(value: str) -> bool:
+    return value.startswith("opennews://item/")
 
 
 def _with_token(wss_url: str, token: str) -> str:
