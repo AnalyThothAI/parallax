@@ -542,6 +542,26 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
         settings=SimpleNamespace(handles=("toly",)),
     )
     monkeypatch.setattr(app_module, "_db_status", lambda _runtime: {"ok": True})
+    monkeypatch.setattr(
+        app_module,
+        "workers_status_payload",
+        lambda _runtime: {
+            "workers": {
+                "collector": {
+                    "enabled": False,
+                    "running": False,
+                    "details": runtime.collector.status.to_dict(),
+                    "queue_health": {"tables": {}},
+                }
+            },
+            "worker_lanes": {
+                "ingest": {},
+                "projection": {},
+                "agent": {},
+                "notification": {},
+            },
+        },
+    )
     payload, status_code = app_module._readiness_payload(runtime)
 
     assert top_level_schema_keys.isdisjoint(MANIFEST_WORKER_CLASSES)
