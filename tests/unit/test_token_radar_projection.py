@@ -10,13 +10,9 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
-    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import (
-    TokenRadarSourceRequest,
-    TokenRadarTargetFeatureBatchQuery,
-)
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarSourceRequest
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
     WINDOW_MS,
@@ -197,17 +193,20 @@ def test_full_rank_input_rebuild_enumerates_legacy_rows_and_scores_owner_path(mo
             "rank_input_version": "legacy_needs_rebuild",
         }
     ]
-    repos = type("Repos", (), {"conn": FakeTransactionConn(), "token_radar": token_radar})()
+    repos = type(
+        "Repos",
+        (),
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
+    )()
 
     monkeypatch.setattr(
         token_radar_projection_module,
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
-    )
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "TokenRadarTargetFeatureBatchQuery",
-        lambda conn: FakeBatchQuery(token_radar=token_radar, rows_by_request={}),
     )
     monkeypatch.setattr(
         TokenRadarProjection,
@@ -948,130 +947,6 @@ def test_projection_market_uses_social_start_row_not_latest_row():
     assert market["readiness"]["anchor_status"] == "ready"
 
 
-def test_token_radar_target_feature_batch_query_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
-    conn = FakeConn()
-
-    TokenRadarTargetFeatureBatchQuery(conn).source_rows_for_requests(
-        [
-            TokenRadarSourceRequest(
-                request_key="request-1",
-                target_type_key="CexToken",
-                identity_id="cex_token:BTC",
-                window="1h",
-                scope="all",
-                analysis_since_ms=1,
-                score_since_ms=1,
-                now_ms=2,
-            )
-        ]
-    )
-
-    assert "preferred_price_feed" in conn.sql
-    assert "COALESCE(source_intents.resolution_pricefeed_id, preferred_price_feed.pricefeed_id)" not in conn.sql
-    assert "WHEN source_intents.target_type = 'CexToken'" in conn.sql
-    assert "THEN preferred_price_feed.pricefeed_id" in conn.sql
-    assert "ELSE source_intents.resolution_pricefeed_id" in conn.sql
-    assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
-
-
-def test_token_radar_target_feature_batch_query_does_not_read_historical_market_fact_table():
-    conn = FakeConn()
-
-    TokenRadarTargetFeatureBatchQuery(conn).source_rows_for_requests(
-        [
-            TokenRadarSourceRequest(
-                request_key="request-1",
-                target_type_key="Asset",
-                identity_id="asset-1",
-                window="1h",
-                scope="all",
-                analysis_since_ms=1,
-                score_since_ms=1,
-                now_ms=2,
-            )
-        ]
-    )
-
-    assert _legacy_price_table() not in conn.sql
-    assert "enriched_events" in conn.sql
-    assert "market_ticks" in conn.sql
-    assert "market_target" in conn.sql
-    assert "latest_feed_price" not in conn.sql
-    assert "latest_subject_price" not in conn.sql
-    assert "LEFT JOIN LATERAL" in conn.sql
-    assert "event_price_capture" in conn.sql
-    assert "event_price_tick" in conn.sql
-    assert "latest_price_tick" in conn.sql
-    assert "token_market_price_" + "baselines" not in conn.sql
-    assert "message_event_price" not in conn.sql
-    assert "event_history_price" not in conn.sql
-    assert "latest_price_observation" not in conn.sql
-    assert _public_market_key("event") not in conn.sql
-    assert _public_market_key("decision") not in conn.sql
-    assert ") event_price ON true" not in conn.sql
-    assert " OR " not in conn.sql
-    assert "WITH source_intents AS MATERIALIZED" not in conn.sql
-    assert "WITH request_targets AS" in conn.sql
-    assert "jsonb_to_recordset" in conn.sql
-    assert "WITH window_events AS MATERIALIZED" not in conn.sql
-    assert "events.received_at_ms <= r.now_ms" in conn.sql
-    assert conn.params[1] == TOKEN_RADAR_RESOLVER_POLICY_VERSION
-
-
-def test_target_feature_batch_query_filters_requested_targets_and_uses_current_market_and_composite_event_tick():
-    conn = FakeConn()
-
-    TokenRadarTargetFeatureBatchQuery(conn).source_rows_for_requests(
-        [
-            TokenRadarSourceRequest(
-                request_key="request-1",
-                target_type_key="Asset",
-                identity_id="asset-1",
-                window="1h",
-                scope="matched",
-                analysis_since_ms=1,
-                score_since_ms=1,
-                now_ms=2,
-            )
-        ]
-    )
-
-    assert "token_intent_resolutions.target_type = r.target_type_key" in conn.sql
-    assert "token_intent_resolutions.target_id = r.identity_id" in conn.sql
-    assert "market_tick_current latest_price_tick" in conn.sql
-    assert "event_price_tick.observed_at_ms = event_price_capture.tick_observed_at_ms" in conn.sql
-    assert "event_price_tick.tick_id = event_price_capture.tick_id" in conn.sql
-    assert "CASE WHEN r.scope = 'matched' THEN events.is_watched = true ELSE true END" in conn.sql
-    assert conn.params[1] == TOKEN_RADAR_RESOLVER_POLICY_VERSION
-
-
-def test_target_feature_batch_query_groups_rows_by_request_and_chunks():
-    conn = FakeConn(
-        rows=[
-            {"request_key": "request-1", "event_id": "event-1"},
-            {"request_key": "request-2", "event_id": "event-2"},
-        ]
-    )
-    requests = [
-        TokenRadarSourceRequest(
-            request_key=f"request-{index}",
-            target_type_key="Asset",
-            identity_id=f"asset-{index}",
-            window="1h",
-            scope="all",
-            analysis_since_ms=1,
-            score_since_ms=2,
-            now_ms=3,
-        )
-        for index in (1, 2)
-    ]
-
-    rows = TokenRadarTargetFeatureBatchQuery(conn, chunk_size=1).source_rows_for_requests(requests)
-
-    assert list(rows) == ["request-1", "request-2"]
-    assert conn.execute_count == 2
-
-
 def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(monkeypatch):
     token_radar = FakeTokenRadar()
     dirty_targets = FakeDirtyTargets(
@@ -1088,15 +963,15 @@ def test_projection_rebuild_dirty_targets_marks_claim_done_with_payload_hash(mon
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
     )()
     now_ms = 1_777_800_060_000
 
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "TokenRadarTargetFeatureBatchQuery",
-        lambda conn: FakeBatchQuery(token_radar=token_radar, rows_by_request={}),
-    )
     monkeypatch.setattr(
         TokenRadarProjection,
         "_project_source_request",
@@ -1144,7 +1019,12 @@ def test_projection_rebuild_dirty_targets_blocks_before_claim_when_rank_inputs_a
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
     )()
 
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
@@ -1181,7 +1061,12 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": token_radar, "token_radar_dirty_targets": dirty_targets},
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
     )()
 
     def score(self, **kwargs):
@@ -1192,11 +1077,6 @@ def test_projection_rebuild_dirty_targets_scores_only_selected_work_items(monkey
         refresh_calls.append((kwargs["window"], kwargs["scope"]))
         return {"rows_written": 1, "source_rows": 1, "status": "ready"}
 
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "TokenRadarTargetFeatureBatchQuery",
-        lambda conn: FakeBatchQuery(token_radar=token_radar, rows_by_request={}),
-    )
     monkeypatch.setattr(TokenRadarProjection, "_project_source_request", score)
     monkeypatch.setattr(TokenRadarProjection, "refresh_rank_set", refresh)
 
@@ -1230,21 +1110,22 @@ def test_projection_rebuild_dirty_targets_marks_error_with_payload_hash_on_failu
             }
         ]
     )
+    token_radar = FakeTokenRadar()
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
     )()
     now_ms = 1_777_800_060_000
 
     def fail_score(self, **kwargs):
         raise RuntimeError("target boom")
 
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "TokenRadarTargetFeatureBatchQuery",
-        lambda conn: FakeBatchQuery(token_radar=repos.token_radar, rows_by_request={}),
-    )
     monkeypatch.setattr(TokenRadarProjection, "_project_source_request", fail_score)
 
     result = TokenRadarProjection(repos=repos).rebuild_dirty_targets(
@@ -1280,18 +1161,19 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_fails(monkeypatch):
             }
         ]
     )
+    token_radar = FakeTokenRadar()
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
     )()
     now_ms = 1_777_800_060_000
 
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "TokenRadarTargetFeatureBatchQuery",
-        lambda conn: FakeBatchQuery(token_radar=repos.token_radar, rows_by_request={}),
-    )
     monkeypatch.setattr(
         TokenRadarProjection,
         "_project_source_request",
@@ -1336,18 +1218,19 @@ def test_projection_keeps_claim_dirty_when_rank_refresh_stale_skips(monkeypatch)
             }
         ]
     )
+    token_radar = FakeTokenRadar()
     repos = type(
         "Repos",
         (),
-        {"conn": FakeTransactionConn(), "token_radar": FakeTokenRadar(), "token_radar_dirty_targets": dirty_targets},
+        {
+            "conn": FakeTransactionConn(),
+            "token_radar": token_radar,
+            "token_radar_dirty_targets": dirty_targets,
+            "token_radar_rank_sources": FakeRankSources(token_radar=token_radar, rows_by_request={}),
+        },
     )()
     now_ms = 1_777_800_060_000
 
-    monkeypatch.setattr(
-        token_radar_projection_module,
-        "TokenRadarTargetFeatureBatchQuery",
-        lambda conn: FakeBatchQuery(token_radar=repos.token_radar, rows_by_request={}),
-    )
     monkeypatch.setattr(
         TokenRadarProjection,
         "_project_source_request",
@@ -1570,23 +1453,6 @@ def ranking_row(
     }
 
 
-class FakeConn:
-    def __init__(self, rows=None):
-        self.rows = rows or []
-        self.sql = ""
-        self.params = None
-        self.execute_count = 0
-
-    def execute(self, sql, params=None):
-        self.sql = str(sql)
-        self.params = params
-        self.execute_count += 1
-        return self
-
-    def fetchall(self):
-        return self.rows
-
-
 class FakeTransactionConn:
     def __init__(self):
         self.transaction_count = 0
@@ -1595,16 +1461,6 @@ class FakeTransactionConn:
     def transaction(self):
         self.transaction_count += 1
         yield
-
-
-def _legacy_price_table() -> str:
-    return "_".join(("price", "observations"))
-
-
-def _public_market_key(prefix: str) -> str:
-    suffix = "anchor" if prefix == "event" else "latest"
-    return "_".join((prefix, suffix))
-
 
 class FakeProjectionRecorder:
     def __init__(self):
@@ -1693,7 +1549,7 @@ class FakeRuntimeDirtyTargets:
         return {"targets": len(targets)}
 
 
-class FakeBatchQuery:
+class FakeRankSources:
     def __init__(
         self,
         *,
@@ -1703,7 +1559,7 @@ class FakeBatchQuery:
         self.token_radar = token_radar
         self.rows_by_request = rows_by_request
 
-    def source_rows_for_requests(self, requests):
+    def load_rows_for_requests(self, requests):
         request_list = list(requests)
         self.token_radar.source_request_batches.append(request_list)
         return {

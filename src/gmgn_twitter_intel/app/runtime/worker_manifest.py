@@ -251,6 +251,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("token_radar_dirty_targets",),
         ordering_keys=("window", "scope", "target_type", "target_id"),
         writes_read_models=(
+            "token_radar_rank_source_events",
             "token_radar_target_features",
             "token_radar_current_rows",
             "token_radar_rank_history",

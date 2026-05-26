@@ -405,17 +405,30 @@ def test_runtime_rank_source_edges_migration_contract() -> None:
         "event_received_at_ms BIGINT NOT NULL",
         "source_rank INTEGER NOT NULL DEFAULT 0",
         "projected_at_ms BIGINT NOT NULL",
+        "intent_id TEXT NOT NULL",
+        "event_id TEXT NOT NULL",
+        "text_fingerprint TEXT",
+        "post_quality_score INTEGER",
+        "post_informative BOOLEAN",
+        "post_has_market_context BOOLEAN",
+        "gmgn_user_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]",
+        "event_price_usd NUMERIC",
+        "latest_price_usd NUMERIC",
+        "first_seen_global_24h BOOLEAN NOT NULL DEFAULT false",
     ):
         assert column in text
-    for forbidden in ("event_text", "raw_payload_json", "audit_json"):
+    for forbidden in ("event_text", "text_clean", "reference_json", "raw_payload_json", "audit_json"):
         assert forbidden not in text
     assert "CHECK (source_kind IN ('event', 'intent', 'resolution'))" in text
     assert "CREATE INDEX IF NOT EXISTS idx_token_radar_rank_source_events_target" in text
     assert "CREATE INDEX IF NOT EXISTS idx_token_radar_rank_source_events_source" in text
     assert "CREATE INDEX IF NOT EXISTS idx_token_radar_rank_source_events_recent" in text
+    rank_source_pk = (
+        'PRIMARY KEY ( projection_version, "window", scope, lane, target_type_key, '
+        "identity_id, source_kind, source_id )"
+    )
     assert (
-        'PRIMARY KEY ( projection_version, "window", scope, lane, target_type_key, identity_id, source_kind, source_id )'
-        in normalized_text
+        rank_source_pk in normalized_text
     )
     assert (
         'ON token_radar_rank_source_events( projection_version, "window", scope, target_type_key, identity_id )'

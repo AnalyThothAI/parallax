@@ -15,10 +15,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_RADAR_SOURCE_TABLE,
     WINDOW_MS,
 )
-from gmgn_twitter_intel.domains.token_intel.queries.token_radar_target_feature_query import (
-    TokenRadarSourceRequest,
-    TokenRadarTargetFeatureBatchQuery,
-)
+from gmgn_twitter_intel.domains.token_intel.queries.token_radar_rank_source_query import TokenRadarSourceRequest
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TOKEN_RADAR_RANK_INPUT_VERSION
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
@@ -122,7 +119,7 @@ class TokenRadarProjection:
             return result
 
         source_requests = _source_requests_for_targets(claims, resolved_work_items, now_ms=computed_at_ms)
-        rows_by_request = TokenRadarTargetFeatureBatchQuery(self.repos.conn).source_rows_for_requests(source_requests)
+        rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
         requests_by_target = _source_requests_by_target(source_requests)
         touched: set[tuple[str, str]] = set()
         successful_claims: list[dict[str, str | int]] = []
@@ -232,9 +229,7 @@ class TokenRadarProjection:
                     raise RuntimeError("rank input rebuild made no progress for legacy target feature")
                 seen_keys.add(stable_key)
             source_requests = _source_requests_for_rank_rebuild_keys(rebuild_keys, now_ms=computed_at_ms)
-            rows_by_request = TokenRadarTargetFeatureBatchQuery(self.repos.conn).source_rows_for_requests(
-                source_requests
-            )
+            rows_by_request = self.repos.token_radar_rank_sources.load_rows_for_requests(source_requests)
             requests_by_key = {request.request_key: request for request in source_requests}
             with _transaction_context(self.repos.conn):
                 for key in rebuild_keys:
