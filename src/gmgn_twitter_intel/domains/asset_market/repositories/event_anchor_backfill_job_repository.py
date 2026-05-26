@@ -3,8 +3,8 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, cast
 
-from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
+from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
 
 PENDING_CAPTURE_REASON = "pending_backfill"
 

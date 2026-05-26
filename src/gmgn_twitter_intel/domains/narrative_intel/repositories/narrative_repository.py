@@ -9,7 +9,6 @@ from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.narrative_intel.services.fingerprints import (
     label_fingerprint as build_label_fingerprint,
@@ -25,6 +24,7 @@ from gmgn_twitter_intel.domains.narrative_intel.types.narrative_currentness impo
     unsupported_digest_sentinel,
 )
 from gmgn_twitter_intel.domains.narrative_intel.types.narrative_epoch_policy import DIGEST_WINDOWS
+from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
 
 _SEMANTIC_COVERAGE_KEYS = (
     "source_event_count",

@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
@@ -371,10 +371,10 @@ def _next_terminal_generation(
     return max(1, int((row or {}).get("terminal_generation") or 1))
 
 
-def _transaction(conn: Any):
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
     transaction = getattr(conn, "transaction", None)
     if callable(transaction):
-        return transaction()
+        return cast(AbstractContextManager[Any], transaction())
     return nullcontext()
 
 

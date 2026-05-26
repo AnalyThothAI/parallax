@@ -8,8 +8,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
 
 from ..types.social_event_extraction import SocialEventExtraction
 

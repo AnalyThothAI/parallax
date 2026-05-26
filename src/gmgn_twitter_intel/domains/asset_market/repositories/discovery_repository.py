@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
+from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
 
 DISCOVERY_PROVIDER = "okx_dex_search"
 RUNNING_LOOKUP_TIMEOUT_MS = 5 * 60 * 1000

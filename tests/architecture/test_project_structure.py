@@ -66,6 +66,7 @@ def test_project_uses_domain_package_src_layout():
         "macro.py",
         "ops.py",
         "pulse_replay.py",
+        "queue_ops.py",
         "read_models.py",
         "serve.py",
     }

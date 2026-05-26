@@ -4,7 +4,7 @@
 **Date**: 2026-05-26
 **Owner**: Codex
 **Related**:
-- `docs/POSTGRES_PERFORMANCE.md`
+- `docs/references/POSTGRES_PERFORMANCE.md`
 - `docs/generated/postgres-observability/postgres-production-performance-analysis-2026-05-26-cn.md`
 - `docs/generated/postgres-observability/worker-architecture-audit-2026-05-26.md`
 - `docs/generated/postgres-observability/worker-contract-spec-review-2026-05-26-cn.md`

@@ -4,9 +4,9 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.queue_health import fetch_queue_table_health
-from gmgn_twitter_intel.app.runtime.queue_terminal import inspect_terminal_events, resolve_terminal_event
 from gmgn_twitter_intel.app.runtime.worker_manifest import worker_queue_health_tables
 from gmgn_twitter_intel.domains.asset_market.repositories.discovery_repository import DISCOVERY_PROVIDER
+from gmgn_twitter_intel.platform.db.queue_terminal import inspect_terminal_events, resolve_terminal_event
 
 QueueRetryTransition = Callable[[object, dict[str, Any]], dict[str, Any]]
 

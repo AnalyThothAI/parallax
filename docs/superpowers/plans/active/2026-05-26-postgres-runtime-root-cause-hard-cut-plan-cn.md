@@ -793,7 +793,7 @@ uv run pytest tests/unit/test_postgres_schema.py -q
 
 Files:
 
-- `docs/POSTGRES_PERFORMANCE.md`
+- `docs/references/POSTGRES_PERFORMANCE.md`
 - `docs/WORKER_FLOW.md`
 - `docs/ARCHITECTURE.md`
 - `src/gmgn_twitter_intel/domains/macro_intel/ARCHITECTURE.md`

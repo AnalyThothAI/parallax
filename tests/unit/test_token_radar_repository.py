@@ -466,7 +466,7 @@ def test_list_rank_input_rebuild_keys_enumerates_legacy_features_without_wide_pa
     assert "FROM token_radar_target_features" in conn.sql
     assert "factor_snapshot_json" not in conn.sql
     assert "SELECT *" not in conn.sql
-    assert "rank_input_version <> %s" in conn.sql
+    assert "rank_input_version IS DISTINCT FROM %s" in conn.sql
     assert conn.params == ("token-radar-v13-social-attention", ["1h"], ["all"], "token-radar-rank-input-v1", 100)
     assert rows[0]["target_type_key"] == "Asset"
 

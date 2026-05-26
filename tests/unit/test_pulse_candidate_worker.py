@@ -757,7 +757,7 @@ def test_scan_window_scope_pending_cap_suppresses_enqueue_without_admission_clai
     assert repos.pulse_jobs.jobs == []
 
 
-def test_runtime_does_not_terminalize_stale_jobs_outside_targeted_ops() -> None:
+def test_runtime_terminalizes_exhausted_stale_running_jobs() -> None:
     repos = FakeRepos()
     repos.pulse_jobs.jobs.append(
         {
@@ -768,7 +768,7 @@ def test_runtime_does_not_terminalize_stale_jobs_outside_targeted_ops() -> None:
             "scope": "all",
             "created_at_ms": NOW_MS - 3_601_000,
             "updated_at_ms": NOW_MS - 3_601_000,
-            "attempt_count": 0,
+            "attempt_count": 3,
             "max_attempts": 3,
         }
     )
@@ -777,9 +777,9 @@ def test_runtime_does_not_terminalize_stale_jobs_outside_targeted_ops() -> None:
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
 
     assert result["claimed"] == 0
-    assert "stale_jobs_terminalized" not in result
-    assert repos.pulse_jobs.jobs[0]["status"] == "running"
-    assert "last_error" not in repos.pulse_jobs.jobs[0]
+    assert result["terminalized_stale_running"] == 1
+    assert repos.pulse_jobs.jobs[0]["status"] == "dead"
+    assert repos.pulse_jobs.jobs[0]["last_error"] == "stale_running_timeout"
 
 
 def test_normalized_failure_reason_maps_unknown_evidence() -> None:
@@ -1690,6 +1690,33 @@ class FakePulseStore:
                 continue
             job["status"] = "dead"
             job["last_error"] = "stale_window_ttl"
+            job["updated_at_ms"] = now_ms
+            count += 1
+        return count
+
+    def terminalize_exhausted_stale_running_jobs(
+        self,
+        *,
+        now_ms: int,
+        stale_after_ms: int,
+        limit: int = 100,
+        **_: Any,
+    ) -> int:
+        count = 0
+        stale_before_ms = int(now_ms) - int(stale_after_ms)
+        for job in sorted(
+            self.jobs, key=lambda row: (int(row.get("updated_at_ms") or 0), str(row.get("job_id") or ""))
+        ):
+            if count >= max(1, int(limit)):
+                break
+            if job.get("status") != "running":
+                continue
+            if int(job.get("attempt_count") or 0) < int(job.get("max_attempts") or 0):
+                continue
+            if int(job.get("updated_at_ms") or 0) >= stale_before_ms:
+                continue
+            job["status"] = "dead"
+            job["last_error"] = "stale_running_timeout"
             job["updated_at_ms"] = now_ms
             count += 1
         return count

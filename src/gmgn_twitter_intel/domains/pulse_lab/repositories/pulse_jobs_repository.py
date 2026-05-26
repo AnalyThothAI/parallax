@@ -3,7 +3,6 @@ from __future__ import annotations
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any, cast
 
-from gmgn_twitter_intel.app.runtime.queue_terminal import terminalize_source_row
 from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared import (
     _id,
     _json,
@@ -12,6 +11,7 @@ from gmgn_twitter_intel.domains.pulse_lab.repositories._pulse_repository_shared 
     _optional_row,
     _row,
 )
+from gmgn_twitter_intel.platform.db.queue_terminal import terminalize_source_row
 
 ACTIVE_JOB_STATUSES = ("pending", "failed", "running")
 

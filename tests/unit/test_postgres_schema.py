@@ -136,6 +136,9 @@ MACRO_OBSERVATION_SERIES_SOURCE_TS_TEXT_MIGRATION = Path(
 NORMALIZE_TERMINAL_REASON_BUCKETS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0103_normalize_terminal_reason_buckets.py"
 )
+OPENNEWS_PROVIDER_SIGNAL_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260526_0105_opennews_provider_signal.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
@@ -813,6 +816,23 @@ def test_news_page_filter_indexes_follow_content_classification() -> None:
         "idx_news_page_rows_decision_class_time",
         "idx_news_page_rows_coverage_tags_gin",
         "idx_news_page_rows_content_tags_gin",
+    ):
+        assert statement in text
+
+
+def test_opennews_provider_signal_migration_adds_jsonb_fact_columns() -> None:
+    text = OPENNEWS_PROVIDER_SIGNAL_MIGRATION.read_text()
+
+    for statement in (
+        'revision = "20260526_0105"',
+        'down_revision = "20260526_0104"',
+        "provider_signal_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "provider_token_impacts_json JSONB NOT NULL DEFAULT '[]'::jsonb",
+        "signal_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "token_impacts_json JSONB NOT NULL DEFAULT '[]'::jsonb",
+        "ix_news_items_provider_signal_direction",
+        "ix_news_page_rows_signal_direction",
+        "'opennews'",
     ):
         assert statement in text
 

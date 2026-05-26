@@ -513,10 +513,19 @@ def test_process_global_setters_only_in_bootstrap() -> None:
 @pytest.mark.architecture
 def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     from gmgn_twitter_intel.app.runtime import app as app_module
+    from gmgn_twitter_intel.app.runtime.queue_health import empty_queue_health
+    from gmgn_twitter_intel.app.runtime.worker_manifest import worker_queue_health_tables
     from gmgn_twitter_intel.app.surfaces.api.schemas import StatusData
 
+    now_ms = 1_700_000_000_000
+    queue_tables = worker_queue_health_tables()
     top_level_schema_keys = set(StatusData.model_fields)
     runtime = SimpleNamespace(
+        _queue_health_cache={
+            "cached_at_ms": now_ms,
+            "worker_tables": queue_tables,
+            "workers": {worker_name: empty_queue_health() for worker_name in queue_tables},
+        },
         collector=SimpleNamespace(
             status=SimpleNamespace(
                 to_dict=lambda: {
@@ -562,7 +571,7 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         },
     )
-    payload, status_code = app_module._readiness_payload(runtime)
+    payload, status_code = app_module._readiness_payload(runtime, now_ms=now_ms)
 
     assert top_level_schema_keys.isdisjoint(MANIFEST_WORKER_CLASSES)
     assert "workers" in top_level_schema_keys
