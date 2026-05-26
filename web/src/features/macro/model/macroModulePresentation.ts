@@ -33,6 +33,15 @@ export type MacroDataHealthBucket = {
   referenceCount?: number;
 };
 
+const EVIDENCE_GROUPS = [
+  { key: "confirmations", label: "确认" },
+  { key: "contradictions", label: "反证" },
+  { key: "watch_triggers", label: "观察触发" },
+  { key: "invalidations", label: "失效条件" },
+] as const;
+
+type EvidenceGroupKey = (typeof EVIDENCE_GROUPS)[number]["key"];
+
 export function buildMacroMetrics({ tiles }: { tiles: MacroModuleTile[] }): MacroMetricDisplay[] {
   return tiles.map((tile, index) => ({
     key: String(tile.concept_key ?? tile.label ?? `metric:${index}`),
@@ -118,7 +127,7 @@ export function buildMacroDataHealthBuckets(
 
 function evidenceItemsForGroup(
   evidence: MacroModuleView["module_evidence"],
-  key: string,
+  key: EvidenceGroupKey,
 ): Array<{ detail: string; label: string }> {
   const items = evidence[key];
   if (!Array.isArray(items)) {
@@ -141,10 +150,3 @@ function evidenceItemsForGroup(
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
-
-const EVIDENCE_GROUPS = [
-  { key: "confirmations", label: "确认" },
-  { key: "contradictions", label: "反证" },
-  { key: "watch_triggers", label: "观察触发" },
-  { key: "data_gaps", label: "数据缺口" },
-] as const;

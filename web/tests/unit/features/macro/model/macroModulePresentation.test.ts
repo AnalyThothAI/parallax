@@ -46,7 +46,7 @@ describe("macroModulePresentation", () => {
       "confirmations",
       "contradictions",
       "watch_triggers",
-      "data_gaps",
+      "invalidations",
     ]);
     expect(buildMacroDataHealthBuckets(module.data_health, "overview")).toHaveLength(4);
   });
@@ -75,7 +75,7 @@ describe("macroModulePresentation", () => {
         confirmations: [{ label: "v3 confirmation" }],
         contradictions: [],
         watch_triggers: [],
-        data_gaps: [],
+        invalidations: [],
       },
       data_health: {
         summary_status: "ok",
