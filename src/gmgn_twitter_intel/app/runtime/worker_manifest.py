@@ -42,6 +42,7 @@ class WorkerManifest:
     side_effect_ledgers: tuple[str, ...] = ()
     dirty_target_tables: tuple[str, ...] = ()
     queue_depth_table: str | None = None
+    queue_health_tables: tuple[str, ...] = ()
     advisory_lock_key: str | None = None
     wakes_on: tuple[str, ...] = ()
     wakes_out: tuple[str, ...] = ()
@@ -129,6 +130,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         writes_facts=("enriched_events", "market_ticks"),
         writes_control_plane=("event_anchor_backfill_jobs",),
         idempotency_evidence=("event_anchor_backfill_jobs job state", "enriched_events event/intent identity"),
+        queue_health_tables=("event_anchor_backfill_jobs",),
     ),
     WorkerManifest(
         name="token_capture_tier",
@@ -140,12 +142,12 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
         ),
         start_priority=20,
-        input_contract=("token_capture_tier_dirty_targets", "live_market_target_set_dirty_targets"),
+        input_contract=("token_capture_tier_dirty_targets",),
         ordering_keys=("target_type", "target_id"),
         writes_read_models=("token_capture_tier",),
-        writes_control_plane=("token_capture_tier_dirty_targets", "live_market_target_set_dirty_targets"),
+        writes_control_plane=("token_capture_tier_dirty_targets",),
         idempotency_evidence=("token_capture_tier target primary key", "dirty target payload hash"),
-        dirty_target_tables=("token_capture_tier_dirty_targets", "live_market_target_set_dirty_targets"),
+        dirty_target_tables=("token_capture_tier_dirty_targets",),
         advisory_lock_key="2026051503",
     ),
     WorkerManifest(
@@ -304,6 +306,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         writes_control_plane=("discussion_digest_dirty_targets",),
         idempotency_evidence=("token_mention_semantics(event_id,target_type,target_id,schema_version,text_fingerprint)",),
         side_effect_ledgers=("token_mention_semantics", "narrative_model_runs"),
+        queue_health_tables=("token_mention_semantics",),
         advisory_lock_key="2026051801",
         wakes_on=("token_radar_updated", "resolution_updated"),
         wakes_out=("narrative_semantics_updated",),
@@ -758,6 +761,20 @@ def worker_queue_depth_tables() -> dict[str, str]:
     }
 
 
+def worker_queue_health_tables() -> dict[str, tuple[str, ...]]:
+    return {
+        manifest.name: _dedupe(
+            (
+                *((manifest.queue_depth_table,) if manifest.queue_depth_table else ()),
+                *manifest.dirty_target_tables,
+                *manifest.queue_health_tables,
+            )
+        )
+        for manifest in _WORKER_MANIFESTS
+        if manifest.queue_depth_table or manifest.dirty_target_tables or manifest.queue_health_tables
+    }
+
+
 def worker_dirty_target_tables() -> dict[str, tuple[str, ...]]:
     return {
         manifest.name: manifest.dirty_target_tables
@@ -797,6 +814,36 @@ def _validate_worker_manifests() -> None:
     if missing_dirty_control_owner:
         raise ValueError(f"dirty target tables missing from writes_control_plane: {missing_dirty_control_owner}")
 
+    missing_queue_health_owner = {
+        manifest.name: sorted(
+            set(manifest.queue_health_tables)
+            - set(
+                (
+                    *manifest.writes_facts,
+                    *manifest.writes_read_models,
+                    *manifest.writes_control_plane,
+                    *manifest.side_effect_ledgers,
+                )
+            )
+        )
+        for manifest in _WORKER_MANIFESTS
+        if set(manifest.queue_health_tables)
+        - set(
+            (
+                *manifest.writes_facts,
+                *manifest.writes_read_models,
+                *manifest.writes_control_plane,
+                *manifest.side_effect_ledgers,
+            )
+        )
+    }
+    if missing_queue_health_owner:
+        raise ValueError(f"queue health tables missing from worker ownership: {missing_queue_health_owner}")
+
+
+def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(values))
+
 
 _validate_worker_manifests()
 
@@ -814,5 +861,6 @@ __all__ = [
     "worker_dirty_target_tables",
     "worker_names",
     "worker_queue_depth_tables",
+    "worker_queue_health_tables",
     "worker_start_priority",
 ]

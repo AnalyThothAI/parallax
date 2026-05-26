@@ -78,10 +78,7 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
     RuntimeWorkerHardCutContract(
         path=SRC / "domains/asset_market/runtime/token_capture_tier_worker.py",
         banned_calls=("active_live_market_targets", "demote_absent_hot_rows"),
-        control_claim_markers=(
-            "token_capture_tier_dirty_targets.claim_due",
-            "live_market_target_set_dirty_targets.claim_due",
-        ),
+        control_claim_markers=("token_capture_tier_dirty_targets.claim_due",),
     ),
     RuntimeWorkerHardCutContract(
         path=SRC / "domains/asset_market/runtime/live_price_gateway.py",
@@ -167,7 +164,6 @@ CONTROL_PLANE_TABLES = frozenset(
         "token_image_source_dirty_targets",
         "asset_profile_refresh_targets",
         "token_capture_tier_dirty_targets",
-        "live_market_target_set_dirty_targets",
         "watchlist_handle_summary_jobs",
     }
 )

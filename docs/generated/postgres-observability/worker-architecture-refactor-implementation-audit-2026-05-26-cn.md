@@ -97,7 +97,7 @@ job_queue.WATCHLIST_HANDLE_SUMMARY_JOBS
 | `market_tick_poll` | `ingest` | `fact_ingest` | `asset_market` | `market_ticks` | - | - | - | OK |
 | `market_tick_current_projection` | `projection` | `projection` | `asset_market` | `market_tick_current` | `market_tick_current_dirty_targets`, `token_radar_dirty_targets` | `market_tick_current_dirty_targets` | - | OK |
 | `event_anchor_backfill` | `identity_market_fact` | `fact_lifecycle` | `asset_market` | `enriched_events`, `market_ticks` | `event_anchor_backfill_jobs` | - | - | OK |
-| `token_capture_tier` | `projection` | `projection` | `asset_market` | `token_capture_tier` | `token_capture_tier_dirty_targets`, `live_market_target_set_dirty_targets` | `token_capture_tier_dirty_targets`, `live_market_target_set_dirty_targets` | - | OK |
+| `token_capture_tier` | `projection` | `projection` | `asset_market` | `token_capture_tier` | `token_capture_tier_dirty_targets` | `token_capture_tier_dirty_targets` | - | OK |
 | `live_price_gateway` | `maintenance_cache` | `cache_fanout` | `asset_market` | in-process cache only | live price gateway cache | - | - | OK |
 | `resolution_refresh` | `identity_market_fact` | `fact_lifecycle` | `asset_market` | `asset_identity_*`, `token_intent_resolutions` | `token_discovery_dirty_lookup_keys`, `token_radar_dirty_targets`, `narrative_admission_dirty_targets` | `token_discovery_dirty_lookup_keys` | - | OK |
 | `asset_profile_refresh` | `identity_market_fact` | `fact_lifecycle` | `asset_market` | `asset_profiles` | `asset_profile_refresh_targets`, `token_image_source_dirty_targets` | `asset_profile_refresh_targets` | - | OK |

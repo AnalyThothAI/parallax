@@ -315,8 +315,11 @@ Use this order for real-data investigations:
 2. Check worker status.
    Use `/api/status`, `/readyz`, or `ops worker-status`. Look under the
    `workers` map for manifest worker status and `worker_lanes` for lane-level
-   enabled/running/failed/timeout counts and summed queue depth. Old top-level
-   worker status sections are not part of the contract.
+   enabled/running/failed/timeout counts, summed queue depth, and
+   `queue_health`. `queue_health` shows read-only due/running/failed/blocked
+   queue counts and oldest due/running age for manifest-owned job, delivery,
+   status, and dirty target queues. Old top-level worker status sections are
+   not part of the contract.
 
 3. Identify the missing truth.
    Ask which fact should exist: event, intent, resolution, identity,

@@ -76,7 +76,9 @@ Architecture guards enforce that `worker_manifest.py`,
 `worker-inventory-keys` marker stay in lockstep. They also guard that
 `/readyz` and `/api/status` expose worker state under the `workers` map
 instead of old top-level worker sections, and that worker runtime
-settings live in `workers.yaml` rather than application config models.
+settings live in `workers.yaml` rather than application config models. Queue
+health tests must keep `worker_manifest.py` queue declarations, dirty-target
+ownership, and `app.runtime.queue_health` read-only summaries in sync.
 
 Worker tests must keep external IO outside DB worker sessions. Provider
 clients, publishers, wake waits, and other network/process IO cannot run

@@ -230,10 +230,6 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
         SRC / "domains/asset_market/repositories/token_capture_tier_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
     },
-    "live_market_target_set_dirty_targets": {
-        SRC / "domains/asset_market/repositories/live_market_target_set_dirty_target_repository.py",
-        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
-    },
     "watchlist_handle_summary_jobs": {
         SRC / "domains/watchlist_intel/repositories/watchlist_intel_repository.py",
         SRC / "platform/db/alembic/versions/20260514_0045_watchlist_handle_intel.py",
@@ -375,7 +371,6 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
         "asset_profile_refresh_targets",
         "discussion_digest_dirty_targets",
         "equity_event_projection_dirty_targets",
-        "live_market_target_set_dirty_targets",
         "market_tick_current_dirty_targets",
         "narrative_admission_dirty_targets",
         "news_projection_dirty_targets",

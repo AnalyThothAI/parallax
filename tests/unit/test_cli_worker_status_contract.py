@@ -38,8 +38,75 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
         def fetchall(self):
             return self.rows
 
+        def fetchone(self):
+            return self.rows[0] if self.rows else None
+
     class FakeConn:
         def execute(self, sql, params=()):
+            if "GROUP BY status" not in sql:
+                if "enrichment_jobs" in sql:
+                    return FakeRows(
+                        [
+                            {
+                                "total_count": 6,
+                                "active_count": 6,
+                                "due_count": 2,
+                                "running_count": 1,
+                                "failed_count": 3,
+                                "blocked_count": 0,
+                                "oldest_due_at_ms": 1,
+                                "oldest_running_at_ms": 2,
+                                "max_attempt_count": 2,
+                            }
+                        ]
+                    )
+                if "watchlist_handle_summary_jobs" in sql:
+                    return FakeRows(
+                        [
+                            {
+                                "total_count": 3,
+                                "active_count": 3,
+                                "due_count": 1,
+                                "running_count": 2,
+                                "failed_count": 0,
+                                "blocked_count": 0,
+                                "oldest_due_at_ms": 1,
+                                "oldest_running_at_ms": 2,
+                                "max_attempt_count": 1,
+                            }
+                        ]
+                    )
+                if "notification_deliveries" in sql:
+                    return FakeRows(
+                        [
+                            {
+                                "total_count": 103,
+                                "active_count": 4,
+                                "due_count": 4,
+                                "running_count": 0,
+                                "failed_count": 0,
+                                "blocked_count": 0,
+                                "oldest_due_at_ms": 1,
+                                "oldest_running_at_ms": None,
+                                "max_attempt_count": 1,
+                            }
+                        ]
+                    )
+                return FakeRows(
+                    [
+                        {
+                            "total_count": 0,
+                            "active_count": 0,
+                            "due_count": 0,
+                            "running_count": 0,
+                            "failed_count": 0,
+                            "blocked_count": 0,
+                            "oldest_due_at_ms": None,
+                            "oldest_running_at_ms": None,
+                            "max_attempt_count": 0,
+                        }
+                    ]
+                )
             if "enrichment_jobs" in sql:
                 return FakeRows(
                     [

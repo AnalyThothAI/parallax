@@ -298,8 +298,8 @@ Add allowlist entries for the new tables created in Phase 2/3/4/5/6:
 - `token_image_source_dirty_targets`
 - `asset_profile_refresh_targets`
 - `token_capture_tier_dirty_targets`
-- `live_market_target_set_dirty_targets` or the final rank-set table chosen in Step 6.4
-- any watchlist summary dirty/job table chosen in Step 8.3
+- `token_radar_dirty_targets`
+- `watchlist_handle_summary_jobs`
 
 Expected:
 

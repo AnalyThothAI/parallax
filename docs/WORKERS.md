@@ -341,6 +341,11 @@ Adding a wake channel requires all of these in one change:
   `maintenance_cache`). `collector.details` carries collector counters,
   including `snapshot_gate_outcomes`; `snapshot_gate` is a global health field
   copied from those counters.
+- Queue observability is owned by `app.runtime.queue_health`. It reads only
+  manifest-declared dirty target, job, delivery, and status queue tables and
+  emits per-worker and per-lane `queue_health` with status, due/running/failed
+  and blocked counts, oldest due/running ages, and max attempts. It is not a
+  supervisor and does not mutate queue rows.
 - Runtime knobs live in `~/.gmgn-twitter-intel/workers.yaml`. The
   application/provider config in `config.yaml` must not contain worker
   interval, batch, concurrency, lease, max-attempt, soft/hard timeout,

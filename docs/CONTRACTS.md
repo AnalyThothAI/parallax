@@ -114,10 +114,14 @@ Runtime health/status contract:
 - `worker_lanes` is keyed by manifest lane (`ingest`,
   `identity_market_fact`, `projection`, `agent`, `notification`,
   `maintenance_cache`) and reports enabled/running/failed counts, timeout
-  counts, max active age, max iteration p99, and summed queue depth.
+  counts, max active age, max iteration p99, summed queue depth, and
+  `queue_health` aggregates for manifest-owned queues.
 - Each worker status contains common `WorkerBase` fields:
   `enabled`, `running`, timestamps, `last_result`, `last_error`,
-  `iteration_duration_p99_ms`, `queue_depth`, and `pool_wait_ms_p99`.
+  `iteration_duration_p99_ms`, `queue_depth`, `queue_health`, and
+  `pool_wait_ms_p99`. `queue_health` is read-only observability for
+  manifest-declared job queues, delivery queues, status queues, and dirty
+  target tables; it does not change claim/retry semantics.
 - `workers.collector.details` carries collector counters such as
   `frames_received`, `matched_twitter_events`, parse/duplicate counts,
   provider counters, and `snapshot_gate_outcomes`.
