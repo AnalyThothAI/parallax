@@ -21,7 +21,7 @@ export function macroModuleFixture(
       subtitle: "SPX/QQQ/IWM 领导力与风险偏好确认",
       question: "美股风险偏好是否足以确认加密 beta？",
       section: "assets",
-      projection_version: "macro_module_view_v2",
+      projection_version: "macro_module_view_v3",
       status: "partial",
       status_label: "部分可用",
       asof_date: "2026-05-20",
@@ -52,18 +52,44 @@ export function macroModuleFixture(
     ],
     primary_chart: primaryChart,
     tables,
-    read: {
+    module_read: {
       headline: "美股风险：等待小盘确认",
       regime_label: "风险偏好部分可用",
       confidence_label: "低置信度",
       crypto_read: "美股代理有最新值，但历史样本不足，不能确认加密 beta。",
       token_impact: "高 beta 山寨暴露等待更多历史确认。",
     },
-    evidence: {
+    module_evidence: {
       confirmations: [{ label: "SPX 最新值可用", description: "Yahoo 最新观测存在" }],
       contradictions: [{ label: "IWM 样本不足", description: "小盘确认不足" }],
       watch_triggers: [{ label: "60日历史补齐", description: "核心代理达到最小样本" }],
       invalidations: [{ label: "SPX 跌破趋势", description: "风险偏好走弱" }],
+    },
+    transmission: [
+      {
+        kind: "flow",
+        label: "美股 beta",
+        status: "partial",
+        status_label: "部分可用",
+        value: "等待小盘确认",
+      },
+    ],
+    data_health: {
+      summary_status: "partial",
+      summary_label: "模块数据部分可用",
+      module_gaps: [
+        {
+          code: "insufficient_history:60d",
+          label: "历史样本不足：无法计算 60 日变化",
+          severity: "warning",
+          owner: "macro_history_import",
+          score_impact: "excluded",
+          remediation_hint: "回填 60 日宏观历史后重新投影。",
+        },
+      ],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
     },
     provenance: {
       rows: [
@@ -78,22 +104,122 @@ export function macroModuleFixture(
         },
       ],
     },
-    data_gaps: [
-      {
-        code: "insufficient_history:60d",
-        label: "历史样本不足：无法计算 60 日变化",
-        severity: "warning",
-        owner: "macro_history_import",
-        score_impact: "excluded",
-        remediation_hint: "回填 60 日宏观历史后重新投影。",
-      },
-    ],
     related_routes: [
       { href: "/macro/assets", label: "大类资产" },
       { href: "/macro/volatility", label: "波动率" },
     ],
+    section_boards: [],
     ...overrides,
   };
+}
+
+export function macroOverviewModuleFixture(): MacroModuleView {
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "overview",
+      route_path: "/macro",
+      section: "overview",
+      title: "宏观总览",
+      subtitle: "跨资产状态与关键缺口",
+      question: "宏观环境是否支持风险资产扩张？",
+      status: "partial",
+      status_label: "全局数据部分可用",
+    },
+    tiles: [
+      {
+        concept_key: "macro:regime",
+        label: "宏观状态",
+        value: "partial_risk_on",
+        display_value: "风险偏好部分确认",
+        quality: "partial",
+        quality_label: "部分可用",
+      },
+    ],
+    module_read: {
+      headline: "总览：风险偏好等待利率与流动性确认",
+      regime_label: "风险偏好部分确认",
+      confidence_label: "中低置信度",
+      crypto_read: "加密 beta 需要美元流动性配合。",
+    },
+    module_evidence: {
+      confirmations: [{ label: "美股代理可用", description: "SPX/QQQ 最新观测存在" }],
+      contradictions: [],
+      watch_triggers: [{ label: "收益率曲线更新", description: "等待利率模块补齐" }],
+      invalidations: [],
+    },
+    transmission: [],
+    data_health: {
+      summary_status: "partial",
+      summary_label: "全局数据部分可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [{ code: "macro_global_history_partial", label: "部分全局历史待回填" }],
+      future_integration_gaps: [
+        { code: "macro_forward_calendar_missing", label: "未来宏观日历待接入" },
+      ],
+    },
+    section_boards: [],
+  });
+}
+
+export function macroAssetsModuleFixture(): MacroModuleView {
+  return macroModuleFixture({
+    snapshot: {
+      ...macroModuleFixture().snapshot,
+      module_id: "assets",
+      route_path: "/macro/assets",
+      section: "assets",
+      title: "大类资产",
+      subtitle: "跨资产风险偏好入口",
+      question: "哪些资产正在确认宏观风险偏好？",
+    },
+    module_read: {
+      headline: "大类资产：美股与加密代理等待更多确认",
+      regime_label: "资产信号部分可用",
+      confidence_label: "低置信度",
+    },
+    module_evidence: {
+      confirmations: [{ label: "美股代理有最新值" }],
+      contradictions: [],
+      watch_triggers: [{ label: "相关性样本补齐" }],
+      invalidations: [],
+    },
+    transmission: [],
+    data_health: {
+      summary_status: "partial",
+      summary_label: "资产模块部分可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
+    section_boards: [
+      {
+        id: "asset-classes",
+        title: "资产分区",
+        href: "/macro/assets",
+        status: "partial",
+        status_label: "部分可用",
+        rows: [
+          {
+            id: "assets-equities",
+            title: "美股",
+            href: "/macro/assets/equities",
+            status: "partial",
+            status_label: "历史不足",
+          },
+          {
+            id: "assets-correlation",
+            title: "相关性",
+            href: "/macro/assets/correlation",
+            status: "partial",
+            status_label: "样本构建中",
+          },
+        ],
+      },
+    ],
+  });
 }
 
 export function macroSeriesFixture(conceptKeys = ["asset:spx"]): MacroSeriesData {
@@ -149,7 +275,14 @@ export function macroYieldCurveModuleFixture(): MacroModuleView {
     ],
     primary_chart: primaryChart,
     tables: [ratesTable()],
-    data_gaps: [],
+    data_health: {
+      summary_status: "ok",
+      summary_label: "模块数据可用",
+      module_gaps: [],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
   });
 }
 
@@ -177,11 +310,18 @@ export function macroCryptoDerivativesModuleFixture(): MacroModuleView {
     tiles: [{ concept_key: "crypto:btc", label: "BTC", value: 110_000, display_value: "110,000.00", unit: "usd", unit_label: "美元" }],
     primary_chart: primaryChart,
     tables: [cexTable()],
-    data_gaps: [
-      { code: "basis_missing", label: "基差数据缺失", severity: "info" },
-      { code: "crypto_options_missing", label: "加密期权数据缺失", severity: "info" },
-      { code: "etf_flows_missing", label: "ETF 资金流缺失", severity: "info" },
-    ],
+    data_health: {
+      summary_status: "partial",
+      summary_label: "衍生品集成部分可用",
+      module_gaps: [
+        { code: "basis_missing", label: "基差数据缺失", severity: "info" },
+        { code: "crypto_options_missing", label: "加密期权数据缺失", severity: "info" },
+        { code: "etf_flows_missing", label: "ETF 资金流缺失", severity: "info" },
+      ],
+      chart_gaps: [],
+      global_gaps: [],
+      future_integration_gaps: [],
+    },
   });
 }
 

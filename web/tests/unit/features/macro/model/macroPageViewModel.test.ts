@@ -6,6 +6,7 @@ import {
   macroStatusLabel,
 } from "@features/macro/model/macroPageViewModel";
 import type { MacroModuleView } from "@lib/types";
+import { macroModuleFixture } from "../../../../fixtures/macroFixture";
 import { describe, expect, it } from "vitest";
 
 describe("macroPageViewModel", () => {
@@ -35,7 +36,28 @@ describe("macroPageViewModel", () => {
     expect(formatMacroScalar("insufficient_history")).toBe("历史样本不足");
   });
 
-  it("labels v2 read fields without exposing backend field names", () => {
+  it("accepts v3 module fixtures without old macro module payload keys", () => {
+    const module = macroModuleFixture();
+
+    expect(module.snapshot.projection_version).toBe("macro_module_view_v3");
+    expect(module.module_read.headline).toBe("美股风险：等待小盘确认");
+    expect(module.module_evidence.confirmations).toHaveLength(1);
+    expect(module.data_health.module_gaps).toHaveLength(1);
+    expect(module.transmission).toEqual([
+      {
+        kind: "flow",
+        label: "美股 beta",
+        status: "partial",
+        status_label: "部分可用",
+        value: "等待小盘确认",
+      },
+    ]);
+    expect(module).not.toHaveProperty("read");
+    expect(module).not.toHaveProperty("evidence");
+    expect(module).not.toHaveProperty("data_gaps");
+  });
+
+  it("labels v3 read fields without exposing backend field names", () => {
     expect(macroFieldLabel("regime_label")).toBe("宏观状态");
     expect(macroFieldLabel("confidence_label")).toBe("置信度");
     expect(macroFieldLabel("crypto_read")).toBe("加密影响");
