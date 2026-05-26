@@ -80,8 +80,46 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
             duplicate_count=0,
             http_status=200,
         )
+        repo.replace_page_rows_for_items(
+            news_item_ids=[news["news_item_id"]],
+            rows=[
+                {
+                    "row_id": "row-1",
+                    "news_item_id": news["news_item_id"],
+                    "story_id": None,
+                    "latest_at_ms": NOW_MS - 60_000,
+                    "lifecycle_status": "raw",
+                    "headline": "SOL ETF filing",
+                    "summary": "Issuer files for a SOL ETF.",
+                    "source_domain": "coindesk.com",
+                    "canonical_url": "https://www.coindesk.com/news/sol-etf",
+                    "token_lanes": [],
+                    "fact_lanes": [],
+                    "signal": {
+                        "source": "partial",
+                        "status": "partial",
+                        "direction": "neutral",
+                        "label_zh": "中性",
+                    },
+                    "token_impacts": [],
+                    "story": {},
+                    "source": {
+                        "source_id": "coindesk-rss",
+                        "provider_type": "rss",
+                        "source_domain": "coindesk.com",
+                        "source_name": "CoinDesk",
+                        "source_role": "observed_source",
+                        "trust_tier": "standard",
+                        "coverage_tags": [],
+                        "source_quality_status": "unknown",
+                    },
+                    "computed_at_ms": NOW_MS,
+                    "projection_version": NEWS_PAGE_PROJECTION_VERSION,
+                }
+            ],
+        )
 
-        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
+        rows = repo.list_news_page_rows(limit=10)
         source = conn.execute("SELECT * FROM news_sources WHERE source_id = %s", ("coindesk-rss",)).fetchone()
         run = conn.execute("SELECT * FROM news_fetch_runs WHERE fetch_run_id = %s", (fetch_run_id,)).fetchone()
     finally:
@@ -98,8 +136,8 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
     assert rows[0]["headline"] == "SOL ETF filing"
     assert rows[0]["latest_at_ms"] == NOW_MS - 60_000
     assert rows[0]["canonical_url"] == "https://www.coindesk.com/news/sol-etf"
-    assert rows[0]["story_json"] == {}
-    assert rows[0]["source_json"] == {
+    assert rows[0]["story"] == {}
+    assert rows[0]["source"] == {
         "source_id": "coindesk-rss",
         "provider_type": "rss",
         "source_domain": "coindesk.com",
@@ -109,6 +147,64 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
         "coverage_tags": [],
         "source_quality_status": "unknown",
     }
+
+
+def test_upsert_news_item_persists_provider_signal_and_token_impacts(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = NewsRepository(conn)
+        repo.upsert_source(
+            source_id="opennews-realtime",
+            provider_type="opennews",
+            feed_url="opennews://subscribe",
+            source_domain="6551.io",
+            source_name="OpenNews",
+            refresh_interval_seconds=300,
+            now_ms=NOW_MS,
+        )
+        fetch_run_id = repo.start_fetch_run(source_id="opennews-realtime", started_at_ms=NOW_MS)
+        provider = repo.upsert_provider_item(
+            source_id="opennews-realtime",
+            fetch_run_id=fetch_run_id,
+            source_item_key="2367422",
+            canonical_url="https://example.com/news/2367422",
+            payload_hash="hash",
+            raw_payload={"id": 2367422},
+            fetched_at_ms=NOW_MS,
+        )
+
+        row = repo.upsert_news_item(
+            provider_item_id=provider["provider_item_id"],
+            source_id="opennews-realtime",
+            source_domain="6551.io",
+            canonical_url="https://example.com/news/2367422",
+            title="BTC headline",
+            fetched_at_ms=NOW_MS,
+            content_hash="content-hash",
+            title_fingerprint="btc-headline",
+            now_ms=NOW_MS,
+            provider_signal={
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+            },
+            provider_token_impacts=[{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}],
+        )
+
+        loaded = repo.get_news_item_detail(news_item_id=row["news_item_id"])
+    finally:
+        conn.close()
+
+    assert loaded is not None
+    assert loaded["provider_signal"] == {
+        "source": "provider",
+        "provider": "opennews",
+        "status": "ready",
+        "direction": "bullish",
+    }
+    assert loaded["provider_token_impacts"] == [{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}]
 
 
 def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_path) -> None:
@@ -449,29 +545,23 @@ def test_delete_page_rows_for_sources_removes_disabled_source_scope(tmp_path) ->
     assert [row["row_id"] for row in rows] == ["row-2"]
 
 
-def test_list_news_page_rows_keeps_raw_items_until_projection_catches_up(tmp_path) -> None:
+def test_list_news_page_rows_only_returns_projected_items_after_fallback_hard_cut(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = NewsRepository(conn)
         projected_item_id = _insert_source_provider_and_item(repo, source_item_key="projected", title="Projected")
-        raw_item_id = _insert_source_provider_and_item(repo, source_item_key="raw", title="Raw")
+        _insert_source_provider_and_item(repo, source_item_key="raw", title="Raw")
         repo.replace_page_rows_for_items(
             news_item_ids=[projected_item_id],
             rows=[_page_row("row-projected", projected_item_id, source_id="source-1")],
         )
 
-        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
+        rows = repo.list_news_page_rows(limit=10)
     finally:
         conn.close()
 
-    row_ids = {row["row_id"] for row in rows}
-    assert row_ids == {"row-projected", raw_item_id}
-    raw = next(row for row in rows if row["row_id"] == raw_item_id)
-    assert raw["headline"] == "Raw"
-    assert raw["agent_status"] == "pending"
-    assert raw["agent_brief_status"] == "pending"
-    assert raw["agent_brief_json"] == {"status": "pending"}
+    assert {row["row_id"] for row in rows} == {"row-projected"}
 
 
 def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -> None:
@@ -509,9 +599,10 @@ def test_news_item_agent_brief_migration_backfills_pending_page_rows(tmp_path) -
     finally:
         conn.close()
 
-    assert rows[0]["agent_status"] == "pending"
-    assert rows[0]["agent_brief_json"]["status"] == "pending"
+    assert "agent_status" not in rows[0]
+    assert "agent_brief_json" not in rows[0]
     assert rows[0]["agent_brief"]["status"] == "pending"
+    assert rows[0]["signal"]["status"] == "partial"
 
 
 def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updates(tmp_path) -> None:
@@ -585,9 +676,10 @@ def test_page_projection_rebuilds_and_lists_agent_brief_columns_when_brief_updat
 
     assert [candidate["item"]["news_item_id"] for candidate in candidates] == [news_item_id]
     assert row["current_brief"]["agent_run_id"] == "run-brief-1"
-    assert rows[0]["agent_status"] == "ready"
-    assert rows[0]["agent_brief_status"] == "ready"
-    assert rows[0]["agent_brief_json"]["summary_zh"] == "SOL ETF 申请提升关注。"
+    assert "agent_status" not in rows[0]
+    assert "agent_brief_status" not in rows[0]
+    assert "agent_brief_json" not in rows[0]
+    assert rows[0]["agent_brief"]["summary_zh"] == "SOL ETF 申请提升关注。"
     assert rows[0]["agent_brief"]["agent_run_id"] == "run-brief-1"
 
 
@@ -617,7 +709,7 @@ def test_list_news_page_rows_uses_composite_cursor(tmp_path) -> None:
     assert [row["row_id"] for row in second_page] == ["row-a", "row-b"]
 
 
-def test_list_news_page_rows_filters_by_agent_brief_direction(tmp_path) -> None:
+def test_list_news_page_rows_filters_by_signal_direction(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -640,12 +732,12 @@ def test_list_news_page_rows_filters_by_agent_brief_direction(tmp_path) -> None:
             ],
         )
 
-        rows = repo.list_news_page_rows(limit=10, direction="bearish")
+        rows = repo.list_news_page_rows(limit=10, signal="bearish")
     finally:
         conn.close()
 
     assert [row["row_id"] for row in rows] == ["row-bearish"]
-    assert rows[0]["agent_brief_json"]["direction"] == "bearish"
+    assert rows[0]["signal"]["direction"] == "bearish"
 
 
 def test_list_news_page_rows_filters_by_source_classification(tmp_path) -> None:
@@ -788,8 +880,8 @@ def test_list_news_page_rows_filters_by_item_content_classification(tmp_path) ->
     assert persisted["content_classification_json"] == {"policy_version": "test", "matched_rules": ["sec"]}
     assert [row["row_id"] for row in class_rows] == ["row-top-level"]
     assert class_rows[0]["content_class"] == "regulation"
-    assert class_rows[0]["content_tags_json"] == ["sec", "tokenized_stocks"]
-    assert class_rows[0]["content_classification_json"] == {"policy_version": "test", "matched_rules": ["sec"]}
+    assert class_rows[0]["content_tags"] == ["sec", "tokenized_stocks"]
+    assert class_rows[0]["content_classification"] == {"policy_version": "test", "matched_rules": ["sec"]}
     assert [row["row_id"] for row in tag_rows] == ["row-top-level"]
 
 
@@ -821,7 +913,7 @@ def test_list_news_page_rows_filters_by_decision_class(tmp_path) -> None:
         conn.close()
 
     assert [row["row_id"] for row in rows] == ["row-driver"]
-    assert rows[0]["agent_brief_json"]["decision_class"] == "driver"
+    assert rows[0]["agent_brief"]["decision_class"] == "driver"
 
 
 def test_page_projection_loader_includes_source_classification_changes(tmp_path) -> None:

@@ -52,6 +52,8 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
                         "summary": "Issuer confirms launch.",
                         "source_domain": "example.com",
                     },
+                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready"},
+                    provider_token_impacts=[{"symbol": "SOL", "score": 70, "signal": "long"}],
                 )
             ],
         ),
@@ -77,6 +79,12 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
     assert db.repo.provider_items[0]["source_item_key"] == "guid-1"
     assert db.repo.provider_items[0]["canonical_url"] == "https://example.com/story"
     assert db.repo.news_items[0]["title"] == "SOL ETF approved"
+    assert db.repo.news_items[0]["provider_signal"] == {
+        "source": "provider",
+        "provider": "opennews",
+        "status": "ready",
+    }
+    assert db.repo.news_items[0]["provider_token_impacts"] == [{"symbol": "SOL", "score": 70, "signal": "long"}]
     assert db.repo.cache_updates == [
         {
             "source_id": "example-rss",
@@ -405,6 +413,58 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     assert candidate.event_type == "exchange_listing"
     assert candidate.validation_status == "attention"
     assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
+
+
+def test_news_item_process_uses_opennews_provider_tokens_and_skips_brief_input() -> None:
+    item = {
+        "news_item_id": "news-1",
+        "source_id": "opennews-realtime",
+        "provider_type": "opennews",
+        "source_role": "observed_source",
+        "source_domain": "6551.io",
+        "authority_scope_json": {},
+        "title": "BTC headline",
+        "summary": "",
+        "body_text": "",
+        "provider_signal_json": {
+            "source": "provider",
+            "provider": "opennews",
+            "status": "ready",
+            "direction": "bullish",
+        },
+        "provider_token_impacts_json": [{"symbol": "BTC", "score": 82, "signal": "long", "grade": "A"}],
+    }
+    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
+    worker = NewsItemProcessWorker(
+        name="news_item_process",
+        settings=SimpleNamespace(batch_size=10, statement_timeout_seconds=30),
+        db=db,
+        telemetry=object(),
+        identity_lookup=FakeItemProcessLookup(db),
+        wake_bus=FakeItemProcessWakeBus(),
+    )
+
+    result = worker.run_once_sync(now_ms=NOW_MS)
+
+    assert result.processed == 1
+    assert db.repo.entities["news-1"][0].normalized_value == "BTC"
+    assert db.repo.mentions["news-1"][0].observed_symbol == "BTC"
+    assert db.dirty.enqueued[0]["rows"] == [
+        {"projection_name": "story", "target_kind": "news_item", "target_id": "news-1"},
+        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1"},
+        {
+            "projection_name": "source_quality",
+            "target_kind": "source",
+            "target_id": "opennews-realtime",
+            "window": "24h",
+        },
+        {
+            "projection_name": "source_quality",
+            "target_kind": "source",
+            "target_id": "opennews-realtime",
+            "window": "7d",
+        },
+    ]
 
 
 def test_news_story_projection_worker_assigns_items_in_worker_session_and_notifies() -> None:

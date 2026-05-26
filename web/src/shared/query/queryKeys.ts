@@ -53,85 +53,55 @@ export const queryKeys = {
   macroSeries: (conceptKeys: string[], window: string) =>
     ["macro", "series", [...conceptKeys].sort(), window] as const,
   newsRows: ({
-    content_class,
-    content_tag,
-    coverage_tag,
-    limit,
     cursor,
-    decision_class,
-    direction,
-    provider_type,
+    has_token,
+    limit,
+    min_score,
     q,
-    source_role,
+    signal,
     status,
-    trust_tier,
   }: {
-    content_class?: string | null;
-    content_tag?: string | null;
-    coverage_tag?: string | null;
-    limit: number;
     cursor?: string | null;
-    decision_class?: string | null;
-    direction?: string | null;
-    provider_type?: string | null;
+    has_token?: boolean | null;
+    limit: number;
+    min_score?: number | null;
     q?: string | null;
-    source_role?: string | null;
+    signal?: string | null;
     status?: string | null;
-    trust_tier?: string | null;
   }) =>
     [
       "news",
       limit,
       cursor ?? "",
-      direction ?? "",
+      has_token == null ? "" : String(has_token),
+      signal ?? "",
+      min_score ?? "",
       status ?? "",
-      decision_class ?? "",
-      content_class ?? "",
-      content_tag ?? "",
-      provider_type ?? "",
-      source_role ?? "",
-      trust_tier ?? "",
-      coverage_tag ?? "",
       q ?? "",
     ] as const,
   newsRowsInfinite: ({
-    content_class,
-    content_tag,
-    coverage_tag,
-    decision_class,
-    direction,
+    has_token,
     limit,
-    provider_type,
+    min_score,
     q,
-    source_role,
+    signal,
     status,
-    trust_tier,
   }: {
-    content_class?: string | null;
-    content_tag?: string | null;
-    coverage_tag?: string | null;
-    decision_class?: string | null;
-    direction?: string | null;
+    has_token?: boolean | null;
     limit: number;
-    provider_type?: string | null;
+    min_score?: number | null;
     q?: string | null;
-    source_role?: string | null;
+    signal?: string | null;
     status?: string | null;
-    trust_tier?: string | null;
   }) =>
     [
       "news",
       "infinite",
       limit,
-      direction ?? "",
+      has_token == null ? "" : String(has_token),
+      signal ?? "",
+      min_score ?? "",
       status ?? "",
-      decision_class ?? "",
-      content_class ?? "",
-      content_tag ?? "",
-      provider_type ?? "",
-      source_role ?? "",
-      trust_tier ?? "",
-      coverage_tag ?? "",
       q ?? "",
     ] as const,
   newsItem: (newsItemId: string) => ["news-item", newsItemId] as const,

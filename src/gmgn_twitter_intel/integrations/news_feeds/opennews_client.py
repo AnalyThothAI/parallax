@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from gmgn_twitter_intel.domains.news_intel.services.opennews_provider_signal import (
+    provider_signal_from_opennews_payload,
+    provider_token_impacts_from_opennews_payload,
+)
 from gmgn_twitter_intel.integrations.news_feeds.feed_client import FeedFetchResult
 
 DEFAULT_OPENNEWS_WSS_URL = "wss://ai.6551.io/open/news_wss"
@@ -85,7 +89,9 @@ class OpenNewsFeedClient:
             _validate_subscribe_ack(ack)
 
             deadline = time.monotonic() + stream_timeout_seconds
-            while len(entries) < max_messages:
+            entries_by_id: dict[str, dict[str, Any]] = {}
+            messages_seen = 0
+            while messages_seen < max_messages:
                 remaining_seconds = deadline - time.monotonic()
                 if remaining_seconds <= 0:
                     break
@@ -93,9 +99,15 @@ class OpenNewsFeedClient:
                     message = await _recv_json(websocket, timeout_seconds=remaining_seconds)
                 except TimeoutError:
                     break
+                messages_seen += 1
                 entry = _entry_from_message(message, now_ms=self._now_ms)
-                if entry is not None:
-                    entries.append(entry)
+                if entry is None:
+                    continue
+                entry_key = _entry_key(entry)
+                if not entry_key:
+                    continue
+                merged_entry = _merge_entry(entries_by_id.get(entry_key), entry)
+                entries_by_id[entry_key] = merged_entry
 
             await _send_json(
                 websocket,
@@ -105,6 +117,7 @@ class OpenNewsFeedClient:
                     "method": "news.unsubscribe",
                 },
             )
+        entries = [entry for entry in entries_by_id.values() if _entry_is_visible(entry)]
         return FeedFetchResult(
             status_code=101,
             entries=entries,
@@ -248,25 +261,70 @@ def _entry_from_params(params: Mapping[str, Any], *, method: str, now_ms: Callab
     article_id = _optional_text(params.get("id")) or _optional_text(params.get("sourceItemKey"))
     link = _optional_text(params.get("link") or params.get("url"))
     title = _optional_text(params.get("title") or params.get("text"))
-    if not article_id or not link or not title:
+    if not article_id:
         return None
     ai_rating = params.get("aiRating") if isinstance(params.get("aiRating"), Mapping) else {}
     summary = _optional_text(ai_rating.get("summary")) or _optional_text(params.get("summary")) or ""
     en_summary = _optional_text(ai_rating.get("enSummary")) or ""
     body = en_summary or summary or title
-    return {
+    entry = {
         "id": article_id,
         "guid": article_id,
-        "link": link,
-        "title": title,
         "summary": summary,
-        "content": [{"value": body}],
         "language": _optional_text(params.get("language")) or "en",
         "published_at_ms": _epoch_ms(params.get("ts") or params.get("published_at_ms"), now_ms=now_ms),
         "source_domain": _optional_text(params.get("newsType")),
         "opennews_method": method,
+        "provider_signal": provider_signal_from_opennews_payload(params),
+        "provider_token_impacts": provider_token_impacts_from_opennews_payload(params),
         "raw": _json_safe_dict(params),
     }
+    if link:
+        entry["link"] = link
+    if title:
+        entry["title"] = title
+    if body:
+        entry["content"] = [{"value": body}]
+    return entry
+
+
+def _entry_key(entry: Mapping[str, Any]) -> str:
+    return _optional_text(entry.get("id")) or _optional_text(entry.get("guid")) or ""
+
+
+def _merge_entry(existing: Mapping[str, Any] | None, patch: Mapping[str, Any]) -> dict[str, Any]:
+    if existing is None:
+        return dict(patch)
+    merged = dict(existing)
+    for key, value in patch.items():
+        if key == "raw" and isinstance(merged.get("raw"), Mapping) and isinstance(value, Mapping):
+            merged["raw"] = {**dict(merged["raw"]), **dict(value)}
+            continue
+        if key == "provider_signal" and _keeps_existing_provider_signal(merged.get(key), value):
+            continue
+        if _is_present(value):
+            merged[key] = value
+    return merged
+
+
+def _entry_is_visible(entry: Mapping[str, Any]) -> bool:
+    return bool(_optional_text(entry.get("link")) and _optional_text(entry.get("title")))
+
+
+def _is_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list | tuple | set | dict):
+        return bool(value)
+    return True
+
+
+def _keeps_existing_provider_signal(existing: Any, patch: Any) -> bool:
+    if not isinstance(existing, Mapping) or not isinstance(patch, Mapping):
+        return False
+    return str(existing.get("status") or "") == "ready" and str(patch.get("status") or "") != "ready"
 
 
 def _with_token(wss_url: str, token: str) -> str:

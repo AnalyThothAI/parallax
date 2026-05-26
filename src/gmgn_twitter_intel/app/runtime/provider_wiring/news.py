@@ -127,6 +127,8 @@ def _observation_from_entry(
         raw_payload=normalized.raw_payload,
         original_source_url=_optional_str(entry.get("original_url")),
         original_source_domain=_optional_str(entry.get("source_domain")),
+        provider_signal=_optional_mapping(entry.get("provider_signal")),
+        provider_token_impacts=_optional_mapping_list(entry.get("provider_token_impacts")),
     )
 
 
@@ -140,6 +142,18 @@ def _provider_diagnostics(feed_result: Any) -> dict[str, Any]:
 def _optional_str(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _optional_mapping(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return None
+
+
+def _optional_mapping_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, Mapping)]
 
 
 def _provider_type_for_url(url: str) -> str:

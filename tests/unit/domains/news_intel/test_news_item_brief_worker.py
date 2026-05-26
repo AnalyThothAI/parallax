@@ -21,6 +21,10 @@ def test_worker_writes_ready_brief_and_emits_wake() -> None:
     asyncio.run(_test_worker_writes_ready_brief_and_emits_wake())
 
 
+def test_worker_marks_opennews_provider_signal_target_done_without_llm() -> None:
+    asyncio.run(_test_worker_marks_opennews_provider_signal_target_done_without_llm())
+
+
 async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(payload=_ready_payload())
@@ -42,6 +46,30 @@ async def _test_worker_writes_ready_brief_and_emits_wake() -> None:
     assert result.failed == 0
     assert result.notes["ready"] == 1
     assert result.notes["claimed"] == 1
+
+
+async def _test_worker_marks_opennews_provider_signal_target_done_without_llm() -> None:
+    candidate = _candidate()
+    candidate["item"]["provider_signal_json"] = {
+        "source": "provider",
+        "provider": "opennews",
+        "status": "ready",
+        "direction": "bullish",
+    }
+    db = FakeDB([candidate])
+    provider = FakeBriefProvider(payload=_ready_payload())
+    worker = _worker(db=db, provider=provider)
+
+    result = await worker.run_once()
+
+    assert provider.reserve_calls == []
+    assert provider.execution_calls == 0
+    assert db.news.runs == []
+    assert db.news.briefs == []
+    assert len(db.dirty.done) == 1
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.notes["provider_signal_skip"] == 1
 
 
 def test_worker_claims_dirty_targets_off_event_loop_thread() -> None:

@@ -8,7 +8,6 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from gmgn_twitter_intel.domains.news_intel.types import NewsSourceConfig
 from gmgn_twitter_intel.domains.news_intel.types.source_classification import normalize_string_tuple
 from gmgn_twitter_intel.domains.news_intel.types.source_quality_policy import window_ms_for_label
@@ -497,9 +496,13 @@ class NewsRepository:
         title_fingerprint: str,
         now_ms: int,
         news_item_id: str | None = None,
+        provider_signal: Mapping[str, Any] | None = None,
+        provider_token_impacts: Sequence[Mapping[str, Any]] | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
         item_published_at_ms = int(published_at_ms if published_at_ms is not None else fetched_at_ms)
+        provider_signal_payload = dict(provider_signal or {})
+        provider_token_impacts_payload = [dict(item) for item in provider_token_impacts or []]
         existing = self.conn.execute(
             "SELECT * FROM news_items WHERE provider_item_id = %s",
             (provider_item_id,),
@@ -516,6 +519,8 @@ class NewsRepository:
                 or existing["published_at_ms"] != item_published_at_ms
                 or existing["content_hash"] != content_hash
                 or existing["title_fingerprint"] != title_fingerprint
+                or dict(existing["provider_signal_json"]) != provider_signal_payload
+                or list(existing["provider_token_impacts_json"]) != provider_token_impacts_payload
             ):
                 status = "updated"
         item_id = (
@@ -526,9 +531,10 @@ class NewsRepository:
             INSERT INTO news_items (
               news_item_id, provider_item_id, source_id, source_domain, canonical_url,
               title, summary, body_text, language, published_at_ms, fetched_at_ms,
-              content_hash, title_fingerprint, created_at_ms, updated_at_ms
+              content_hash, title_fingerprint, provider_signal_json, provider_token_impacts_json,
+              created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (provider_item_id) DO UPDATE SET
               source_id = EXCLUDED.source_id,
               source_domain = EXCLUDED.source_domain,
@@ -541,6 +547,8 @@ class NewsRepository:
               fetched_at_ms = EXCLUDED.fetched_at_ms,
               content_hash = EXCLUDED.content_hash,
               title_fingerprint = EXCLUDED.title_fingerprint,
+              provider_signal_json = EXCLUDED.provider_signal_json,
+              provider_token_impacts_json = EXCLUDED.provider_token_impacts_json,
               lifecycle_status = CASE
                 WHEN news_items.content_hash = EXCLUDED.content_hash THEN news_items.lifecycle_status
                 ELSE 'raw'
@@ -562,6 +570,8 @@ class NewsRepository:
                 int(fetched_at_ms),
                 content_hash,
                 title_fingerprint,
+                _json(provider_signal_payload),
+                _json(provider_token_impacts_payload),
                 int(now_ms),
                 int(now_ms),
             ),
@@ -726,9 +736,6 @@ class NewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         direction: str | None = None,
-        lane: str | None = None,
-        source: str | None = None,
-        target: str | None = None,
         provider_type: str | None = None,
         source_role: str | None = None,
         trust_tier: str | None = None,
@@ -736,35 +743,16 @@ class NewsRepository:
         content_class: str | None = None,
         content_tag: str | None = None,
         decision_class: str | None = None,
+        has_token: bool | None = None,
+        signal: str | None = None,
+        min_score: int | None = None,
         q: str | None = None,
-        include_unprojected: bool = False,
     ) -> list[dict[str, Any]]:
-        if include_unprojected:
-            return self._list_news_page_rows_with_unprojected_fallback(
-                limit=limit,
-                cursor=cursor,
-                status=status,
-                direction=direction,
-                lane=lane,
-                source=source,
-                target=target,
-                provider_type=provider_type,
-                source_role=source_role,
-                trust_tier=trust_tier,
-                coverage_tag=coverage_tag,
-                content_class=content_class,
-                content_tag=content_tag,
-                decision_class=decision_class,
-                q=q,
-            )
         return self._list_projected_news_page_rows(
             limit=limit,
             cursor=cursor,
             status=status,
             direction=direction,
-            lane=lane,
-            source=source,
-            target=target,
             provider_type=provider_type,
             source_role=source_role,
             trust_tier=trust_tier,
@@ -772,6 +760,9 @@ class NewsRepository:
             content_class=content_class,
             content_tag=content_tag,
             decision_class=decision_class,
+            has_token=has_token,
+            signal=signal,
+            min_score=min_score,
             q=q,
         )
 
@@ -782,9 +773,6 @@ class NewsRepository:
         cursor: str | None = None,
         status: str | None = None,
         direction: str | None = None,
-        lane: str | None = None,
-        source: str | None = None,
-        target: str | None = None,
         provider_type: str | None = None,
         source_role: str | None = None,
         trust_tier: str | None = None,
@@ -792,15 +780,15 @@ class NewsRepository:
         content_class: str | None = None,
         content_tag: str | None = None,
         decision_class: str | None = None,
+        has_token: bool | None = None,
+        signal: str | None = None,
+        min_score: int | None = None,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         cursor_time, cursor_id = _decode_page_cursor(cursor)
         filter_sql, filter_params = _news_page_row_filter_sql(
             status=status,
             direction=direction,
-            lane=lane,
-            source=source,
-            target=target,
             provider_type=provider_type,
             source_role=source_role,
             trust_tier=trust_tier,
@@ -808,6 +796,9 @@ class NewsRepository:
             content_class=content_class,
             content_tag=content_tag,
             decision_class=decision_class,
+            has_token=has_token,
+            signal=signal,
+            min_score=min_score,
             q=q,
         )
         rows = self.conn.execute(
@@ -822,16 +813,15 @@ class NewsRepository:
               summary,
               source_domain,
               canonical_url,
-              token_lanes_json,
-              fact_lanes_json,
+              token_lanes_json AS token_lanes,
+              fact_lanes_json AS fact_lanes,
+              signal_json AS signal,
+              token_impacts_json AS token_impacts,
               content_class,
-              content_tags_json,
-              content_classification_json,
-              story_json,
-              source_json,
-              agent_brief_json,
-              agent_status,
-              agent_status AS agent_brief_status,
+              content_tags_json AS content_tags,
+              content_classification_json AS content_classification,
+              story_json AS story,
+              source_json AS source,
               agent_brief_json AS agent_brief,
               agent_brief_computed_at_ms,
               computed_at_ms,
@@ -846,132 +836,6 @@ class NewsRepository:
             LIMIT %s
             """,
             (
-                cursor_time,
-                cursor_time,
-                cursor_id,
-                *filter_params,
-                max(0, int(limit)),
-            ),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def _list_news_page_rows_with_unprojected_fallback(
-        self,
-        *,
-        limit: int,
-        cursor: str | None = None,
-        status: str | None = None,
-        direction: str | None = None,
-        lane: str | None = None,
-        source: str | None = None,
-        target: str | None = None,
-        provider_type: str | None = None,
-        source_role: str | None = None,
-        trust_tier: str | None = None,
-        coverage_tag: str | None = None,
-        content_class: str | None = None,
-        content_tag: str | None = None,
-        decision_class: str | None = None,
-        q: str | None = None,
-    ) -> list[dict[str, Any]]:
-        cursor_time, cursor_id = _decode_page_cursor(cursor)
-        filter_sql, filter_params = _news_page_row_filter_sql(
-            status=status,
-            direction=direction,
-            lane=lane,
-            source=source,
-            target=target,
-            provider_type=provider_type,
-            source_role=source_role,
-            trust_tier=trust_tier,
-            coverage_tag=coverage_tag,
-            content_class=content_class,
-            content_tag=content_tag,
-            decision_class=decision_class,
-            q=q,
-        )
-        rows = self.conn.execute(
-            f"""
-            WITH visible_rows AS (
-              SELECT
-                row_id,
-                news_item_id,
-                story_id,
-                latest_at_ms,
-                lifecycle_status,
-                headline,
-                summary,
-                source_domain,
-                canonical_url,
-                token_lanes_json,
-                fact_lanes_json,
-                content_class,
-                content_tags_json,
-                content_classification_json,
-                story_json,
-                source_json,
-                agent_brief_json,
-                agent_status,
-                agent_status AS agent_brief_status,
-                agent_brief_json AS agent_brief,
-                agent_brief_computed_at_ms,
-                computed_at_ms,
-                projection_version
-              FROM news_page_rows
-              UNION ALL
-              SELECT
-                items.news_item_id AS row_id,
-                items.news_item_id,
-                NULL::text AS story_id,
-                items.published_at_ms AS latest_at_ms,
-                items.lifecycle_status,
-                items.title AS headline,
-                items.summary,
-                items.source_domain,
-                items.canonical_url,
-                '[]'::jsonb AS token_lanes_json,
-                '[]'::jsonb AS fact_lanes_json,
-                items.content_class,
-                items.content_tags_json,
-                items.content_classification_json,
-                '{{}}'::jsonb AS story_json,
-                jsonb_build_object(
-                  'source_id', items.source_id,
-                  'provider_type', sources.provider_type,
-                  'source_domain', items.source_domain,
-                  'source_name', sources.source_name,
-                  'source_role', sources.source_role,
-                  'trust_tier', sources.trust_tier,
-                  'coverage_tags', sources.coverage_tags_json,
-                  'source_quality_status', sources.source_quality_status
-                ) AS source_json,
-                '{{"status":"pending"}}'::jsonb AS agent_brief_json,
-                'pending'::text AS agent_status,
-                'pending'::text AS agent_brief_status,
-                '{{"status":"pending"}}'::jsonb AS agent_brief,
-                NULL::bigint AS agent_brief_computed_at_ms,
-                items.updated_at_ms AS computed_at_ms,
-                %s AS projection_version
-              FROM news_items AS items
-              JOIN news_sources AS sources ON sources.source_id = items.source_id
-              WHERE NOT EXISTS (
-                SELECT 1
-                  FROM news_page_rows AS projected
-                 WHERE projected.news_item_id = items.news_item_id
-              )
-            )
-            SELECT *
-              FROM visible_rows
-             WHERE (
-               %s::bigint IS NULL
-               OR (latest_at_ms, row_id) < (%s::bigint, %s::text)
-             )
-             {filter_sql}
-             ORDER BY latest_at_ms DESC, row_id DESC
-             LIMIT %s
-            """,
-            (
-                NEWS_PAGE_PROJECTION_VERSION,
                 cursor_time,
                 cursor_time,
                 cursor_id,
@@ -1024,8 +888,11 @@ class NewsRepository:
                    claimed.content_class,
                    claimed.content_tags_json,
                    claimed.content_classification_json,
+                   claimed.provider_signal_json,
+                   claimed.provider_token_impacts_json,
                    claimed.created_at_ms,
                    claimed.updated_at_ms,
+                   sources.provider_type,
                    sources.source_role,
                    sources.trust_tier,
                    sources.source_name,
@@ -1710,17 +1577,45 @@ class NewsRepository:
             (news_item_id,),
         ).fetchall()
         context_items = self.list_context_items_for_news_item(news_item_id, limit=25)
+        item_payload = _json_dict(row["item"])
+        provider_signal = _json_dict(item_payload.get("provider_signal_json"))
+        provider_token_impacts = _json_list(item_payload.get("provider_token_impacts_json"))
+        agent_brief = _detail_agent_brief(row["agent_brief"])
+        token_mentions = _json_list(row["token_mentions"])
+        fact_candidates = _json_list(row["fact_candidates"])
+        public_item = {
+            key: value
+            for key, value in item_payload.items()
+            if key
+            not in {
+                "provider_signal_json",
+                "provider_token_impacts_json",
+                "content_tags_json",
+                "content_classification_json",
+            }
+        }
         return {
-            **_json_dict(row["item"]),
+            **public_item,
+            "content_tags": _json_list(item_payload.get("content_tags_json")),
+            "content_classification": _json_dict(item_payload.get("content_classification_json")),
+            "signal": _signal_from_provider_or_agent(provider_signal=provider_signal, agent_brief=agent_brief),
+            "token_impacts": provider_token_impacts,
+            "token_lanes": _token_lanes_from_mentions(
+                token_mentions=token_mentions,
+                provider_token_impacts=provider_token_impacts,
+            ),
+            "fact_lanes": [_fact_lane_from_candidate(candidate) for candidate in fact_candidates],
+            "provider_signal": provider_signal,
+            "provider_token_impacts": provider_token_impacts,
             "source": _json_dict(row["source"]),
             "provider_item": _json_dict(row["provider_item"]),
             "fetch_run": _json_dict(row["fetch_run"]) if row["fetch_run"] is not None else None,
-            "agent_brief": _detail_agent_brief(row["agent_brief"]),
+            "agent_brief": agent_brief,
             "agent_run": _json_dict(row["agent_run"]) if row["agent_run"] is not None else None,
             "story_members": [_json_dict(story_row["story_member"]) for story_row in story_rows],
             "entities": _json_list(row["entities"]),
-            "token_mentions": _json_list(row["token_mentions"]),
-            "fact_candidates": _json_list(row["fact_candidates"]),
+            "token_mentions": token_mentions,
+            "fact_candidates": fact_candidates,
             "context_items": context_items,
         }
 
@@ -2131,15 +2026,16 @@ class NewsRepository:
                   row_id, news_item_id, story_id, latest_at_ms, lifecycle_status,
                   headline, summary, source_domain, canonical_url, token_lanes_json,
                   fact_lanes_json, content_class, content_tags_json, content_classification_json,
-                  story_json, source_json, agent_brief_json, agent_status, agent_brief_computed_at_ms,
-                  computed_at_ms, projection_version
+                  story_json, source_json, signal_json, token_impacts_json, agent_brief_json,
+                  agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version
                 )
                 VALUES (
                   %(row_id)s, %(news_item_id)s, %(story_id)s, %(latest_at_ms)s, %(lifecycle_status)s,
                   %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(token_lanes_json)s,
                   %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
-                  %(story_json)s, %(source_json)s, %(agent_brief_json)s, %(agent_status)s,
-                  %(agent_brief_computed_at_ms)s, %(computed_at_ms)s, %(projection_version)s
+                  %(story_json)s, %(source_json)s, %(signal_json)s, %(token_impacts_json)s,
+                  %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
+                  %(computed_at_ms)s, %(projection_version)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
@@ -2157,6 +2053,8 @@ class NewsRepository:
                   content_classification_json = EXCLUDED.content_classification_json,
                   story_json = EXCLUDED.story_json,
                   source_json = EXCLUDED.source_json,
+                  signal_json = EXCLUDED.signal_json,
+                  token_impacts_json = EXCLUDED.token_impacts_json,
                   agent_brief_json = EXCLUDED.agent_brief_json,
                   agent_status = EXCLUDED.agent_status,
                   agent_brief_computed_at_ms = EXCLUDED.agent_brief_computed_at_ms,
@@ -2245,9 +2143,6 @@ def _news_page_row_filter_sql(
     *,
     status: str | None = None,
     direction: str | None = None,
-    lane: str | None = None,
-    source: str | None = None,
-    target: str | None = None,
     provider_type: str | None = None,
     source_role: str | None = None,
     trust_tier: str | None = None,
@@ -2255,6 +2150,9 @@ def _news_page_row_filter_sql(
     content_class: str | None = None,
     content_tag: str | None = None,
     decision_class: str | None = None,
+    has_token: bool | None = None,
+    signal: str | None = None,
+    min_score: int | None = None,
     q: str | None = None,
 ) -> tuple[str, list[Any]]:
     filters: list[str] = []
@@ -2263,14 +2161,21 @@ def _news_page_row_filter_sql(
         filters.append("lifecycle_status = %s")
         filter_params.append(str(status))
     if direction:
-        filters.append("LOWER(agent_brief_json ->> 'direction') = %s")
+        filters.append("LOWER(signal_json ->> 'direction') = %s")
         filter_params.append(str(direction).strip().lower())
+    if signal:
+        filters.append("LOWER(signal_json ->> 'direction') = %s")
+        filter_params.append(str(signal).strip().lower())
+    if min_score is not None:
+        filters.append("COALESCE(NULLIF(signal_json ->> 'score', '')::int, -1) >= %s")
+        filter_params.append(int(min_score))
+    if has_token is True:
+        filters.append("jsonb_array_length(token_lanes_json) > 0")
+    if has_token is False:
+        filters.append("jsonb_array_length(token_lanes_json) = 0")
     if decision_class:
         filters.append("agent_brief_json ->> 'decision_class' = %s")
         filter_params.append(str(decision_class))
-    if source:
-        filters.append("source_domain = %s")
-        filter_params.append(str(source))
     if provider_type:
         filters.append("source_json ->> 'provider_type' = %s")
         filter_params.append(str(provider_type))
@@ -2290,16 +2195,9 @@ def _news_page_row_filter_sql(
         filters.append("(content_tags_json ? %s)")
         filter_params.append(str(content_tag))
     if q:
-        filters.append("(headline ILIKE %s OR summary ILIKE %s)")
+        filters.append("(headline ILIKE %s OR summary ILIKE %s OR token_lanes_json::text ILIKE %s)")
         needle = f"%{str(q).strip()}%"
-        filter_params.extend([needle, needle])
-    if lane:
-        filters.append("(token_lanes_json::text ILIKE %s OR fact_lanes_json::text ILIKE %s)")
-        lane_needle = f"%{str(lane).strip()}%"
-        filter_params.extend([lane_needle, lane_needle])
-    if target:
-        filters.append("token_lanes_json::text ILIKE %s")
-        filter_params.append(f"%{str(target).strip()}%")
+        filter_params.extend([needle, needle, needle])
     filter_sql = " AND " + " AND ".join(filters) if filters else ""
     return filter_sql, filter_params
 
@@ -2314,6 +2212,7 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["story_id"] = payload.get("story_id")
     payload["token_lanes_json"] = _json(payload.get("token_lanes_json", payload.get("token_lanes")) or [])
     payload["fact_lanes_json"] = _json(payload.get("fact_lanes_json", payload.get("fact_lanes")) or [])
+    payload["token_impacts_json"] = _json(payload.get("token_impacts_json", payload.get("token_impacts")) or [])
     payload["content_class"] = str(payload.get("content_class") or "low_signal")
     payload["content_tags_json"] = _json(payload.get("content_tags_json", payload.get("content_tags")) or [])
     payload["content_classification_json"] = _json(
@@ -2323,6 +2222,8 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload["source_json"] = _json(payload.get("source_json", payload.get("source")) or {})
     agent_brief = payload.get("agent_brief_json", payload.get("agent_brief")) or {"status": "pending"}
     agent_status = str(payload.get("agent_status") or payload.get("agent_brief_status") or "pending")
+    signal = payload.get("signal_json", payload.get("signal")) or _signal_from_agent_brief(agent_brief)
+    payload["signal_json"] = _json(signal)
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
     payload["agent_brief_computed_at_ms"] = (
@@ -2337,6 +2238,121 @@ def _detail_agent_brief(value: Any) -> dict[str, Any]:
     payload = _json_dict(value)
     payload["brief_json"] = _json_dict(payload.get("brief_json"))
     return payload
+
+
+def _signal_from_agent_brief(value: Any) -> dict[str, Any]:
+    payload = _json_dict(value)
+    if str(payload.get("status") or "") != "ready":
+        return {
+            "source": "partial",
+            "status": "partial",
+            "direction": "neutral",
+            "label_zh": "中性",
+            "method": "pending",
+        }
+    direction = str(payload.get("direction") or "neutral")
+    return {
+        "source": "agent",
+        "status": "ready",
+        "direction": direction,
+        "label_zh": _direction_label(direction),
+        "summary_zh": _json_dict(payload.get("brief_json")).get("summary_zh"),
+        "method": "news_item_brief",
+    }
+
+
+def _signal_from_provider_or_agent(
+    *,
+    provider_signal: Mapping[str, Any],
+    agent_brief: Mapping[str, Any],
+) -> dict[str, Any]:
+    if provider_signal.get("source") == "provider":
+        return {
+            key: value
+            for key, value in {
+                "source": "provider",
+                "provider": provider_signal.get("provider") or "opennews",
+                "status": provider_signal.get("status") or "partial",
+                "direction": provider_signal.get("direction") or "neutral",
+                "label_zh": provider_signal.get("label_zh")
+                or _direction_label(str(provider_signal.get("direction") or "neutral")),
+                "signal": provider_signal.get("signal"),
+                "score": _optional_int(provider_signal.get("score")),
+                "grade": provider_signal.get("grade"),
+                "summary_zh": provider_signal.get("summary_zh"),
+                "summary_en": provider_signal.get("summary_en"),
+                "method": provider_signal.get("method") or "opennews.provider_signal",
+            }.items()
+            if value is not None
+        }
+    return _signal_from_agent_brief(agent_brief)
+
+
+def _token_lanes_from_mentions(
+    *,
+    token_mentions: Sequence[Any],
+    provider_token_impacts: Sequence[Any],
+) -> list[dict[str, Any]]:
+    impacts_by_symbol = {
+        str(impact.get("symbol") or "").upper(): impact
+        for impact in (_json_dict(value) for value in provider_token_impacts)
+        if str(impact.get("symbol") or "")
+    }
+    lanes: list[dict[str, Any]] = []
+    for mention in token_mentions:
+        payload = _json_dict(mention)
+        status = str(payload.get("resolution_status") or "")
+        lane = {
+            "lane": _token_lane_name(status),
+            "resolution_status": status,
+            "symbol": payload.get("display_symbol") or payload.get("observed_symbol") or payload.get("symbol"),
+            "target_type": payload.get("target_type"),
+            "target_id": payload.get("target_id"),
+            "display_name": payload.get("display_name"),
+            "reason_codes": _json_list(payload.get("reason_codes_json")),
+            "candidate_targets": _json_list(payload.get("candidate_targets_json")),
+        }
+        impact = impacts_by_symbol.get(str(lane.get("symbol") or "").upper())
+        if impact:
+            lane.update(
+                {
+                    "provider_signal": impact.get("signal"),
+                    "provider_score": _optional_int(impact.get("score")),
+                    "provider_grade": impact.get("grade"),
+                    "market_type": impact.get("market_type"),
+                }
+            )
+        lanes.append({key: value for key, value in lane.items() if value is not None})
+    return lanes
+
+
+def _token_lane_name(status: str) -> str:
+    if status in {"exact_address", "known_symbol", "unique_by_context", "resolved"}:
+        return "resolved"
+    if status in {"non_crypto", "nil"}:
+        return "ignored"
+    return "attention"
+
+
+def _fact_lane_from_candidate(candidate: Any) -> dict[str, Any]:
+    payload = _json_dict(candidate)
+    return {
+        "fact_candidate_id": payload.get("fact_candidate_id"),
+        "event_type": payload.get("event_type"),
+        "claim": payload.get("claim"),
+        "realis": payload.get("realis"),
+        "status": payload.get("validation_status") or payload.get("status"),
+        "rejection_reasons": _json_list(payload.get("rejection_reasons_json")),
+        "affected_targets": _json_list(payload.get("affected_targets_json")),
+    }
+
+
+def _direction_label(direction: str) -> str:
+    if direction == "bullish":
+        return "利好"
+    if direction == "bearish":
+        return "利空"
+    return "中性"
 
 
 def _entity_payload(entity: Any) -> dict[str, Any]:

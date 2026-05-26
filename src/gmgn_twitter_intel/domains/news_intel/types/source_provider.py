@@ -52,6 +52,8 @@ class NewsProviderObservation:
     provider_tags: tuple[str, ...] = ()
     original_source_url: str | None = None
     original_source_domain: str | None = None
+    provider_signal: dict[str, Any] | None = None
+    provider_token_impacts: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

@@ -22,8 +22,7 @@ export const agentBriefMissingText = (brief?: Pick<NewsAgentBrief, "status"> | n
   return messages[status] ?? `Agent brief ${status}.`;
 };
 
-export const formatAgentBriefStrength = (strength?: string | null): string =>
-  strength || "absent";
+export const formatAgentBriefStrength = (strength?: string | null): string => strength || "absent";
 
 export const inferNewsInstruments = (
   item: Pick<NewsItemDetail, "token_lanes">,

@@ -5,72 +5,34 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 export const NEWS_PAGE_SIZE = 100;
 
 export type NewsPageQueryParams = {
-  content_class?: string | null;
-  content_tag?: string | null;
-  coverage_tag?: string | null;
   cursor?: string | null;
-  decision_class?: string | null;
-  direction?: string | null;
   enabled?: boolean;
+  has_token?: boolean | null;
   limit?: number;
-  provider_type?: string | null;
+  min_score?: number | null;
   q?: string | null;
-  source_role?: string | null;
+  signal?: "bullish" | "bearish" | "neutral" | null;
   status?: string | null;
-  trust_tier?: string | null;
 };
 
 export const useNewsPageWithToken = (
   token: string,
   {
-    content_class = null,
-    content_tag = null,
-    coverage_tag = null,
     cursor = null,
-    decision_class = null,
-    direction = null,
     enabled = true,
+    has_token = null,
     limit = NEWS_PAGE_SIZE,
-    provider_type = null,
+    min_score = null,
     q = null,
-    source_role = null,
+    signal = null,
     status = null,
-    trust_tier = null,
   }: NewsPageQueryParams = {},
 ) =>
   useQuery({
     enabled: Boolean(token) && enabled,
     placeholderData: (previousData) => previousData,
-    queryKey: queryKeys.newsRows({
-      content_class,
-      content_tag,
-      coverage_tag,
-      cursor,
-      decision_class,
-      direction,
-      limit,
-      provider_type,
-      q,
-      source_role,
-      status,
-      trust_tier,
-    }),
-    queryFn: () =>
-      fetchNewsRows({
-        content_class,
-        content_tag,
-        coverage_tag,
-        cursor,
-        decision_class,
-        direction,
-        limit,
-        provider_type,
-        q,
-        source_role,
-        status,
-        token,
-        trust_tier,
-      }),
+    queryKey: queryKeys.newsRows({ cursor, has_token, limit, min_score, q, signal, status }),
+    queryFn: () => fetchNewsRows({ cursor, has_token, limit, min_score, q, signal, status, token }),
     refetchInterval: 15_000,
     staleTime: 0,
   });
@@ -78,51 +40,20 @@ export const useNewsPageWithToken = (
 export const useInfiniteNewsPageWithToken = (
   token: string,
   {
-    content_class = null,
-    content_tag = null,
-    coverage_tag = null,
-    decision_class = null,
-    direction = null,
+    has_token = null,
     limit = NEWS_PAGE_SIZE,
-    provider_type = null,
+    min_score = null,
     q = null,
-    source_role = null,
+    signal = null,
     status = null,
-    trust_tier = null,
   }: Omit<NewsPageQueryParams, "cursor"> = {},
 ) =>
   useInfiniteQuery({
     enabled: Boolean(token),
     initialPageParam: null as string | null,
-    queryKey: queryKeys.newsRowsInfinite({
-      content_class,
-      content_tag,
-      coverage_tag,
-      decision_class,
-      direction,
-      limit,
-      provider_type,
-      q,
-      source_role,
-      status,
-      trust_tier,
-    }),
+    queryKey: queryKeys.newsRowsInfinite({ has_token, limit, min_score, q, signal, status }),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      fetchNewsRows({
-        content_class,
-        content_tag,
-        coverage_tag,
-        cursor: pageParam,
-        decision_class,
-        direction,
-        limit,
-        provider_type,
-        q,
-        source_role,
-        status,
-        token,
-        trust_tier,
-      }),
+      fetchNewsRows({ cursor: pageParam, has_token, limit, min_score, q, signal, status, token }),
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     refetchInterval: (query) => ((query.state.data?.pages.length ?? 0) > 1 ? false : 15_000),
     staleTime: 15_000,

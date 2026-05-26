@@ -20,7 +20,14 @@ def build_news_page_row(
     computed_at_ms: int,
 ) -> dict[str, Any]:
     news_item_id = str(item["news_item_id"])
-    token_lanes = [_token_lane(row) for row in token_mentions]
+    provider_signal = _json_object(item.get("provider_signal_json"))
+    token_impacts = _provider_token_impacts(item.get("provider_token_impacts_json"))
+    impacts_by_symbol = {
+        str(impact.get("symbol") or "").upper(): impact
+        for impact in token_impacts
+        if str(impact.get("symbol") or "")
+    }
+    token_lanes = [_merge_provider_impact(_token_lane(row), impacts_by_symbol) for row in token_mentions]
     fact_lanes = [_fact_lane(row) for row in fact_candidates]
     story_payload = _json_object(story)
     source_payload = _source_payload(item)
@@ -40,6 +47,8 @@ def build_news_page_row(
         "canonical_url": str(item.get("canonical_url") or ""),
         "token_lanes": token_lanes,
         "fact_lanes": fact_lanes,
+        "signal": _page_signal(provider_signal=provider_signal, agent_signal=agent_payload),
+        "token_impacts": token_impacts,
         "content_class": item.get("content_class"),
         "content_tags": content_tags,
         "content_tags_json": content_tags,
@@ -69,6 +78,47 @@ def _token_lane(row: dict[str, Any]) -> dict[str, Any]:
         "reason_codes": _json_list(row.get("reason_codes_json")),
         "candidate_targets": _json_list(row.get("candidate_targets_json")),
     }
+
+
+def _provider_token_impacts(value: Any) -> list[dict[str, Any]]:
+    impacts: list[dict[str, Any]] = []
+    for impact in _json_list(value):
+        if not isinstance(impact, Mapping):
+            continue
+        symbol = str(impact.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        impacts.append(
+            _compact_mapping(
+                {
+                    "symbol": symbol,
+                    "market_type": impact.get("market_type"),
+                    "score": _optional_int_or_none(impact.get("score")),
+                    "signal": impact.get("signal"),
+                    "grade": impact.get("grade"),
+                }
+            )
+        )
+    return impacts
+
+
+def _merge_provider_impact(
+    lane: dict[str, Any],
+    impacts_by_symbol: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    symbol = str(lane.get("symbol") or "").upper()
+    impact = impacts_by_symbol.get(symbol)
+    if not impact:
+        return lane
+    return _compact_mapping(
+        {
+            **lane,
+            "provider_signal": impact.get("signal"),
+            "provider_score": _optional_int_or_none(impact.get("score")),
+            "provider_grade": impact.get("grade"),
+            "market_type": impact.get("market_type"),
+        }
+    )
 
 
 def _token_lane_name(status: str) -> str:
@@ -154,6 +204,57 @@ def _compact_agent_brief(agent_brief: Mapping[str, Any] | None) -> dict[str, Any
     return payload or {"status": "pending"}
 
 
+def _page_signal(
+    *,
+    provider_signal: Mapping[str, Any],
+    agent_signal: Mapping[str, Any],
+) -> dict[str, Any]:
+    if provider_signal.get("source") == "provider":
+        return _compact_mapping(
+            {
+                "source": "provider",
+                "provider": provider_signal.get("provider") or "opennews",
+                "status": provider_signal.get("status") or "partial",
+                "direction": provider_signal.get("direction") or "neutral",
+                "label_zh": provider_signal.get("label_zh")
+                or _direction_label(str(provider_signal.get("direction") or "neutral")),
+                "signal": provider_signal.get("signal"),
+                "score": _optional_int_or_none(provider_signal.get("score")),
+                "grade": provider_signal.get("grade"),
+                "summary_zh": provider_signal.get("summary_zh"),
+                "summary_en": provider_signal.get("summary_en"),
+                "method": provider_signal.get("method") or "opennews.provider_signal",
+            }
+        )
+    if str(agent_signal.get("status") or "") == "ready":
+        direction = str(agent_signal.get("direction") or "neutral")
+        return _compact_mapping(
+            {
+                "source": "agent",
+                "status": "ready",
+                "direction": direction,
+                "label_zh": _direction_label(direction),
+                "summary_zh": agent_signal.get("summary_zh"),
+                "method": "news_item_brief",
+            }
+        )
+    return {
+        "source": "partial",
+        "status": "partial",
+        "direction": "neutral",
+        "label_zh": "中性",
+        "method": "pending",
+    }
+
+
+def _direction_label(direction: str) -> str:
+    if direction == "bullish":
+        return "利好"
+    if direction == "bearish":
+        return "利空"
+    return "中性"
+
+
 def _json_object(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if value is None:
         return {}
@@ -180,6 +281,15 @@ def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _optional_int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _stable_id(*parts: str) -> str:

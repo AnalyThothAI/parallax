@@ -80,6 +80,7 @@ class NewsItemBriefWorker(WorkerBase):
             "backpressure": 0,
             "validation_failed": 0,
             "missing_target": 0,
+            "provider_signal_skip": 0,
         }
         skipped = 0
         current_updates = 0
@@ -89,6 +90,11 @@ class NewsItemBriefWorker(WorkerBase):
             candidate = candidates_by_id.get(target_id)
             if candidate is None:
                 notes["missing_target"] += 1
+                await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
+                skipped += 1
+                continue
+            if _has_provider_signal(candidate):
+                notes["provider_signal_skip"] += 1
                 await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                 skipped += 1
                 continue
@@ -608,6 +614,12 @@ def _packet_from_candidate(
         story_members=_list_of_dicts(candidate.get("story_members")),
         agent_config=agent_config,
     )
+
+
+def _has_provider_signal(candidate: Mapping[str, Any]) -> bool:
+    item = _dict(candidate.get("item") or candidate)
+    provider_signal = _dict(item.get("provider_signal_json"))
+    return provider_signal.get("source") == "provider"
 
 
 def _current_brief_is_fresh(

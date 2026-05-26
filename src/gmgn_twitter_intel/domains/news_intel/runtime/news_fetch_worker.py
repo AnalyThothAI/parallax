@@ -249,6 +249,8 @@ class NewsFetchWorker(WorkerBase):
                 ),
                 title_fingerprint=title_fingerprint(observation.title),
                 now_ms=fetched_at_ms,
+                provider_signal=observation.provider_signal,
+                provider_token_impacts=observation.provider_token_impacts,
                 commit=False,
             )
             news_item_id = str(news.get("news_item_id") or "")

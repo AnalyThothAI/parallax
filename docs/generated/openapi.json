@@ -6732,112 +6732,44 @@
           },
           {
             "in": "query",
-            "name": "direction",
+            "name": "has_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Token"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signal",
             "required": false,
             "schema": {
               "default": "",
-              "title": "Direction",
+              "title": "Signal",
               "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "lane",
+            "name": "min_score",
             "required": false,
             "schema": {
-              "default": "",
-              "title": "Lane",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Source",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "target",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Target",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "provider_type",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Provider Type",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "source_role",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Source Role",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "trust_tier",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Trust Tier",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "coverage_tag",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Coverage Tag",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "content_class",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Content Class",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "content_tag",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Content Tag",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "decision_class",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Decision Class",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Score"
             }
           },
           {
@@ -6848,16 +6780,6 @@
               "default": "",
               "title": "Q",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "include_unprojected",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Include Unprojected",
-              "type": "boolean"
             }
           }
         ],

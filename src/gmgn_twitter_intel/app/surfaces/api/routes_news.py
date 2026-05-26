@@ -7,11 +7,9 @@ from fastapi.responses import JSONResponse
 
 from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
 from gmgn_twitter_intel.app.surfaces.api.dependencies import _authenticated_runtime
-from gmgn_twitter_intel.app.surfaces.api.exceptions import ApiBadRequest
 from gmgn_twitter_intel.app.surfaces.api.responses import _json
 from gmgn_twitter_intel.app.surfaces.api.validators import _limit
 from gmgn_twitter_intel.domains.news_intel.queries.news_page_query import NewsPageQuery
-from gmgn_twitter_intel.domains.news_intel.types.content_classification import NEWS_CONTENT_CLASSES
 from gmgn_twitter_intel.integrations.news_feeds.provider_registry import SUPPORTED_NEWS_PROVIDER_TYPES
 
 router = APIRouter()
@@ -23,19 +21,10 @@ def list_news(
     limit: Annotated[int, Query()] = 100,
     cursor: Annotated[str, Query()] = "",
     status: Annotated[str, Query()] = "",
-    direction: Annotated[str, Query()] = "",
-    lane: Annotated[str, Query()] = "",
-    source: Annotated[str, Query()] = "",
-    target: Annotated[str, Query()] = "",
-    provider_type: Annotated[str, Query()] = "",
-    source_role: Annotated[str, Query()] = "",
-    trust_tier: Annotated[str, Query()] = "",
-    coverage_tag: Annotated[str, Query()] = "",
-    content_class: Annotated[str, Query()] = "",
-    content_tag: Annotated[str, Query()] = "",
-    decision_class: Annotated[str, Query()] = "",
+    has_token: Annotated[bool | None, Query()] = None,
+    signal: Annotated[str, Query()] = "",
+    min_score: Annotated[int | None, Query()] = None,
     q: Annotated[str, Query()] = "",
-    include_unprojected: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
@@ -43,19 +32,10 @@ def list_news(
             limit=_limit(limit, maximum=200),
             cursor=cursor or None,
             status=status or None,
-            direction=direction or None,
-            lane=lane or None,
-            source=source or None,
-            target=target or None,
-            provider_type=provider_type or None,
-            source_role=source_role or None,
-            trust_tier=trust_tier or None,
-            coverage_tag=coverage_tag or None,
-            content_class=_content_class(content_class),
-            content_tag=content_tag or None,
-            decision_class=decision_class or None,
+            has_token=has_token,
+            signal=_signal(signal),
+            min_score=min_score,
             q=q or None,
-            include_unprojected=include_unprojected,
         )
     return _json({"ok": True, "data": data})
 
@@ -107,13 +87,15 @@ def _news_read_model(repos: Any) -> NewsPageQuery:
     return NewsPageQuery(repository=repos.news)
 
 
-def _content_class(value: str) -> str | None:
+def _signal(value: str) -> str | None:
     normalized = value.strip()
     if not normalized:
         return None
-    if normalized in NEWS_CONTENT_CLASSES:
-        return normalized
-    raise ApiBadRequest("invalid_content_class", field="content_class")
+    if normalized == "long":
+        return "bullish"
+    if normalized == "short":
+        return "bearish"
+    return normalized
 
 
 def _provider_capabilities(sources: list[dict[str, Any]]) -> dict[str, Any]:

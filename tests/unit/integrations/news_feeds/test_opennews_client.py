@@ -72,6 +72,22 @@ def test_opennews_client_subscribes_and_normalizes_websocket_updates() -> None:
             "published_at_ms": NOW_MS - 1_000,
             "source_domain": "Bloomberg",
             "opennews_method": "news.ai_update",
+            "provider_signal": {
+                "source": "provider",
+                "provider": "opennews",
+                "status": "ready",
+                "direction": "bullish",
+                "label_zh": "利好",
+                "signal": "long",
+                "score": 88,
+                "grade": "A",
+                "summary_zh": "资金流入继续增强。",
+                "summary_en": "ETF inflows continue to strengthen.",
+                "method": "opennews.aiRating",
+            },
+            "provider_token_impacts": [
+                {"symbol": "BTC", "market_type": None, "score": 88, "signal": "long", "grade": "A"}
+            ],
             "raw": {
                 "id": "article-1",
                 "text": "Bitcoin ETF flows accelerate",
@@ -146,6 +162,65 @@ def test_opennews_client_uses_fetch_clock_when_push_has_no_timestamp() -> None:
     )
 
     assert result.entries[0]["published_at_ms"] == NOW_MS
+
+
+def test_opennews_client_merges_ai_update_patch_by_article_id() -> None:
+    websocket = FakeWebSocket(
+        recv_messages=[
+            {"jsonrpc": "2.0", "id": "opennews_subscribe_1", "result": {"success": True}},
+            {
+                "jsonrpc": "2.0",
+                "method": "news.update",
+                "params": {
+                    "id": "article-1",
+                    "text": "Bitcoin ETF flows accelerate",
+                    "newsType": "Bloomberg",
+                    "engineType": "news",
+                    "link": "https://example.com/story",
+                    "ts": NOW_MS - 2_000,
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "method": "news.ai_update",
+                "params": {
+                    "id": "article-1",
+                    "coins": [{"symbol": "BTC", "score": 91, "signal": "long", "grade": "A"}],
+                    "aiRating": {
+                        "score": 91,
+                        "grade": "A",
+                        "signal": "long",
+                        "summary": "ETF 资金流继续增强。",
+                    },
+                    "ts": NOW_MS - 1_000,
+                },
+            },
+        ]
+    )
+    client = OpenNewsFeedClient(
+        token="test-token",
+        connect=lambda url, **kwargs: FakeConnect(url=url, websocket=websocket, kwargs=kwargs),
+        now_ms=lambda: NOW_MS,
+    )
+
+    result = client.fetch(
+        "opennews://subscribe",
+        limit=2,
+        source={"fetch_policy_json": {"stream_timeout_seconds": 0.25, "max_messages": 2}},
+    )
+
+    assert len(result.entries) == 1
+    assert result.entries[0]["id"] == "article-1"
+    assert result.entries[0]["link"] == "https://example.com/story"
+    assert result.entries[0]["title"] == "Bitcoin ETF flows accelerate"
+    assert result.entries[0]["summary"] == "ETF 资金流继续增强。"
+    assert result.entries[0]["provider_signal"]["status"] == "ready"
+    assert result.entries[0]["provider_signal"]["score"] == 91
+    assert result.entries[0]["provider_token_impacts"] == [
+        {"symbol": "BTC", "market_type": None, "score": 91, "signal": "long", "grade": "A"}
+    ]
+    assert result.entries[0]["raw"]["link"] == "https://example.com/story"
+    assert result.entries[0]["raw"]["aiRating"]["score"] == 91
 
 
 def test_opennews_client_parses_iso_timestamp_from_live_push_shape() -> None:

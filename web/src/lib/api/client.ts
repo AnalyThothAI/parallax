@@ -15,7 +15,6 @@ import { env } from "@lib/env/env";
 import type { ApiResponse, BootstrapData } from "@lib/types";
 import type {
   NewsAgentBrief,
-  NewsAgentBriefStatus,
   NewsAgentDataGap,
   NewsAgentEvidenceRef,
   NewsAgentRunSummary,
@@ -23,6 +22,7 @@ import type {
   NewsItemDetail,
   NewsRowsData,
   NewsRow,
+  NewsSignalSummary,
   NewsSourceSummary,
   NewsTokenLane,
 } from "@shared/model/newsIntel";
@@ -176,41 +176,25 @@ export async function fetchEquityEventSummary(
 
 export async function fetchNewsRows(
   params: {
-    content_class?: string | null;
-    content_tag?: string | null;
-    coverage_tag?: string | null;
     limit?: number;
     cursor?: string | null;
-    decision_class?: string | null;
-    direction?: string | null;
-    lane?: string | null;
-    provider_type?: string | null;
+    has_token?: boolean | null;
+    min_score?: number | null;
     q?: string | null;
-    source?: string | null;
-    source_role?: string | null;
+    signal?: "bullish" | "bearish" | "neutral" | string | null;
     status?: string | null;
-    target?: string | null;
     token?: string | null;
-    trust_tier?: string | null;
   } = {},
 ): Promise<NewsRowsData> {
   const response = await getApi<NewsRowsData>("/api/news", {
     params: {
-      content_class: params.content_class,
-      content_tag: params.content_tag,
-      coverage_tag: params.coverage_tag,
       cursor: params.cursor,
-      decision_class: params.decision_class,
-      direction: params.direction,
-      lane: params.lane,
+      has_token: params.has_token,
       limit: params.limit ?? 100,
-      provider_type: params.provider_type,
+      min_score: params.min_score,
       q: params.q,
-      source: params.source,
-      source_role: params.source_role,
+      signal: params.signal,
       status: params.status,
-      target: params.target,
-      trust_tier: params.trust_tier,
     },
     token: params.token ?? undefined,
   });
@@ -267,22 +251,13 @@ function normalizeNewsRow<T extends NewsRow>(row: T): T {
     summary: stringOrNull(payload.summary),
     trust_tier: source?.trust_tier ?? null,
     coverage_tags: source?.coverage_tags ?? [],
-    token_lanes: normalizeTokenLanes(row.token_lanes ?? row.token_lanes_json),
-    fact_lanes: normalizeFactLanes(row.fact_lanes ?? row.fact_lanes_json),
-    agent_brief: normalizeAgentBrief(
-      payload.agent_brief_json ?? payload.agent_brief,
-      payload.agent_brief_status ?? payload.agent_status,
-      payload.agent_brief_computed_at_ms,
-    ),
-    agent_brief_json: normalizeAgentBrief(
-      payload.agent_brief_json ?? payload.agent_brief,
-      payload.agent_brief_status ?? payload.agent_status,
-      payload.agent_brief_computed_at_ms,
-    ),
-    agent_status: stringOrNull(payload.agent_status) as NewsAgentBriefStatus | null,
-    agent_brief_status: stringOrNull(
-      payload.agent_brief_status ?? payload.agent_status,
-    ) as NewsAgentBriefStatus | null,
+    signal: normalizeNewsSignal(payload.signal),
+    token_impacts: normalizeTokenLanes(payload.token_impacts),
+    token_lanes: normalizeTokenLanes(payload.token_lanes),
+    fact_lanes: normalizeFactLanes(payload.fact_lanes),
+    agent_brief: payload.agent_brief
+      ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
+      : undefined,
     agent_brief_computed_at_ms: numberOrNull(payload.agent_brief_computed_at_ms),
   };
 }
@@ -335,18 +310,33 @@ function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
     ...row,
     content: stringOrNull(payload.content ?? payload.body_text),
     source_domain: row.source_domain ?? row.source?.source_domain ?? null,
-    token_lanes:
-      row.token_lanes ??
-      row.token_lanes_json ??
-      tokenMentions.map((mention) => mentionToTokenLane(mention)),
-    fact_lanes: row.fact_lanes ?? row.fact_lanes_json ?? row.fact_candidates ?? [],
-    agent_brief: normalizeAgentBrief(
-      payload.agent_brief_json ?? payload.agent_brief,
-      payload.agent_brief_status ?? payload.agent_status,
-      payload.agent_brief_computed_at_ms,
-    ),
+    token_lanes: row.token_lanes ?? tokenMentions.map((mention) => mentionToTokenLane(mention)),
+    fact_lanes: row.fact_lanes ?? row.fact_candidates ?? [],
+    agent_brief: payload.agent_brief
+      ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
+      : undefined,
     agent_run: normalizeAgentRun(payload.agent_run),
   });
+}
+
+function normalizeNewsSignal(raw: unknown): NewsSignalSummary {
+  const payload = objectOrNull(raw) ?? {};
+  const direction = stringOrNull(payload.direction) ?? "neutral";
+  const status = stringOrNull(payload.status) ?? "partial";
+  return {
+    ...(payload as Partial<NewsSignalSummary>),
+    source: stringOrNull(payload.source) ?? "partial",
+    provider: stringOrNull(payload.provider),
+    status,
+    direction,
+    label_zh: stringOrNull(payload.label_zh),
+    signal: stringOrNull(payload.signal),
+    score: numberOrNull(payload.score),
+    grade: stringOrNull(payload.grade),
+    summary_zh: stringOrNull(payload.summary_zh),
+    summary_en: stringOrNull(payload.summary_en),
+    method: stringOrNull(payload.method),
+  };
 }
 
 function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
@@ -368,6 +358,10 @@ function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
       symbol: stringOrNull(payload.symbol ?? payload.display_symbol ?? payload.observed_symbol),
       target_id: targetId,
       target_type: stringOrNull(payload.target_type),
+      provider_signal: stringOrNull(payload.provider_signal),
+      provider_score: numberOrNull(payload.provider_score),
+      provider_grade: stringOrNull(payload.provider_grade),
+      market_type: stringOrNull(payload.market_type),
     };
   });
 }

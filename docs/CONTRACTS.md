@@ -169,25 +169,26 @@ Token image contract:
 News Intel contract:
 
 - `/api/news` is read-only and paginated. Rows come from `news_page_rows` or
-  the raw visible item fallback only when `include_unprojected=true`; handlers
-  do not fetch feeds, run extraction, execute agents, or rebuild projections.
-- `/api/news` accepts optional filters including `direction=bullish|bearish`,
-  `decision_class`, `provider_type`, `source_role`, `trust_tier`,
-  `coverage_tag`, `content_class`, `content_tag`, `status`, and `q`.
-  Direction and decision filtering are based only on persisted
-  `agent_brief`; source classification filters read persisted `source_json`,
-  and content filters read item-level `content_class` /
-  `content_tags_json` materialized into `news_page_rows`.
+  nothing else; handlers do not fetch feeds, run extraction, execute agents,
+  rebuild projections, or fall back to raw `news_items`.
+- `/api/news` accepts optional product filters for the current page surface:
+  `has_token`, `signal=bullish|bearish|neutral`, `min_score`, `status`, and
+  `q`.
+  Signal filtering reads persisted `signal_json`, token presence reads
+  `token_lanes_json`, and keyword search scans projected headline, summary, and
+  token lanes.
 - News rows expose deterministic fields (`headline`, `summary`,
-  `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata) plus
+  `source_domain`, `token_lanes`, `fact_lanes`, lifecycle/story metadata),
+  canonical signal metadata (`signal.direction`, `signal.score`,
+  `signal.reason`), provider token impact rows (`token_impacts`), plus
   compact source metadata (`provider_type`, `source_role`, `trust_tier`,
   `coverage_tags`, `source_quality_status`), item content classification
-  (`content_class`, `content_tags_json`, `content_classification_json`),
-  compact `agent_brief`, `agent_brief_status`, and
-  `agent_brief_computed_at_ms`. A ready compact brief
-  includes `summary_zh`, `market_read_zh`, `direction`, `decision_class`,
-  bull/bear strengths, evidence count/data-gap metadata, run id,
-  prompt/schema versions, and hashes when available.
+  (`content_class`, `content_tags`, `content_classification`), compact
+  `agent_brief`, and provider/source/story metadata. A ready compact brief may
+  still include `summary_zh`, `market_read_zh`, bull/bear strengths,
+  evidence/data-gap metadata, run id, prompt/schema versions, and hashes when
+  available, but OpenNews provider rows can carry provider signal and token
+  impact facts without requiring an agent brief.
 - `/api/news/sources/status` exposes source classification fields, item counts,
   control-plane fetch status, redacted latest fetch errors,
   `source_quality_status`, provider capability summaries, source hygiene
@@ -198,8 +199,9 @@ News Intel contract:
   under `news_intel.opennews` in operator-owned `config.yaml`; provider tokens
   are not exposed through this status route.
 - `/api/news/items/{news_item_id}` returns deterministic extraction facts plus
-  the full current item brief and a sanitized latest run summary. It excludes
-  raw provider request/response payloads from the public item-detail contract.
+  canonical signal/token-impact facts, the full current item brief when one
+  exists, and a sanitized latest run summary. It excludes raw provider
+  request/response payloads from the public item-detail contract.
 - Missing or unavailable brief state is represented as
   `agent_brief.status = pending | disabled | failed | stale | insufficient`;
   it is not a 5xx by itself. Frontend clients must render this state directly

@@ -27,26 +27,23 @@ def test_list_news_page_rows_defaults_to_projected_rows_without_fallback_scan(tm
     assert [row["row_id"] for row in rows] == ["row-projected"]
 
 
-def test_list_news_page_rows_can_include_unprojected_fallback_when_requested(tmp_path) -> None:
+def test_list_news_page_rows_reads_only_projected_rows_after_hard_cut(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = NewsRepository(conn)
         projected_item_id = _insert_source_provider_and_item(repo, source_item_key="projected", title="Projected")
-        raw_item_id = _insert_source_provider_and_item(repo, source_item_key="raw", title="Raw")
+        _insert_source_provider_and_item(repo, source_item_key="raw", title="Raw")
         repo.replace_page_rows_for_items(
             news_item_ids=[projected_item_id],
             rows=[_page_row("row-projected", projected_item_id)],
         )
 
-        rows = repo.list_news_page_rows(limit=10, include_unprojected=True)
+        rows = repo.list_news_page_rows(limit=10)
     finally:
         conn.close()
 
-    assert {row["row_id"] for row in rows} == {"row-projected", raw_item_id}
-    raw = next(row for row in rows if row["row_id"] == raw_item_id)
-    assert raw["headline"] == "Raw"
-    assert raw["agent_status"] == "pending"
+    assert [row["row_id"] for row in rows] == ["row-projected"]
 
 
 def test_news_page_rows_filter_indexes_cover_normal_ui_filters(tmp_path) -> None:
@@ -66,13 +63,9 @@ def test_news_page_rows_filter_indexes_cover_normal_ui_filters(tmp_path) -> None
 
     index_names = {str(row["indexname"]) for row in rows}
     assert {
-        "idx_news_page_rows_provider_type_time",
-        "idx_news_page_rows_source_role_time",
-        "idx_news_page_rows_trust_tier_time",
-        "idx_news_page_rows_coverage_tags_gin",
-        "idx_news_page_rows_content_tags_gin",
-        "idx_news_page_rows_direction_time",
-        "idx_news_page_rows_decision_class_time",
+        "ix_news_page_rows_signal_direction",
+        "ix_news_page_rows_signal_score",
+        "ix_news_page_rows_token_count_time",
     } <= index_names
 
 

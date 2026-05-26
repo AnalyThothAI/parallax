@@ -1,9 +1,6 @@
 import { formatRelativeTime } from "@lib/format";
 import type {
   NewsAgentBrief,
-  NewsAgentBriefView,
-  NewsAgentDataGap,
-  NewsAgentEvidenceRef,
   NewsFactLane,
   NewsItemDetail,
   NewsRow,
@@ -12,31 +9,20 @@ import type {
 import { newsLifecycleLabel } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import * as PageState from "@shared/ui/PageState";
-import * as Tabs from "@shared/ui/tabs";
-import {
-  ArrowLeft,
-  Bot,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  ExternalLink,
-  ShieldAlert,
-  Target,
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import "./news.css";
-import "./newsRows.css";
-import "./NewsDetail.css";
 import {
-  agentBriefLabel,
-  agentBriefMissingText,
-  formatAgentBriefStrength,
-  inferNewsInstruments,
-} from "./newsViewModel";
+  newsSignalLabel,
+  newsSignalScoreLabel,
+  newsSignalTone,
+  tokenImpactLabel,
+} from "./model/newsSignalViewModel";
+import "./news.css";
+import "./NewsDetail.css";
+import { NewsInspector } from "./ui/NewsInspector";
+import { NewsTape } from "./ui/NewsTape";
 import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
 
 type NewsPageProps = {
@@ -45,359 +31,157 @@ type NewsPageProps = {
 };
 
 const EMPTY_NEWS_ROWS: NewsRow[] = [];
-
-type NewsDirectionFilter = "all" | "bullish" | "bearish";
-type NewsContentDomainFilter =
-  | "all"
-  | "crypto_market"
-  | "macro_policy"
-  | "rates_fed"
-  | "regulation"
-  | "etf_fund_flow"
-  | "exchange_listing"
-  | "security_hack"
-  | "protocol_development"
-  | "equity_earnings"
-  | "analyst_rating"
-  | "ai_semiconductors"
-  | "energy_geopolitics"
-  | "consumer_macro"
-  | "market_structure"
-  | "low_signal"
-  | "low-context";
-type NewsDecisionFilter = "all" | "driver" | "watch" | "context" | "discard";
-type NewsContentTagFilter =
-  | "all"
-  | "tokenized_stocks"
-  | "low_context"
-  | "yahoo_finance"
-  | "regulation"
-  | "regulatory_action"
-  | "analyst_rating"
-  | "etf_fund_flow"
-  | "exchange_listing"
-  | "security_hack"
-  | "security_incident"
-  | "crypto_market"
-  | "macro_policy"
-  | "rates_fed"
-  | "protocol_development"
-  | "equity_earnings"
-  | "ai_semiconductors"
-  | "energy_geopolitics"
-  | "consumer_macro"
-  | "market_structure";
-type NewsSourceFilter =
-  | "all"
-  | "official"
-  | "official-exchange"
-  | "high-trust"
-  | "rss"
-  | "cryptopanic"
-  | "exchange";
-
-type NewsFilterOption<T extends string> = {
-  id: T;
-  label: string;
-};
-
-const CONTENT_DOMAIN_OPTIONS: Array<
-  NewsFilterOption<NewsContentDomainFilter> & {
-    content_class?: string;
-    content_tag?: string;
-  }
-> = [
-  { id: "all", label: "All" },
-  { id: "crypto_market", label: "Crypto Market", content_class: "crypto_market" },
-  { id: "macro_policy", label: "Macro Policy", content_class: "macro_policy" },
-  { id: "rates_fed", label: "Rates/Fed", content_class: "rates_fed" },
-  { id: "regulation", label: "Regulation", content_class: "regulation" },
-  { id: "etf_fund_flow", label: "ETF/Fund Flow", content_class: "etf_fund_flow" },
-  { id: "exchange_listing", label: "Exchange Listing", content_class: "exchange_listing" },
-  { id: "security_hack", label: "Security Hack", content_class: "security_hack" },
-  { id: "protocol_development", label: "Protocol Dev", content_class: "protocol_development" },
-  { id: "equity_earnings", label: "Equity Earnings", content_class: "equity_earnings" },
-  { id: "analyst_rating", label: "Analyst Rating", content_class: "analyst_rating" },
-  { id: "ai_semiconductors", label: "AI/Semis", content_class: "ai_semiconductors" },
-  { id: "energy_geopolitics", label: "Energy/Geo", content_class: "energy_geopolitics" },
-  { id: "consumer_macro", label: "Consumer Macro", content_class: "consumer_macro" },
-  { id: "market_structure", label: "Market Structure", content_class: "market_structure" },
-  { id: "low_signal", label: "Low Signal", content_class: "low_signal" },
-  { id: "low-context", label: "Low context", content_tag: "low_context" },
-];
-
-const CONTENT_TAG_OPTIONS: Array<NewsFilterOption<NewsContentTagFilter>> = [
-  { id: "all", label: "All tags" },
-  { id: "tokenized_stocks", label: "tokenized_stocks" },
-  { id: "low_context", label: "low_context" },
-  { id: "yahoo_finance", label: "yahoo_finance" },
-  { id: "regulation", label: "regulation" },
-  { id: "regulatory_action", label: "regulatory_action" },
-  { id: "analyst_rating", label: "analyst_rating" },
-  { id: "etf_fund_flow", label: "etf_fund_flow" },
-  { id: "exchange_listing", label: "exchange_listing" },
-  { id: "security_hack", label: "security_hack" },
-  { id: "security_incident", label: "security_incident" },
-  { id: "crypto_market", label: "crypto_market" },
-  { id: "macro_policy", label: "macro_policy" },
-  { id: "rates_fed", label: "rates_fed" },
-  { id: "protocol_development", label: "protocol_development" },
-  { id: "equity_earnings", label: "equity_earnings" },
-  { id: "ai_semiconductors", label: "ai_semiconductors" },
-  { id: "energy_geopolitics", label: "energy_geopolitics" },
-  { id: "consumer_macro", label: "consumer_macro" },
-  { id: "market_structure", label: "market_structure" },
-];
-
-const DECISION_OPTIONS: Array<NewsFilterOption<NewsDecisionFilter>> = [
-  { id: "all", label: "All" },
-  { id: "driver", label: "Driver" },
-  { id: "watch", label: "Watch" },
-  { id: "context", label: "Context" },
-  { id: "discard", label: "Discard" },
-];
-
-const SOURCE_OPTIONS: Array<
-  NewsFilterOption<NewsSourceFilter> & {
-    coverage_tag?: string;
-    provider_type?: string;
-    source_role?: string;
-    trust_tier?: string;
-  }
-> = [
-  { id: "all", label: "All" },
-  { id: "official", label: "Official", trust_tier: "official" },
-  { id: "official-exchange", label: "Official exchange", source_role: "official_exchange" },
-  { id: "high-trust", label: "High trust", trust_tier: "high" },
-  { id: "rss", label: "RSS", provider_type: "rss" },
-  { id: "cryptopanic", label: "CryptoPanic", provider_type: "cryptopanic" },
-  { id: "exchange", label: "Exchange coverage", coverage_tag: "exchange_listing" },
-];
+type TokenMode = "with-token" | "no-token";
+type SignalFilter = "all" | "bullish" | "bearish" | "neutral";
 
 export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
-  if (newsItemId) {
-    return <NewsItemRoute newsItemId={newsItemId} token={token} />;
-  }
+  if (newsItemId) return <NewsItemRoute newsItemId={newsItemId} token={token} />;
   return <NewsQueueRoute token={token} />;
 }
 
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
-  const [contentDomainFilter, setContentDomainFilter] = useState<NewsContentDomainFilter>("all");
-  const [contentTagFilter, setContentTagFilter] = useState<NewsContentTagFilter>("all");
-  const [decisionFilter, setDecisionFilter] = useState<NewsDecisionFilter>("all");
-  const [directionFilter, setDirectionFilter] = useState<NewsDirectionFilter>("all");
+  const [tokenMode, setTokenMode] = useState<TokenMode>("with-token");
+  const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
+  const [minScore, setMinScore] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<NewsSourceFilter>("all");
+  const [selectedNewsItemId, setSelectedNewsItemId] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<Array<string | null>>([null]);
-  const direction = directionFilter === "all" ? null : directionFilter;
-  const contentDomain = CONTENT_DOMAIN_OPTIONS.find((option) => option.id === contentDomainFilter);
-  const source = SOURCE_OPTIONS.find((option) => option.id === sourceFilter);
-  const contentTag =
-    contentTagFilter === "all" ? (contentDomain?.content_tag ?? null) : contentTagFilter;
-  const contentClass = contentDomain?.content_class ?? null;
-  const decisionClass = decisionFilter === "all" ? null : decisionFilter;
-  const q = searchQuery.trim() || null;
   const cursor = cursorStack[cursorStack.length - 1] ?? null;
   const query = useNewsPageWithToken(token, {
-    content_class: contentClass,
-    content_tag: contentTag,
-    coverage_tag: source?.coverage_tag ?? null,
     cursor,
-    decision_class: decisionClass,
-    direction,
+    has_token: tokenMode === "with-token",
     limit: NEWS_PAGE_SIZE,
-    provider_type: source?.provider_type ?? null,
-    q,
-    source_role: source?.source_role ?? null,
-    trust_tier: source?.trust_tier ?? null,
+    min_score: minScore,
+    q: searchQuery.trim() || null,
+    signal: signalFilter === "all" ? null : signalFilter,
   });
   const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
-  const hasNextPage = Boolean(query.data?.next_cursor);
-  const showLoading = query.isLoading && rows.length === 0;
-  const showEmpty = !query.isLoading && !query.isError && rows.length === 0;
-  const resultLabel = rows.length
-    ? `${rows.length} loaded${hasNextPage ? " · next page" : " · latest"}`
-    : query.isLoading
-      ? "loading"
-      : "no rows";
-  const summary = useMemo(() => buildQueueSummary(rows), [rows]);
-  const pageNumber = cursorStack.length;
+  const selectedItem = useMemo(
+    () => rows.find((row) => row.news_item_id === selectedNewsItemId) ?? rows[0] ?? null,
+    [rows, selectedNewsItemId],
+  );
   const resetCursor = () => setCursorStack([null]);
+
+  useEffect(() => {
+    if (
+      rows.length &&
+      (!selectedNewsItemId || !rows.some((row) => row.news_item_id === selectedNewsItemId))
+    ) {
+      setSelectedNewsItemId(rows[0].news_item_id);
+    }
+  }, [rows, selectedNewsItemId]);
 
   return (
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
       <div aria-label="News intel page container" className="news-table-wrap">
-        <div className="news-filter-panel" aria-label="News filters">
-          <NewsFilterGroup
-            label="Content"
-            options={CONTENT_DOMAIN_OPTIONS}
-            value={contentDomainFilter}
-            onChange={(next) => {
-              setContentDomainFilter(next);
-              setContentTagFilter("all");
-              resetCursor();
-            }}
-          />
-          <NewsFilterGroup
-            label="Tag"
-            options={CONTENT_TAG_OPTIONS}
-            value={contentTagFilter}
-            onChange={(next) => {
-              setContentTagFilter(next);
-              resetCursor();
-            }}
-          />
-          <NewsFilterGroup
-            label="Decision"
-            options={DECISION_OPTIONS}
-            value={decisionFilter}
-            onChange={(next) => {
-              setDecisionFilter(next);
-              resetCursor();
-            }}
-          />
-          <NewsFilterGroup
-            label="Source"
-            options={SOURCE_OPTIONS}
-            value={sourceFilter}
-            onChange={(next) => {
-              setSourceFilter(next);
-              resetCursor();
-            }}
-          />
-          <label className="news-search-filter">
-            <span>Search</span>
-            <input
-              aria-label="Search news"
-              value={searchQuery}
-              onChange={(event) => {
-                setSearchQuery(event.target.value);
+        <div className="news-compact-controls" aria-label="News filters">
+          <div className="news-token-mode" aria-label="Token mode">
+            <button
+              aria-pressed={tokenMode === "with-token"}
+              type="button"
+              onClick={() => {
+                setTokenMode("with-token");
                 resetCursor();
               }}
-              placeholder="headline or summary"
-            />
-          </label>
-        </div>
-        <div className="news-control-bar">
-          <NewsDirectionTabs
-            value={directionFilter}
-            onChange={(next) => {
-              setDirectionFilter(next);
-              setCursorStack([null]);
-            }}
-          />
+            >
+              有 Token
+            </button>
+            <button
+              aria-pressed={tokenMode === "no-token"}
+              type="button"
+              onClick={() => {
+                setTokenMode("no-token");
+                resetCursor();
+              }}
+            >
+              无 Token
+            </button>
+          </div>
+          <div className="news-signal-controls" aria-label="Signal filters">
+            {(["all", "bullish", "bearish", "neutral"] as const).map((value) => (
+              <button
+                aria-pressed={signalFilter === value}
+                key={value}
+                type="button"
+                onClick={() => {
+                  setSignalFilter(value);
+                  resetCursor();
+                }}
+              >
+                {signalFilterLabel(value)}
+              </button>
+            ))}
+            <button
+              aria-pressed={minScore === 70}
+              type="button"
+              onClick={() => {
+                setMinScore((current) => (current === 70 ? null : 70));
+                resetCursor();
+              }}
+            >
+              ≥70
+            </button>
+            <label className="news-search-filter">
+              <span>Search</span>
+              <input
+                aria-label="Search news"
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  resetCursor();
+                }}
+                placeholder="headline, token, source"
+              />
+            </label>
+          </div>
           <NewsPager
-            hasNextPage={hasNextPage}
+            hasNextPage={Boolean(query.data?.next_cursor)}
             isFetching={query.isFetching}
-            pageNumber={pageNumber}
+            pageNumber={cursorStack.length}
             rowCount={rows.length}
             onNext={() => {
               const nextCursor = query.data?.next_cursor;
-              if (nextCursor) {
-                setCursorStack((stack) => [...stack, nextCursor]);
-              }
+              if (nextCursor) setCursorStack((stack) => [...stack, nextCursor]);
             }}
-            onPrevious={() => {
-              setCursorStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack));
-            }}
+            onPrevious={() =>
+              setCursorStack((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack))
+            }
           />
         </div>
-        {showLoading ? (
-          <PageState.Loading layout="panel" rows={8} label="loading news table" />
+
+        {query.isLoading && !rows.length ? (
+          <PageState.Loading layout="panel" rows={8} label="loading news tape" />
         ) : null}
         {query.isError ? <PageState.Error error={query.error ?? "News unavailable"} /> : null}
-        {showEmpty ? (
+        {!query.isLoading && !query.isError && !rows.length ? (
           <PageState.Empty
             title="No news rows"
-            hint="The API returned no paged items for the current queue."
+            hint="No provider signal rows match the current filters."
           />
         ) : null}
-        {!showLoading && !query.isError && rows.length ? (
+        {!query.isLoading && !query.isError && rows.length ? (
           <PageState.Stale updating={query.isFetching && !query.isLoading}>
-            <div className="news-desk">
-              <NewsQueueSummary resultLabel={resultLabel} summary={summary} />
-              <div className="news-feed-head" aria-hidden="true">
-                <span>Time</span>
-                <span>Brief</span>
-                <span>Direction</span>
-                <span>Decision</span>
-                <span>Evidence/Gaps</span>
-              </div>
-              <div className="news-desk-feed" role="list" aria-label="news decision feed">
-                {rows.map((row, index) => (
-                  <NewsDeskRow
-                    item={row}
-                    key={`${row.news_item_id}:${row.latest_at_ms ?? "time"}:${index}`}
-                    onOpen={() => navigate(newsItemPath(row.news_item_id))}
-                  />
-                ))}
-              </div>
+            <div className="news-compact-layout">
+              <NewsTape
+                rows={rows}
+                selectedId={selectedItem?.news_item_id ?? null}
+                onOpen={(newsId) => navigate(newsItemPath(newsId))}
+                onSelect={setSelectedNewsItemId}
+              />
+              <NewsInspector
+                item={selectedItem}
+                onFilterToken={(symbol) => {
+                  setSearchQuery(symbol);
+                  resetCursor();
+                }}
+                onOpen={(newsId) => navigate(newsItemPath(newsId))}
+              />
             </div>
           </PageState.Stale>
         ) : null}
       </div>
     </section>
-  );
-}
-
-function NewsFilterGroup<T extends string>({
-  label,
-  onChange,
-  options,
-  value,
-}: {
-  label: string;
-  onChange: (value: T) => void;
-  options: Array<NewsFilterOption<T>>;
-  value: T;
-}) {
-  return (
-    <div className="news-filter-group" aria-label={label}>
-      <span>{label}</span>
-      <div className="news-filter-buttons">
-        {options.map((option) => (
-          <button
-            aria-pressed={option.id === value}
-            className="news-filter-button"
-            key={option.id}
-            type="button"
-            onClick={() => onChange(option.id)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function NewsDirectionTabs({
-  value,
-  onChange,
-}: {
-  value: NewsDirectionFilter;
-  onChange: (value: NewsDirectionFilter) => void;
-}) {
-  return (
-    <Tabs.Root
-      className="news-direction-tabs"
-      activationMode="manual"
-      value={value}
-      onValueChange={(next) => onChange(next as NewsDirectionFilter)}
-    >
-      <Tabs.List aria-label="News direction" className="news-direction-tab-list">
-        <Tabs.Trigger value="all" onClick={() => onChange("all")}>
-          All
-        </Tabs.Trigger>
-        <Tabs.Trigger value="bullish" onClick={() => onChange("bullish")}>
-          Bullish
-        </Tabs.Trigger>
-        <Tabs.Trigger value="bearish" onClick={() => onChange("bearish")}>
-          Bear
-        </Tabs.Trigger>
-      </Tabs.List>
-    </Tabs.Root>
   );
 }
 
@@ -421,12 +205,11 @@ function NewsPager({
       <button
         aria-label="Previous news page"
         className="news-page-button"
-        type="button"
         disabled={pageNumber <= 1 || isFetching}
+        type="button"
         onClick={onPrevious}
       >
         <ChevronLeft aria-hidden />
-        Previous
       </button>
       <span className="news-page-label">
         Page {pageNumber} · {rowCount}/{NEWS_PAGE_SIZE}
@@ -434,11 +217,10 @@ function NewsPager({
       <button
         aria-label="Next news page"
         className="news-page-button"
-        type="button"
         disabled={!hasNextPage || isFetching}
+        type="button"
         onClick={onNext}
       >
-        Next
         <ChevronRight aria-hidden />
       </button>
     </nav>
@@ -448,8 +230,6 @@ function NewsPager({
 function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: string }) {
   const query = useNewsItemWithToken(token, newsItemId);
   const item = query.data ?? null;
-  const showLoading = query.isLoading && !item;
-
   return (
     <section className="radar-panel news-panel news-detail-shell" aria-label="News item detail">
       <header className="radar-toolbar news-toolbar">
@@ -461,10 +241,11 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
           <span>{query.isFetching ? "updating" : "live"}</span>
         </div>
       </header>
-
-      {showLoading ? <PageState.Loading layout="panel" rows={8} label="loading news item" /> : null}
+      {query.isLoading && !item ? (
+        <PageState.Loading layout="panel" rows={8} label="loading news item" />
+      ) : null}
       {query.isError ? <PageState.Error error={query.error ?? "News item unavailable"} /> : null}
-      {!showLoading && !query.isError && !item ? (
+      {!query.isLoading && !query.isError && !item ? (
         <PageState.Empty title="News item not found" />
       ) : null}
       {item ? (
@@ -476,176 +257,28 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
   );
 }
 
-type NewsQueueSummaryView = {
-  driverLabel: string;
-  gapLabel: string;
-  readyLabel: string;
-};
-
-function buildQueueSummary(rows: NewsRow[]): NewsQueueSummaryView {
-  const readyCount = rows.filter((row) => row.agent_brief?.status === "ready").length;
-  const driverCount = rows.filter((row) => row.agent_brief?.decision_class === "driver").length;
-  const gapCount = rows.reduce(
-    (total, row) =>
-      total + (row.agent_brief?.data_gap_count ?? row.agent_brief?.data_gaps?.length ?? 0),
-    0,
-  );
-  return {
-    driverLabel: `${driverCount}/${rows.length}`,
-    gapLabel: String(gapCount),
-    readyLabel: `${readyCount}/${rows.length}`,
-  };
-}
-
-function NewsQueueSummary({
-  resultLabel,
-  summary,
-}: {
-  resultLabel: string;
-  summary: NewsQueueSummaryView;
-}) {
-  return (
-    <div className="news-queue-summary" aria-label="news queue summary">
-      <SummaryMetric icon={<Bot aria-hidden />} label="Agent ready" value={summary.readyLabel} />
-      <SummaryMetric icon={<Target aria-hidden />} label="Drivers" value={summary.driverLabel} />
-      <SummaryMetric icon={<ShieldAlert aria-hidden />} label="Gaps" value={summary.gapLabel} />
-      <SummaryMetric icon={<Clock3 aria-hidden />} label="Loaded" value={resultLabel} />
-    </div>
-  );
-}
-
-function SummaryMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="news-summary-metric">
-      {icon}
-      <span>{label}</span>
-      <b>{value}</b>
-    </div>
-  );
-}
-
-function DirectionIcon({ direction }: { direction: string }) {
-  const normalized = direction.toLowerCase();
-  if (normalized.includes("bull")) {
-    return <TrendingUp aria-hidden className="news-direction-icon is-bullish" />;
-  }
-  if (normalized.includes("bear")) {
-    return <TrendingDown aria-hidden className="news-direction-icon is-bearish" />;
-  }
-  return <Target aria-hidden className="news-direction-icon is-neutral" />;
-}
-
-function NewsDeskRow({ item, onOpen }: { item: NewsRow; onOpen: () => void }) {
-  const brief = item.agent_brief;
-  const decision = brief?.decision_class || agentBriefLabel(brief?.status);
-  const direction = brief?.direction || agentBriefLabel(brief?.status);
-  const evidenceCount = brief?.evidence_refs?.length ?? 0;
-  const dataGapCount = brief?.data_gap_count ?? brief?.data_gaps?.length ?? 0;
-  const tokens = item.token_lanes ?? [];
-  const facts = item.fact_lanes ?? [];
-  const contentTags = item.content_tags ?? item.content_tags_json ?? [];
-  const sourceRole = item.source?.source_role ?? item.source_role;
-  const trustTier = item.source?.trust_tier ?? item.trust_tier;
-  const providerType = item.source?.provider_type ?? item.provider_type;
-  const sourceQualityStatus = item.source?.source_quality_status ?? item.source_quality_status;
-
-  return (
-    <button
-      aria-label={`Open news item ${item.headline}`}
-      className={`news-desk-row ${decisionTone(decision)}`}
-      type="button"
-      onClick={onOpen}
-    >
-      <div className="news-time-cell">
-        <b>{item.latest_at_ms ? `${formatRelativeTime(item.latest_at_ms)} ago` : "time missing"}</b>
-        <span>{newsLifecycleLabel(item.lifecycle_status)}</span>
-        <small>{item.source_domain || "source unknown"}</small>
-        <small>
-          {[sourceRole, trustTier].filter(Boolean).join(" · ") || "source class unknown"}
-        </small>
-      </div>
-
-      <div className="news-event-cell">
-        <div className="news-row-kicker">
-          <span>{agentBriefLabel(brief?.status)}</span>
-          {item.story_id ? <span>story linked</span> : <span>single item</span>}
-          {item.content_class ? <span>{item.content_class}</span> : null}
-          {contentTags.slice(0, 3).map((tag) => (
-            <span key={tag}>{tag}</span>
-          ))}
-          {tokens.slice(0, 2).map((token, index) => (
-            <span key={`${token.symbol ?? token.target_id ?? "token"}-${index}`}>
-              {token.symbol || token.target_id || "token"}
-            </span>
-          ))}
-        </div>
-        <strong>{item.headline}</strong>
-        <p className="news-agent-line">{brief?.summary_zh || agentBriefMissingText(brief)}</p>
-        <p className="news-market-line">
-          {brief?.market_read_zh || item.summary || "No market read persisted."}
-        </p>
-      </div>
-
-      <div className="news-instrument-cell">
-        <DirectionIcon direction={direction} />
-        <strong>{direction}</strong>
-        <span>
-          bull {formatAgentBriefStrength(brief?.bull_strength)} / bear{" "}
-          {formatAgentBriefStrength(brief?.bear_strength)}
-        </span>
-      </div>
-
-      <div className="news-route-cell">
-        <span className={`news-route-pill ${decisionTone(decision)}`}>{decision}</span>
-        <small>
-          {facts.length} fact {facts.length === 1 ? "lane" : "lanes"}
-        </small>
-        <small>{providerType || "provider unknown"}</small>
-        <small>{sourceQualityStatus || "quality unknown"}</small>
-      </div>
-
-      <div className="news-next-cell">
-        <strong>
-          {evidenceCount} evidence / {dataGapCount} gaps
-        </strong>
-        <span>
-          {firstAvailable(brief?.data_gaps?.map(dataGapLabel)) ||
-            firstEvidenceLabel(brief?.evidence_refs) ||
-            "evidence pending"}
-        </span>
-      </div>
-    </button>
-  );
-}
-
 function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
-  const instruments = inferNewsInstruments(item);
-  const facts = item.fact_lanes?.length ? item.fact_lanes : (item.fact_candidates ?? []);
+  const facts = item.fact_lanes ?? [];
   const tokens = item.token_lanes ?? [];
-  const brief = item.agent_brief;
-  const decision = brief?.decision_class || agentBriefLabel(brief?.status);
-  const direction = brief?.direction || agentBriefLabel(brief?.status);
-  const evidenceCount = brief?.evidence_refs?.length ?? 0;
-  const dataGapCount = brief?.data_gap_count ?? brief?.data_gaps?.length ?? 0;
-
+  const isProviderSignal = item.signal.source === "provider";
   return (
     <article className="news-detail">
-      <header className="news-detail-hero news-agent-command">
+      <header
+        className={`news-detail-hero ${isProviderSignal ? "news-provider-command" : "news-agent-command"}`}
+      >
         <div className="news-hero-grid">
           <div className="news-hero-agent">
             <div className="news-row-kicker">
-              <span>Agent memo</span>
-              <span className={decisionTone(decision)}>{decision}</span>
-              <span>{direction}</span>
+              <span>{isProviderSignal ? "Provider signal" : "Agent brief"}</span>
+              <span className={newsSignalTone(item.signal)}>{newsSignalLabel(item.signal)}</span>
+              <span>{newsSignalScoreLabel(item.signal)}</span>
             </div>
-            <h2>{brief?.summary_zh || item.headline}</h2>
-            <p>{brief?.market_read_zh || agentBriefMissingText(brief)}</p>
+            <h2>{item.signal.summary_zh || item.headline}</h2>
+            <p>{item.summary || item.signal.summary_en || "No source summary available."}</p>
           </div>
           <div className="news-source-card">
-            <span>Evidence packet</span>
-            <b>
-              {evidenceCount} refs / {dataGapCount} gaps
-            </b>
+            <span>Source packet</span>
+            <b>{item.signal.method || item.signal.source}</b>
             <p>{item.headline}</p>
             <small>
               {item.source_domain || item.source?.source_name || "source unknown"}
@@ -665,55 +298,39 @@ function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
           </div>
         </div>
       </header>
-
-      <div className="news-decision-strip" aria-label="news trading decision context">
+      <div className="news-decision-strip" aria-label="news provider signal context">
         <DecisionMetric
           label="Direction"
-          value={direction}
-          hint={`bull ${formatAgentBriefStrength(brief?.bull_strength)} / bear ${formatAgentBriefStrength(brief?.bear_strength)}`}
+          value={newsSignalLabel(item.signal)}
+          hint={item.signal.direction}
         />
-        <DecisionMetric label="Decision" value={decision} hint="Persisted shadow triage label" />
         <DecisionMetric
-          label="Evidence"
-          value={`${evidenceCount} refs`}
-          hint={`${dataGapCount} data gaps`}
+          label="Score"
+          value={newsSignalScoreLabel(item.signal)}
+          hint={item.signal.status}
+        />
+        <DecisionMetric
+          label="Tokens"
+          value={String(tokens.length)}
+          hint={newsLifecycleLabel(item.lifecycle_status)}
         />
       </div>
-
       <div className="news-detail-grid">
         <div className="news-detail-main">
-          <AgentBriefPanel brief={brief} run={item.agent_run} />
-
-          <section className="news-detail-section">
-            <div className="news-section-heading">
-              <h3>Market map</h3>
-              <span className="news-section-note">{instruments.length} lanes</span>
-            </div>
-            <div className="news-instrument-grid">
-              {instruments.map((instrument) => (
-                <div
-                  className="news-instrument-card"
-                  key={`${instrument.label}-${instrument.type}`}
-                >
-                  <div>
-                    <b>{instrument.label}</b>
-                    <span>{instrument.type}</span>
-                  </div>
-                  <strong>{instrument.priceState}</strong>
-                  <p>{instrument.use}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
+          {isProviderSignal ? (
+            <ProviderSignalPanel item={item} />
+          ) : (
+            <AgentBriefPanel brief={item.agent_brief} />
+          )}
           <section className="news-detail-section">
             <div className="news-section-heading">
               <h3>Source brief</h3>
-              <span className="news-section-note">{newsLifecycleLabel(item.lifecycle_status)}</span>
+              <span className="news-section-note">
+                {item.source?.provider_type || item.provider_type || "provider"}
+              </span>
             </div>
             <p>{item.summary || trimContent(item.content) || "No clean summary available yet."}</p>
           </section>
-
           <section className="news-detail-section">
             <div className="news-section-heading">
               <h3>Extracted facts</h3>
@@ -722,18 +339,11 @@ function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
             <FactList facts={facts} />
           </section>
         </div>
-
         <aside className="news-detail-side" aria-label="news item metadata">
           <section className="news-detail-section">
             <h3>Token identity</h3>
             <TokenIdentity tokens={tokens} />
           </section>
-
-          <section className="news-detail-section">
-            <h3>Story continuity</h3>
-            <StoryContinuity item={item} />
-          </section>
-
           <section className="news-detail-section">
             <h3>Production metadata</h3>
             <MetadataList item={item} />
@@ -744,133 +354,42 @@ function NewsItemDetailView({ item }: { item: NewsItemDetail }) {
   );
 }
 
-function AgentBriefPanel({
-  brief,
-  run,
-}: {
-  brief?: NewsAgentBrief | null;
-  run?: NewsItemDetail["agent_run"];
-}) {
-  const status = agentBriefLabel(brief?.status);
-  const runError = run?.error_message || run?.error || run?.error_class;
+function ProviderSignalPanel({ item }: { item: NewsItemDetail }) {
   return (
-    <section className="news-detail-section news-agent-brief-panel">
+    <section className="news-detail-section news-provider-signal-panel">
       <div className="news-section-heading">
-        <h3>Agent brief</h3>
-        <span className={`news-route-pill ${briefTone(brief)}`}>{status}</span>
+        <h3>Provider signal</h3>
+        <span className={`news-route-pill ${newsSignalTone(item.signal)}`}>
+          {newsSignalLabel(item.signal)}
+        </span>
       </div>
-      <div className="news-agent-summary">
-        <div>
-          <span>Summary</span>
-          <p>{brief?.summary_zh || agentBriefMissingText(brief)}</p>
-        </div>
-        <div>
-          <span>Market read</span>
-          <p>{brief?.market_read_zh || agentBriefMissingText(brief)}</p>
-        </div>
-      </div>
-      <div className="news-agent-view-grid">
-        <AgentViewCard title="多头视角" view={brief?.bull_view} strength={brief?.bull_strength} />
-        <AgentViewCard title="空头视角" view={brief?.bear_view} strength={brief?.bear_strength} />
-      </div>
-      <div className="news-agent-list-grid">
-        <AgentList
-          title="Watch triggers"
-          items={brief?.watch_triggers}
-          empty="No watch trigger persisted."
-        />
-        <AgentList
-          title="Invalidation"
-          items={brief?.invalidation_conditions}
-          empty="No invalidation condition persisted."
-        />
-        <AgentList
-          title="Data gaps"
-          items={brief?.data_gaps?.map(dataGapLabel)}
-          empty="No data gap persisted."
-        />
-        <AgentList
-          title="Evidence refs"
-          items={brief?.evidence_refs?.map(evidenceLabel)}
-          empty="No evidence ref persisted."
-        />
-      </div>
-      <dl className="news-metadata-list news-agent-audit">
-        <div>
-          <dt>Run</dt>
-          <dd>{brief?.agent_run_id || run?.run_id || "missing"}</dd>
-        </div>
-        <div>
-          <dt>Prompt</dt>
-          <dd>{brief?.prompt_version || run?.prompt_version || "missing"}</dd>
-        </div>
-        <div>
-          <dt>Schema</dt>
-          <dd>{brief?.schema_version || run?.schema_version || "missing"}</dd>
-        </div>
-        <div>
-          <dt>Input hash</dt>
-          <dd>{brief?.input_hash || "missing"}</dd>
-        </div>
-        <div>
-          <dt>Artifact</dt>
-          <dd>{brief?.artifact_version_hash || "missing"}</dd>
-        </div>
-        <div>
-          <dt>Computed</dt>
-          <dd>
-            {brief?.computed_at_ms ? `${formatRelativeTime(brief.computed_at_ms)} ago` : "missing"}
-          </dd>
-        </div>
-        {runError ? (
-          <div>
-            <dt>Error</dt>
-            <dd>{runError}</dd>
+      <p>{item.signal.summary_zh || item.signal.summary_en || "Waiting for provider aiRating."}</p>
+      <div className="news-token-list">
+        {item.token_lanes.map((token, index) => (
+          <div
+            className="news-token-item"
+            key={`${token.symbol ?? token.target_id ?? "token"}-${index}`}
+          >
+            <b>{token.symbol || token.target_id || "unknown token"}</b>
+            <span>{tokenImpactLabel(token)}</span>
+            <small>{token.provider_signal || token.market_type || token.lane}</small>
           </div>
-        ) : null}
-      </dl>
+        ))}
+      </div>
     </section>
   );
 }
 
-function AgentViewCard({
-  strength,
-  title,
-  view,
-}: {
-  strength?: string | null;
-  title: string;
-  view?: NewsAgentBriefView | null;
-}) {
+function AgentBriefPanel({ brief }: { brief?: NewsAgentBrief | null }) {
   return (
-    <div className="news-agent-view-card">
-      <div>
-        <b>{title}</b>
-        <span>{formatAgentBriefStrength(view?.strength ?? strength)}</span>
+    <section className="news-detail-section news-agent-brief-panel">
+      <div className="news-section-heading">
+        <h3>Agent brief</h3>
+        <span className="news-route-pill is-context">{brief?.status || "pending"}</span>
       </div>
-      <p>{view?.thesis_zh || "No persisted thesis."}</p>
-      <small>
-        {(view?.evidence_refs ?? []).map(evidenceLabel).join(" / ") || "No cited evidence."}
-      </small>
-    </div>
-  );
-}
-
-function AgentList({ empty, items, title }: { empty: string; items?: string[]; title: string }) {
-  const visibleItems = items?.filter(Boolean) ?? [];
-  return (
-    <div className="news-agent-list">
-      <b>{title}</b>
-      {visibleItems.length ? (
-        <ul>
-          {visibleItems.map((item, index) => (
-            <li key={`${title}-${item}-${index}`}>{item}</li>
-          ))}
-        </ul>
-      ) : (
-        <p>{empty}</p>
-      )}
-    </div>
+      <p>{brief?.summary_zh || "Agent fallback is pending for this non-provider row."}</p>
+      <p>{brief?.market_read_zh || "No persisted market read."}</p>
+    </section>
   );
 }
 
@@ -885,9 +404,8 @@ function DecisionMetric({ label, value, hint }: { label: string; value: string; 
 }
 
 function FactList({ facts }: { facts: NewsFactLane[] }) {
-  if (!facts.length) {
+  if (!facts.length)
     return <p className="news-muted-copy">No semantic fact candidate is attached yet.</p>;
-  }
   return (
     <div className="news-fact-list">
       {facts.map((fact, index) => (
@@ -910,13 +428,8 @@ function FactList({ facts }: { facts: NewsFactLane[] }) {
 }
 
 function TokenIdentity({ tokens }: { tokens: NewsTokenLane[] }) {
-  if (!tokens.length) {
-    return (
-      <p className="news-muted-copy">
-        No production token identity is linked. Keep this item as context until resolution lands.
-      </p>
-    );
-  }
+  if (!tokens.length)
+    return <p className="news-muted-copy">No production token identity is linked.</p>;
   return (
     <div className="news-token-list">
       {tokens.map((token, index) => (
@@ -926,29 +439,7 @@ function TokenIdentity({ tokens }: { tokens: NewsTokenLane[] }) {
         >
           <b>{token.symbol || token.target_id || "unknown token"}</b>
           <span>{token.resolution_status || token.lane}</span>
-          <small>{token.target_type || "target type missing"}</small>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StoryContinuity({ item }: { item: NewsItemDetail }) {
-  const members = item.story_members ?? [];
-  if (!members.length) {
-    return (
-      <p className="news-muted-copy">Single-row story. No multi-item continuity is attached.</p>
-    );
-  }
-  return (
-    <div className="news-story-list">
-      {members.slice(0, 4).map((member, index) => (
-        <div className="news-story-item" key={`${member.story_id ?? "story"}-${index}`}>
-          <b>{member.representative_title || member.story_id || "story member"}</b>
-          <span>{member.status || "status missing"}</span>
-          {member.latest_seen_at_ms ? (
-            <small>{formatRelativeTime(member.latest_seen_at_ms)} ago</small>
-          ) : null}
+          <small>{token.target_type || token.market_type || "target type missing"}</small>
         </div>
       ))}
     </div>
@@ -963,24 +454,14 @@ function MetadataList({ item }: { item: NewsItemDetail }) {
         <dd>{item.lifecycle_status}</dd>
       </div>
       <div>
-        <dt>Content</dt>
-        <dd>{item.content_class || "unknown"}</dd>
-      </div>
-      <div>
-        <dt>Tags</dt>
-        <dd>{(item.content_tags ?? item.content_tags_json ?? []).join(" / ") || "none"}</dd>
-      </div>
-      <div>
         <dt>Provider</dt>
-        <dd>{item.source?.provider_type || item.provider_type || "unknown"}</dd>
+        <dd>
+          {item.signal.provider || item.source?.provider_type || item.provider_type || "unknown"}
+        </dd>
       </div>
       <div>
-        <dt>Source tier</dt>
-        <dd>{item.source?.trust_tier || item.trust_tier || "unknown"}</dd>
-      </div>
-      <div>
-        <dt>Source role</dt>
-        <dd>{item.source?.source_role || item.source_role || "unknown"}</dd>
+        <dt>Method</dt>
+        <dd>{item.signal.method || "unknown"}</dd>
       </div>
       <div>
         <dt>Story id</dt>
@@ -990,40 +471,11 @@ function MetadataList({ item }: { item: NewsItemDetail }) {
   );
 }
 
-function decisionTone(decision?: string | null): string {
-  const normalized = decision?.toLowerCase() ?? "";
-  if (normalized === "driver") return "is-driver";
-  if (normalized === "watch") return "is-watch";
-  if (normalized === "discard") return "is-discard";
-  if (normalized === "context") return "is-context";
-  if (normalized === "ready") return "is-linked";
-  if (normalized === "insufficient" || normalized === "stale") return "is-gap";
-  return "is-context";
-}
-
-function briefTone(brief?: NewsAgentBrief | null): string {
-  if (brief?.status === "ready") return "is-linked";
-  if (brief?.status === "insufficient" || brief?.status === "stale") return "is-gap";
-  return "is-context";
-}
-
-function firstAvailable(items?: string[]): string {
-  return items?.find(Boolean) ?? "";
-}
-
-function firstEvidenceLabel(items?: NewsAgentEvidenceRef[]): string {
-  return items?.map(evidenceLabel).find(Boolean) ?? "";
-}
-
-function evidenceLabel(ref: NewsAgentEvidenceRef): string {
-  if (typeof ref === "string") return ref;
-  return ref.label || ref.ref || ref.source || ref.quote || "evidence";
-}
-
-function dataGapLabel(gap: NewsAgentDataGap): string {
-  if (typeof gap === "string") return gap;
-  const description = gap.description_zh || gap.description || gap.reason || gap.kind || "data gap";
-  return gap.severity ? `${gap.severity} · ${description}` : description;
+function signalFilterLabel(value: SignalFilter): string {
+  if (value === "bullish") return "利好";
+  if (value === "bearish") return "利空";
+  if (value === "neutral") return "中性";
+  return "全部";
 }
 
 function trimContent(content?: string | null): string | null {

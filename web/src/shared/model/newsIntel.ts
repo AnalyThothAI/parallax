@@ -1,9 +1,27 @@
+export type NewsSignalSummary = {
+  source: "provider" | "agent" | "partial" | string;
+  provider?: string | null;
+  status: "ready" | "partial" | "pending" | "failed" | string;
+  direction: "bullish" | "bearish" | "neutral" | string;
+  label_zh?: string | null;
+  signal?: "long" | "short" | "neutral" | string | null;
+  score?: number | null;
+  grade?: string | null;
+  summary_zh?: string | null;
+  summary_en?: string | null;
+  method?: string | null;
+};
+
 export type NewsTokenLane = {
-  lane: "resolved" | "attention" | string;
+  lane: "resolved" | "attention" | "ignored" | string;
   resolution_status?: string | null;
   symbol?: string | null;
   target_type?: string | null;
   target_id?: string | null;
+  provider_signal?: string | null;
+  provider_score?: number | null;
+  provider_grade?: string | null;
+  market_type?: string | null;
   reason_codes?: string[];
 };
 
@@ -114,14 +132,11 @@ export type NewsRow = {
   content_tags?: string[];
   content_classification_json?: Record<string, unknown>;
   content_classification?: Record<string, unknown>;
-  token_lanes?: NewsTokenLane[];
-  fact_lanes?: NewsFactLane[];
-  token_lanes_json?: NewsTokenLane[];
-  fact_lanes_json?: NewsFactLane[];
+  signal: NewsSignalSummary;
+  token_impacts?: NewsTokenLane[];
+  token_lanes: NewsTokenLane[];
+  fact_lanes: NewsFactLane[];
   agent_brief?: NewsAgentBrief;
-  agent_brief_json?: NewsAgentBrief | Record<string, unknown> | null;
-  agent_status?: NewsAgentBriefStatus | null;
-  agent_brief_status?: NewsAgentBriefStatus | null;
   agent_brief_computed_at_ms?: number | null;
 };
 

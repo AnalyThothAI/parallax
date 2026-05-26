@@ -12,7 +12,7 @@ from gmgn_twitter_intel.app.surfaces.api.exceptions import (
 from gmgn_twitter_intel.app.surfaces.api.http import create_api_router
 
 
-def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
+def test_news_api_lists_provider_signal_news_rows_without_postgres() -> None:
     news = FakeNewsRepository()
     app = _app(news)
 
@@ -22,9 +22,10 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
             params={
                 "limit": 1,
                 "cursor": "2000:row-old",
-                "direction": "bullish",
-                "decision_class": "driver",
-                "content_tag": "sec",
+                "has_token": "true",
+                "signal": "bullish",
+                "min_score": "70",
+                "q": "btc",
             },
             headers={"Authorization": "Bearer secret"},
         )
@@ -32,22 +33,13 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     assert response.status_code == 200
     assert news.calls == [
         {
-            "content_class": None,
-            "coverage_tag": None,
             "cursor": "2000:row-old",
-            "decision_class": "driver",
-            "direction": "bullish",
-            "include_unprojected": False,
-            "lane": None,
+            "has_token": True,
             "limit": 1,
-            "provider_type": None,
-            "q": None,
-            "source": None,
-            "source_role": None,
+            "min_score": 70,
+            "q": "btc",
+            "signal": "bullish",
             "status": None,
-            "target": None,
-            "trust_tier": None,
-            "content_tag": "sec",
         }
     ]
     assert response.json() == {
@@ -64,18 +56,20 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
                     "summary": "Issuer confirms launch.",
                     "source_domain": "example.com",
                     "canonical_url": "https://example.com/story",
-                    "token_lanes_json": [],
-                    "fact_lanes_json": [],
-                    "story_json": {},
-                    "source_json": {"source_id": "example-rss"},
-                    "content_class": "regulation",
-                    "content_tags_json": ["sec"],
-                    "content_classification_json": {"policy_version": "test"},
-                    "agent_brief_json": {"status": "pending"},
-                    "agent_brief": {"status": "pending"},
-                    "agent_status": "pending",
-                    "agent_brief_status": "pending",
-                    "agent_brief_computed_at_ms": None,
+                    "token_lanes": [{"symbol": "BTC", "provider_score": 82, "provider_signal": "long"}],
+                    "fact_lanes": [],
+                    "signal": {
+                        "source": "provider",
+                        "provider": "opennews",
+                        "status": "ready",
+                        "direction": "bullish",
+                        "label_zh": "利好",
+                        "score": 82,
+                        "grade": "A",
+                    },
+                    "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
+                    "story": {},
+                    "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
                     "computed_at_ms": 3_100,
                     "projection_version": "news_page_v1",
                 }
@@ -85,7 +79,7 @@ def test_news_api_lists_raw_news_page_rows_without_postgres() -> None:
     }
 
 
-def test_news_api_accepts_source_classification_filters_without_postgres() -> None:
+def test_news_api_ignores_retired_source_classification_filters_without_postgres() -> None:
     news = FakeNewsRepository()
     app = _app(news)
 
@@ -100,64 +94,23 @@ def test_news_api_accepts_source_classification_filters_without_postgres() -> No
                 "content_class": "regulation",
                 "content_tag": "sec",
                 "decision_class": "driver",
+                "lane": "resolved",
+                "source": "example.com",
+                "target": "BTC",
             },
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 200
     assert news.calls[-1] == {
-        "content_class": "regulation",
-        "content_tag": "sec",
-        "coverage_tag": "crypto_market",
         "cursor": None,
-        "decision_class": "driver",
-        "direction": None,
-        "include_unprojected": False,
-        "lane": None,
+        "has_token": None,
         "limit": 100,
-        "provider_type": "rss",
+        "min_score": None,
         "q": None,
-        "source": None,
-        "source_role": "specialist_media",
+        "signal": None,
         "status": None,
-        "target": None,
-        "trust_tier": "high",
     }
-
-
-def test_news_api_rejects_noncanonical_content_class_without_postgres() -> None:
-    news = FakeNewsRepository()
-    app = _app(news)
-
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/news",
-            params={"content_class": "regulatory_action"},
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 400
-    assert response.json() == {
-        "ok": False,
-        "error": "invalid_content_class",
-        "field": "content_class",
-    }
-    assert news.calls == []
-
-
-def test_news_api_can_request_unprojected_fallback_without_postgres() -> None:
-    news = FakeNewsRepository()
-    app = _app(news)
-
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/news",
-            params={"include_unprojected": "true"},
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 200
-    assert news.calls[-1]["include_unprojected"] is True
 
 
 def test_news_api_source_status_includes_provider_diagnostics_without_postgres() -> None:
@@ -244,38 +197,20 @@ class FakeNewsRepository:
         limit: int,
         cursor: str | None = None,
         status: str | None = None,
-        lane: str | None = None,
-        source: str | None = None,
-        target: str | None = None,
-        direction: str | None = None,
-        provider_type: str | None = None,
-        source_role: str | None = None,
-        trust_tier: str | None = None,
-        coverage_tag: str | None = None,
-        content_class: str | None = None,
-        content_tag: str | None = None,
-        decision_class: str | None = None,
+        has_token: bool | None = None,
+        signal: str | None = None,
+        min_score: int | None = None,
         q: str | None = None,
-        include_unprojected: bool,
     ):
         self.calls.append(
             {
-                "content_class": content_class,
-                "content_tag": content_tag,
-                "coverage_tag": coverage_tag,
                 "cursor": cursor,
-                "decision_class": decision_class,
-                "direction": direction,
-                "include_unprojected": include_unprojected,
-                "lane": lane,
+                "has_token": has_token,
                 "limit": limit,
-                "provider_type": provider_type,
+                "min_score": min_score,
                 "q": q,
-                "source": source,
-                "source_role": source_role,
+                "signal": signal,
                 "status": status,
-                "target": target,
-                "trust_tier": trust_tier,
             }
         )
         return [
@@ -289,18 +224,20 @@ class FakeNewsRepository:
                 "summary": "Issuer confirms launch.",
                 "source_domain": "example.com",
                 "canonical_url": "https://example.com/story",
-                "token_lanes_json": [],
-                "fact_lanes_json": [],
-                "story_json": {},
-                "source_json": {"source_id": "example-rss"},
-                "content_class": "regulation",
-                "content_tags_json": ["sec"],
-                "content_classification_json": {"policy_version": "test"},
-                "agent_brief_json": {"status": "pending"},
-                "agent_brief": {"status": "pending"},
-                "agent_status": "pending",
-                "agent_brief_status": "pending",
-                "agent_brief_computed_at_ms": None,
+                "token_lanes": [{"symbol": "BTC", "provider_score": 82, "provider_signal": "long"}],
+                "fact_lanes": [],
+                "signal": {
+                    "source": "provider",
+                    "provider": "opennews",
+                    "status": "ready",
+                    "direction": "bullish",
+                    "label_zh": "利好",
+                    "score": 82,
+                    "grade": "A",
+                },
+                "token_impacts": [{"symbol": "BTC", "score": 82, "signal": "long"}],
+                "story": {},
+                "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
                 "computed_at_ms": 3_100,
                 "projection_version": "news_page_v1",
             }
